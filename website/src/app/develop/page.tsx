@@ -1,11 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import {
   SparklesIcon,
   ArrowLeftIcon,
-  RocketLaunchIcon
+  RocketLaunchIcon,
+  UserCircleIcon,
+  ChevronDownIcon,
+  ShieldCheckIcon,
+  CogIcon,
+  ArrowRightOnRectangleIcon
 } from '@heroicons/react/24/outline'
 
 import ChatPane from './components/ChatPane'
@@ -43,6 +48,7 @@ interface ElementStyles {
 }
 
 export default function Develop() {
+  const profileDropdownRef = useRef<HTMLDivElement>(null)
   const [messages] = useState<Message[]>([
     {
       id: 1,
@@ -145,6 +151,7 @@ export default function Develop() {
   const [selectedElement, setSelectedElement] = useState<string | null>(null)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showDeployDialog, setShowDeployDialog] = useState(false)
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false)
   const [elementStyles, setElementStyles] = useState<ElementStyles>({
     fontSize: 'text-xl',
     fontWeight: 'font-bold',
@@ -184,6 +191,23 @@ export default function Develop() {
     setIsSelectMode(false)
   }
 
+  // Close profile dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setShowProfileDropdown(false)
+      }
+    }
+
+    if (showProfileDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showProfileDropdown])
+
   return (
     <div className="h-screen bg-gray-50 flex flex-col">
       {/* Header */}
@@ -217,6 +241,87 @@ export default function Develop() {
                 <ArrowLeftIcon className="w-4 h-4 mr-2" />
                 Back to Architecture
               </Link>
+              
+              {/* Profile Dropdown */}
+              <div className="relative" ref={profileDropdownRef}>
+                <button
+                  onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                  className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
+                    <span className="text-white text-sm font-medium">U</span>
+                  </div>
+                  <ChevronDownIcon className="w-4 h-4 text-gray-500" />
+                </button>
+
+                {showProfileDropdown && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                    {/* User Info */}
+                    <div className="p-4 border-b border-gray-200">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
+                          <span className="text-white font-medium">U</span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">Developer</p>
+                          <p className="text-sm text-gray-500">developer@fitstudio.com</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bot Links */}
+                    <div className="p-2">
+                      <div className="px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        AI Specialists
+                      </div>
+                      
+                      <Link
+                        href="/security"
+                        className="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+                        onClick={() => setShowProfileDropdown(false)}
+                      >
+                        <div className="w-8 h-8 bg-gradient-to-r from-red-100 to-orange-100 rounded-lg flex items-center justify-center">
+                          <ShieldCheckIcon className="w-4 h-4 text-red-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">SecurityBot-SEC</p>
+                          <p className="text-xs text-gray-500">Security & Compliance</p>
+                        </div>
+                      </Link>
+
+                      <Link
+                        href="/sre"
+                        className="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+                        onClick={() => setShowProfileDropdown(false)}
+                      >
+                        <div className="w-8 h-8 bg-gradient-to-r from-blue-100 to-cyan-100 rounded-lg flex items-center justify-center">
+                          <CogIcon className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">SREBot-OPS</p>
+                          <p className="text-xs text-gray-500">Site Reliability & Operations</p>
+                        </div>
+                      </Link>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-gray-200"></div>
+
+                    {/* Account Actions */}
+                    <div className="p-2">
+                      <button className="flex items-center space-x-3 w-full px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left">
+                        <UserCircleIcon className="w-5 h-5 text-gray-400" />
+                        <span className="text-sm text-gray-700">Account Settings</span>
+                      </button>
+                      
+                      <button className="flex items-center space-x-3 w-full px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors text-left">
+                        <ArrowRightOnRectangleIcon className="w-5 h-5 text-gray-400" />
+                        <span className="text-sm text-gray-700">Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
