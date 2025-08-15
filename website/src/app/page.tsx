@@ -54,9 +54,12 @@ export default function Home() {
               <button className="text-gray-600 hover:text-gray-900 transition-colors">
                 Sign In
               </button>
-              <button className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all">
+              <Link
+                href="/app-plan"
+                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all"
+              >
                 Get Started
-              </button>
+              </Link>
             </div>
           </div>
         </div>
@@ -79,38 +82,34 @@ export default function Home() {
           {/* Main CTA Input */}
           <div className="max-w-2xl mx-auto mb-16">
             <div className="relative">
-              <input
-                type="text"
-                placeholder="I want to build a..."
-                className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+              <textarea
+                placeholder="Describe your app idea in detail... What features do you need? Who is your target audience? What problem are you solving?"
+                rows={4}
+                className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all resize-none"
               />
-              <button className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2">
-                <span>Start Building</span>
-                <ArrowRightIcon className="w-4 h-4" />
-              </button>
+              <Link href="/app-plan">
+                <button className="absolute right-3 bottom-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2">
+                  <span>Start Building</span>
+                  <ArrowRightIcon className="w-4 h-4" />
+                </button>
+              </Link>
             </div>
           </div>
 
           {/* Example Links */}
           <div className="text-center mb-8">
-            <p className="text-gray-500 mb-6">Or try one of these popular examples:</p>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
+            <p className="text-gray-500 mb-4 text-sm">Or try one of these popular examples:</p>
+            <div className="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
               {examples.map((example, index) => (
                 <Link
                   key={index}
-                  href={example.href}
-                  className="group p-6 bg-white rounded-xl border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all duration-200"
+                  href="/app-plan"
+                  className="group px-4 py-2 bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all duration-200 text-sm"
                 >
-                  <h3 className="font-semibold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">
+                  <span className="font-medium text-gray-700 group-hover:text-purple-600 transition-colors">
                     {example.title}
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    {example.description}
-                  </p>
-                  <div className="mt-4 flex items-center text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-sm font-medium">Get started</span>
-                    <ArrowRightIcon className="w-4 h-4 ml-2" />
-                  </div>
+                  </span>
+                  <ArrowRightIcon className="w-3 h-3 ml-1 inline opacity-0 group-hover:opacity-100 transition-opacity" />
                 </Link>
               ))}
             </div>

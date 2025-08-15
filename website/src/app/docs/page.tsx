@@ -88,7 +88,7 @@ export default function Documentation() {
             </nav>
             <div className="flex items-center space-x-4">
               <Link
-                href="/builder"
+                href="/app-plan"
                 className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:shadow-lg transition-all duration-200 hover:scale-105"
               >
                 Get Started
@@ -225,7 +225,7 @@ export default function Documentation() {
                     <CodeBracketIcon className="w-5 h-5 ml-2" />
                   </Link>
                   <Link
-                    href="/builder"
+                    href="/app-plan"
                     className="flex-1 inline-flex items-center justify-center px-6 py-3 border-2 border-purple-600 text-purple-600 font-semibold rounded-lg hover:bg-purple-50 transition-all duration-200"
                   >
                     Start Building Now
@@ -256,7 +256,7 @@ export default function Documentation() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
-                href="/builder"
+                href="/app-plan"
                 className="inline-flex items-center justify-center px-8 py-3 bg-white text-purple-600 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
               >
                 <SparklesIcon className="w-5 h-5 mr-2" />
