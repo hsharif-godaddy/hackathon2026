@@ -1,6 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import {
+  DocumentTextIcon,
+  BoldIcon,
+  ItalicIcon,
+  SwatchIcon,
+  ChevronDownIcon,
+  XMarkIcon
+} from '@heroicons/react/24/outline'
 
 interface ElementStyles {
   fontSize: string
@@ -18,195 +26,222 @@ interface ElementEditorProps {
 }
 
 export default function ElementEditor({ isOpen, onClose, elementStyles, onStyleChange }: ElementEditorProps) {
+  const [showFontSizeDropdown, setShowFontSizeDropdown] = useState(false)
+  const [showColorDropdown, setShowColorDropdown] = useState(false)
+  const [showSpacingDropdown, setShowSpacingDropdown] = useState(false)
+  const toolbarRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (toolbarRef.current && !toolbarRef.current.contains(event.target as Node)) {
+        setShowFontSizeDropdown(false)
+        setShowColorDropdown(false)
+        setShowSpacingDropdown(false)
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isOpen])
+
   if (!isOpen) return null
 
-  const handleReset = () => {
-    onStyleChange({
-      fontSize: 'text-xl',
-      fontWeight: 'font-bold',
-      color: 'text-gray-900',
-      marginBottom: 'mb-1',
-      padding: ''
-    })
+  const fontSizes = [
+    { value: 'text-sm', label: '14px' },
+    { value: 'text-base', label: '16px' },
+    { value: 'text-lg', label: '18px' },
+    { value: 'text-xl', label: '20px' },
+    { value: 'text-2xl', label: '24px' },
+    { value: 'text-3xl', label: '30px' },
+    { value: 'text-4xl', label: '36px' }
+  ]
+
+  const colors = [
+    { value: 'text-gray-900', color: '#111827', label: 'Black' },
+    { value: 'text-gray-600', color: '#4B5563', label: 'Gray' },
+    { value: 'text-blue-600', color: '#2563EB', label: 'Blue' },
+    { value: 'text-purple-600', color: '#9333EA', label: 'Purple' },
+    { value: 'text-green-600', color: '#16A34A', label: 'Green' },
+    { value: 'text-red-600', color: '#DC2626', label: 'Red' }
+  ]
+
+  const getCurrentFontSize = () => {
+    return fontSizes.find(size => size.value === elementStyles.fontSize)?.label || '16px'
   }
 
-  const handleApply = () => {
-    onClose()
+  const getCurrentColor = () => {
+    return colors.find(color => color.value === elementStyles.color)?.color || '#111827'
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-80 mx-4 overflow-hidden border border-gray-100">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center shadow-sm">
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Edit Element</h3>
-                <p className="text-sm font-medium text-gray-700">Welcome Title</p>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-lg bg-white hover:bg-gray-50 transition-colors flex items-center justify-center border border-gray-200"
-            >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="p-6">
-
-        {/* Controls */}
-        <div className="space-y-5">
-          {/* Font Size */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-3">Font Size</label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { value: 'text-sm', label: 'SM' },
-                { value: 'text-base', label: 'MD' },
-                { value: 'text-lg', label: 'LG' },
-                { value: 'text-xl', label: 'XL' },
-                { value: 'text-2xl', label: '2XL' },
-                { value: 'text-3xl', label: '3XL' }
-              ].map((size) => (
+    <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
+      <div 
+        ref={toolbarRef}
+        className="bg-white border border-gray-300 rounded-lg shadow-lg p-1 flex items-center space-x-1"
+        style={{ minWidth: '320px' }}
+      >
+        {/* Font Size Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => {
+              setShowFontSizeDropdown(!showFontSizeDropdown)
+              setShowColorDropdown(false)
+              setShowSpacingDropdown(false)
+            }}
+            className="flex items-center space-x-1 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded border-r border-gray-200"
+          >
+            <DocumentTextIcon className="w-4 h-4" />
+            <span>{getCurrentFontSize()}</span>
+            <ChevronDownIcon className="w-3 h-3" />
+          </button>
+          
+          {showFontSizeDropdown && (
+            <div className="absolute top-full left-0 mt-1 w-20 bg-white border border-gray-300 rounded shadow-lg z-10">
+              {fontSizes.map((size) => (
                 <button
                   key={size.value}
-                  onClick={() => onStyleChange({ ...elementStyles, fontSize: size.value })}
-                  className={`px-3 py-2.5 text-sm font-medium rounded-xl border-2 transition-all ${
-                    elementStyles.fontSize === size.value
-                      ? 'bg-blue-500 border-blue-500 text-white shadow-md'
-                      : 'bg-white border-gray-200 text-gray-800 hover:border-gray-300 hover:bg-gray-50'
+                  onClick={() => {
+                    onStyleChange({ ...elementStyles, fontSize: size.value })
+                    setShowFontSizeDropdown(false)
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 ${
+                    elementStyles.fontSize === size.value ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
                   }`}
                 >
                   {size.label}
                 </button>
               ))}
             </div>
-          </div>
-
-          {/* Font Weight */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-3">Font Weight</label>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { value: 'font-normal', label: 'Regular' },
-                { value: 'font-medium', label: 'Medium' },
-                { value: 'font-semibold', label: 'Semibold' },
-                { value: 'font-bold', label: 'Bold' }
-              ].map((weight) => (
-                <button
-                  key={weight.value}
-                  onClick={() => onStyleChange({ ...elementStyles, fontWeight: weight.value })}
-                  className={`px-3 py-2.5 text-sm font-medium rounded-xl border-2 transition-all ${
-                    elementStyles.fontWeight === weight.value
-                      ? 'bg-blue-500 border-blue-500 text-white shadow-md'
-                      : 'bg-white border-gray-200 text-gray-800 hover:border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  {weight.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Text Color */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-900 mb-3">Text Color</label>
-            <div className="flex flex-wrap gap-2.5">
-              {[
-                { value: 'text-gray-900', color: 'bg-gray-900', label: 'Dark' },
-                { value: 'text-gray-600', color: 'bg-gray-600', label: 'Gray' },
-                { value: 'text-blue-600', color: 'bg-blue-600', label: 'Blue' },
-                { value: 'text-purple-600', color: 'bg-purple-600', label: 'Purple' },
-                { value: 'text-green-600', color: 'bg-green-600', label: 'Green' },
-                { value: 'text-red-600', color: 'bg-red-600', label: 'Red' }
-              ].map((colorOption) => (
-                <button
-                  key={colorOption.value}
-                  onClick={() => onStyleChange({ ...elementStyles, color: colorOption.value })}
-                  className={`w-10 h-10 rounded-xl border-2 transition-all relative ${
-                    elementStyles.color === colorOption.value
-                      ? 'border-blue-500 ring-2 ring-blue-200 shadow-md'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  title={colorOption.label}
-                >
-                  <div className={`w-full h-full rounded-lg ${colorOption.color}`}></div>
-                  {elementStyles.color === colorOption.value && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Spacing */}
-          <div className="grid grid-cols-2 gap-4">
-            {/* Margin */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-3">Margin</label>
-              <select
-                value={elementStyles.marginBottom}
-                onChange={(e) => onStyleChange({ ...elementStyles, marginBottom: e.target.value })}
-                className="w-full text-sm border-2 border-gray-200 rounded-xl px-3 py-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium text-gray-800"
-              >
-                <option value="">None</option>
-                <option value="mb-1">Small</option>
-                <option value="mb-2">Medium</option>
-                <option value="mb-4">Large</option>
-                <option value="mb-6">X-Large</option>
-              </select>
-            </div>
-
-            {/* Padding */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-3">Padding</label>
-              <select
-                value={elementStyles.padding}
-                onChange={(e) => onStyleChange({ ...elementStyles, padding: e.target.value })}
-                className="w-full text-sm border-2 border-gray-200 rounded-xl px-3 py-2.5 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium text-gray-800"
-              >
-                <option value="">None</option>
-                <option value="p-1">Small</option>
-                <option value="p-2">Medium</option>
-                <option value="p-4">Large</option>
-                <option value="p-6">X-Large</option>
-              </select>
-            </div>
-          </div>
+          )}
         </div>
 
-        </div>
+        {/* Font Weight Buttons */}
+        <button
+          onClick={() => onStyleChange({ 
+            ...elementStyles, 
+            fontWeight: elementStyles.fontWeight === 'font-bold' ? 'font-normal' : 'font-bold' 
+          })}
+          className={`p-1.5 rounded hover:bg-gray-100 ${
+            elementStyles.fontWeight === 'font-bold' ? 'bg-gray-200 text-gray-900' : 'text-gray-600'
+          }`}
+          title="Bold"
+        >
+          <BoldIcon className="w-4 h-4" />
+        </button>
 
-        {/* Footer Actions */}
-        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex space-x-3">
+        <button
+          className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+          title="Italic"
+        >
+          <ItalicIcon className="w-4 h-4" />
+        </button>
+
+        {/* Divider */}
+        <div className="w-px h-6 bg-gray-300"></div>
+
+        {/* Color Picker */}
+        <div className="relative">
           <button
-            onClick={handleReset}
-            className="flex-1 px-4 py-2.5 text-sm bg-white text-gray-800 rounded-xl hover:bg-gray-100 transition-colors font-semibold border-2 border-gray-200"
+            onClick={() => {
+              setShowColorDropdown(!showColorDropdown)
+              setShowFontSizeDropdown(false)
+              setShowSpacingDropdown(false)
+            }}
+            className="flex items-center space-x-1 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded"
           >
-            Reset
+            <div 
+              className="w-4 h-4 rounded border border-gray-300"
+              style={{ backgroundColor: getCurrentColor() }}
+            ></div>
+            <ChevronDownIcon className="w-3 h-3" />
           </button>
-          <button
-            onClick={handleApply}
-            className="flex-1 px-4 py-2.5 text-sm bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-semibold shadow-md"
-          >
-            Apply Changes
-          </button>
+          
+          {showColorDropdown && (
+            <div className="absolute top-full left-0 mt-1 w-32 bg-white border border-gray-300 rounded shadow-lg z-10 p-2">
+              <div className="grid grid-cols-3 gap-1">
+                {colors.map((colorOption) => (
+                  <button
+                    key={colorOption.value}
+                    onClick={() => {
+                      onStyleChange({ ...elementStyles, color: colorOption.value })
+                      setShowColorDropdown(false)
+                    }}
+                    className={`w-8 h-8 rounded border border-gray-300 hover:scale-110 transition-transform ${
+                      elementStyles.color === colorOption.value ? 'ring-2 ring-blue-500' : ''
+                    }`}
+                    style={{ backgroundColor: colorOption.color }}
+                    title={colorOption.label}
+                  ></button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Spacing Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => {
+              setShowSpacingDropdown(!showSpacingDropdown)
+              setShowFontSizeDropdown(false)
+              setShowColorDropdown(false)
+            }}
+            className="flex items-center space-x-1 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded"
+          >
+            <span>Spacing</span>
+            <ChevronDownIcon className="w-3 h-3" />
+          </button>
+          
+          {showSpacingDropdown && (
+            <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-300 rounded shadow-lg z-10 p-3">
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Margin</label>
+                  <select
+                    value={elementStyles.marginBottom}
+                    onChange={(e) => onStyleChange({ ...elementStyles, marginBottom: e.target.value })}
+                    className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                  >
+                    <option value="">None</option>
+                    <option value="mb-1">Small</option>
+                    <option value="mb-2">Medium</option>
+                    <option value="mb-4">Large</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Padding</label>
+                  <select
+                    value={elementStyles.padding}
+                    onChange={(e) => onStyleChange({ ...elementStyles, padding: e.target.value })}
+                    className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                  >
+                    <option value="">None</option>
+                    <option value="p-1">Small</option>
+                    <option value="p-2">Medium</option>
+                    <option value="p-4">Large</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div className="w-px h-6 bg-gray-300"></div>
+
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+          title="Close"
+        >
+          <XMarkIcon className="w-4 h-4" />
+        </button>
       </div>
     </div>
   )
