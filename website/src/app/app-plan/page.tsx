@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import {
   SparklesIcon,
@@ -36,47 +36,48 @@ export default function AppPlan() {
       id: 1,
       sender: 'agent',
       content: "Hello! I'm ProdBot-PM, your Product Manager agent. I'm here to help you plan your application in detail. Let's start by understanding what you want to build. Can you tell me about your app idea?",
-      timestamp: new Date(Date.now() - 300000) // 5 minutes ago
+      timestamp: new Date(Date.now() - 300000)
     },
     {
       id: 2,
       sender: 'user',
       content: "I need a modern website for my local fitness studio. We offer personal training, group classes, and nutrition coaching. I want members to be able to book classes online, view schedules, and access workout plans.",
-      timestamp: new Date(Date.now() - 240000) // 4 minutes ago
+      timestamp: new Date(Date.now() - 240000)
     },
     {
       id: 3,
       sender: 'agent',
       content: "Great! A fitness studio website with booking functionality sounds perfect. So you'll need class scheduling, member management, and content for your services. Who will be managing the content - will you need an easy way to add new classes, update schedules, or post fitness tips?",
-      timestamp: new Date(Date.now() - 180000) // 3 minutes ago
+      timestamp: new Date(Date.now() - 180000)
     },
     {
       id: 4,
       sender: 'user',
       content: "Yes, I want to be able to easily update class schedules, post weekly workout tips on a blog, showcase success stories from clients, and update trainer profiles. I'm not technical, so it needs to be really user-friendly.",
-      timestamp: new Date(Date.now() - 120000) // 2 minutes ago
+      timestamp: new Date(Date.now() - 120000)
     },
     {
       id: 5,
       sender: 'agent',
       content: "Perfect! So you need a content management system behind your website for easy updates. What about member features - do you want a member portal where they can track their progress, access workout plans, or communicate with trainers?",
-      timestamp: new Date(Date.now() - 60000) // 1 minute ago
+      timestamp: new Date(Date.now() - 60000)
     },
     {
       id: 6,
       sender: 'user',
       content: "That would be amazing! Members should be able to log in to see their workout plans, track their progress, book and cancel classes, and maybe get nutrition tips. We also want to send automated emails for class reminders.",
-      timestamp: new Date(Date.now() - 30000) // 30 seconds ago
+      timestamp: new Date(Date.now() - 30000)
     },
     {
       id: 7,
       sender: 'agent',
       content: "Excellent! I can see this is a comprehensive fitness studio platform with both public website and member portal features. Do you need any payment processing for memberships or class packages, and any integrations with fitness tracking apps or email marketing tools?",
-      timestamp: new Date(Date.now() - 10000) // 10 seconds ago
+      timestamp: new Date(Date.now() - 10000)
     }
   ])
 
   const [inputValue, setInputValue] = useState('')
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   const [appDetails, setAppDetails] = useState<AppDetails>({
     name: 'FitStudio Pro',
     type: 'Fitness Studio Website & Member Portal',
@@ -87,6 +88,14 @@ export default function AppPlan() {
     userRoles: ['Studio Owner', 'Trainers', 'Members'],
     integrations: ['Stripe Payment', 'Email Automation', 'Fitness Tracking Apps', 'Google Calendar']
   })
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
 
   const handleSendMessage = () => {
     if (!inputValue.trim()) return
@@ -100,7 +109,6 @@ export default function AppPlan() {
 
     setMessages(prev => [...prev, userMessage])
 
-    // Simulate AI response and update app details
     setTimeout(() => {
       const agentResponse = generateAgentResponse(inputValue, messages.length)
       setMessages(prev => [...prev, agentResponse])
@@ -128,7 +136,6 @@ export default function AppPlan() {
   }
 
   const updateAppDetails = (userInput: string) => {
-    // Simple keyword-based extraction (in real app, this would be more sophisticated)
     const input = userInput.toLowerCase()
     
     setAppDetails(prev => {
@@ -183,8 +190,7 @@ export default function AppPlan() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+    <div className="h-screen bg-gray-50 flex flex-col">
       <header className="border-b border-gray-200 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -211,54 +217,188 @@ export default function AppPlan() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid lg:grid-cols-3 gap-8 h-[calc(100vh-200px)]">
-          {/* Left Side - Conversation */}
-          <div className="lg:col-span-2 bg-white rounded-lg border border-gray-200 flex flex-col">
-            <div className="border-b border-gray-200 p-6">
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Plan Your Application</h1>
-              <p className="text-gray-600">
-                Let's work together to define your app requirements and create a detailed plan.
-              </p>
-            </div>
+      {/* Main Content Area - Two Scrolling Panes */}
+      <div className="flex-1 flex min-h-0">
+        {/* Left Pane - Conversation */}
+        <div className="flex-1 bg-white border-r border-gray-200 flex flex-col min-h-0">
+          <div className="border-b border-gray-200 p-6 bg-white">
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Plan Your Application</h1>
+            <p className="text-gray-600">
+              Let's work together to define your app requirements and create a detailed plan.
+            </p>
+          </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {messages.map((message) => (
-                <div key={message.id} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-3xl ${message.sender === 'user' ? 'order-2' : 'order-1'}`}>
-                    <div className={`flex items-start space-x-3 ${message.sender === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        message.sender === 'user' 
-                          ? 'bg-purple-600' 
-                          : 'bg-gradient-to-r from-purple-100 to-blue-100'
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {messages.map((message) => (
+              <div key={message.id} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-3xl ${message.sender === 'user' ? 'order-2' : 'order-1'}`}>
+                  <div className={`flex items-start space-x-3 ${message.sender === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      message.sender === 'user' 
+                        ? 'bg-purple-600' 
+                        : 'bg-gradient-to-r from-purple-100 to-blue-100'
+                    }`}>
+                      {message.sender === 'user' ? (
+                        <span className="text-white text-sm font-medium">U</span>
+                      ) : (
+                        <SparklesIcon className="w-4 h-4 text-purple-600" />
+                      )}
+                    </div>
+                    <div className={`flex-1 ${message.sender === 'user' ? 'text-right' : ''}`}>
+                      <div className={`inline-block p-4 rounded-lg ${
+                        message.sender === 'user'
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-gray-100 text-gray-900'
                       }`}>
-                        {message.sender === 'user' ? (
-                          <span className="text-white text-sm font-medium">U</span>
-                        ) : (
-                          <SparklesIcon className="w-4 h-4 text-purple-600" />
-                        )}
+                        <p className="text-sm leading-relaxed">{message.content}</p>
                       </div>
-                      <div className={`flex-1 ${message.sender === 'user' ? 'text-right' : ''}`}>
-                        <div className={`inline-block p-4 rounded-lg ${
-                          message.sender === 'user'
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-gray-100 text-gray-900'
-                        }`}>
-                          <p className="text-sm leading-relaxed">{message.content}</p>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {message.timestamp.toLocaleTimeString()}
-                        </p>
-                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {message.timestamp.toLocaleTimeString()}
+                      </p>
                     </div>
                   </div>
                 </div>
-              ))}
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+
+        {/* Right Pane - App Summary */}
+        <div className="w-96 bg-white flex flex-col min-h-0">
+          <div className="border-b border-gray-200 p-6 bg-white">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+              <DocumentTextIcon className="w-5 h-5 mr-2 text-purple-600" />
+              App Summary
+            </h2>
+            <p className="text-sm text-gray-600 mt-1">
+              We'll update this as we learn more about your app.
+            </p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div>
+              <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+                <GlobeAltIcon className="w-4 h-4 mr-2" />
+                App Basics
+              </h3>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Name:</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {appDetails.name || 'Not specified'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Type:</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {appDetails.type || 'Not specified'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Audience:</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {appDetails.targetAudience || 'Not specified'}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            {/* Input */}
-            <div className="border-t border-gray-200 p-6">
+            <div>
+              <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+                <DocumentTextIcon className="w-4 h-4 mr-2" />
+                Content Types
+              </h3>
+              <div className="space-y-2">
+                {appDetails.contentTypes.length > 0 ? (
+                  appDetails.contentTypes.map((type, index) => (
+                    <div key={index} className="flex items-center">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full mr-2" />
+                      <span className="text-sm text-gray-700">{type}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">None specified yet</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+                <UserGroupIcon className="w-4 h-4 mr-2" />
+                User Roles
+              </h3>
+              <div className="space-y-2">
+                {appDetails.userRoles.length > 0 ? (
+                  appDetails.userRoles.map((role, index) => (
+                    <div key={index} className="flex items-center">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full mr-2" />
+                      <span className="text-sm text-gray-700">{role}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">None specified yet</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+                <CogIcon className="w-4 h-4 mr-2" />
+                Key Features
+              </h3>
+              <div className="space-y-2">
+                {appDetails.keyFeatures.length > 0 ? (
+                  appDetails.keyFeatures.map((feature, index) => (
+                    <div key={index} className="flex items-center">
+                      <div className="w-2 h-2 bg-green-400 rounded-full mr-2" />
+                      <span className="text-sm text-gray-700">{feature}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">None specified yet</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+                <CogIcon className="w-4 h-4 mr-2" />
+                Integrations
+              </h3>
+              <div className="space-y-2">
+                {appDetails.integrations.length > 0 ? (
+                  appDetails.integrations.map((integration, index) => (
+                    <div key={index} className="flex items-center">
+                      <div className="w-2 h-2 bg-orange-400 rounded-full mr-2" />
+                      <span className="text-sm text-gray-700">{integration}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">None specified yet</p>
+                )}
+              </div>
+            </div>
+
+            {appDetails.description && (
+              <div>
+                <h3 className="text-sm font-medium text-gray-900 mb-3">Description</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  {appDetails.description}
+                </p>
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+
+      {/* Fixed Bottom Area - Split between Chat and Navigation */}
+      <div className="border-t border-gray-200 bg-white">
+        <div className="p-6">
+          <div className="flex space-x-6">
+            {/* Left Side - Chat Input */}
+            <div className="flex-1">
               <div className="flex space-x-4">
                 <div className="flex-1">
                   <textarea
@@ -279,158 +419,23 @@ export default function AppPlan() {
                 </button>
               </div>
             </div>
-          </div>
 
-          {/* Right Side - App Summary */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg border border-gray-200 h-full">
-              <div className="border-b border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 flex items-center">
-                  <DocumentTextIcon className="w-5 h-5 mr-2 text-purple-600" />
-                  App Summary
-                </h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  We'll update this as we learn more about your app.
-                </p>
-              </div>
-
-              <div className="p-6 space-y-6">
-                {/* App Basics */}
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
-                    <GlobeAltIcon className="w-4 h-4 mr-2" />
-                    App Basics
-                  </h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Name:</span>
-                      <span className="text-sm font-medium text-gray-900">
-                        {appDetails.name || 'Not specified'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Type:</span>
-                      <span className="text-sm font-medium text-gray-900">
-                        {appDetails.type || 'Not specified'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Audience:</span>
-                      <span className="text-sm font-medium text-gray-900">
-                        {appDetails.targetAudience || 'Not specified'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Content Types */}
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
-                    <DocumentTextIcon className="w-4 h-4 mr-2" />
-                    Content Types
-                  </h3>
-                  <div className="space-y-2">
-                    {appDetails.contentTypes.length > 0 ? (
-                      appDetails.contentTypes.map((type, index) => (
-                        <div key={index} className="flex items-center">
-                          <div className="w-2 h-2 bg-purple-400 rounded-full mr-2" />
-                          <span className="text-sm text-gray-700">{type}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-gray-500">None specified yet</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* User Roles */}
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
-                    <UserGroupIcon className="w-4 h-4 mr-2" />
-                    User Roles
-                  </h3>
-                  <div className="space-y-2">
-                    {appDetails.userRoles.length > 0 ? (
-                      appDetails.userRoles.map((role, index) => (
-                        <div key={index} className="flex items-center">
-                          <div className="w-2 h-2 bg-blue-400 rounded-full mr-2" />
-                          <span className="text-sm text-gray-700">{role}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-gray-500">None specified yet</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Features */}
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
-                    <CogIcon className="w-4 h-4 mr-2" />
-                    Key Features
-                  </h3>
-                  <div className="space-y-2">
-                    {appDetails.keyFeatures.length > 0 ? (
-                      appDetails.keyFeatures.map((feature, index) => (
-                        <div key={index} className="flex items-center">
-                          <div className="w-2 h-2 bg-green-400 rounded-full mr-2" />
-                          <span className="text-sm text-gray-700">{feature}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-gray-500">None specified yet</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Integrations */}
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
-                    <CogIcon className="w-4 h-4 mr-2" />
-                    Integrations
-                  </h3>
-                  <div className="space-y-2">
-                    {appDetails.integrations.length > 0 ? (
-                      appDetails.integrations.map((integration, index) => (
-                        <div key={index} className="flex items-center">
-                          <div className="w-2 h-2 bg-orange-400 rounded-full mr-2" />
-                          <span className="text-sm text-gray-700">{integration}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-gray-500">None specified yet</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Description */}
-                {appDetails.description && (
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-900 mb-3">Description</h3>
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      {appDetails.description}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              <div className="border-t border-gray-200 p-6">
-                <div className="space-y-3">
-                  <Link
-                    href="/build"
-                    className="block w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200 text-center"
-                  >
-                    Build FitStudio Pro
-                  </Link>
-                  <button className="w-full px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
-                    Save Project Plan
+            {/* Right Side - Navigation Actions */}
+            <div className="w-96 border-l border-gray-200 pl-6">
+              <div className="space-y-3">
+                <Link
+                  href="/build"
+                  className="block w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200 text-center"
+                >
+                  Build FitStudio Pro
+                </Link>
+                <button className="w-full px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                  Save Project Plan
+                </button>
+                <div className="text-center">
+                  <button className="text-purple-600 text-sm font-medium hover:text-purple-700 transition-colors">
+                    Modify Requirements
                   </button>
-                  <div className="text-center">
-                    <button className="text-purple-600 text-sm font-medium hover:text-purple-700 transition-colors">
-                      Modify Requirements
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>

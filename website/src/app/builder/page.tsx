@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeftIcon, SparklesIcon, UserIcon, BotIcon } from '@heroicons/react/24/outline'
+import { ArrowLeftIcon, SparklesIcon, UserIcon } from '@heroicons/react/24/outline'
 
 interface Message {
   id: number

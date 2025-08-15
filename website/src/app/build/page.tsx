@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -373,6 +373,8 @@ This architecture provides a solid foundation for FitStudio Pro while maintainin
     }
   ])
 
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const agentMessagesEndRef = useRef<HTMLDivElement>(null)
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -406,8 +408,21 @@ This architecture provides a solid foundation for FitStudio Pro while maintainin
     }
   ])
 
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const scrollAgentMessagesToBottom = () => {
+    agentMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+    scrollAgentMessagesToBottom()
+  }, [messages])
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <header className="border-b border-gray-200 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -435,136 +450,140 @@ This architecture provides a solid foundation for FitStudio Pro while maintainin
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Left Side - Agent Progress */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-              <div className="flex items-center mb-4">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center mr-3">
-                  <CpuChipIcon className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">ArchBot-SYS</h2>
-                  <p className="text-sm text-blue-600">Software Architect Agent</p>
-                </div>
+      {/* Main Content Area - Two Scrolling Panes */}
+      <div className="flex-1 flex min-h-0">
+        {/* Left Side - Agent Progress */}
+        <div className="w-80 bg-white border-r border-gray-200 flex flex-col min-h-0">
+          {/* Agent Header */}
+          <div className="border-b border-gray-200 p-6 bg-white">
+            <div className="flex items-center mb-4">
+              <div className="w-10 h-10 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center mr-3">
+                <CpuChipIcon className="w-6 h-6 text-blue-600" />
               </div>
-              
-              <div className="space-y-4">
-                {buildSteps.map((step, index) => (
-                  <div key={step.id} className="flex items-center">
-                    <div className="flex-shrink-0 mr-3">
-                      {step.status === 'complete' ? (
-                        <CheckCircleIcon className="w-5 h-5 text-green-500" />
-                      ) : step.status === 'building' ? (
-                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <ClockIcon className="w-5 h-5 text-gray-300" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <p className={`text-sm font-medium ${
-                        step.status === 'complete' ? 'text-gray-900' : 
-                        step.status === 'building' ? 'text-blue-600' : 'text-gray-400'
-                      }`}>
-                        {step.title}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">ArchBot-SYS</h2>
+                <p className="text-sm text-blue-600">Software Architect Agent</p>
               </div>
             </div>
-
-            {/* Agent Messages */}
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="border-b border-gray-200 p-4">
-                <h3 className="text-lg font-semibold text-gray-900">Agent Activity</h3>
-              </div>
-              <div className="p-4 max-h-96 overflow-y-auto space-y-4">
-                {messages.map((message) => (
-                  <div key={message.id} className="flex items-start space-x-3">
-                    <div className="w-8 h-8 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                      <SparklesIcon className="w-4 h-4 text-blue-600" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="bg-gray-100 rounded-lg p-3">
-                        <p className="text-sm text-gray-900">{message.content}</p>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {message.timestamp.toLocaleTimeString()}
-                      </p>
-                    </div>
+            
+            <div className="space-y-4">
+              {buildSteps.map((step, index) => (
+                <div key={step.id} className="flex items-center">
+                  <div className="flex-shrink-0 mr-3">
+                    {step.status === 'complete' ? (
+                      <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                    ) : step.status === 'building' ? (
+                      <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <ClockIcon className="w-5 h-5 text-gray-300" />
+                    )}
                   </div>
-                ))}
-              </div>
+                  <div className="flex-1">
+                    <p className={`text-sm font-medium ${
+                      step.status === 'complete' ? 'text-gray-900' : 
+                      step.status === 'building' ? 'text-blue-600' : 'text-gray-400'
+                    }`}>
+                      {step.title}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Right Side - Artifacts */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="border-b border-gray-200">
-                <div className="flex items-center justify-between p-6">
-                  <h2 className="text-2xl font-bold text-gray-900">Architecture Artifacts</h2>
-                  <div className="flex items-center text-sm text-green-600">
-                    <CheckCircleIcon className="w-4 h-4 mr-1" />
-                    All artifacts complete
-                  </div>
+          {/* Agent Messages Header */}
+          <div className="border-b border-gray-200 p-4 bg-white">
+            <h3 className="text-lg font-semibold text-gray-900">Agent Activity</h3>
+          </div>
+
+          {/* Scrollable Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messages.map((message) => (
+              <div key={message.id} className="flex items-start space-x-3">
+                <div className="w-8 h-8 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <SparklesIcon className="w-4 h-4 text-blue-600" />
                 </div>
-                
-                {/* Tabs */}
-                <div className="flex border-b border-gray-200">
-                  {artifacts.map((artifact) => (
-                    <button
-                      key={artifact.id}
-                      onClick={() => setActiveTab(artifact.id)}
-                      className={`flex items-center px-6 py-3 border-b-2 font-medium text-sm transition-colors ${
-                        activeTab === artifact.id
-                          ? 'border-purple-500 text-purple-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      }`}
-                    >
-                      <artifact.icon className="w-4 h-4 mr-2" />
-                      {artifact.title}
-                      {artifact.complete && (
-                        <CheckCircleIcon className="w-4 h-4 ml-2 text-green-500" />
-                      )}
-                    </button>
-                  ))}
+                <div className="flex-1">
+                  <div className="bg-gray-100 rounded-lg p-3">
+                    <p className="text-sm text-gray-900">{message.content}</p>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {message.timestamp.toLocaleTimeString()}
+                  </p>
                 </div>
               </div>
+            ))}
+            <div ref={agentMessagesEndRef} />
+          </div>
+        </div>
 
-              {/* Artifact Content */}
-              <div className="p-6">
-                {artifacts.map((artifact) => (
-                  <div
-                    key={artifact.id}
-                    className={activeTab === artifact.id ? 'block' : 'hidden'}
+        {/* Right Side - Artifacts */}
+        <div className="flex-1 bg-white flex flex-col min-h-0">
+          {/* Fixed Header */}
+          <div className="border-b border-gray-200 bg-white">
+            <div className="flex items-center justify-between p-6">
+              <h2 className="text-2xl font-bold text-gray-900">Architecture Artifacts</h2>
+              <div className="flex items-center text-sm text-green-600">
+                <CheckCircleIcon className="w-4 h-4 mr-1" />
+                All artifacts complete
+              </div>
+            </div>
+            
+            {/* Tabs */}
+            <div className="flex border-b border-gray-200">
+              {artifacts.map((artifact) => (
+                <button
+                  key={artifact.id}
+                  onClick={() => setActiveTab(artifact.id)}
+                  className={`flex items-center px-6 py-3 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === artifact.id
+                      ? 'border-purple-500 text-purple-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <artifact.icon className="w-4 h-4 mr-2" />
+                  {artifact.title}
+                  {artifact.complete && (
+                    <CheckCircleIcon className="w-4 h-4 ml-2 text-green-500" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Scrollable Artifact Content */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {artifacts.map((artifact) => (
+              <div
+                key={artifact.id}
+                className={activeTab === artifact.id ? 'block' : 'hidden'}
+              >
+                <div className="max-w-none text-gray-900 [&_h1]:text-gray-900 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-4 [&_h2]:text-gray-900 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mb-3 [&_h3]:text-gray-900 [&_h3]:text-lg [&_h3]:font-medium [&_h3]:mb-2 [&_p]:text-gray-800 [&_p]:mb-4 [&_li]:text-gray-800 [&_ul]:mb-4 [&_ol]:mb-4 [&_strong]:text-gray-900 [&_strong]:font-semibold">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
                   >
-                    <div className="max-w-none text-gray-900 [&_h1]:text-gray-900 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-4 [&_h2]:text-gray-900 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mb-3 [&_h3]:text-gray-900 [&_h3]:text-lg [&_h3]:font-medium [&_h3]:mb-2 [&_p]:text-gray-800 [&_p]:mb-4 [&_li]:text-gray-800 [&_ul]:mb-4 [&_ol]:mb-4 [&_strong]:text-gray-900 [&_strong]:font-semibold">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                      >
-                        {artifact.content}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-                ))}
+                    {artifact.content}
+                  </ReactMarkdown>
+                </div>
               </div>
-            </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
-            {/* Action Buttons */}
-            <div className="mt-6 flex gap-4">
-              <button className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:shadow-lg transition-all duration-200">
-                Continue to Development
-              </button>
-              <button className="px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors">
-                Download Artifacts
-              </button>
-              <button className="px-6 py-3 text-purple-600 font-semibold hover:bg-purple-50 rounded-lg transition-colors">
-                Modify Architecture
-              </button>
-            </div>
+      {/* Fixed Bottom Area - Navigation Actions */}
+      <div className="border-t border-gray-200 bg-white">
+        <div className="p-6">
+          <div className="flex gap-4">
+            <button className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:shadow-lg transition-all duration-200">
+              Continue to Development
+            </button>
+            <button className="px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors">
+              Download Artifacts
+            </button>
+            <button className="px-6 py-3 text-purple-600 font-semibold hover:bg-purple-50 rounded-lg transition-colors">
+              Modify Architecture
+            </button>
           </div>
         </div>
       </div>
