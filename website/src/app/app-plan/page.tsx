@@ -36,20 +36,56 @@ export default function AppPlan() {
       id: 1,
       sender: 'agent',
       content: "Hello! I'm ProdBot-PM, your Product Manager agent. I'm here to help you plan your application in detail. Let's start by understanding what you want to build. Can you tell me about your app idea?",
-      timestamp: new Date()
+      timestamp: new Date(Date.now() - 300000) // 5 minutes ago
+    },
+    {
+      id: 2,
+      sender: 'user',
+      content: "I need a modern website for my local fitness studio. We offer personal training, group classes, and nutrition coaching. I want members to be able to book classes online, view schedules, and access workout plans.",
+      timestamp: new Date(Date.now() - 240000) // 4 minutes ago
+    },
+    {
+      id: 3,
+      sender: 'agent',
+      content: "Great! A fitness studio website with booking functionality sounds perfect. So you'll need class scheduling, member management, and content for your services. Who will be managing the content - will you need an easy way to add new classes, update schedules, or post fitness tips?",
+      timestamp: new Date(Date.now() - 180000) // 3 minutes ago
+    },
+    {
+      id: 4,
+      sender: 'user',
+      content: "Yes, I want to be able to easily update class schedules, post weekly workout tips on a blog, showcase success stories from clients, and update trainer profiles. I'm not technical, so it needs to be really user-friendly.",
+      timestamp: new Date(Date.now() - 120000) // 2 minutes ago
+    },
+    {
+      id: 5,
+      sender: 'agent',
+      content: "Perfect! So you need a content management system behind your website for easy updates. What about member features - do you want a member portal where they can track their progress, access workout plans, or communicate with trainers?",
+      timestamp: new Date(Date.now() - 60000) // 1 minute ago
+    },
+    {
+      id: 6,
+      sender: 'user',
+      content: "That would be amazing! Members should be able to log in to see their workout plans, track their progress, book and cancel classes, and maybe get nutrition tips. We also want to send automated emails for class reminders.",
+      timestamp: new Date(Date.now() - 30000) // 30 seconds ago
+    },
+    {
+      id: 7,
+      sender: 'agent',
+      content: "Excellent! I can see this is a comprehensive fitness studio platform with both public website and member portal features. Do you need any payment processing for memberships or class packages, and any integrations with fitness tracking apps or email marketing tools?",
+      timestamp: new Date(Date.now() - 10000) // 10 seconds ago
     }
   ])
 
   const [inputValue, setInputValue] = useState('')
   const [appDetails, setAppDetails] = useState<AppDetails>({
-    name: '',
-    type: '',
-    description: '',
-    targetAudience: '',
-    keyFeatures: [],
-    contentTypes: [],
-    userRoles: [],
-    integrations: []
+    name: 'FitStudio Pro',
+    type: 'Fitness Studio Website & Member Portal',
+    description: 'A modern website for a local fitness studio offering personal training, group classes, and nutrition coaching with online booking and member management.',
+    targetAudience: 'Fitness Studio Members & Staff',
+    keyFeatures: ['Online class booking', 'Member portal', 'Progress tracking', 'Automated email reminders', 'Payment processing'],
+    contentTypes: ['Class Schedules', 'Workout Plans', 'Blog Posts', 'Success Stories', 'Trainer Profiles', 'Nutrition Tips'],
+    userRoles: ['Studio Owner', 'Trainers', 'Members'],
+    integrations: ['Stripe Payment', 'Email Automation', 'Fitness Tracking Apps', 'Google Calendar']
   })
 
   const handleSendMessage = () => {
@@ -229,7 +265,7 @@ export default function AppPlan() {
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyPress={handleKeyPress}
-                    placeholder="Describe your app idea, features, or answer the agent's questions..."
+                    placeholder="Type your response here... For example: 'Yes, we need Stripe for membership payments and integration with MyFitnessPal for tracking.'"
                     rows={3}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
                   />
@@ -347,6 +383,26 @@ export default function AppPlan() {
                   </div>
                 </div>
 
+                {/* Integrations */}
+                <div>
+                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+                    <CogIcon className="w-4 h-4 mr-2" />
+                    Integrations
+                  </h3>
+                  <div className="space-y-2">
+                    {appDetails.integrations.length > 0 ? (
+                      appDetails.integrations.map((integration, index) => (
+                        <div key={index} className="flex items-center">
+                          <div className="w-2 h-2 bg-orange-400 rounded-full mr-2" />
+                          <span className="text-sm text-gray-700">{integration}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500">None specified yet</p>
+                    )}
+                  </div>
+                </div>
+
                 {/* Description */}
                 {appDetails.description && (
                   <div>
@@ -362,14 +418,16 @@ export default function AppPlan() {
               <div className="border-t border-gray-200 p-6">
                 <div className="space-y-3">
                   <button className="w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200">
-                    Continue to Build
+                    Build FitStudio Pro
                   </button>
                   <button className="w-full px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
-                    Save Draft
+                    Save Project Plan
                   </button>
-                  <button className="w-full px-4 py-2 text-purple-600 text-sm font-medium hover:bg-purple-50 rounded-lg transition-colors">
-                    Start Over
-                  </button>
+                  <div className="text-center">
+                    <button className="text-purple-600 text-sm font-medium hover:text-purple-700 transition-colors">
+                      Modify Requirements
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

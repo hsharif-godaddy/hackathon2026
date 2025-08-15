@@ -83,7 +83,7 @@ export default function Home() {
           <div className="max-w-2xl mx-auto mb-16">
             <div className="relative">
               <textarea
-                placeholder="Describe your app idea in detail... What features do you need? Who is your target audience? What problem are you solving?"
+                defaultValue="I need a modern website for my local fitness studio. We offer personal training, group classes, and nutrition coaching. I want members to be able to book classes online, view schedules, and access workout plans."
                 rows={4}
                 className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all resize-none"
               />
