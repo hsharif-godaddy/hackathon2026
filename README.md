@@ -45,12 +45,20 @@ Instead of just building demos, AIRO AI Builder focuses on creating **real, prod
 
 ## 📁 Documentation Structure
 
+### Architecture
+- [Platform Architecture](./docs/platform-architecture.md) - Core platform system architecture
+- [Hosting Architecture](./docs/hosting-architecture.md) - Production hosting infrastructure
+- [Architecture Diagrams](./docs/architecture-diagrams.md) - Visual system diagrams
+
+### Technology & Development
 - [Tech Stack](./docs/tech-stack.md) - Standardized TypeScript/React/Node.js stack
-- [Agent Features](./docs/agent-features.md) - Detailed breakdown of AI agents
-- [Hosting Features](./docs/hosting-features.md) - Infrastructure and deployment capabilities
-- [AI Features](./docs/ai-features.md) - AI integration for your applications
-- [Security Features](./docs/security-features.md) - Security scanning and protection
 - [Development Features](./docs/development-features.md) - Templates and development tools
+
+### Features & Capabilities
+- [Agent Features](./docs/agent-features.md) - Detailed breakdown of AI agents
+- [AI Features](./docs/ai-features.md) - AI integration for your applications
+- [Hosting Features](./docs/hosting-features.md) - Infrastructure and deployment capabilities
+- [Security Features](./docs/security-features.md) - Security scanning and protection
 
 ## 🎯 Target Use Cases
 
