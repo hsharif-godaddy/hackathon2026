@@ -1,8 +1,8 @@
-# AIRO Standard Tech Stack
+# Airo Standard Tech Stack
 
 ## Overview
 
-AIRO AI Builder uses a curated, best-in-class TypeScript/React/Node.js technology stack that provides maximum developer productivity, type safety, and performance. This standardized approach ensures consistency across all applications built on the platform.
+Airo AI Builder uses a curated, best-in-class TypeScript/React/Node.js technology stack that provides maximum developer productivity, type safety, and performance. This standardized approach ensures consistency across all applications built on the platform.
 
 ## 🎯 Core Philosophy
 
@@ -315,6 +315,6 @@ tests/
 ### Production Deployment
 1. **Build**: `pnpm build`
 2. **Test Build**: `pnpm start`
-3. **Deploy**: One-click deployment to AIRO hosting
+3. **Deploy**: One-click deployment to Airo hosting
 
-This standardized tech stack ensures that all applications built on AIRO AI Builder are modern, maintainable, performant, and follow industry best practices.
+This standardized tech stack ensures that all applications built on Airo AI Builder are modern, maintainable, performant, and follow industry best practices.

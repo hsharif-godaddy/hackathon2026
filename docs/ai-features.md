@@ -1,6 +1,6 @@
 # AI Integration Features
 
-AIRO AI Builder doesn't just help you build applications—it empowers you to integrate cutting-edge AI capabilities directly into the applications you create. Our platform provides managed AI services and tools that make it easy to add intelligent features to any application.
+Airo AI Builder doesn't just help you build applications—it empowers you to integrate cutting-edge AI capabilities directly into the applications you create. Our platform provides managed AI services and tools that make it easy to add intelligent features to any application.
 
 ## 🧠 Managed Vector Database
 
@@ -129,9 +129,9 @@ const response = await fetch('/api/ai/generate', {
 
 ### SDK Integration
 ```javascript
-import { AIROClient } from '@airo/ai-sdk';
+import { AiroClient } from '@airo/ai-sdk';
 
-const airo = new AIROClient({ apiKey: 'your-api-key' });
+const airo = new AiroClient({ apiKey: 'your-api-key' });
 
 // Vector search
 const results = await airo.vectorDB.search('find similar products');
@@ -230,4 +230,4 @@ const seoSuggestions = await airo.llm.analyze({
 });
 ```
 
-This comprehensive AI integration platform ensures that the applications you build with AIRO are not just functional, but intelligent, adaptive, and capable of delivering personalized experiences to your users.
+This comprehensive AI integration platform ensures that the applications you build with Airo are not just functional, but intelligent, adaptive, and capable of delivering personalized experiences to your users.

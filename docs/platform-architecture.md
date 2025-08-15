@@ -1,10 +1,10 @@
-# AIRO AI Builder Platform Architecture
+# Airo AI Builder Platform Architecture
 
-This document describes the architecture of the AIRO AI Builder platform - the system that enables customers to build and manage applications using AI agents.
+This document describes the architecture of the Airo AI Builder platform - the system that enables customers to build and manage applications using AI agents.
 
 ## 🏗️ System Overview
 
-The AIRO AI Builder platform consists of multiple interconnected services that work together to provide a comprehensive application development and hosting experience. The platform is designed to handle the complete lifecycle from customer onboarding through application development to production deployment.
+The Airo AI Builder platform consists of multiple interconnected services that work together to provide a comprehensive application development and hosting experience. The platform is designed to handle the complete lifecycle from customer onboarding through application development to production deployment.
 
 ## 🎯 Architecture Principles
 

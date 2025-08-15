@@ -1,6 +1,6 @@
 # Security Features
 
-Security is not an afterthought at AIRO AI Builder—it's built into every layer of the platform. Our comprehensive security approach combines AI-powered analysis with industry-standard tools to ensure your applications are protected from vulnerabilities and threats.
+Security is not an afterthought at Airo AI Builder—it's built into every layer of the platform. Our comprehensive security approach combines AI-powered analysis with industry-standard tools to ensure your applications are protected from vulnerabilities and threats.
 
 ## 🛡️ AI Security Analyst Agent
 
@@ -31,7 +31,7 @@ Our dedicated Security Analyst Agent provides continuous, intelligent security m
 
 ## 🔍 Semgrep Integration
 
-AIRO AI Builder leverages Semgrep's proven security scanning technology, trusted by companies like GoDaddy, to provide comprehensive static analysis security testing (SAST).
+Airo AI Builder leverages Semgrep's proven security scanning technology, trusted by companies like GoDaddy, to provide comprehensive static analysis security testing (SAST).
 
 ### Trusted Security Scanning
 - **Industry Proven**: Semgrep is used by major companies including GoDaddy for production code scanning
@@ -190,4 +190,4 @@ AIRO AI Builder leverages Semgrep's proven security scanning technology, trusted
 - **Communication Plans**: Secure communication during security incidents
 - **Lessons Learned**: Post-incident analysis and improvement processes
 
-This comprehensive security framework ensures that applications built with AIRO AI Builder are not only functional and scalable, but also secure and compliant with industry standards and regulatory requirements.
+This comprehensive security framework ensures that applications built with Airo AI Builder are not only functional and scalable, but also secure and compliant with industry standards and regulatory requirements.

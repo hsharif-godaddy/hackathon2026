@@ -1,6 +1,6 @@
 # Hosting & Infrastructure Features
 
-AIRO AI Builder provides enterprise-grade hosting infrastructure designed to support applications from development through production. Our platform handles all the complexity of modern application deployment while providing the flexibility and scalability your applications need.
+Airo AI Builder provides enterprise-grade hosting infrastructure designed to support applications from development through production. Our platform handles all the complexity of modern application deployment while providing the flexibility and scalability your applications need.
 
 ## 🔄 Automated Backup System
 

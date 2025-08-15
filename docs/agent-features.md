@@ -1,6 +1,6 @@
 # AI Agent Suite
 
-The heart of AIRO AI Builder is our comprehensive suite of specialized AI agents, each designed to handle specific aspects of the application development lifecycle. These agents work together to ensure you're not just building a demo, but a real, production-ready application.
+The heart of Airo AI Builder is our comprehensive suite of specialized AI agents, each designed to handle specific aspects of the application development lifecycle. These agents work together to ensure you're not just building a demo, but a real, production-ready application.
 
 ## 🎯 Product Manager Agent
 

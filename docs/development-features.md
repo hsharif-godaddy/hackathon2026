@@ -1,10 +1,10 @@
 # Development Features & Templates
 
-AIRO AI Builder provides a standardized, best-in-class TypeScript/React/Node.js technology stack that eliminates the complexity of choosing and configuring technologies. Our curated tech stack leverages proven libraries and patterns, ensuring every application is built with modern best practices.
+Airo AI Builder provides a standardized, best-in-class TypeScript/React/Node.js technology stack that eliminates the complexity of choosing and configuring technologies. Our curated tech stack leverages proven libraries and patterns, ensuring every application is built with modern best practices.
 
 ## 🎯 Standardized Tech Stack
 
-AIRO uses a unified technology stack across all applications:
+Airo uses a unified technology stack across all applications:
 
 - **Frontend**: Next.js 14+ (App Router) with React 18+ and TypeScript
 - **Styling**: Tailwind CSS + shadcn/ui component library
@@ -19,7 +19,7 @@ For detailed specifications, see our [Tech Stack Documentation](./tech-stack.md)
 
 ## 🚀 Application Templates
 
-All templates use the standardized AIRO tech stack with Next.js, TypeScript, Prisma, and PostgreSQL.
+All templates use the standardized Airo tech stack with Next.js, TypeScript, Prisma, and PostgreSQL.
 
 ### Content Management System (CMS) Template
 
@@ -56,8 +56,8 @@ All templates use the standardized AIRO tech stack with Next.js, TypeScript, Pri
 
 #### Architecture
 - **Frontend**: Next.js with real-time chat interface using shadcn/ui
-- **AI Integration**: AIRO's managed LLM service (Anthropic Claude)
-- **Vector Database**: AIRO's managed vector database for knowledge base
+- **AI Integration**: Airo's managed LLM service (Anthropic Claude)
+- **Vector Database**: Airo's managed vector database for knowledge base
 - **Real-time**: WebSocket API through Next.js API routes
 - **Storage**: Prisma + PostgreSQL for conversation history
 - **Caching**: Redis for session management and response caching
@@ -205,7 +205,7 @@ AIRO AI Builder uses a carefully curated, standardized technology stack to ensur
 - **Content Management**: Prisma models for posts, comments, and media
 - **Social Features**: Type-safe social interactions and relationships
 - **Media Handling**: Next.js image optimization and cloud storage
-- **Recommendation Engine**: Integration with AIRO's AI services
+- **Recommendation Engine**: Integration with Airo's AI services
 - **Moderation Tools**: AI-powered content moderation
 
 ### Learning Management System (LMS)
@@ -262,6 +262,6 @@ AIRO AI Builder uses a carefully curated, standardized technology stack to ensur
 2. **Database Migrations**: Prisma migrations applied automatically
 3. **Environment Configuration**: Secure environment variable management
 4. **Performance Monitoring**: Built-in performance tracking
-5. **One-Click Deployment**: Seamless deployment to AIRO hosting
+5. **One-Click Deployment**: Seamless deployment to Airo hosting
 
-This standardized approach ensures that every application built with AIRO AI Builder follows modern best practices, is fully type-safe, performant, and production-ready from day one.
+This standardized approach ensures that every application built with Airo AI Builder follows modern best practices, is fully type-safe, performant, and production-ready from day one.

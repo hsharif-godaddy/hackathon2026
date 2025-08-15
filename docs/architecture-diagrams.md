@@ -1,10 +1,10 @@
-# AIRO Architecture Diagrams
+# Airo Architecture Diagrams
 
-This document contains visual diagrams that illustrate the architecture of the AIRO AI Builder platform and its hosting environment.
+This document contains visual diagrams that illustrate the architecture of the Airo AI Builder platform and its hosting environment.
 
 ## 🏗️ Platform Architecture Overview
 
-This diagram shows the high-level architecture of the AIRO AI Builder platform, including all core services and their relationships.
+This diagram shows the high-level architecture of the Airo AI Builder platform, including all core services and their relationships.
 
 ```mermaid
 graph TB
@@ -293,4 +293,4 @@ sequenceDiagram
 - **Key Management**: Secure key storage and rotation
 - **Audit Logging**: Comprehensive audit trails
 
-These diagrams provide a visual representation of the AIRO AI Builder platform architecture, showing how the various components work together to provide a comprehensive application development and hosting solution.
+These diagrams provide a visual representation of the Airo AI Builder platform architecture, showing how the various components work together to provide a comprehensive application development and hosting solution.

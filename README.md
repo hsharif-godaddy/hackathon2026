@@ -1,8 +1,8 @@
-# AIRO AI Builder
+# Airo AI Builder
 
 ## The Complete AI-Powered Application Development Platform
 
-AIRO AI Builder is a revolutionary platform that combines the power of artificial intelligence with enterprise-grade hosting and development tools to help you build, deploy, and maintain any application you can imagine.
+Airo AI Builder is a revolutionary platform that combines the power of artificial intelligence with enterprise-grade hosting and development tools to help you build, deploy, and maintain any application you can imagine.
 
 ## 🎯 Vision
 
@@ -10,7 +10,7 @@ Create an AI App builder that is flexible enough to build any website or app you
 
 ## 🤖 Core Philosophy
 
-Instead of just building demos, AIRO AI Builder focuses on creating **real, production-ready applications** with a comprehensive suite of AI agents that handle every aspect of the development lifecycle.
+Instead of just building demos, Airo AI Builder focuses on creating **real, production-ready applications** with a comprehensive suite of AI agents that handle every aspect of the development lifecycle.
 
 ## 🚀 Key Features
 
@@ -70,4 +70,4 @@ Instead of just building demos, AIRO AI Builder focuses on creating **real, prod
 
 ---
 
-*Built with ❤️ by the AIRO team*
+*Built with ❤️ by the Airo team*
