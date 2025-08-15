@@ -24,6 +24,11 @@ interface Message {
   sender: 'user' | 'agent'
   content: string
   timestamp: Date
+  handoff?: {
+    to: string
+    action: string
+    url: string
+  }
 }
 
 interface PlanItem {
@@ -73,6 +78,17 @@ export default function Develop() {
       sender: 'agent',
       content: "Working on the member portal dashboard. This includes the booking interface, progress tracking, and workout plan access. The UI is being designed to be intuitive for non-technical fitness enthusiasts.",
       timestamp: new Date(Date.now() - 60000)
+    },
+    {
+      id: 6,
+      sender: 'agent',
+      content: "I need to collaborate with DataBot-DB on the data architecture before proceeding with the database implementation. Let me hand this off to get the data collection strategy finalized.",
+      timestamp: new Date(Date.now() - 30000),
+      handoff: {
+        to: 'DataBot-DB',
+        action: 'Review Data Architecture',
+        url: '/data-design'
+      }
     }
   ])
 
@@ -364,9 +380,22 @@ export default async function DashboardPage() {
                       <div className={`inline-block p-4 rounded-lg ${
                         message.sender === 'user'
                           ? 'bg-purple-600 text-white'
+                          : message.handoff
+                          ? 'bg-gradient-to-r from-green-50 to-indigo-50 border border-indigo-200'
                           : 'bg-gray-100 text-gray-900'
                       }`}>
                         <p className="text-sm leading-relaxed">{message.content}</p>
+                        {message.handoff && (
+                          <div className="mt-3 pt-3 border-t border-indigo-200">
+                            <Link
+                              href={message.handoff.url}
+                              className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-medium rounded-lg hover:shadow-lg transition-all duration-200"
+                            >
+                              <SparklesIcon className="w-3 h-3 mr-1" />
+                              {message.handoff.action} with {message.handoff.to}
+                            </Link>
+                          </div>
+                        )}
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
                         {message.timestamp.toLocaleTimeString()}
