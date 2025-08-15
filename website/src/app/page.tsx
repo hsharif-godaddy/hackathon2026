@@ -1,0 +1,175 @@
+import Link from 'next/link'
+import { ArrowRightIcon, SparklesIcon } from '@heroicons/react/24/outline'
+
+export default function Home() {
+  const examples = [
+    {
+      title: "AI Support Chatbot",
+      description: "Build an intelligent customer service bot",
+      href: "/builder?type=chatbot"
+    },
+    {
+      title: "E-commerce Store",
+      description: "Create a complete online store with payments",
+      href: "/builder?type=ecommerce"
+    },
+    {
+      title: "SaaS Dashboard",
+      description: "Build a subscription-based application",
+      href: "/builder?type=saas"
+    },
+    {
+      title: "Content Management System",
+      description: "Create a headless CMS for content creators",
+      href: "/builder?type=cms"
+    }
+  ]
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
+      {/* Header */}
+      <header className="border-b border-gray-100 bg-white/80 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg flex items-center justify-center">
+                <SparklesIcon className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                Airo
+              </span>
+            </div>
+            <nav className="hidden md:flex space-x-8">
+              <Link href="/pricing" className="text-gray-600 hover:text-gray-900 transition-colors">
+                Pricing
+              </Link>
+              <Link href="/team" className="text-gray-600 hover:text-gray-900 transition-colors">
+                Meet the Agents
+              </Link>
+              <Link href="/docs" className="text-gray-600 hover:text-gray-900 transition-colors">
+                Documentation
+              </Link>
+            </nav>
+            <div className="flex items-center space-x-4">
+              <button className="text-gray-600 hover:text-gray-900 transition-colors">
+                Sign In
+              </button>
+              <button className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all">
+                Get Started
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Hero Section */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
+        <div className="text-center">
+          <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6">
+            What would you like to{' '}
+            <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+              build today?
+            </span>
+          </h1>
+          <p className="text-xl text-gray-600 mb-12 max-w-3xl mx-auto">
+            Describe your idea and watch our AI team of experts bring it to life. 
+            From concept to production, we handle everything.
+          </p>
+
+          {/* Main CTA Input */}
+          <div className="max-w-2xl mx-auto mb-16">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="I want to build a..."
+                className="w-full px-6 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all"
+              />
+              <button className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2">
+                <span>Start Building</span>
+                <ArrowRightIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Example Links */}
+          <div className="text-center mb-8">
+            <p className="text-gray-500 mb-6">Or try one of these popular examples:</p>
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
+              {examples.map((example, index) => (
+                <Link
+                  key={index}
+                  href={example.href}
+                  className="group p-6 bg-white rounded-xl border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all duration-200"
+                >
+                  <h3 className="font-semibold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">
+                    {example.title}
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    {example.description}
+                  </p>
+                  <div className="mt-4 flex items-center text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-sm font-medium">Get started</span>
+                    <ArrowRightIcon className="w-4 h-4 ml-2" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Features Preview */}
+        <div className="mt-20">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+              Built by AI Experts, For You
+            </h2>
+            <p className="text-lg text-gray-600">
+              Our team of specialized AI agents work together to build your application
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gradient-to-r from-purple-100 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <SparklesIcon className="w-8 h-8 text-purple-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">AI-Powered Development</h3>
+              <p className="text-gray-600">
+                Our agents understand your requirements and write production-ready code
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gradient-to-r from-purple-100 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <SparklesIcon className="w-8 h-8 text-purple-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Enterprise Grade</h3>
+              <p className="text-gray-600">
+                Built for scale with security, monitoring, and compliance included
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gradient-to-r from-purple-100 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <SparklesIcon className="w-8 h-8 text-purple-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Deploy Anywhere</h3>
+              <p className="text-gray-600">
+                One-click deployment to our global infrastructure or your own cloud
+              </p>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-gray-200 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="text-center text-gray-600">
+            <p>&copy; 2024 Airo AI Builder. Built with AI for the future.</p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  )
+}
