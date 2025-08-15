@@ -2,14 +2,7 @@ import Link from 'next/link'
 import {
   SparklesIcon,
   CodeBracketIcon,
-  CubeTransparentIcon,
-  DocumentTextIcon,
-  ChatBubbleLeftRightIcon,
-  ShoppingCartIcon,
-  AcademicCapIcon,
-  UserGroupIcon,
-  ChartBarIcon,
-  GlobeAltIcon
+  DocumentTextIcon
 } from '@heroicons/react/24/outline'
 
 export default function Documentation() {
@@ -55,63 +48,13 @@ export default function Documentation() {
   const templates = [
     {
       name: "Content Management System",
-      description: "Headless CMS with admin interface and content API",
-      features: ["Rich text editor", "Media management", "API-first architecture", "Role-based access"],
-      technologies: ["Next.js", "Prisma", "PostgreSQL", "shadcn/ui"],
+      description: "Built on Payload CMS - The most powerful open-source headless CMS with auto-generated admin interface",
+      features: ["Visual content editing", "Auto-generated APIs", "Field-level permissions", "Code-first approach"],
+      technologies: ["Payload CMS", "Next.js", "TypeScript", "PostgreSQL"],
       icon: DocumentTextIcon,
       href: "/docs/templates/cms",
       difficulty: "Beginner",
-      timeEstimate: "2-3 hours"
-    },
-    {
-      name: "AI Support Chat Bot",
-      description: "LLM-powered customer service agent with knowledge base",
-      features: ["Real-time chat", "Vector search", "Context awareness", "Multi-language support"],
-      technologies: ["Next.js", "Anthropic Claude", "Vector DB", "WebSockets"],
-      icon: ChatBubbleLeftRightIcon,
-      href: "/docs/templates/chatbot",
-      difficulty: "Intermediate",
-      timeEstimate: "4-5 hours"
-    },
-    {
-      name: "E-commerce Platform",
-      description: "Full-featured online store with payments and inventory",
-      features: ["Product catalog", "Shopping cart", "Payment processing", "Order management"],
-      technologies: ["Next.js", "Stripe", "Prisma", "Redis"],
-      icon: ShoppingCartIcon,
-      href: "/docs/templates/ecommerce",
-      difficulty: "Advanced",
-      timeEstimate: "6-8 hours"
-    },
-    {
-      name: "Learning Management System",
-      description: "Course platform with progress tracking and assessments",
-      features: ["Course creation", "Progress tracking", "Video streaming", "Certificates"],
-      technologies: ["Next.js", "Prisma", "S3", "Video API"],
-      icon: AcademicCapIcon,
-      href: "/docs/templates/lms",
-      difficulty: "Advanced",
-      timeEstimate: "8-10 hours"
-    },
-    {
-      name: "Social Media Platform",
-      description: "Social networking with posts, comments, and real-time features",
-      features: ["User profiles", "Real-time feeds", "Media sharing", "Social interactions"],
-      technologies: ["Next.js", "WebSockets", "Redis", "Image CDN"],
-      icon: UserGroupIcon,
-      href: "/docs/templates/social",
-      difficulty: "Advanced",
-      timeEstimate: "10-12 hours"
-    },
-    {
-      name: "Analytics Dashboard",
-      description: "Business intelligence platform with charts and reports",
-      features: ["Data visualization", "Custom dashboards", "Real-time metrics", "Export tools"],
-      technologies: ["Next.js", "Chart.js", "ClickHouse", "WebSockets"],
-      icon: ChartBarIcon,
-      href: "/docs/templates/analytics",
-      difficulty: "Intermediate",
-      timeEstimate: "5-6 hours"
+      highlight: "Built on Payload CMS"
     }
   ]
 
@@ -221,70 +164,85 @@ export default function Documentation() {
         {/* Templates Section */}
         <section>
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Starter Templates</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Featured Template</h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Jump-start your development with our pre-built templates. Each template uses our standardized 
-              tech stack and includes best practices for security, performance, and scalability.
+              Start with our Content Management System template, powered by Payload CMS - the most advanced 
+              open-source headless CMS. Perfect for any content-driven application.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="max-w-2xl mx-auto">
             {templates.map((template, index) => (
-              <div key={index} className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-all duration-200 hover:scale-105">
-                <div className="flex items-center mb-4">
-                  <div className="w-10 h-10 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg flex items-center justify-center mr-3">
-                    <template.icon className="w-6 h-6 text-purple-600" />
+              <div key={index} className="bg-white rounded-xl border border-gray-200 p-8 hover:shadow-lg transition-all duration-200">
+                <div className="flex items-center mb-6">
+                  <div className="w-16 h-16 bg-gradient-to-r from-purple-100 to-blue-100 rounded-xl flex items-center justify-center mr-4">
+                    <template.icon className="w-8 h-8 text-purple-600" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">{template.name}</h3>
-                    <div className="flex items-center space-x-2 text-sm">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        template.difficulty === 'Beginner' ? 'bg-green-100 text-green-700' :
-                        template.difficulty === 'Intermediate' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
+                    <h3 className="text-2xl font-semibold text-gray-900 mb-2">{template.name}</h3>
+                    <div className="flex items-center space-x-3">
+                      <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full">
                         {template.difficulty}
                       </span>
-                      <span className="text-gray-500">•</span>
-                      <span className="text-gray-600">{template.timeEstimate}</span>
+                      <span className="px-3 py-1 bg-purple-100 text-purple-700 text-sm font-medium rounded-full">
+                        {template.highlight}
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                <p className="text-gray-600 mb-4">{template.description}</p>
+                <p className="text-gray-600 mb-6 text-lg leading-relaxed">{template.description}</p>
 
-                <div className="mb-4">
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">Key Features:</h4>
-                  <div className="grid grid-cols-2 gap-1">
+                <div className="mb-6">
+                  <h4 className="text-lg font-medium text-gray-900 mb-3">What You Get:</h4>
+                  <div className="grid grid-cols-2 gap-3">
                     {template.features.map((feature, featureIndex) => (
-                      <div key={featureIndex} className="text-xs text-gray-600 flex items-center">
-                        <div className="w-1 h-1 bg-purple-400 rounded-full mr-2"></div>
+                      <div key={featureIndex} className="text-sm text-gray-700 flex items-center">
+                        <div className="w-2 h-2 bg-purple-400 rounded-full mr-3"></div>
                         {feature}
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">Technologies:</h4>
-                  <div className="flex flex-wrap gap-2">
+                <div className="mb-8">
+                  <h4 className="text-lg font-medium text-gray-900 mb-3">Built With:</h4>
+                  <div className="flex flex-wrap gap-3">
                     {template.technologies.map((tech, techIndex) => (
-                      <span key={techIndex} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-md">
+                      <span key={techIndex} className="px-3 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg font-medium">
                         {tech}
                       </span>
                     ))}
                   </div>
                 </div>
 
-                <Link
-                  href={template.href}
-                  className="inline-flex items-center justify-center w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200"
-                >
-                  View Template Details
-                  <CodeBracketIcon className="w-4 h-4 ml-2" />
-                </Link>
+                <div className="flex gap-4">
+                  <Link
+                    href={template.href}
+                    className="flex-1 inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:shadow-lg transition-all duration-200"
+                  >
+                    View Template Details
+                    <CodeBracketIcon className="w-5 h-5 ml-2" />
+                  </Link>
+                  <Link
+                    href="/builder"
+                    className="flex-1 inline-flex items-center justify-center px-6 py-3 border-2 border-purple-600 text-purple-600 font-semibold rounded-lg hover:bg-purple-50 transition-all duration-200"
+                  >
+                    Start Building Now
+                  </Link>
+                </div>
               </div>
             ))}
+          </div>
+
+          <div className="mt-12 text-center">
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 max-w-2xl mx-auto">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">More Templates Coming Soon</h3>
+              <p className="text-gray-600 text-sm">
+                We're working on additional templates including E-commerce, AI Chat Bots, and Analytics Dashboards. 
+                Each will be built with the same attention to detail and powered by best-in-class open source solutions.
+              </p>
+            </div>
           </div>
         </section>
 

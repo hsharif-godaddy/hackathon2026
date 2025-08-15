@@ -14,206 +14,32 @@ import {
 export default function CMSTemplate() {
   const features = [
     {
-      title: "Rich Text Editor",
-      description: "WYSIWYG editor with markdown support, media embedding, and collaborative editing",
+      title: "Visual Content Editing",
+      description: "Intuitive admin panel that automatically adapts to your content structure with live preview",
       icon: DocumentTextIcon,
-      details: ["Real-time collaboration", "Markdown shortcuts", "Image/video embedding", "Version history"]
+      details: ["Auto-generated admin UI", "Live preview editing", "Extensible rich text editor", "Visual field builder"]
     },
     {
-      title: "Media Management",
-      description: "Complete asset management system with CDN integration and automatic optimization",
+      title: "Complete Content Control",
+      description: "Manage any type of content with flexible field types and custom validation rules",
       icon: CubeTransparentIcon,
-      details: ["Drag & drop uploads", "Automatic image optimization", "CDN delivery", "Asset organization"]
+      details: ["Custom field types", "Content relationships", "File & media uploads", "Multi-language support"]
     },
     {
-      title: "API-First Architecture",
-      description: "Headless CMS with RESTful and GraphQL APIs for maximum flexibility",
+      title: "Instant APIs",
+      description: "Get REST and GraphQL APIs automatically generated from your content structure",
       icon: CodeBracketIcon,
-      details: ["REST & GraphQL APIs", "Webhook support", "Third-party integrations", "Custom endpoints"]
+      details: ["Auto-generated REST APIs", "GraphQL support", "Real-time webhooks", "Custom API endpoints"]
     },
     {
-      title: "Role-Based Access",
-      description: "Granular permissions system with custom roles and content approval workflows",
+      title: "Enterprise Security",
+      description: "Granular access control with document and field-level permissions for teams",
       icon: UserGroupIcon,
-      details: ["Custom user roles", "Content approval", "Publishing workflows", "Audit trails"]
+      details: ["Field-level permissions", "Custom user roles", "Document-level access", "Authentication built-in"]
     }
   ]
 
-  const techStack = [
-    { name: "Next.js 14", purpose: "Full-stack framework with App Router" },
-    { name: "TypeScript", purpose: "Type safety and developer experience" },
-    { name: "Prisma ORM", purpose: "Database modeling and type-safe queries" },
-    { name: "PostgreSQL", purpose: "Robust relational database" },
-    { name: "shadcn/ui", purpose: "Beautiful, accessible UI components" },
-    { name: "Tailwind CSS", purpose: "Utility-first styling" },
-    { name: "NextAuth.js", purpose: "Authentication and session management" },
-    { name: "Tiptap Editor", purpose: "Rich text editing experience" },
-    { name: "Uploadthing", purpose: "File upload and media management" },
-    { name: "Zod", purpose: "Schema validation" }
-  ]
 
-  const codeExamples = [
-    {
-      title: "Content Model Definition",
-      language: "TypeScript",
-      code: `// prisma/schema.prisma
-model Post {
-  id          String   @id @default(cuid())
-  title       String
-  slug        String   @unique
-  content     Json     // Rich text content
-  excerpt     String?
-  featuredImage String?
-  status      PostStatus @default(DRAFT)
-  publishedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  author      User     @relation(fields: [authorId], references: [id])
-  authorId    String
-  category    Category @relation(fields: [categoryId], references: [id])
-  categoryId  String
-  tags        Tag[]
-}
-
-enum PostStatus {
-  DRAFT
-  PUBLISHED
-  ARCHIVED
-}`
-    },
-    {
-      title: "Content API Endpoint",
-      language: "TypeScript",
-      code: `// app/api/posts/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
-
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const page = parseInt(searchParams.get('page') || '1')
-  const limit = parseInt(searchParams.get('limit') || '10')
-  const status = searchParams.get('status') || 'PUBLISHED'
-
-  const posts = await prisma.post.findMany({
-    where: { status },
-    include: {
-      author: { select: { name: true, image: true } },
-      category: true,
-      tags: true
-    },
-    orderBy: { publishedAt: 'desc' },
-    skip: (page - 1) * limit,
-    take: limit
-  })
-
-  return NextResponse.json({
-    posts,
-    pagination: {
-      page,
-      limit,
-      total: await prisma.post.count({ where: { status } })
-    }
-  })
-}`
-    },
-    {
-      title: "Rich Text Component",
-      language: "TypeScript",
-      code: `// components/editor/rich-text-editor.tsx
-'use client'
-import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Image from '@tiptap/extension-image'
-import Link from '@tiptap/extension-link'
-
-interface RichTextEditorProps {
-  content: string
-  onChange: (content: string) => void
-  editable?: boolean
-}
-
-export function RichTextEditor({ 
-  content, 
-  onChange, 
-  editable = true 
-}: RichTextEditorProps) {
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Image.configure({
-        HTMLAttributes: {
-          class: 'rounded-lg max-w-full h-auto',
-        },
-      }),
-      Link.configure({
-        openOnClick: false,
-      }),
-    ],
-    content,
-    editable,
-    onUpdate: ({ editor }) => {
-      onChange(editor.getHTML())
-    },
-  })
-
-  return (
-    <div className="border rounded-lg">
-      {editable && <EditorToolbar editor={editor} />}
-      <EditorContent 
-        editor={editor} 
-        className="prose max-w-none p-4 focus:outline-none"
-      />
-    </div>
-  )
-}`
-    }
-  ]
-
-  const setupSteps = [
-    {
-      step: 1,
-      title: "Initialize Project",
-      description: "Create a new Next.js project with TypeScript and install dependencies",
-      commands: [
-        "npx create-next-app@latest cms-app --typescript --tailwind --eslint --app",
-        "cd cms-app",
-        "pnpm add prisma @prisma/client next-auth @auth/prisma-adapter",
-        "pnpm add @tiptap/react @tiptap/starter-kit @tiptap/extension-image"
-      ]
-    },
-    {
-      step: 2,
-      title: "Configure Database",
-      description: "Set up PostgreSQL database and Prisma schema",
-      commands: [
-        "npx prisma init",
-        "# Edit prisma/schema.prisma with your models",
-        "npx prisma generate",
-        "npx prisma db push"
-      ]
-    },
-    {
-      step: 3,
-      title: "Authentication Setup",
-      description: "Configure NextAuth.js for user management",
-      commands: [
-        "# Create .env.local with AUTH_SECRET and DATABASE_URL",
-        "# Configure NextAuth providers in app/api/auth/[...nextauth]/route.ts"
-      ]
-    },
-    {
-      step: 4,
-      title: "Build CMS Interface",
-      description: "Create admin dashboard and content management pages",
-      commands: [
-        "# Create admin layout and dashboard",
-        "# Build content editor components",
-        "# Set up API routes for content management"
-      ]
-    }
-  ]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
@@ -295,7 +121,7 @@ export function RichTextEditor({
                 Content Management System
               </h1>
               <p className="text-xl text-gray-600">
-                Headless CMS with admin interface, rich text editing, and API-first architecture
+                Built on Payload CMS - The most powerful open-source headless CMS
               </p>
             </div>
           </div>
@@ -303,16 +129,16 @@ export function RichTextEditor({
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="grid md:grid-cols-3 gap-6">
               <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600 mb-1">API-First</div>
-                <div className="text-sm text-gray-600">RESTful & GraphQL APIs</div>
+                <div className="text-2xl font-bold text-purple-600 mb-1">Code-First</div>
+                <div className="text-sm text-gray-600">Define content in TypeScript</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600 mb-1">Multi-User</div>
-                <div className="text-sm text-gray-600">Role-based permissions</div>
+                <div className="text-2xl font-bold text-blue-600 mb-1">Self-Hosted</div>
+                <div className="text-sm text-gray-600">Complete data ownership</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-600 mb-1">Production Ready</div>
-                <div className="text-sm text-gray-600">Optimized & scalable</div>
+                <div className="text-2xl font-bold text-green-600 mb-1">Open Source</div>
+                <div className="text-sm text-gray-600">MIT License, fully extensible</div>
               </div>
             </div>
           </div>
@@ -344,75 +170,211 @@ export function RichTextEditor({
           </div>
         </section>
 
-        {/* Tech Stack Section */}
+        {/* What You Can Build Section */}
         <section className="mb-16">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8">Technology Stack</h2>
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="grid md:grid-cols-2 gap-0">
-              {techStack.map((tech, index) => (
-                <div key={index} className={`p-4 border-b border-gray-100 ${index % 2 === 1 ? 'md:border-l' : ''}`}>
-                  <div className="flex items-center justify-between">
-                    <div className="font-semibold text-gray-900">{tech.name}</div>
-                    <div className="text-sm text-gray-600">{tech.purpose}</div>
-                  </div>
-                </div>
-              ))}
+          <h2 className="text-3xl font-bold text-gray-900 mb-8">What You Can Build</h2>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Marketing Websites</h3>
+              <p className="text-gray-600 text-sm mb-4">Landing pages, company sites, portfolios with dynamic content management</p>
+              <div className="text-xs text-purple-600 font-medium">Perfect for agencies & consultants</div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Blog Platforms</h3>
+              <p className="text-gray-600 text-sm mb-4">Multi-author blogs with categories, tags, and publishing workflows</p>
+              <div className="text-xs text-purple-600 font-medium">Ideal for content creators</div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">E-commerce Backends</h3>
+              <p className="text-gray-600 text-sm mb-4">Product catalogs, inventory management, and order processing</p>
+              <div className="text-xs text-purple-600 font-medium">Great for online stores</div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Documentation Sites</h3>
+              <p className="text-gray-600 text-sm mb-4">Knowledge bases, API docs, and help centers with search</p>
+              <div className="text-xs text-purple-600 font-medium">Essential for SaaS companies</div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">News & Media</h3>
+              <p className="text-gray-600 text-sm mb-4">Editorial workflows, breaking news, and multimedia content</p>
+              <div className="text-xs text-purple-600 font-medium">Built for publishers</div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Enterprise Intranets</h3>
+              <p className="text-gray-600 text-sm mb-4">Internal communications, document management, and team collaboration</p>
+              <div className="text-xs text-purple-600 font-medium">Perfect for large teams</div>
             </div>
           </div>
         </section>
 
-        {/* Code Examples Section */}
+        {/* Why Payload CMS Section */}
         <section className="mb-16">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8">Code Examples</h2>
-          <div className="space-y-8">
-            {codeExamples.map((example, index) => (
-              <div key={index} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-gray-900">{example.title}</h3>
-                    <span className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded-md">
-                      {example.language}
-                    </span>
-                  </div>
-                </div>
-                <div className="p-6">
-                  <pre className="text-sm overflow-x-auto">
-                    <code className="language-typescript text-gray-800">
-                      {example.code}
-                    </code>
-                  </pre>
-                </div>
+          <h2 className="text-3xl font-bold text-gray-900 mb-8">Why Choose Payload CMS?</h2>
+          <div className="grid md:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                  <CheckCircleIcon className="w-5 h-5 text-green-600 mr-2" />
+                  Developer-Friendly
+                </h3>
+                <p className="text-gray-600 text-sm">
+                  Code-first approach means your content structure lives in version control. 
+                  No more clicking through admin interfaces to set up fields.
+                </p>
               </div>
-            ))}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                  <CheckCircleIcon className="w-5 h-5 text-blue-600 mr-2" />
+                  Enterprise Ready
+                </h3>
+                <p className="text-gray-600 text-sm">
+                  Built-in authentication, role-based permissions, and field-level access control. 
+                  Scale from startup to enterprise without changing platforms.
+                </p>
+              </div>
+              <div className="bg-gradient-to-r from-purple-50 to-violet-50 rounded-xl p-6 border border-purple-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                  <CheckCircleIcon className="w-5 h-5 text-purple-600 mr-2" />
+                  Complete Control
+                </h3>
+                <p className="text-gray-600 text-sm">
+                  Self-hosted means you own your data. No vendor lock-in, no usage limits, 
+                  and complete customization freedom.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-6">
+              <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-6 border border-orange-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                  <CheckCircleIcon className="w-5 h-5 text-orange-600 mr-2" />
+                  Performance First
+                </h3>
+                <p className="text-gray-600 text-sm">
+                  Built on Next.js with automatic optimizations. Your content loads fast 
+                  and your admin interface is lightning quick.
+                </p>
+              </div>
+              <div className="bg-gradient-to-r from-teal-50 to-cyan-50 rounded-xl p-6 border border-teal-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                  <CheckCircleIcon className="w-5 h-5 text-teal-600 mr-2" />
+                  Future Proof
+                </h3>
+                <p className="text-gray-600 text-sm">
+                  Open source with MIT license means the community drives development. 
+                  Integrate with any frontend framework or mobile app.
+                </p>
+              </div>
+              <div className="bg-gradient-to-r from-rose-50 to-pink-50 rounded-xl p-6 border border-rose-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                  <CheckCircleIcon className="w-5 h-5 text-rose-600 mr-2" />
+                  Cost Effective
+                </h3>
+                <p className="text-gray-600 text-sm">
+                  No per-user pricing or content limits. Pay for hosting, not for features. 
+                  Perfect for growing teams and high-traffic sites.
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* Setup Guide Section */}
+        {/* Getting Started Section */}
         <section className="mb-16">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8">Quick Setup Guide</h2>
-          <div className="space-y-6">
-            {setupSteps.map((step, index) => (
-              <div key={index} className="bg-white rounded-xl border border-gray-200 p-6">
-                <div className="flex items-start">
-                  <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full flex items-center justify-center font-semibold text-sm mr-4 mt-1">
-                    {step.step}
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">{step.title}</h3>
-                    <p className="text-gray-600 mb-4">{step.description}</p>
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <pre className="text-sm text-gray-800 overflow-x-auto">
-                        {step.commands.map((command, cmdIndex) => (
-                          <div key={cmdIndex} className={command.startsWith('#') ? 'text-gray-500 italic' : ''}>
-                            {command}
-                          </div>
-                        ))}
-                      </pre>
-                    </div>
-                  </div>
+          <h2 className="text-3xl font-bold text-gray-900 mb-8">How Airo Sets This Up For You</h2>
+          <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-2xl p-8 mb-8">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">AI-Powered Setup</h3>
+              <p className="text-gray-600">
+                Our AI agents handle all the technical complexity. You focus on your content strategy, 
+                we handle the implementation.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                <span className="text-purple-600 font-bold">1</span>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Tell Us Your Needs</h3>
+              <p className="text-gray-600 text-sm mb-4">
+                Describe your content structure, user roles, and workflow requirements. 
+                Our Product Manager agent will ask the right questions.
+              </p>
+              <div className="text-xs text-gray-500">
+                "I need a blog with author profiles, categories, and an approval workflow"
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                <span className="text-blue-600 font-bold">2</span>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">AI Builds Your CMS</h3>
+              <p className="text-gray-600 text-sm mb-4">
+                Our Development agents configure Payload CMS with your exact content models, 
+                permissions, and admin interface.
+              </p>
+              <div className="text-xs text-gray-500">
+                Custom fields, relationships, and validation rules automatically generated
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                <span className="text-green-600 font-bold">3</span>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Start Creating Content</h3>
+              <p className="text-gray-600 text-sm mb-4">
+                Your CMS is deployed and ready. Invite your team, set permissions, 
+                and start managing content immediately.
+              </p>
+              <div className="text-xs text-gray-500">
+                Full admin panel, APIs, and frontend integration included
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 bg-white rounded-xl border border-gray-200 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">What Our AI Team Handles For You:</h3>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center text-sm text-gray-700">
+                  <CheckCircleIcon className="w-4 h-4 text-green-500 mr-2" />
+                  Content schema design and validation
+                </div>
+                <div className="flex items-center text-sm text-gray-700">
+                  <CheckCircleIcon className="w-4 h-4 text-green-500 mr-2" />
+                  User authentication and role setup
+                </div>
+                <div className="flex items-center text-sm text-gray-700">
+                  <CheckCircleIcon className="w-4 h-4 text-green-500 mr-2" />
+                  API configuration and documentation
+                </div>
+                <div className="flex items-center text-sm text-gray-700">
+                  <CheckCircleIcon className="w-4 h-4 text-green-500 mr-2" />
+                  Database optimization and indexing
                 </div>
               </div>
-            ))}
+              <div className="space-y-2">
+                <div className="flex items-center text-sm text-gray-700">
+                  <CheckCircleIcon className="w-4 h-4 text-green-500 mr-2" />
+                  Admin interface customization
+                </div>
+                <div className="flex items-center text-sm text-gray-700">
+                  <CheckCircleIcon className="w-4 h-4 text-green-500 mr-2" />
+                  Security hardening and best practices
+                </div>
+                <div className="flex items-center text-sm text-gray-700">
+                  <CheckCircleIcon className="w-4 h-4 text-green-500 mr-2" />
+                  Performance optimization and caching
+                </div>
+                <div className="flex items-center text-sm text-gray-700">
+                  <CheckCircleIcon className="w-4 h-4 text-green-500 mr-2" />
+                  Backup and deployment configuration
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
