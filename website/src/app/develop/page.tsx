@@ -4,12 +4,14 @@ import { useState } from 'react'
 import Link from 'next/link'
 import {
   SparklesIcon,
-  ArrowLeftIcon
+  ArrowLeftIcon,
+  RocketLaunchIcon
 } from '@heroicons/react/24/outline'
 
 import ChatPane from './components/ChatPane'
 import ContentPane from './components/ContentPane'
 import ElementEditor from './components/ElementEditor'
+import DeployScreen from './components/DeployScreen'
 
 interface Message {
   id: number
@@ -142,6 +144,7 @@ export default function Develop() {
   const [isSelectMode, setIsSelectMode] = useState(false)
   const [selectedElement, setSelectedElement] = useState<string | null>(null)
   const [showEditDialog, setShowEditDialog] = useState(false)
+  const [showDeployDialog, setShowDeployDialog] = useState(false)
   const [elementStyles, setElementStyles] = useState<ElementStyles>({
     fontSize: 'text-xl',
     fontWeight: 'font-bold',
@@ -199,13 +202,22 @@ export default function Develop() {
               <div className="h-6 w-px bg-gray-300" />
               <span className="text-gray-600">Developing FitStudio Pro</span>
             </div>
-            <Link
-              href="/build"
-              className="inline-flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              <ArrowLeftIcon className="w-4 h-4 mr-2" />
-              Back to Architecture
-            </Link>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setShowDeployDialog(true)}
+                className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200"
+              >
+                <RocketLaunchIcon className="w-4 h-4 mr-2" />
+                Deploy
+              </button>
+              <Link
+                href="/build"
+                className="inline-flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <ArrowLeftIcon className="w-4 h-4 mr-2" />
+                Back to Architecture
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -240,6 +252,11 @@ export default function Develop() {
         onClose={handleCloseEditor}
         elementStyles={elementStyles}
         onStyleChange={setElementStyles}
+      />
+
+      <DeployScreen
+        isOpen={showDeployDialog}
+        onClose={() => setShowDeployDialog(false)}
       />
     </div>
   )
