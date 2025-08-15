@@ -417,9 +417,12 @@ export default function AppPlan() {
               {/* Action Buttons */}
               <div className="border-t border-gray-200 p-6">
                 <div className="space-y-3">
-                  <button className="w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200">
+                  <Link
+                    href="/build"
+                    className="block w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200 text-center"
+                  >
                     Build FitStudio Pro
-                  </button>
+                  </Link>
                   <button className="w-full px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
                     Save Project Plan
                   </button>
