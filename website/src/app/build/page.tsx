@@ -575,9 +575,12 @@ This architecture provides a solid foundation for FitStudio Pro while maintainin
       <div className="border-t border-gray-200 bg-white">
         <div className="p-6">
           <div className="flex gap-4">
-            <button className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:shadow-lg transition-all duration-200">
+            <Link
+              href="/develop"
+              className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-lg hover:shadow-lg transition-all duration-200 text-center block"
+            >
               Continue to Development
-            </button>
+            </Link>
             <button className="px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors">
               Download Artifacts
             </button>
