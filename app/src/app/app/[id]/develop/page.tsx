@@ -1,21 +1,16 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { flushSync } from 'react-dom'
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   SparklesIcon,
   CodeBracketIcon,
-  PlusIcon,
   PlayIcon
 } from '@heroicons/react/24/outline'
-
-interface Message {
-  id: number
-  sender: 'user' | 'agent'
-  content: string
-  timestamp: Date
-}
+import ChatPane from '@/app/develop/components/ChatPane'
+import { Message, PlanItem } from '@/app/develop/components/types'
 
 interface App {
   id: string
@@ -31,9 +26,11 @@ export default function Develop() {
   const [inputValue, setInputValue] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [developmentPlan] = useState<PlanItem[]>([])
+  const [expandedPlan, setExpandedPlan] = useState(false)
+  const [isSelectMode, setIsSelectMode] = useState(false)
 
   const searchParams = useSearchParams()
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   const initialMessageProcessed = useRef(false)
 
   // Fetch app details
@@ -57,15 +54,6 @@ export default function Develop() {
     }
   }, [appId])
 
-  // Scroll to bottom when messages change
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages])
-
   const handleSendMessage = useCallback(async (messageContent?: string) => {
     const content = messageContent || inputValue.trim()
     if (!content || isLoading) return
@@ -80,6 +68,23 @@ export default function Develop() {
     setMessages(prev => [...prev, userMessage])
     setInputValue('')
     setIsLoading(true)
+
+    // Create agent message outside try block so it's accessible in catch
+    let agentMessageContent = ''
+    const agentMessage: Message = {
+      id: Date.now() + 1,
+      sender: 'agent',
+      content: '',
+      timestamp: new Date(),
+      isThinking: true
+    }
+
+    // Add thinking message that we'll update
+    setMessages(prev => [...prev, agentMessage])
+
+    // Throttling for smooth updates without overwhelming React
+    let lastUpdateTime = 0
+    const updateThrottleMs = 16 // ~60fps
 
     try {
       const response = await fetch('http://localhost:4000/agent/develop/chat-streaming', {
@@ -104,17 +109,6 @@ export default function Develop() {
         throw new Error('Failed to get response reader')
       }
 
-      let agentMessageContent = ''
-      const agentMessage: Message = {
-        id: Date.now() + 1,
-        sender: 'agent',
-        content: '',
-        timestamp: new Date()
-      }
-
-      // Add empty agent message that we'll update
-      setMessages(prev => [...prev, agentMessage])
-
       let buffer = ''
 
       while (true) {
@@ -130,6 +124,7 @@ export default function Develop() {
         // Keep the last incomplete event in the buffer
         buffer = events.pop() || ''
 
+        // TODO streaming rendering is not working as expected, need to fix it
         for (const event of events) {
           const lines = event.split('\n')
           for (const line of lines) {
@@ -138,14 +133,20 @@ export default function Develop() {
                 const data = JSON.parse(line.slice(6))
                 if (data.content) {
                   agentMessageContent += data.content
-                  // Update the agent message content
-                  setMessages(prev => 
-                    prev.map(msg => 
-                      msg.id === agentMessage.id 
-                        ? { ...msg, content: agentMessageContent }
-                        : msg
+                  // Throttle updates to ~60fps for smooth streaming without overwhelming React
+                  const now = Date.now()
+                  const timeSinceLastUpdate = now - lastUpdateTime
+
+                  if (timeSinceLastUpdate >= updateThrottleMs) {
+                    lastUpdateTime = now                    // Update the agent message content and turn off thinking state
+                    setMessages(prev => 
+                      prev.map(msg => 
+                        msg.id === agentMessage.id 
+                          ? { ...msg, content: agentMessageContent, isThinking: false }
+                          : msg
+                      )
                     )
-                  )
+                  }
                 }
               } catch (error) {
                 console.warn('Failed to parse SSE data:', line, error)
@@ -154,15 +155,29 @@ export default function Develop() {
           }
         }
       }
+      
+      // Ensure final update with complete content
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === agentMessage.id 
+            ? { ...msg, content: agentMessageContent, isThinking: false }
+            : msg
+        )
+      )
     } catch (error) {
       console.error('Error sending message:', error)
-      const errorMessage: Message = {
-        id: Date.now() + 2,
-        sender: 'agent',
-        content: 'Sorry, I encountered an error. Please make sure the agents server is running on localhost:4000.',
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, errorMessage])
+      // Turn off thinking state for the current message and show error
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === agentMessage.id 
+            ? { 
+                ...msg, 
+                content: 'Sorry, I encountered an error. Please make sure the agents server is running on localhost:4000.',
+                isThinking: false 
+              }
+            : msg
+        )
+      )
     } finally {
       setIsLoading(false)
     }
@@ -190,6 +205,14 @@ export default function Develop() {
       e.preventDefault()
       handleSendMessage()
     }
+  }
+
+  const handleToggleSelectMode = () => {
+    setIsSelectMode(!isSelectMode)
+  }
+
+  const handleToggleExpandedPlan = () => {
+    setExpandedPlan(!expandedPlan)
   }
 
   return (
@@ -225,86 +248,18 @@ export default function Develop() {
       {/* Main Content Area */}
       <div className="flex-1 flex min-h-0">
         {/* Chat Panel */}
-        <div className="w-1/3 border-r border-gray-200 bg-white flex flex-col">
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center space-x-2">
-              <CodeBracketIcon className="w-5 h-5 text-purple-600" />
-              <h2 className="text-lg font-semibold text-gray-900">AI Developer</h2>
-            </div>
-            <p className="text-sm text-gray-500 mt-1">Ready to help you build {app?.name || 'your app'}</p>
-          </div>
-
-          {/* Messages Area */}
-          <div className="flex-1 p-4 overflow-y-auto">
-            {messages.length === 0 ? (
-              <div className="text-center text-gray-500 py-8">
-                <CodeBracketIcon className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-sm">Start a conversation with your AI developer</p>
-                <p className="text-xs text-gray-400 mt-1">Describe what you&apos;d like to build</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[80%] p-3 rounded-lg ${
-                        message.sender === 'user'
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-gray-100 text-gray-900'
-                      }`}
-                    >
-                      <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                      <div
-                        className={`text-xs mt-1 ${
-                          message.sender === 'user' ? 'text-purple-200' : 'text-gray-500'
-                        }`}
-                      >
-                        {message.timestamp.toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-100 text-gray-900 p-3 rounded-lg">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                        <span className="text-sm text-gray-500 ml-2">AI Developer is thinking...</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-          </div>
-
-          {/* Input Area */}
-          <div className="p-4 border-t border-gray-200">
-            <div className="flex space-x-2">
-              <textarea
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Describe what you want to build..."
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                rows={2}
-              />
-              <button
-                onClick={() => handleSendMessage()}
-                disabled={!inputValue.trim() || isLoading}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <PlusIcon className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
+        <ChatPane
+          messages={messages}
+          developmentPlan={developmentPlan}
+          inputValue={inputValue}
+          expandedPlan={expandedPlan}
+          isSelectMode={isSelectMode}
+          onInputChange={setInputValue}
+          onSendMessage={() => handleSendMessage()}
+          onKeyPress={handleKeyPress}
+          onToggleSelectMode={handleToggleSelectMode}
+          onToggleExpandedPlan={handleToggleExpandedPlan}
+        />
 
         {/* Code/Preview Panel */}
         <div className="flex-1 bg-white flex flex-col">

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { SparklesIcon } from '@heroicons/react/24/outline'
 import { Message as MessageType } from './types'
+import MarkdownRenderer from './MarkdownRenderer'
 
 interface MessageProps {
   message: MessageType
@@ -33,9 +34,27 @@ export default function Message({ message }: MessageProps) {
                 : 'bg-gray-100 text-gray-900'
             }`}>
               <div className="overflow-hidden">
-                <p className={`text-sm ${message.handoff ? 'truncate' : 'leading-relaxed break-words'}`}>
-                  {message.content}
-                </p>
+                {message.sender === 'agent' ? (
+                  message.isThinking ? (
+                    <div className="text-sm leading-relaxed break-words flex items-center space-x-2">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                      </div>
+                      <span className="text-gray-600">AI Developer is thinking...</span>
+                    </div>
+                  ) : (
+                    <MarkdownRenderer 
+                      content={message.content}
+                      className="text-sm leading-relaxed break-words"
+                    />
+                  )
+                ) : (
+                  <p className={`text-sm ${message.handoff ? 'truncate' : 'leading-relaxed break-words'}`}>
+                    {message.content}
+                  </p>
+                )}
               </div>
               {message.handoff && (
                 <div className="mt-2 pt-2 border-t border-indigo-200">

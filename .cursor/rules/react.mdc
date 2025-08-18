@@ -1,0 +1,125 @@
+---
+description: React Component Architecture
+globs: *.tsx
+alwaysApply: true
+---
+# Cursor Rules for Airo AI Builder
+
+## React Component Architecture
+
+### Core Principles
+- **Component-First Development**: Always build React pages using reusable components in their own files
+- **No Hardcoded UI**: Never inline complex UI directly in pages - extract to dedicated components
+- **Single Responsibility**: Each component should have one clear purpose
+- **Consistent Structure**: Follow established patterns for component organization
+
+### Component Organization
+```
+src/
+├── app/
+│   ├── [page]/
+│   │   ├── page.tsx           # Page file - orchestrates components only
+│   │   └── components/        # Page-specific components
+│   │       ├── ComponentName.tsx
+│   │       ├── types.ts       # Shared types for the page
+│   │       └── index.ts       # Re-exports (optional)
+│   └── components/            # Shared/global components
+│       └── ui/                # Base UI components
+```
+
+### Page File Rules
+- **Keep pages thin**: Pages should primarily import and orchestrate components
+- **No inline JSX complexity**: If JSX is more than 5-10 lines, extract to a component
+- **State management**: Keep page-level state minimal, push state down to components when possible
+- **Import organization**: Group imports logically (React, Next.js, components, types)
+
+### Component File Rules
+- **One component per file**: Each `.tsx` file should export one main component
+- **Clear naming**: Use PascalCase for components, match filename
+- **Props interface**: Always define TypeScript interfaces for props
+- **Export types**: Export interfaces that other components might need
+
+### Example Patterns
+
+#### ❌ Bad - Hardcoded UI in page
+```tsx
+export default function ChatPage() {
+  return (
+    <div className="flex">
+      <div className="w-1/3 bg-white">
+        <div className="p-4">
+          <h2>Chat</h2>
+          <div className="messages">
+            {messages.map(msg => (
+              <div key={msg.id} className="message">
+                {msg.content}
+              </div>
+            ))}
+          </div>
+          <textarea />
+          <button>Send</button>
+        </div>
+      </div>
+      <div className="flex-1">
+        {/* More inline UI... */}
+      </div>
+    </div>
+  )
+}
+```
+
+#### ✅ Good - Component-based architecture
+```tsx
+import ChatPane from './components/ChatPane'
+import ContentPane from './components/ContentPane'
+
+export default function ChatPage() {
+  return (
+    <div className="flex">
+      <ChatPane 
+        messages={messages}
+        onSendMessage={handleSend}
+      />
+      <ContentPane />
+    </div>
+  )
+}
+```
+
+### Refactoring Guidelines
+- **Identify patterns**: Look for repeated UI patterns across pages
+- **Extract components**: Move hardcoded UI to dedicated component files
+- **Share interfaces**: Use common type definitions in `types.ts` files
+- **Test incrementally**: Refactor one component at a time
+
+### Component Composition
+- **Prefer composition over inheritance**: Build complex UIs by combining simple components
+- **Props drilling**: Avoid excessive prop drilling - consider context for deeply nested state
+- **Component variants**: Use props to create variations rather than duplicate components
+
+### Styling Guidelines
+- **Consistent classes**: Use shared CSS classes and design tokens
+- **Component-scoped styles**: Keep component-specific styles close to the component
+- **Avoid inline styles**: Prefer Tailwind classes over inline styles (except for dynamic values)
+
+### Performance Considerations
+- **Lazy loading**: Use dynamic imports for large components
+- **Memoization**: Use React.memo for expensive components
+- **State optimization**: Keep state as local as possible
+
+### Error Handling
+- **Error boundaries**: Wrap component trees in error boundaries
+- **Graceful degradation**: Components should handle missing props gracefully
+- **Loading states**: Always handle loading and error states
+
+## Enforcement
+- Before creating any new page, first design the component structure
+- When reviewing existing pages, always look for refactoring opportunities
+- Prioritize component reusability and maintainability
+- Document component APIs with clear prop interfaces
+
+## Examples in This Codebase
+- ✅ `ChatPane` component properly abstracts chat functionality
+- ✅ `MessageList` handles message display logic
+- ✅ `ChatInput` encapsulates input behavior
+- ❌ Previous `/app/[id]/develop/page.tsx` had hardcoded chat UI (now refactored)

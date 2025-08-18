@@ -25,6 +25,11 @@ export default function PlanTracker({
 
   const activeItem = getCurrentActiveItem()
 
+  // Don't render if there are no plan items
+  if (!activeItem) {
+    return null
+  }
+
   return (
     <>
       {/* Plan Status Bar */}

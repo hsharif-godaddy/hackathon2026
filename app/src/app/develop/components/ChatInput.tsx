@@ -31,7 +31,7 @@ export default function ChatInput({
               onKeyPress={onKeyPress}
               placeholder="Ask CodeBot-DEV to modify code, add features, or explain implementation..."
               rows={2}
-              className="w-full resize-none border-0 focus:ring-0 focus:outline-none text-sm placeholder-gray-500"
+              className="w-full resize-none border-0 focus:ring-0 focus:outline-none text-sm placeholder-gray-500 chat-input-text"
               style={{ minHeight: '44px', maxHeight: '120px' }}
             />
           </div>

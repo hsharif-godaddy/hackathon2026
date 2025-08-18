@@ -3,6 +3,7 @@ export interface Message {
   sender: 'user' | 'agent'
   content: string
   timestamp: Date
+  isThinking?: boolean
   handoff?: {
     to: string
     action: string
