@@ -12,7 +12,7 @@ import { ExampleAgent } from '../agents/index.js';
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 4000;
 
 // Security middleware
 app.use(helmet());
@@ -42,6 +42,7 @@ app.get('/', (req, res) => {
     endpoints: {
       health: '/health',
       agents: '/agents',
+      agentDetails: '/agents/{agent-id}',
       chat: '/agent/{agent-id}/chat',
       chatStreaming: '/agent/{agent-id}/chat-streaming',
     },

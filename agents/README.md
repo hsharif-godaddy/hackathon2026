@@ -86,23 +86,23 @@ npm run dev
 
 ### 2. Test the API
 
-The server will start on port 3000 by default. If that port is in use, set `PORT=3001` or another available port.
+The server will start on port 4000 by default. If that port is in use, set `PORT=4001` or another available port.
 
 List available agents:
 ```bash
-curl http://localhost:3001/agents
+curl http://localhost:4000/agents
 ```
 
 Chat with an agent:
 ```bash
-curl -X POST http://localhost:3001/agent/example-agent/chat \\
+curl -X POST http://localhost:4000/agent/example-agent/chat \\
   -H "Content-Type: application/json" \\
   -d '{"message": "Hello, how are you?"}'
 ```
 
 Stream chat with an agent:
 ```bash
-curl -X POST http://localhost:3001/agent/example-agent/chat-streaming \\
+curl -X POST http://localhost:4000/agent/example-agent/chat-streaming \\
   -H "Content-Type: application/json" \\
   -d '{"message": "Hello, how are you?"}' \\
   --no-buffer
@@ -114,7 +114,7 @@ A comprehensive test script is included:
 
 ```bash
 # Start the server first
-PORT=3001 npm run dev
+npm run dev
 
 # In another terminal, run the tests
 ./test-api.sh
@@ -125,10 +125,7 @@ PORT=3001 npm run dev
 ### Agent Management
 
 - `GET /agents` - List all available agents
-- `GET /agents/:agentId` - Get specific agent information  
-- `GET /agents/:agentId/system-prompt` - Get agent's system prompt
-- `GET /agents/search?q=query` - Search agents by name/description
-- `GET /agents/search?tag=wordpress` - Find agents by tag
+- `GET /agents/:agentId` - Get specific agent information
 
 ### Chat
 
