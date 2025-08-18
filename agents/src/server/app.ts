@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger } from './middleware/index.js';
 import { agentsRouter, chatRouter, healthRouter } from './routes/index.js';
 import { AgentRegistry } from '../registry/index.js';
-import { ExampleAgent } from '../agents/index.js';
+import { ExampleAgent, DevelopAgent } from '../agents/index.js';
 
 // Load environment variables
 dotenv.config();
@@ -67,6 +67,7 @@ async function initialize() {
     // Register agents
     console.log('📝 Registering agents...');
     registry.register(ExampleAgent);
+    registry.register(DevelopAgent);
     
     // Initialize all agents
     await registry.initializeAll();
