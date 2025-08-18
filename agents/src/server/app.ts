@@ -4,9 +4,10 @@ import compression from 'compression';
 import dotenv from 'dotenv';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger } from './middleware/index.js';
-import { agentsRouter, chatRouter, healthRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter } from './routes/index.js';
 import { AgentRegistry } from '../registry/index.js';
 import { ExampleAgent, DevelopAgent } from '../agents/index.js';
+import { getDatabase } from '../database/index.js';
 
 // Load environment variables
 dotenv.config();
@@ -31,6 +32,7 @@ app.use(requestLogger);
 // Routes
 app.use('/health', healthRouter);
 app.use('/agents', agentsRouter);
+app.use('/apps', appsRouter);
 app.use('/agent', chatRouter);
 
 // Root endpoint
@@ -43,6 +45,8 @@ app.get('/', (req, res) => {
       health: '/health',
       agents: '/agents',
       agentDetails: '/agents/{agent-id}',
+      apps: '/apps',
+      appDetails: '/apps/{app-id}',
       chat: '/agent/{agent-id}/chat',
       chatStreaming: '/agent/{agent-id}/chat-streaming',
     },
@@ -60,6 +64,11 @@ app.use(errorHandler);
 async function initialize() {
   try {
     console.log('🚀 Starting @airo/agents server...');
+    
+    // Initialize database
+    console.log('🗄️  Initializing database...');
+    getDatabase();
+    console.log('✅ Database initialized');
     
     // Initialize agent registry
     const registry = AgentRegistry.getInstance();
@@ -83,6 +92,11 @@ async function initialize() {
       console.log('Available endpoints:');
       console.log(`  GET  /agents - List all agents`);
       console.log(`  GET  /agents/{id} - Get agent details`);
+      console.log(`  GET  /apps - List all apps`);
+      console.log(`  POST /apps - Create new app`);
+      console.log(`  GET  /apps/{id} - Get app details`);
+      console.log(`  PUT  /apps/{id} - Update app`);
+      console.log(`  DELETE /apps/{id} - Delete app`);
       console.log(`  POST /agent/{id}/chat - Chat with agent`);
       console.log(`  POST /agent/{id}/chat-streaming - Streaming chat`);
       console.log(`  GET  /health - Health check`);

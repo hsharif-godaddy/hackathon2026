@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   SparklesIcon,
@@ -17,13 +17,44 @@ interface Message {
   timestamp: Date
 }
 
+interface App {
+  id: string
+  name: string
+  createdAt: string
+  updatedAt: string
+}
+
 export default function Develop() {
+  const params = useParams()
+  const appId = params.id as string
+  const [app, setApp] = useState<App | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [hasInitialMessageSent, setHasInitialMessageSent] = useState(false)
   const searchParams = useSearchParams()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Fetch app details
+  useEffect(() => {
+    const fetchApp = async () => {
+      try {
+        const response = await fetch(`http://localhost:4000/apps/${appId}`)
+        if (response.ok) {
+          const data = await response.json()
+          setApp(data.app)
+        } else {
+          console.error('Failed to fetch app:', response.status)
+        }
+      } catch (error) {
+        console.error('Error fetching app:', error)
+      }
+    }
+
+    if (appId) {
+      fetchApp()
+    }
+  }, [appId])
 
   // Scroll to bottom when messages change
   const scrollToBottom = () => {
@@ -34,23 +65,7 @@ export default function Develop() {
     scrollToBottom()
   }, [messages])
 
-  // Handle initial message from URL parameter
-  useEffect(() => {
-    const message = searchParams.get('message')
-    if (message && !hasInitialMessageSent) {
-      const decodedMessage = decodeURIComponent(message)
-      setInputValue(decodedMessage)
-      // Auto-send the message
-      setTimeout(() => {
-        handleSendMessage(decodedMessage)
-        setHasInitialMessageSent(true)
-      }, 100)
-    } else if (!message) {
-      setInputValue('')
-    }
-  }, [searchParams, hasInitialMessageSent])
-
-  const handleSendMessage = async (messageContent?: string) => {
+  const handleSendMessage = useCallback(async (messageContent?: string) => {
     const content = messageContent || inputValue.trim()
     if (!content || isLoading) return
 
@@ -71,7 +86,10 @@ export default function Develop() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: content }),
+        body: JSON.stringify({ 
+          message: content,
+          appId: appId // Include app ID in the request
+        }),
       })
 
       if (!response.ok) {
@@ -118,8 +136,8 @@ export default function Develop() {
                   )
                 )
               }
-            } catch (e) {
-              console.warn('Failed to parse SSE data:', line)
+            } catch (error) {
+              console.warn('Failed to parse SSE data:', line, error)
             }
           }
         }
@@ -136,7 +154,23 @@ export default function Develop() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [inputValue, isLoading, appId])
+
+  // Handle initial message from URL parameter
+  useEffect(() => {
+    const message = searchParams.get('message')
+    if (message && !hasInitialMessageSent) {
+      const decodedMessage = decodeURIComponent(message)
+      setInputValue(decodedMessage)
+      // Auto-send the message
+      setTimeout(() => {
+        handleSendMessage(decodedMessage)
+        setHasInitialMessageSent(true)
+      }, 100)
+    } else if (!message) {
+      setInputValue('')
+    }
+  }, [searchParams, hasInitialMessageSent, handleSendMessage])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
@@ -161,7 +195,9 @@ export default function Develop() {
                 </span>
               </Link>
               <div className="h-6 w-px bg-gray-300" />
-              <span className="text-gray-600">Development Environment</span>
+              <span className="text-gray-600">
+                {app ? app.name : `App ${appId}`} - Development Environment
+              </span>
             </div>
             <div className="flex items-center space-x-4">
               <button className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200">
@@ -182,7 +218,7 @@ export default function Develop() {
               <CodeBracketIcon className="w-5 h-5 text-purple-600" />
               <h2 className="text-lg font-semibold text-gray-900">AI Developer</h2>
             </div>
-            <p className="text-sm text-gray-500 mt-1">Ready to help you build</p>
+            <p className="text-sm text-gray-500 mt-1">Ready to help you build {app?.name || 'your app'}</p>
           </div>
 
           {/* Messages Area */}

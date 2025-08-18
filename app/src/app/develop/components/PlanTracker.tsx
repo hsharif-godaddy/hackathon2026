@@ -4,8 +4,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   CheckCircleIcon,
-  PlayIcon,
-  XMarkIcon
+  PlayIcon
 } from '@heroicons/react/24/outline'
 import { PlanItem } from './types'
 

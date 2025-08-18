@@ -5,7 +5,6 @@ import {
   DocumentTextIcon,
   BoldIcon,
   ItalicIcon,
-  SwatchIcon,
   ChevronDownIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline'

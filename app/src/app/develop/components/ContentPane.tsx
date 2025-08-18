@@ -12,7 +12,7 @@ import {
 interface ContentTab {
   id: string
   title: string
-  icon: any
+  icon: React.ComponentType<{ className?: string }>
   type: 'preview' | 'code' | 'artifact' | 'spec'
 }
 

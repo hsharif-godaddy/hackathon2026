@@ -89,7 +89,7 @@ export default function DeployScreen({ isOpen, onClose }: DeployScreenProps) {
           <div>
             <h4 className="text-sm font-semibold text-gray-900 mb-1">AI Domain Analysis</h4>
             <p className="text-sm text-gray-700">
-              Based on your fitness studio project "FitStudio Pro", I've found domains that match your brand, 
+              Based on your fitness studio project &quot;FitStudio Pro&quot;, I&apos;ve found domains that match your brand, 
               target audience, and business goals. Each suggestion includes SEO and branding analysis.
             </p>
           </div>
@@ -99,7 +99,7 @@ export default function DeployScreen({ isOpen, onClose }: DeployScreenProps) {
       {/* Domain Suggestions */}
       <div className="space-y-3">
         <h4 className="font-medium text-gray-900">Recommended Domains</h4>
-        {domainSuggestions.map((domain, index) => (
+        {domainSuggestions.map((domain) => (
           <div
             key={`${domain.name}${domain.tld}`}
             className={`border rounded-lg p-4 cursor-pointer transition-all ${
@@ -162,7 +162,7 @@ export default function DeployScreen({ isOpen, onClose }: DeployScreenProps) {
           <CloudIcon className="w-8 h-8 text-green-600" />
         </div>
         <h3 className="text-xl font-semibold text-gray-900 mb-2">Hosting & Setup</h3>
-        <p className="text-gray-600">We'll configure professional hosting optimized for your fitness studio</p>
+        <p className="text-gray-600">We&apos;ll configure professional hosting optimized for your fitness studio</p>
       </div>
 
       <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4">

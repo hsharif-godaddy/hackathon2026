@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowRightIcon, SparklesIcon } from '@heroicons/react/24/outline'
@@ -29,8 +29,15 @@ export default function Home() {
   ]
 
   const handleStartBuilding = () => {
-    const encodedMessage = encodeURIComponent(promptText)
-    router.push(`/develop?message=${encodedMessage}`)
+    if (!promptText.trim()) return
+    
+    const encodedMessage = encodeURIComponent(promptText.trim())
+    // Generate a simple app name from the prompt (first few words)
+    const words = promptText.trim().split(' ').slice(0, 3)
+    const appName = words.length > 0 ? words.join(' ') : 'New App'
+    const encodedName = encodeURIComponent(appName)
+    
+    router.push(`/create?message=${encodedMessage}&name=${encodedName}`)
   }
 
   const handleExampleClick = (examplePrompt: string) => {
@@ -52,8 +59,8 @@ export default function Home() {
               </span>
             </div>
             <nav className="hidden md:flex space-x-8">
-              <Link href="/develop" className="text-gray-600 hover:text-gray-900 transition-colors">
-                Develop
+              <Link href="/apps" className="text-gray-600 hover:text-gray-900 transition-colors">
+                My Apps
               </Link>
             </nav>
             <div className="flex items-center space-x-4">
@@ -62,7 +69,8 @@ export default function Home() {
               </button>
               <button
                 onClick={handleStartBuilding}
-                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all"
+                disabled={!promptText.trim()}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Get Started
               </button>
