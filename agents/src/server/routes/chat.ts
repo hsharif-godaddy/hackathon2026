@@ -2,10 +2,14 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { AgentRegistry } from '../../registry/index.js';
 import { NotFoundError, BadRequestError } from '../middleware/index.js';
+import { getLLMService } from '../../services/index.js';
+import { globalTracer } from '../../utils/index.js';
+import { AppRepository } from '../../database/index.js';
 import type { AgentExecutionContext } from '../../base/index.js';
 
 const router = Router();
 const registry = AgentRegistry.getInstance();
+const appRepo = new AppRepository();
 
 /**
  * Chat message interface
@@ -21,6 +25,7 @@ interface ChatMessage {
  */
 interface ChatRequest {
   message: string;
+  appId?: string;
   threadId?: string;
   userId?: string;
   metadata?: Record<string, unknown>;
@@ -35,9 +40,34 @@ router.post('/:agentId/chat-streaming', async (req, res, next) => {
     const { agentId } = req.params;
     const chatRequest: ChatRequest = req.body;
     
+    globalTracer.trace({
+      type: 'request',
+      data: {
+        endpoint: 'chat-streaming',
+        agentId,
+        message: chatRequest.message,
+        appId: chatRequest.appId,
+        hasThreadId: !!chatRequest.threadId,
+        hasUserId: !!chatRequest.userId,
+      },
+    });
+    
     // Validate request
     if (!chatRequest.message) {
       throw new BadRequestError('Message is required');
+    }
+    
+    // Require appId for develop agent
+    if (agentId === 'develop' && !chatRequest.appId) {
+      throw new BadRequestError('appId is required for develop agent');
+    }
+    
+    // Validate appId exists if provided
+    if (chatRequest.appId) {
+      const app = appRepo.findById(chatRequest.appId);
+      if (!app) {
+        throw new NotFoundError(`App '${chatRequest.appId}' not found`);
+      }
     }
     
     if (!registry.hasAgent(agentId)) {
@@ -51,9 +81,36 @@ router.post('/:agentId/chat-streaming', async (req, res, next) => {
     const context: AgentExecutionContext = {
       threadId: chatRequest.threadId || uuidv4(),
       userId: chatRequest.userId || undefined,
-      metadata: chatRequest.metadata || undefined,
+      metadata: { 
+        agentId,
+        appId: chatRequest.appId,
+        ...chatRequest.metadata 
+      },
       timestamp: new Date(),
     };
+    
+    globalTracer.trace({
+      type: 'debug',
+      agentId,
+      threadId: context.threadId,
+      data: {
+        message: 'Execution context created',
+        context,
+      },
+    });
+    
+    // Get system prompt (validate everything before starting stream)
+    const systemPrompt = await agent.getSystemPrompt(context);
+    
+    globalTracer.trace({
+      type: 'debug',
+      agentId,
+      threadId: context.threadId,
+      data: {
+        message: 'System prompt loaded',
+        promptLength: systemPrompt.length,
+      },
+    });
     
     // Set up SSE headers for streaming
     res.setHeader('Content-Type', 'text/event-stream');
@@ -69,42 +126,67 @@ router.post('/:agentId/chat-streaming', async (req, res, next) => {
       agentId,
       agentName: agent.getConfig().name,
       timestamp: context.timestamp.toISOString(),
-    })}\\n\\n`);
-    
-    // For now, we'll simulate a streaming response
-    // In a real implementation, this would integrate with the agent-sdk
-    const systemPrompt = await agent.getSystemPrompt(context);
-    
-    // Send system prompt (for debugging/transparency)
-    res.write(`data: ${JSON.stringify({
-      type: 'system_prompt',
-      content: systemPrompt,
-    })}\\n\\n`);
-    
-    // Simulate agent thinking
+    })}\n\n`);
+      
+    // Send thinking status
     res.write(`data: ${JSON.stringify({
       type: 'status',
       status: 'thinking',
       message: 'Agent is processing your request...',
-    })}\\n\\n`);
+      })}\n\n`);
     
-    // Simulate streaming response
-    const response = `I'm the ${agent.getConfig().name}. I received your message: "${chatRequest.message}". This is a simulated response from the class-based agent system. In a full implementation, this would connect to the actual agent SDK for real conversation handling.`;
-    
-    // Stream the response word by word
-    const words = response.split(' ');
-    for (let i = 0; i < words.length; i++) {
-      const isLast = i === words.length - 1;
-      const content = words[i] + (isLast ? '' : ' ');
+    try {
+      // Use actual LLM service
+      const llmService = getLLMService();
       
+      const messages = [
+        { role: 'system' as const, content: systemPrompt },
+        { role: 'user' as const, content: chatRequest.message },
+      ];
+      
+      globalTracer.trace({
+        type: 'debug',
+        agentId,
+        threadId: context.threadId,
+        data: {
+          message: 'Starting LLM stream',
+          messageCount: messages.length,
+        },
+      });
+      
+      // Stream the LLM response
+      for await (const chunk of llmService.streamComplete({ messages }, context)) {
+        if (chunk.content) {
+          res.write(`data: ${JSON.stringify({
+            type: 'content',
+            content: chunk.content,
+            isComplete: chunk.isComplete,
+          })}\n\n`);
+        }
+        
+        if (chunk.isComplete) {
+          break;
+        }
+      }
+      
+    } catch (llmError) {
+      globalTracer.trace({
+        type: 'error',
+        agentId,
+        threadId: context.threadId,
+        data: {
+          message: 'LLM error occurred',
+          error: llmError instanceof Error ? llmError.message : String(llmError),
+          stack: llmError instanceof Error ? llmError.stack : undefined,
+        },
+      });
+      
+      // Send error message to client
       res.write(`data: ${JSON.stringify({
         type: 'content',
-        content,
-        isComplete: isLast,
-      })}\\n\\n`);
-      
-      // Add small delay to simulate real streaming
-      await new Promise(resolve => setTimeout(resolve, 50));
+        content: `I apologize, but I encountered an error processing your request: ${llmError instanceof Error ? llmError.message : 'Unknown error'}`,
+        isComplete: false,
+      })}\n\n`);
     }
     
     // Send completion signal
@@ -112,18 +194,35 @@ router.post('/:agentId/chat-streaming', async (req, res, next) => {
       type: 'complete',
       threadId: context.threadId,
       timestamp: new Date().toISOString(),
-    })}\\n\\n`);
+    })}\n\n`);
     
     res.end();
     
+    globalTracer.trace({
+      type: 'response',
+      agentId,
+      threadId: context.threadId,
+      data: {
+        message: 'Streaming response completed',
+      },
+    });
+    
   } catch (error) {
+    globalTracer.trace({
+      type: 'error',
+      data: {
+        endpoint: 'chat-streaming',
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+    });
+    
     // Send error through SSE
     res.write(`data: ${JSON.stringify({
       type: 'error',
       error: error instanceof Error ? error.message : 'Unknown error',
-    })}\\n\\n`);
+    })}\n\n`);
     res.end();
-    next(error);
   }
 });
 
@@ -138,6 +237,19 @@ router.post('/:agentId/chat', async (req, res, next) => {
     // Validate request
     if (!chatRequest.message) {
       throw new BadRequestError('Message is required');
+    }
+    
+    // Require appId for develop agent
+    if (agentId === 'develop' && !chatRequest.appId) {
+      throw new BadRequestError('appId is required for develop agent');
+    }
+    
+    // Validate appId exists if provided
+    if (chatRequest.appId) {
+      const app = appRepo.findById(chatRequest.appId);
+      if (!app) {
+        throw new NotFoundError(`App '${chatRequest.appId}' not found`);
+      }
     }
     
     if (!registry.hasAgent(agentId)) {
@@ -176,6 +288,35 @@ router.post('/:agentId/chat', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+/**
+ * GET /agent/traces - Get tracing information for debugging
+ */
+router.get('/traces', (req, res) => {
+  const { agentId, threadId, type, since } = req.query;
+  
+  const filters: any = {};
+  if (agentId) filters.agentId = agentId as string;
+  if (threadId) filters.threadId = threadId as string;
+  if (type) filters.type = type as string;
+  if (since) filters.since = new Date(since as string);
+  
+  const events = globalTracer.getEvents(filters);
+  
+  res.json({
+    total: events.length,
+    filters,
+    events: events.slice(0, 100), // Limit to last 100 events
+  });
+});
+
+/**
+ * DELETE /agent/traces - Clear traces
+ */
+router.delete('/traces', (req, res) => {
+  globalTracer.clear();
+  res.json({ message: 'Traces cleared' });
 });
 
 export { router as chatRouter };

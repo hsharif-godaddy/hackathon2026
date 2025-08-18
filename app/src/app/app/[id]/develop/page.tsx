@@ -115,30 +115,41 @@ export default function Develop() {
       // Add empty agent message that we'll update
       setMessages(prev => [...prev, agentMessage])
 
+      let buffer = ''
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
         const chunk = decoder.decode(value)
-        const lines = chunk.split('\n')
+        buffer += chunk
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (data.content) {
-                agentMessageContent += data.content
-                // Update the agent message content
-                setMessages(prev => 
-                  prev.map(msg => 
-                    msg.id === agentMessage.id 
-                      ? { ...msg, content: agentMessageContent }
-                      : msg
+        // Split on double newlines to separate SSE events
+        const events = buffer.split('\n\n')
+        
+        // Keep the last incomplete event in the buffer
+        buffer = events.pop() || ''
+
+        for (const event of events) {
+          const lines = event.split('\n')
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                if (data.content) {
+                  agentMessageContent += data.content
+                  // Update the agent message content
+                  setMessages(prev => 
+                    prev.map(msg => 
+                      msg.id === agentMessage.id 
+                        ? { ...msg, content: agentMessageContent }
+                        : msg
+                    )
                   )
-                )
+                }
+              } catch (error) {
+                console.warn('Failed to parse SSE data:', line, error)
               }
-            } catch (error) {
-              console.warn('Failed to parse SSE data:', line, error)
             }
           }
         }
