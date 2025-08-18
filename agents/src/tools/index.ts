@@ -2,6 +2,7 @@ export { DirectoryListingTool } from './directory-listing.js';
 export { TerminalTool } from './terminal.js';
 export { FileEditTool } from './file-edit.js';
 export { GitTool } from './git-tool.js';
+export { ReadFileTool } from './read-file.js';
 export { getToolDefinitions, executeToolFunction, TOOL_FUNCTIONS } from './tool-functions.js';
 export type { 
   DirectoryListingOptions, 
@@ -20,3 +21,7 @@ export type {
   GitToolOptions,
   GitToolResult
 } from './git-tool.js';
+export type {
+  ReadFileOptions,
+  ReadFileResult
+} from './read-file.js';

@@ -2,6 +2,7 @@ import { DirectoryListingTool, DirectoryListingOptions } from './directory-listi
 import { TerminalTool, TerminalCommandOptions } from './terminal.js';
 import { FileEditTool, FileEditOptions } from './file-edit.js';
 import { GitTool, GitToolOptions } from './git-tool.js';
+import { ReadFileTool, ReadFileOptions } from './read-file.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import type { AgentExecutionContext } from '../base/index.js';
 
@@ -9,6 +10,7 @@ const directoryTool = new DirectoryListingTool();
 const terminalTool = new TerminalTool();
 const fileEditTool = new FileEditTool();
 const gitTool = new GitTool();
+const readFileTool = new ReadFileTool();
 const appRepo = new AppRepository();
 
 /**
@@ -222,6 +224,30 @@ export const TOOL_FUNCTIONS = {
       required: ['operation'],
     },
   },
+  read_file: {
+    name: 'read_file',
+    description: 'Read file contents with optional line range support. Can read entire files or specific line ranges.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Path to the file to read (relative to app root)',
+        },
+        startLine: {
+          type: 'number',
+          description: 'Starting line number (1-indexed, optional)',
+          minimum: 1,
+        },
+        numLines: {
+          type: 'number',
+          description: 'Number of lines to read from start line (optional, reads to end if not specified)',
+          minimum: 1,
+        },
+      },
+      required: ['path'],
+    },
+  },
 } as const;
 
 /**
@@ -244,6 +270,9 @@ export async function executeToolFunction(
     
     case 'git_operation':
       return await executeGitOperation(args as unknown as GitToolOptions, context);
+    
+    case 'read_file':
+      return await executeReadFile(args as unknown as ReadFileOptions, context);
     
     default:
       throw new Error(`Unknown tool function: ${functionName}`);
@@ -356,6 +385,49 @@ async function executeGitOperation(
   
   // Return formatted result
   return gitTool.formatResult(result);
+}
+
+/**
+ * Execute the read file tool
+ */
+async function executeReadFile(
+  options: ReadFileOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  // Get app information from context
+  const appId = context.metadata?.appId as string;
+  
+  if (!appId) {
+    throw new Error('App ID is required for file operations');
+  }
+
+  // Get app metadata to determine the allowed path
+  const app = appRepo.findById(appId);
+  if (!app) {
+    throw new Error(`App '${appId}' not found`);
+  }
+
+  // Execute the read file operation within the app's directory
+  const result = await readFileTool.readFile(options, app.path);
+  
+  // Return formatted result
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to read file');
+  }
+
+  // Format the response
+  let response = `File: ${result.path}\n`;
+  if (result.linesRead) {
+    response += `Lines ${result.linesRead.start}-${result.linesRead.end} of ${result.totalLines}\n`;
+  } else {
+    response += `Total lines: ${result.totalLines}\n`;
+  }
+  if (result.fileSize) {
+    response += `File size: ${result.fileSize} bytes\n`;
+  }
+  response += `\n${result.content}`;
+  
+  return response;
 }
 
 /**

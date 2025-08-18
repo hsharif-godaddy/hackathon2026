@@ -327,7 +327,7 @@ async function handleWithFunctionCalls(
 ): Promise<void> {
   const messages = [...request.messages];
   let functionCallCount = 0;
-  const maxFunctionCalls = 5; // Prevent infinite loops
+  const maxFunctionCalls = 25; // Prevent infinite loops
 
   while (functionCallCount < maxFunctionCalls) {
     const response = await llmService.complete(request, context);

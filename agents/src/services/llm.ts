@@ -58,7 +58,7 @@ export class LLMService {
   private openai: OpenAI;
   private defaultModel: string;
 
-  constructor(apiKey?: string, defaultModel = 'gpt-4') {
+  constructor(apiKey?: string, defaultModel = 'claude-sonnet-4-20250514') {
     const key = apiKey || process.env.OPENAI_API_KEY;
     
     if (!key) {
@@ -103,7 +103,7 @@ export class LLMService {
         model,
         messages: request.messages,
         temperature: request.temperature ?? 0.7,
-        max_tokens: request.maxTokens ?? 2000,
+        max_tokens: request.maxTokens ?? 4000,
         stream: false,
         ...(request.tools ? { tools: request.tools } : {}),
       });
