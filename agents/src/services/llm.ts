@@ -1,23 +1,50 @@
 import OpenAI from 'openai';
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { globalTracer } from '../utils/tracing.js';
 import type { AgentExecutionContext } from '../base/index.js';
 
 export interface LLMMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | null;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
+  tool_call_id?: string;
+  name?: string;
 }
 
 export interface LLMRequest {
-  messages: LLMMessage[];
+  messages: ChatCompletionMessageParam[];
   model?: string;
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
+  tools?: Array<{
+    type: 'function';
+    function: {
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+    };
+  }>;
 }
 
 export interface LLMResponse {
   id: string;
-  content: string;
+  content: string | null;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
   usage?: {
     promptTokens: number;
     completionTokens: number;
@@ -78,11 +105,22 @@ export class LLMService {
         temperature: request.temperature ?? 0.7,
         max_tokens: request.maxTokens ?? 2000,
         stream: false,
+        ...(request.tools ? { tools: request.tools } : {}),
       });
+
+      const toolCalls = completion.choices[0]?.message?.tool_calls?.filter(tc => tc.type === 'function').map(tc => ({
+        id: tc.id,
+        type: tc.type as 'function',
+        function: {
+          name: tc.function?.name || '',
+          arguments: tc.function?.arguments || '',
+        },
+      }));
 
       const response: LLMResponse = {
         id: completion.id,
-        content: completion.choices[0]?.message?.content || '',
+        content: completion.choices[0]?.message?.content || null,
+        ...(toolCalls && toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
         usage: completion.usage ? {
           promptTokens: completion.usage.prompt_tokens,
           completionTokens: completion.usage.completion_tokens,
@@ -100,7 +138,7 @@ export class LLMService {
         threadId: context?.threadId,
         data: {
           responseId: response.id,
-          contentLength: response.content.length,
+          contentLength: response.content?.length || 0,
           usage: response.usage,
           finishReason: response.finishReason,
           duration,
@@ -158,6 +196,7 @@ export class LLMService {
         temperature: request.temperature ?? 0.7,
         max_tokens: request.maxTokens ?? 2000,
         stream: true,
+        ...(request.tools ? { tools: request.tools } : {}),
       });
 
       let fullContent = '';

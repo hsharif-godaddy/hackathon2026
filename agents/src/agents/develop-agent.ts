@@ -12,10 +12,7 @@ export class DevelopAgent extends BaseAgent {
       description: 'An AI developer agent that helps build web applications, websites, and digital solutions',
       model: 'gpt-4',
       tools: [
-        { name: 'code_generator', description: 'Generate code for web applications' },
-        { name: 'file_manager', description: 'Create, read, and modify project files' },
-        { name: 'dependency_manager', description: 'Manage project dependencies and configurations' },
-        { name: 'deployment_helper', description: 'Help with deployment and hosting setup' },
+        { name: 'directory_listing', description: 'List directory contents as a tree structure with filtering options' },
       ],
       contextBuilder: {
         tools: ['code_generator', 'file_manager'],

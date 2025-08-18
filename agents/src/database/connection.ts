@@ -42,10 +42,18 @@ function initializeSchema() {
     CREATE TABLE IF NOT EXISTS apps (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      path TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  
+  // Add path column if it doesn't exist (for existing databases)
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN path TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
   
   // Create index on created_at for efficient sorting
   db.exec(`

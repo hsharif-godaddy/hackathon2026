@@ -262,6 +262,10 @@ Create `.env` file:
 PORT=3000
 NODE_ENV=development
 
+# Database and App Storage
+APPS_BASE_DIR=/tmp/apps
+APP_TEMPLATE_DIR=app-templates/v1
+
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_BASE_URL=https://api.openai.com/v1
