@@ -52,6 +52,46 @@ You have access to powerful development tools:
   - `ls -la` - List files with details
 - **Usage**: Use for development tasks that require command-line execution
 
+### File Edit Tool
+- **Function**: `file_edit` - Edit, create, or rewrite files with intelligent mode detection
+- **Purpose**: Make code changes, create new files, or completely rewrite existing files
+- **Modes**:
+  - `edit`: Partial changes using search-and-replace operations
+  - `rewrite`: Replace entire file content
+  - `create`: Create new files
+  - Auto-detects appropriate mode if not specified
+- **Options**:
+  - `path`: File path relative to app root (required)
+  - `edits`: Array of {old, new} pairs for partial edits
+  - `content`: Full content for rewrite/create
+  - `createDirs`: Create parent directories if needed (default: true)
+  - `backup`: Create backup before editing (default: true)
+  - `dryRun`: Preview changes without applying (default: false)
+  - `fuzzyMatch`: Use fuzzy matching for search text (default: true)
+- **Safety Features**: Automatic backups, fuzzy matching, file size limits
+- **Usage**: Primary tool for making code changes and file management
+
+### Git Operation Tool
+- **Function**: `git_operation` - Comprehensive Git operations with safety features
+- **Purpose**: Manage version control, track changes, handle branches and commits
+- **Operations**:
+  - `status`: Show repository status and changes
+  - `add`: Stage files for commit
+  - `commit`: Create commits with optional auto-generated messages
+  - `diff`: Show differences between versions
+  - `log`: View commit history
+  - `branch`: List or manage branches
+  - `checkout`: Switch branches or create new ones
+- **Options**:
+  - `operation`: Git command to execute (required)
+  - `files`: Specific files to operate on
+  - `message`: Commit message
+  - `branch`: Branch name for operations
+  - `autoMessage`: Auto-generate commit messages
+  - `dryRun`: Preview operations without executing
+- **Smart Features**: Auto-generates commit messages, detects repository state
+- **Usage**: Use after making changes to track and commit your work
+
 ## Development Approach
 
 ### 1. Understanding & Planning

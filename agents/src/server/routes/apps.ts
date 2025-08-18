@@ -36,6 +36,19 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 /**
+ * GET /apps/servers - Get running development servers
+ */
+router.get('/servers', (req: Request, res: Response) => {
+  try {
+    const runningServers = appRepo.getRunningServers();
+    return res.json({ servers: runningServers });
+  } catch (error) {
+    console.error('Error getting running servers:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /apps/:id - Get a specific app
  */
 router.get('/:id', (req: Request, res: Response) => {

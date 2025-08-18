@@ -1,10 +1,14 @@
 import { DirectoryListingTool, DirectoryListingOptions } from './directory-listing.js';
 import { TerminalTool, TerminalCommandOptions } from './terminal.js';
+import { FileEditTool, FileEditOptions } from './file-edit.js';
+import { GitTool, GitToolOptions } from './git-tool.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import type { AgentExecutionContext } from '../base/index.js';
 
 const directoryTool = new DirectoryListingTool();
 const terminalTool = new TerminalTool();
+const fileEditTool = new FileEditTool();
+const gitTool = new GitTool();
 const appRepo = new AppRepository();
 
 /**
@@ -82,6 +86,142 @@ export const TOOL_FUNCTIONS = {
       required: ['command'],
     },
   },
+  file_edit: {
+    name: 'file_edit',
+    description: 'Edit, create, or rewrite files with intelligent mode detection. Supports partial edits, full rewrites, and new file creation.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Path to the file to edit (relative to app root)',
+        },
+        mode: {
+          type: 'string',
+          enum: ['edit', 'rewrite', 'create'],
+          description: 'Edit mode: edit for partial changes, rewrite for full replacement, create for new files (auto-detected if not specified)',
+        },
+        edits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              old: {
+                type: 'string',
+                description: 'The exact text to search for and replace',
+              },
+              new: {
+                type: 'string',
+                description: 'The new text to replace with',
+              },
+            },
+            required: ['old', 'new'],
+          },
+          description: 'Array of search-and-replace operations for partial edits',
+        },
+        content: {
+          type: 'string',
+          description: 'Full content for rewrite or create operations',
+        },
+        createDirs: {
+          type: 'boolean',
+          description: 'Create parent directories if they don\'t exist',
+          default: true,
+        },
+        backup: {
+          type: 'boolean',
+          description: 'Create a backup before editing',
+          default: true,
+        },
+        dryRun: {
+          type: 'boolean',
+          description: 'Preview changes without applying them',
+          default: false,
+        },
+        fuzzyMatch: {
+          type: 'boolean',
+          description: 'Use fuzzy matching for search text if exact match fails',
+          default: true,
+        },
+      },
+      required: ['path'],
+    },
+  },
+  git_operation: {
+    name: 'git_operation',
+    description: 'Perform git operations like status, add, commit, diff, log, branch management, etc. Provides comprehensive git functionality.',
+    parameters: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          enum: ['status', 'add', 'commit', 'diff', 'log', 'branch', 'checkout', 'merge', 'pull', 'push', 'stash', 'reset', 'revert'],
+          description: 'The git operation to perform',
+        },
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Files to operate on (for add, diff, etc.)',
+        },
+        message: {
+          type: 'string',
+          description: 'Commit message (for commit operation)',
+        },
+        branch: {
+          type: 'string',
+          description: 'Branch name (for checkout, merge, etc.)',
+        },
+        options: {
+          type: 'object',
+          properties: {
+            all: {
+              type: 'boolean',
+              description: 'Include all files (for add, commit)',
+            },
+            amend: {
+              type: 'boolean',
+              description: 'Amend last commit (for commit)',
+            },
+            force: {
+              type: 'boolean',
+              description: 'Force operation (for push, checkout)',
+            },
+            hard: {
+              type: 'boolean',
+              description: 'Hard reset (for reset)',
+            },
+            count: {
+              type: 'number',
+              description: 'Number of commits (for log, reset)',
+            },
+            createBranch: {
+              type: 'boolean',
+              description: 'Create new branch (for checkout)',
+            },
+            includeUntracked: {
+              type: 'boolean',
+              description: 'Include untracked files (for stash)',
+            },
+            verbose: {
+              type: 'boolean',
+              description: 'Verbose output',
+            },
+          },
+        },
+        autoMessage: {
+          type: 'boolean',
+          description: 'Auto-generate commit message from recent file changes',
+          default: false,
+        },
+        dryRun: {
+          type: 'boolean',
+          description: 'Preview operation without executing',
+          default: false,
+        },
+      },
+      required: ['operation'],
+    },
+  },
 } as const;
 
 /**
@@ -98,6 +238,12 @@ export async function executeToolFunction(
     
     case 'terminal_command':
       return await executeTerminalCommand(args as unknown as TerminalCommandOptions, context);
+    
+    case 'file_edit':
+      return await executeFileEdit(args as unknown as FileEditOptions, context);
+    
+    case 'git_operation':
+      return await executeGitOperation(args as unknown as GitToolOptions, context);
     
     default:
       throw new Error(`Unknown tool function: ${functionName}`);
@@ -156,6 +302,60 @@ async function executeTerminalCommand(
   
   // Return formatted result
   return terminalTool.formatResult(result);
+}
+
+/**
+ * Execute the file edit tool
+ */
+async function executeFileEdit(
+  options: FileEditOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  // Get app information from context
+  const appId = context.metadata?.appId as string;
+  
+  if (!appId) {
+    throw new Error('App ID is required for file editing');
+  }
+
+  // Get app metadata to determine the allowed path
+  const app = appRepo.findById(appId);
+  if (!app) {
+    throw new Error(`App '${appId}' not found`);
+  }
+
+  // Execute the file edit within the app's directory
+  const result = await fileEditTool.editFile(app.path, options);
+  
+  // Return formatted result
+  return fileEditTool.formatResult(result);
+}
+
+/**
+ * Execute the git operation tool
+ */
+async function executeGitOperation(
+  options: GitToolOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  // Get app information from context
+  const appId = context.metadata?.appId as string;
+  
+  if (!appId) {
+    throw new Error('App ID is required for git operations');
+  }
+
+  // Get app metadata to determine the allowed path
+  const app = appRepo.findById(appId);
+  if (!app) {
+    throw new Error(`App '${appId}' not found`);
+  }
+
+  // Execute the git operation within the app's directory
+  const result = await gitTool.executeGitOperation(app.path, options);
+  
+  // Return formatted result
+  return gitTool.formatResult(result);
 }
 
 /**

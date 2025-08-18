@@ -1,13 +1,17 @@
 import { nanoid } from 'nanoid';
 import { mkdirSync, rmSync, cpSync, existsSync } from 'fs';
+import { spawn } from 'child_process';
 import path from 'path';
 import { getDatabase } from '../connection.js';
 import { GitUtils } from '../../utils/git.js';
+import { PortManager } from '../../utils/port-manager.js';
 import type { App, CreateAppRequest, UpdateAppRequest } from '../schema.js';
 
 export class AppRepository {
   private db = getDatabase();
   private gitUtils = new GitUtils();
+  private portManager = new PortManager();
+  private runningProcesses = new Map<string, any>(); // Store running dev servers
 
   /**
    * Create a new app with a websafe short identifier and filesystem directory
@@ -19,6 +23,9 @@ export class AppRepository {
     // Get base directory from environment variable, default to /tmp/apps
     const baseDir = process.env.APPS_BASE_DIR || '/tmp/apps';
     const appPath = path.join(baseDir, id);
+    
+    // Assign an available port
+    const port = await this.portManager.getNextAvailablePort();
     
     // Get template directory from environment variable, default to app-templates/v1
     const templateDir = process.env.APP_TEMPLATE_DIR || 'app-templates/v1';
@@ -47,17 +54,20 @@ export class AppRepository {
       // Initialize Git repository after template copy
       await this.initializeGitRepository(appPath, data.name);
 
+      // Start the development server
+      await this.startDevServer(id, appPath, port);
+
     } catch (error) {
       console.error(`Failed to create directory for app ${id}:`, error);
       throw new Error(`Failed to create app directory: ${error}`);
     }
     
     const stmt = this.db.prepare(`
-      INSERT INTO apps (id, name, path, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO apps (id, name, path, port, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
     
-    stmt.run(id, data.name, appPath, now, now);
+    stmt.run(id, data.name, appPath, port, now, now);
     
     return this.findById(id)!;
   }
@@ -116,7 +126,7 @@ export class AppRepository {
    */
   findById(id: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, created_at, updated_at
+      SELECT id, name, path, port, created_at, updated_at
       FROM apps
       WHERE id = ?
     `);
@@ -128,6 +138,7 @@ export class AppRepository {
       id: row.id,
       name: row.name,
       path: row.path,
+      port: row.port,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
@@ -138,7 +149,7 @@ export class AppRepository {
    */
   findAll(limit = 50, offset = 0): App[] {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, created_at, updated_at
+      SELECT id, name, path, port, created_at, updated_at
       FROM apps
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -150,6 +161,7 @@ export class AppRepository {
       id: row.id,
       name: row.name,
       path: row.path,
+      port: row.port,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     }));
@@ -200,6 +212,9 @@ export class AppRepository {
     const app = this.findById(id);
     if (!app) return false;
 
+    // Stop the development server if running
+    this.stopDevServer(id);
+
     const stmt = this.db.prepare('DELETE FROM apps WHERE id = ?');
     const result = stmt.run(id);
     
@@ -214,6 +229,102 @@ export class AppRepository {
     }
     
     return result.changes > 0;
+  }
+
+  /**
+   * Start development server for an app
+   */
+  private async startDevServer(appId: string, appPath: string, port: number): Promise<void> {
+    try {
+      console.log(`Starting development server for app ${appId} on port ${port}...`);
+      
+      // Check if package.json exists and has a dev script
+      const packageJsonPath = path.join(appPath, 'package.json');
+      if (!existsSync(packageJsonPath)) {
+        console.warn(`No package.json found for app ${appId}, skipping dev server start`);
+        return;
+      }
+
+      // Set the port in environment variables
+      const env = {
+        ...process.env,
+        PORT: port.toString(),
+        NEXT_PUBLIC_PORT: port.toString(),
+      };
+
+      // Start the dev server
+      const child = spawn('npm', ['run', 'dev'], {
+        cwd: appPath,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
+      });
+
+      // Store the process
+      this.runningProcesses.set(appId, child);
+
+      // Log output for debugging
+      child.stdout?.on('data', (data) => {
+        console.log(`[${appId}:${port}] ${data.toString().trim()}`);
+      });
+
+      child.stderr?.on('data', (data) => {
+        console.error(`[${appId}:${port}] ${data.toString().trim()}`);
+      });
+
+      child.on('error', (error) => {
+        console.error(`Dev server error for app ${appId}:`, error);
+        this.runningProcesses.delete(appId);
+      });
+
+      child.on('exit', (code) => {
+        console.log(`Dev server for app ${appId} exited with code ${code}`);
+        this.runningProcesses.delete(appId);
+      });
+
+      // Don't wait for the process to start, let it run in background
+      console.log(`Development server started for app ${appId} on http://localhost:${port}`);
+
+    } catch (error) {
+      console.error(`Failed to start dev server for app ${appId}:`, error);
+      // Don't fail app creation if dev server fails to start
+    }
+  }
+
+  /**
+   * Stop development server for an app
+   */
+  private stopDevServer(appId: string): void {
+    const process = this.runningProcesses.get(appId);
+    if (process) {
+      try {
+        process.kill('SIGTERM');
+        this.runningProcesses.delete(appId);
+        console.log(`Stopped development server for app ${appId}`);
+      } catch (error) {
+        console.warn(`Failed to stop dev server for app ${appId}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Get running development servers
+   */
+  getRunningServers(): Array<{ appId: string; port: number; url: string }> {
+    const runningApps: Array<{ appId: string; port: number; url: string }> = [];
+    
+    for (const [appId] of this.runningProcesses) {
+      const app = this.findById(appId);
+      if (app) {
+        runningApps.push({
+          appId,
+          port: app.port,
+          url: `http://localhost:${app.port}`,
+        });
+      }
+    }
+    
+    return runningApps;
   }
 
   /**

@@ -14,6 +14,8 @@ export class DevelopAgent extends BaseAgent {
       tools: [
         { name: 'directory_listing', description: 'List directory contents as a tree structure with filtering options' },
         { name: 'terminal_command', description: 'Execute shell commands within the app directory for development tasks' },
+        { name: 'file_edit', description: 'Edit, create, or rewrite files with intelligent mode detection and safety features' },
+        { name: 'git_operation', description: 'Perform git operations like status, add, commit, diff, log, and branch management' },
       ],
       contextBuilder: {
         tools: ['code_generator', 'file_manager'],
