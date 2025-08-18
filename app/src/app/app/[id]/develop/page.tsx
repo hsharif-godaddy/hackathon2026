@@ -31,9 +31,10 @@ export default function Develop() {
   const [inputValue, setInputValue] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [hasInitialMessageSent, setHasInitialMessageSent] = useState(false)
+
   const searchParams = useSearchParams()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const initialMessageProcessed = useRef(false)
 
   // Fetch app details
   useEffect(() => {
@@ -159,18 +160,19 @@ export default function Develop() {
   // Handle initial message from URL parameter
   useEffect(() => {
     const message = searchParams.get('message')
-    if (message && !hasInitialMessageSent) {
+    if (message && !initialMessageProcessed.current) {
       const decodedMessage = decodeURIComponent(message)
       setInputValue(decodedMessage)
+      initialMessageProcessed.current = true
       // Auto-send the message
       setTimeout(() => {
         handleSendMessage(decodedMessage)
-        setHasInitialMessageSent(true)
       }, 100)
-    } else if (!message) {
+    } else if (!message && !initialMessageProcessed.current) {
       setInputValue('')
+      initialMessageProcessed.current = true
     }
-  }, [searchParams, hasInitialMessageSent, handleSendMessage])
+  }, [searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
