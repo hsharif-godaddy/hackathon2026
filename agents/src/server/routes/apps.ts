@@ -60,7 +60,7 @@ router.get('/:id', (req: Request, res: Response) => {
 /**
  * POST /apps - Create a new app
  */
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     const data: CreateAppRequest = req.body;
 
@@ -72,7 +72,7 @@ router.post('/', (req: Request, res: Response) => {
     // Trim whitespace
     data.name = data.name.trim();
 
-    const app = appRepo.create(data);
+    const app = await appRepo.create(data);
     return res.status(201).json({ app });
   } catch (error) {
     console.error('Error creating app:', error);

@@ -36,6 +36,22 @@ You have access to powerful development tools:
   - `showHidden`: Include hidden files/directories (boolean)
 - **Usage**: Always use this tool first to understand the project structure before making changes or suggestions
 
+### Terminal Command Tool
+- **Function**: `terminal_command` - Execute shell commands within the app directory
+- **Purpose**: Run development tasks like npm install, git operations, building, testing, etc.
+- **Options**:
+  - `command`: The shell command to execute (required)
+  - `workingDir`: Working directory relative to app root (default: app root)
+  - `timeout`: Maximum execution time in milliseconds (default: 30000, max: 300000)
+  - `env`: Environment variables to set for the command
+- **Safety**: Commands are sandboxed to the app directory with security restrictions
+- **Examples**:
+  - `npm install` - Install dependencies
+  - `npm run build` - Build the project
+  - `git status` - Check git status
+  - `ls -la` - List files with details
+- **Usage**: Use for development tasks that require command-line execution
+
 ## Development Approach
 
 ### 1. Understanding & Planning

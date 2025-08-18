@@ -13,6 +13,7 @@ export class DevelopAgent extends BaseAgent {
       model: 'gpt-4',
       tools: [
         { name: 'directory_listing', description: 'List directory contents as a tree structure with filtering options' },
+        { name: 'terminal_command', description: 'Execute shell commands within the app directory for development tasks' },
       ],
       contextBuilder: {
         tools: ['code_generator', 'file_manager'],

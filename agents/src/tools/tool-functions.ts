@@ -1,8 +1,10 @@
 import { DirectoryListingTool, DirectoryListingOptions } from './directory-listing.js';
+import { TerminalTool, TerminalCommandOptions } from './terminal.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import type { AgentExecutionContext } from '../base/index.js';
 
 const directoryTool = new DirectoryListingTool();
+const terminalTool = new TerminalTool();
 const appRepo = new AppRepository();
 
 /**
@@ -47,6 +49,39 @@ export const TOOL_FUNCTIONS = {
       required: [],
     },
   },
+  terminal_command: {
+    name: 'terminal_command',
+    description: 'Execute shell commands within the app directory. Use for development tasks like npm install, git operations, building, testing, etc.',
+    parameters: {
+      type: 'object',
+      properties: {
+        command: {
+          type: 'string',
+          description: 'The shell command to execute (e.g., "npm install", "git status", "ls -la")',
+        },
+        workingDir: {
+          type: 'string',
+          description: 'Working directory relative to app root (default: app root)',
+          default: '',
+        },
+        timeout: {
+          type: 'number',
+          description: 'Maximum execution time in milliseconds (default: 30000, max: 300000)',
+          minimum: 1000,
+          maximum: 300000,
+          default: 30000,
+        },
+        env: {
+          type: 'object',
+          description: 'Environment variables to set for the command',
+          additionalProperties: {
+            type: 'string',
+          },
+        },
+      },
+      required: ['command'],
+    },
+  },
 } as const;
 
 /**
@@ -60,6 +95,9 @@ export async function executeToolFunction(
   switch (functionName) {
     case 'directory_listing':
       return await executeDirectoryListing(args as DirectoryListingOptions, context);
+    
+    case 'terminal_command':
+      return await executeTerminalCommand(args as unknown as TerminalCommandOptions, context);
     
     default:
       throw new Error(`Unknown tool function: ${functionName}`);
@@ -91,6 +129,33 @@ async function executeDirectoryListing(
   
   // Return formatted tree view
   return directoryTool.formatAsTree(result);
+}
+
+/**
+ * Execute the terminal command tool
+ */
+async function executeTerminalCommand(
+  options: TerminalCommandOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  // Get app information from context
+  const appId = context.metadata?.appId as string;
+  
+  if (!appId) {
+    throw new Error('App ID is required for terminal commands');
+  }
+
+  // Get app metadata to determine the allowed path
+  const app = appRepo.findById(appId);
+  if (!app) {
+    throw new Error(`App '${appId}' not found`);
+  }
+
+  // Execute the command within the app's directory
+  const result = await terminalTool.executeCommand(app.path, options);
+  
+  // Return formatted result
+  return terminalTool.formatResult(result);
 }
 
 /**
