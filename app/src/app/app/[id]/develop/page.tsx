@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { flushSync } from 'react-dom'
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -10,11 +9,13 @@ import {
   PlayIcon
 } from '@heroicons/react/24/outline'
 import ChatPane from '@/app/develop/components/ChatPane'
+import PreviewPane from '@/app/develop/components/PreviewPane'
 import { Message, PlanItem } from '@/app/develop/components/types'
 
 interface App {
   id: string
   name: string
+  port: number
   createdAt: string
   updatedAt: string
 }
@@ -29,6 +30,7 @@ export default function Develop() {
   const [developmentPlan] = useState<PlanItem[]>([])
   const [expandedPlan, setExpandedPlan] = useState(false)
   const [isSelectMode, setIsSelectMode] = useState(false)
+  const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
@@ -236,9 +238,17 @@ export default function Develop() {
               </span>
             </div>
             <div className="flex items-center space-x-4">
-              <button className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200">
+              <button 
+                onClick={() => {
+                  if (app?.port) {
+                    window.open(`http://localhost:${app.port}`, '_blank')
+                  }
+                }}
+                disabled={!app?.port}
+                className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <PlayIcon className="w-4 h-4 mr-2" />
-                Run
+                {app?.port ? 'Open App' : 'Loading...'}
               </button>
             </div>
           </div>
@@ -265,12 +275,28 @@ export default function Develop() {
         <div className="flex-1 bg-white flex flex-col">
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Code Editor</h2>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {viewMode === 'preview' ? 'App Preview' : 'Code Editor'}
+              </h2>
               <div className="flex space-x-2">
-                <button className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors">
+                <button 
+                  onClick={() => setViewMode('preview')}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    viewMode === 'preview' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
                   Preview
                 </button>
-                <button className="px-3 py-1 text-sm bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 transition-colors">
+                <button 
+                  onClick={() => setViewMode('code')}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    viewMode === 'code' 
+                      ? 'bg-purple-100 text-purple-700' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
                   Code
                 </button>
               </div>
@@ -278,15 +304,33 @@ export default function Develop() {
           </div>
 
           {/* Code/Preview Area */}
-          <div className="flex-1 p-4 overflow-auto">
-            <div className="h-full bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
-              <div className="text-center text-gray-500">
-                <CodeBracketIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <h3 className="text-lg font-medium mb-2">Ready to Code</h3>
-                <p className="text-sm">Your AI developer will generate code here</p>
-                <p className="text-xs text-gray-400 mt-1">Start by describing your project in the chat</p>
+          <div className="flex-1 overflow-hidden">
+            {viewMode === 'preview' ? (
+              <PreviewPane 
+                appId={appId} 
+                port={app?.port}
+                onRetry={() => {
+                  // Optionally refresh app data when retrying
+                  if (appId && app) {
+                    fetch(`http://localhost:4000/apps/${appId}`)
+                      .then(res => res.json())
+                      .then(data => setApp(data.app))
+                      .catch(console.error)
+                  }
+                }}
+              />
+            ) : (
+              <div className="h-full p-4">
+                <div className="h-full bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
+                  <div className="text-center text-gray-500">
+                    <CodeBracketIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                    <h3 className="text-lg font-medium mb-2">Ready to Code</h3>
+                    <p className="text-sm">Your AI developer will generate code here</p>
+                    <p className="text-xs text-gray-400 mt-1">Start by describing your project in the chat</p>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

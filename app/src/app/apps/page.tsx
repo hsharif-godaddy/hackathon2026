@@ -13,6 +13,7 @@ import {
 interface App {
   id: string
   name: string
+  port: number
   createdAt: string
   updatedAt: string
 }
