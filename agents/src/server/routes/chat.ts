@@ -158,11 +158,26 @@ router.post('/:agentId/chat-streaming', async (req, res, next) => {
       // Get tool definitions if the agent has tools
       const tools = agent.getTools().length > 0 ? getToolDefinitions() : undefined;
       
+      // Get the agent's model configuration
+      const agentConfig = agent.getConfig();
+      const model = agentConfig.model;
+      
+      globalTracer.trace({
+        type: 'debug',
+        agentId,
+        threadId: context.threadId,
+        data: {
+          message: 'Using model configuration',
+          agentModel: model,
+          agentId,
+        },
+      });
+      
       // Use non-streaming for function calls, streaming for regular responses
       if (tools) {
-        await handleWithFunctionCalls(llmService, { messages, tools }, context, agent, res);
+        await handleWithFunctionCalls(llmService, { messages, tools, model }, context, agent, res);
       } else {
-        await handleStreaming(llmService, { messages }, context, res);
+        await handleStreaming(llmService, { messages, model }, context, res);
       }
       
     } catch (llmError) {
