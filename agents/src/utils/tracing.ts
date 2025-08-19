@@ -5,7 +5,7 @@
 export interface TraceEvent {
   id: string;
   timestamp: Date;
-  type: 'request' | 'response' | 'error' | 'debug' | 'tool_call';
+  type: 'request' | 'response' | 'error' | 'debug' | 'tool_call' | 'websocket';
   agentId?: string | undefined;
   threadId?: string | undefined;
   data: Record<string, unknown>;
@@ -46,6 +46,7 @@ export class Tracer {
       case 'request':
       case 'response':
       case 'tool_call':
+      case 'websocket':
         return 'log';
       default:
         return 'log';
