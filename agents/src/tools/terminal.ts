@@ -96,6 +96,21 @@ export class TerminalTool {
       env = {},
     } = options;
 
+    // Check if this is a noop command (like npm run dev)
+    if (this.isNoopCommand(command)) {
+      const executionTime = Date.now() - startTime;
+      return {
+        command,
+        workingDir: workingDir || '.',
+        exitCode: 0,
+        stdout: 'Development server is already running and watching for changes. No action needed.',
+        stderr: '',
+        success: true,
+        executionTime,
+        timedOut: false,
+      };
+    }
+
     // Validate command safety
     this.validateCommand(command);
 
@@ -165,6 +180,27 @@ export class TerminalTool {
     if (command.length > 1000) {
       throw new Error('Command is too long (max 1000 characters)');
     }
+  }
+
+  /**
+   * Check if the command should be treated as a noop
+   */
+  private isNoopCommand(command: string): boolean {
+    const trimmedCommand = command.trim().toLowerCase();
+    
+    // Commands that should be noops because dev server is already running
+    const noopCommands = [
+      'npm run dev',
+      'npm start',
+      'yarn dev',
+      'yarn start',
+      'pnpm dev',
+      'pnpm start',
+      'bun dev',
+      'bun start'
+    ];
+
+    return noopCommands.some(noop => trimmedCommand === noop || trimmedCommand.startsWith(noop + ' '));
   }
 
   /**

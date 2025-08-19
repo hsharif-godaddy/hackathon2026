@@ -102,8 +102,8 @@ export class LLMService {
       const completion = await this.openai.chat.completions.create({
         model,
         messages: request.messages,
-        temperature: request.temperature ?? 0.7,
-        max_tokens: request.maxTokens ?? 4000,
+        temperature: request.temperature ?? 0.5,
+        max_tokens: request.maxTokens ?? 16000,
         stream: false,
         ...(request.tools ? { tools: request.tools } : {}),
       });

@@ -416,12 +416,21 @@ async function handleWithFunctionCallsWS(
 ): Promise<void> {
   const messages = [...request.messages];
   let functionCallCount = 0;
-  const maxFunctionCalls = 25; // Prevent infinite loops
+  const maxFunctionCalls = 50; // Prevent infinite loops
 
   while (functionCallCount < maxFunctionCalls) {
     const response = await llmService.complete(request, context);
 
     if (response.tool_calls && response.tool_calls.length > 0) {
+      // Send assistant content if present (LLM's reasoning/context)
+      if (response.content) {
+        ws.send(JSON.stringify({
+          type: 'content',
+          content: response.content + '\n\n',
+          isComplete: false,
+        }));
+      }
+
       // Add assistant message with tool calls
       messages.push({
         role: 'assistant',

@@ -51,6 +51,7 @@ You have access to powerful development tools:
   - `git status` - Check git status
   - `ls -la` - List files with details
 - **Usage**: Use for development tasks that require command-line execution
+- **IMPORTANT**: Never run `npm run dev` or `npm start` - there is already a development server running and watching for file changes automatically
 
 ### File Edit Tool
 - **Function**: `file_edit` - Edit, create, or rewrite files with intelligent mode detection
