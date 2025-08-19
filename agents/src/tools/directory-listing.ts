@@ -15,6 +15,10 @@ export interface DirectoryListingOptions {
   maxDepth?: number;
   /** Show hidden files/directories (starting with .) */
   showHidden?: boolean;
+  /** Additional patterns to ignore (added to default ignores) */
+  ignorePatterns?: string[];
+  /** Disable default ignore patterns */
+  disableDefaultIgnores?: boolean;
 }
 
 export interface DirectoryEntry {
@@ -57,6 +61,48 @@ export class DirectoryListingTool {
   private readonly MAX_ENTRIES = 1000; // Prevent overwhelming responses
   
   /**
+   * Default patterns to ignore during directory traversal
+   */
+  private readonly DEFAULT_IGNORE_PATTERNS = [
+    'node_modules',
+    '.git',
+    '.svn',
+    '.hg',
+    'dist',
+    'build',
+    'out',
+    'target',
+    '.next',
+    '.nuxt',
+    '.vscode',
+    '.idea',
+    '*.log',
+    'npm-debug.log*',
+    'yarn-debug.log*',
+    'yarn-error.log*',
+    '.DS_Store',
+    'Thumbs.db',
+    '*.tmp',
+    '*.temp',
+    '.cache',
+    '.parcel-cache',
+    'coverage',
+    '.coverage',
+    '.nyc_output',
+    '__pycache__',
+    '*.pyc',
+    '*.pyo',
+    '*.pyd',
+    '.pytest_cache',
+    '.mypy_cache',
+    '.tox',
+    'venv',
+    'env',
+    '.env.local',
+    '.env.*.local'
+  ];
+  
+  /**
    * List directory contents as a tree structure
    */
   async listDirectory(
@@ -70,10 +116,17 @@ export class DirectoryListingTool {
       search,
       maxDepth = Infinity,
       showHidden = false,
+      ignorePatterns = [],
+      disableDefaultIgnores = false,
     } = options;
 
     // Construct the target path, ensuring it's within the app directory
     const targetPath = this.resolveSafePath(appPath, relativePath);
+    
+    // Combine default ignores with user-provided ignores
+    const allIgnorePatterns = disableDefaultIgnores 
+      ? ignorePatterns 
+      : [...this.DEFAULT_IGNORE_PATTERNS, ...ignorePatterns];
     
     const result: DirectoryTreeResult = {
       rootPath: relative(appPath, targetPath) || '.',
@@ -95,7 +148,8 @@ export class DirectoryListingTool {
         directoriesOnly,
         pattern,
         search,
-        showHidden
+        showHidden,
+        allIgnorePatterns
       );
     } catch (error) {
       result.errors.push(`Failed to read directory: ${error instanceof Error ? error.message : String(error)}`);
@@ -116,7 +170,8 @@ export class DirectoryListingTool {
     directoriesOnly: boolean,
     pattern?: string,
     search?: string,
-    showHidden: boolean = false
+    showHidden: boolean = false,
+    ignorePatterns: string[] = []
   ): Promise<void> {
     if (depth > maxDepth || result.entries.length >= this.MAX_ENTRIES) {
       if (result.entries.length >= this.MAX_ENTRIES) {
@@ -139,6 +194,11 @@ export class DirectoryListingTool {
 
         // Skip hidden files/directories unless explicitly requested
         if (!showHidden && entry.startsWith('.')) {
+          continue;
+        }
+
+        // Skip entries matching ignore patterns
+        if (this.shouldIgnore(entry, ignorePatterns)) {
           continue;
         }
 
@@ -185,7 +245,8 @@ export class DirectoryListingTool {
               directoriesOnly,
               pattern,
               search,
-              showHidden
+              showHidden,
+              ignorePatterns
             );
           } else {
             result.fileCount++;
@@ -208,6 +269,13 @@ export class DirectoryListingTool {
       'i'
     );
     return regex.test(filename);
+  }
+
+  /**
+   * Check if an entry should be ignored based on ignore patterns
+   */
+  private shouldIgnore(entryName: string, ignorePatterns: string[]): boolean {
+    return ignorePatterns.some(pattern => this.matchesPattern(entryName, pattern));
   }
 
   /**
