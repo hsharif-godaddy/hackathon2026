@@ -13,6 +13,7 @@ import {
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
 import { Message, PlanItem } from '@/app/develop/components/types'
+import { handleSendMessage as sendMessage, cleanup as cleanupMessageService } from '@/app/develop/components/messageService'
 
 interface App {
   id: string
@@ -60,133 +61,23 @@ export default function Develop() {
   }, [appId])
 
   const handleSendMessage = useCallback(async (messageContent?: string) => {
-    const content = messageContent || inputValue.trim()
-    if (!content || isLoading) return
-
-    const userMessage: Message = {
-      id: Date.now(),
-      sender: 'user',
-      content,
-      timestamp: new Date()
-    }
-
-    setMessages(prev => [...prev, userMessage])
-    setInputValue('')
-    setIsLoading(true)
-
-    // Create agent message outside try block so it's accessible in catch
-    let agentMessageContent = ''
-    const agentMessage: Message = {
-      id: Date.now() + 1,
-      sender: 'agent',
-      content: '',
-      timestamp: new Date(),
-      isThinking: true
-    }
-
-    // Add thinking message that we'll update
-    setMessages(prev => [...prev, agentMessage])
-
-    // Throttling for smooth updates without overwhelming React
-    let lastUpdateTime = 0
-    const updateThrottleMs = 16 // ~60fps
-
-    try {
-      const response = await fetch('http://localhost:4000/agent/develop/chat-streaming', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          message: content,
-          appId: appId // Include app ID in the request
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (!reader) {
-        throw new Error('Failed to get response reader')
-      }
-
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const chunk = decoder.decode(value)
-        buffer += chunk
-
-        // Split on double newlines to separate SSE events
-        const events = buffer.split('\n\n')
-        
-        // Keep the last incomplete event in the buffer
-        buffer = events.pop() || ''
-
-        // TODO streaming rendering is not working as expected, need to fix it
-        for (const event of events) {
-          const lines = event.split('\n')
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6))
-                if (data.content) {
-                  agentMessageContent += data.content
-                  // Throttle updates to ~60fps for smooth streaming without overwhelming React
-                  const now = Date.now()
-                  const timeSinceLastUpdate = now - lastUpdateTime
-
-                  if (timeSinceLastUpdate >= updateThrottleMs) {
-                    lastUpdateTime = now                    // Update the agent message content and turn off thinking state
-                    setMessages(prev => 
-                      prev.map(msg => 
-                        msg.id === agentMessage.id 
-                          ? { ...msg, content: agentMessageContent, isThinking: false }
-                          : msg
-                      )
-                    )
-                  }
-                }
-              } catch (error) {
-                console.warn('Failed to parse SSE data:', line, error)
-              }
-            }
-          }
-        }
-      }
-      
-      // Ensure final update with complete content
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === agentMessage.id 
-            ? { ...msg, content: agentMessageContent, isThinking: false }
-            : msg
-        )
-      )
-    } catch (error) {
-      console.error('Error sending message:', error)
-      // Turn off thinking state for the current message and show error
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === agentMessage.id 
-            ? { 
-                ...msg, 
-                content: 'Sorry, I encountered an error. Please make sure the agents server is running on localhost:4000.',
-                isThinking: false 
-              }
-            : msg
-        )
-      )
-    } finally {
-      setIsLoading(false)
-    }
+    await sendMessage({
+      messageContent,
+      inputValue,
+      isLoading,
+      appId,
+      setMessages,
+      setInputValue,
+      setIsLoading
+    })
   }, [inputValue, isLoading, appId])
+
+  // Cleanup SSE connections on unmount
+  useEffect(() => {
+    return () => {
+      cleanupMessageService()
+    }
+  }, [])
 
   // Handle initial message from URL parameter
   useEffect(() => {

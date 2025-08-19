@@ -2,9 +2,11 @@ import express from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
 import dotenv from 'dotenv';
+import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter } from './routes/index.js';
+import { createWebSocketServer } from './routes/websocket.js';
 import { AgentRegistry } from '../registry/index.js';
 import { ExampleAgent, DevelopAgent, FakeEventsAgent } from '../agents/index.js';
 import { getDatabase } from '../database/index.js';
@@ -15,6 +17,9 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
+
+// Create HTTP server to support both Express and WebSocket
+const server = createServer(app);
 
 // Security middleware
 app.use(helmet());
@@ -50,6 +55,7 @@ app.get('/', (req, res) => {
       appDetails: '/apps/{app-id}',
       chat: '/agent/{agent-id}/chat',
       chatStreaming: '/agent/{agent-id}/chat-streaming',
+      websocketChat: 'ws://localhost:4000/ws/{agent-id}',
     },
     documentation: 'See README.md for detailed API documentation',
   });
@@ -91,8 +97,13 @@ async function initialize() {
     
     console.log('✅ Agent registry initialized');
     
+    // Setup WebSocket server
+    console.log('🔌 Setting up WebSocket server...');
+    const wss = createWebSocketServer(server);
+    console.log('✅ WebSocket server initialized');
+    
     // Start server
-    app.listen(port, () => {
+    server.listen(port, () => {
       console.log(`🌐 Server running on http://localhost:${port}`);
       console.log(`📊 Health check: http://localhost:${port}/health`);
       console.log(`🤖 Agents list: http://localhost:${port}/agents`);
@@ -107,6 +118,7 @@ async function initialize() {
       console.log(`  DELETE /apps/{id} - Delete app`);
       console.log(`  POST /agent/{id}/chat - Chat with agent`);
       console.log(`  POST /agent/{id}/chat-streaming - Streaming chat`);
+      console.log(`  WS   /ws/{id} - WebSocket chat with agent`);
       console.log(`  GET  /health - Health check`);
     });
     
@@ -159,4 +171,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   initialize();
 }
 
-export { app, initialize, shutdown };
+export { app, server, initialize, shutdown };

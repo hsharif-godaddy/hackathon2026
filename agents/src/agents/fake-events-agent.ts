@@ -40,22 +40,21 @@ export class FakeEventsAgent extends BaseAgent {
     if (!this._config.id) {
       throw new Error('Agent must have an id');
     }
-    
+
     if (!this._config.name) {
       throw new Error('Agent must have a name');
     }
-    
+
     // Validate that system prompt can be loaded
     try {
       await this.getSystemPrompt();
     } catch (error) {
       throw new Error(
-        `System prompt validation failed: ${
-          error instanceof Error ? error.message : String(error)
+        `System prompt validation failed: ${error instanceof Error ? error.message : String(error)
         }`
       );
     }
-    
+
     // Skip tool validation for this special agent
     // Call our custom validation
     await this.customValidation();
@@ -105,82 +104,20 @@ export class FakeEventsAgent extends BaseAgent {
     for (let i = 1; i <= 10; i++) {
       await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
 
-      const eventType = eventTypes[i % eventTypes.length];
       let eventData: any;
 
-      switch (eventType) {
-        case 'status':
-          eventData = {
-            type: 'status',
-            status: 'processing',
-            message: statusMessages[i % statusMessages.length],
-            step: i,
-            total: 10
-          };
-          break;
+      eventData = {
+        type: 'content',
+        content: contentChunks[i - 1] || `Fake content chunk ${i}`,
+        isComplete: i === 10
+      };
 
-        case 'content':
-          eventData = {
-            type: 'content',
-            content: contentChunks[i - 1] || `Fake content chunk ${i}`,
-            isComplete: i === 10
-          };
-          break;
-
-        case 'tool_result':
-          eventData = {
-            type: 'tool_result',
-            tool_name: `fake_tool_${i}`,
-            tool_result: `Fake tool result ${i}: { "data": "simulated", "count": ${i}, "timestamp": "${new Date().toISOString()}" }`
-          };
-          break;
-
-        case 'metadata':
-          eventData = {
-            type: 'metadata',
-            step: i,
-            progress: Math.round((i / 10) * 100),
-            model: 'fake-model-v1',
-            tokens_used: i * 50
-          };
-          break;
-
-        case 'progress':
-          eventData = {
-            type: 'progress',
-            current: i,
-            total: 10,
-            percentage: Math.round((i / 10) * 100),
-            message: `Processing step ${i} of 10`
-          };
-          break;
-
-        case 'debug':
-          eventData = {
-            type: 'debug',
-            level: 'info',
-            message: `Debug event ${i}: Fake debugging information`,
-            timestamp: new Date().toISOString(),
-            context: {
-              threadId: context.threadId,
-              userId: context.userId,
-              step: i
-            }
-          };
-          break;
-
-        default:
-          eventData = {
-            type: 'generic',
-            message: `Fake event ${i}`,
-            data: { eventNumber: i, timestamp: new Date().toISOString() }
-          };
-      }
 
       // Send the fake event
       res.write(`data: ${JSON.stringify(eventData)}\n\n`);
-      console.log(`📡 Sent fake event ${i}/10:`, eventType);
+      console.log(`📡 Sent fake event ${i}/10:`);
     }
+
 
     // Send final completion event
     res.write(`data: ${JSON.stringify({
@@ -190,5 +127,46 @@ export class FakeEventsAgent extends BaseAgent {
     })}\n\n`);
 
     console.log('🎉 Fake events sequence completed');
+  }
+
+  /**
+   * Generate fake WebSocket events for debugging
+   */
+  async generateFakeEventsWS(ws: any, context: AgentExecutionContext): Promise<void> {
+    const contentChunks = [
+      'This is the first chunk of fake WebSocket content. ',
+      'Here comes some more simulated text data via WebSocket. ',
+      'Adding additional content to test WebSocket streaming. ',
+      'More fake content for WebSocket debugging purposes. ',
+      'Continuing with the stream of fake WebSocket data. ',
+      'Almost done with the fake WebSocket content generation. ',
+      'Testing different types of WebSocket content chunks. ',
+      'Simulating a realistic WebSocket conversation flow. ',
+      'Final bits of fake WebSocket content coming through. ',
+      'Last chunk of fake WebSocket content for testing. '
+    ];
+
+    for (let i = 1; i <= 10; i++) {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+
+      const eventData = {
+        type: 'content',
+        content: contentChunks[i - 1] || `Fake WebSocket content chunk ${i}`,
+        isComplete: i === 10
+      };
+
+      // Send the fake event via WebSocket
+      ws.send(JSON.stringify(eventData));
+      console.log(`📡 Sent fake WebSocket event ${i}/10:`);
+    }
+
+    // Send final completion event
+    ws.send(JSON.stringify({
+      type: 'content',
+      content: '\n\n✅ Fake WebSocket events debugging complete! All 10 events have been sent.',
+      isComplete: true
+    }));
+
+    console.log('🎉 Fake WebSocket events sequence completed');
   }
 }
