@@ -12,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline'
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
+import CodeEditor from '@/app/develop/components/CodeEditor'
 import { Message, PlanItem } from '@/app/develop/components/types'
 import { 
   handleSendMessage as sendMessage, 
@@ -44,6 +45,7 @@ export default function Develop() {
   const [isSelectMode, setIsSelectMode] = useState(false)
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
   const [isRestarting, setIsRestarting] = useState(false)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
@@ -130,6 +132,20 @@ export default function Develop() {
     }
   }, [])
 
+  // Warn user before leaving page with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        event.preventDefault()
+        event.returnValue = 'You have unsaved changes. Are you sure you want to leave?'
+        return 'You have unsaved changes. Are you sure you want to leave?'
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges])
+
   // Handle initial message from URL parameter
   useEffect(() => {
     const message = searchParams.get('message')
@@ -201,6 +217,16 @@ export default function Develop() {
     } finally {
       setIsRestarting(false)
     }
+  }
+
+  const handleViewModeChange = (newMode: 'preview' | 'code') => {
+    if (hasUnsavedChanges && viewMode === 'code' && newMode === 'preview') {
+      const confirmed = window.confirm(
+        'You have unsaved changes in the code editor. Switching to preview will keep your changes, but they won\'t be reflected in the preview until saved. Continue?'
+      )
+      if (!confirmed) return
+    }
+    setViewMode(newMode)
   }
 
   return (
@@ -281,12 +307,17 @@ export default function Develop() {
         <div className="flex-1 bg-white flex flex-col">
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center">
                 {viewMode === 'preview' ? 'App Preview' : 'Code Editor'}
+                {viewMode === 'code' && hasUnsavedChanges && (
+                  <span className="ml-2 text-sm text-orange-600 font-normal">
+                    • Unsaved changes
+                  </span>
+                )}
               </h2>
               <div className="flex space-x-2">
                 <button 
-                  onClick={() => setViewMode('preview')}
+                  onClick={() => handleViewModeChange('preview')}
                   className={`px-3 py-1 text-sm rounded-md transition-colors ${
                     viewMode === 'preview' 
                       ? 'bg-blue-100 text-blue-700' 
@@ -296,22 +327,26 @@ export default function Develop() {
                   Preview
                 </button>
                 <button 
-                  onClick={() => setViewMode('code')}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  onClick={() => handleViewModeChange('code')}
+                  className={`flex items-center px-3 py-1 text-sm rounded-md transition-colors ${
                     viewMode === 'code' 
                       ? 'bg-purple-100 text-purple-700' 
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
                   Code
+                  {hasUnsavedChanges && (
+                    <div className="w-2 h-2 bg-orange-500 rounded-full ml-2" title="Unsaved changes" />
+                  )}
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Code/Preview Area */}
-          <div className="flex-1 overflow-hidden">
-            {viewMode === 'preview' ? (
+          {/* Code/Preview Area - Keep both mounted to preserve state */}
+          <div className="flex-1 overflow-hidden relative">
+            {/* Preview Pane */}
+            <div className={`absolute inset-0 ${viewMode === 'preview' ? 'block' : 'hidden'}`}>
               <PreviewPane 
                 appId={appId} 
                 port={app?.port}
@@ -325,18 +360,15 @@ export default function Develop() {
                   }
                 }}
               />
-            ) : (
-              <div className="h-full p-4">
-                <div className="h-full bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
-                  <div className="text-center text-gray-500">
-                    <CodeBracketIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                    <h3 className="text-lg font-medium mb-2">Ready to Code</h3>
-                    <p className="text-sm">Your AI developer will generate code here</p>
-                    <p className="text-xs text-gray-400 mt-1">Start by describing your project in the chat</p>
-                  </div>
-                </div>
-              </div>
-            )}
+            </div>
+
+            {/* Code Editor */}
+            <div className={`absolute inset-0 ${viewMode === 'code' ? 'block' : 'hidden'}`}>
+              <CodeEditor 
+                appId={appId} 
+                onUnsavedChanges={setHasUnsavedChanges}
+              />
+            </div>
           </div>
         </div>
       </div>

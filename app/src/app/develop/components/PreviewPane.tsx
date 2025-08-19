@@ -84,6 +84,24 @@ export default function PreviewPane({ appId, port, onRetry }: PreviewPaneProps) 
     }
   }, [serverStatus.isRunning, retryCount, maxRetries]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Listen for file save events to auto-refresh preview
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'file-saved' && serverStatus.isRunning) {
+        // Debounce refreshes to avoid too many reloads
+        setTimeout(() => {
+          const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
+          if (iframe) {
+            iframe.src = iframe.src
+          }
+        }, 1000)
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [serverStatus.isRunning])
+
   // Initial check
   useEffect(() => {
     checkServerStatus()

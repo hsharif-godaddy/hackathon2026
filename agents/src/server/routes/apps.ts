@@ -1,9 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { AppRepository } from '../../database/index.js';
 import type { CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
+import { DirectoryListingTool } from '../../tools/directory-listing.js';
+import { ReadFileTool } from '../../tools/read-file.js';
+import { FileEditTool } from '../../tools/file-edit.js';
 
 const router = Router();
 const appRepo = new AppRepository();
+const directoryTool = new DirectoryListingTool();
+const readFileTool = new ReadFileTool();
+const fileEditTool = new FileEditTool();
 
 /**
  * GET /apps - List all apps
@@ -223,6 +229,147 @@ router.post('/cleanup-orphans', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error cleaning up orphans:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /apps/:id/files - List files in app directory
+ */
+router.get('/:id/files', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { path, maxDepth } = req.query;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const result = await directoryTool.listDirectory(app.path, {
+      path: path as string,
+      maxDepth: maxDepth ? parseInt(maxDepth as string) : 3,
+      showHidden: false
+    });
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error listing files:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /apps/:id/files/read - Read file content
+ */
+router.get('/:id/files/read', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { path: filePath } = req.query;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    if (!filePath) {
+      return res.status(400).json({ error: 'File path is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const result = await readFileTool.readFile({ path: filePath as string }, app.path);
+    
+    if (!result.success) {
+      return res.status(404).json({ error: result.error });
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error reading file:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/:id/files/write - Write file content
+ */
+router.post('/:id/files/write', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { path: filePath, content, mode } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    if (!filePath || content === undefined) {
+      return res.status(400).json({ error: 'File path and content are required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const result = await fileEditTool.editFile(app.path, {
+      path: filePath,
+      content: content,
+      mode: mode || 'rewrite',
+      createDirs: true
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error writing file:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/:id/files/edit - Edit file with partial changes
+ */
+router.post('/:id/files/edit', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { path: filePath, edits } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    if (!filePath || !edits || !Array.isArray(edits)) {
+      return res.status(400).json({ error: 'File path and edits array are required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const result = await fileEditTool.editFile(app.path, {
+      path: filePath,
+      mode: 'edit',
+      edits: edits
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error editing file:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
