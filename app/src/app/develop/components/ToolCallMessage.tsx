@@ -137,8 +137,8 @@ export default function ToolCallMessage({
             {getToolIcon(toolName)}
             {getStatusIcon()}
           </div>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-700">
+          <div className="flex items-center space-x-2 overflow-hidden">
+            <span className="text-sm text-gray-700 truncate">
               {getToolDisplayName(toolName)}
               {filename && (
                 <span className="text-xs text-gray-500 ml-1 font-mono">
@@ -147,13 +147,8 @@ export default function ToolCallMessage({
               )}
             </span>
             {toolStatus === 'running' && (
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-gray-500 flex-shrink-0">
                 executing...
-              </span>
-            )}
-            {toolStatus !== 'running' && duration && (
-              <span className="text-xs text-gray-500">
-                {formatDuration(duration)}
               </span>
             )}
           </div>
@@ -179,6 +174,13 @@ export default function ToolCallMessage({
       {/* Expandable content */}
       {isExpanded && hasOutput && (
         <div className="ml-6 mt-2 space-y-2">
+          {/* Duration (only shown when expanded) */}
+          {duration && (
+            <div className="text-xs text-gray-500">
+              Duration: {formatDuration(duration)}
+            </div>
+          )}
+          
           {/* Tool arguments (if available) */}
           {toolArgs && (
             <div>

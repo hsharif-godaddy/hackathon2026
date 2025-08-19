@@ -18,22 +18,7 @@ export default function Message({ message }: MessageProps) {
   return (
     <div className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'} w-full`}>
       <div className={`max-w-xs w-full ${message.sender === 'user' ? 'order-2' : 'order-1'}`}>
-        <div className={`flex items-start space-x-2 ${message.sender === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-          <div 
-            className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-              message.sender === 'user' 
-                ? 'bg-purple-600' 
-                : 'bg-gradient-to-r from-green-100 to-emerald-100'
-            }`}
-            title={message.timestamp.toLocaleString()}
-          >
-            {message.sender === 'user' ? (
-              <span className="text-white text-sm font-medium">U</span>
-            ) : (
-              <SparklesIcon className="w-4 h-4 text-green-600" />
-            )}
-          </div>
-          <div className={`flex-1 min-w-0 ${message.sender === 'user' ? 'text-right' : ''}`}>
+        <div className={`${message.sender === 'user' ? 'text-right' : ''}`}>
             <div className={`inline-block p-2 rounded-lg max-w-full ${
               message.type === 'status' || message.type === 'tool_result' || message.type === 'tool_call' || message.type === 'complete'
                 ? 'bg-transparent p-0'
@@ -110,7 +95,6 @@ export default function Message({ message }: MessageProps) {
                 </div>
               )}
             </div>
-          </div>
         </div>
       </div>
     </div>
