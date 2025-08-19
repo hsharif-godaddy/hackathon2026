@@ -1,4 +1,4 @@
-import { Message } from './types'
+import { Message, ToolCall } from './types'
 
 /**
  * Message Service using WebSocket for real-time bidirectional communication
@@ -124,7 +124,10 @@ export const handleSendMessage = async ({
     sender: 'agent',
     content: '',
     timestamp: new Date(),
-    isThinking: true
+    isThinking: true,
+    tool_calls: [],
+    response_start_time: Date.now(),
+    is_complete: false
   }
 
   // Add thinking message that we'll update
@@ -210,7 +213,17 @@ function handleWebSocketMessage(
       
     case 'status':
       console.log('WebSocket Status:', data.status, data.message)
-      // Could update UI to show status if needed
+      // Add status message to the message list
+      const statusMessage: Message = {
+        id: Date.now() + Math.random(),
+        sender: 'agent',
+        content: data.message || '',
+        timestamp: new Date(),
+        type: 'status',
+        status: data.status,
+        message: data.message
+      }
+      setMessages(prev => [...prev, statusMessage])
       break
       
     case 'content':
@@ -234,9 +247,69 @@ function handleWebSocketMessage(
       }
       break
       
+    case 'tool_start':
+      console.log('Tool Start:', data.tool_name)
+      // Add tool call to the main agent message's tool_calls array
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === agentMessage.id 
+            ? {
+                ...msg,
+                tool_calls: [
+                  ...(msg.tool_calls || []),
+                  {
+                    id: data.tool_call_id,
+                    tool_name: data.tool_name,
+                    tool_args: data.tool_args,
+                    start_time: data.start_time,
+                    status: 'running' as const
+                  }
+                ]
+              }
+            : msg
+        )
+      )
+      break
+      
+    case 'tool_complete':
+      console.log('Tool Complete:', data.tool_name, data.status)
+      // Update the specific tool call in the main agent message
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === agentMessage.id 
+            ? {
+                ...msg,
+                tool_calls: (msg.tool_calls || []).map(toolCall =>
+                  toolCall.id === data.tool_call_id
+                    ? {
+                        ...toolCall,
+                        tool_result: data.tool_result,
+                        error: data.error,
+                        end_time: data.end_time,
+                        duration_ms: data.duration_ms,
+                        status: data.status as 'success' | 'error'
+                      }
+                    : toolCall
+                )
+              }
+            : msg
+        )
+      )
+      break
+      
     case 'tool_result':
-      console.log('Tool Result:', data.tool_name, data.tool_result)
-      // Could display tool results in UI if needed
+      console.log('Tool Result (legacy):', data.tool_name, data.tool_result)
+      // Keep for backward compatibility - this shouldn't be used with new tool_start/tool_complete flow
+      const toolResultMessage: Message = {
+        id: Date.now() + Math.random(),
+        sender: 'agent',
+        content: data.tool_result || '',
+        timestamp: new Date(),
+        type: 'tool_result',
+        tool_name: data.tool_name,
+        tool_result: data.tool_result
+      }
+      setMessages(prev => [...prev, toolResultMessage])
       break
       
     case 'tool_error':
@@ -245,20 +318,46 @@ function handleWebSocketMessage(
       
     case 'complete':
       console.log('WebSocket Complete:', data)
-      // Ensure final update with complete content
+      // Mark the main agent message as complete with final content and duration
       setMessages(prev => 
         prev.map(msg => 
           msg.id === agentMessage.id 
-            ? { ...msg, content: agentMessageContent, isThinking: false }
+            ? { 
+                ...msg, 
+                content: agentMessageContent, 
+                isThinking: false,
+                is_complete: true,
+                response_start_time: data.start_time,
+                response_end_time: data.end_time,
+                response_duration_ms: data.duration_ms
+              }
             : msg
         )
       )
+      
       setIsLoading(false)
       break
       
     case 'error':
       console.error('WebSocket Error:', data.error)
-      handleWebSocketError(agentMessage, setMessages)
+      // Update the main agent message with error state
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === agentMessage.id 
+            ? { 
+                ...msg, 
+                content: `Sorry, I encountered an error. Please make sure the agents server is running on localhost:4000 and WebSocket connections are supported.`,
+                isThinking: false,
+                is_complete: true,
+                error: data.error,
+                response_start_time: data.start_time,
+                response_end_time: data.end_time,
+                response_duration_ms: data.duration_ms
+              }
+            : msg
+        )
+      )
+      
       setIsLoading(false)
       break
       

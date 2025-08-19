@@ -25,7 +25,7 @@ interface WSChatRequest {
 }
 
 interface WSMessage {
-  type: 'metadata' | 'status' | 'content' | 'tool_result' | 'tool_error' | 'complete' | 'error';
+  type: 'metadata' | 'status' | 'content' | 'tool_start' | 'tool_complete' | 'tool_result' | 'tool_error' | 'complete' | 'error';
   [key: string]: any;
 }
 
@@ -123,6 +123,9 @@ export function createWebSocketServer(server: any) {
  * Handle chat message via WebSocket
  */
 async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WSChatRequest) {
+  // Track start time for duration calculation
+  let agentStartTime: number | undefined;
+  
   try {
     globalTracer.trace({
       type: 'websocket',
@@ -283,12 +286,8 @@ async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WS
       return; // Exit early, don't continue with normal LLM processing
     }
     
-    // Send thinking status
-    ws.send(JSON.stringify({
-      type: 'status',
-      status: 'thinking',
-      message: 'Agent is processing your request...',
-    }));
+    // Set start time for duration calculation
+    agentStartTime = Date.now();
     
     try {
       // Use actual LLM service
@@ -354,11 +353,17 @@ async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WS
       }));
     }
     
-    // Send completion signal
+    // Send completion signal with duration
+    const agentEndTime = Date.now();
+    const totalDuration = agentEndTime - agentStartTime;
+    
     ws.send(JSON.stringify({
       type: 'complete',
       threadId: context.threadId,
       timestamp: new Date().toISOString(),
+      start_time: agentStartTime,
+      end_time: agentEndTime,
+      duration_ms: totalDuration,
     }));
     
     globalTracer.trace({
@@ -381,11 +386,21 @@ async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WS
       },
     });
     
-    // Send error through WebSocket
-    ws.send(JSON.stringify({
+    // Send error through WebSocket with duration if available
+    const errorEndTime = Date.now();
+    const errorResponse: any = {
       type: 'error',
       error: error instanceof Error ? error.message : 'Unknown error',
-    }));
+    };
+    
+    // Include duration if agentStartTime was set
+    if (agentStartTime) {
+      errorResponse.duration_ms = errorEndTime - agentStartTime;
+      errorResponse.start_time = agentStartTime;
+      errorResponse.end_time = errorEndTime;
+    }
+    
+    ws.send(JSON.stringify(errorResponse));
   }
 }
 
@@ -407,13 +422,6 @@ async function handleWithFunctionCallsWS(
     const response = await llmService.complete(request, context);
 
     if (response.tool_calls && response.tool_calls.length > 0) {
-      // Handle tool calls
-      ws.send(JSON.stringify({
-        type: 'status',
-        status: 'executing_tools',
-        message: `Executing ${response.tool_calls.length} tool(s)...`,
-      }));
-
       // Add assistant message with tool calls
       messages.push({
         role: 'assistant',
@@ -423,9 +431,22 @@ async function handleWithFunctionCallsWS(
 
       // Execute each tool call
       for (const toolCall of response.tool_calls) {
+        const toolStartTime = Date.now();
+        
+        // Send tool start event
+        ws.send(JSON.stringify({
+          type: 'tool_start',
+          tool_call_id: toolCall.id,
+          tool_name: toolCall.function.name,
+          tool_args: toolCall.function.arguments,
+          start_time: toolStartTime,
+        }));
+
         try {
           const args = JSON.parse(toolCall.function.arguments);
           const result = await executeToolFunction(toolCall.function.name, args, context);
+          const toolEndTime = Date.now();
+          const duration = toolEndTime - toolStartTime;
           
           // Add tool result to messages
           messages.push({
@@ -435,13 +456,21 @@ async function handleWithFunctionCallsWS(
             name: toolCall.function.name,
           });
 
+          // Send tool complete event with result and timing
           ws.send(JSON.stringify({
-            type: 'tool_result',
+            type: 'tool_complete',
+            tool_call_id: toolCall.id,
             tool_name: toolCall.function.name,
             tool_result: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+            start_time: toolStartTime,
+            end_time: toolEndTime,
+            duration_ms: duration,
+            status: 'success',
           }));
 
         } catch (error) {
+          const toolEndTime = Date.now();
+          const duration = toolEndTime - toolStartTime;
           const errorMessage = `Error executing ${toolCall.function.name}: ${error instanceof Error ? error.message : String(error)}`;
           
           messages.push({
@@ -451,10 +480,16 @@ async function handleWithFunctionCallsWS(
             name: toolCall.function.name,
           });
 
+          // Send tool complete event with error and timing
           ws.send(JSON.stringify({
-            type: 'tool_error',
+            type: 'tool_complete',
+            tool_call_id: toolCall.id,
             tool_name: toolCall.function.name,
             error: errorMessage,
+            start_time: toolStartTime,
+            end_time: toolEndTime,
+            duration_ms: duration,
+            status: 'error',
           }));
         }
       }

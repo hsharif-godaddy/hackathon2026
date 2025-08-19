@@ -4,6 +4,11 @@ import Link from 'next/link'
 import { SparklesIcon } from '@heroicons/react/24/outline'
 import { Message as MessageType } from './types'
 import MarkdownRenderer from './MarkdownRenderer'
+import StatusMessage from './StatusMessage'
+import ToolResultMessage from './ToolResultMessage'
+import ToolCallMessage from './ToolCallMessage'
+import CompletionMessage from './CompletionMessage'
+import IntegratedResponse from './IntegratedResponse'
 
 interface MessageProps {
   message: MessageType
@@ -13,12 +18,15 @@ export default function Message({ message }: MessageProps) {
   return (
     <div className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'} w-full`}>
       <div className={`max-w-xs w-full ${message.sender === 'user' ? 'order-2' : 'order-1'}`}>
-        <div className={`flex items-start space-x-3 ${message.sender === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-            message.sender === 'user' 
-              ? 'bg-purple-600' 
-              : 'bg-gradient-to-r from-green-100 to-emerald-100'
-          }`}>
+        <div className={`flex items-start space-x-2 ${message.sender === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+          <div 
+            className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+              message.sender === 'user' 
+                ? 'bg-purple-600' 
+                : 'bg-gradient-to-r from-green-100 to-emerald-100'
+            }`}
+            title={message.timestamp.toLocaleString()}
+          >
             {message.sender === 'user' ? (
               <span className="text-white text-sm font-medium">U</span>
             ) : (
@@ -26,29 +34,63 @@ export default function Message({ message }: MessageProps) {
             )}
           </div>
           <div className={`flex-1 min-w-0 ${message.sender === 'user' ? 'text-right' : ''}`}>
-            <div className={`inline-block p-3 rounded-lg max-w-full ${
-              message.sender === 'user'
+            <div className={`inline-block p-2 rounded-lg max-w-full ${
+              message.type === 'status' || message.type === 'tool_result' || message.type === 'tool_call' || message.type === 'complete'
+                ? 'bg-transparent p-0'
+                : message.sender === 'agent' && message.tool_calls !== undefined
+                ? 'bg-transparent p-0'
+                : message.sender === 'user'
                 ? 'bg-purple-600 text-white'
                 : message.handoff
                 ? 'bg-gradient-to-r from-green-50 to-indigo-50 border border-indigo-200'
                 : 'bg-gray-100 text-gray-900'
             }`}>
               <div className="overflow-hidden">
-                {message.sender === 'agent' ? (
-                  message.isThinking ? (
-                    <div className="text-sm leading-relaxed break-words flex items-center space-x-2">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                      </div>
-                      <span className="text-gray-600">AI Developer is thinking...</span>
-                    </div>
+                {message.type === 'status' ? (
+                  <StatusMessage 
+                    status={message.status || 'unknown'} 
+                    message={message.message || message.content} 
+                  />
+                ) : message.type === 'tool_call' ? (
+                  <ToolCallMessage 
+                    toolName={message.tool_name || 'unknown'} 
+                    toolStatus={message.tool_status || 'running'}
+                    duration={message.duration_ms}
+                    toolResult={message.tool_result}
+                    error={message.error}
+                    toolArgs={message.tool_args}
+                  />
+                ) : message.type === 'complete' ? (
+                  <CompletionMessage 
+                    duration={message.duration_ms || 0}
+                    error={message.error}
+                  />
+                ) : message.type === 'tool_result' ? (
+                  <ToolResultMessage 
+                    toolName={message.tool_name || 'unknown'} 
+                    toolResult={message.tool_result || message.content} 
+                  />
+                ) : message.sender === 'agent' ? (
+                  // Use integrated response for agent messages (new structure)
+                  message.tool_calls !== undefined ? (
+                    <IntegratedResponse message={message} />
                   ) : (
-                    <MarkdownRenderer 
-                      content={message.content}
-                      className="text-sm leading-relaxed break-words"
-                    />
+                    // Legacy agent message handling
+                    message.isThinking ? (
+                      <div className="text-sm leading-relaxed break-words flex items-center space-x-2">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        </div>
+                        <span className="text-gray-600">AI Developer is thinking...</span>
+                      </div>
+                    ) : (
+                      <MarkdownRenderer 
+                        content={message.content}
+                        className="text-sm leading-relaxed break-words"
+                      />
+                    )
                   )
                 ) : (
                   <p className={`text-sm ${message.handoff ? 'truncate' : 'leading-relaxed break-words'}`}>
@@ -68,9 +110,6 @@ export default function Message({ message }: MessageProps) {
                 </div>
               )}
             </div>
-            <p className="text-xs text-gray-600 mt-1 truncate">
-              {message.timestamp.toLocaleTimeString()}
-            </p>
           </div>
         </div>
       </div>

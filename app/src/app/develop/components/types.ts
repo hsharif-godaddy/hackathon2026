@@ -1,5 +1,17 @@
+export interface ToolCall {
+  id: string
+  tool_name: string
+  tool_args?: string
+  tool_result?: string
+  error?: string
+  start_time?: number
+  end_time?: number
+  duration_ms?: number
+  status: 'running' | 'success' | 'error'
+}
+
 export interface Message {
-  id: number
+  id: number | string
   sender: 'user' | 'agent'
   content: string
   timestamp: Date
@@ -9,6 +21,25 @@ export interface Message {
     action: string
     url: string
   }
+  type?: 'message' | 'status' | 'tool_result' | 'tool_call' | 'complete'
+  status?: string
+  tool_name?: string
+  tool_result?: string
+  message?: string
+  // Tool call specific fields (legacy - keeping for compatibility)
+  tool_call_id?: string
+  tool_args?: string
+  start_time?: number
+  end_time?: number
+  duration_ms?: number
+  tool_status?: 'running' | 'success' | 'error'
+  error?: string
+  // New integrated response structure
+  tool_calls?: ToolCall[]
+  response_start_time?: number
+  response_end_time?: number
+  response_duration_ms?: number
+  is_complete?: boolean
 }
 
 export interface PlanItem {

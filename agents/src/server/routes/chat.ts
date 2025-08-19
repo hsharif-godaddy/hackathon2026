@@ -194,13 +194,6 @@ router.post('/:agentId/chat-streaming', async (req, res, next) => {
       return; // Exit early, don't continue with normal LLM processing
     }
     
-    // Send thinking status
-    res.write(`data: ${JSON.stringify({
-      type: 'status',
-      status: 'thinking',
-      message: 'Agent is processing your request...',
-      })}\n\n`);
-    
     try {
       // Use actual LLM service
       const llmService = getLLMService();
@@ -407,7 +400,7 @@ async function handleWithFunctionCalls(
 ): Promise<void> {
   const messages = [...request.messages];
   let functionCallCount = 0;
-  const maxFunctionCalls = 25; // Prevent infinite loops
+  const maxFunctionCalls = 100; // Prevent infinite loops
 
   while (functionCallCount < maxFunctionCalls) {
     const response = await llmService.complete(request, context);
