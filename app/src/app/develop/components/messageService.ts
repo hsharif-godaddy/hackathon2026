@@ -1,4 +1,4 @@
-import { Message, ToolCall } from './types'
+import { Message, ToolCall, MessageSegment } from './types'
 
 /**
  * Message Service using WebSocket for real-time bidirectional communication
@@ -239,7 +239,13 @@ function handleWebSocketMessage(
           setMessages(prev => 
             prev.map(msg => 
               msg.id === agentMessage.id 
-                ? { ...msg, content: agentMessageContent, isThinking: false }
+                ? { 
+                    ...msg, 
+                    content: agentMessageContent, 
+                    isThinking: false,
+                    // Update streaming content in segments
+                    segments: updateStreamingContent(msg.segments || [], agentMessageContent)
+                  }
                 : msg
             )
           )
@@ -249,12 +255,20 @@ function handleWebSocketMessage(
       
     case 'tool_start':
       console.log('Tool Start:', data.tool_name)
-      // Add tool call to the main agent message's tool_calls array
+      
+      // When a tool starts, we need to:
+      // 1. Finalize the current content segment with whatever content we have so far
+      // 2. Add the tool call as a new segment
+      // 3. Reset agentMessageContent to start accumulating new content after the tool
+      
+      const currentContentLength = agentMessageContent.length
+      
       setMessages(prev => 
         prev.map(msg => 
           msg.id === agentMessage.id 
             ? {
                 ...msg,
+                // Keep legacy tool_calls for backward compatibility
                 tool_calls: [
                   ...(msg.tool_calls || []),
                   {
@@ -264,21 +278,37 @@ function handleWebSocketMessage(
                     start_time: data.start_time,
                     status: 'running' as const
                   }
-                ]
+                ],
+                // Add to segments for the new rendering approach
+                segments: finalizeContentAndAddTool(
+                  msg.segments || [], 
+                  agentMessageContent,
+                  {
+                    id: data.tool_call_id,
+                    tool_name: data.tool_name,
+                    tool_args: data.tool_args,
+                    start_time: data.start_time,
+                    status: 'running' as const
+                  }
+                )
               }
             : msg
         )
       )
+      
+      // Reset content to start accumulating post-tool content
+      agentMessageContent = agentMessageContent // Keep accumulating for now, but mark where tool happened
       break
       
     case 'tool_complete':
       console.log('Tool Complete:', data.tool_name, data.status)
-      // Update the specific tool call in the main agent message
+      // Update the specific tool call in both legacy and segments structures
       setMessages(prev => 
         prev.map(msg => 
           msg.id === agentMessage.id 
             ? {
                 ...msg,
+                // Update legacy tool_calls
                 tool_calls: (msg.tool_calls || []).map(toolCall =>
                   toolCall.id === data.tool_call_id
                     ? {
@@ -290,6 +320,22 @@ function handleWebSocketMessage(
                         status: data.status as 'success' | 'error'
                       }
                     : toolCall
+                ),
+                // Update segments
+                segments: (msg.segments || []).map(segment =>
+                  segment.type === 'tool_call' && segment.tool_call?.id === data.tool_call_id && segment.tool_call
+                    ? {
+                        ...segment,
+                        tool_call: {
+                          ...segment.tool_call,
+                          tool_result: data.tool_result,
+                          error: data.error,
+                          end_time: data.end_time,
+                          duration_ms: data.duration_ms,
+                          status: data.status as 'success' | 'error'
+                        }
+                      }
+                    : segment
                 )
               }
             : msg
@@ -383,4 +429,80 @@ function handleWebSocketError(
         : msg
     )
   )
+}
+
+/**
+ * Helper function to finalize current content and add a tool call segment
+ */
+function finalizeContentAndAddTool(segments: MessageSegment[], currentContent: string, toolCall: ToolCall): MessageSegment[] {
+  const newSegments = [...segments]
+  
+  // Calculate how much content has already been captured in segments
+  let capturedContentLength = 0
+  for (const segment of segments) {
+    if (segment.type === 'content' && segment.content) {
+      capturedContentLength += segment.content.length
+    }
+  }
+  
+  // Get the new content that hasn't been captured yet
+  const newContent = currentContent.slice(capturedContentLength)
+  
+  // Add new content segment if there's new content
+  if (newContent.length > 0) {
+    newSegments.push({
+      id: `content-${Date.now()}`,
+      type: 'content',
+      content: newContent,
+      timestamp: new Date()
+    })
+  }
+  
+  // Add the tool call segment
+  newSegments.push({
+    id: `tool-${toolCall.id}`,
+    type: 'tool_call',
+    tool_call: toolCall,
+    timestamp: new Date()
+  })
+  
+  return newSegments
+}
+
+/**
+ * Helper function to update streaming content in the last content segment
+ */
+function updateStreamingContent(segments: MessageSegment[], currentContent: string): MessageSegment[] {
+  const newSegments = [...segments]
+  
+  // Calculate how much content has been captured in completed segments (before tool calls)
+  let capturedContentLength = 0
+  for (const segment of segments) {
+    if (segment.type === 'content' && segment.content) {
+      capturedContentLength += segment.content.length
+    }
+  }
+  
+  // Get the new content that should be in the current streaming segment
+  const newContent = currentContent.slice(capturedContentLength)
+  
+  if (newContent.length > 0) {
+    // Find the last segment
+    const lastSegment = newSegments[newSegments.length - 1]
+    
+    if (lastSegment && lastSegment.type === 'content') {
+      // Update the existing content segment
+      lastSegment.content = newContent
+    } else {
+      // Create a new content segment
+      newSegments.push({
+        id: `content-${Date.now()}`,
+        type: 'content',
+        content: newContent,
+        timestamp: new Date()
+      })
+    }
+  }
+  
+  return newSegments
 }

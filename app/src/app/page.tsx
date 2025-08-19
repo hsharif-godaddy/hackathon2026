@@ -15,8 +15,8 @@ export default function Home() {
       prompt: "I need a modern website for my local fitness studio. We offer personal training, group classes, and nutrition coaching. I want members to be able to book classes online, view schedules, and access workout plans."
     },
     {
-      title: "Local Restaurant Landing Page",
-      prompt: "Create a landing page for my family restaurant. I need to showcase our menu, allow online reservations, display our hours and location, and highlight customer reviews. Include a photo gallery of our dishes."
+      title: "Local Food Truck Landing Page",
+      prompt: "Create a landing page for a food truck. I need to showcase our menu, display our hours and show a map with our current location."
     },
     {
       title: "Freelancer Portfolio Site",

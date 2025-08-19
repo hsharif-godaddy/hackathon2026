@@ -40,6 +40,8 @@ export default function ToolCallMessage({
       case 'file_read':
       case 'read_file':
         return <DocumentTextIcon className="w-4 h-4" />
+      case 'file_edit':
+        return <DocumentTextIcon className="w-4 h-4" />
       case 'code_search':
       case 'codebase_search':
       case 'grep_search':
@@ -60,6 +62,8 @@ export default function ToolCallMessage({
       case 'file_read':
       case 'read_file':
         return 'Read File'
+      case 'file_edit':
+        return 'File Edit'
       case 'code_search':
       case 'codebase_search':
         return 'Code Search'
@@ -101,6 +105,24 @@ export default function ToolCallMessage({
     }
   }
 
+  const getFileName = (toolName: string, args?: string) => {
+    if ((toolName === 'file_edit' || toolName === 'file_read' || toolName === 'read_file') && args) {
+      try {
+        const parsed = JSON.parse(args)
+        const fullPath = parsed.path || parsed.target_file || null
+        if (fullPath) {
+          // Extract just the filename from the path
+          return fullPath.split('/').pop() || fullPath
+        }
+        return null
+      } catch {
+        return null
+      }
+    }
+    return null
+  }
+
+  const filename = getFileName(toolName, toolArgs)
   const hasOutput = Boolean(toolResult || error)
 
   return (
@@ -118,6 +140,11 @@ export default function ToolCallMessage({
           <div className="flex items-center space-x-2">
             <span className="text-sm text-gray-700">
               {getToolDisplayName(toolName)}
+              {filename && (
+                <span className="text-xs text-gray-500 ml-1 font-mono">
+                  {filename}
+                </span>
+              )}
             </span>
             {toolStatus === 'running' && (
               <span className="text-xs text-gray-500">

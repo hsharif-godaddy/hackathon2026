@@ -10,6 +10,14 @@ export interface ToolCall {
   status: 'running' | 'success' | 'error'
 }
 
+export interface MessageSegment {
+  id: string
+  type: 'content' | 'tool_call'
+  content?: string
+  tool_call?: ToolCall
+  timestamp: Date
+}
+
 export interface Message {
   id: number | string
   sender: 'user' | 'agent'
@@ -36,6 +44,8 @@ export interface Message {
   error?: string
   // New integrated response structure
   tool_calls?: ToolCall[]
+  // New segmented structure for interleaved content and tools
+  segments?: MessageSegment[]
   response_start_time?: number
   response_end_time?: number
   response_duration_ms?: number
