@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   SparklesIcon,
@@ -13,7 +13,12 @@ import {
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
 import { Message, PlanItem } from '@/app/develop/components/types'
-import { handleSendMessage as sendMessage, cleanup as cleanupMessageService } from '@/app/develop/components/messageService'
+import { 
+  handleSendMessage as sendMessage, 
+  cleanup as cleanupMessageService,
+  loadConversations,
+  loadConversation
+} from '@/app/develop/components/messageService'
 
 interface App {
   id: string
@@ -25,11 +30,15 @@ interface App {
 
 export default function Develop() {
   const params = useParams()
+  const router = useRouter()
   const appId = params.id as string
   const [app, setApp] = useState<App | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [conversations, setConversations] = useState<any[]>([])
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true)
   const [developmentPlan] = useState<PlanItem[]>([])
   const [expandedPlan, setExpandedPlan] = useState(false)
   const [isSelectMode, setIsSelectMode] = useState(false)
@@ -60,17 +69,59 @@ export default function Develop() {
     }
   }, [appId])
 
+  // Load conversations when app is loaded
+  useEffect(() => {
+    const loadAppConversations = async () => {
+      if (!appId) return
+      
+      try {
+        setIsLoadingConversations(true)
+        const conversationList = await loadConversations(appId)
+        setConversations(conversationList)
+        
+        // Load the most recent conversation if available
+        if (conversationList.length > 0) {
+          const mostRecent = conversationList[0] // They're ordered by updated_at DESC
+          const conversationData = await loadConversation(appId, mostRecent.id)
+          
+          if (conversationData) {
+            console.log('Loaded conversation:', mostRecent.id, 'with', conversationData.messages.length, 'messages')
+            setMessages(conversationData.messages)
+            setConversationId(mostRecent.id)
+            
+            // Clear URL message parameter since we loaded existing conversation
+            if (searchParams.get('message')) {
+              const url = new URL(window.location.href)
+              url.searchParams.delete('message')
+              router.replace(url.pathname + url.search, { scroll: false })
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error loading conversations:', error)
+      } finally {
+        setIsLoadingConversations(false)
+      }
+    }
+
+    if (appId) {
+      loadAppConversations()
+    }
+  }, [appId])
+
   const handleSendMessage = useCallback(async (messageContent?: string) => {
     await sendMessage({
       messageContent,
       inputValue,
       isLoading,
       appId,
+      conversationId,
       setMessages,
       setInputValue,
-      setIsLoading
+      setIsLoading,
+      setConversationId
     })
-  }, [inputValue, isLoading, appId])
+  }, [inputValue, isLoading, appId, conversationId])
 
   // Cleanup SSE connections on unmount
   useEffect(() => {
@@ -82,19 +133,31 @@ export default function Develop() {
   // Handle initial message from URL parameter
   useEffect(() => {
     const message = searchParams.get('message')
-    if (message && !initialMessageProcessed.current) {
+    if (message && !initialMessageProcessed.current && !isLoadingConversations) {
       const decodedMessage = decodeURIComponent(message)
-      setInputValue(decodedMessage)
-      initialMessageProcessed.current = true
-      // Auto-send the message
-      setTimeout(() => {
-        handleSendMessage(decodedMessage)
-      }, 100)
-    } else if (!message && !initialMessageProcessed.current) {
+      
+      // Only auto-send if we don't have any existing conversations
+      // (i.e., this is a brand new app or we're starting fresh)
+      if (conversations.length === 0) {
+        setInputValue(decodedMessage)
+        initialMessageProcessed.current = true
+        // Auto-send the message (this will create a new conversation)
+        setTimeout(() => {
+          handleSendMessage(decodedMessage)
+          // Clear URL parameter after sending
+          const url = new URL(window.location.href)
+          url.searchParams.delete('message')
+          router.replace(url.pathname + url.search, { scroll: false })
+        }, 100)
+      } else {
+        // We have existing conversations, just mark as processed without sending
+        initialMessageProcessed.current = true
+      }
+    } else if (!message && !initialMessageProcessed.current && !isLoadingConversations) {
       setInputValue('')
       initialMessageProcessed.current = true
     }
-  }, [searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchParams, isLoadingConversations, conversations.length, handleSendMessage, router])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
@@ -158,6 +221,11 @@ export default function Develop() {
               <div className="h-6 w-px bg-gray-300" />
               <span className="text-gray-600">
                 {app ? app.name : `App ${appId}`} - Development Environment
+                {conversationId && (
+                  <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                    Chat: {conversationId.slice(0, 8)}...
+                  </span>
+                )}
               </span>
             </div>
             <div className="flex items-center space-x-4">

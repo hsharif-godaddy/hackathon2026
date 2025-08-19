@@ -5,12 +5,14 @@ import { AgentRegistry } from '../../registry/index.js';
 import { getLLMService } from '../../services/index.js';
 import { globalTracer } from '../../utils/index.js';
 import { AppRepository } from '../../database/index.js';
+import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
 import { getToolDefinitions, executeToolFunction } from '../../tools/index.js';
 import type { AgentExecutionContext } from '../../base/index.js';
 import { FakeEventsAgent } from '../../agents/index.js';
 
 const registry = AgentRegistry.getInstance();
 const appRepo = new AppRepository();
+const conversationRepo = new ConversationRepository();
 
 /**
  * WebSocket message types
@@ -19,6 +21,7 @@ interface WSChatRequest {
   type: 'chat';
   message: string;
   appId?: string;
+  conversationId?: string;
   threadId?: string;
   userId?: string;
   metadata?: Record<string, unknown>;
@@ -125,6 +128,9 @@ export function createWebSocketServer(server: any) {
 async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WSChatRequest) {
   // Track start time for duration calculation
   let agentStartTime: number | undefined;
+  let conversation: any = null;
+  let userMessage: any = null;
+  let agentMessage: any = null;
   
   try {
     globalTracer.trace({
@@ -134,6 +140,7 @@ async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WS
         agentId,
         message: chatRequest.message,
         appId: chatRequest.appId,
+        conversationId: chatRequest.conversationId,
         hasThreadId: !!chatRequest.threadId,
         hasUserId: !!chatRequest.userId,
       },
@@ -175,6 +182,39 @@ async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WS
         error: `Agent '${agentId}' not found`,
       }));
       return;
+    }
+    
+    // Handle conversation persistence
+    if (chatRequest.appId) {
+      if (chatRequest.conversationId) {
+        // Load existing conversation
+        conversation = await conversationRepo.getById(chatRequest.conversationId);
+        if (!conversation) {
+          ws.send(JSON.stringify({
+            type: 'error',
+            error: `Conversation '${chatRequest.conversationId}' not found`,
+          }));
+          return;
+        }
+      } else {
+        // Create new conversation
+        const title = conversationRepo.generateTitle(chatRequest.message);
+        conversation = await conversationRepo.create(chatRequest.appId, agentId, title);
+        
+        // Send conversation ID back to client
+        ws.send(JSON.stringify({
+          type: 'metadata',
+          conversationId: conversation.id,
+          message: 'New conversation created',
+        }));
+      }
+      
+      // Save user message
+      userMessage = await conversationRepo.addMessage(
+        conversation.id,
+        'user',
+        chatRequest.message
+      );
     }
     
     // Get agent instance
@@ -289,6 +329,16 @@ async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WS
     // Set start time for duration calculation
     agentStartTime = Date.now();
     
+    // Create placeholder agent message for streaming updates
+    if (conversation) {
+      agentMessage = await conversationRepo.addMessage(
+        conversation.id,
+        'agent',
+        '', // Start with empty content, will be updated as we stream
+        { metadata: { isStreaming: true } }
+      );
+    }
+    
     try {
       // Use actual LLM service
       const llmService = getLLMService();
@@ -328,9 +378,9 @@ async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WS
       
       // Use non-streaming for function calls, streaming for regular responses
       if (tools) {
-        await handleWithFunctionCallsWS(llmService, { messages, tools, model }, context, agent, ws);
+        await handleWithFunctionCallsWS(llmService, { messages, tools, model }, context, agent, ws, conversation, agentMessage);
       } else {
-        await handleStreamingWS(llmService, { messages, model }, context, ws);
+        await handleStreamingWS(llmService, { messages, model }, context, ws, conversation, agentMessage);
       }
       
     } catch (llmError) {
@@ -412,11 +462,15 @@ async function handleWithFunctionCallsWS(
   request: any,
   context: AgentExecutionContext,
   agent: any,
-  ws: WebSocket
+  ws: WebSocket,
+  conversation: any = null,
+  agentMessage: any = null
 ): Promise<void> {
   const messages = [...request.messages];
   let functionCallCount = 0;
   const maxFunctionCalls = 50; // Prevent infinite loops
+  let accumulatedContent = '';
+  let toolCalls: any[] = [];
 
   while (functionCallCount < maxFunctionCalls) {
     const response = await llmService.complete(request, context);
@@ -424,6 +478,7 @@ async function handleWithFunctionCallsWS(
     if (response.tool_calls && response.tool_calls.length > 0) {
       // Send assistant content if present (LLM's reasoning/context)
       if (response.content) {
+        accumulatedContent += response.content + '\n\n';
         ws.send(JSON.stringify({
           type: 'content',
           content: response.content + '\n\n',
@@ -441,6 +496,15 @@ async function handleWithFunctionCallsWS(
       // Execute each tool call
       for (const toolCall of response.tool_calls) {
         const toolStartTime = Date.now();
+        
+        // Track tool calls for database
+        toolCalls.push({
+          id: toolCall.id,
+          tool_name: toolCall.function.name,
+          tool_args: JSON.parse(toolCall.function.arguments),
+          start_time: toolStartTime,
+          status: 'running'
+        });
         
         // Send tool start event
         ws.send(JSON.stringify({
@@ -465,6 +529,18 @@ async function handleWithFunctionCallsWS(
             name: toolCall.function.name,
           });
 
+          // Update tool call status
+          const toolCallIndex = toolCalls.findIndex(tc => tc.id === toolCall.id);
+          if (toolCallIndex >= 0) {
+            toolCalls[toolCallIndex] = {
+              ...toolCalls[toolCallIndex],
+              tool_result: result,
+              end_time: toolEndTime,
+              duration_ms: duration,
+              status: 'success'
+            };
+          }
+          
           // Send tool complete event with result and timing
           ws.send(JSON.stringify({
             type: 'tool_complete',
@@ -489,6 +565,18 @@ async function handleWithFunctionCallsWS(
             name: toolCall.function.name,
           });
 
+          // Update tool call status with error
+          const toolCallIndex = toolCalls.findIndex(tc => tc.id === toolCall.id);
+          if (toolCallIndex >= 0) {
+            toolCalls[toolCallIndex] = {
+              ...toolCalls[toolCallIndex],
+              error: errorMessage,
+              end_time: toolEndTime,
+              duration_ms: duration,
+              status: 'error'
+            };
+          }
+          
           // Send tool complete event with error and timing
           ws.send(JSON.stringify({
             type: 'tool_complete',
@@ -510,6 +598,7 @@ async function handleWithFunctionCallsWS(
     } else {
       // No more tool calls, send final response
       if (response.content) {
+        accumulatedContent += response.content;
         ws.send(JSON.stringify({
           type: 'content',
           content: response.content,
@@ -521,11 +610,26 @@ async function handleWithFunctionCallsWS(
   }
 
   if (functionCallCount >= maxFunctionCalls) {
+    const maxReachedMsg = '\n\n_Maximum function call limit reached._';
+    accumulatedContent += maxReachedMsg;
     ws.send(JSON.stringify({
       type: 'content',
-      content: '\n\n_Maximum function call limit reached._',
+      content: maxReachedMsg,
       isComplete: false,
     }));
+  }
+  
+  // Update database with final message content and tool calls
+  if (agentMessage) {
+    try {
+      await conversationRepo.updateMessage(agentMessage.id, {
+        content: accumulatedContent,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        metadata: { isStreaming: false }
+      });
+    } catch (dbError) {
+      console.warn('Failed to update message in database:', dbError);
+    }
   }
 }
 
@@ -536,15 +640,33 @@ async function handleStreamingWS(
   llmService: any,
   request: any,
   context: AgentExecutionContext,
-  ws: WebSocket
+  ws: WebSocket,
+  conversation: any = null,
+  agentMessage: any = null
 ): Promise<void> {
+  let accumulatedContent = '';
+  
   for await (const chunk of llmService.streamComplete(request, context)) {
     if (chunk.content) {
+      accumulatedContent += chunk.content;
+      
       ws.send(JSON.stringify({
         type: 'content',
         content: chunk.content,
         isComplete: chunk.isComplete,
       }));
+      
+      // Update database message periodically (every ~100 chars) or on completion
+      if (agentMessage && (chunk.isComplete || accumulatedContent.length % 100 < chunk.content.length)) {
+        try {
+          await conversationRepo.updateMessage(agentMessage.id, {
+            content: accumulatedContent,
+            metadata: { isStreaming: !chunk.isComplete }
+          });
+        } catch (dbError) {
+          console.warn('Failed to update message in database:', dbError);
+        }
+      }
     }
     
     if (chunk.isComplete) {

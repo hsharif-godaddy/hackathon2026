@@ -29,9 +29,11 @@ export interface SendMessageParams {
   inputValue: string
   isLoading: boolean
   appId: string
+  conversationId?: string
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   setInputValue: React.Dispatch<React.SetStateAction<string>>
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>
+  setConversationId?: React.Dispatch<React.SetStateAction<string | null>>
 }
 
 // WebSocket connection management
@@ -100,9 +102,11 @@ export const handleSendMessage = async ({
   inputValue,
   isLoading,
   appId,
+  conversationId,
   setMessages,
   setInputValue,
-  setIsLoading
+  setIsLoading,
+  setConversationId
 }: SendMessageParams) => {
   const content = messageContent || inputValue.trim()
   if (!content || isLoading) return
@@ -164,7 +168,8 @@ export const handleSendMessage = async ({
           setMessages, 
           lastUpdateTimeRef, 
           updateThrottleMs,
-          setIsLoading
+          setIsLoading,
+          setConversationId
         )
       } catch (error) {
         console.warn('Failed to parse WebSocket data:', event.data, error)
@@ -183,6 +188,7 @@ export const handleSendMessage = async ({
       type: 'chat',
       message: content,
       appId: appId,
+      conversationId: conversationId,
       threadId: undefined, // Let server generate
       userId: undefined,
       metadata: {}
@@ -204,11 +210,16 @@ function handleWebSocketMessage(
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
   lastUpdateTimeRef: { current: number },
   updateThrottleMs: number,
-  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>
+  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
+  setConversationId?: React.Dispatch<React.SetStateAction<string | null>>
 ): string {
   switch (data.type) {
     case 'metadata':
       console.log('WebSocket Metadata:', data)
+      // Handle new conversation creation
+      if (data.conversationId && setConversationId) {
+        setConversationId(data.conversationId)
+      }
       break
       
     case 'status':
@@ -505,4 +516,71 @@ function updateStreamingContent(segments: MessageSegment[], currentContent: stri
   }
   
   return newSegments
+}
+
+/**
+ * Load conversations for an app
+ */
+export const loadConversations = async (appId: string) => {
+  try {
+    const response = await fetch(`http://localhost:4000/agent/conversations/${appId}`)
+    if (!response.ok) {
+      throw new Error('Failed to fetch conversations')
+    }
+    return await response.json()
+  } catch (error) {
+    console.error('Error loading conversations:', error)
+    return []
+  }
+}
+
+/**
+ * Load a specific conversation with its messages
+ */
+export const loadConversation = async (appId: string, conversationId: string) => {
+  try {
+    const response = await fetch(`http://localhost:4000/agent/conversations/${appId}/${conversationId}`)
+    if (!response.ok) {
+      throw new Error('Failed to fetch conversation')
+    }
+    const data = await response.json()
+    
+    // Convert database messages to UI message format
+    const messages: Message[] = data.messages.map((msg: any) => ({
+      id: parseInt(msg.id),
+      sender: msg.sender,
+      content: msg.content,
+      timestamp: new Date(msg.createdAt),
+      messageType: msg.messageType,
+      tool_calls: msg.toolCalls,
+      segments: msg.segments,
+      ...(msg.metadata || {})
+    }))
+    
+    return {
+      conversation: data.conversation,
+      messages
+    }
+  } catch (error) {
+    console.error('Error loading conversation:', error)
+    return null
+  }
+}
+
+/**
+ * Delete a conversation
+ */
+export const deleteConversation = async (conversationId: string) => {
+  try {
+    const response = await fetch(`http://localhost:4000/agent/conversations/${conversationId}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      throw new Error('Failed to delete conversation')
+    }
+    return true
+  } catch (error) {
+    console.error('Error deleting conversation:', error)
+    return false
+  }
 }

@@ -100,6 +100,62 @@ function initializeSchema() {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_running_processes_pid ON running_processes(pid)
   `);
+  
+  // Create conversations table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      title TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+  
+  // Create conversation_messages table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      sender TEXT NOT NULL CHECK(sender IN ('user', 'agent')),
+      content TEXT NOT NULL,
+      message_type TEXT,
+      tool_calls TEXT, -- JSON string
+      segments TEXT,   -- JSON string
+      metadata TEXT,   -- JSON string
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    )
+  `);
+  
+  // Create indexes for efficient queries
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversations_app_id ON conversations(app_id)
+  `);
+  
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at)
+  `);
+  
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_id ON conversation_messages(conversation_id)
+  `);
+  
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversation_messages_created_at ON conversation_messages(created_at)
+  `);
+  
+  // Create trigger to automatically update conversations updated_at when messages are added
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS update_conversations_updated_at 
+    AFTER INSERT ON conversation_messages
+    FOR EACH ROW
+    BEGIN
+      UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.conversation_id;
+    END
+  `);
 }
 
 export function closeDatabase() {
