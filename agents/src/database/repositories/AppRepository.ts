@@ -373,6 +373,16 @@ export class AppRepository {
         return;
       }
 
+      // Create logs directory if it doesn't exist
+      const logsDir = path.join(appPath, 'logs');
+      if (!existsSync(logsDir)) {
+        mkdirSync(logsDir, { recursive: true });
+      }
+
+      // Create log file paths
+      const stdoutLogPath = path.join(logsDir, 'dev-server.stdout.log');
+      const stderrLogPath = path.join(logsDir, 'dev-server.stderr.log');
+
       // Set the port in environment variables
       const env = {
         ...process.env,
@@ -380,27 +390,25 @@ export class AppRepository {
         NEXT_PUBLIC_PORT: port.toString(),
       };
 
-      // Start the dev server
-      const child = spawn('npm', ['run', 'dev'], {
+      // Use shell to handle redirection so it persists even if parent dies
+      const command = `npm run dev >> "${stdoutLogPath}" 2>> "${stderrLogPath}"`;
+      
+      // Start the dev server with shell redirection (fully detached)
+      const child = spawn('sh', ['-c', command], {
         cwd: appPath,
         env,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: 'ignore', // Completely detached - no pipes to parent
         detached: true,
       });
+
+      // Fully detach the process from the parent
+      child.unref();
 
       // Store the process in memory and database
       this.runningProcesses.set(appId, child);
       const processRecord = this.addProcessRecord(appId, child.pid!, port);
 
-      // Log output for debugging
-      child.stdout?.on('data', (data) => {
-        console.log(`[${appId}:${port}] ${data.toString().trim()}`);
-      });
-
-      child.stderr?.on('data', (data) => {
-        console.error(`[${appId}:${port}] ${data.toString().trim()}`);
-      });
-
+      // Handle process errors and exits (minimal event handling)
       child.on('error', (error) => {
         console.error(`Dev server error for app ${appId}:`, error);
         this.runningProcesses.delete(appId);
@@ -415,6 +423,7 @@ export class AppRepository {
 
       // Don't wait for the process to start, let it run in background
       console.log(`Development server started for app ${appId} on http://localhost:${port}`);
+      console.log(`  Logs: stdout -> ${stdoutLogPath}, stderr -> ${stderrLogPath}`);
 
     } catch (error) {
       console.error(`Failed to start dev server for app ${appId}:`, error);
