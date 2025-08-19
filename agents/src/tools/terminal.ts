@@ -43,6 +43,25 @@ export class TerminalTool {
   private readonly MAX_TIMEOUT = 300000; // 5 minutes
   private readonly MAX_OUTPUT_LENGTH = 50000; // 50KB output limit
 
+  /**
+   * Sanitize terminal output by removing ANSI escape codes and other control characters
+   */
+  private sanitizeOutput(text: string): string {
+    return text
+      // Remove ANSI escape sequences (colors, cursor movements, etc.)
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+      // Remove other ANSI escape sequences
+      .replace(/\x1b\][^\x07]*\x07/g, '')
+      // Remove other control characters except newlines, tabs, and carriage returns
+      .replace(/[\x00-\x08\x0E-\x1F\x7F]/g, '')
+      // Clean up multiple consecutive newlines
+      .replace(/\n{3,}/g, '\n\n')
+      // Clean up carriage returns followed by newlines
+      .replace(/\r\n/g, '\n')
+      // Remove standalone carriage returns
+      .replace(/\r/g, '');
+  }
+
   // Commands that are blocked for security reasons
   private readonly BLOCKED_COMMANDS = [
     'rm -rf /',
@@ -259,7 +278,8 @@ export class TerminalTool {
 
       // Collect stdout
       child.stdout?.on('data', (data) => {
-        stdout += data.toString();
+        const sanitized = this.sanitizeOutput(data.toString());
+        stdout += sanitized;
         // Prevent memory issues with very large outputs
         if (stdout.length > this.MAX_OUTPUT_LENGTH) {
           stdout = stdout.substring(0, this.MAX_OUTPUT_LENGTH) + '\n... (output truncated)';
@@ -269,7 +289,8 @@ export class TerminalTool {
 
       // Collect stderr
       child.stderr?.on('data', (data) => {
-        stderr += data.toString();
+        const sanitized = this.sanitizeOutput(data.toString());
+        stderr += sanitized;
         // Prevent memory issues with very large outputs
         if (stderr.length > this.MAX_OUTPUT_LENGTH) {
           stderr = stderr.substring(0, this.MAX_OUTPUT_LENGTH) + '\n... (error output truncated)';
@@ -282,8 +303,8 @@ export class TerminalTool {
         clearTimeout(timeoutId);
         resolve({
           exitCode: code || 0,
-          stdout: stdout.trim(),
-          stderr: stderr.trim(),
+          stdout: this.sanitizeOutput(stdout).trim(),
+          stderr: this.sanitizeOutput(stderr).trim(),
           timedOut,
         });
       });
@@ -293,10 +314,10 @@ export class TerminalTool {
         clearTimeout(timeoutId);
         resolve({
           exitCode: -1,
-          stdout: stdout.trim(),
-          stderr: error.message,
+          stdout: this.sanitizeOutput(stdout).trim(),
+          stderr: this.sanitizeOutput(error.message),
           timedOut,
-          error: error.message,
+          error: this.sanitizeOutput(error.message),
         });
       });
     });
