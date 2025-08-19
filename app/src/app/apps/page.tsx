@@ -7,7 +7,11 @@ import {
   SparklesIcon,
   CodeBracketIcon,
   PlusIcon,
-  CalendarIcon
+  CalendarIcon,
+  StopIcon,
+  TrashIcon,
+  ArrowPathIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
 
 interface App {
@@ -18,31 +22,48 @@ interface App {
   updatedAt: string
 }
 
+interface RunningServer {
+  appId: string
+  port: number
+  url: string
+}
+
 export default function Apps() {
   const [apps, setApps] = useState<App[]>([])
+  const [runningServers, setRunningServers] = useState<RunningServer[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
-    const fetchApps = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch('http://localhost:4000/apps')
-        if (response.ok) {
-          const data = await response.json()
-          setApps(data.apps)
+        const [appsResponse, serversResponse] = await Promise.all([
+          fetch('http://localhost:4000/apps'),
+          fetch('http://localhost:4000/apps/servers')
+        ])
+        
+        if (appsResponse.ok) {
+          const appsData = await appsResponse.json()
+          setApps(appsData.apps)
         } else {
           setError('Failed to load apps')
         }
+
+        if (serversResponse.ok) {
+          const serversData = await serversResponse.json()
+          setRunningServers(serversData.servers)
+        }
       } catch (error) {
-        console.error('Error fetching apps:', error)
+        console.error('Error fetching data:', error)
         setError('Failed to connect to server')
       } finally {
         setIsLoading(false)
       }
     }
 
-    fetchApps()
+    fetchData()
   }, [])
 
   const handleCreateNew = () => {
@@ -56,6 +77,170 @@ export default function Apps() {
       day: 'numeric',
       year: 'numeric'
     })
+  }
+
+  const isServerRunning = (appId: string) => {
+    return runningServers.some(server => server.appId === appId)
+  }
+
+  const handleStopServer = async (appId: string) => {
+    setActionLoading(`stop-${appId}`)
+    try {
+      const response = await fetch(`http://localhost:4000/apps/${appId}/stop`, {
+        method: 'POST'
+      })
+      
+      if (response.ok) {
+        // Refresh running servers list
+        const serversResponse = await fetch('http://localhost:4000/apps/servers')
+        if (serversResponse.ok) {
+          const serversData = await serversResponse.json()
+          setRunningServers(serversData.servers)
+        }
+      } else {
+        alert('Failed to stop server')
+      }
+    } catch (error) {
+      console.error('Error stopping server:', error)
+      alert('Failed to stop server')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleDeleteApp = async (appId: string) => {
+    if (!confirm('Are you sure you want to delete this app? This action cannot be undone.')) {
+      return
+    }
+
+    setActionLoading(`delete-${appId}`)
+    try {
+      const response = await fetch(`http://localhost:4000/apps/${appId}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        // Refresh apps list
+        const appsResponse = await fetch('http://localhost:4000/apps')
+        if (appsResponse.ok) {
+          const appsData = await appsResponse.json()
+          setApps(appsData.apps)
+        }
+        
+        // Refresh running servers list
+        const serversResponse = await fetch('http://localhost:4000/apps/servers')
+        if (serversResponse.ok) {
+          const serversData = await serversResponse.json()
+          setRunningServers(serversData.servers)
+        }
+      } else {
+        alert('Failed to delete app')
+      }
+    } catch (error) {
+      console.error('Error deleting app:', error)
+      alert('Failed to delete app')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleStopAll = async () => {
+    if (runningServers.length === 0) {
+      alert('No servers are currently running')
+      return
+    }
+
+    if (!confirm(`Are you sure you want to stop all ${runningServers.length} running server${runningServers.length !== 1 ? 's' : ''}?`)) {
+      return
+    }
+
+    setActionLoading('stop-all')
+    try {
+      const response = await fetch('http://localhost:4000/apps/stop-all', {
+        method: 'POST'
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        alert(data.message)
+        
+        // Refresh running servers list
+        const serversResponse = await fetch('http://localhost:4000/apps/servers')
+        if (serversResponse.ok) {
+          const serversData = await serversResponse.json()
+          setRunningServers(serversData.servers)
+        }
+      } else {
+        alert('Failed to stop servers')
+      }
+    } catch (error) {
+      console.error('Error stopping all servers:', error)
+      alert('Failed to stop servers')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleRestartServer = async (appId: string) => {
+    setActionLoading(`restart-${appId}`)
+    try {
+      const response = await fetch(`http://localhost:4000/apps/${appId}/restart`, {
+        method: 'POST'
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        alert(data.message)
+        
+        // Wait a moment for the server to restart, then refresh data
+        setTimeout(async () => {
+          const serversResponse = await fetch('http://localhost:4000/apps/servers')
+          if (serversResponse.ok) {
+            const serversData = await serversResponse.json()
+            setRunningServers(serversData.servers)
+          }
+        }, 2000)
+      } else {
+        alert('Failed to restart server')
+      }
+    } catch (error) {
+      console.error('Error restarting server:', error)
+      alert('Failed to restart server')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleForceCleanup = async () => {
+    if (!confirm('Force cleanup will attempt to kill all orphaned dev server processes. This may terminate processes not managed by this app. Continue?')) {
+      return
+    }
+
+    setActionLoading('force-cleanup')
+    try {
+      const response = await fetch('http://localhost:4000/apps/cleanup-orphans', {
+        method: 'POST'
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        alert(data.message)
+        
+        // Refresh running servers list
+        const serversResponse = await fetch('http://localhost:4000/apps/servers')
+        if (serversResponse.ok) {
+          const serversData = await serversResponse.json()
+          setRunningServers(serversData.servers)
+        }
+      } else {
+        alert('Failed to cleanup orphaned processes')
+      }
+    } catch (error) {
+      console.error('Error cleaning up orphans:', error)
+      alert('Failed to cleanup orphaned processes')
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   return (
@@ -79,6 +264,29 @@ export default function Apps() {
                 Sign In
               </button>
               <button
+                onClick={handleForceCleanup}
+                disabled={actionLoading === 'force-cleanup'}
+                className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Force cleanup orphaned processes"
+              >
+                <ExclamationTriangleIcon className="w-4 h-4" />
+                <span>
+                  {actionLoading === 'force-cleanup' ? 'Cleaning...' : 'Force Cleanup'}
+                </span>
+              </button>
+              {runningServers.length > 0 && (
+                <button
+                  onClick={handleStopAll}
+                  disabled={actionLoading === 'stop-all'}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <StopIcon className="w-4 h-4" />
+                  <span>
+                    {actionLoading === 'stop-all' ? 'Stopping...' : `Stop All (${runningServers.length})`}
+                  </span>
+                </button>
+              )}
+              <button
                 onClick={handleCreateNew}
                 className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2"
               >
@@ -94,7 +302,14 @@ export default function Apps() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">My Apps</h1>
-          <p className="text-gray-600">Manage your AI-built applications</p>
+          <p className="text-gray-600">
+            Manage your AI-built applications
+            {runningServers.length > 0 && (
+              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                {runningServers.length} server{runningServers.length !== 1 ? 's' : ''} running
+              </span>
+            )}
+          </p>
         </div>
 
         {isLoading ? (
@@ -133,42 +348,99 @@ export default function Apps() {
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {apps.map((app) => (
-              <div
-                key={app.id}
-                className="bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all duration-200 p-6 cursor-pointer group"
-                onClick={() => router.push(`/app/${app.id}/develop`)}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg flex items-center justify-center">
-                    <CodeBracketIcon className="w-6 h-6 text-purple-600" />
+            {apps.map((app) => {
+              const isRunning = isServerRunning(app.id)
+              return (
+                <div
+                  key={app.id}
+                  className="bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all duration-200 p-6"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg flex items-center justify-center">
+                      <CodeBracketIcon className="w-6 h-6 text-purple-600" />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      {isRunning && (
+                        <div className="flex items-center space-x-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                          <span>Running</span>
+                        </div>
+                      )}
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                        {app.id}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                    {app.id}
-                  </span>
-                </div>
-                
-                <h3 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">
-                  {app.name}
-                </h3>
-                
-                <div className="flex items-center text-sm text-gray-500 space-x-4">
-                  <div className="flex items-center space-x-1">
-                    <CalendarIcon className="w-4 h-4" />
-                    <span>Created {formatDate(app.createdAt)}</span>
+                  
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    {app.name}
+                  </h3>
+                  
+                  <div className="flex items-center text-sm text-gray-500 space-x-4 mb-4">
+                    <div className="flex items-center space-x-1">
+                      <CalendarIcon className="w-4 h-4" />
+                      <span>Created {formatDate(app.createdAt)}</span>
+                    </div>
                   </div>
-                </div>
-                
-                <div className="mt-4 pt-4 border-t border-gray-100">
+
+                  {isRunning && (
+                    <div className="mb-4 p-3 bg-green-50 rounded-lg">
+                      <p className="text-sm text-green-700 font-medium">Server running on port {app.port}</p>
+                      <a 
+                        href={`http://localhost:${app.port}`}
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-sm text-green-600 hover:text-green-800 underline"
+                      >
+                        View live app →
+                      </a>
+                    </div>
+                  )}
+                  
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Last updated {formatDate(app.updatedAt)}</span>
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="text-sm text-purple-600 font-medium">Open →</span>
+                    <span className="text-sm text-gray-600">
+                      {formatDate(app.updatedAt)}
+                    </span>
+                    <div className="flex items-center space-x-2">
+                      {isRunning && (
+                        <>
+                          <button
+                            onClick={() => handleRestartServer(app.id)}
+                            disabled={actionLoading === `restart-${app.id}`}
+                            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Restart server"
+                          >
+                            <ArrowPathIcon className={`w-4 h-4 ${actionLoading === `restart-${app.id}` ? 'animate-spin' : ''}`} />
+                          </button>
+                          <button
+                            onClick={() => handleStopServer(app.id)}
+                            disabled={actionLoading === `stop-${app.id}`}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Stop server"
+                          >
+                            <StopIcon className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => handleDeleteApp(app.id)}
+                        disabled={actionLoading === `delete-${app.id}`}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete app"
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => router.push(`/app/${app.id}/develop`)}
+                        className="px-3 py-1 text-sm text-purple-600 hover:bg-purple-50 rounded-lg transition-colors font-medium"
+                      >
+                        Open →
+                      </button>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </main>

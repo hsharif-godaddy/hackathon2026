@@ -77,6 +77,29 @@ function initializeSchema() {
       UPDATE apps SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END
   `);
+  
+  // Create running_processes table for tracking dev servers
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS running_processes (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      pid INTEGER NOT NULL,
+      port INTEGER NOT NULL,
+      started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      status TEXT NOT NULL DEFAULT 'running',
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+  
+  // Create index on app_id for efficient lookups
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_running_processes_app_id ON running_processes(app_id)
+  `);
+  
+  // Create index on pid for efficient process lookups
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_running_processes_pid ON running_processes(pid)
+  `);
 }
 
 export function closeDatabase() {

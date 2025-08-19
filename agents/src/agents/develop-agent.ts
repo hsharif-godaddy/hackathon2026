@@ -17,6 +17,7 @@ export class DevelopAgent extends BaseAgent {
         { name: 'file_edit', description: 'Edit, create, or rewrite files with intelligent mode detection and safety features' },
         { name: 'git_operation', description: 'Perform git operations like status, add, commit, diff, log, and branch management' },
         { name: 'read_file', description: 'Read file contents with optional line range support for examining code and configuration files' },
+        { name: 'grep_search', description: 'Search for text or patterns across files in the project to find code, locate definitions, or understand structure' },
       ],
       contextBuilder: {
         tools: ['code_generator', 'file_manager'],

@@ -6,8 +6,9 @@ import dotenv from 'dotenv';
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter } from './routes/index.js';
 import { AgentRegistry } from '../registry/index.js';
-import { ExampleAgent, DevelopAgent } from '../agents/index.js';
+import { ExampleAgent, DevelopAgent, FakeEventsAgent } from '../agents/index.js';
 import { getDatabase } from '../database/index.js';
+import { AppRepository } from '../database/repositories/AppRepository.js';
 
 // Load environment variables
 dotenv.config();
@@ -70,6 +71,12 @@ async function initialize() {
     getDatabase();
     console.log('✅ Database initialized');
     
+    // Initialize AppRepository and recover processes
+    console.log('📱 Initializing AppRepository...');
+    const appRepo = new AppRepository();
+    await appRepo.initialize();
+    console.log('✅ AppRepository initialized');
+    
     // Initialize agent registry
     const registry = AgentRegistry.getInstance();
     
@@ -77,6 +84,7 @@ async function initialize() {
     console.log('📝 Registering agents...');
     registry.register(ExampleAgent);
     registry.register(DevelopAgent);
+    registry.register(FakeEventsAgent);
     
     // Initialize all agents
     await registry.initializeAll();
@@ -115,8 +123,14 @@ async function shutdown() {
   console.log('🛑 Shutting down gracefully...');
   
   try {
+    // Cleanup AppRepository first (stop dev servers)
+    const appRepo = new AppRepository();
+    await appRepo.cleanup();
+    
+    // Then cleanup agent registry
     const registry = AgentRegistry.getInstance();
     await registry.cleanup();
+    
     console.log('✅ Cleanup completed');
     process.exit(0);
   } catch (error) {

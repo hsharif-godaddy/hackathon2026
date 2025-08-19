@@ -14,3 +14,12 @@ export interface CreateAppRequest {
 export interface UpdateAppRequest {
   name?: string;
 }
+
+export interface RunningProcess {
+  id: string;
+  appId: string;
+  pid: number;
+  port: number;
+  startedAt: Date;
+  status: 'running' | 'stopped' | 'crashed';
+}

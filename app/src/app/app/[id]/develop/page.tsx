@@ -6,7 +6,9 @@ import Link from 'next/link'
 import {
   SparklesIcon,
   CodeBracketIcon,
-  PlayIcon
+  PlayIcon,
+  ArrowPathIcon,
+  Squares2X2Icon
 } from '@heroicons/react/24/outline'
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
@@ -31,6 +33,7 @@ export default function Develop() {
   const [expandedPlan, setExpandedPlan] = useState(false)
   const [isSelectMode, setIsSelectMode] = useState(false)
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
+  const [isRestarting, setIsRestarting] = useState(false)
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
@@ -217,6 +220,35 @@ export default function Develop() {
     setExpandedPlan(!expandedPlan)
   }
 
+  const handleRestartServer = async () => {
+    if (!appId) return
+    
+    setIsRestarting(true)
+    try {
+      const response = await fetch(`http://localhost:4000/apps/${appId}/restart`, {
+        method: 'POST'
+      })
+      
+      if (response.ok) {
+        // Wait a moment for the server to restart
+        setTimeout(() => {
+          // Refresh app data
+          fetch(`http://localhost:4000/apps/${appId}`)
+            .then(res => res.json())
+            .then(data => setApp(data.app))
+            .catch(console.error)
+        }, 2000)
+      } else {
+        alert('Failed to restart server')
+      }
+    } catch (error) {
+      console.error('Error restarting server:', error)
+      alert('Failed to restart server')
+    } finally {
+      setIsRestarting(false)
+    }
+  }
+
   return (
     <div className="h-screen bg-gray-50 flex flex-col">
       {/* Header */}
@@ -238,6 +270,21 @@ export default function Develop() {
               </span>
             </div>
             <div className="flex items-center space-x-4">
+              <Link
+                href="/apps"
+                className="inline-flex items-center px-3 py-2 text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
+              >
+                <Squares2X2Icon className="w-4 h-4 mr-2" />
+                My Apps
+              </Link>
+              <button 
+                onClick={handleRestartServer}
+                disabled={!app?.port || isRestarting}
+                className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-orange-600 to-red-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ArrowPathIcon className={`w-4 h-4 mr-2 ${isRestarting ? 'animate-spin' : ''}`} />
+                {isRestarting ? 'Restarting...' : 'Restart'}
+              </button>
               <button 
                 onClick={() => {
                   if (app?.port) {

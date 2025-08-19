@@ -7,6 +7,7 @@ import { globalTracer } from '../../utils/index.js';
 import { AppRepository } from '../../database/index.js';
 import { getToolDefinitions, executeToolFunction } from '../../tools/index.js';
 import type { AgentExecutionContext } from '../../base/index.js';
+import { FakeEventsAgent } from '../../agents/index.js';
 
 const router = Router();
 const registry = AgentRegistry.getInstance();
@@ -129,6 +130,70 @@ router.post('/:agentId/chat-streaming', async (req, res, next) => {
       timestamp: context.timestamp.toISOString(),
     })}\n\n`);
       
+    // Check for special fake events trigger
+    if (agentId === 'fake-events' && chatRequest.message.trim() === 'FAKE-EVENTS') {
+      globalTracer.trace({
+        type: 'debug',
+        agentId,
+        threadId: context.threadId,
+        data: {
+          message: 'Fake events trigger detected, bypassing LLM',
+        },
+      });
+
+      // Send initial status for fake events
+      res.write(`data: ${JSON.stringify({
+        type: 'status',
+        status: 'generating_fake_events',
+        message: 'Generating fake events for SSE debugging...',
+      })}\n\n`);
+
+      try {
+        // Cast the agent to FakeEventsAgent and call the fake events generator
+        if (agent instanceof FakeEventsAgent) {
+          await agent.generateFakeEvents(res, context);
+        } else {
+          throw new Error('Agent is not a FakeEventsAgent instance');
+        }
+      } catch (fakeError) {
+        globalTracer.trace({
+          type: 'error',
+          agentId,
+          threadId: context.threadId,
+          data: {
+            message: 'Fake events generation error',
+            error: fakeError instanceof Error ? fakeError.message : String(fakeError),
+          },
+        });
+
+        res.write(`data: ${JSON.stringify({
+          type: 'content',
+          content: `Error generating fake events: ${fakeError instanceof Error ? fakeError.message : 'Unknown error'}`,
+          isComplete: false,
+        })}\n\n`);
+      }
+
+      // Send completion signal and end
+      res.write(`data: ${JSON.stringify({
+        type: 'complete',
+        threadId: context.threadId,
+        timestamp: new Date().toISOString(),
+      })}\n\n`);
+      
+      res.end();
+      
+      globalTracer.trace({
+        type: 'response',
+        agentId,
+        threadId: context.threadId,
+        data: {
+          message: 'Fake events response completed',
+        },
+      });
+      
+      return; // Exit early, don't continue with normal LLM processing
+    }
+    
     // Send thinking status
     res.write(`data: ${JSON.stringify({
       type: 'status',

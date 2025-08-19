@@ -3,6 +3,7 @@ import { TerminalTool, TerminalCommandOptions } from './terminal.js';
 import { FileEditTool, FileEditOptions } from './file-edit.js';
 import { GitTool, GitToolOptions } from './git-tool.js';
 import { ReadFileTool, ReadFileOptions } from './read-file.js';
+import { GrepTool, GrepOptions, GrepOptionsSchema } from './grep-tool.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import type { AgentExecutionContext } from '../base/index.js';
 
@@ -11,6 +12,7 @@ const terminalTool = new TerminalTool();
 const fileEditTool = new FileEditTool();
 const gitTool = new GitTool();
 const readFileTool = new ReadFileTool();
+const grepTool = new GrepTool();
 const appRepo = new AppRepository();
 
 /**
@@ -248,6 +250,92 @@ export const TOOL_FUNCTIONS = {
       required: ['path'],
     },
   },
+  grep_search: {
+    name: 'grep_search',
+    description: 'Search for text or patterns across files in the project. Essential for finding code to edit without reading entire files, locating function/class definitions, finding all usages of a symbol, searching for TODOs or specific patterns, and understanding code structure before making changes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Text or regex pattern to search for',
+        },
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific files or directories to search in. If not provided, searches entire project',
+        },
+        regex: {
+          type: 'boolean',
+          description: 'Treat query as a regular expression',
+          default: false,
+        },
+        caseSensitive: {
+          type: 'boolean',
+          description: 'Case-sensitive search',
+          default: false,
+        },
+        wholeWord: {
+          type: 'boolean',
+          description: 'Match whole words only',
+          default: false,
+        },
+        contextLines: {
+          type: 'number',
+          description: 'Number of lines to show before and after each match',
+          default: 3,
+        },
+        maxResults: {
+          type: 'number',
+          description: 'Maximum number of results to return',
+          default: 50,
+        },
+        maxFilesSearched: {
+          type: 'number',
+          description: 'Maximum number of files to search through',
+          default: 1000,
+        },
+        includePatterns: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Glob patterns for files to include',
+          default: ['**/*.{ts,tsx,js,jsx,py,java,cpp,c,go,rs,rb,php,swift,kt,scala,r,m,html,css,scss,json,yaml,yml,toml,xml,md,txt}'],
+        },
+        excludePatterns: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Glob patterns for files to exclude',
+          default: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**', '**/coverage/**', '**/*.min.js', '**/vendor/**', '**/tmp/**', '**/.next/**', '**/.cache/**'],
+        },
+        includeLineNumbers: {
+          type: 'boolean',
+          description: 'Include line numbers in results',
+          default: true,
+        },
+        includePath: {
+          type: 'boolean',
+          description: 'Include file paths in results',
+          default: true,
+        },
+        groupByFile: {
+          type: 'boolean',
+          description: 'Group results by file',
+          default: true,
+        },
+        findDefinition: {
+          type: 'boolean',
+          description: 'Try to find function/class/variable definitions',
+          default: false,
+        },
+        findReferences: {
+          type: 'boolean',
+          description: 'Try to find all references/usages',
+          default: false,
+        },
+      },
+      required: ['query'],
+    },
+  },
 } as const;
 
 /**
@@ -273,6 +361,9 @@ export async function executeToolFunction(
     
     case 'read_file':
       return await executeReadFile(args as unknown as ReadFileOptions, context);
+    
+    case 'grep_search':
+      return await executeGrepSearch(args as unknown as GrepOptions, context);
     
     default:
       throw new Error(`Unknown tool function: ${functionName}`);
@@ -428,6 +519,39 @@ async function executeReadFile(
   response += `\n${result.content}`;
   
   return response;
+}
+
+/**
+ * Execute the grep search tool
+ */
+async function executeGrepSearch(
+  options: GrepOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  // Get app information from context
+  const appId = context.metadata?.appId as string;
+  
+  if (!appId) {
+    throw new Error('App ID is required for grep search');
+  }
+
+  // Get app metadata to determine the allowed path
+  const app = appRepo.findById(appId);
+  if (!app) {
+    throw new Error(`App '${appId}' not found`);
+  }
+
+  // Validate the options using the schema
+  const validatedOptions = GrepOptionsSchema.parse(options);
+
+  // Create a grep tool instance with the app's directory as working directory
+  const appGrepTool = new GrepTool(app.path);
+
+  // Execute the search
+  const result = await appGrepTool.execute(validatedOptions);
+  
+  // Return formatted result
+  return appGrepTool.formatForLLM(result);
 }
 
 /**

@@ -147,4 +147,84 @@ router.delete('/:id', (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /apps/:id/stop - Stop development server for an app
+ */
+router.post('/:id/stop', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+    
+    const stopped = appRepo.stopServer(id);
+    
+    if (!stopped) {
+      return res.status(404).json({ error: 'App not found or server not running' });
+    }
+
+    return res.json({ success: true, message: `Server stopped for app ${id}` });
+  } catch (error) {
+    console.error('Error stopping server:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/stop-all - Stop all running development servers
+ */
+router.post('/stop-all', (req: Request, res: Response) => {
+  try {
+    const stoppedCount = appRepo.stopAllServers();
+    return res.json({ 
+      success: true, 
+      message: `Stopped ${stoppedCount} server${stoppedCount !== 1 ? 's' : ''}`,
+      stoppedCount 
+    });
+  } catch (error) {
+    console.error('Error stopping all servers:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/:id/restart - Restart development server for an app
+ */
+router.post('/:id/restart', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+    
+    const restarted = await appRepo.restartServer(id);
+    
+    if (!restarted) {
+      return res.status(404).json({ error: 'App not found or failed to restart' });
+    }
+
+    return res.json({ success: true, message: `Server restarted for app ${id}` });
+  } catch (error) {
+    console.error('Error restarting server:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/cleanup-orphans - Force cleanup of orphaned processes
+ */
+router.post('/cleanup-orphans', async (req: Request, res: Response) => {
+  try {
+    const cleaned = await appRepo.forceCleanupOrphans();
+    return res.json({ 
+      success: true, 
+      message: `Cleaned up ${cleaned} orphaned process${cleaned !== 1 ? 'es' : ''}`,
+      cleanedCount: cleaned
+    });
+  } catch (error) {
+    console.error('Error cleaning up orphans:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export { router as appsRouter };
