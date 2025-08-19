@@ -179,6 +179,9 @@ export class AppRepository {
         console.warn(`Template directory not found: ${templatePath}`);
       }
 
+      // Install npm dependencies after copying template
+      await this.installDependencies(appPath);
+
       // Initialize Git repository after template copy
       await this.initializeGitRepository(appPath, data.name);
 
@@ -198,6 +201,88 @@ export class AppRepository {
     stmt.run(id, data.name, appPath, port, now, now);
     
     return this.findById(id)!;
+  }
+
+  /**
+   * Check if a command is available in the system
+   */
+  private async isCommandAvailable(command: string): Promise<boolean> {
+    try {
+      const child = spawn('which', [command], { stdio: 'pipe' });
+      return new Promise<boolean>((resolve) => {
+        child.on('close', (code) => {
+          resolve(code === 0);
+        });
+        child.on('error', () => {
+          resolve(false);
+        });
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Install dependencies for a new app (prefers pnpm, falls back to npm)
+   */
+  private async installDependencies(appPath: string): Promise<void> {
+    try {
+      // Check if package.json exists
+      const packageJsonPath = path.join(appPath, 'package.json');
+      if (!existsSync(packageJsonPath)) {
+        console.warn(`No package.json found at ${packageJsonPath}, skipping dependency install`);
+        return;
+      }
+
+      // Check if pnpm is available, fallback to npm
+      const hasPnpm = await this.isCommandAvailable('pnpm');
+      const packageManager = hasPnpm ? 'pnpm' : 'npm';
+      
+      console.log(`Installing dependencies with ${packageManager} for app at ${appPath}...`);
+
+      // Run package manager install
+      const installProcess = spawn(packageManager, ['install'], {
+        cwd: appPath,
+        stdio: 'pipe'
+      });
+
+      // Capture output for logging
+      let stdout = '';
+      let stderr = '';
+
+      installProcess.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      installProcess.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      // Wait for install to complete
+      await new Promise<void>((resolve, reject) => {
+        installProcess.on('close', (code) => {
+          if (code === 0) {
+            console.log(`✅ ${packageManager} install completed successfully for ${appPath}`);
+            if (stdout) console.log(`${packageManager} install output:`, stdout);
+            resolve();
+          } else {
+            console.error(`❌ ${packageManager} install failed with code ${code} for ${appPath}`);
+            if (stderr) console.error(`${packageManager} install stderr:`, stderr);
+            if (stdout) console.error(`${packageManager} install stdout:`, stdout);
+            reject(new Error(`${packageManager} install failed with code ${code}`));
+          }
+        });
+
+        installProcess.on('error', (error) => {
+          console.error(`❌ ${packageManager} install process error for ${appPath}:`, error);
+          reject(error);
+        });
+      });
+
+    } catch (error) {
+      console.error(`Failed to install dependencies for ${appPath}:`, error);
+      throw new Error(`Failed to install dependencies: ${error}`);
+    }
   }
 
   /**
