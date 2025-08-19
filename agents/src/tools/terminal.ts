@@ -62,28 +62,32 @@ export class TerminalTool {
       .replace(/\r/g, '');
   }
 
-  // Commands that are blocked for security reasons
+  // Commands that are blocked for security reasons (use word boundaries for exact matches)
   private readonly BLOCKED_COMMANDS = [
     'rm -rf /',
-    'sudo',
-    'su',
-    'chmod 777',
-    'chown',
-    'passwd',
-    'useradd',
-    'userdel',
-    'systemctl',
-    'service',
-    'mount',
-    'umount',
-    'fdisk',
-    'mkfs',
-    'dd',
     '> /etc/',
-    '> /bin/',
+    '> /bin/', 
     '> /usr/',
     '> /var/',
     '> /opt/',
+  ];
+
+  // Command prefixes that should be blocked (checked at word boundaries)
+  private readonly BLOCKED_COMMAND_PREFIXES = [
+    'sudo ',
+    'su ',
+    'chmod 777',
+    'chown ',
+    'passwd ',
+    'useradd ',
+    'userdel ',
+    'systemctl ',
+    'service ',
+    'mount ',
+    'umount ',
+    'fdisk ',
+    'mkfs.',
+    'dd ',  // Block 'dd ' (with space) to avoid false positives with 'add', 'shadcn', etc.
   ];
 
   // Potentially dangerous command patterns
@@ -98,6 +102,12 @@ export class TerminalTool {
     /eval\s*\$\(/,
     /\$\(.*curl/,
     /\$\(.*wget/,
+    // Block dangerous file operations to system directories
+    /\btouch\s+\/(?:etc|bin|usr|var|opt|sys|proc|dev)\//,
+    /\bmkdir\s+\/(?:etc|bin|usr|var|opt|sys|proc|dev)\//,
+    // Block standalone 'dd' command (when used as a complete word)
+    /\bdd\s+if=/,
+    /\bdd\s+of=/,
   ];
 
   /**
@@ -175,12 +185,36 @@ export class TerminalTool {
    * Validate that the command is safe to execute
    */
   private validateCommand(command: string): void {
-    const trimmedCommand = command.trim().toLowerCase();
+    const trimmedCommand = command.trim();
+    const lowerCommand = trimmedCommand.toLowerCase();
 
-    // Check blocked commands
+    // Basic validation first
+    if (!trimmedCommand) {
+      throw new Error('Command cannot be empty');
+    }
+
+    if (command.length > 1000) {
+      throw new Error('Command is too long (max 1000 characters)');
+    }
+
+    // Check blocked commands (exact substring matches)
     for (const blocked of this.BLOCKED_COMMANDS) {
-      if (trimmedCommand.includes(blocked.toLowerCase())) {
+      if (lowerCommand.includes(blocked.toLowerCase())) {
         throw new Error(`Command contains blocked operation: ${blocked}`);
+      }
+    }
+
+    // Check blocked command prefixes (at word boundaries or start of command)
+    for (const prefix of this.BLOCKED_COMMAND_PREFIXES) {
+      const lowerPrefix = prefix.toLowerCase();
+      // Check if command starts with the prefix or has it after whitespace
+      if (lowerCommand.startsWith(lowerPrefix) || 
+          lowerCommand.includes(' ' + lowerPrefix) ||
+          lowerCommand.includes('\t' + lowerPrefix) ||
+          lowerCommand.includes(';' + lowerPrefix) ||
+          lowerCommand.includes('&&' + lowerPrefix) ||
+          lowerCommand.includes('||' + lowerPrefix)) {
+        throw new Error(`Command contains blocked operation: ${prefix.trim()}`);
       }
     }
 
@@ -189,15 +223,6 @@ export class TerminalTool {
       if (pattern.test(command)) {
         throw new Error(`Command matches dangerous pattern: ${pattern.source}`);
       }
-    }
-
-    // Basic validation
-    if (!command.trim()) {
-      throw new Error('Command cannot be empty');
-    }
-
-    if (command.length > 1000) {
-      throw new Error('Command is too long (max 1000 characters)');
     }
   }
 
