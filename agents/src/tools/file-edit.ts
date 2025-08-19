@@ -3,6 +3,8 @@ import { dirname, join, resolve, relative } from 'path';
 import { createHash } from 'crypto';
 import { diffLines, createPatch } from 'diff';
 import { existsSync } from 'fs';
+import { GitTool } from './git-tool.js';
+import { exec } from 'child_process';
 
 export interface FileEditOptions {
   /** Path to the file to edit (relative to app root) */
@@ -24,6 +26,12 @@ export interface FileEditOptions {
   dryRun?: boolean;
   /** Use fuzzy matching for search text if exact match fails */
   fuzzyMatch?: boolean;
+  /** Automatically commit changes using git */
+  autoCommit?: boolean;
+  /** Custom commit message for auto-commit (if not provided, a default message will be generated) */
+  commitMessage?: string;
+  /** Automatically run build after changes */
+  autoBuild?: boolean;
 }
 
 export interface FileEditResult {
@@ -55,6 +63,36 @@ export interface FileEditResult {
  */
 export class FileEditTool {
   private readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+  private gitTool = new GitTool();
+  
+  /**
+   * Run build command to rebuild the project after changes
+   */
+  private async runBuildCommand(appPath: string): Promise<void> {
+    try {
+      console.log('Running build after file changes...');
+      return new Promise<void>((resolve) => {
+        exec('npm run build', { cwd: appPath }, (error, stdout, stderr) => {
+          if (error) {
+            console.error(`Build error: ${error}`);
+            console.error(stderr);
+            // Don't reject as we don't want to fail the file edit operation
+            // just because the build failed
+            resolve();
+            return;
+          }
+          
+          console.log('Build completed successfully');
+          console.log(stdout);
+          resolve();
+        });
+      });
+    } catch (error) {
+      console.error('Failed to run build command:', error);
+      // Don't throw as we don't want to fail the file edit operation
+      // just because the build failed
+    }
+  }
   
   /**
    * Execute a file edit operation
@@ -70,11 +108,11 @@ export class FileEditTool {
       // Route to appropriate handler
       switch (mode) {
         case 'create':
-          return await this.handleCreate(filePath, options);
+          return await this.handleCreate(filePath, options, appPath);
         case 'rewrite':
-          return await this.handleRewrite(filePath, options);
+          return await this.handleRewrite(filePath, options, appPath);
         case 'edit':
-          return await this.handleEdit(filePath, options);
+          return await this.handleEdit(filePath, options, appPath);
         default:
           throw new Error(`Unknown edit mode: ${mode}`);
       }
@@ -126,7 +164,7 @@ export class FileEditTool {
   /**
    * Handle creating a new file
    */
-  private async handleCreate(filePath: string, options: FileEditOptions): Promise<FileEditResult> {
+  private async handleCreate(filePath: string, options: FileEditOptions, appPath: string): Promise<FileEditResult> {
     if (!options.content) {
       return {
         success: false,
@@ -162,10 +200,10 @@ export class FileEditTool {
       await writeFile(filePath, options.content, 'utf-8');
     }
 
-    return {
+    const result: FileEditResult = {
       success: true,
       path: options.path,
-      mode: 'create',
+      mode: 'create' as const,
       diff,
       changes: {
         additions: options.content.split('\n').length,
@@ -173,12 +211,24 @@ export class FileEditTool {
         totalLines: options.content.split('\n').length,
       },
     };
+
+    // Auto-commit if enabled
+    if (options.autoCommit && !options.dryRun) {
+      await this.autoCommitChanges(appPath, filePath, options, result);
+    }
+
+    // Auto-build if enabled
+    if (options.autoBuild !== false && !options.dryRun) {
+      await this.runBuildCommand(appPath);
+    }
+
+    return result;
   }
 
   /**
    * Handle rewriting an entire file
    */
-  private async handleRewrite(filePath: string, options: FileEditOptions): Promise<FileEditResult> {
+  private async handleRewrite(filePath: string, options: FileEditOptions, appPath: string): Promise<FileEditResult> {
     if (!options.content) {
       return {
         success: false,
@@ -234,20 +284,32 @@ export class FileEditTool {
 
     const changes = this.calculateChanges(originalContent, options.content);
 
-    return {
+    const result: FileEditResult = {
       success: true,
       path: options.path,
-      mode: 'rewrite',
+      mode: 'rewrite' as const,
       diff,
       ...(backupPath ? { backupPath } : {}),
       changes,
     };
+
+    // Auto-commit if enabled
+    if (options.autoCommit && !options.dryRun) {
+      await this.autoCommitChanges(appPath, filePath, options, result);
+    }
+
+    // Auto-build if enabled
+    if (options.autoBuild !== false && !options.dryRun) {
+      await this.runBuildCommand(appPath);
+    }
+
+    return result;
   }
 
   /**
    * Handle partial file edits
    */
-  private async handleEdit(filePath: string, options: FileEditOptions): Promise<FileEditResult> {
+  private async handleEdit(filePath: string, options: FileEditOptions, appPath: string): Promise<FileEditResult> {
     if (!options.edits || options.edits.length === 0) {
       return {
         success: false,
@@ -348,6 +410,11 @@ export class FileEditTool {
       result.warning = editResults.join('\n');
     }
     
+    // Auto-commit if enabled
+    if (options.autoCommit && !options.dryRun) {
+      await this.autoCommitChanges(appPath, filePath, options, result);
+    }
+    
     return result;
   }
 
@@ -439,6 +506,50 @@ export class FileEditTool {
       deletions,
       totalLines: modified.split('\n').length,
     };
+  }
+
+  /**
+   * Automatically commit changes using git
+   */
+  private async autoCommitChanges(appPath: string, filePath: string, options: FileEditOptions, result: FileEditResult): Promise<void> {
+    try {
+      // Only proceed if auto-commit is enabled and the operation was successful
+      if (!options.autoCommit || !result.success || options.dryRun) {
+        return;
+      }
+
+      // First, add the changed file to git
+      const relativePath = relative(appPath, filePath);
+      await this.gitTool.executeGitOperation(appPath, {
+        operation: 'add',
+        files: [relativePath]
+      });
+
+      // Generate commit message if none provided
+      let commitMessage = options.commitMessage;
+      if (!commitMessage) {
+        switch (result.mode) {
+          case 'create':
+            commitMessage = `Create file: ${relativePath}`;
+            break;
+          case 'rewrite':
+            commitMessage = `Rewrite file: ${relativePath}`;
+            break;
+          case 'edit':
+            commitMessage = `Update file: ${relativePath}`;
+            break;
+        }
+      }
+
+      // Commit the changes
+      await this.gitTool.executeGitOperation(appPath, {
+        operation: 'commit',
+        message: commitMessage
+      });
+    } catch (error) {
+      console.error('Failed to auto-commit changes:', error);
+      // Don't throw error, as the file operation itself was successful
+    }
   }
 
   /**

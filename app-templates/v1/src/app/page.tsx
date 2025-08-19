@@ -5,6 +5,10 @@ export const dynamic = 'force-dynamic'
 
 export default function Home() {
   return (
-    <GeometricLoader />
+    <main className="min-h-screen p-4 space-y-8">
+      <div className="flex flex-col items-center justify-center py-20">
+        <GeometricLoader />
+      </div>
+    </main>
   )
 }

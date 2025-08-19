@@ -147,6 +147,20 @@ export const TOOL_FUNCTIONS = {
           description: 'Use fuzzy matching for search text if exact match fails',
           default: true,
         },
+        autoCommit: {
+          type: 'boolean',
+          description: 'Automatically commit changes using git after file operation',
+          default: false,
+        },
+        commitMessage: {
+          type: 'string',
+          description: 'Custom commit message for auto-commit (if not provided, a default message will be generated)',
+        },
+        autoBuild: {
+          type: 'boolean',
+          description: 'Automatically run build after file changes',
+          default: true,
+        },
       },
       required: ['path'],
     },
