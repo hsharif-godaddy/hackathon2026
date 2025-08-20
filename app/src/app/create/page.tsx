@@ -11,6 +11,12 @@ function CreateAppContent() {
   const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
+    // Avoid duplicate requests in React StrictMode (dev env) by guarding with a ref.
+    const hasRunRef = (window as any).__createAppHasRunRef || { current: false };
+    (window as any).__createAppHasRunRef = hasRunRef;
+    if (hasRunRef.current) return;
+    hasRunRef.current = true;
+
     const createApp = async () => {
       try {
         const message = searchParams.get('message')

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowRightIcon, SparklesIcon } from '@heroicons/react/24/outline'
@@ -28,8 +28,23 @@ export default function Home() {
     }
   ]
 
-  const handleStartBuilding = () => {
-    if (!promptText.trim()) return
+  // Track if user is redirecting to prevent multiple calls
+  const [isRedirecting, setIsRedirecting] = useState(false)
+  // Create a unique session ID for this page visit
+  const sessionIdRef = useRef(`session-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`)
+  
+  // Detect and handle back navigation to reset the redirect state
+  useEffect(() => {
+    // Reset the redirect state when returning to this page
+    return () => setIsRedirecting(false)
+  }, [])
+
+  // Use useCallback to ensure the function reference stays stable
+  const handleStartBuilding = useCallback(() => {
+    if (!promptText.trim() || isRedirecting) return
+    
+    // Set flag to prevent multiple calls
+    setIsRedirecting(true)
     
     const encodedMessage = encodeURIComponent(promptText.trim())
     // Generate a simple app name from the prompt (first few words)
@@ -37,8 +52,9 @@ export default function Home() {
     const appName = words.length > 0 ? words.join(' ') : 'New App'
     const encodedName = encodeURIComponent(appName)
     
-    router.push(`/create?message=${encodedMessage}&name=${encodedName}`)
-  }
+    // Add the session ID as an idempotency key
+    router.push(`/create?message=${encodedMessage}&name=${encodedName}&sessionId=${sessionIdRef.current}`)
+  }, [promptText, router, isRedirecting])
 
   const handleExampleClick = (examplePrompt: string) => {
     setPromptText(examplePrompt)
