@@ -156,6 +156,42 @@ function initializeSchema() {
       UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.conversation_id;
     END
   `);
+
+  // Create token_usage table for tracking LLM and operation costs
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS token_usage (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      operation TEXT NOT NULL CHECK(operation IN ('llm_request', 'file_edit', 'tool_execution')),
+      prompt_tokens INTEGER NOT NULL DEFAULT 0,
+      completion_tokens INTEGER NOT NULL DEFAULT 0,
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      model TEXT,
+      cost REAL DEFAULT 0,
+      conversation_id TEXT,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
+    )
+  `);
+
+  // Create indexes for efficient token usage queries
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_token_usage_app_id ON token_usage(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_token_usage_created_at ON token_usage(created_at)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_token_usage_operation ON token_usage(operation)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_token_usage_conversation_id ON token_usage(conversation_id)
+  `);
 }
 
 export function closeDatabase() {

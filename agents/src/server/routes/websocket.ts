@@ -227,6 +227,7 @@ async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WS
       metadata: { 
         agentId,
         appId: chatRequest.appId,
+        conversationId: conversation?.id,
         ...chatRequest.metadata 
       },
       timestamp: new Date(),
@@ -624,7 +625,7 @@ async function handleWithFunctionCallsWS(
     try {
       await conversationRepo.updateMessage(agentMessage.id, {
         content: accumulatedContent,
-        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        ...(toolCalls.length > 0 && { toolCalls }),
         metadata: { isStreaming: false }
       });
     } catch (dbError) {

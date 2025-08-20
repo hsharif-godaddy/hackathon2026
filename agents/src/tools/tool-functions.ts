@@ -5,6 +5,7 @@ import { GitTool, GitToolOptions } from './git-tool.js';
 import { ReadFileTool, ReadFileOptions } from './read-file.js';
 import { GrepTool, GrepOptions, GrepOptionsSchema } from './grep-tool.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
+import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js';
 import type { AgentExecutionContext } from '../base/index.js';
 
 const directoryTool = new DirectoryListingTool();
@@ -14,6 +15,7 @@ const gitTool = new GitTool();
 const readFileTool = new ReadFileTool();
 const grepTool = new GrepTool();
 const appRepo = new AppRepository();
+const tokenUsageRepo = new TokenUsageRepository();
 
 /**
  * OpenAI Function definitions for our tools
@@ -353,6 +355,33 @@ export const TOOL_FUNCTIONS = {
 } as const;
 
 /**
+ * Track tool execution for token usage
+ */
+async function trackToolExecution(
+  toolName: string,
+  context: AgentExecutionContext,
+  argsSize: number = 0
+): Promise<void> {
+  const appId = context.metadata?.appId as string;
+  if (!appId) return;
+
+  try {
+    await tokenUsageRepo.recordUsage(
+      appId,
+      'tool_execution',
+      0, // No prompt tokens for tool execution
+      0, // No completion tokens for tool execution  
+      {
+        ...(context.metadata?.conversationId ? { conversationId: context.metadata.conversationId as string } : {}),
+        description: `Tool execution: ${toolName} (${argsSize} bytes args)`
+      }
+    );
+  } catch (error) {
+    console.warn('Failed to track tool execution token usage:', error);
+  }
+}
+
+/**
  * Execute a tool function
  */
 export async function executeToolFunction(
@@ -360,6 +389,10 @@ export async function executeToolFunction(
   args: Record<string, unknown>,
   context: AgentExecutionContext
 ): Promise<unknown> {
+  // Track tool execution
+  const argsSize = JSON.stringify(args).length;
+  await trackToolExecution(functionName, context, argsSize);
+
   switch (functionName) {
     case 'directory_listing':
       return await executeDirectoryListing(args as DirectoryListingOptions, context);
@@ -458,8 +491,11 @@ async function executeFileEdit(
     throw new Error(`App '${appId}' not found`);
   }
 
-  // Execute the file edit within the app's directory
-  const result = await fileEditTool.editFile(app.path, options);
+  // Execute the file edit within the app's directory with context for token tracking
+  const result = await fileEditTool.editFile(app.path, options, {
+    appId,
+    conversationId: context.metadata?.conversationId as string
+  });
   
   // Return formatted result
   return fileEditTool.formatResult(result);

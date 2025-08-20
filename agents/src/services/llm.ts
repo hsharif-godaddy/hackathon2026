@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { globalTracer } from '../utils/tracing.js';
 import type { AgentExecutionContext } from '../base/index.js';
+import { TokenUsageRepository } from '../database/index.js';
 
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -57,6 +58,7 @@ export interface LLMResponse {
 export class LLMService {
   private openai: OpenAI;
   private defaultModel: string;
+  private tokenUsageRepo: TokenUsageRepository;
 
   constructor(apiKey?: string, defaultModel = 'claude-sonnet-4-20250514') {
     const key = apiKey || process.env.OPENAI_API_KEY;
@@ -67,6 +69,7 @@ export class LLMService {
 
     this.openai = new OpenAI({ apiKey: key });
     this.defaultModel = defaultModel;
+    this.tokenUsageRepo = new TokenUsageRepository();
 
     globalTracer.trace({
       type: 'debug',
@@ -145,6 +148,25 @@ export class LLMService {
           model: response.model,
         },
       });
+
+      // Track token usage in database
+      if (response.usage && context?.metadata?.appId) {
+        try {
+          await this.tokenUsageRepo.recordUsage(
+            context.metadata.appId as string,
+            'llm_request',
+            response.usage.promptTokens,
+            response.usage.completionTokens,
+            {
+              model: response.model,
+              conversationId: context.metadata?.conversationId as string,
+              description: `LLM request - ${request.messages.length} messages`
+            }
+          );
+        } catch (tokenError) {
+          console.warn('Failed to record token usage:', tokenError);
+        }
+      }
 
       return response;
 
@@ -257,6 +279,29 @@ export class LLMService {
               streaming: true,
             },
           });
+
+          // Track token usage for streaming (approximate based on content length)
+          if (context?.metadata?.appId) {
+            try {
+              // Estimate tokens: roughly 1 token per 4 characters
+              const estimatedTokens = Math.ceil(fullContent.length / 4);
+              const promptTokens = Math.ceil(request.messages.join(' ').length / 4);
+              
+              await this.tokenUsageRepo.recordUsage(
+                context.metadata.appId as string,
+                'llm_request',
+                promptTokens,
+                estimatedTokens,
+                {
+                  model,
+                  conversationId: context.metadata?.conversationId as string,
+                  description: `Streaming LLM request - ${chunkCount} chunks`
+                }
+              );
+            } catch (tokenError) {
+              console.warn('Failed to record streaming token usage:', tokenError);
+            }
+          }
 
           yield { content: '', isComplete: true };
           return;

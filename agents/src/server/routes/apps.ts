@@ -4,12 +4,14 @@ import type { CreateAppRequest, UpdateAppRequest } from '../../database/index.js
 import { DirectoryListingTool } from '../../tools/directory-listing.js';
 import { ReadFileTool } from '../../tools/read-file.js';
 import { FileEditTool } from '../../tools/file-edit.js';
+import { TokenUsageRepository } from '../../database/index.js';
 
 const router = Router();
 const appRepo = new AppRepository();
 const directoryTool = new DirectoryListingTool();
 const readFileTool = new ReadFileTool();
 const fileEditTool = new FileEditTool();
+const tokenUsageRepo = new TokenUsageRepository();
 
 /**
  * GET /apps - List all apps
@@ -50,6 +52,22 @@ router.get('/servers', (req: Request, res: Response) => {
     return res.json({ servers: runningServers });
   } catch (error) {
     console.error('Error getting running servers:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /apps/config - Get app configuration for frontend
+ */
+router.get('/config', async (req: Request, res: Response) => {
+  try {
+    const config = {
+      showUsageCost: process.env.SHOW_USAGE_COST === 'true'
+    };
+    
+    return res.json({ config });
+  } catch (error) {
+    console.error('Error getting app config:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -323,6 +341,8 @@ router.post('/:id/files/write', async (req: Request, res: Response) => {
       content: content,
       mode: mode || 'rewrite',
       createDirs: true
+    }, {
+      appId: id
     });
 
     if (!result.success) {
@@ -361,6 +381,8 @@ router.post('/:id/files/edit', async (req: Request, res: Response) => {
       path: filePath,
       mode: 'edit',
       edits: edits
+    }, {
+      appId: id
     });
 
     if (!result.success) {
@@ -370,6 +392,120 @@ router.post('/:id/files/edit', async (req: Request, res: Response) => {
     return res.json(result);
   } catch (error) {
     console.error('Error editing file:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /apps/:id/usage - Get token usage summary for an app
+ */
+router.get('/:id/usage', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const usage = tokenUsageRepo.getUsageInfo(id);
+    return res.json({ usage });
+  } catch (error) {
+    console.error('Error getting token usage:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /apps/:id/usage/history - Get detailed token usage history for an app
+ */
+router.get('/:id/usage/history', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { limit, offset, operation, conversationId } = req.query;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const options: any = {};
+    if (limit) options.limit = parseInt(limit as string);
+    if (offset) options.offset = parseInt(offset as string);
+    if (operation) options.operation = operation;
+    if (conversationId) options.conversationId = conversationId as string;
+
+    const history = tokenUsageRepo.getUsageHistory(id, options);
+
+    return res.json({ history });
+  } catch (error) {
+    console.error('Error getting token usage history:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /apps/:id/usage/stats - Get usage statistics by time period
+ */
+router.get('/:id/usage/stats', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { period = 'day', limit = 30 } = req.query;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const stats = tokenUsageRepo.getUsageByPeriod(
+      id, 
+      period as 'day' | 'week' | 'month',
+      parseInt(limit as string)
+    );
+
+    return res.json({ stats });
+  } catch (error) {
+    console.error('Error getting token usage stats:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /apps/:id/usage - Delete all token usage records for an app
+ */
+router.delete('/:id/usage', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const deleted = tokenUsageRepo.deleteAppUsage(id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'No usage records found' });
+    }
+
+    return res.json({ message: 'Usage records deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting token usage:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

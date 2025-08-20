@@ -13,6 +13,7 @@ import {
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
 import CodeEditor from '@/app/develop/components/CodeEditor'
+import TokenUsage from '@/app/develop/components/TokenUsage'
 import { Message, PlanItem } from '@/app/develop/components/types'
 import { 
   handleSendMessage as sendMessage, 
@@ -46,6 +47,7 @@ export default function Develop() {
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
   const [isRestarting, setIsRestarting] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [showUsageCost, setShowUsageCost] = useState(false)
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
@@ -70,6 +72,25 @@ export default function Develop() {
       fetchApp()
     }
   }, [appId])
+
+  // Fetch config to determine if usage cost should be shown
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('http://localhost:4000/apps/config')
+        if (response.ok) {
+          const data = await response.json()
+          setShowUsageCost(data.config.showUsageCost)
+        }
+      } catch (error) {
+        console.error('Error fetching config:', error)
+        // Default to false if config fetch fails
+        setShowUsageCost(false)
+      }
+    }
+
+    fetchConfig()
+  }, [])
 
   // Load conversations when app is loaded
   useEffect(() => {
@@ -117,7 +138,7 @@ export default function Develop() {
       inputValue,
       isLoading,
       appId,
-      conversationId,
+      conversationId: conversationId || undefined,
       setMessages,
       setInputValue,
       setIsLoading,
@@ -255,6 +276,9 @@ export default function Develop() {
               </span>
             </div>
             <div className="flex items-center space-x-4">
+              {appId && (
+                <TokenUsage appId={appId} enabled={showUsageCost} />
+              )}
               <Link
                 href="/apps"
                 className="inline-flex items-center px-3 py-2 text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"

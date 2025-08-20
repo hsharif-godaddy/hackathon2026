@@ -3,6 +3,7 @@ import { dirname, join, resolve, relative } from 'path';
 import { createHash } from 'crypto';
 import { diffLines, createPatch } from 'diff';
 import { existsSync } from 'fs';
+import { TokenUsageRepository } from '../database/index.js';
 import { GitTool } from './git-tool.js';
 import { exec } from 'child_process';
 
@@ -63,6 +64,11 @@ export interface FileEditResult {
  */
 export class FileEditTool {
   private readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+  private tokenUsageRepo: TokenUsageRepository;
+
+  constructor() {
+    this.tokenUsageRepo = new TokenUsageRepository();
+  }
   private gitTool = new GitTool();
   
   /**
@@ -97,7 +103,7 @@ export class FileEditTool {
   /**
    * Execute a file edit operation
    */
-  async editFile(appPath: string, options: FileEditOptions): Promise<FileEditResult> {
+  async editFile(appPath: string, options: FileEditOptions, context?: { appId?: string; conversationId?: string }): Promise<FileEditResult> {
     try {
       // Resolve the file path within the app directory
       const filePath = this.resolveFilePath(appPath, options.path);
@@ -108,11 +114,11 @@ export class FileEditTool {
       // Route to appropriate handler
       switch (mode) {
         case 'create':
-          return await this.handleCreate(filePath, options, appPath);
+          return await this.handleCreate(filePath, options, appPath, context);
         case 'rewrite':
-          return await this.handleRewrite(filePath, options, appPath);
+          return await this.handleRewrite(filePath, options, appPath, context);
         case 'edit':
-          return await this.handleEdit(filePath, options, appPath);
+          return await this.handleEdit(filePath, options, appPath, context);
         default:
           throw new Error(`Unknown edit mode: ${mode}`);
       }
@@ -164,7 +170,7 @@ export class FileEditTool {
   /**
    * Handle creating a new file
    */
-  private async handleCreate(filePath: string, options: FileEditOptions, appPath: string): Promise<FileEditResult> {
+  private async handleCreate(filePath: string, options: FileEditOptions, appPath: string, context?: { appId?: string; conversationId?: string }): Promise<FileEditResult> {
     if (!options.content) {
       return {
         success: false,
@@ -198,6 +204,9 @@ export class FileEditTool {
 
     if (!options.dryRun) {
       await writeFile(filePath, options.content, 'utf-8');
+      
+      // Track token usage for file creation
+      await this.trackFileEditUsage(context, 'create', options.path, options.content.length);
     }
 
     const result: FileEditResult = {
@@ -228,7 +237,7 @@ export class FileEditTool {
   /**
    * Handle rewriting an entire file
    */
-  private async handleRewrite(filePath: string, options: FileEditOptions, appPath: string): Promise<FileEditResult> {
+  private async handleRewrite(filePath: string, options: FileEditOptions, appPath: string, context?: { appId?: string; conversationId?: string }): Promise<FileEditResult> {
     if (!options.content) {
       return {
         success: false,
@@ -280,6 +289,9 @@ export class FileEditTool {
 
     if (!options.dryRun) {
       await writeFile(filePath, options.content, 'utf-8');
+      
+      // Track token usage for file rewrite
+      await this.trackFileEditUsage(context, 'rewrite', options.path, options.content.length);
     }
 
     const changes = this.calculateChanges(originalContent, options.content);
@@ -309,7 +321,7 @@ export class FileEditTool {
   /**
    * Handle partial file edits
    */
-  private async handleEdit(filePath: string, options: FileEditOptions, appPath: string): Promise<FileEditResult> {
+  private async handleEdit(filePath: string, options: FileEditOptions, appPath: string, context?: { appId?: string; conversationId?: string }): Promise<FileEditResult> {
     if (!options.edits || options.edits.length === 0) {
       return {
         success: false,
@@ -390,6 +402,9 @@ export class FileEditTool {
 
     if (!options.dryRun) {
       await writeFile(filePath, content, 'utf-8');
+      
+      // Track token usage for file edit
+      await this.trackFileEditUsage(context, 'edit', options.path, content.length);
     }
 
     const changes = this.calculateChanges(originalContent, content);
@@ -506,6 +521,34 @@ export class FileEditTool {
       deletions,
       totalLines: modified.split('\n').length,
     };
+  }
+
+  /**
+   * Track token usage for file edit operations
+   */
+  private async trackFileEditUsage(
+    context: { appId?: string; conversationId?: string } | undefined,
+    operation: string,
+    filePath: string,
+    contentLength: number
+  ): Promise<void> {
+    if (!context?.appId) return;
+
+    try {
+      // File operations don't use LLM tokens, so both prompt and completion are 0
+      await this.tokenUsageRepo.recordUsage(
+        context.appId,
+        'file_edit',
+        0, // No prompt tokens for file edits
+        0, // No completion tokens for file edits
+        {
+          ...(context.conversationId && { conversationId: context.conversationId }),
+          description: `File ${operation}: ${filePath.split('/').pop()} (${contentLength} chars)`
+        }
+      );
+    } catch (error) {
+      console.warn('Failed to track file edit token usage:', error);
+    }
   }
 
   /**

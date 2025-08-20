@@ -64,3 +64,19 @@ export interface MessageSegment {
   tool_call?: ToolCall;
   timestamp: Date;
 }
+
+export interface TokenUsage {
+  id: string;
+  appId: string;
+  operation: 'llm_request' | 'file_edit' | 'tool_execution';
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  model?: string | undefined;
+  cost?: number | undefined; // Optional cost calculation
+  conversationId?: string | undefined;
+  description?: string | undefined;
+  createdAt: Date;
+}
+
+
