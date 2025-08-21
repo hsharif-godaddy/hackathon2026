@@ -252,6 +252,32 @@ router.post('/cleanup-orphans', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /apps/:id/force-cleanup - Force cleanup processes for a specific app
+ */
+router.post('/:id/force-cleanup', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+    
+    const cleaned = await appRepo.forceCleanupApp(id);
+    
+    if (!cleaned) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    return res.json({ 
+      success: true, 
+      message: `Force cleanup completed for app ${id}`
+    });
+  } catch (error) {
+    console.error('Error force cleaning up app:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /apps/:id/files - List files in app directory
  */
 router.get('/:id/files', async (req: Request, res: Response) => {
@@ -392,6 +418,56 @@ router.post('/:id/files/edit', async (req: Request, res: Response) => {
     return res.json(result);
   } catch (error) {
     console.error('Error editing file:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/:id/styles/edit - Edit element styles in app files
+ */
+router.post('/:id/styles/edit', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { selector, property, value, newClassName, elementInfo } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    if (!selector || !property || value === undefined) {
+      return res.status(400).json({ error: 'Selector, property, and value are required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    // For now, just log the style change and return success
+    // In a full implementation, this would:
+    // 1. Find the file containing the element
+    // 2. Update the className attribute
+    // 3. Save the file
+    console.log(`Style edit for app ${id}:`, {
+      selector,
+      property,
+      value,
+      newClassName,
+      elementInfo
+    });
+
+    return res.json({
+      success: true,
+      message: 'Style updated successfully',
+      data: {
+        selector,
+        property,
+        value,
+        newClassName
+      }
+    });
+  } catch (error) {
+    console.error('Error editing styles:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

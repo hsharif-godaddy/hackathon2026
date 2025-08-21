@@ -19,7 +19,7 @@ cd ../app
 npm install
 
 # Install app template dependencies (REQUIRED for creating new apps)
-cd ../app-templates/v1
+cd ../app-templates/v3
 npm install
 cd ../..
 ```
@@ -30,7 +30,7 @@ Create `agents/.env`:
 OPENAI_API_KEY=your_openai_api_key_here
 PORT=4000
 APPS_BASE_DIR=/tmp/apps
-APP_TEMPLATE_DIR=../app-templates/v1
+APP_TEMPLATE_DIR=../app-templates/v3
 ```
 
 ### 3. Start Services
@@ -85,7 +85,7 @@ curl -X POST http://localhost:4000/agent/example-agent/chat \
 **Cause**: App template dependencies are not installed  
 **Solution**: Install template dependencies:
 ```bash
-cd app-templates/v1
+cd app-templates/v3
 npm install
 ```
 
@@ -95,7 +95,7 @@ npm install
 **Cause**: The `APP_TEMPLATE_DIR` environment variable points to wrong location  
 **Solution**: Ensure your `agents/.env` has:
 ```bash
-APP_TEMPLATE_DIR=../app-templates/v1
+APP_TEMPLATE_DIR=../app-templates/v3
 ```
 
 ### Port conflicts

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import DevelopmentMode from '../components/DevelopmentMode'
 
 export const metadata: Metadata = {
   title: 'My App - Built with Airo AI Builder',
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="light">
-      <body className="min-h-screen bg-background">{children}</body>
+      <body className="min-h-screen bg-background">
+        {children}
+        <DevelopmentMode />
+      </body>
     </html>
   )
 }

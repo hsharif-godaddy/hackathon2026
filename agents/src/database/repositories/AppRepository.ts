@@ -6,6 +6,7 @@ import { getDatabase } from '../connection.js';
 import { GitUtils } from '../../utils/git.js';
 import { PortManager } from '../../utils/port-manager.js';
 import type { App, CreateAppRequest, UpdateAppRequest, RunningProcess } from '../schema.js';
+import net from 'net';
 
 export class AppRepository {
   private db = getDatabase();
@@ -82,7 +83,6 @@ export class AppRepository {
    */
   private async isPortOccupied(port: number): Promise<boolean> {
     return new Promise((resolve) => {
-      const net = require('net');
       const server = net.createServer();
       
       server.listen(port, () => {
@@ -94,15 +94,47 @@ export class AppRepository {
   }
 
   /**
+   * Get process information for a port (for debugging)
+   */
+  private async getProcessInfoForPort(port: number): Promise<string | null> {
+    return new Promise((resolve) => {
+      const { exec } = require('child_process');
+      exec(`lsof -i :${port}`, (error: any, stdout: string) => {
+        if (error) {
+          resolve(null);
+        } else {
+          resolve(stdout);
+        }
+      });
+    });
+  }
+
+  /**
+   * Check if a process is still running by PID
+   */
+  private async isProcessRunning(pid: number): Promise<boolean> {
+    try {
+      process.kill(pid, 0); // Signal 0 doesn't kill, just checks if process exists
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
    * Kill a process by PID
    */
   private async killProcess(pid: number): Promise<void> {
     try {
       process.kill(pid, 'SIGTERM');
       // Wait a bit, then force kill if needed
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
-          process.kill(pid, 'SIGKILL');
+          const stillRunning = await this.isProcessRunning(pid);
+          if (stillRunning) {
+            console.log(`🔨 Force killing process ${pid} with SIGKILL`);
+            process.kill(pid, 'SIGKILL');
+          }
         } catch (error) {
           // Process already dead, that's fine
         }
@@ -124,12 +156,36 @@ export class AppRepository {
    * Add process to database tracking
    */
   private addProcessRecord(appId: string, pid: number, port: number): string {
+    // First verify the app exists before trying to reference it
+    const appCheckStmt = this.db.prepare('SELECT id FROM apps WHERE id = ?');
+    const appExists = appCheckStmt.get(appId);
+    
+    if (!appExists) {
+      throw new Error(`Cannot add process record: App with id ${appId} does not exist in database`);
+    }
+    
     const processId = nanoid(12);
+    
     const stmt = this.db.prepare(`
       INSERT INTO running_processes (id, app_id, pid, port, started_at, status)
       VALUES (?, ?, ?, ?, datetime('now'), 'running')
     `);
-    stmt.run(processId, appId, pid, port);
+    
+    try {
+      stmt.run(processId, appId, pid, port);
+    } catch (error: any) {
+      if (error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+        // Double-check if app still exists
+        const appStillExists = appCheckStmt.get(appId);
+        if (!appStillExists) {
+          throw new Error(`Foreign key constraint failed: App ${appId} was deleted or never properly inserted`);
+        } else {
+          throw new Error(`Foreign key constraint failed for unknown reason. App ${appId} exists but constraint still failed`);
+        }
+      }
+      throw error;
+    }
+    
     return processId;
   }
 
@@ -152,11 +208,17 @@ export class AppRepository {
     const baseDir = process.env.APPS_BASE_DIR || '/tmp/apps';
     const appPath = path.join(baseDir, id);
     
-    // Assign an available port
+    // Assign an available port for the frontend (smart script will handle backend port discovery)
     const port = await this.portManager.getNextAvailablePort();
     
-    // Get template directory from environment variable, default to app-templates/v1
-    const templateDir = process.env.APP_TEMPLATE_DIR || 'app-templates/v1';
+    // Double-check the port is actually free
+    const isPortFree = !(await this.isPortOccupied(port));
+    if (!isPortFree) {
+      throw new Error(`Port ${port} is already in use`);
+    }
+    
+    // Get template directory from environment variable, default to app-templates/v3
+    const templateDir = process.env.APP_TEMPLATE_DIR || 'app-templates/v3';
     const templatePath = path.isAbsolute(templateDir) 
       ? templateDir 
       : path.join(process.cwd(), '..', templateDir);
@@ -164,13 +226,34 @@ export class AppRepository {
     // Create the directory for the app
     try {
       mkdirSync(appPath, { recursive: true });
+      console.log(`📁 Created app directory: ${appPath}`);
       
       // Copy template contents if template directory exists
       if (existsSync(templatePath)) {
         try {
-          // Copy all contents from template directory to app directory
-          cpSync(templatePath, appPath, { recursive: true });
-          console.log(`Copied template from ${templatePath} to ${appPath}`);
+          // Copy all contents from template directory to app directory, excluding unnecessary files
+          cpSync(templatePath, appPath, { 
+            recursive: true,
+            filter: (src, dest) => {
+              const relativePath = path.relative(templatePath, src);
+              
+              // Skip node_modules and other build/cache directories
+              if (relativePath.includes('node_modules') ||
+                  relativePath.includes('dist') ||
+                  relativePath.includes('.next') ||
+                  relativePath.includes('.vite') ||
+                  relativePath.includes('.cache') ||
+                  relativePath.includes('coverage') ||
+                  relativePath.includes('logs') ||
+                  relativePath.endsWith('.log') ||
+                  relativePath.includes('.dev-ports.json')) {
+                return false;
+              }
+              
+              return true;
+            }
+          });
+          console.log(`📋 Copied template from ${templatePath} to ${appPath} (excluding node_modules and build artifacts)`);
         } catch (templateError) {
           console.warn(`Failed to copy template from ${templatePath}:`, templateError);
           // Don't fail app creation if template copying fails
@@ -179,26 +262,67 @@ export class AppRepository {
         console.warn(`Template directory not found: ${templatePath}`);
       }
 
-      // Install npm dependencies after copying template
-      await this.installDependencies(appPath);
+      // Save app to database BEFORE running setup (reserves the port)
+      // Use a transaction to ensure atomicity
+      this.db.exec('BEGIN TRANSACTION');
+      
+      try {
+        const stmt = this.db.prepare(`
+          INSERT INTO apps (id, name, path, port, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        stmt.run(id, data.name, appPath, port, now, now);
+        
+        // Store additional port information in a separate table if needed
+        // For now, we'll store backend port in environment during dev server start
+        
+        // Verify the app record was inserted successfully before proceeding
+        const verifyStmt = this.db.prepare('SELECT id FROM apps WHERE id = ?');
+        const appExists = verifyStmt.get(id);
+        if (!appExists) {
+          throw new Error(`Failed to insert app record for ${id}`);
+        }
+        
+        // Commit the transaction
+        this.db.exec('COMMIT');       
+      } catch (error) {
+        // Rollback on error
+        this.db.exec('ROLLBACK');
+        throw error;
+      }
+
+      // Run project setup (installs dependencies and configures registry)
+      await this.runProjectSetup(appPath);
 
       // Initialize Git repository after template copy
       await this.initializeGitRepository(appPath, data.name);
 
-      // Start the development server
-      await this.startDevServer(id, appPath, port);
+      // Wait a moment to ensure all setup is complete
+      console.log(`⏳ Waiting 2 seconds before starting dev server...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Start the development servers using the smart script
+      try {
+        await this.startDevServer(id, appPath, port);
+      } catch (devServerError) {
+        console.error(`Failed to start dev servers for app ${id}:`, devServerError);
+        // Don't fail app creation if dev servers fail to start
+        // The app is still created successfully
+      }
 
     } catch (error) {
       console.error(`Failed to create directory for app ${id}:`, error);
+      // Clean up database entry if app creation fails
+      try {
+        // Ensure we're not in a transaction when cleaning up
+        this.db.exec('ROLLBACK');
+        const cleanupStmt = this.db.prepare('DELETE FROM apps WHERE id = ?');
+        cleanupStmt.run(id);
+      } catch (cleanupError) {
+        console.warn(`Failed to cleanup database entry for app %s: %s`, id, cleanupError);
+      }
       throw new Error(`Failed to create app directory: ${error}`);
     }
-    
-    const stmt = this.db.prepare(`
-      INSERT INTO apps (id, name, path, port, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    
-    stmt.run(id, data.name, appPath, port, now, now);
     
     return this.findById(id)!;
   }
@@ -223,25 +347,117 @@ export class AppRepository {
   }
 
   /**
-   * Install dependencies for a new app (prefers pnpm, falls back to npm)
+   * Run project setup script (configures registry and installs dependencies)
    */
-  private async installDependencies(appPath: string): Promise<void> {
+  private async runProjectSetup(appPath: string): Promise<void> {
     try {
       // Check if package.json exists
       const packageJsonPath = path.join(appPath, 'package.json');
       if (!existsSync(packageJsonPath)) {
-        console.warn(`No package.json found at ${packageJsonPath}, skipping dependency install`);
+        console.warn(`No package.json found at ${packageJsonPath}, skipping project setup`);
         return;
       }
 
+      // Check if setup script exists
+      const setupScriptPath = path.join(appPath, 'setup-project.sh');
+      if (existsSync(setupScriptPath)) {
+        console.log(`Running project setup script for app at ${appPath}...`);
+        
+        // Run the setup script
+        const setupProcess = spawn('bash', [setupScriptPath], {
+          cwd: appPath,
+          stdio: 'pipe'
+        });
+
+        // Capture output for logging
+        let stdout = '';
+        let stderr = '';
+
+        setupProcess.stdout?.on('data', (data) => {
+          stdout += data.toString();
+        });
+
+        setupProcess.stderr?.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        // Wait for setup to complete
+        await new Promise<void>((resolve, reject) => {
+          setupProcess.on('close', (code) => {
+            if (code === 0) {
+              console.log(`✅ Project setup completed successfully for ${appPath}`);
+              if (stdout) console.log(`Setup output:`, stdout);
+              resolve();
+            } else {
+              console.error(`❌ Project setup failed with code ${code} for ${appPath}`);
+              if (stderr) console.error(`Setup stderr:`, stderr);
+              if (stdout) console.error(`Setup stdout:`, stdout);
+              reject(new Error(`Project setup failed with code ${code}`));
+            }
+          });
+
+          setupProcess.on('error', (error) => {
+            console.error(`❌ Project setup process error for %s: %s`, appPath, error);
+            reject(error);
+          });
+        });
+
+      } else {
+        // Fallback to manual dependency installation
+        console.log(`No setup script found, falling back to manual installation for ${appPath}...`);
+        await this.installDependenciesManual(appPath);
+      }
+
+    } catch (error) {
+      console.error(`Failed to run project setup for %s: %s`, appPath, error);
+      throw new Error(`Failed to run project setup: ${error}`);
+    }
+  }
+
+  /**
+   * Manual dependency installation (fallback when setup script is not available)
+   */
+  private async installDependenciesManual(appPath: string): Promise<void> {
+    try {
       // Check if pnpm is available, fallback to npm
       const hasPnpm = await this.isCommandAvailable('pnpm');
       const packageManager = hasPnpm ? 'pnpm' : 'npm';
       
       console.log(`Installing dependencies with ${packageManager} for app at ${appPath}...`);
 
-      // Run package manager install
-      const installProcess = spawn(packageManager, ['install'], {
+      // Configure registry first
+      const configArgs = packageManager === 'pnpm' 
+        ? ['config', 'set', 'registry', 'https://registry.npmjs.org/', '--location', 'project']
+        : ['config', 'set', 'registry', 'https://registry.npmjs.org/', '--location', 'project'];
+
+      const configProcess = spawn(packageManager, configArgs, {
+        cwd: appPath,
+        stdio: 'pipe'
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        configProcess.on('close', (code) => {
+          if (code === 0) {
+            console.log(`✅ Registry configured for ${packageManager}`);
+            resolve();
+          } else {
+            console.warn(`⚠️  Failed to configure registry, continuing anyway...`);
+            resolve(); // Don't fail on registry config
+          }
+        });
+
+        configProcess.on('error', (error) => {
+          console.warn(`⚠️  Registry config error, continuing anyway:`, error);
+          resolve(); // Don't fail on registry config
+        });
+      });
+
+      // Run package manager install with explicit registry
+      const installArgs = packageManager === 'pnpm'
+        ? ['install', '--registry', 'https://registry.npmjs.org/']
+        : ['install', '--registry', 'https://registry.npmjs.org/'];
+
+      const installProcess = spawn(packageManager, installArgs, {
         cwd: appPath,
         stdio: 'pipe'
       });
@@ -274,13 +490,13 @@ export class AppRepository {
         });
 
         installProcess.on('error', (error) => {
-          console.error(`❌ ${packageManager} install process error for ${appPath}:`, error);
+          console.error(`❌ ${packageManager} install process error for %s: %s`, appPath, error);
           reject(error);
         });
       });
 
     } catch (error) {
-      console.error(`Failed to install dependencies for ${appPath}:`, error);
+      console.error(`Failed to install dependencies manually for %s: %s`, appPath, error);
       throw new Error(`Failed to install dependencies: ${error}`);
     }
   }
@@ -445,11 +661,24 @@ export class AppRepository {
   }
 
   /**
-   * Start development server for an app
+   * Detect if app is using v3 template by checking for specific files
    */
-  private async startDevServer(appId: string, appPath: string, port: number): Promise<void> {
+  private isV3Template(appPath: string): boolean {
+    const v3Indicators = [
+      path.join(appPath, 'src', 'frontend'),
+      path.join(appPath, 'src', 'backend'),
+      path.join(appPath, 'vite.config.ts'),
+    ];
+    
+    return v3Indicators.some(indicator => existsSync(indicator));
+  }
+
+  /**
+   * Start development servers for an app using the smart script
+   */
+  private async startDevServer(appId: string, appPath: string, preferredPort: number): Promise<void> {
     try {
-      console.log(`Starting development server for app ${appId} on port ${port}...`);
+      console.log(`Starting development servers for app ${appId} with preferred frontend port ${preferredPort}...`);
       
       // Check if package.json exists and has a dev script
       const packageJsonPath = path.join(appPath, 'package.json');
@@ -468,15 +697,30 @@ export class AppRepository {
       const stdoutLogPath = path.join(logsDir, 'dev-server.stdout.log');
       const stderrLogPath = path.join(logsDir, 'dev-server.stderr.log');
 
-      // Set the port in environment variables
+      // Set preferred frontend port for the smart script to use
       const env = {
         ...process.env,
-        PORT: port.toString(),
-        NEXT_PUBLIC_PORT: port.toString(),
+        PREFERRED_FRONTEND_PORT: preferredPort.toString(),
+        // Legacy support
+        PORT: preferredPort.toString(),
+        VITE_PORT: preferredPort.toString(),
+        NEXT_PUBLIC_PORT: preferredPort.toString(),
       };
 
-      // Use shell to handle redirection so it persists even if parent dies
-      const command = `npm run dev >> "${stdoutLogPath}" 2>> "${stderrLogPath}"`;
+      // Detect package manager and use appropriate command
+      const hasPnpm = await this.isCommandAvailable('pnpm');
+      const packageManager = hasPnpm ? 'pnpm' : 'npm';
+      
+      console.log(`🚀 Starting ${packageManager} dev servers for app ${appId} with preferred port ${preferredPort}`);
+      console.log(`📝 Logs will be written to:`);
+      console.log(`   stdout: ${stdoutLogPath}`);
+      console.log(`   stderr: ${stderrLogPath}`);
+      
+      // Always use the smart dev script for consistent port management
+      const command = `${packageManager} run dev >> "${stdoutLogPath}" 2>> "${stderrLogPath}"`;
+      
+      console.log(`🔧 Running command: ${command}`);
+      console.log(`📁 Working directory: ${appPath}`);
       
       // Start the dev server with shell redirection (fully detached)
       const child = spawn('sh', ['-c', command], {
@@ -491,7 +735,18 @@ export class AppRepository {
 
       // Store the process in memory and database
       this.runningProcesses.set(appId, child);
-      const processRecord = this.addProcessRecord(appId, child.pid!, port);
+      
+      console.log(`📝 Adding process record for app ${appId} with PID ${child.pid} on preferred port ${preferredPort}`);
+      
+      // Double-check app exists right before process record insertion
+      const finalAppCheck = this.db.prepare('SELECT id FROM apps WHERE id = ?').get(appId);
+      if (!finalAppCheck) {
+        throw new Error(`App ${appId} no longer exists in database before process record insertion`);
+      }
+      console.log(`🔍 Final verification: App ${appId} exists in database`);
+      
+      const processRecord = this.addProcessRecord(appId, child.pid!, preferredPort);
+      console.log(`✅ Process record added with ID: ${processRecord}`);
 
       // Handle process errors and exits (minimal event handling)
       child.on('error', (error) => {
@@ -507,7 +762,8 @@ export class AppRepository {
       });
 
       // Don't wait for the process to start, let it run in background
-      console.log(`Development server started for app ${appId} on http://localhost:${port}`);
+      console.log(`Development servers started for app ${appId}:`);
+      console.log(`  Smart script will allocate actual ports (preferred frontend: ${preferredPort})`);
       console.log(`  Logs: stdout -> ${stdoutLogPath}, stderr -> ${stderrLogPath}`);
 
     } catch (error) {
@@ -546,8 +802,8 @@ export class AppRepository {
   /**
    * Get running development servers
    */
-  getRunningServers(): Array<{ appId: string; port: number; url: string }> {
-    const runningApps: Array<{ appId: string; port: number; url: string }> = [];
+  getRunningServers(): Array<{ appId: string; port: number; url: string; isV3?: boolean; backendPort?: number }> {
+    const runningApps: Array<{ appId: string; port: number; url: string; isV3?: boolean; backendPort?: number }> = [];
     
     // Use database records as the source of truth
     const stmt = this.db.prepare('SELECT * FROM running_processes WHERE status = ?');
@@ -556,10 +812,15 @@ export class AppRepository {
     for (const record of runningRecords) {
       const app = this.findById(record.app_id);
       if (app) {
+        const isV3 = this.isV3Template(app.path);
+        const backendPort = isV3 ? (record.port === 5173 ? 3000 : record.port + 1000) : undefined;
+        
         runningApps.push({
           appId: record.app_id,
           port: record.port,
           url: `http://localhost:${record.port}`,
+          isV3,
+          backendPort,
         });
       }
     }
@@ -574,9 +835,25 @@ export class AppRepository {
     const process = this.runningProcesses.get(appId);
     if (process) {
       try {
+        console.log(`🛑 Stopping development server for app ${appId}...`);
         process.kill('SIGTERM');
+        
+        // Wait a bit for graceful shutdown, then force kill if needed
+        setTimeout(() => {
+          try {
+            if (!process.killed) {
+              console.log(`🔨 Force killing development server for app ${appId}...`);
+              process.kill('SIGKILL');
+            }
+          } catch (error) {
+            // Process might already be dead
+          }
+        }, 2000);
+        
         this.runningProcesses.delete(appId);
-        console.log(`Stopped development server for app ${appId}`);
+        // Update database record to mark as stopped
+        this.removeProcessRecord(appId);
+        console.log(`✅ Stopped development server for app ${appId}`);
         return true;
       } catch (error) {
         console.warn(`Failed to stop dev server for app ${appId}:`, error);
@@ -595,6 +872,8 @@ export class AppRepository {
     for (const [appId, process] of this.runningProcesses) {
       try {
         process.kill('SIGTERM');
+        // Update database record to mark as stopped
+        this.removeProcessRecord(appId);
         console.log(`Stopped development server for app ${appId}`);
         stoppedCount++;
       } catch (error) {
@@ -607,6 +886,15 @@ export class AppRepository {
   }
 
   /**
+   * Check if a server is currently running for an app
+   */
+  private isServerRunning(appId: string): boolean {
+    const stmt = this.db.prepare('SELECT status FROM running_processes WHERE app_id = ? AND status = ?');
+    const result = stmt.get(appId, 'running') as { status: string } | undefined;
+    return !!result;
+  }
+
+  /**
    * Restart development server for an app
    */
   async restartServer(appId: string): Promise<boolean> {
@@ -615,18 +903,66 @@ export class AppRepository {
       return false;
     }
 
+    console.log(`🔄 Restarting development server for app ${appId}...`);
+
     // Stop the current server if running
-    this.stopServer(appId);
+    const wasRunning = this.stopServer(appId);
 
-    // Wait a moment for the process to fully terminate
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    if (wasRunning) {
+      // Wait longer for the process to fully terminate and port to be released
+      console.log(`⏳ Waiting for process to terminate...`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Double-check that the port is actually free
+      const isPortFree = !(await this.isPortOccupied(app.port));
+      if (!isPortFree) {
+        console.warn(`⚠️ Port ${app.port} is still occupied, waiting a bit more...`);
+        
+        // Get debug info about what's using the port
+        const portInfo = await this.getProcessInfoForPort(app.port);
+        if (portInfo) {
+          console.log(`🔍 Port ${app.port} is being used by:`, portInfo);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Final check
+        const finalPortCheck = !(await this.isPortOccupied(app.port));
+        if (!finalPortCheck) {
+          console.warn(`⚠️ Port still occupied, attempting force cleanup...`);
+          await this.forceCleanupApp(appId);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // One more port check after force cleanup
+          const finalCheckAfterCleanup = !(await this.isPortOccupied(app.port));
+          if (!finalCheckAfterCleanup) {
+            console.error(`❌ Port ${app.port} is still occupied after force cleanup`);
+            
+            // Get final debug info
+            const finalPortInfo = await this.getProcessInfoForPort(app.port);
+            if (finalPortInfo) {
+              console.log(`🔍 Final port ${app.port} usage:`, finalPortInfo);
+            }
+            
+            throw new Error(`Port ${app.port} is still occupied after force cleanup`);
+          }
+        }
+      }
+      
+      // Also verify the database record was updated
+      if (this.isServerRunning(appId)) {
+        console.warn(`⚠️ Database still shows server as running, forcing cleanup...`);
+        this.removeProcessRecord(appId);
+      }
+    }
 
-    // Start the server again
+    // Start the server again using the smart script
     try {
       await this.startDevServer(appId, app.path, app.port);
+      console.log(`✅ Successfully restarted development servers for app ${appId}`);
       return true;
     } catch (error) {
-      console.error(`Failed to restart server for app ${appId}:`, error);
+      console.error(`Failed to restart servers for app ${appId}:`, error);
       return false;
     }
   }
@@ -683,13 +1019,50 @@ export class AppRepository {
     let cleaned = 0;
     
     for (const record of runningRecords) {
-      console.log(`Attempting to kill orphaned process PID ${record.pid} for app ${record.app_id}`);
-      await this.killProcess(record.pid);
+      const isRunning = await this.isProcessRunning(record.pid);
+      if (isRunning) {
+        console.log(`Attempting to kill orphaned process PID ${record.pid} for app ${record.app_id}`);
+        await this.killProcess(record.pid);
+      } else {
+        console.log(`Orphaned process PID ${record.pid} for app ${record.app_id} is already dead`);
+      }
       this.updateProcessStatus(record.id, 'stopped');
       cleaned++;
     }
     
     console.log(`🧹 Force cleanup completed, cleaned ${cleaned} orphaned process(es)`);
     return cleaned;
+  }
+
+  /**
+   * Force cleanup processes for a specific app
+   */
+  async forceCleanupApp(appId: string): Promise<boolean> {
+    console.log(`🚨 Force cleaning up processes for app ${appId}...`);
+    
+    const stmt = this.db.prepare('SELECT * FROM running_processes WHERE app_id = ? AND status = ?');
+    const runningRecords = stmt.all(appId, 'running') as any[];
+    
+    if (runningRecords.length === 0) {
+      console.log(`No running processes found for app ${appId}`);
+      return true;
+    }
+    
+    for (const record of runningRecords) {
+      const isRunning = await this.isProcessRunning(record.pid);
+      if (isRunning) {
+        console.log(`Force killing process PID ${record.pid} for app ${appId}`);
+        await this.killProcess(record.pid);
+      } else {
+        console.log(`Process PID ${record.pid} for app ${appId} is already dead`);
+      }
+      this.updateProcessStatus(record.id, 'stopped');
+    }
+    
+    // Also remove from in-memory map if present
+    this.runningProcesses.delete(appId);
+    
+    console.log(`✅ Force cleanup completed for app ${appId}`);
+    return true;
   }
 }

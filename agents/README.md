@@ -264,7 +264,7 @@ NODE_ENV=development
 
 # Database and App Storage
 APPS_BASE_DIR=/tmp/apps
-APP_TEMPLATE_DIR=app-templates/v1
+APP_TEMPLATE_DIR=app-templates/v3
 
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key_here

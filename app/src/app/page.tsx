@@ -30,8 +30,6 @@ export default function Home() {
 
   // Track if user is redirecting to prevent multiple calls
   const [isRedirecting, setIsRedirecting] = useState(false)
-  // Create a unique session ID for this page visit
-  const sessionIdRef = useRef(`session-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`)
   
   // Detect and handle back navigation to reset the redirect state
   useEffect(() => {
@@ -52,8 +50,7 @@ export default function Home() {
     const appName = words.length > 0 ? words.join(' ') : 'New App'
     const encodedName = encodeURIComponent(appName)
     
-    // Add the session ID as an idempotency key
-    router.push(`/create?message=${encodedMessage}&name=${encodedName}&sessionId=${sessionIdRef.current}`)
+    router.push(`/create?message=${encodedMessage}&name=${encodedName}`)
   }, [promptText, router, isRedirecting])
 
   const handleExampleClick = (examplePrompt: string) => {

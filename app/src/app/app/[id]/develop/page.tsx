@@ -48,6 +48,7 @@ export default function Develop() {
   const [isRestarting, setIsRestarting] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [showUsageCost, setShowUsageCost] = useState(false)
+  const [selectedElement, setSelectedElement] = useState<any>(null)
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
@@ -153,6 +154,30 @@ export default function Develop() {
     }
   }, [])
 
+  // Listen for messages from preview iframe
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Only handle messages from our iframe
+      const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+      if (!iframe || event.source !== iframe.contentWindow) return
+
+      switch (event.data.type) {
+        case 'ELEMENT_SELECTED':
+          setSelectedElement(event.data.data)
+          setIsSelectMode(false) // Auto-disable select mode after selection
+          console.log('Element selected in iframe:', event.data.data)
+          break
+        case 'STYLE_UPDATED':
+          console.log('Style updated in iframe:', event.data.data)
+          handleStyleUpdate(event.data.data)
+          break
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [])
+
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -204,11 +229,50 @@ export default function Develop() {
   }
 
   const handleToggleSelectMode = () => {
-    setIsSelectMode(!isSelectMode)
+    const newSelectMode = !isSelectMode
+    setIsSelectMode(newSelectMode)
+    
+    // Send message to preview iframe to toggle select mode
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({
+        type: 'TOGGLE_SELECT_MODE',
+        data: { isSelectMode: newSelectMode }
+      }, '*')
+    }
   }
 
   const handleToggleExpandedPlan = () => {
     setExpandedPlan(!expandedPlan)
+  }
+
+  const handleStyleUpdate = async (styleData: any) => {
+    if (!appId) return
+
+    try {
+      const response = await fetch(`http://localhost:4000/apps/${appId}/styles/edit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          selector: styleData.selector,
+          property: styleData.property,
+          value: styleData.value,
+          newClassName: styleData.newClassName,
+          elementInfo: selectedElement
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log('Style update sent to API:', result)
+      } else {
+        console.error('Failed to send style update to API:', response.status)
+      }
+    } catch (error) {
+      console.error('Error sending style update to API:', error)
+    }
   }
 
   const handleRestartServer = async () => {
@@ -384,6 +448,7 @@ export default function Develop() {
                   }
                 }}
               />
+              
             </div>
 
             {/* Code Editor */}
