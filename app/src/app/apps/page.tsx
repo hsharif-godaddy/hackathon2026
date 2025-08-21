@@ -431,7 +431,7 @@ export default function Apps() {
                         <TrashIcon className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => router.push(`/app/${app.id}/develop`)}
+                        onClick={() => router.push(`/develop/${app.id}`)}
                         className="px-3 py-1 text-sm text-purple-600 hover:bg-purple-50 rounded-lg transition-colors font-medium"
                       >
                         Open →
