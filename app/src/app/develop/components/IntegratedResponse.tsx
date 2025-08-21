@@ -2,10 +2,9 @@
 
 import { useState } from 'react'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
-import { Message as MessageType, ToolCall, MessageSegment } from './types'
+import { Message as MessageType } from './types'
 import MarkdownRenderer from './MarkdownRenderer'
 import ToolCallMessage from './ToolCallMessage'
-import CompletionMessage from './CompletionMessage'
 
 interface IntegratedResponseProps {
   message: MessageType

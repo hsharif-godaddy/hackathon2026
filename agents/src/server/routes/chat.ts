@@ -64,13 +64,13 @@ router.get('/conversations/:appId/:conversationId', async (req, res) => {
 
     const messages = await conversationRepo.getMessages(conversationId);
     
-    res.json({
+    return res.json({
       conversation,
       messages
     });
   } catch (error) {
     console.error('Error fetching conversation:', error);
-    res.status(500).json({ error: 'Failed to fetch conversation' });
+    return res.status(500).json({ error: 'Failed to fetch conversation' });
   }
 });
 
@@ -86,10 +86,10 @@ router.post('/conversations', async (req, res) => {
     }
 
     const conversation = await conversationRepo.create(appId, agentId, title);
-    res.json(conversation);
+    return res.json(conversation);
   } catch (error) {
     console.error('Error creating conversation:', error);
-    res.status(500).json({ error: 'Failed to create conversation' });
+    return res.status(500).json({ error: 'Failed to create conversation' });
   }
 });
 
@@ -106,10 +106,10 @@ router.put('/conversations/:conversationId/title', async (req, res) => {
     }
 
     await conversationRepo.updateTitle(conversationId, title);
-    res.json({ message: 'Title updated successfully' });
+    return res.json({ message: 'Title updated successfully' });
   } catch (error) {
     console.error('Error updating conversation title:', error);
-    res.status(500).json({ error: 'Failed to update conversation title' });
+    return res.status(500).json({ error: 'Failed to update conversation title' });
   }
 });
 

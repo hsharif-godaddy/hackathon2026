@@ -21,11 +21,9 @@ interface FileTreeProps {
   files: FileItem[]
   selectedFile?: string | null
   onFileSelect: (path: string) => void
-  onFileCreate?: (parentPath: string, name: string, type: 'file' | 'folder') => void
-  onFileDelete?: (path: string) => void
 }
 
-export default function FileTree({ files, selectedFile, onFileSelect, onFileCreate, onFileDelete }: FileTreeProps) {
+export default function FileTree({ files, selectedFile, onFileSelect }: FileTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['/']))
 
   const toggleFolder = (path: string) => {

@@ -7,6 +7,7 @@ import { GitUtils } from '../../utils/git.js';
 import { PortManager } from '../../utils/port-manager.js';
 import type { App, CreateAppRequest, UpdateAppRequest, RunningProcess } from '../schema.js';
 import net from 'net';
+import { error } from 'console';
 
 export class AppRepository {
   private db = getDatabase();

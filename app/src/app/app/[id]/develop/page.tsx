@@ -5,7 +5,6 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   SparklesIcon,
-  CodeBracketIcon,
   PlayIcon,
   ArrowPathIcon,
   Squares2X2Icon
@@ -39,7 +38,7 @@ export default function Develop() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [conversationId, setConversationId] = useState<string | null>(null)
-  const [conversations, setConversations] = useState<any[]>([])
+  const [conversations, setConversations] = useState<Array<{id: string; updatedAt: string}>>([])
   const [isLoadingConversations, setIsLoadingConversations] = useState(true)
   const [developmentPlan] = useState<PlanItem[]>([])
   const [expandedPlan, setExpandedPlan] = useState(false)
@@ -48,7 +47,7 @@ export default function Develop() {
   const [isRestarting, setIsRestarting] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [showUsageCost, setShowUsageCost] = useState(false)
-  const [selectedElement, setSelectedElement] = useState<any>(null)
+  const [selectedElement, setSelectedElement] = useState<unknown>(null)
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
@@ -131,6 +130,7 @@ export default function Develop() {
     if (appId) {
       loadAppConversations()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appId])
 
   const handleSendMessage = useCallback(async (messageContent?: string) => {
@@ -154,6 +154,35 @@ export default function Develop() {
     }
   }, [])
 
+  const handleStyleUpdate = useCallback(async (styleData: {selector: string; property: string; value: string; newClassName: string}) => {
+    if (!appId) return
+
+    try {
+      const response = await fetch(`http://localhost:4000/apps/${appId}/styles/edit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          selector: styleData.selector,
+          property: styleData.property,
+          value: styleData.value,
+          newClassName: styleData.newClassName,
+          elementInfo: selectedElement
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log('Style update sent to API:', result)
+      } else {
+        console.error('Failed to send style update to API:', response.status)
+      }
+    } catch (error) {
+      console.error('Error sending style update to API:', error)
+    }
+  }, [appId, selectedElement])
+
   // Listen for messages from preview iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -176,7 +205,7 @@ export default function Develop() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [])
+  }, [handleStyleUpdate])
 
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
@@ -246,34 +275,7 @@ export default function Develop() {
     setExpandedPlan(!expandedPlan)
   }
 
-  const handleStyleUpdate = async (styleData: any) => {
-    if (!appId) return
 
-    try {
-      const response = await fetch(`http://localhost:4000/apps/${appId}/styles/edit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          selector: styleData.selector,
-          property: styleData.property,
-          value: styleData.value,
-          newClassName: styleData.newClassName,
-          elementInfo: selectedElement
-        })
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log('Style update sent to API:', result)
-      } else {
-        console.error('Failed to send style update to API:', response.status)
-      }
-    } catch (error) {
-      console.error('Error sending style update to API:', error)
-    }
-  }
 
   const handleRestartServer = async () => {
     if (!appId) return

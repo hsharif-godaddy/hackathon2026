@@ -204,7 +204,7 @@ export const handleSendMessage = async ({
 }
 
 function handleWebSocketMessage(
-  data: any, 
+  data: {type: string; conversationId?: string; status?: string; message?: string; content?: string; tool_name?: string; tool_call_id?: string; tool_args?: unknown; start_time?: number; tool_result?: unknown; error?: string; end_time?: number; duration_ms?: number}, 
   agentMessage: Message, 
   agentMessageContent: string, 
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
@@ -271,8 +271,6 @@ function handleWebSocketMessage(
       // 1. Finalize the current content segment with whatever content we have so far
       // 2. Add the tool call as a new segment
       // 3. Reset agentMessageContent to start accumulating new content after the tool
-      
-      const currentContentLength = agentMessageContent.length
       
       setMessages(prev => 
         prev.map(msg => 
@@ -546,7 +544,7 @@ export const loadConversation = async (appId: string, conversationId: string) =>
     const data = await response.json()
     
     // Convert database messages to UI message format
-    const messages: Message[] = data.messages.map((msg: any) => ({
+    const messages: Message[] = data.messages.map((msg: {id: string; sender: string; content: string; createdAt: string; messageType?: string; toolCalls?: ToolCall[]; segments?: MessageSegment[]; metadata?: Record<string, unknown>}) => ({
       id: parseInt(msg.id),
       sender: msg.sender,
       content: msg.content,

@@ -19,14 +19,19 @@ export class ConversationRepository {
 
     stmt.run(id, appId, agentId, title, now, now);
 
-    return {
+    const conversation: Conversation = {
       id,
       appId,
       agentId,
-      title,
       createdAt: new Date(now),
       updatedAt: new Date(now)
     };
+
+    if (title) {
+      conversation.title = title;
+    }
+
+    return conversation;
   }
 
   /**
@@ -124,17 +129,32 @@ export class ConversationRepository {
       now
     );
 
-    return {
+    const message: ConversationMessage = {
       id,
       conversationId,
       sender,
       content,
-      messageType: options.messageType,
-      toolCalls: options.toolCalls,
-      segments: options.segments,
-      metadata: options.metadata,
       createdAt: new Date(now)
     };
+
+    if (options.messageType) {
+      message.messageType = options.messageType;
+    }
+    if (options.toolCalls) {
+      message.toolCalls = options.toolCalls;
+    } else {
+      message.toolCalls = [];
+    }
+    if (options.segments) {
+      message.segments = options.segments;
+    } else {
+      message.segments = [];
+    }
+    if (options.metadata) {
+      message.metadata = options.metadata;
+    }
+
+    return message;
   }
 
   /**
@@ -215,11 +235,11 @@ export class ConversationRepository {
   generateTitle(firstMessage: string): string {
     const maxLength = 50;
     const cleaned = firstMessage.trim().replace(/\n/g, ' ');
-    
+
     if (cleaned.length <= maxLength) {
       return cleaned;
     }
-    
+
     return cleaned.substring(0, maxLength - 3) + '...';
   }
 
@@ -242,7 +262,7 @@ export class ConversationRepository {
       GROUP BY c.id
       ORDER BY c.updated_at DESC
     `);
-    
+
     const rows = stmt.all(appId) as any[];
 
     return rows.map(row => ({

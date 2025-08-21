@@ -6,7 +6,6 @@ import {
   XMarkIcon, 
   DocumentDuplicateIcon,
   DocumentPlusIcon,
-  FolderPlusIcon,
   CheckIcon,
   ArrowDownTrayIcon
 } from '@heroicons/react/24/outline'
@@ -69,7 +68,7 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
   }, [appId])
 
   // Convert flat file list to hierarchical tree structure
-  const buildFileTree = (entries: any[]): FileItem[] => {
+  const buildFileTree = (entries: Array<{name: string; isDirectory: boolean; path: string; depth: number}>): FileItem[] => {
     const tree: FileItem[] = []
     const pathMap = new Map<string, FileItem>()
 

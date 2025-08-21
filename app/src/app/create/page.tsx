@@ -12,8 +12,8 @@ function CreateAppContent() {
 
   useEffect(() => {
     // Avoid duplicate requests in React StrictMode (dev env) by guarding with a ref.
-    const hasRunRef = (window as any).__createAppHasRunRef || { current: false };
-    (window as any).__createAppHasRunRef = hasRunRef;
+    const hasRunRef = (window as {__createAppHasRunRef?: {current: boolean}}).__createAppHasRunRef || { current: false };
+    (window as {__createAppHasRunRef?: {current: boolean}}).__createAppHasRunRef = hasRunRef;
     if (hasRunRef.current) return;
     hasRunRef.current = true;
 
