@@ -44,6 +44,8 @@ function initializeSchema() {
       name TEXT NOT NULL,
       path TEXT NOT NULL,
       port INTEGER NOT NULL DEFAULT 5000,
+      initial_prompt TEXT,
+      status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'created', 'error')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
@@ -59,6 +61,20 @@ function initializeSchema() {
   // Add port column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN port INTEGER NOT NULL DEFAULT 5000`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+  
+  // Add initial_prompt column if it doesn't exist (for existing databases)
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN initial_prompt TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+  
+  // Add status column if it doesn't exist (for existing databases)
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'created', 'error'))`);
   } catch (err) {
     // Column might already exist, that's fine
   }

@@ -269,10 +269,10 @@ export class AppRepository {
       
       try {
         const stmt = this.db.prepare(`
-          INSERT INTO apps (id, name, path, port, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO apps (id, name, path, port, initial_prompt, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        stmt.run(id, data.name, appPath, port, now, now);
+        stmt.run(id, data.name, appPath, port, data.initialPrompt || null, 'creating', now, now);
         
         // Store additional port information in a separate table if needed
         // For now, we'll store backend port in environment during dev server start
@@ -292,25 +292,14 @@ export class AppRepository {
         throw error;
       }
 
-      // Run project setup (installs dependencies and configures registry)
-      await this.runProjectSetup(appPath);
-
-      // Initialize Git repository after template copy
-      await this.initializeGitRepository(appPath, data.name);
-
-      // Wait a moment to ensure all setup is complete
-      console.log(`⏳ Waiting 2 seconds before starting dev server...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Start the development servers using the smart script
-      try {
-        await this.startDevServer(id, appPath, port);
-      } catch (devServerError) {
-        console.error(`Failed to start dev servers for app ${id}:`, devServerError);
-        // Don't fail app creation if dev servers fail to start
-        // The app is still created successfully
-      }
-
+      // Return the app immediately after DB insert
+      const app = this.findById(id)!;
+      
+      // Run setup asynchronously in the background
+      this.runAppSetupAsync(id, appPath, port, data.name);
+      
+      return app;
+      
     } catch (error) {
       console.error(`Failed to create directory for app ${id}:`, error);
       // Clean up database entry if app creation fails
@@ -322,10 +311,45 @@ export class AppRepository {
       } catch (cleanupError) {
         console.warn(`Failed to cleanup database entry for app %s: %s`, id, cleanupError);
       }
-      throw new Error(`Failed to create app directory: ${error}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to create app directory: ${errorMessage}`);
     }
-    
-    return this.findById(id)!;
+  }
+
+  /**
+   * Run app setup asynchronously after database insert
+   */
+  private async runAppSetupAsync(id: string, appPath: string, port: number, appName: string): Promise<void> {
+    try {
+      console.log(`⚙️  Starting background setup for app ${id}...`);
+      
+      // Run project setup (installs dependencies and configures registry)
+      await this.runProjectSetup(appPath);
+
+      // Initialize Git repository after template copy
+      await this.initializeGitRepository(appPath, appName);
+
+      // Wait a moment to ensure all setup is complete
+      console.log(`⏳ Waiting 2 seconds before starting dev server...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Start the development servers using the smart script
+      try {
+        await this.startDevServer(id, appPath, port);
+      } catch (devServerError) {
+        console.error(`Failed to start dev servers for app ${id}:`, devServerError);
+        // Don't fail app creation if dev servers fail to start
+      }
+      
+      // Update status to 'created' on success
+      this.updateStatus(id, 'created');
+      console.log(`✅ App ${id} setup completed successfully`);
+      
+    } catch (error) {
+      console.error(`❌ Failed to setup app %s: %s`, id, error);
+      // Update status to 'error'
+      this.updateStatus(id, 'error');
+    }
   }
 
   /**
@@ -556,7 +580,7 @@ export class AppRepository {
    */
   findById(id: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, created_at, updated_at
+      SELECT id, name, path, port, initial_prompt, status, created_at, updated_at
       FROM apps
       WHERE id = ?
     `);
@@ -569,6 +593,8 @@ export class AppRepository {
       name: row.name,
       path: row.path,
       port: row.port,
+      initialPrompt: row.initial_prompt,
+      status: row.status,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
@@ -579,7 +605,7 @@ export class AppRepository {
    */
   findAll(limit = 50, offset = 0): App[] {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, created_at, updated_at
+      SELECT id, name, path, port, initial_prompt, status, created_at, updated_at
       FROM apps
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -592,6 +618,8 @@ export class AppRepository {
       name: row.name,
       path: row.path,
       port: row.port,
+      initialPrompt: row.initial_prompt,
+      status: row.status,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     }));
@@ -630,6 +658,24 @@ export class AppRepository {
     `);
     
     stmt.run(...values);
+    
+    return this.findById(id)!;
+  }
+
+  /**
+   * Update app status
+   */
+  updateStatus(id: string, status: 'creating' | 'created' | 'error'): App | null {
+    const existing = this.findById(id);
+    if (!existing) return null;
+
+    const stmt = this.db.prepare(`
+      UPDATE apps 
+      SET status = ?, updated_at = ?
+      WHERE id = ?
+    `);
+    
+    stmt.run(status, new Date().toISOString(), id);
     
     return this.findById(id)!;
   }

@@ -3,12 +3,15 @@ export interface App {
   name: string;
   path: string;
   port: number;
+  initialPrompt?: string;
+  status: 'creating' | 'created' | 'error';
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface CreateAppRequest {
   name: string;
+  initialPrompt?: string;
 }
 
 export interface UpdateAppRequest {

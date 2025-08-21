@@ -95,7 +95,60 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 /**
- * POST /apps - Create a new app
+ * GET /apps/:id/status - Get app creation status
+ */
+router.get('/:id/status', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+    
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    return res.json({ 
+      id: app.id,
+      status: app.status,
+      name: app.name,
+      createdAt: app.createdAt,
+      updatedAt: app.updatedAt
+    });
+  } catch (error) {
+    console.error('Error getting app status:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /create - Create a new app (new simplified endpoint)
+ */
+router.post('/create', async (req: Request, res: Response) => {
+  try {
+    const { name, initialPrompt } = req.body;
+
+    // Validate required fields
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'Name is required and must be a non-empty string' });
+    }
+
+    const data: CreateAppRequest = {
+      name: name.trim(),
+      initialPrompt: initialPrompt?.trim() || undefined
+    };
+
+    const app = await appRepo.create(data);
+    return res.status(201).json({ app });
+  } catch (error) {
+    console.error('Error creating app:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps - Create a new app (legacy endpoint)
  */
 router.post('/', async (req: Request, res: Response) => {
   try {

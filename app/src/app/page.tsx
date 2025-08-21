@@ -38,19 +38,44 @@ export default function Home() {
   }, [])
 
   // Use useCallback to ensure the function reference stays stable
-  const handleStartBuilding = useCallback(() => {
+  const handleStartBuilding = useCallback(async () => {
     if (!promptText.trim() || isRedirecting) return
     
     // Set flag to prevent multiple calls
     setIsRedirecting(true)
     
-    const encodedMessage = encodeURIComponent(promptText.trim())
-    // Generate a simple app name from the prompt (first few words)
-    const words = promptText.trim().split(' ').slice(0, 3)
-    const appName = words.length > 0 ? words.join(' ') : 'New App'
-    const encodedName = encodeURIComponent(appName)
-    
-    router.push(`/create?message=${encodedMessage}&name=${encodedName}`)
+    try {
+      // Generate a simple app name from the prompt (first few words)
+      const words = promptText.trim().split(' ').slice(0, 3)
+      const appName = words.length > 0 ? words.join(' ') : 'New App'
+      
+      // Create the app via POST request
+      const response = await fetch('http://localhost:4000/apps/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          name: appName,
+          initialPrompt: promptText.trim()
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to create app: ${response.status}`)
+      }
+
+      const data = await response.json()
+      const appId = data.app.id
+
+      // Redirect to the new app's creation status page
+      router.push(`/create/${appId}`)
+    } catch (error) {
+      console.error('Error creating app:', error)
+      // Reset redirect flag on error
+      setIsRedirecting(false)
+      // You might want to show an error message to the user here
+    }
   }, [promptText, router, isRedirecting])
 
   const handleExampleClick = (examplePrompt: string) => {

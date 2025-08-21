@@ -25,6 +25,8 @@ interface App {
   id: string
   name: string
   port: number
+  initialPrompt?: string
+  status: 'creating' | 'created' | 'error'
   createdAt: string
   updatedAt: string
 }
@@ -48,11 +50,13 @@ export default function Develop() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [showUsageCost, setShowUsageCost] = useState(false)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
+  const [isInitialAppCreation, setIsInitialAppCreation] = useState(false)
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
+  const autoSendTriggered = useRef(false) // Prevent multiple auto-sends
 
-  // Fetch app details
+  // 1. PURE DATA LOADING - Fetch app details (no side effects)
   useEffect(() => {
     const fetchApp = async () => {
       try {
@@ -60,6 +64,10 @@ export default function Develop() {
         if (response.ok) {
           const data = await response.json()
           setApp(data.app)
+          
+          // Check if this is a newly created app with an initial prompt
+          const isNewApp = data.app.status === 'created' && data.app.initialPrompt
+          setIsInitialAppCreation(isNewApp)
         } else {
           console.error('Failed to fetch app:', response.status)
         }
@@ -73,7 +81,7 @@ export default function Develop() {
     }
   }, [appId])
 
-  // Fetch config to determine if usage cost should be shown
+  // 2. PURE DATA LOADING - Fetch config (no side effects)
   useEffect(() => {
     const fetchConfig = async () => {
       try {
@@ -84,7 +92,6 @@ export default function Develop() {
         }
       } catch (error) {
         console.error('Error fetching config:', error)
-        // Default to false if config fetch fails
         setShowUsageCost(false)
       }
     }
@@ -92,10 +99,10 @@ export default function Develop() {
     fetchConfig()
   }, [])
 
-  // Load conversations when app is loaded
+  // 3. PURE DATA LOADING - Load conversations (minimal side effects)
   useEffect(() => {
     const loadAppConversations = async () => {
-      if (!appId) return
+      if (!appId || !app) return
       
       try {
         setIsLoadingConversations(true)
@@ -104,20 +111,13 @@ export default function Develop() {
         
         // Load the most recent conversation if available
         if (conversationList.length > 0) {
-          const mostRecent = conversationList[0] // They're ordered by updated_at DESC
+          const mostRecent = conversationList[0]
           const conversationData = await loadConversation(appId, mostRecent.id)
           
           if (conversationData) {
             console.log('Loaded conversation:', mostRecent.id, 'with', conversationData.messages.length, 'messages')
             setMessages(conversationData.messages)
             setConversationId(mostRecent.id)
-            
-            // Clear URL message parameter since we loaded existing conversation
-            if (searchParams.get('message')) {
-              const url = new URL(window.location.href)
-              url.searchParams.delete('message')
-              router.replace(url.pathname + url.search, { scroll: false })
-            }
           }
         }
       } catch (error) {
@@ -127,15 +127,30 @@ export default function Develop() {
       }
     }
 
-    if (appId) {
-      loadAppConversations()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appId])
+    loadAppConversations()
+  }, [appId, app])
 
+  // 4. PURE UI STATE - Set initial prompt in input (no actions)
+  useEffect(() => {
+    if (isInitialAppCreation && 
+        app?.initialPrompt && 
+        !initialMessageProcessed.current &&
+        conversations.length === 0 &&
+        !isLoadingConversations) {
+      
+      console.log('Setting initial prompt in input:', app.initialPrompt)
+      setInputValue(app.initialPrompt)
+      initialMessageProcessed.current = true
+    }
+  }, [isInitialAppCreation, app?.initialPrompt, conversations.length, isLoadingConversations])
+
+  // 5. STABLE MESSAGE HANDLER - No state dependencies that cause loops
   const handleSendMessage = useCallback(async (messageContent?: string) => {
+    const content = messageContent || inputValue
+    if (!content.trim() || isLoading) return
+
     await sendMessage({
-      messageContent,
+      messageContent: content,
       inputValue,
       isLoading,
       appId,
@@ -145,7 +160,71 @@ export default function Develop() {
       setIsLoading,
       setConversationId
     })
-  }, [inputValue, isLoading, appId, conversationId])
+    
+    // Post-send cleanup - using refs to avoid circular dependencies
+    setTimeout(async () => {
+      // Refresh conversations if this was the first message
+      if (!conversationId) {
+        try {
+          const updatedConversations = await loadConversations(appId)
+          setConversations(updatedConversations)
+        } catch (error) {
+          console.error('Error refreshing conversations:', error)
+        }
+      }
+      
+      // Mark initial app creation as complete
+      if (isInitialAppCreation) {
+        setIsInitialAppCreation(false)
+      }
+    }, 100)
+  }, [inputValue, isLoading, appId, conversationId, isInitialAppCreation])
+
+  // 6. AUTO-SEND TRIGGER - Separate effect with stable conditions only
+  useEffect(() => {
+    if (isInitialAppCreation && 
+        inputValue && 
+        app?.initialPrompt && 
+        inputValue === app.initialPrompt && 
+        !isLoadingConversations && 
+        conversations.length === 0 &&
+        initialMessageProcessed.current &&
+        !autoSendTriggered.current &&
+        !isLoading) {
+      
+      console.log('Triggering auto-send for initial prompt:', inputValue)
+      autoSendTriggered.current = true
+      
+      // Use setTimeout to break out of the effect cycle
+      const timer = setTimeout(() => {
+        // Create stable message send function
+        sendMessage({
+          messageContent: inputValue,
+          inputValue,
+          isLoading: false,
+          appId,
+          conversationId: undefined,
+          setMessages,
+          setInputValue,
+          setIsLoading,
+          setConversationId
+        }).then(() => {
+          // Post-send actions
+          setIsInitialAppCreation(false)
+          setTimeout(async () => {
+            try {
+              const updatedConversations = await loadConversations(appId)
+              setConversations(updatedConversations)
+            } catch (error) {
+              console.error('Error refreshing conversations:', error)
+            }
+          }, 100)
+        })
+      }, 500)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [isInitialAppCreation, inputValue, app?.initialPrompt, isLoadingConversations, conversations.length, isLoading, appId])
 
   // Cleanup SSE connections on unmount
   useEffect(() => {
@@ -334,6 +413,11 @@ export default function Develop() {
               <div className="h-6 w-px bg-gray-300" />
               <span className="text-gray-600">
                 {app ? app.name : `App ${appId}`} - Development Environment
+                {isInitialAppCreation && (
+                  <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                    New App
+                  </span>
+                )}
                 {conversationId && (
                   <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
                     Chat: {conversationId.slice(0, 8)}...
