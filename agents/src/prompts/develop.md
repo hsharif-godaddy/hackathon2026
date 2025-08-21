@@ -14,30 +14,47 @@ This is the Next.js + React + TypeScript + Tailwind CSS + shadcn UI project stru
 
 ```
 project-root/
-├── src/                       # Source code directory
-│   ├── app/                  # Next.js App Router directory
-│   │   ├── components/       # Page-specific components
-│   │   │   └── GeometricLoader.tsx  # Loading component example
-│   │   ├── globals.css       # Global styles and Tailwind imports
-│   │   ├── layout.tsx        # Root layout component
-│   │   ├── not-found.tsx     # 404 error page
-│   │   └── page.tsx          # Home page component
-│   └── lib/                 # Utility functions and configurations
-│       └── utils.ts         # Utility functions (tailwind-merge, clsx)
-├── node_modules/            # Dependencies (auto-generated)
-├── .next/                   # Next.js build cache (auto-generated)
-├── components.json          # shadcn UI configuration
-├── package.json             # Project dependencies and scripts
-├── package-lock.json        # Dependency lock file
-├── next.config.js           # Next.js configuration
-├── next-env.d.ts            # Next.js environment type definitions
-├── tsconfig.json            # TypeScript configuration
-├── tailwind.config.js       # Tailwind CSS configuration
-├── postcss.config.js        # PostCSS configuration
-├── eslint.config.js         # ESLint configuration
-├── README.md                # Project documentation
-└── .gitignore               # Git ignore patterns
+├── app/                      # Next.js App Router directory
+│   ├── favicon.ico           # Favicon
+│   ├── globals.css           # Global styles and Tailwind imports
+│   ├── layout.tsx            # Root layout component
+│   └── page.tsx              # Home page component
+├── components/               # Project UI components (shadcn)
+│   └── ui/
+│       ├── alert-dialog.tsx
+│       ├── alert.tsx
+│       ├── aspect-ratio.tsx
+│       ├── avatar.tsx
+│       ├── badge.tsx
+│       ├── button.tsx
+│       ├── calendar.tsx
+│       ├── card.tsx
+│       ├── carousel.tsx
+│       ├── checkbox.tsx
+│       ├── drawer.tsx
+│       ├── dropdown-menu.tsx
+│       ├── input.tsx
+│       └── popover.tsx
+├── lib/
+│   └── utils.ts              # Utility helpers (cn, etc.)
+├── public/                   # Static assets
+│   ├── file.svg
+│   ├── globe.svg
+│   ├── next.svg
+│   ├── vercel.svg
+│   └── window.svg
+├── components.json           # shadcn UI configuration
+├── eslint.config.mjs         # ESLint configuration
+├── next.config.ts            # Next.js configuration
+├── package.json              # Project dependencies and scripts
+├── package-lock.json         # Dependency lock file
+├── postcss.config.mjs        # PostCSS configuration
+├── tsconfig.json             # TypeScript configuration
+├── README.md                 # Project documentation
+└── node_modules/             # Dependencies (auto-generated)
 ```
+
+**Important**: Always use the provided directory structure as all the required shadcn UI component already available use from this
 
 ### Key Configuration Files
 

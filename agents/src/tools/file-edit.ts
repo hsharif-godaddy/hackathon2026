@@ -3,9 +3,10 @@ import { dirname, join, resolve, relative } from 'path';
 import { createHash } from 'crypto';
 import { diffLines, createPatch } from 'diff';
 import { existsSync } from 'fs';
-import { TokenUsageRepository } from '../database/index.js';
+import { TokenUsageRepository, AppRepository } from '../database/index.js';
 import { GitTool } from './git-tool.js';
 import { exec } from 'child_process';
+import axios from 'axios';
 
 export interface FileEditOptions {
   /** Path to the file to edit (relative to app root) */
@@ -65,39 +66,139 @@ export interface FileEditResult {
 export class FileEditTool {
   private readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
   private tokenUsageRepo: TokenUsageRepository;
+  private appRepo: AppRepository;
 
   constructor() {
     this.tokenUsageRepo = new TokenUsageRepository();
+    this.appRepo = new AppRepository();
   }
   private gitTool = new GitTool();
   
   /**
-   * Run build command to rebuild the project after changes
+   * Run safe build validation after file changes without breaking dev server
    */
-  private async runBuildCommand(appPath: string): Promise<void> {
+  private async runBuildCommand(appPath: string, appId?: string): Promise<void> {
     try {
-      console.log('Running build after file changes...');
-      return new Promise<void>((resolve) => {
-        exec('npm run build', { cwd: appPath }, (error, stdout, stderr) => {
+      console.log('Running safe build validation after file changes...');
+      
+      // Detect which build strategy to use based on the template
+      const buildCommand = await this.getSafeBuildCommand(appPath);
+      
+      return new Promise<void>(async (resolve) => {
+        exec(buildCommand, { cwd: appPath }, async (error, stdout, stderr) => {
           if (error) {
-            console.error(`Build error: ${error}`);
+            console.error(`Build validation error: ${error}`);
             console.error(stderr);
             // Don't reject as we don't want to fail the file edit operation
-            // just because the build failed
+            // just because the validation failed
             resolve();
             return;
           }
           
-          console.log('Build completed successfully');
+          console.log('Build validation completed successfully');
           console.log(stdout);
+          
+          // After successful validation, ensure dev server is still healthy
+          if (appId) {
+            await this.ensureDevServerHealth(appId);
+          }
+          
           resolve();
         });
       });
     } catch (error) {
-      console.error('Failed to run build command:', error);
+      console.error('Failed to run build validation:', error);
       // Don't throw as we don't want to fail the file edit operation
-      // just because the build failed
+      // just because the validation failed
     }
+  }
+
+  /**
+   * Ensure the development server is healthy after file changes
+   */
+  private async ensureDevServerHealth(appId: string): Promise<void> {
+    try {
+      // Give the server a moment to process any changes
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const app = this.appRepo.findById(appId);
+      if (!app) {
+        console.warn(`App ${appId} not found for health check`);
+        return;
+      }
+
+      // Check if server is responding
+      const isHealthy = await this.checkServerHealth(app.port);
+      
+      if (!isHealthy) {
+        console.log(`Dev server for app ${appId} appears unhealthy, attempting restart...`);
+        try {
+          await this.appRepo.restartServer(appId);
+          console.log(`Successfully restarted dev server for app ${appId}`);
+        } catch (restartError) {
+          console.error(`Failed to restart dev server for app ${appId}:`, restartError);
+        }
+      } else {
+        console.log(`Dev server for app ${appId} is healthy`);
+      }
+    } catch (error) {
+      console.error(`Error checking dev server health for app ${appId}:`, error);
+    }
+  }
+
+  /**
+   * Check if a development server is responding on the given port
+   */
+  private async checkServerHealth(port: number): Promise<boolean> {
+    try {
+      const response = await axios.get(`http://localhost:${port}`, {
+        timeout: 3000,
+        validateStatus: (status) => status < 500, // Accept any non-server-error response
+      });
+      
+      return true; // Server is responding
+    } catch (error) {
+      // Check if it's a timeout or connection error vs an HTTP error
+      if (axios.isAxiosError(error) && error.response && error.response.status < 500) {
+        return true; // Server is responding, even if with an error page
+      }
+      return false; // Server not responding or internal server error
+    }
+  }
+
+  /**
+   * Determine the appropriate safe build command based on template type
+   */
+  private async getSafeBuildCommand(appPath: string): Promise<string> {
+    // Check if safe build script exists
+    const checkBuildScript = join(appPath, 'check-build.sh');
+    if (existsSync(checkBuildScript)) {
+      return './check-build.sh';
+    }
+
+    // Check package.json to determine template type
+    try {
+      const packageJsonPath = join(appPath, 'package.json');
+      if (existsSync(packageJsonPath)) {
+        const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
+        const buildScript = packageJson.scripts?.build;
+        
+        // V1 template: build = "npm run check" (safe)
+        if (buildScript === 'npm run check') {
+          return 'npm run build';
+        }
+        
+        // V2/V3 templates: production builds (unsafe), use type-check + lint instead
+        if (buildScript === 'next build' || buildScript === 'vite build') {
+          return 'npx tsc --noEmit && npm run lint';
+        }
+      }
+    } catch (error) {
+      console.warn('Could not parse package.json, using default safe command:', error);
+    }
+
+    // Default safe command: just type check and lint
+    return 'npx tsc --noEmit';
   }
   
   /**
@@ -228,7 +329,7 @@ export class FileEditTool {
 
     // Auto-build if enabled
     if (options.autoBuild !== false && !options.dryRun) {
-      await this.runBuildCommand(appPath);
+      await this.runBuildCommand(appPath, context?.appId);
     }
 
     return result;
@@ -312,7 +413,7 @@ export class FileEditTool {
 
     // Auto-build if enabled
     if (options.autoBuild !== false && !options.dryRun) {
-      await this.runBuildCommand(appPath);
+      await this.runBuildCommand(appPath, context?.appId);
     }
 
     return result;

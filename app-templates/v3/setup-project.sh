@@ -14,10 +14,25 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Detect package manager
+# Detect package manager and handle potential issues
 if command_exists pnpm; then
     PACKAGE_MANAGER="pnpm"
     echo "📦 Using pnpm (preferred)"
+    
+    # Test pnpm to ensure it's working (fix for corepack signature issues)
+    if ! pnpm --version >/dev/null 2>&1; then
+        echo "⚠️  pnpm detected but not working, trying to fix..."
+        corepack disable pnpm >/dev/null 2>&1 || true
+        npm install -g pnpm@latest >/dev/null 2>&1 || true
+        
+        # Test again
+        if ! pnpm --version >/dev/null 2>&1; then
+            echo "❌ pnpm still not working, falling back to npm"
+            PACKAGE_MANAGER="npm"
+        else
+            echo "✅ pnpm fixed and ready"
+        fi
+    fi
 elif command_exists npm; then
     PACKAGE_MANAGER="npm"
     echo "📦 Using npm (fallback)"
@@ -38,10 +53,14 @@ else
     echo "✅ npm registry configured"
 fi
 
-# Install dependencies with explicit registry
+# Install dependencies with explicit registry and error handling
 echo "⬇️  Installing dependencies with $PACKAGE_MANAGER..."
 if [ "$PACKAGE_MANAGER" = "pnpm" ]; then
-    pnpm install --registry https://registry.npmjs.org/
+    if ! pnpm install --registry https://registry.npmjs.org/; then
+        echo "❌ pnpm install failed, falling back to npm..."
+        PACKAGE_MANAGER="npm"
+        npm install --registry https://registry.npmjs.org/
+    fi
 else
     npm install --registry https://registry.npmjs.org/
 fi

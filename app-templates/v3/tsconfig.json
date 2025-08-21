@@ -19,7 +19,8 @@
     "forceConsistentCasingInFileNames": true,
     "paths": {
       "~/*": ["./src/*"],
-      "~/components/*": ["./src/frontend/components/*"],
+      "~/components/*": ["./src/components/*"],
+      "~/lib/*": ["./src/frontend/lib/*"],
       "~/api/*": ["./src/frontend/api/*"],
       "~/backend/*": ["./src/backend/*"],
       "~/shared/*": ["./src/shared/*"]

@@ -2,7 +2,6 @@ import type { Plugin } from 'vite';
 import { parse } from '@babel/parser';
 import traverse from '@babel/traverse';
 import type { NodePath } from '@babel/traverse';
-// @ts-expect-error - @babel/generator doesn't have proper types
 import generate from '@babel/generator';
 import * as t from '@babel/types';
 
