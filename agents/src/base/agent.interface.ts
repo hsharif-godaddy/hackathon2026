@@ -33,6 +33,16 @@ export interface AgentHandoffConfig {
 }
 
 /**
+ * Configuration interface for prompt composition
+ */
+export interface PromptCompositionConfig {
+  /** Template descriptions to include (from template-descriptions directory) */
+  templates?: string[];
+  /** Additional prompt fragments to compose */
+  fragments?: string[];
+}
+
+/**
  * Base configuration interface that all agents must implement
  */
 export interface AgentConfig {
@@ -65,6 +75,9 @@ export interface AgentConfig {
   
   /** Tags for categorizing/filtering agents */
   readonly tags?: string[];
+  
+  /** Prompt composition configuration */
+  readonly promptComposition?: PromptCompositionConfig;
 }
 
 /**

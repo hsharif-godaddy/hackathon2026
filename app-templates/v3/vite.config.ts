@@ -11,11 +11,12 @@ export default defineConfig(({ mode }) => ({
   
   resolve: {
     alias: {
-      '~/': path.resolve(__dirname, './src/'),
-      '~/components': path.resolve(__dirname, './src/frontend/components'),
-      '~/api': path.resolve(__dirname, './src/frontend/api'),
-      '~/backend': path.resolve(__dirname, './src/backend'),
-      '~/shared': path.resolve(__dirname, './src/shared'),
+      '@/': path.resolve(__dirname, './src/'),
+      '@/components': path.resolve(__dirname, './src/frontend/components'),
+      '@/lib': path.resolve(__dirname, './src/frontend/lib'),
+      '@/api': path.resolve(__dirname, './src/frontend/api'),
+      '@/backend': path.resolve(__dirname, './src/backend'),
+      '@/shared': path.resolve(__dirname, './src/shared'),
     },
   },
   

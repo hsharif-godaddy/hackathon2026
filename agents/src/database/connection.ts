@@ -57,6 +57,13 @@ function initializeSchema() {
   } catch (err) {
     // Column might already exist, that's fine
   }
+
+  // Add template_version column if it doesn't exist
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN template_version TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
   
   // Add port column if it doesn't exist (for existing databases)
   try {

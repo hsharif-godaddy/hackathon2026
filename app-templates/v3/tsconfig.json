@@ -18,12 +18,12 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
-      "~/*": ["./src/*"],
-      "~/components/*": ["./src/components/*"],
-      "~/lib/*": ["./src/frontend/lib/*"],
-      "~/api/*": ["./src/frontend/api/*"],
-      "~/backend/*": ["./src/backend/*"],
-      "~/shared/*": ["./src/shared/*"]
+      "@/*": ["./src/*"],
+      "@/components/*": ["./src/frontend/components/*"],
+      "@/lib/*": ["./src/frontend/lib/*"],
+      "@/api/*": ["./src/frontend/api/*"],
+      "@/backend/*": ["./src/backend/*"],
+      "@/shared/*": ["./src/shared/*"]
     },
     "baseUrl": "."
   },

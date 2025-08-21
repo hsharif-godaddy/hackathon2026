@@ -9,6 +9,7 @@ import {
   AgentHandoffConfig,
   AgentExecutionContext,
 } from './agent.interface.js';
+import { getTemplateFromEnvironment } from '../utils/template-version.js';
 
 /**
  * Abstract base class that provides common functionality for all agents
@@ -34,9 +35,9 @@ export abstract class BaseAgent implements IAgent {
    * Default implementation loads from a markdown file in the prompts directory
    */
   async getSystemPrompt(context?: AgentExecutionContext): Promise<string> {
-    if (!this._systemPrompt) {
-      this._systemPrompt = await this.loadSystemPromptFromFile();
-    }
+    // Always reload the prompt to ensure we get the latest template composition
+    // based on the current context (app metadata, etc.)
+    this._systemPrompt = await this.loadSystemPromptFromFile(context);
     
     // Allow subclasses to customize the prompt based on context
     return this.customizeSystemPrompt(this._systemPrompt, context);
@@ -45,16 +46,21 @@ export abstract class BaseAgent implements IAgent {
   /**
    * Load system prompt from markdown file
    * Looks for {agent-id}.md in the prompts directory
+   * Supports composition with template descriptions
    */
-  protected async loadSystemPromptFromFile(): Promise<string> {
+  protected async loadSystemPromptFromFile(context?: AgentExecutionContext): Promise<string> {
     try {
       // Get the current file's directory and navigate to prompts
       const currentDir = path.dirname(fileURLToPath(import.meta.url));
       const promptsDir = path.resolve(currentDir, '..', 'prompts');
       const promptFile = path.join(promptsDir, `${this._config.id}.md`);
       
-      const content = await fs.readFile(promptFile, 'utf-8');
-      return content.trim();
+      let baseContent = await fs.readFile(promptFile, 'utf-8');
+      
+      // Always try to compose with templates (simplified logic)
+      baseContent = await this.composePrompt(baseContent, promptsDir, context);
+      
+      return baseContent.trim();
     } catch (error) {
       throw new Error(
         `Failed to load system prompt for agent '${this._config.id}': ${
@@ -62,6 +68,107 @@ export abstract class BaseAgent implements IAgent {
         }`
       );
     }
+  }
+
+  /**
+   * Compose the base prompt with template descriptions and fragments
+   */
+  protected async composePrompt(baseContent: string, promptsDir: string, context?: AgentExecutionContext): Promise<string> {
+    let composedContent = baseContent;
+
+    // Determine template to include based on app metadata or configuration
+    const templateName = this.getTemplateForComposition(context);
+    
+    if (templateName) {
+      const templateDescriptionsDir = path.join(promptsDir, 'template-descriptions');
+      const templateFile = path.join(templateDescriptionsDir, `${templateName}.md`);
+      
+      try {
+        const templateContent = await fs.readFile(templateFile, 'utf-8');
+        
+        // Look for template insertion point or append at the end
+        const insertionPoint = composedContent.indexOf('{{TEMPLATE_DESCRIPTION}}');
+        if (insertionPoint !== -1) {
+          composedContent = composedContent.replace('{{TEMPLATE_DESCRIPTION}}', templateContent.trim());
+        } else {
+          // If no specific insertion point, insert after the header but before main content
+          const headerEnd = composedContent.indexOf('\n\n');
+          if (headerEnd !== -1) {
+            composedContent = composedContent.slice(0, headerEnd + 2) + 
+                             templateContent.trim() + '\n\n' + 
+                             composedContent.slice(headerEnd + 2);
+          } else {
+            composedContent += '\n\n' + templateContent.trim();
+          }
+        }
+        
+        console.log(`📋 Using template description: ${templateName}`);
+      } catch (error) {
+        console.warn(`Failed to load template description '${templateName}': ${error instanceof Error ? error.message : String(error)}`);
+        
+        // Fallback to default template if specific template fails
+        if (templateName !== 'default') {
+          try {
+            const defaultTemplateFile = path.join(templateDescriptionsDir, 'default.md');
+            const defaultContent = await fs.readFile(defaultTemplateFile, 'utf-8');
+            const insertionPoint = composedContent.indexOf('{{TEMPLATE_DESCRIPTION}}');
+            if (insertionPoint !== -1) {
+              composedContent = composedContent.replace('{{TEMPLATE_DESCRIPTION}}', defaultContent.trim());
+            }
+            console.log(`📋 Fallback to default template description`);
+          } catch (defaultError) {
+            console.warn(`Failed to load default template: ${defaultError instanceof Error ? defaultError.message : String(defaultError)}`);
+          }
+        }
+      }
+    }
+
+    // Load and insert additional fragments from configuration
+    const composition = this._config.promptComposition;
+    if (composition?.fragments && composition.fragments.length > 0) {
+      for (const fragmentName of composition.fragments) {
+        try {
+          const fragmentFile = path.join(promptsDir, 'fragments', `${fragmentName}.md`);
+          const fragmentContent = await fs.readFile(fragmentFile, 'utf-8');
+          composedContent += '\n\n' + fragmentContent.trim();
+        } catch (error) {
+          console.warn(`Failed to load prompt fragment '${fragmentName}': ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+
+    return composedContent;
+  }
+
+  /**
+   * Get the template name for composition based on app metadata or configuration
+   */
+  protected getTemplateForComposition(context?: AgentExecutionContext): string {
+    // First, check if templates are explicitly configured
+    const composition = this._config.promptComposition;
+    if (composition?.templates && composition.templates.length > 0 && composition.templates[0]) {
+      console.log(`🎯 Using explicitly configured template: ${composition.templates[0]}`);
+      return composition.templates[0];
+    }
+    
+    // Next, check if we have app metadata with template version
+    const appTemplateVersion = context?.metadata?.templateVersion as string;
+    if (appTemplateVersion) {
+      console.log(`📱 Using app template version: ${appTemplateVersion}`);
+      return appTemplateVersion;
+    }
+    
+    // Fallback to environment variable detection
+    const templateDir = process.env.APP_TEMPLATE_DIR || 'app-templates/v3';
+    const templateFromEnv = getTemplateFromEnvironment(templateDir);
+    if (templateFromEnv !== 'default') {
+      console.log(`🌍 Environment fallback: ${templateFromEnv}`);
+      return templateFromEnv;
+    }
+    
+    // Final fallback to default
+    console.log(`❓ No template detected, using default`);
+    return 'default';
   }
 
   /**

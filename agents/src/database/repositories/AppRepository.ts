@@ -5,6 +5,7 @@ import path from 'path';
 import { getDatabase } from '../connection.js';
 import { GitUtils } from '../../utils/git.js';
 import { PortManager } from '../../utils/port-manager.js';
+import { extractTemplateVersion } from '../../utils/template-version.js';
 import type { App, CreateAppRequest, UpdateAppRequest, RunningProcess } from '../schema.js';
 import net from 'net';
 import { error } from 'console';
@@ -224,6 +225,9 @@ export class AppRepository {
       ? templateDir 
       : path.join(process.cwd(), '..', templateDir);
     
+    // Extract template version from template directory
+    const templateVersion = extractTemplateVersion(templateDir);
+    
     // Create the directory for the app
     try {
       mkdirSync(appPath, { recursive: true });
@@ -269,10 +273,10 @@ export class AppRepository {
       
       try {
         const stmt = this.db.prepare(`
-          INSERT INTO apps (id, name, path, port, initial_prompt, status, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO apps (id, name, path, port, initial_prompt, template_version, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        stmt.run(id, data.name, appPath, port, data.initialPrompt || null, 'creating', now, now);
+        stmt.run(id, data.name, appPath, port, data.initialPrompt || null, templateVersion, 'creating', now, now);
         
         // Store additional port information in a separate table if needed
         // For now, we'll store backend port in environment during dev server start
@@ -706,6 +710,8 @@ export class AppRepository {
     
     return result.changes > 0;
   }
+
+
 
   /**
    * Detect if app is using v3 template by checking for specific files

@@ -4,6 +4,7 @@ export interface App {
   path: string;
   port: number;
   initialPrompt?: string;
+  templateVersion?: string; // v1, v2, v3, etc.
   status: 'creating' | 'created' | 'error';
   createdAt: Date;
   updatedAt: Date;

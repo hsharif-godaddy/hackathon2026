@@ -26,6 +26,10 @@ export class DevelopAgent extends BaseAgent {
       handoffs: [],
       version: '1.0.0',
       tags: ['developer', 'coding', 'web-development', 'ai-assistant'],
+      promptComposition: {
+        // Templates are now dynamically detected based on the app structure
+        // No need to hardcode templates here
+      },
     };
 
     super(config);

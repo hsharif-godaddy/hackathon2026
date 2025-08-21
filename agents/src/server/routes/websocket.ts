@@ -164,9 +164,10 @@ async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WS
       return;
     }
     
-    // Validate appId exists if provided
+    // Validate appId exists if provided and get app data
+    let app = null;
     if (chatRequest.appId) {
-      const app = appRepo.findById(chatRequest.appId);
+      app = appRepo.findById(chatRequest.appId);
       if (!app) {
         ws.send(JSON.stringify({
           type: 'error',
@@ -228,6 +229,7 @@ async function handleChatMessage(ws: WebSocket, agentId: string, chatRequest: WS
         agentId,
         appId: chatRequest.appId,
         conversationId: conversation?.id,
+        templateVersion: app?.templateVersion, // Include template version from app data
         ...chatRequest.metadata 
       },
       timestamp: new Date(),

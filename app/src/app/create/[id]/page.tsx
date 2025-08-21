@@ -142,7 +142,7 @@ export default function CreateAppStatus() {
         {/* Estimated time */}
         <div className="text-sm text-gray-500 space-y-1">
           <p>This usually takes 30-60 seconds</p>
-          <p>Please don't close this page</p>
+          <p>Please don&apos;t close this page</p>
         </div>
 
         {/* Cancel option */}
