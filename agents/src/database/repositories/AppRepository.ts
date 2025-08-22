@@ -9,6 +9,7 @@ import { extractTemplateVersion } from '../../utils/template-version.js';
 import type { App, CreateAppRequest, UpdateAppRequest, RunningProcess } from '../schema.js';
 import net from 'net';
 import { error } from 'console';
+import { getNameSuggestionService } from '../../services/name-suggestion.js';
 
 export class AppRepository {
   private db = getDatabase();
@@ -219,6 +220,25 @@ export class AppRepository {
       throw new Error(`Port ${port} is already in use`);
     }
     
+    // Try to get a better app name using AI if an initial prompt is provided
+    let appName = data.name;
+    if (data.initialPrompt) {
+      try {
+        const nameSuggestionService = getNameSuggestionService();
+        const suggestedName = await nameSuggestionService.suggestName(data.initialPrompt);
+        
+        if (suggestedName) {
+          console.log(`Using AI-suggested name "${suggestedName}" instead of "${data.name}"`);
+          appName = suggestedName;
+        } else {
+          console.log(`No AI suggestion available, using original name: "${data.name}"`);
+        }
+      } catch (nameError) {
+        console.warn(`Failed to get AI-suggested name: ${nameError}`);
+        // Continue with the original name if name suggestion fails
+      }
+    }
+    
     // Get template directory from environment variable, default to app-templates/v3
     const templateDir = process.env.APP_TEMPLATE_DIR || 'app-templates/v3';
     const templatePath = path.isAbsolute(templateDir) 
@@ -276,7 +296,7 @@ export class AppRepository {
           INSERT INTO apps (id, name, path, port, initial_prompt, template_version, status, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        stmt.run(id, data.name, appPath, port, data.initialPrompt || null, templateVersion, 'creating', now, now);
+        stmt.run(id, appName, appPath, port, data.initialPrompt || null, templateVersion, 'creating', now, now);
         
         // Store additional port information in a separate table if needed
         // For now, we'll store backend port in environment during dev server start

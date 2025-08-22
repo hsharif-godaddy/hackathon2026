@@ -142,7 +142,11 @@ router.post('/create', async (req: Request, res: Response) => {
     };
 
     const app = await appRepo.create(data);
-    return res.status(201).json({ app });
+    return res.status(201).json({ 
+      app,
+      nameSuggested: app.name !== data.name, // Indicate if the name was changed by AI
+      originalName: data.name // Include the original name for reference
+    });
   } catch (error) {
     console.error('Error creating app:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -165,7 +169,11 @@ router.post('/', async (req: Request, res: Response) => {
     data.name = data.name.trim();
 
     const app = await appRepo.create(data);
-    return res.status(201).json({ app });
+    return res.status(201).json({ 
+      app,
+      nameSuggested: app.name !== data.name, // Indicate if the name was changed by AI
+      originalName: data.name // Include the original name for reference
+    });
   } catch (error) {
     console.error('Error creating app:', error);
     return res.status(500).json({ error: 'Internal server error' });
