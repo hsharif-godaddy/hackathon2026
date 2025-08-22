@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 
-const router = Router();
+const router: any = Router();
 const appRepo = new AppRepository();
 
 /**

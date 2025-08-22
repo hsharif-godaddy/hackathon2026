@@ -56,8 +56,8 @@ export default function Message({ message }: MessageProps) {
                     toolResult={message.tool_result || message.content} 
                   />
                 ) : message.sender === 'agent' ? (
-                  // Use integrated response for agent messages (new structure)
-                  message.tool_calls !== undefined ? (
+                  // Use integrated response for agent messages (new structure or segments)
+                  (message.tool_calls !== undefined || message.segments) ? (
                     <IntegratedResponse message={message} />
                   ) : (
                     // Legacy agent message handling

@@ -162,7 +162,7 @@ export default function Home() {
             <div className="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
               {examples.map((example, index) => (
                 <button
-                  key={index}
+                  key={example.title}
                   onClick={() => handleExampleClick(example.prompt)}
                   className="group px-4 py-2 bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all duration-200 text-sm cursor-pointer"
                 >

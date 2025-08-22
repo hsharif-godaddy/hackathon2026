@@ -8,7 +8,7 @@ import { corsMiddleware, errorHandler, notFoundHandler, requestLogger } from './
 import { agentsRouter, appsRouter, chatRouter, healthRouter } from './routes/index.js';
 import { createWebSocketServer } from './routes/websocket.js';
 import { AgentRegistry } from '../registry/index.js';
-import { ExampleAgent, DevelopAgent, FakeEventsAgent } from '../agents/index.js';
+import { ExampleAgent, DevelopAgent } from '../agents/index.js';
 import { getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 
@@ -106,7 +106,6 @@ async function initialize() {
     console.log('📝 Registering agents...');
     registry.register(ExampleAgent);
     registry.register(DevelopAgent);
-    registry.register(FakeEventsAgent);
     
     // Initialize all agents
     await registry.initializeAll();

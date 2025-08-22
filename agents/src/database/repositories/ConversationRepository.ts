@@ -275,4 +275,12 @@ export class ConversationRepository {
       messageCount: row.message_count
     }));
   }
+
+  /**
+   * Delete a message by ID
+   */
+  async deleteMessage(messageId: string): Promise<void> {
+    const stmt = this.db.prepare('DELETE FROM conversation_messages WHERE id = ?');
+    stmt.run(messageId);
+  }
 }

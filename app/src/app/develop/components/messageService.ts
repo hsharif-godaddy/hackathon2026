@@ -153,8 +153,8 @@ export const handleSendMessage = async ({
       currentWebSocket = null
     }
     
-    // Use fake-events agent when message is 'FAKE-EVENTS'
-    const agentId = content === 'FAKE-EVENTS' ? 'fake-events' : 'develop'
+    // Always use develop agent
+    const agentId = 'develop'
 
     // Create new WebSocket connection
     currentWebSocket = await createWebSocketConnection(agentId)
@@ -554,7 +554,7 @@ export const loadConversation = async (appId: string, conversationId: string) =>
     
     // Convert database messages to UI message format
     const messages: Message[] = data.messages.map((msg: {id: string; sender: string; content: string; createdAt: string; messageType?: string; toolCalls?: ToolCall[]; segments?: MessageSegment[]; metadata?: Record<string, unknown>}) => ({
-      id: parseInt(msg.id),
+      id: msg.id, // Keep as string since database IDs are strings
       sender: msg.sender,
       content: msg.content,
       timestamp: new Date(msg.createdAt),
