@@ -35,8 +35,19 @@ APP_TEMPLATE_DIR=../app-templates/v3
 
 ### 3. Start Services
 **Terminal 1 - Agents Backend:**
+#### For Local Mode
 ```bash
 cd agents
+# set DOC_APPS=false in agents/.env
+npm run dev
+
+# Should show: "Initializing AppRepository with Local deployment..."
+```
+
+#### For Docker Mode
+```bash
+cd agents
+# DOC_APPS is unset (defaults to true)
 npm run dev
 ```
 

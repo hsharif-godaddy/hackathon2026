@@ -52,17 +52,63 @@ function DevelopPageContent() {
   const [isRestarting, setIsRestarting] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [showUsageCost, setShowUsageCost] = useState(false)
+  const [isCheckingApp, setIsCheckingApp] = useState(false)
+  const [isStartingApp, setIsStartingApp] = useState(false)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
   const [isInitialAppCreation, setIsInitialAppCreation] = useState(false)
   const [chatPaneWidth, setChatPaneWidth] = useState(400)
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
+  const appCheckProcessed = useRef(false)
   const autoSendTriggered = useRef(false) // Prevent multiple auto-sends
   const tokenUsageRef = useRef<TokenUsageRef>(null)
 
+  // Ensure app is running (generic backend logic)
+  const ensureAppIsRunning = async (appId: string) => {
+    try {
+      setIsCheckingApp(true)
+      console.log('🔍 Ensuring app is running:', appId)
+      
+      // Call generic backend endpoint
+      const response = await fetch(`http://localhost:4000/apps/${appId}/ensure-running`, {
+        method: 'POST'
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        console.log('📊 App ensure-running response:', data)
+        
+        if (data.action === 'rebuild' || data.action === 'start') {
+          setIsStartingApp(true)
+          console.log(`🔄 App is being ${data.action === 'rebuild' ? 'rebuilt' : 'started'}...`)
+          
+          // Wait for the action to complete (backend already waits, but show UI feedback)
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          setIsStartingApp(false)
+        }
+        
+        if (data.success) {
+          console.log(`✅ App is now running: ${data.message}`)
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        console.error('❌ Failed to ensure app is running:', response.status, errorData.error)
+      }
+    } catch (error) {
+      console.error('Error ensuring app is running:', error)
+    } finally {
+      setIsCheckingApp(false)
+      setIsStartingApp(false)
+    }
+  }
+
   // 1. PURE DATA LOADING - Fetch app details (no side effects)
   useEffect(() => {
+    // Reset app check flag when appId changes
+    appCheckProcessed.current = false
+    
     const fetchApp = async () => {
       try {
         const response = await appFetch(`http://localhost:4000/apps/${appId}`)
@@ -73,6 +119,12 @@ function DevelopPageContent() {
           // Check if this is a newly created app with an initial prompt
           const isNewApp = data.app.status === 'created' && data.app.initialPrompt
           setIsInitialAppCreation(isNewApp)
+          
+          // After fetching app details, ensure app is running if needed (prevent duplicate calls in Strict Mode)
+          if (!appCheckProcessed.current) {
+            appCheckProcessed.current = true
+            await ensureAppIsRunning(appId)
+          }
         } else {
           console.error('Failed to fetch app:', response.status)
         }
@@ -415,19 +467,26 @@ function DevelopPageContent() {
       })
       
       if (response.ok) {
-        // Wait a moment for the server to restart
-        setTimeout(() => {
-          // Refresh app data
-          appFetch(`http://localhost:4000/apps/${appId}`)
-            .then(res => res.json())
-            .then(data => setApp(data.app))
-            .catch(console.error)
-        }, 2000)
+        console.log('✅ Manual restart successful')
+        await new Promise(resolve => setTimeout(resolve, 5000))
+        
+        // Refresh app data
+        try {
+          const appResponse = await appFetch(`http://localhost:4000/apps/${appId}`)
+          if (appResponse.ok) {
+            const data = await appResponse.json()
+            setApp(data.app)
+            console.log('🔄 App data refreshed after restart')
+          }
+        } catch (refreshError) {
+          console.error('❌ Failed to refresh app data:', refreshError)
+        }
       } else {
+        console.error('❌ Failed to restart server:', response.status)
         alert('Failed to restart server')
       }
     } catch (error) {
-      console.error('Error restarting server:', error)
+      console.error('❌ Error restarting server:', error)
       alert('Failed to restart server')
     } finally {
       setIsRestarting(false)
@@ -466,12 +525,27 @@ function DevelopPageContent() {
               <div className="h-6 w-px bg-gray-300" />
               <span className="text-gray-600">
                 {app ? app.name : `App ${appId}`} - Development Environment
-                {isInitialAppCreation && (
+                {isCheckingApp && (
+                  <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                    Checking App Status...
+                  </span>
+                )}
+                {isStartingApp && !isCheckingApp && (
+                  <span className="ml-2 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                    Starting App...
+                  </span>
+                )}
+                {isRestarting && !isCheckingApp && !isStartingApp && (
+                  <span className="ml-2 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                    Restarting App...
+                  </span>
+                )}
+                {isInitialAppCreation && !isCheckingApp && !isRestarting && !isStartingApp && (
                   <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
                     New App
                   </span>
                 )}
-                {conversationId && (
+                {conversationId && !isCheckingApp && !isRestarting && !isStartingApp && (
                   <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
                     Chat: {conversationId.slice(0, 8)}...
                   </span>
@@ -503,11 +577,15 @@ function DevelopPageContent() {
                     window.open(`http://localhost:${app.port}`, '_blank')
                   }
                 }}
-                disabled={!app?.port}
+                disabled={!app?.port || isCheckingApp || isRestarting || isStartingApp}
                 className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <PlayIcon className="w-4 h-4 mr-2" />
-                {app?.port ? 'Open App' : 'Loading...'}
+                <PlayIcon className={`w-4 h-4 mr-2 ${(isCheckingApp || isRestarting || isStartingApp) ? 'animate-spin' : ''}`} />
+                {isCheckingApp ? 'Checking App Status...' 
+                 : isStartingApp ? 'Starting App...'
+                 : isRestarting ? 'Restarting App...' 
+                 : app?.port ? 'Open App' 
+                 : 'Loading...'}
               </button>
             </div>
           </div>

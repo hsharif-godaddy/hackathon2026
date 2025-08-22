@@ -37,8 +37,8 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
           {/* New segmented approach - render interleaved content and tools */}
           {hasSegments && (
             <div className="space-y-2">
-              {message.segments?.map((segment) => (
-                <div key={segment.id}>
+              {message.segments?.map((segment, index) => (
+                <div key={segment.id || `segment-${index}`}>
                   {segment.type === 'content' && segment.content && (
                     <MarkdownRenderer 
                       content={segment.content}
@@ -74,9 +74,9 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
               {/* Tool calls integrated inline within the message */}
               {hasLegacyTools && (
                 <div className="space-y-1">
-                  {message.tool_calls?.map((toolCall) => (
+                  {message.tool_calls?.map((toolCall, index) => (
                     <ToolCallMessage
-                      key={toolCall.id}
+                      key={toolCall.id || `toolcall-${index}`}
                       toolName={toolCall.tool_name}
                       toolStatus={toolCall.status}
                       duration={toolCall.duration_ms}

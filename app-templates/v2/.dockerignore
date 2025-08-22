@@ -1,0 +1,19 @@
+# Docker ignore for Next.js v2 template
+node_modules
+.next
+.git
+.gitignore
+README.md
+.npmrc
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+.env*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs
+*.log
+.DS_Store
+Dockerfile*
+docker-compose*

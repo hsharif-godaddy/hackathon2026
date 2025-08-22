@@ -1,0 +1,35 @@
+# Development Dockerfile for Next.js App Template v2 (with Turbopack)
+FROM node:20-alpine
+
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Set working directory
+WORKDIR /app
+
+# Create clean npm environment
+RUN echo "registry=https://registry.npmjs.org/" > /root/.npmrc
+
+# Copy package.json and install dependencies
+COPY package.json ./
+RUN npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
+
+# Copy source code (node_modules excluded via .dockerignore)
+COPY . .
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Expose the port (will be overridden by environment)
+EXPOSE 3000
+
+# Set development environment
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:3000/api/health || curl -f http://localhost:3000/ || exit 1
+
+# Start development server with Turbopack
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]

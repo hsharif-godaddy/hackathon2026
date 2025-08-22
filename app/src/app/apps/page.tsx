@@ -41,6 +41,23 @@ function AppsPageContent() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // First, cleanup any orphaned apps to ensure accurate status
+        console.log('🧹 Cleaning up orphaned apps...')
+        try {
+          const cleanupResponse = await fetch('http://localhost:4000/apps/cleanup-orphans', {
+            method: 'POST'
+          })
+          if (cleanupResponse.ok) {
+            console.log('✅ Cleanup completed')
+          } else {
+            console.warn('⚠️ Cleanup failed, but continuing...')
+          }
+        } catch (cleanupError) {
+          console.warn('⚠️ Cleanup error:', cleanupError)
+          // Continue even if cleanup fails
+        }
+
+        // Then fetch apps and servers data in parallel
         const [appsResponse, serversResponse] = await Promise.all([
           appFetch('http://localhost:4000/apps'),
           appFetch('http://localhost:4000/apps/servers')
@@ -93,6 +110,11 @@ function AppsPageContent() {
       })
       
       if (response.ok) {
+        console.log('✅ Server stopped successfully for app:', appId)
+        
+        // Small delay to ensure backend has updated
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
         // Refresh running servers list
         const serversResponse = await appFetch('http://localhost:4000/apps/servers')
         if (serversResponse.ok) {
@@ -100,10 +122,11 @@ function AppsPageContent() {
           setRunningServers(serversData.servers)
         }
       } else {
+        console.error('❌ Failed to stop server for app:', appId, response.status)
         alert('Failed to stop server')
       }
     } catch (error) {
-      console.error('Error stopping server:', error)
+      console.error('❌ Error stopping server for app:', appId, error)
       alert('Failed to stop server')
     } finally {
       setActionLoading(null)

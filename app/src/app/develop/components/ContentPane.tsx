@@ -251,9 +251,9 @@ export default async function DashboardPage() {
       {/* Content Tabs */}
       <div className="border-b border-gray-200 bg-white">
         <div className="flex border-b border-gray-200">
-          {contentTabs.map((tab) => (
+          {contentTabs.map((tab, index) => (
             <button
-              key={tab.id}
+              key={tab.id || `tab-${index}`}
               onClick={() => onTabChange(tab.id)}
               className={`flex items-center px-6 py-3 border-b-2 font-medium text-sm transition-colors ${
                 activeContentTab === tab.id

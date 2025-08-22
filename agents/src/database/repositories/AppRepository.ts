@@ -9,6 +9,9 @@ import { extractTemplateVersion } from '../../utils/template-version.js';
 import type { App, CreateAppRequest, UpdateAppRequest, RunningProcess } from '../schema.js';
 import net from 'net';
 import { error } from 'console';
+// Adapter imports
+import { getAppAdapter, isDockerMode } from '../../adapters/index.js';
+import type { IAppAdapter } from '../../adapters/index.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
 
 export class AppRepository {
@@ -16,6 +19,7 @@ export class AppRepository {
   private gitUtils = new GitUtils();
   private portManager = new PortManager();
   private runningProcesses = new Map<string, any>(); // Store running dev servers
+  private deploymentAdapter: IAppAdapter | null = null; // Adapter for deployment operations
   private initialized = false;
 
   /**
@@ -24,12 +28,18 @@ export class AppRepository {
   async initialize(): Promise<void> {
     if (this.initialized) return;
     
-    console.log('🔄 Initializing AppRepository and recovering orphaned processes...');
+    const adapterType = isDockerMode() ? 'Docker' : 'Local';
+    console.log(`🔄 Initializing AppRepository with ${adapterType} deployment...`);
     
     try {
+      // Initialize deployment adapter
+      this.deploymentAdapter = await getAppAdapter();
+      
+      // Keep existing local process recovery for backward compatibility
       await this.recoverOrphanedProcesses();
+      
       this.initialized = true;
-      console.log('✅ AppRepository initialization completed');
+      console.log(`✅ AppRepository initialization completed (${adapterType} mode)`);
     } catch (error) {
       console.error('❌ AppRepository initialization failed:', error);
       throw error;
@@ -204,6 +214,9 @@ export class AppRepository {
    * Create a new app with a websafe short identifier and filesystem directory
    */
   async create(data: CreateAppRequest): Promise<App> {
+    // Ensure this repository is initialized before creating apps
+    await this.initialize();
+    
     const id = nanoid(12); // 12 characters, websafe, URL-friendly
     const now = new Date().toISOString();
     
@@ -241,9 +254,28 @@ export class AppRepository {
     
     // Get template directory from environment variable, default to app-templates/v3
     const templateDir = process.env.APP_TEMPLATE_DIR || 'app-templates/v3';
-    const templatePath = path.isAbsolute(templateDir) 
-      ? templateDir 
-      : path.join(process.cwd(), '..', templateDir);
+    
+    // Calculate template path - ensure we're looking in the correct project directory
+    let templatePath: string;
+    if (path.isAbsolute(templateDir)) {
+      templatePath = templateDir;
+    } else {
+      const currentDir = process.cwd();
+      console.log(`🔍 Current working directory: ${currentDir}`);
+      console.log(`🔍 Template directory from env: ${templateDir}`);
+      
+      // Handle relative paths properly
+      if (templateDir.startsWith('../')) {
+        // If template dir starts with ../, resolve it relative to current directory
+        templatePath = path.resolve(currentDir, templateDir);
+      } else {
+        // Otherwise, resolve it relative to project root (one level up from agents)
+        const projectRoot = path.dirname(currentDir);
+        templatePath = path.join(projectRoot, templateDir);
+      }
+    }
+    
+    console.log(`📁 Template path calculated: ${templatePath}`);
     
     // Extract template version from template directory
     const templateVersion = extractTemplateVersion(templateDir);
@@ -253,8 +285,10 @@ export class AppRepository {
       mkdirSync(appPath, { recursive: true });
       console.log(`📁 Created app directory: ${appPath}`);
       
-      // Copy template contents if template directory exists
+      // Copy template contents - THIS IS CRITICAL FOR PROPER APP CREATION
       if (existsSync(templatePath)) {
+        console.log(`📋 Copying template from ${templatePath} to ${appPath}...`);
+        
         try {
           // Copy all contents from template directory to app directory, excluding unnecessary files
           cpSync(templatePath, appPath, { 
@@ -278,13 +312,62 @@ export class AppRepository {
               return true;
             }
           });
-          console.log(`📋 Copied template from ${templatePath} to ${appPath} (excluding node_modules and build artifacts)`);
+          
+          // Validate that critical template files were copied successfully
+          const templatePackageJson = path.join(appPath, 'package.json');
+          const templateSrcDir = path.join(appPath, 'src');
+          
+          if (!existsSync(templatePackageJson)) {
+            throw new Error(`Template package.json was not copied to ${templatePackageJson}`);
+          }
+          
+          if (!existsSync(templateSrcDir)) {
+            throw new Error(`Template src directory was not copied to ${templateSrcDir}`);
+          }
+          
+          // Additional validation for v3 template structure
+          if (templateVersion === 'v3') {
+            const frontendDir = path.join(appPath, 'src', 'frontend');
+            const backendDir = path.join(appPath, 'src', 'backend');
+            
+            if (!existsSync(frontendDir)) {
+              throw new Error(`V3 template frontend directory was not copied to ${frontendDir}`);
+            }
+            
+            if (!existsSync(backendDir)) {
+              throw new Error(`V3 template backend directory was not copied to ${backendDir}`);
+            }
+          }
+          
+          console.log(`✅ Template copied successfully from ${templatePath} to ${appPath}`);
+          console.log(`📁 Template version: ${templateVersion}`);
+          
         } catch (templateError) {
-          console.warn(`Failed to copy template from ${templatePath}:`, templateError);
-          // Don't fail app creation if template copying fails
+          console.error(`❌ CRITICAL: Template copying failed from ${templatePath}:`, templateError);
+          console.error(`❌ App creation cannot continue without proper template files`);
+          
+          // Clean up the partially created app directory
+          try {
+            rmSync(appPath, { recursive: true, force: true });
+            console.log(`🧹 Cleaned up failed app directory: ${appPath}`);
+          } catch (cleanupError) {
+            console.error(`Failed to cleanup failed app directory:`, cleanupError);
+          }
+          
+          throw new Error(`Template copying failed: ${templateError instanceof Error ? templateError.message : String(templateError)}`);
         }
       } else {
-        console.warn(`Template directory not found: ${templatePath}`);
+        const error = `Template directory not found: ${templatePath}`;
+        console.error(`❌ CRITICAL: ${error}`);
+        
+        // Clean up the app directory
+        try {
+          rmSync(appPath, { recursive: true, force: true });
+        } catch (cleanupError) {
+          console.error(`Failed to cleanup app directory:`, cleanupError);
+        }
+        
+        throw new Error(error);
       }
 
       // Save app to database BEFORE running setup (reserves the port)
@@ -326,15 +409,37 @@ export class AppRepository {
       
     } catch (error) {
       console.error(`Failed to create directory for app ${id}:`, error);
+      
       // Clean up database entry if app creation fails
       try {
-        // Ensure we're not in a transaction when cleaning up
-        this.db.exec('ROLLBACK');
-        const cleanupStmt = this.db.prepare('DELETE FROM apps WHERE id = ?');
-        cleanupStmt.run(id);
+        // Only attempt rollback if we actually started a transaction
+        // Template copying failures happen before transaction starts
+        try {
+          this.db.exec('ROLLBACK');
+          console.log(`🔄 Transaction rolled back for failed app ${id}`);
+        } catch (rollbackError: any) {
+          if (rollbackError.code === 'SQLITE_ERROR' && rollbackError.message?.includes('no transaction is active')) {
+            // This is fine - no transaction was started yet
+            console.log(`ℹ️  No active transaction to rollback for app ${id}`);
+          } else {
+            console.warn(`Failed to rollback transaction for app ${id}:`, rollbackError);
+          }
+        }
+        
+        // Check if app was actually inserted into database before trying to delete
+        const existingApp = this.findById(id);
+        if (existingApp) {
+          const cleanupStmt = this.db.prepare('DELETE FROM apps WHERE id = ?');
+          cleanupStmt.run(id);
+          console.log(`🧹 Cleaned up database entry for failed app ${id}`);
+        } else {
+          console.log(`ℹ️  No database entry to clean up for app ${id}`);
+        }
+        
       } catch (cleanupError) {
-        console.warn(`Failed to cleanup database entry for app %s: %s`, id, cleanupError);
+        console.warn(`Failed to cleanup database entry for app ${id}:`, cleanupError);
       }
+      
       const errorMessage = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to create app directory: ${errorMessage}`);
     }
@@ -357,9 +462,16 @@ export class AppRepository {
       console.log(`⏳ Waiting 2 seconds before starting dev server...`);
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Start the development servers using the smart script
+      // Start the development servers using the adapter
       try {
-        await this.startDevServer(id, appPath, port);
+        if (this.deploymentAdapter && isDockerMode()) {
+          console.log(`🐳 Starting Docker container for app ${id}...`);
+          await this.deploymentAdapter.startApp(id);
+          console.log(`✅ Docker container started for app ${id}`);
+        } else {
+          console.log(`💻 Starting local dev server for app ${id}...`);
+          await this.startDevServer(id, appPath, port);
+        }
       } catch (devServerError) {
         console.error(`Failed to start dev servers for app ${id}:`, devServerError);
         // Don't fail app creation if dev servers fail to start
@@ -707,13 +819,27 @@ export class AppRepository {
   /**
    * Delete an app and its directory
    */
-  delete(id: string): boolean {
+  async delete(id: string): Promise<boolean> {
+    // Ensure this repository is initialized
+    await this.initialize();
+
     // Get the app first to retrieve its path
     const app = this.findById(id);
     if (!app) return false;
 
     // Stop the development server if running
-    this.stopDevServer(id);
+    await this.stopServer(id);
+
+    // Remove deployment artifacts (containers, images, etc.)
+    if (this.deploymentAdapter) {
+      try {
+        await this.deploymentAdapter.removeApp(id);
+        console.log(`✅ Deployment artifacts removed for app ${id}`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to remove deployment artifacts for app ${id}:`, error);
+        // Don't fail the delete operation if artifact cleanup fails
+      }
+    }
 
     const stmt = this.db.prepare('DELETE FROM apps WHERE id = ?');
     const result = stmt.run(id);
@@ -722,6 +848,7 @@ export class AppRepository {
       // Try to remove the app directory
       try {
         rmSync(app.path, { recursive: true, force: true });
+        console.log(`✅ App directory removed: ${app.path}`);
       } catch (error) {
         console.warn(`Failed to remove directory for app ${id} at ${app.path}:`, error);
         // Don't fail the operation if directory cleanup fails
@@ -747,7 +874,18 @@ export class AppRepository {
   }
 
   /**
-   * Start development servers for an app using the smart script
+   * Check if an app is using V3 template by app ID
+   */
+  private isV3TemplateById(appId: string): boolean {
+    const app = this.findById(appId);
+    if (!app) {
+      return false;
+    }
+    return this.isV3Template(app.path);
+  }
+
+  /**
+   * Start development servers for an app using the smart script, for local setup
    */
   private async startDevServer(appId: string, appPath: string, preferredPort: number): Promise<void> {
     try {
@@ -875,7 +1013,36 @@ export class AppRepository {
   /**
    * Get running development servers
    */
-  getRunningServers(): Array<{ appId: string; port: number; url: string; isV3?: boolean; backendPort?: number }> {
+  async getRunningServers(): Promise<Array<{ appId: string; port: number; url: string; isV3?: boolean; backendPort?: number }>> {
+    // Ensure this repository is initialized
+    await this.initialize();
+
+    // If in Docker mode, use the adapter
+    if (this.deploymentAdapter && isDockerMode()) {
+      try {
+        const dockerServers = await this.deploymentAdapter.getRunningServers();
+        return dockerServers.map(server => {
+          const isV3 = this.isV3TemplateById(server.appId);
+          const result: { appId: string; port: number; url: string; isV3?: boolean; backendPort?: number } = {
+            appId: server.appId,
+            port: server.port,
+            url: server.url,
+          };
+          
+          if (isV3) {
+            result.isV3 = true;
+            result.backendPort = 3000;
+          }
+          
+          return result;
+        });
+      } catch (error) {
+        console.error('❌ Failed to get running servers via adapter:', error);
+        return [];
+      }
+    }
+
+    // Local mode - use existing logic
     const runningApps: Array<{ appId: string; port: number; url: string; isV3?: boolean; backendPort?: number }> = [];
     
     // Use database records as the source of truth
@@ -904,7 +1071,22 @@ export class AppRepository {
   /**
    * Stop development server for an app (public method)
    */
-  stopServer(appId: string): boolean {
+  async stopServer(appId: string): Promise<boolean> {
+    // Ensure this repository is initialized
+    await this.initialize();
+    
+    // Use adapter if in Docker mode
+    if (this.deploymentAdapter && isDockerMode()) {
+      try {
+        console.log(`🐳 Stopping Docker container for app ${appId}...`);
+        return await this.deploymentAdapter.stopApp(appId);
+      } catch (error) {
+        console.error(`Failed to stop Docker container for app ${appId}:`, error);
+        return false;
+      }
+    }
+
+    // Local process management
     const process = this.runningProcesses.get(appId);
     if (process) {
       try {
@@ -939,7 +1121,21 @@ export class AppRepository {
   /**
    * Stop all running development servers
    */
-  stopAllServers(): number {
+  async stopAllServers(): Promise<number> {
+    // Ensure this repository is initialized
+    await this.initialize();
+
+    // If in Docker mode, use the adapter
+    if (this.deploymentAdapter && isDockerMode()) {
+      try {
+        return await this.deploymentAdapter.stopAllServers();
+      } catch (error) {
+        console.error('❌ Failed to stop all servers via adapter:', error);
+        return 0;
+      }
+    }
+
+    // Local mode - use existing logic
     let stoppedCount = 0;
     
     for (const [appId, process] of this.runningProcesses) {
@@ -971,6 +1167,9 @@ export class AppRepository {
    * Restart development server for an app
    */
   async restartServer(appId: string): Promise<boolean> {
+    // Ensure this repository is initialized
+    await this.initialize();
+    
     const app = this.findById(appId);
     if (!app) {
       return false;
@@ -978,8 +1177,19 @@ export class AppRepository {
 
     console.log(`🔄 Restarting development server for app ${appId}...`);
 
-    // Stop the current server if running
-    const wasRunning = this.stopServer(appId);
+    // Use adapter if in Docker mode
+    if (this.deploymentAdapter && isDockerMode()) {
+      try {
+        console.log(`🐳 Restarting Docker container for app ${appId}...`);
+        return await this.deploymentAdapter.restartApp(appId);
+      } catch (error) {
+        console.error(`Failed to restart Docker container for app ${appId}:`, error);
+        return false;
+      }
+    }
+
+    // Local process management - Stop the current server if running
+    const wasRunning = await this.stopServer(appId);
 
     if (wasRunning) {
       // Wait longer for the process to fully terminate and port to be released
@@ -1029,9 +1239,13 @@ export class AppRepository {
       }
     }
 
-    // Start the server again using the smart script
+    // Start the server again using the adapter (for local mode)
     try {
-      await this.startDevServer(appId, app.path, app.port);
+      if (this.deploymentAdapter) {
+        await this.deploymentAdapter.startApp(appId);
+      } else {
+        await this.startDevServer(appId, app.path, app.port);
+      }
       console.log(`✅ Successfully restarted development servers for app ${appId}`);
       return true;
     } catch (error) {
@@ -1055,7 +1269,7 @@ export class AppRepository {
   async cleanup(): Promise<void> {
     console.log('🧹 Cleaning up running development servers...');
     
-    const runningServers = this.getRunningServers();
+    const runningServers = await this.getRunningServers();
     console.log(`Found ${runningServers.length} running server(s) to clean up`);
     
     // Stop all in-memory processes
@@ -1085,7 +1299,24 @@ export class AppRepository {
    * Force cleanup of all orphaned processes by scanning the database
    */
   async forceCleanupOrphans(): Promise<number> {
-    console.log('🚨 Force cleaning up orphaned processes...');
+    // Ensure this repository is initialized
+    await this.initialize();
+
+    // If in Docker mode, use the adapter
+    if (this.deploymentAdapter && isDockerMode()) {
+      try {
+        console.log('🐳 Using Docker adapter for orphan cleanup...');
+        const result = await this.deploymentAdapter.cleanupOrphans();
+        console.log(`✅ Docker orphan cleanup: ${result.message}`);
+        return result.cleaned;
+      } catch (error) {
+        console.error('❌ Failed to cleanup Docker orphans via adapter:', error);
+        return 0;
+      }
+    }
+
+    // Local mode - check running_processes table
+    console.log('💻 Force cleaning up orphaned local processes...');
     
     const stmt = this.db.prepare('SELECT * FROM running_processes WHERE status = ?');
     const runningRecords = stmt.all('running') as any[];
@@ -1137,5 +1368,59 @@ export class AppRepository {
     
     console.log(`✅ Force cleanup completed for app ${appId}`);
     return true;
+  }
+
+  /**
+   * Adapter-specific methods (Docker container operations)
+   * These methods delegate to the deployment adapter when available
+   */
+
+  async getAppStatus(appId: string) {
+     // Ensure this repository is initialized before creating apps
+     await this.initialize();
+
+    if (this.deploymentAdapter && isDockerMode()) {
+      return this.deploymentAdapter.getAppStatus(appId);
+    }
+    // Fallback to local process status
+    const processInfo = this.runningProcesses.get(appId);
+    if (!processInfo) {
+      return { status: 'stopped', message: 'No running process found' };
+    }
+    return { status: 'running', message: 'Process is running', metadata: { pid: processInfo.pid } };
+  }
+
+  async getAppLogs(appId: string): Promise<string[]> {
+     // Ensure this repository is initialized before creating apps
+     await this.initialize();
+
+    if (this.deploymentAdapter && this.deploymentAdapter.getAppLogs) {
+      return this.deploymentAdapter.getAppLogs(appId);
+    }
+    throw new Error('Log retrieval not supported in current deployment mode');
+  }
+
+  async rebuildAppContainer(appId: string): Promise<boolean> {
+     // Ensure this repository is initialized before creating apps
+     await this.initialize();
+     
+    if (this.deploymentAdapter && this.deploymentAdapter.rebuildApp) {
+      return this.deploymentAdapter.rebuildApp(appId);
+    }
+    throw new Error('Container rebuilding not supported in current deployment mode');
+  }
+
+  isDockerMode(): boolean {
+    return isDockerMode();
+  }
+
+  getAdapterInfo() {
+    const adapterType = isDockerMode() ? 'Docker' : 'Local';
+    return {
+      type: adapterType,
+      isInitialized: this.initialized,
+      capabilities: this.deploymentAdapter?.getCapabilities() || null,
+      environmentVariable: process.env.DOC_APPS || 'unset (defaults to Local)'
+    };
   }
 }

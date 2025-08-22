@@ -82,7 +82,17 @@ async function startDevelopment() {
       VITE_BACKEND_PORT: backendPort.toString(),
     };
     
-    const frontend = spawn('npx', ['vite', '--port', frontendPort.toString()], {
+    // Build Vite command arguments - add --host 0.0.0.0 when running in Docker
+    const viteArgs = ['vite', '--port', frontendPort.toString()];
+    
+    if (process.env.RUNNING_IN_DOCKER === 'true') {
+      viteArgs.push('--host', '0.0.0.0');
+      console.log('🐳 Running in Docker - Vite will bind to 0.0.0.0 for external access');
+    } else {
+      console.log('💻 Running locally - Vite will bind to localhost only');
+    }
+    
+    const frontend = spawn('npx', viteArgs, {
       env: frontendEnv,
       stdio: ['inherit', 'pipe', 'pipe'],
     });

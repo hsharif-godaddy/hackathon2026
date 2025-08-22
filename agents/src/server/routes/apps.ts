@@ -48,9 +48,9 @@ router.get('/', (req: Request, res: Response) => {
 /**
  * GET /apps/servers - Get running development servers
  */
-router.get('/servers', (req: Request, res: Response) => {
+router.get('/servers', async (req: Request, res: Response) => {
   try {
-    const runningServers = appRepo.getRunningServers();
+    const runningServers = await appRepo.getRunningServers();
     return res.json({ servers: runningServers });
   } catch (error) {
     console.error('Error getting running servers:', error);
@@ -215,13 +215,13 @@ router.put('/:id', (req: Request, res: Response) => {
 /**
  * DELETE /apps/:id - Delete an app
  */
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
     }
-    const deleted = appRepo.delete(id);
+    const deleted = await appRepo.delete(id);
 
     if (!deleted) {
       return res.status(404).json({ error: 'App not found' });
@@ -237,14 +237,14 @@ router.delete('/:id', (req: Request, res: Response) => {
 /**
  * POST /apps/:id/stop - Stop development server for an app
  */
-router.post('/:id/stop', (req: Request, res: Response) => {
+router.post('/:id/stop', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
     }
     
-    const stopped = appRepo.stopServer(id);
+    const stopped = await appRepo.stopServer(id);
     
     if (!stopped) {
       return res.status(404).json({ error: 'App not found or server not running' });
@@ -258,11 +258,89 @@ router.post('/:id/stop', (req: Request, res: Response) => {
 });
 
 /**
+ * POST /apps/:id/ensure-running - Ensure app is running (start if needed)
+ */
+router.post('/:id/ensure-running', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    console.log(`🔍 Ensuring app ${id} is running...`);
+
+    // Get current app status using adapter
+    const currentStatus = await appRepo.getAppStatus(id);
+    console.log(`📊 App ${id} current status:`, currentStatus?.status);
+
+    if (currentStatus?.status === 'running') {
+      console.log(`✅ App ${id} is already running - no action needed`);
+      return res.json({ 
+        success: true, 
+        action: 'none',
+        status: 'running',
+        message: 'App is already running' 
+      });
+    }
+
+    // App needs to be started/restarted
+    let action = 'unknown';
+    let success = false;
+
+    if (!currentStatus || currentStatus.status === 'not_found' || currentStatus.status === 'container_missing') {
+      // App needs to be rebuilt/created
+      console.log(`🏗️ App ${id} needs to be built from scratch...`);
+      action = 'rebuild';
+      
+      if (appRepo.isDockerMode()) {
+        success = await appRepo.rebuildAppContainer(id);
+      } else {
+        // For local mode, use restart server which handles both modes
+        success = await appRepo.restartServer(id);
+      }
+    } else {
+      // App just needs to be started/restarted
+      console.log(`🔄 App ${id} needs to be started...`);
+      action = 'start';
+      success = await appRepo.restartServer(id);
+    }
+
+    if (success) {
+      console.log(`✅ App ${id} ${action} completed successfully`);
+      // Wait a moment for the app to be ready
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      return res.json({ 
+        success: true, 
+        action,
+        status: 'running',
+        message: `App ${action === 'rebuild' ? 'rebuilt and started' : 'started'} successfully` 
+      });
+    } else {
+      console.error(`❌ Failed to ${action} app ${id}`);
+      return res.status(500).json({ 
+        error: `Failed to ${action} app`,
+        action,
+        status: 'error'
+      });
+    }
+  } catch (error) {
+    console.error('Error ensuring app is running:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * POST /apps/stop-all - Stop all running development servers
  */
-router.post('/stop-all', (req: Request, res: Response) => {
+router.post('/stop-all', async (req: Request, res: Response) => {
   try {
-    const stoppedCount = appRepo.stopAllServers();
+    const stoppedCount = await appRepo.stopAllServers();
     return res.json({ 
       success: true, 
       message: `Stopped ${stoppedCount} server${stoppedCount !== 1 ? 's' : ''}`,
@@ -681,5 +759,9 @@ router.delete('/:id/usage', async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Import and use Docker-specific routes
+import { dockerAppsRouter } from './docker-apps-extensions.js';
+router.use('/', dockerAppsRouter);
 
 export { router as appsRouter };
