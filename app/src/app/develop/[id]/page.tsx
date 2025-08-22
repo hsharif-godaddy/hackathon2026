@@ -12,7 +12,6 @@ import {
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
 import CodeEditor from '@/app/develop/components/CodeEditor'
-import TokenUsage from '@/app/develop/components/TokenUsage'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
 import { Message, PlanItem } from '@/app/develop/components/types'
