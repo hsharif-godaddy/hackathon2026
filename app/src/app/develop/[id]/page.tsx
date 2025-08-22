@@ -12,6 +12,8 @@ import {
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
 import CodeEditor from '@/app/develop/components/CodeEditor'
+import TokenUsage from '@/app/develop/components/TokenUsage'
+import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
 import { Message, PlanItem } from '@/app/develop/components/types'
 import { 
@@ -53,6 +55,7 @@ function DevelopPageContent() {
   const [showUsageCost, setShowUsageCost] = useState(false)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
   const [isInitialAppCreation, setIsInitialAppCreation] = useState(false)
+  const [chatPaneWidth, setChatPaneWidth] = useState(400)
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
@@ -442,6 +445,10 @@ function DevelopPageContent() {
     setViewMode(newMode)
   }
 
+  const handlePanelResize = useCallback((newWidth: number) => {
+    setChatPaneWidth(newWidth)
+  }, [])
+
   return (
     <div className="h-screen bg-gray-50 flex flex-col">
       {/* Header */}
@@ -509,19 +516,37 @@ function DevelopPageContent() {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Chat Panel */}
-        <ChatPane
-          messages={messages}
-          developmentPlan={developmentPlan}
-          inputValue={inputValue}
-          expandedPlan={expandedPlan}
-          isSelectMode={isSelectMode}
-          onInputChange={setInputValue}
-          onSendMessage={() => handleSendMessage()}
-          onKeyPress={handleKeyPress}
-          onToggleSelectMode={handleToggleSelectMode}
-          onToggleExpandedPlan={handleToggleExpandedPlan}
+        <div 
+          className="bg-white flex flex-col border-r border-gray-200 flex-shrink-0"
+          style={{ 
+            width: `${chatPaneWidth}px`,
+            minWidth: `${chatPaneWidth}px`,
+            maxWidth: `${chatPaneWidth}px`
+          }}
+
+        >
+          <ChatPane
+            messages={messages}
+            developmentPlan={developmentPlan}
+            inputValue={inputValue}
+            expandedPlan={expandedPlan}
+            isSelectMode={isSelectMode}
+            onInputChange={setInputValue}
+            onSendMessage={() => handleSendMessage()}
+            onKeyPress={handleKeyPress}
+            onToggleSelectMode={handleToggleSelectMode}
+            onToggleExpandedPlan={handleToggleExpandedPlan}
+          />
+        </div>
+
+        {/* Resizable Divider */}
+        <ResizableDivider 
+          onResize={handlePanelResize}
+          initialLeftWidth={chatPaneWidth}
+          minLeftWidth={300}
+          minRightWidth={400}
         />
 
         {/* Code/Preview Panel */}

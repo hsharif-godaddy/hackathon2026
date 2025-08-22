@@ -17,7 +17,7 @@ interface MessageProps {
 export default function Message({ message }: MessageProps) {
   return (
     <div className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'} w-full`}>
-      <div className={`max-w-xs w-full ${message.sender === 'user' ? 'order-2' : 'order-1'}`}>
+      <div className={`w-full ${message.sender === 'user' ? 'order-2 max-w-sm' : 'order-1'}`}>
         <div className={`${message.sender === 'user' ? 'text-right' : ''}`}>
             <div className={`inline-block p-2 rounded-lg max-w-full ${
               message.type === 'status' || message.type === 'tool_result' || message.type === 'tool_call' || message.type === 'complete'

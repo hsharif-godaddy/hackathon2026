@@ -32,7 +32,7 @@ export default function ChatPane({
   onToggleExpandedPlan
 }: ChatPaneProps) {
   return (
-    <div className="w-96 bg-white border-r border-gray-200 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0">
       <ChatHeader />
       
       <PlanTracker 
