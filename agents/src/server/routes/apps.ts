@@ -1,16 +1,18 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, IRouter } from 'express';
 import { AppRepository } from '../../database/index.js';
 import type { CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
 import { DirectoryListingTool } from '../../tools/directory-listing.js';
 import { ReadFileTool } from '../../tools/read-file.js';
 import { FileEditTool } from '../../tools/file-edit.js';
+import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { TokenUsageRepository } from '../../database/index.js';
 
-const router = Router();
+const router: IRouter = Router();
 const appRepo = new AppRepository();
 const directoryTool = new DirectoryListingTool();
 const readFileTool = new ReadFileTool();
 const fileEditTool = new FileEditTool();
+const astStyleEditor = new ASTStyleEditor();
 const tokenUsageRepo = new TokenUsageRepository();
 
 /**
@@ -476,19 +478,32 @@ router.post('/:id/files/edit', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /apps/:id/styles/edit - Edit element styles in app files
+ * POST /apps/:id/styles/edit - Edit element styles in app files using AST
  */
 router.post('/:id/styles/edit', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { selector, property, value, newClassName, elementInfo } = req.body;
+    const { selector, property, value, newClassName, newStyle, elementInfo } = req.body;
 
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
     }
 
     if (!selector || !property || value === undefined) {
+      console.log('❌ Validation failed: Selector, property, and value are required', {
+        selector: !!selector,
+        property: !!property, 
+        value: value !== undefined
+      });
       return res.status(400).json({ error: 'Selector, property, and value are required' });
+    }
+
+    if (!elementInfo || !elementInfo.devContext) {
+      console.log('❌ Validation failed: Element info with dev context is required', {
+        hasElementInfo: !!elementInfo,
+        hasDevContext: !!(elementInfo && elementInfo.devContext)
+      });
+      return res.status(400).json({ error: 'Element info with dev context is required' });
     }
 
     const app = appRepo.findById(id);
@@ -496,18 +511,36 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    // For now, just log the style change and return success
-    // In a full implementation, this would:
-    // 1. Find the file containing the element
-    // 2. Update the className attribute
-    // 3. Save the file
-    console.log(`Style edit for app ${id}:`, {
+    // Debug logging
+    console.log('Style edit request received:', {
+      id,
+      selector: selector || 'MISSING',
+      property: property || 'MISSING', 
+      value: value !== undefined ? value : 'UNDEFINED',
+      hasElementInfo: !!elementInfo,
+      hasDevContext: !!(elementInfo && elementInfo.devContext),
+      devContext: elementInfo?.devContext
+    });
+    
+    console.log(`Style edit: ${id} | ${elementInfo.devContext.fileName}:${elementInfo.devContext.lineNumber} | ${newClassName.trim() || 'inline-styles'}`);
+
+    // Use AST-based style editor to make the actual file changes
+    const editResult = await astStyleEditor.editElementStyle(app.path, {
       selector,
       property,
       value,
       newClassName,
+      newStyle,
       elementInfo
     });
+
+    if (!editResult.success) {
+      console.log('❌ AST Editor failed:', editResult.error);
+      return res.status(400).json({
+        error: 'Failed to edit style',
+        details: editResult.error
+      });
+    }
 
     return res.json({
       success: true,
@@ -516,7 +549,9 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
         selector,
         property,
         value,
-        newClassName
+        filePath: editResult.filePath,
+        changes: editResult.changes,
+        commitHash: editResult.commitHash
       }
     });
   } catch (error) {

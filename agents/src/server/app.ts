@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Express } from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
 import dotenv from 'dotenv';
@@ -15,7 +15,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js';
 // Load environment variables
 dotenv.config();
 
-const app = express();
+const app: Express = express();
 const port = process.env.PORT || 4000;
 
 // Create HTTP server to support both Express and WebSocket

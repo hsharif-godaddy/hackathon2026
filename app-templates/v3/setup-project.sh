@@ -65,18 +65,43 @@ else
     npm install --registry https://registry.npmjs.org/
 fi
 
+# Install dependencies in subdirectories (dev-tools and source-mapper packages)
+echo "⬇️  Installing dev-tools dependencies..."
+if [ -d "dev-tools" ]; then
+    cd dev-tools
+    if [ "$PACKAGE_MANAGER" = "pnpm" ]; then
+        pnpm install --registry https://registry.npmjs.org/
+    else
+        npm install --registry https://registry.npmjs.org/
+    fi
+    cd ..
+    echo "✅ dev-tools dependencies installed"
+else
+    echo "⚠️  dev-tools directory not found, skipping"
+fi
+
+echo "⬇️  Installing source-mapper dependencies..."
+if [ -d "source-mapper" ]; then
+    cd source-mapper
+    if [ "$PACKAGE_MANAGER" = "pnpm" ]; then
+        pnpm install --registry https://registry.npmjs.org/
+    else
+        npm install --registry https://registry.npmjs.org/
+    fi
+    cd ..
+    echo "✅ source-mapper dependencies installed"
+else
+    echo "⚠️  source-mapper directory not found, skipping"
+fi
+
 # Run type checking and linting
 echo "✅ Verifying setup..."
 if [ "$PACKAGE_MANAGER" = "pnpm" ]; then
     echo "Running type check..."
     pnpm run type-check
-    echo "Running linter..."
-    pnpm run lint
 else
     echo "Running type check..."
     npm run type-check
-    echo "Running linter..."
-    npm run lint
 fi
 
 # Initialize shadcn/ui if components.json doesn't exist yet

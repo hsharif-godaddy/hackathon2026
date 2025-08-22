@@ -1,7 +1,7 @@
-import { Router } from 'express';
+import { Router, IRouter } from 'express';
 import { AgentRegistry } from '../../registry/index.js';
 
-const router = Router();
+const router: IRouter = Router();
 const registry = AgentRegistry.getInstance();
 
 /**

@@ -1,8 +1,8 @@
-import { Router } from 'express';
+import { Router, IRouter } from 'express';
 import { globalTracer } from '../../utils/index.js';
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
 
-const router = Router();
+const router: IRouter = Router();
 const conversationRepo = new ConversationRepository();
 
 

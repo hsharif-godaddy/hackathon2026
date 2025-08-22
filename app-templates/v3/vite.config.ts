@@ -1,14 +1,19 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-import { sourceMapperPlugin } from './plugins/source-mapper';
 import path from 'path';
+import sourceMapperPlugin from './source-mapper/src/index';
+import { devToolsPlugin } from './dev-tools/src/vite-plugin';
 
 export default defineConfig(({ mode }) => ({
   plugins: [
-    react(),
-    mode === 'development' && sourceMapperPlugin(),
-  ].filter(Boolean),
-  
+    react({
+      babel: {
+        plugins: [sourceMapperPlugin],
+      },
+    }),
+    ...(mode === 'development' ? [devToolsPlugin() as Plugin] : []),
+  ],
+
   resolve: {
     alias: {
       '@/': path.resolve(__dirname, './src/'),
@@ -19,7 +24,7 @@ export default defineConfig(({ mode }) => ({
       '@/shared': path.resolve(__dirname, './src/shared'),
     },
   },
-  
+
   server: {
     port: 5173,
     proxy: {
@@ -29,11 +34,11 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  
+
   build: {
     // Manual chunks will be configured later if needed
   },
-  
+
   ssr: {
     noExternal: ['@tanstack/react-query'],
   },

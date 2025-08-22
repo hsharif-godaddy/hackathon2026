@@ -226,14 +226,23 @@ export default function Develop() {
     }
   }, [isInitialAppCreation, inputValue, app?.initialPrompt, isLoadingConversations, conversations.length, isLoading, appId])
 
-  // Cleanup SSE connections on unmount
+  // Cleanup SSE connections and batched updates on unmount
   useEffect(() => {
     return () => {
       cleanupMessageService()
+      // Clear any pending style update timeout
+      if (batchTimeoutRef.current) {
+        clearTimeout(batchTimeoutRef.current)
+      }
     }
   }, [])
 
-  const handleStyleUpdate = useCallback(async (styleData: {selector: string; property: string; value: string; newClassName: string}) => {
+  // Batching state for style updates
+  const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const pendingUpdateRef = useRef<{selector: string; property: string; value: string; newClassName: string; newStyle?: string} | null>(null)
+  const isFirstUpdateRef = useRef(true)
+
+  const sendStyleUpdate = useCallback(async (styleData: {selector: string; property: string; value: string; newClassName: string; newStyle?: string}) => {
     if (!appId) return
 
     try {
@@ -247,6 +256,7 @@ export default function Develop() {
           property: styleData.property,
           value: styleData.value,
           newClassName: styleData.newClassName,
+          newStyle: styleData.newStyle,
           elementInfo: selectedElement
         })
       })
@@ -261,6 +271,34 @@ export default function Develop() {
       console.error('Error sending style update to API:', error)
     }
   }, [appId, selectedElement])
+
+  const handleStyleUpdate = useCallback(async (styleData: {selector: string; property: string; value: string; newClassName: string; newStyle?: string}) => {
+    if (!appId) return
+
+    // Send first update immediately
+    if (isFirstUpdateRef.current) {
+      isFirstUpdateRef.current = false
+      await sendStyleUpdate(styleData)
+      return
+    }
+
+    // Store the most recent update
+    pendingUpdateRef.current = styleData
+
+    // Clear existing timeout
+    if (batchTimeoutRef.current) {
+      clearTimeout(batchTimeoutRef.current)
+    }
+
+    // Set new timeout to send the batched update
+    batchTimeoutRef.current = setTimeout(async () => {
+      if (pendingUpdateRef.current) {
+        await sendStyleUpdate(pendingUpdateRef.current)
+        pendingUpdateRef.current = null
+        isFirstUpdateRef.current = true // Reset for next batch
+      }
+    }, 5000)
+  }, [appId, sendStyleUpdate])
 
   // Listen for messages from preview iframe
   useEffect(() => {
