@@ -12,7 +12,7 @@ import {
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
 import CodeEditor from '@/app/develop/components/CodeEditor'
-import TokenUsage from '@/app/develop/components/TokenUsage'
+import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
 import { Message, PlanItem } from '@/app/develop/components/types'
 import { 
   handleSendMessage as sendMessage, 
@@ -57,6 +57,7 @@ function DevelopPageContent() {
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
   const autoSendTriggered = useRef(false) // Prevent multiple auto-sends
+  const tokenUsageRef = useRef<TokenUsageRef>(null)
 
   // 1. PURE DATA LOADING - Fetch app details (no side effects)
   useEffect(() => {
@@ -160,7 +161,10 @@ function DevelopPageContent() {
       setMessages,
       setInputValue,
       setIsLoading,
-      setConversationId
+      setConversationId,
+      onTokenUsageUpdate: () => {
+        tokenUsageRef.current?.refreshUsage()
+      }
     })
     
     // Post-send cleanup - using refs to avoid circular dependencies
@@ -209,7 +213,10 @@ function DevelopPageContent() {
           setMessages,
           setInputValue,
           setIsLoading,
-          setConversationId
+          setConversationId,
+          onTokenUsageUpdate: () => {
+            tokenUsageRef.current?.refreshUsage()
+          }
         }).then(() => {
           // Post-send actions
           setIsInitialAppCreation(false)
@@ -467,7 +474,7 @@ function DevelopPageContent() {
             </div>
             <div className="flex items-center space-x-4">
               {appId && (
-                <TokenUsage appId={appId} enabled={showUsageCost} />
+                <TokenUsage ref={tokenUsageRef} appId={appId} enabled={showUsageCost} />
               )}
               <Link
                 href="/apps"

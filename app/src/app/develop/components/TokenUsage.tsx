@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react'
 import {
   ChartBarIcon,
   CurrencyDollarIcon,
@@ -29,14 +29,18 @@ interface TokenUsageProps {
   enabled?: boolean // Control visibility via SHOW_USAGE_COST env variable
 }
 
-export default function TokenUsage({ appId, className = '', enabled = false }: TokenUsageProps) {
-  const [usage, setUsage] = useState<TokenUsageInfo | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [isExpanded, setIsExpanded] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
+export interface TokenUsageRef {
+  refreshUsage: () => void
+}
 
-  useEffect(() => {
+const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
+  ({ appId, className = '', enabled = false }, ref) => {
+    const [usage, setUsage] = useState<TokenUsageInfo | null>(null)
+    const [isLoading, setIsLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+    const [isExpanded, setIsExpanded] = useState(false)
+    const containerRef = useRef<HTMLDivElement>(null)
+
     const fetchUsage = async () => {
       try {
         setIsLoading(true)
@@ -54,10 +58,16 @@ export default function TokenUsage({ appId, className = '', enabled = false }: T
       }
     }
 
-    if (appId && enabled) {
-      fetchUsage()
-    }
-  }, [appId, enabled])
+    // Expose refresh function via ref
+    useImperativeHandle(ref, () => ({
+      refreshUsage: fetchUsage
+    }), [appId])
+
+    useEffect(() => {
+      if (appId && enabled) {
+        fetchUsage()
+      }
+    }, [appId, enabled])
 
   // Close on click outside
   useEffect(() => {
@@ -219,4 +229,8 @@ export default function TokenUsage({ appId, className = '', enabled = false }: T
       )}
     </div>
   )
-}
+})
+
+TokenUsage.displayName = 'TokenUsage'
+
+export default TokenUsage

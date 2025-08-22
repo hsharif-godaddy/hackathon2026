@@ -34,6 +34,7 @@ export interface SendMessageParams {
   setInputValue: React.Dispatch<React.SetStateAction<string>>
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>
   setConversationId?: React.Dispatch<React.SetStateAction<string | null>>
+  onTokenUsageUpdate?: () => void
 }
 
 // WebSocket connection management
@@ -106,7 +107,8 @@ export const handleSendMessage = async ({
   setMessages,
   setInputValue,
   setIsLoading,
-  setConversationId
+  setConversationId,
+  onTokenUsageUpdate
 }: SendMessageParams) => {
   const content = messageContent || inputValue.trim()
   if (!content || isLoading) return
@@ -169,7 +171,8 @@ export const handleSendMessage = async ({
           lastUpdateTimeRef, 
           updateThrottleMs,
           setIsLoading,
-          setConversationId
+          setConversationId,
+          onTokenUsageUpdate
         )
       } catch (error) {
         console.warn('Failed to parse WebSocket data:', event.data, error)
@@ -211,7 +214,8 @@ function handleWebSocketMessage(
   lastUpdateTimeRef: { current: number },
   updateThrottleMs: number,
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
-  setConversationId?: React.Dispatch<React.SetStateAction<string | null>>
+  setConversationId?: React.Dispatch<React.SetStateAction<string | null>>,
+  onTokenUsageUpdate?: () => void
 ): string {
   switch (data.type) {
     case 'metadata':
@@ -391,6 +395,11 @@ function handleWebSocketMessage(
       )
       
       setIsLoading(false)
+      
+      // Refresh token usage after completion
+      if (onTokenUsageUpdate) {
+        onTokenUsageUpdate()
+      }
       break
       
     case 'error':
