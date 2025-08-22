@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react'
 import { 
   ExclamationTriangleIcon, 
   ArrowPathIcon,
-  EyeIcon
+  EyeIcon,
+  ComputerDesktopIcon,
+  DevicePhoneMobileIcon
 } from '@heroicons/react/24/outline'
 
 interface PreviewPaneProps {
@@ -20,12 +22,15 @@ interface ServerStatus {
   lastChecked?: Date
 }
 
+type ViewMode = 'desktop' | 'mobile'
+
 export default function PreviewPane({ appId, port, onRetry }: PreviewPaneProps) {
   const [serverStatus, setServerStatus] = useState<ServerStatus>({
     isLoading: true,
     isRunning: false
   })
   const [retryCount, setRetryCount] = useState(0)
+  const [viewMode, setViewMode] = useState<ViewMode>('desktop')
   const maxRetries = 10
   
   const previewUrl = port ? `http://localhost:${port}` : null
@@ -123,6 +128,32 @@ export default function PreviewPane({ appId, port, onRetry }: PreviewPaneProps) 
     }
   }
 
+  const toggleViewMode = (mode: ViewMode) => {
+    setViewMode(mode)
+  }
+
+  // Get iframe dimensions based on view mode
+  const getIframeDimensions = () => {
+    switch (viewMode) {
+      case 'mobile':
+        // Mobile aspect ratio is typically 375:667 (iPhone dimensions)
+        // Calculate width based on available height maintaining aspect ratio
+        const aspectRatio = 375 / 667
+        return {
+          width: 'auto',
+          height: '100%',
+          aspectRatio: aspectRatio.toString(),
+          maxWidth: '100%'
+        }
+      case 'desktop':
+      default:
+        return {
+          width: '100%',
+          height: '100%'
+        }
+    }
+  }
+
   // Loading state while server is starting
   if (serverStatus.isLoading || (!serverStatus.isRunning && retryCount < maxRetries && !serverStatus.error?.includes('multiple attempts'))) {
     return (
@@ -185,6 +216,31 @@ export default function PreviewPane({ appId, port, onRetry }: PreviewPaneProps) 
           <div className="w-2 h-2 bg-green-500 rounded-full"></div>
         </div>
         <div className="flex items-center space-x-2">
+          {/* View Mode Toggles */}
+          <div className="flex items-center space-x-1 border border-gray-200 rounded-lg p-1">
+            <button
+              onClick={() => toggleViewMode('desktop')}
+              className={`p-1.5 rounded transition-colors ${
+                viewMode === 'desktop'
+                  ? 'bg-blue-100 text-blue-600'
+                  : 'hover:bg-gray-100 text-gray-600'
+              }`}
+              title="Desktop view"
+            >
+              <ComputerDesktopIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => toggleViewMode('mobile')}
+              className={`p-1.5 rounded transition-colors ${
+                viewMode === 'mobile'
+                  ? 'bg-blue-100 text-blue-600'
+                  : 'hover:bg-gray-100 text-gray-600'
+              }`}
+              title="Mobile view"
+            >
+              <DevicePhoneMobileIcon className="w-4 h-4" />
+            </button>
+          </div>
           <span className="text-xs text-gray-500 font-mono">localhost:{port}</span>
           <button
             onClick={handleRefresh}
@@ -197,25 +253,28 @@ export default function PreviewPane({ appId, port, onRetry }: PreviewPaneProps) 
       </div>
 
       {/* Preview Content */}
-      <div className="flex-1 relative">
-        <iframe
-          id="preview-iframe"
-          src={previewUrl!}
-          className="w-full h-full border-0"
-          title={`Preview of app ${appId}`}
-          sandbox="allow-same-origin allow-scripts allow-forms allow-links allow-popups"
-          onLoad={() => {
-            console.log('Preview loaded successfully')
-          }}
-          onError={() => {
-            console.log('Preview failed to load')
-            setServerStatus(prev => ({
-              ...prev,
-              isRunning: false,
-              error: 'Failed to load preview'
-            }))
-          }}
-        />
+      <div className="flex-1 relative overflow-hidden">
+        <div className={`flex h-full ${viewMode === 'mobile' ? 'justify-center items-center p-4' : 'w-full h-full'}`}>
+          <iframe
+            id="preview-iframe"
+            src={previewUrl!}
+            className={`border-0 ${viewMode === 'mobile' ? 'border border-gray-300 rounded-lg shadow-lg' : ''}`}
+            style={getIframeDimensions()}
+            title={`Preview of app ${appId}`}
+            sandbox="allow-same-origin allow-scripts allow-forms allow-links allow-popups"
+            onLoad={() => {
+              console.log('Preview loaded successfully')
+            }}
+            onError={() => {
+              console.log('Preview failed to load')
+              setServerStatus(prev => ({
+                ...prev,
+                isRunning: false,
+                error: 'Failed to load preview'
+              }))
+            }}
+          />
+        </div>
       </div>
     </div>
   )
