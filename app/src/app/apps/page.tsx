@@ -13,6 +13,8 @@ import {
   ArrowPathIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
+import { ProtectedRoute, UserMenu } from '@/components/auth'
+import { appFetch } from '@/lib/gasket-config'
 
 interface App {
   id: string
@@ -28,7 +30,7 @@ interface RunningServer {
   url: string
 }
 
-export default function Apps() {
+function AppsPageContent() {
   const [apps, setApps] = useState<App[]>([])
   const [runningServers, setRunningServers] = useState<RunningServer[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -40,8 +42,8 @@ export default function Apps() {
     const fetchData = async () => {
       try {
         const [appsResponse, serversResponse] = await Promise.all([
-          fetch('http://localhost:4000/apps'),
-          fetch('http://localhost:4000/apps/servers')
+          appFetch('http://localhost:4000/apps'),
+          appFetch('http://localhost:4000/apps/servers')
         ])
         
         if (appsResponse.ok) {
@@ -86,13 +88,13 @@ export default function Apps() {
   const handleStopServer = async (appId: string) => {
     setActionLoading(`stop-${appId}`)
     try {
-      const response = await fetch(`http://localhost:4000/apps/${appId}/stop`, {
+      const response = await appFetch(`http://localhost:4000/apps/${appId}/stop`, {
         method: 'POST'
       })
       
       if (response.ok) {
         // Refresh running servers list
-        const serversResponse = await fetch('http://localhost:4000/apps/servers')
+        const serversResponse = await appFetch('http://localhost:4000/apps/servers')
         if (serversResponse.ok) {
           const serversData = await serversResponse.json()
           setRunningServers(serversData.servers)
@@ -115,20 +117,20 @@ export default function Apps() {
 
     setActionLoading(`delete-${appId}`)
     try {
-      const response = await fetch(`http://localhost:4000/apps/${appId}`, {
+      const response = await appFetch(`http://localhost:4000/apps/${appId}`, {
         method: 'DELETE'
       })
       
       if (response.ok) {
         // Refresh apps list
-        const appsResponse = await fetch('http://localhost:4000/apps')
+        const appsResponse = await appFetch('http://localhost:4000/apps')
         if (appsResponse.ok) {
           const appsData = await appsResponse.json()
           setApps(appsData.apps)
         }
         
         // Refresh running servers list
-        const serversResponse = await fetch('http://localhost:4000/apps/servers')
+        const serversResponse = await appFetch('http://localhost:4000/apps/servers')
         if (serversResponse.ok) {
           const serversData = await serversResponse.json()
           setRunningServers(serversData.servers)
@@ -156,7 +158,7 @@ export default function Apps() {
 
     setActionLoading('stop-all')
     try {
-      const response = await fetch('http://localhost:4000/apps/stop-all', {
+      const response = await appFetch('http://localhost:4000/apps/stop-all', {
         method: 'POST'
       })
       
@@ -165,7 +167,7 @@ export default function Apps() {
         alert(data.message)
         
         // Refresh running servers list
-        const serversResponse = await fetch('http://localhost:4000/apps/servers')
+        const serversResponse = await appFetch('http://localhost:4000/apps/servers')
         if (serversResponse.ok) {
           const serversData = await serversResponse.json()
           setRunningServers(serversData.servers)
@@ -184,7 +186,7 @@ export default function Apps() {
   const handleRestartServer = async (appId: string) => {
     setActionLoading(`restart-${appId}`)
     try {
-      const response = await fetch(`http://localhost:4000/apps/${appId}/restart`, {
+      const response = await appFetch(`http://localhost:4000/apps/${appId}/restart`, {
         method: 'POST'
       })
       
@@ -194,7 +196,7 @@ export default function Apps() {
         
         // Wait a moment for the server to restart, then refresh data
         setTimeout(async () => {
-          const serversResponse = await fetch('http://localhost:4000/apps/servers')
+          const serversResponse = await appFetch('http://localhost:4000/apps/servers')
           if (serversResponse.ok) {
             const serversData = await serversResponse.json()
             setRunningServers(serversData.servers)
@@ -218,7 +220,7 @@ export default function Apps() {
 
     setActionLoading('force-cleanup')
     try {
-      const response = await fetch('http://localhost:4000/apps/cleanup-orphans', {
+      const response = await appFetch('http://localhost:4000/apps/cleanup-orphans', {
         method: 'POST'
       })
       
@@ -227,7 +229,7 @@ export default function Apps() {
         alert(data.message)
         
         // Refresh running servers list
-        const serversResponse = await fetch('http://localhost:4000/apps/servers')
+        const serversResponse = await appFetch('http://localhost:4000/apps/servers')
         if (serversResponse.ok) {
           const serversData = await serversResponse.json()
           setRunningServers(serversData.servers)
@@ -260,9 +262,7 @@ export default function Apps() {
               </Link>
             </div>
             <div className="flex items-center space-x-4">
-              <button className="text-gray-600 hover:text-gray-900 transition-colors">
-                Sign In
-              </button>
+              <UserMenu />
               <button
                 onClick={handleForceCleanup}
                 disabled={actionLoading === 'force-cleanup'}
@@ -446,4 +446,16 @@ export default function Apps() {
       </main>
     </div>
   )
+}
+
+export default function Apps() {
+  return (
+    <ProtectedRoute 
+      requiredAccess="user"
+      loadingMessage="Loading Your Apps"
+      unauthorizedMessage="You need to be signed in to view your apps."
+    >
+      <AppsPageContent />
+    </ProtectedRoute>
+  );
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { SparklesIcon } from '@heroicons/react/24/outline'
+import { appFetch } from '@/lib/gasket-config'
 
 interface AppStatus {
   id: string
@@ -27,7 +28,7 @@ export default function CreateAppStatus() {
 
     const pollStatus = async () => {
       try {
-        const response = await fetch(`http://localhost:4000/apps/${appId}/status`)
+        const response = await appFetch(`http://localhost:4000/apps/${appId}/status`)
         
         if (!response.ok) {
           throw new Error(`Failed to get app status: ${response.status}`)

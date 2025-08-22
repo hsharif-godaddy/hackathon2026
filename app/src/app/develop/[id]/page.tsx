@@ -20,6 +20,8 @@ import {
   loadConversations,
   loadConversation
 } from '@/app/develop/components/messageService'
+import { ProtectedRoute } from '@/components/auth'
+import { appFetch } from '@/lib/gasket-config'
 
 interface App {
   id: string
@@ -31,7 +33,7 @@ interface App {
   updatedAt: string
 }
 
-export default function Develop() {
+function DevelopPageContent() {
   const params = useParams()
   const router = useRouter()
   const appId = params.id as string
@@ -60,7 +62,7 @@ export default function Develop() {
   useEffect(() => {
     const fetchApp = async () => {
       try {
-        const response = await fetch(`http://localhost:4000/apps/${appId}`)
+        const response = await appFetch(`http://localhost:4000/apps/${appId}`)
         if (response.ok) {
           const data = await response.json()
           setApp(data.app)
@@ -85,7 +87,7 @@ export default function Develop() {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const response = await fetch('http://localhost:4000/apps/config')
+        const response = await appFetch('http://localhost:4000/apps/config')
         if (response.ok) {
           const data = await response.json()
           setShowUsageCost(data.config.showUsageCost)
@@ -246,7 +248,7 @@ export default function Develop() {
     if (!appId) return
 
     try {
-      const response = await fetch(`http://localhost:4000/apps/${appId}/styles/edit`, {
+      const response = await appFetch(`http://localhost:4000/apps/${appId}/styles/edit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -399,7 +401,7 @@ export default function Develop() {
     
     setIsRestarting(true)
     try {
-      const response = await fetch(`http://localhost:4000/apps/${appId}/restart`, {
+      const response = await appFetch(`http://localhost:4000/apps/${appId}/restart`, {
         method: 'POST'
       })
       
@@ -407,7 +409,7 @@ export default function Develop() {
         // Wait a moment for the server to restart
         setTimeout(() => {
           // Refresh app data
-          fetch(`http://localhost:4000/apps/${appId}`)
+          appFetch(`http://localhost:4000/apps/${appId}`)
             .then(res => res.json())
             .then(data => setApp(data.app))
             .catch(console.error)
@@ -565,7 +567,7 @@ export default function Develop() {
                 onRetry={() => {
                   // Optionally refresh app data when retrying
                   if (appId && app) {
-                    fetch(`http://localhost:4000/apps/${appId}`)
+                    appFetch(`http://localhost:4000/apps/${appId}`)
                       .then(res => res.json())
                       .then(data => setApp(data.app))
                       .catch(console.error)
@@ -587,4 +589,16 @@ export default function Develop() {
       </div>
     </div>
   )
+}
+
+export default function Develop() {
+  return (
+    <ProtectedRoute 
+      requiredAccess="user"
+      loadingMessage="Loading Development Environment"
+      unauthorizedMessage="You need to be signed in to access the development environment."
+    >
+      <DevelopPageContent />
+    </ProtectedRoute>
+  );
 }

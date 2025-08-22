@@ -4,6 +4,8 @@ import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowRightIcon, SparklesIcon } from '@heroicons/react/24/outline'
+import { UserMenu } from '@/components/auth'
+import { appFetch } from '@/lib/gasket-config'
 
 export default function Home() {
   const [promptText, setPromptText] = useState("")
@@ -50,7 +52,7 @@ export default function Home() {
       const appName = words.length > 0 ? words.join(' ') : 'New App'
       
       // Create the app via POST request
-      const response = await fetch('http://localhost:4000/apps/create', {
+      const response = await appFetch('http://localhost:4000/apps/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -60,6 +62,12 @@ export default function Home() {
           initialPrompt: promptText.trim()
         }),
       })
+
+      // Check if user was redirected to SSO
+      if (response.ssoRedirect) {
+        console.log('User redirected to SSO for authentication')
+        return
+      }
 
       if (!response.ok) {
         throw new Error(`Failed to create app: ${response.status}`)
@@ -102,9 +110,7 @@ export default function Home() {
               </Link>
             </nav>
             <div className="flex items-center space-x-4">
-              <button className="text-gray-600 hover:text-gray-900 transition-colors">
-                Sign In
-              </button>
+              <UserMenu />
               <button
                 onClick={handleStartBuilding}
                 disabled={!promptText.trim()}

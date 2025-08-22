@@ -35,6 +35,22 @@ app.use(express.urlencoded({ extended: true }));
 // Logging
 app.use(requestLogger);
 
+// Mock auth endpoint for gasket-auth validation
+app.get('/api/auth/validate', (req, res) => {
+  // Return a valid auth response that matches what gasket-auth expects
+  res.json({
+    valid: true,
+    details: {
+      accountName: 'Developer User',
+      email: 'developer@godaddy.com',
+      customerId: 'dev-customer-123',
+      plid: 'dev-plid-456',
+      groups: ['user', 'developer'],
+      shopperId: 'dev-shopper-789'
+    }
+  });
+});
+
 // Routes
 app.use('/health', healthRouter);
 app.use('/agents', agentsRouter);
