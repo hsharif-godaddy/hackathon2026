@@ -60,3 +60,31 @@ export interface PlanItem {
   tasks: string[]
   estimatedTime: string
 }
+
+export interface DevContext {
+  fileName: string
+  componentName: string
+  lineNumber: number
+}
+
+export interface ElementInfo {
+  tagName: string
+  className: string
+  id: string
+  textContent: string
+  selector: string
+  dataId?: string
+  rect: {
+    top: number
+    left: number
+    width: number
+    height: number
+  }
+  computedStyles: Record<string, string>
+}
+
+export interface AiEditContext {
+  elementInfo: ElementInfo
+  selector: string
+  devContext: DevContext
+}

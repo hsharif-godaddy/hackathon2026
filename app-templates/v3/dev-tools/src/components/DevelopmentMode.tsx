@@ -1,4 +1,5 @@
 import { useDevelopmentMode } from '../hooks/useDevelopmentMode'
+import { useState } from 'react'
 import ElementEditor from './ElementEditor'
 
 export default function DevelopmentMode() {
@@ -11,6 +12,9 @@ export default function DevelopmentMode() {
     clearSelection,
     toggleSelectMode 
   } = useDevelopmentMode()
+
+  // State to control indicator visibility on hover
+  const [isIndicatorHovered, setIsIndicatorHovered] = useState(false)
 
   // Check if floating button should be visible via environment variable
   const showFloatingButton = import.meta.env.VITE_SHOW_DEV_TOOLS === 'true'
@@ -25,7 +29,7 @@ export default function DevelopmentMode() {
       {showFloatingButton && (
         <button
         data-dev-tools="floating-button"
-        onClick={(e) => {
+        onClick={() => {
           toggleSelectMode()
         }}
         style={{
@@ -67,6 +71,8 @@ export default function DevelopmentMode() {
       {isSelectMode && (
         <div 
           data-dev-tools="indicator"
+          onMouseEnter={() => setIsIndicatorHovered(true)}
+          onMouseLeave={() => setIsIndicatorHovered(false)}
           style={{
             position: 'fixed',
             top: '20px',
@@ -80,11 +86,15 @@ export default function DevelopmentMode() {
             fontSize: '14px',
             fontWeight: '600',
             zIndex: 999998,
-            pointerEvents: 'none',
+            pointerEvents: 'auto',
             fontFamily: 'system-ui, -apple-system, sans-serif',
             boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
-            border: '2px solid rgba(255, 255, 255, 0.1)'
+            border: '2px solid rgba(255, 255, 255, 0.1)',
+            opacity: isIndicatorHovered ? 0 : 1,
+            transition: 'opacity 0.2s ease',
+            cursor: 'pointer'
           }}
+          title="Hover to temporarily hide this indicator"
         >
           🎯 Click any element to edit its styles
         </div>

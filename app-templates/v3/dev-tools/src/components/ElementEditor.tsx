@@ -51,159 +51,115 @@ export default function ElementEditor({
     color: 'bottom',
     spacing: 'bottom'
   })
+  
+  const [adjustedPosition, setAdjustedPosition] = useState<{ top: number; left: number } | null>(null)
+  const [spacingDropdownOffset, setSpacingDropdownOffset] = useState(0)
 
   const toolbarRef = useRef<HTMLDivElement>(null)
 
-  // Current styles extracted from element classes
-  const [currentStyles, setCurrentStyles] = useState({
-    fontSize: 'text-base',
-    fontWeight: 'font-normal',
-    fontStyle: 'font-not-italic',
-    color: '#374151',
-    backgroundColor: 'transparent',
-    marginBottom: '',
-    padding: ''
-  })
-
-  // Extract current styles and dev context from element
-  useEffect(() => {
-    if (selectedElement) {
-      const element = findElement(selectedElement)
-      if (element) {
-        const computedStyle = window.getComputedStyle(element)
-        const classes = selectedElement.className.split(' ')
-        
-        setCurrentStyles({
-          fontSize: classes.find(c => c.startsWith('text-') && (c.includes('sm') || c.includes('base') || c.includes('lg') || c.includes('xl'))) || 'text-base',
-          fontWeight: classes.find(c => c.startsWith('font-') && c.includes('bold')) ? 'font-bold' : 'font-normal',
-          fontStyle: classes.find(c => c.startsWith('italic')) ? 'italic' : 'font-not-italic',
-          color: computedStyle.color || '#374151',
-          backgroundColor: computedStyle.backgroundColor || 'transparent',
-          marginBottom: classes.find(c => c.startsWith('mb-')) || '',
-          padding: classes.find(c => c.startsWith('p-')) || ''
-        })
-        
-        // Extract and update dev context if not already present
-        if (!selectedElement.devContext) {
-          const devContext = extractDevContext(element)
-          if (devContext) {
-            // Update the selected element with dev context
-            selectedElement.devContext = devContext
-            console.log('🎯 Dev context extracted:', devContext)
-          } else {
-            console.log('⚠️ No dev context found for element:', element)
-          }
+  // Find element using multiple strategies
+  const findElement = useCallback((elementInfo: SelectedElement): HTMLElement | null => {
+    // First try the data attribute (most reliable)
+    if (elementInfo.dataId) {
+      const element = document.querySelector(`[data-dev-selected="${elementInfo.dataId}"]`) as HTMLElement
+      if (element) return element
+    }
+    
+    // Fallback to ID
+    if (elementInfo.id) {
+      const element = document.getElementById(elementInfo.id)
+      if (element) return element
+    }
+    
+    // Fallback to clean selector
+    try {
+      if (elementInfo.selector) {
+        const element = document.querySelector(elementInfo.selector) as HTMLElement
+        if (element) return element
+      }
+    } catch (_e) {
+      console.warn('Invalid selector:', elementInfo.selector)
+    }
+    
+    // Last resort: find by tag and clean classes
+    if (elementInfo.className) {
+      const cleanClasses = elementInfo.className.split(' ')
+        .filter(c => c.trim() && !c.includes(':'))
+        .join('.')
+      if (cleanClasses) {
+        try {
+          const element = document.querySelector(`${elementInfo.tagName}.${cleanClasses}`) as HTMLElement
+          if (element) return element
+        } catch (_e) {
+          console.warn('Could not find element with clean classes')
         }
       }
     }
-  }, [selectedElement])
+    
+    return null
+  }, [])
 
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(event.target as Node)) {
-        setShowFontSizeDropdown(false)
-        setShowColorDropdown(false)
-        setShowSpacingDropdown(false)
+  // Helper function to find the appropriate dev wrapper element
+  // This handles the edge case where there are nested dev wrappers (double wrappers)
+  // Logic: Only look for a higher wrapper if the current element is itself a dev wrapper
+  const findTopmostDevWrapper = useCallback((element: HTMLElement): HTMLElement | null => {
+    console.log(`🔍 Finding dev wrapper for element:`, element.tagName, element.className)
+    
+    // First, check if the element itself is a dev wrapper
+    const isElementWrapper = element.getAttribute('data-dev-wrapper') === 'true'
+    console.log(`🔍 Element is wrapper:`, isElementWrapper, isElementWrapper ? element.getAttribute('data-dev-component') : 'N/A')
+    
+    if (isElementWrapper) {
+      // Element is a wrapper, so we might need to find a higher one
+      let currentWrapper = element
+      let parentWrapper: HTMLElement | null = null
+      
+      // Look for parent dev wrappers, but only go one level up at a time
+      let parentElement = element.parentElement as HTMLElement
+      while (parentElement && parentElement !== document.body) {
+        if (parentElement.getAttribute('data-dev-wrapper') === 'true') {
+          parentWrapper = parentElement
+          console.log(`🔍 Found parent wrapper:`, parentWrapper.getAttribute('data-dev-component'))
+          break // Found the next wrapper up, stop here
+        }
+        parentElement = parentElement.parentElement as HTMLElement
+      }
+      
+      if (parentWrapper) {
+        console.log(`🎯 Using outer wrapper:`, parentWrapper.getAttribute('data-dev-component'), 'instead of inner:', currentWrapper.getAttribute('data-dev-component'))
+        return parentWrapper
+      } else {
+        console.log(`🎯 Using current wrapper (no parent found):`, currentWrapper.getAttribute('data-dev-component'))
+        return currentWrapper
+      }
+    } else {
+      // Element is not a wrapper, find the closest wrapper ancestor
+      const closestWrapper = element.closest('[data-dev-wrapper="true"]') as HTMLElement
+      
+      if (closestWrapper) {
+        // Check if this wrapper has a parent wrapper (nested wrapper case)
+        let parentElement = closestWrapper.parentElement as HTMLElement
+        while (parentElement && parentElement !== document.body) {
+          if (parentElement.getAttribute('data-dev-wrapper') === 'true') {
+            console.log(`🎯 Element not wrapper, but found nested wrappers. Using outer:`, parentElement.getAttribute('data-dev-component'), 'instead of inner:', closestWrapper.getAttribute('data-dev-component'))
+            return parentElement
+          }
+          parentElement = parentElement.parentElement as HTMLElement
+        }
+        
+        console.log(`🎯 Element not wrapper, using closest (no nesting):`, closestWrapper.getAttribute('data-dev-component'))
+        return closestWrapper
+      } else {
+        console.log(`🎯 Element not wrapper, no wrapper found`)
+        return null
       }
     }
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [isOpen])
-
-  // Calculate if dropdown should open upward or downward
-  const calculateDropdownPosition = useCallback((dropdownType: 'fontSize' | 'color' | 'spacing') => {
-    if (!toolbarRef.current || !position) return 'bottom'
-
-    const toolbar = toolbarRef.current
-    const toolbarRect = toolbar.getBoundingClientRect()
-    const viewportHeight = window.innerHeight
-    
-    // Estimate dropdown heights
-    const dropdownHeights = {
-      fontSize: 200, // Font size dropdown
-      color: 120,    // Color picker
-      spacing: 180   // Spacing controls
-    }
-
-    const dropdownHeight = dropdownHeights[dropdownType]
-    const spaceBelow = viewportHeight - toolbarRect.bottom
-    
-    if (spaceBelow < dropdownHeight && toolbarRect.top > dropdownHeight) {
-      return 'top'
-    }
-    
-    return 'bottom'
-  }, [position])
-
-  // Update dropdown positions when toolbar position changes
-  useEffect(() => {
-    if (isOpen && position) {
-      setDropdownPositions({
-        fontSize: calculateDropdownPosition('fontSize'),
-        color: calculateDropdownPosition('color'),
-        spacing: calculateDropdownPosition('spacing')
-      })
-    }
-  }, [isOpen, position, calculateDropdownPosition])
-
-  if (!isOpen || !position) return null
-
-  const fontSizes = [
-    { value: 'text-xs', label: '12px' },
-    { value: 'text-sm', label: '14px' },
-    { value: 'text-base', label: '16px' },
-    { value: 'text-lg', label: '18px' },
-    { value: 'text-xl', label: '20px' },
-    { value: 'text-2xl', label: '24px' },
-    { value: 'text-3xl', label: '30px' },
-    { value: 'text-4xl', label: '36px' }
-  ]
-
-  const colors = [
-    { value: '#111827', label: 'Black' },
-    { value: '#4B5563', label: 'Gray' },
-    { value: '#2563EB', label: 'Blue' },
-    { value: '#9333EA', label: 'Purple' },
-    { value: '#16A34A', label: 'Green' },
-    { value: '#DC2626', label: 'Red' },
-    { value: '#D97706', label: 'Orange' },
-    { value: '#DB2777', label: 'Pink' }
-  ]
-
-  const backgroundColors = [
-    { value: 'transparent', label: 'None' },
-    { value: '#F3F4F6', label: 'Light Gray' },
-    { value: '#DBEAFE', label: 'Light Blue' },
-    { value: '#E9D5FF', label: 'Light Purple' },
-    { value: '#DCFCE7', label: 'Light Green' },
-    { value: '#FEE2E2', label: 'Light Red' },
-    { value: '#FEF3C7', label: 'Light Yellow' },
-    { value: '#FCE7F3', label: 'Light Pink' }
-  ]
-
-  const getCurrentFontSize = () => {
-    return fontSizes.find(size => size.value === currentStyles.fontSize)?.label || '16px'
-  }
-
-  const getCurrentColor = () => {
-    return currentStyles.color || '#374151'
-  }
-
-  const getCurrentBgColor = () => {
-    return currentStyles.backgroundColor || 'transparent'
-  }
+  }, [])
 
   // Extract dev context from boundary wrapper
-  const extractDevContext = (element: HTMLElement): SelectedElement['devContext'] | undefined => {
-    // Check for boundary wrapper (for components)
-    const boundary = element.closest('[data-dev-wrapper="true"]')
+  const extractDevContext = useCallback((element: HTMLElement): SelectedElement['devContext'] | undefined => {
+    // Find the topmost dev wrapper (handle double wrapper edge case)
+    const boundary = findTopmostDevWrapper(element)
     if (boundary) {
       const boundaryFile = boundary.getAttribute('data-dev-file')
       const boundaryLine = boundary.getAttribute('data-dev-line')
@@ -258,49 +214,250 @@ export default function ElementEditor({
     }
     
     return undefined
-  }
+  }, [])
 
-  // Find element using multiple strategies
-  const findElement = (elementInfo: SelectedElement): HTMLElement | null => {
-    // First try the data attribute (most reliable)
-    if (elementInfo.dataId) {
-      const element = document.querySelector(`[data-dev-selected="${elementInfo.dataId}"]`) as HTMLElement
-      if (element) return element
-    }
-    
-    // Fallback to ID
-    if (elementInfo.id) {
-      const element = document.getElementById(elementInfo.id)
-      if (element) return element
-    }
-    
-    // Fallback to clean selector
-    try {
-      if (elementInfo.selector) {
-        const element = document.querySelector(elementInfo.selector) as HTMLElement
-        if (element) return element
-      }
-    } catch (_e) {
-      console.warn('Invalid selector:', elementInfo.selector)
-    }
-    
-    // Last resort: find by tag and clean classes
-    if (elementInfo.className) {
-      const cleanClasses = elementInfo.className.split(' ')
-        .filter(c => c.trim() && !c.includes(':'))
-        .join('.')
-      if (cleanClasses) {
-        try {
-          const element = document.querySelector(`${elementInfo.tagName}.${cleanClasses}`) as HTMLElement
-          if (element) return element
-        } catch (_e) {
-          console.warn('Could not find element with clean classes')
+  // Current styles extracted from element classes
+  const [currentStyles, setCurrentStyles] = useState({
+    fontSize: 'text-base',
+    fontWeight: 'font-normal',
+    fontStyle: 'font-not-italic',
+    color: '#374151',
+    backgroundColor: 'transparent',
+    marginBottom: '',
+    padding: ''
+  })
+
+  // Extract current styles and dev context from element
+  useEffect(() => {
+    if (selectedElement) {
+      const element = findElement(selectedElement)
+      if (element) {
+        const computedStyle = window.getComputedStyle(element)
+        const classes = selectedElement.className.split(' ')
+        
+        setCurrentStyles({
+          fontSize: classes.find(c => c.startsWith('text-') && (c.includes('sm') || c.includes('base') || c.includes('lg') || c.includes('xl'))) || 'text-base',
+          fontWeight: classes.find(c => c.startsWith('font-') && c.includes('bold')) ? 'font-bold' : 'font-normal',
+          fontStyle: classes.find(c => c.startsWith('italic')) ? 'italic' : 'font-not-italic',
+          color: computedStyle.color || '#374151',
+          backgroundColor: computedStyle.backgroundColor || 'transparent',
+          marginBottom: classes.find(c => c.startsWith('mb-')) || '',
+          padding: classes.find(c => c.startsWith('p-')) || ''
+        })
+        
+        // Extract and update dev context if not already present
+        if (!selectedElement.devContext) {
+          const devContext = extractDevContext(element)
+          if (devContext) {
+            // Update the selected element with dev context
+            selectedElement.devContext = devContext
+            console.log('🎯 Dev context extracted:', devContext)
+          } else {
+            console.log('⚠️ No dev context found for element:', element)
+          }
         }
       }
     }
+  }, [selectedElement, findElement, extractDevContext])
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (toolbarRef.current && !toolbarRef.current.contains(event.target as Node)) {
+        setShowFontSizeDropdown(false)
+        setShowColorDropdown(false)
+        setShowSpacingDropdown(false)
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isOpen])
+
+  // Calculate optimal positioning for both toolbar and dropdowns
+  const calculatePositions = useCallback(() => {
+    if (!position || !selectedElement) return { toolbarPosition: position, dropdownPositions: { fontSize: 'bottom', color: 'bottom', spacing: 'bottom' } }
+
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const toolbarWidth = 400
+    const toolbarHeight = 80 // Estimated toolbar height
+    const margin = 16 // Minimum margin from viewport edges
+    const elementGap = 10 // Gap between element and toolbar
+
+    // Use the selected element's bounds instead of click position
+    const elementRect = selectedElement.rect
+    const elementTop = elementRect.top
+    const elementBottom = elementRect.top + elementRect.height
+    const elementLeft = elementRect.left
+    const elementWidth = elementRect.width
+
+    // Calculate optimal vertical position (above or below element)
+    const spaceAbove = elementTop
+    const spaceBelow = viewportHeight - elementBottom
     
-    return null
+    let toolbarTop: number
+    
+    // Prefer positioning below the element
+    if (spaceBelow >= toolbarHeight + elementGap + margin) {
+      // Position below element
+      toolbarTop = elementBottom + elementGap
+    } else if (spaceAbove >= toolbarHeight + elementGap + margin) {
+      // Position above element
+      toolbarTop = elementTop - toolbarHeight - elementGap
+    } else {
+      // Not enough space on either side, choose the side with more space
+      if (spaceBelow > spaceAbove) {
+        toolbarTop = Math.max(elementBottom + elementGap, margin)
+      } else {
+        toolbarTop = Math.max(elementTop - toolbarHeight - elementGap, margin)
+      }
+    }
+
+    // Calculate optimal horizontal position (try to center on element, but stay in viewport)
+    const elementCenterX = elementLeft + (elementWidth / 2)
+    let toolbarLeft = elementCenterX - (toolbarWidth / 2)
+
+    // Ensure toolbar fits horizontally with adequate margin
+    if (toolbarLeft + toolbarWidth + margin > viewportWidth) {
+      toolbarLeft = viewportWidth - toolbarWidth - margin
+    }
+    if (toolbarLeft < margin) {
+      toolbarLeft = margin
+    }
+
+    const adjustedToolbarPosition = { top: toolbarTop, left: toolbarLeft }
+
+    // Calculate dropdown positions based on adjusted toolbar position
+    const dropdownHeights = {
+      fontSize: 200,
+      color: 120,
+      spacing: 180
+    }
+
+    const calculateDropdownDirection = (dropdownType: 'fontSize' | 'color' | 'spacing') => {
+      const dropdownHeight = dropdownHeights[dropdownType]
+      const spaceBelow = viewportHeight - (toolbarTop + toolbarHeight)
+      const spaceAbove = toolbarTop
+      
+      // Prefer bottom if there's enough space, otherwise use top if there's more space above
+      if (spaceBelow >= dropdownHeight + margin) {
+        return 'bottom'
+      } else if (spaceAbove >= dropdownHeight + margin) {
+        return 'top'
+      } else {
+        // Use the direction with more available space
+        return spaceBelow > spaceAbove ? 'bottom' : 'top'
+      }
+    }
+
+    // Calculate horizontal positioning for spacing dropdown to prevent overflow
+    const spacingDropdownWidth = 280
+    const spacingDropdownLeft = Math.min(0, viewportWidth - (toolbarLeft + toolbarWidth) - spacingDropdownWidth - margin)
+
+    const newDropdownPositions = {
+      fontSize: calculateDropdownDirection('fontSize'),
+      color: calculateDropdownDirection('color'),
+      spacing: calculateDropdownDirection('spacing')
+    }
+
+    return {
+      toolbarPosition: adjustedToolbarPosition,
+      dropdownPositions: newDropdownPositions,
+      spacingDropdownOffset: spacingDropdownLeft
+    }
+  }, [position, selectedElement])
+
+  // Update positioning when toolbar position or viewport changes
+  const updatePositioning = useCallback(() => {
+    if (isOpen && position) {
+      const { toolbarPosition, dropdownPositions: newDropdownPositions, spacingDropdownOffset } = calculatePositions()
+      setAdjustedPosition(toolbarPosition)
+      setDropdownPositions(newDropdownPositions)
+      setSpacingDropdownOffset(spacingDropdownOffset || 0)
+    }
+  }, [isOpen, position, calculatePositions])
+
+  // Update positioning on initial open and position changes
+  useEffect(() => {
+    updatePositioning()
+  }, [updatePositioning])
+
+  // Handle window resize
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleResize = () => {
+      // Close dropdowns on resize to avoid positioning issues
+      setShowFontSizeDropdown(false)
+      setShowColorDropdown(false)
+      setShowSpacingDropdown(false)
+      
+      // Recalculate positions after a brief delay to allow for layout changes
+      setTimeout(updatePositioning, 50)
+    }
+
+    window.addEventListener('resize', handleResize)
+    window.addEventListener('scroll', handleResize, true) // Also handle scroll events
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('scroll', handleResize, true)
+    }
+  }, [isOpen, updatePositioning])
+
+  if (!isOpen || !position || !adjustedPosition) return null
+
+  const fontSizes = [
+    { value: 'text-xs', label: '12px' },
+    { value: 'text-sm', label: '14px' },
+    { value: 'text-base', label: '16px' },
+    { value: 'text-lg', label: '18px' },
+    { value: 'text-xl', label: '20px' },
+    { value: 'text-2xl', label: '24px' },
+    { value: 'text-3xl', label: '30px' },
+    { value: 'text-4xl', label: '36px' }
+  ]
+
+  const colors = [
+    { value: '#111827', label: 'Black' },
+    { value: '#4B5563', label: 'Gray' },
+    { value: '#2563EB', label: 'Blue' },
+    { value: '#9333EA', label: 'Purple' },
+    { value: '#16A34A', label: 'Green' },
+    { value: '#DC2626', label: 'Red' },
+    { value: '#D97706', label: 'Orange' },
+    { value: '#DB2777', label: 'Pink' }
+  ]
+
+  const backgroundColors = [
+    { value: 'transparent', label: 'None' },
+    { value: '#F3F4F6', label: 'Light Gray' },
+    { value: '#DBEAFE', label: 'Light Blue' },
+    { value: '#E9D5FF', label: 'Light Purple' },
+    { value: '#DCFCE7', label: 'Light Green' },
+    { value: '#FEE2E2', label: 'Light Red' },
+    { value: '#FEF3C7', label: 'Light Yellow' },
+    { value: '#FCE7F3', label: 'Light Pink' }
+  ]
+
+  const getCurrentFontSize = () => {
+    return fontSizes.find(size => size.value === currentStyles.fontSize)?.label || '16px'
   }
+
+  const getCurrentColor = () => {
+    return currentStyles.color || '#374151'
+  }
+
+  const getCurrentBgColor = () => {
+    return currentStyles.backgroundColor || 'transparent'
+  }
+
 
   const updateStyle = (property: string, value: string) => {
     const newStyles = { ...currentStyles, [property]: value }
@@ -378,8 +535,8 @@ export default function ElementEditor({
       data-dev-tools="element-editor"
       style={{
         position: 'fixed',
-        top: position.top,
-        left: position.left,
+        top: adjustedPosition.top,
+        left: adjustedPosition.left,
         zIndex: 999997,
         pointerEvents: 'auto'
       }}
@@ -399,28 +556,6 @@ export default function ElementEditor({
           gap: '8px'
         }}
       >
-        {/* Development Context Info */}
-        {selectedElement?.devContext && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '4px 8px',
-            fontSize: '12px',
-            color: '#6b7280',
-            backgroundColor: '#f9fafb',
-            borderRadius: '6px',
-            border: '1px solid #e5e7eb'
-          }}>
-            <span>📁</span>
-            <span>{selectedElement.devContext.fileName}</span>
-            <span>•</span>
-            <span>{selectedElement.devContext.componentName}</span>
-            <span>•</span>
-            <span>L{selectedElement.devContext.lineNumber}</span>
-          </div>
-        )}
-        
         {/* Toolbar Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         {/* Font Size */}
@@ -628,9 +763,9 @@ export default function ElementEditor({
             <div 
               style={{
                 position: 'absolute',
-                top: '100%',
+                [dropdownPositions.color === 'top' ? 'bottom' : 'top']: '100%',
                 left: '0',
-                marginTop: '4px',
+                [dropdownPositions.color === 'top' ? 'marginBottom' : 'marginTop']: '4px',
                 width: '200px',
                 backgroundColor: 'rgba(255, 255, 255, 0.98)',
                 backdropFilter: 'blur(10px)',
@@ -711,10 +846,12 @@ export default function ElementEditor({
             <div 
               style={{
                 position: 'absolute',
-                top: '100%',
-                right: '0',
-                marginTop: '4px',
+                [dropdownPositions.spacing === 'top' ? 'bottom' : 'top']: '100%',
+                right: spacingDropdownOffset < 0 ? 'auto' : '0',
+                left: spacingDropdownOffset < 0 ? spacingDropdownOffset : 'auto',
+                [dropdownPositions.spacing === 'top' ? 'marginBottom' : 'marginTop']: '4px',
                 width: '280px',
+                maxWidth: 'calc(100vw - 32px)',
                 backgroundColor: 'rgba(255, 255, 255, 0.98)',
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(209, 213, 219, 0.8)',
@@ -805,6 +942,47 @@ export default function ElementEditor({
             </div>
           )}
         </div>
+
+        {/* Edit with AI Button */}
+        <button
+          onClick={() => {
+            if (selectedElement?.devContext && window.parent !== window) {
+              window.parent.postMessage({
+                type: 'EDIT_WITH_AI',
+                data: {
+                  elementInfo: selectedElement,
+                  selector: selectedElement.selector,
+                  devContext: selectedElement.devContext
+                }
+              }, '*')
+              // Close the element editor after sending the message
+              onClose()
+            }
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '6px 12px',
+            fontSize: '12px',
+            fontWeight: '500',
+            color: '#3b82f6',
+            backgroundColor: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            borderRadius: '6px',
+            cursor: 'pointer'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#dbeafe'
+            e.currentTarget.style.borderColor = '#93c5fd'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#eff6ff'
+            e.currentTarget.style.borderColor = '#bfdbfe'
+          }}
+        >
+          ✨ Edit with AI
+        </button>
 
         {/* Divider */}
         <div style={{ width: '1px', height: '24px', backgroundColor: '#d1d5db' }}></div>

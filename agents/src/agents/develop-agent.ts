@@ -59,7 +59,10 @@ export class DevelopAgent extends BaseAgent {
     }
 
     // Add development-specific context
-    customizedPrompt += `\n\n## Development Guidelines:
+    customizedPrompt += `\n\n## AI Edit Context
+When a user selects a specific element in their application for editing, you will receive a separate message containing the element details and source code location. Use this information to make precise, targeted edits.
+
+## Development Guidelines:
 - Always write clean, maintainable, and well-documented code
 - Use modern web development best practices
 - Prefer TypeScript for type safety when possible

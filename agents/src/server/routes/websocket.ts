@@ -514,10 +514,12 @@ async function processLLMChat(context: ChatContext, systemPrompt: string, agentM
   try {
     // Use ConversationContextManager to build messages with history
     const contextManager = new ConversationContextManager(conversationRepo, 5);
+    const aiEditContext = executionContext.metadata?.aiEditContext;
     const messages = await contextManager.buildMessages(
       systemPrompt,
       request.message,
-      conversation?.id
+      conversation?.id,
+      aiEditContext
     );
     
     // Validate messages for Bedrock compatibility

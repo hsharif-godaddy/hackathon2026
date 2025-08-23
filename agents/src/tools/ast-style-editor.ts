@@ -11,6 +11,7 @@ const traverse = _traverse.default || _traverse;
 const generate = _generate.default || _generate;
 import { GitTool } from './git-tool.js';
 import { relative } from 'path';
+import { translateDockerPath } from '../utils/path-helper.js';
 
 export interface StyleEditContext {
   fileName: string;
@@ -642,11 +643,12 @@ export class ASTStyleEditor {
    * Resolve file path safely within the app directory
    */
   private resolveFilePath(appPath: string, relativePath: string): string {
-    const resolved = resolve(appPath, relativePath);
+    const normalizedPath = translateDockerPath(relativePath);
+    const resolved = resolve(appPath, normalizedPath);
     
     // Ensure the file is within the app directory
     if (!resolved.startsWith(appPath)) {
-      throw new Error('File path must be within the app directory');
+      throw new Error(`File path must be within the app directory. Resolved: ${resolved}, App path: ${appPath}`);
     }
     
     return resolved;

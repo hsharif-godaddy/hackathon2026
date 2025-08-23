@@ -37,12 +37,14 @@ export class ConversationContextManager {
    * @param systemPrompt - The system prompt to include
    * @param currentUserMessage - The current user message
    * @param conversationId - ID of the conversation to load history from
+   * @param aiEditContext - Optional AI edit context for selected elements
    * @returns Array of messages formatted for LLM API
    */
   async buildMessages(
     systemPrompt: string,
     currentUserMessage: string,
-    conversationId?: string
+    conversationId?: string,
+    aiEditContext?: any
   ): Promise<LLMMessage[]> {
     // Validate inputs
     if (!systemPrompt || systemPrompt.trim() === '') {
@@ -62,6 +64,12 @@ export class ConversationContextManager {
       messages.push(...historyMessages);
     }
 
+    // Add AI edit context as a separate user message if available
+    if (aiEditContext) {
+      const contextMessage = this.formatAiEditContextMessage(aiEditContext);
+      messages.push({ role: 'user', content: contextMessage });
+    }
+
     // Add the current user message
     messages.push({ role: 'user', content: currentUserMessage.trim() });
 
@@ -79,9 +87,11 @@ export class ConversationContextManager {
     }
 
     // Debug logging
-    console.log(`ConversationContextManager: Built ${validatedMessages.length} messages for conversation ${conversationId || 'new'}`);
+    console.log(`ConversationContextManager: Built ${validatedMessages.length} messages for conversation ${conversationId || 'new'}${aiEditContext ? ' (with AI edit context)' : ''}`);
     validatedMessages.forEach((msg, idx) => {
-      console.log(`  Message ${idx}: ${msg.role} - ${msg.content?.substring(0, 100)}${msg.content?.length > 100 ? '...' : ''}`);
+      const isContextMessage = msg.content?.startsWith('[AI Edit Context');
+      const prefix = isContextMessage ? '[CONTEXT] ' : '';
+      console.log(`  Message ${idx}: ${msg.role} - ${prefix}${msg.content?.substring(0, 100)}${msg.content?.length > 100 ? '...' : ''}`);
     });
 
     return validatedMessages;
@@ -322,6 +332,54 @@ export class ConversationContextManager {
           : JSON.stringify(toolCall.tool_args)
       }
     }));
+  }
+
+  /**
+   * Format AI edit context into a safe user message
+   * @param aiEditContext - The AI edit context data
+   * @returns Formatted context message
+   */
+  private formatAiEditContextMessage(aiEditContext: any): string {
+    try {
+      const elementInfo = aiEditContext.elementInfo || {};
+      const devContext = aiEditContext.devContext || {};
+      
+      // Sanitize and validate the context data
+      const sanitizedContext = {
+        element: {
+          tag: String(elementInfo.tagName || 'unknown').replace(/[<>]/g, ''),
+          classes: String(elementInfo.className || 'none').substring(0, 200),
+          id: String(elementInfo.id || 'none').substring(0, 100),
+          textContent: String(elementInfo.textContent || 'none').substring(0, 300),
+          selector: String(aiEditContext.selector || 'unknown').substring(0, 200)
+        },
+        source: {
+          fileName: String(devContext.fileName || 'unknown').substring(0, 200),
+          componentName: String(devContext.componentName || 'unknown').substring(0, 100),
+          lineNumber: Number.isInteger(devContext.lineNumber) ? devContext.lineNumber : 'unknown'
+        }
+      };
+
+      return `[AI Edit Context - Selected Element]
+
+Element Details:
+- Tag: ${sanitizedContext.element.tag}
+- Classes: ${sanitizedContext.element.classes}
+- ID: ${sanitizedContext.element.id}
+- Text Content: "${sanitizedContext.element.textContent}"
+- CSS Selector: ${sanitizedContext.element.selector}
+
+Source Code Location:
+- File: ${sanitizedContext.source.fileName}
+- Component: ${sanitizedContext.source.componentName}
+- Line: ${sanitizedContext.source.lineNumber}
+
+Instructions: The following user message refers to changes for this specific selected element. Focus your edits on the code at the specified file and location.`;
+
+    } catch (error) {
+      console.warn('Error formatting AI edit context:', error);
+      return '[AI Edit Context] Element selected for editing (formatting error)';
+    }
   }
 
   /**

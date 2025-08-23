@@ -7,6 +7,7 @@ import { TokenUsageRepository, AppRepository } from '../database/index.js';
 import { GitTool } from './git-tool.js';
 import { exec } from 'child_process';
 import axios from 'axios';
+import { translateDockerPath } from '../utils/path-helper.js';
 
 export interface FileEditOptions {
   /** Path to the file to edit (relative to app root) */
@@ -237,11 +238,12 @@ export class FileEditTool {
    * Resolve file path safely within the app directory
    */
   private resolveFilePath(appPath: string, relativePath: string): string {
-    const resolved = resolve(appPath, relativePath);
+    const normalizedPath = translateDockerPath(relativePath);
+    const resolved = resolve(appPath, normalizedPath);
     
     // Ensure the file is within the app directory
     if (!resolved.startsWith(appPath)) {
-      throw new Error('File path must be within the app directory');
+      throw new Error(`File path must be within the app directory. Resolved: ${resolved}, App path: ${appPath}`);
     }
     
     return resolved;

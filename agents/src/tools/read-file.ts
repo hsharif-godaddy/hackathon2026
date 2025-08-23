@@ -1,6 +1,7 @@
 import { readFile } from 'fs/promises';
 import { join, resolve } from 'path';
 import { existsSync } from 'fs';
+import { translateDockerPath } from '../utils/path-helper.js';
 
 export interface ReadFileOptions {
   /** Path to the file to read (relative to app root) */
@@ -40,7 +41,8 @@ export class ReadFileTool {
    */
   async readFile(options: ReadFileOptions, appPath: string): Promise<ReadFileResult> {
     try {
-      const fullPath = resolve(join(appPath, options.path));
+      const normalizedPath = translateDockerPath(options.path);
+      const fullPath = resolve(join(appPath, normalizedPath));
       
       // Security check: ensure the path is within the app directory
       if (!fullPath.startsWith(resolve(appPath))) {

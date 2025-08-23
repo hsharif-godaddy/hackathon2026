@@ -1,4 +1,4 @@
-import { Message, ToolCall, MessageSegment } from './types'
+import { Message, ToolCall, MessageSegment, AiEditContext } from './types'
 
 /**
  * Message Service using WebSocket for real-time bidirectional communication
@@ -30,6 +30,7 @@ export interface SendMessageParams {
   isLoading: boolean
   appId: string
   conversationId?: string
+  aiEditContext?: AiEditContext | null
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   setInputValue: React.Dispatch<React.SetStateAction<string>>
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>
@@ -104,6 +105,7 @@ export const handleSendMessage = async ({
   isLoading,
   appId,
   conversationId,
+  aiEditContext,
   setMessages,
   setInputValue,
   setIsLoading,
@@ -194,7 +196,15 @@ export const handleSendMessage = async ({
       conversationId: conversationId,
       threadId: undefined, // Let server generate
       userId: undefined,
-      metadata: {}
+      metadata: {
+        ...(aiEditContext && {
+          aiEditContext: {
+            elementInfo: aiEditContext.elementInfo,
+            selector: aiEditContext.selector,
+            devContext: aiEditContext.devContext
+          }
+        })
+      }
     }
 
     currentWebSocket.send(JSON.stringify(chatMessage))
@@ -284,26 +294,26 @@ function handleWebSocketMessage(
                 // Keep legacy tool_calls for backward compatibility
                 tool_calls: [
                   ...(msg.tool_calls || []),
-                  {
+                  ...(data.tool_call_id && data.tool_name ? [{
                     id: data.tool_call_id,
                     tool_name: data.tool_name,
-                    tool_args: data.tool_args,
+                    tool_args: typeof data.tool_args === 'string' ? data.tool_args : JSON.stringify(data.tool_args),
                     start_time: data.start_time,
                     status: 'running' as const
-                  }
+                  }] : [])
                 ],
                 // Add to segments for the new rendering approach
-                segments: finalizeContentAndAddTool(
+                segments: (data.tool_call_id && data.tool_name) ? finalizeContentAndAddTool(
                   msg.segments || [], 
                   agentMessageContent,
                   {
                     id: data.tool_call_id,
                     tool_name: data.tool_name,
-                    tool_args: data.tool_args,
+                    tool_args: typeof data.tool_args === 'string' ? data.tool_args : JSON.stringify(data.tool_args),
                     start_time: data.start_time,
                     status: 'running' as const
                   }
-                )
+                ) : msg.segments || []
               }
             : msg
         )
@@ -326,7 +336,7 @@ function handleWebSocketMessage(
                   toolCall.id === data.tool_call_id
                     ? {
                         ...toolCall,
-                        tool_result: data.tool_result,
+                        tool_result: typeof data.tool_result === 'string' ? data.tool_result : JSON.stringify(data.tool_result),
                         error: data.error,
                         end_time: data.end_time,
                         duration_ms: data.duration_ms,
@@ -341,7 +351,7 @@ function handleWebSocketMessage(
                         ...segment,
                         tool_call: {
                           ...segment.tool_call,
-                          tool_result: data.tool_result,
+                          tool_result: typeof data.tool_result === 'string' ? data.tool_result : JSON.stringify(data.tool_result),
                           error: data.error,
                           end_time: data.end_time,
                           duration_ms: data.duration_ms,
@@ -362,11 +372,11 @@ function handleWebSocketMessage(
       const toolResultMessage: Message = {
         id: Date.now() + Math.random(),
         sender: 'agent',
-        content: data.tool_result || '',
+        content: typeof data.tool_result === 'string' ? data.tool_result : JSON.stringify(data.tool_result) || '',
         timestamp: new Date(),
         type: 'tool_result',
         tool_name: data.tool_name,
-        tool_result: data.tool_result
+        tool_result: typeof data.tool_result === 'string' ? data.tool_result : JSON.stringify(data.tool_result)
       }
       setMessages(prev => [...prev, toolResultMessage])
       break

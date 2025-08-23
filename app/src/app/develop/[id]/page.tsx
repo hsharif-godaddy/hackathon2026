@@ -14,7 +14,7 @@ import PreviewPane from '@/app/develop/components/PreviewPane'
 import CodeEditor from '@/app/develop/components/CodeEditor'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
-import { Message, PlanItem } from '@/app/develop/components/types'
+import { Message, PlanItem, AiEditContext } from '@/app/develop/components/types'
 import { 
   handleSendMessage as sendMessage, 
   cleanup as cleanupMessageService,
@@ -55,6 +55,7 @@ function DevelopPageContent() {
   const [isCheckingApp, setIsCheckingApp] = useState(false)
   const [isStartingApp, setIsStartingApp] = useState(false)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
+  const [aiEditContext, setAiEditContext] = useState<AiEditContext | null>(null)
   const [isInitialAppCreation, setIsInitialAppCreation] = useState(false)
   const [chatPaneWidth, setChatPaneWidth] = useState(400)
 
@@ -212,6 +213,7 @@ function DevelopPageContent() {
       isLoading,
       appId,
       conversationId: conversationId || undefined,
+      aiEditContext,
       setMessages,
       setInputValue,
       setIsLoading,
@@ -220,6 +222,11 @@ function DevelopPageContent() {
         tokenUsageRef.current?.refreshUsage()
       }
     })
+
+    // Clear the AI edit context after sending message
+    if (aiEditContext) {
+      setAiEditContext(null)
+    }
     
     // Post-send cleanup - using refs to avoid circular dependencies
     setTimeout(async () => {
@@ -238,7 +245,7 @@ function DevelopPageContent() {
         setIsInitialAppCreation(false)
       }
     }, 100)
-  }, [inputValue, isLoading, appId, conversationId, isInitialAppCreation])
+  }, [inputValue, isLoading, appId, conversationId, aiEditContext, isInitialAppCreation])
 
   // 6. AUTO-SEND TRIGGER - Separate effect with stable conditions only
   useEffect(() => {
@@ -264,6 +271,7 @@ function DevelopPageContent() {
           isLoading: false,
           appId,
           conversationId: undefined,
+          aiEditContext: null,
           setMessages,
           setInputValue,
           setIsLoading,
@@ -379,6 +387,10 @@ function DevelopPageContent() {
         case 'STYLE_UPDATED':
           console.log('Style updated in iframe:', event.data.data)
           handleStyleUpdate(event.data.data)
+          break
+        case 'EDIT_WITH_AI':
+          setAiEditContext(event.data.data)
+          console.log('AI edit requested for element:', event.data.data)
           break
       }
     }
@@ -610,11 +622,13 @@ function DevelopPageContent() {
             inputValue={inputValue}
             expandedPlan={expandedPlan}
             isSelectMode={isSelectMode}
+            aiEditContext={aiEditContext}
             onInputChange={setInputValue}
             onSendMessage={() => handleSendMessage()}
             onKeyPress={handleKeyPress}
             onToggleSelectMode={handleToggleSelectMode}
             onToggleExpandedPlan={handleToggleExpandedPlan}
+            onClearAiEditContext={() => setAiEditContext(null)}
           />
         </div>
 
