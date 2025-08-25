@@ -4,6 +4,9 @@ export { FileEditTool } from './file-edit.js';
 export { GitTool } from './git-tool.js';
 export { ReadFileTool } from './read-file.js';
 export { GrepTool } from './grep-tool.js';
+export { ImageSearchTool, findImage } from './image-search-tool.js';
+export { ImageGenerationTool, generateImage } from './image-generation-tool.js';
+export { GettyImageTool, findGettyImage } from './getty-image-tool.js';
 export { ASTTextEditor } from './ast-text-editor.js';
 export { getToolDefinitions, executeToolFunction, TOOL_FUNCTIONS } from './tool-functions.js';
 export type { 
@@ -32,6 +35,24 @@ export type {
   GrepResult,
   Match
 } from './grep-tool.js';
+
+export type {
+  ImageSearchOptions,
+  ImageSearchResult
+} from './image-search-tool.js';
+
+export type {
+  ImageGenerationOptions,
+  ImageGenerationResult
+} from './image-generation-tool.js';
+
+export type {
+  GettyImageOptions,
+  GettyImageResult,
+  GettyImageResponse,
+  GettyImage,
+  DisplaySize
+} from './getty-image-tool.js';
 export type {
   TextEditContext,
   TextEditRequest,

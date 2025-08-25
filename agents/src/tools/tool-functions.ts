@@ -4,6 +4,9 @@ import { FileEditTool, FileEditOptions } from './file-edit.js';
 import { GitTool, GitToolOptions } from './git-tool.js';
 import { ReadFileTool, ReadFileOptions } from './read-file.js';
 import { GrepTool, GrepOptions, GrepOptionsSchema } from './grep-tool.js';
+import { findImage } from './image-search-tool.js';
+import { generateImage } from './image-generation-tool.js';
+import { findGettyImage } from './getty-image-tool.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js';
 import type { AgentExecutionContext } from '../base/index.js';
@@ -21,6 +24,84 @@ const tokenUsageRepo = new TokenUsageRepository();
  * OpenAI Function definitions for our tools
  */
 export const TOOL_FUNCTIONS = {
+  image_search: {
+    name: 'image_search',
+    description: 'Search for an image on the web based on a text prompt and return a single image URL. Use this when you need to find a relevant image to illustrate a concept.',
+    parameters: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'The text prompt describing the image to search for',
+        },
+      },
+      required: ['prompt'],
+    },
+  },
+  getty_image: {
+    name: 'getty_image',
+    description: 'Search for professional stock images using Getty Images API and return high-quality image URLs. Use this when you need professional-grade images.',
+    parameters: {
+      type: 'object',
+      properties: {
+        phrase: {
+          type: 'string',
+          description: 'Search phrase for finding images (e.g., "gym", "office meeting", "mountain landscape")',
+        },
+        page: {
+          type: 'number',
+          description: 'Page number for results pagination',
+          default: 1,
+        },
+        pageSize: {
+          type: 'number',
+          description: 'Number of results per page',
+          default: 50,
+        },
+        graphicalStyles: {
+          type: 'string',
+          description: 'Type of imagery to search for (e.g., photography, illustration)',
+          default: 'photography',
+        },
+        sortOrder: {
+          type: 'string',
+          description: 'Sort order for results: "best_match", "most_popular", or "newest"',
+          default: 'best_match',
+        },
+      },
+      required: ['phrase'],
+    },
+  },
+  image_generate: {
+    name: 'image_generate',
+    description: 'Generate an image using AI based on a detailed text prompt and save it to the app\'s public directory.',
+    parameters: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'Detailed description of the image to generate',
+        },
+        size: {
+          type: 'string',
+          enum: ['1024x1024', '512x512', '256x256'],
+          description: 'Size of the generated image',
+          default: '1024x1024',
+        },
+        style: {
+          type: 'string',
+          enum: ['vivid', 'natural'],
+          description: 'Visual style for the image generation',
+          default: 'vivid',
+        },
+        filename: {
+          type: 'string',
+          description: 'Optional custom filename without extension (default: derived from prompt)',
+        },
+      },
+      required: ['prompt'],
+    },
+  },
   directory_listing: {
     name: 'directory_listing',
     description: 'List directory contents as a tree structure with filtering options. Always limited to the current app\'s directory.',
@@ -394,6 +475,15 @@ export async function executeToolFunction(
   await trackToolExecution(functionName, context, argsSize);
 
   switch (functionName) {
+    case 'image_search':
+      return await executeImageSearch(args as {prompt: string}, context);
+    
+    case 'getty_image':
+      return await executeGettyImage(args as {phrase: string, page?: number, pageSize?: number, graphicalStyles?: string, sortOrder?: string}, context);
+    
+    case 'image_generate':
+      return await executeImageGenerate(args as {prompt: string, size?: string, style?: string, saveToFile?: boolean}, context);
+        
     case 'directory_listing':
       return await executeDirectoryListing(args as DirectoryListingOptions, context);
     
@@ -572,6 +662,74 @@ async function executeReadFile(
 }
 
 /**
+ * Execute the Getty image search tool
+ */
+async function executeGettyImage(
+  options: { phrase: string; page?: number; pageSize?: number; graphicalStyles?: string; sortOrder?: string },
+  context: AgentExecutionContext
+): Promise<string> {
+  const { phrase, page, pageSize, graphicalStyles, sortOrder } = options;
+  
+  if (!phrase || typeof phrase !== 'string' || phrase.trim().length === 0) {
+    throw new Error('A valid search phrase is required');
+  }
+  
+  // Get appId from context metadata
+  const appId = context.metadata?.appId as string;
+  if (!appId) {
+    throw new Error('App ID is required for Getty image search and is not available in context');
+  }
+  
+  // Track tool execution separately
+  await trackToolExecution('getty_image', context, phrase.length);
+  
+  const result = await findGettyImage({
+    phrase,
+    page,
+    pageSize,
+    graphicalStyles,
+    sortOrder,
+    appId
+  });
+  
+  if (!result.success || !result.images || result.images.length === 0) {
+    throw new Error(result.error || 'No images found matching your search criteria');
+  }
+  
+  // Get the first image from the results
+  const image = result.images[0];
+  
+  // Get the best quality URL available
+  const imageUrl = image.urls.highRes || image.urls.standard || image.urls.preview || image.urls.thumbnail;
+  
+  if (!imageUrl) {
+    throw new Error('No suitable image URL found in Getty response');
+  }
+  
+  // Format the dimensions if available
+  let dimensionsText = '';
+  if (image.dimensions && image.dimensions.width && image.dimensions.height) {
+    dimensionsText = ` (${image.dimensions.width}x${image.dimensions.height})`;
+  }
+  
+  // Create a markdown response with image info
+  let response = `![${phrase}](${imageUrl})\n\n`;
+  response += `Getty Image ID: ${image.id}${dimensionsText}\n`;
+  
+  // Include thumbnail URL if available
+  if (image.urls.thumbnail) {
+    response += `Thumbnail URL: ${image.urls.thumbnail}\n`;
+  }
+  
+  // Include total results count if available
+  if (result.totalResults) {
+    response += `Found ${result.totalResults} total images matching your search.`;
+  }
+  
+  return response;
+}
+
+/**
  * Execute the grep search tool
  */
 async function executeGrepSearch(
@@ -615,4 +773,77 @@ export function getToolDefinitions(): Array<{
     type: 'function' as const,
     function: func,
   }));
+}
+
+/**
+ * Execute the image search tool
+ */
+async function executeImageSearch(
+  options: { prompt: string },
+  context: AgentExecutionContext
+): Promise<string> {
+  const { prompt } = options;
+  
+  if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+    throw new Error('A valid image search prompt is required');
+  }
+  
+  // Track tool execution separately
+  await trackToolExecution('image_search', context, prompt.length);
+  
+  const result = await findImage({ prompt });
+  
+  if (!result.success || !result.url) {
+    throw new Error(result.error || 'Failed to find image');
+  }
+  
+  return `![${prompt}](${result.url})`;
+}
+
+async function executeImageGenerate(
+  options: { prompt: string; size?: string; style?: string; filename?: string },
+  context: AgentExecutionContext
+): Promise<string> {
+  const { prompt, size, style, filename } = options;
+  
+  if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+    throw new Error('A valid image generation prompt is required');
+  }
+  
+  // Track tool execution separately
+  await trackToolExecution('image_generate', context, prompt.length);
+  
+  // Get appId from context metadata
+  const appId = context.metadata?.appId as string;
+  if (!appId) {
+    throw new Error('App ID is required for image generation and is not available in context');
+  }
+  
+  // Convert size string to the expected type
+  const validSize = (size === '256x256' || size === '512x512' || size === '1024x1024') 
+    ? size as '256x256' | '512x512' | '1024x1024'
+    : '1024x1024';
+  
+  // Convert style string to the expected type
+  const validStyle = (style === 'vivid' || style === 'natural')
+    ? style as 'vivid' | 'natural'
+    : 'vivid';
+  
+  const result = await generateImage({
+    prompt,
+    size: validSize,
+    style: validStyle,
+    appId,
+    filename
+  });
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to generate image');
+  }
+  
+  // Return the public path for use in the app
+  let response = `![${prompt}](${result.publicPath})`;
+  response += `\n\nImage saved to: ${result.publicPath}`;
+  
+  return response;
 }

@@ -57,6 +57,9 @@ Instead of just building demos, Airo AI Builder focuses on creating **real, prod
 ### Features & Capabilities
 - [Agent Features](./docs/agent-features.md) - Detailed breakdown of AI agents
 - [AI Features](./docs/ai-features.md) - AI integration for your applications
+- [Image Search Feature](./docs/image-search-feature.md) - Web image search capabilities
+- [Image Generation Feature](./docs/image-generation-feature.md) - AI-powered image creation
+- [Getty Images Feature](./docs/getty-images-feature.md) - Professional stock photo integration
 - [Hosting Features](./docs/hosting-features.md) - Infrastructure and deployment capabilities
 - [Security Features](./docs/security-features.md) - Security scanning and protection
 
