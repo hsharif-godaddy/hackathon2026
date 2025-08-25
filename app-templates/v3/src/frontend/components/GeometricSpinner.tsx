@@ -14,7 +14,15 @@ export default function GeometricSpinner({ size = 'md', className }: GeometricSp
     hero: 'w-48 h-48',
   };
 
-  const dotSizes = {
+  const borderWidths = {
+    sm: 'border-[1px]',
+    md: 'border-2',
+    lg: 'border-3',
+    xl: 'border-4',
+    hero: 'border-[6px]',
+  };
+
+  const orbitDotSizes = {
     sm: 'w-1 h-1',
     md: 'w-1.5 h-1.5',
     lg: 'w-2 h-2',
@@ -22,182 +30,190 @@ export default function GeometricSpinner({ size = 'md', className }: GeometricSp
     hero: 'w-4 h-4',
   };
 
-  const borderWidths = {
-    sm: 'border-2',
-    md: 'border-2',
-    lg: 'border-3',
-    xl: 'border-4',
-    hero: 'border-[6px]',
+  const centerSizes = {
+    sm: { outer: 'inset-2', inner: 'inset-3', core: 'w-1 h-1' },
+    md: { outer: 'inset-3', inner: 'inset-4', core: 'w-1.5 h-1.5' },
+    lg: { outer: 'inset-5', inner: 'inset-6', core: 'w-2 h-2' },
+    xl: { outer: 'inset-8', inner: 'inset-10', core: 'w-3 h-3' },
+    hero: { outer: 'inset-12', inner: 'inset-16', core: 'w-4 h-4' },
+  };
+
+  const shapeSizes = {
+    sm: { triangle: 2, square: 'w-1 h-1', circle: 'w-1 h-1', diamond: 'w-1 h-1' },
+    md: { triangle: 3, square: 'w-1.5 h-1.5', circle: 'w-1.5 h-1.5', diamond: 'w-1.5 h-1.5' },
+    lg: { triangle: 4, square: 'w-2 h-2', circle: 'w-2 h-2', diamond: 'w-2 h-2' },
+    xl: { triangle: 6, square: 'w-3 h-3', circle: 'w-3 h-3', diamond: 'w-3 h-3' },
+    hero: { triangle: 8, square: 'w-4 h-4', circle: 'w-4 h-4', diamond: 'w-4 h-4' },
   };
 
   return (
     <div className={cn('relative', sizeClasses[size], className)}>
-      {/* Outer rotating ring with gradient */}
+      {/* Outer rotating ring - clean border style like v1 */}
       <div 
         className={cn(
-          'absolute inset-0 rounded-full animate-spin',
+          'absolute inset-0 rounded-full animate-rotate-clockwise border-blue-400',
           borderWidths[size]
         )}
-        style={{
-          background: `conic-gradient(from 0deg, transparent, hsl(var(--primary) / 0.3), hsl(var(--primary)), transparent)`,
-          borderRadius: '50%',
-          animationDuration: '2s',
-        }} 
       />
       
       {/* Middle counter-rotating ring */}
       <div 
         className={cn(
-          'absolute inset-2 rounded-full',
-          size === 'sm' ? 'border-[1px]' : 
-          size === 'md' ? 'border-[1px]' :
-          size === 'lg' ? 'border-2' :
-          size === 'xl' ? 'border-3' :
-          'border-4'
+          'absolute rounded-full animate-rotate-counter border-purple-400',
+          centerSizes[size].outer,
+          borderWidths[size]
         )}
-        style={{
-          background: `conic-gradient(from 180deg, hsl(var(--primary) / 0.1), transparent, hsl(var(--primary) / 0.5), transparent)`,
-          borderRadius: '50%',
-          animation: 'spin 3s linear infinite reverse',
-        }} 
       />
       
-      {/* Inner orbiting elements */}
-      <div className="absolute inset-0 animate-spin" style={{ animationDuration: '4s' }}>
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <div
-            key={i}
-            className={cn(
-              'absolute bg-primary rounded-full',
-              dotSizes[size]
-            )}
-            style={{
-              top: '10%',
-              left: '50%',
-              transformOrigin: '50% 400%',
-              transform: `rotate(${i * 60}deg) translateY(-50%)`,
-              opacity: 0.7 + (i % 2) * 0.3,
-              animationDelay: `${i * 100}ms`,
-            }}
-          />
-        ))}
+      {/* Inner pulsing circle with gradient */}
+      <div 
+        className={cn(
+          'absolute rounded-full animate-pulse-slow',
+          centerSizes[size].inner
+        )}
+        style={{
+          background: 'linear-gradient(135deg, hsl(217 91% 60%), hsl(262 83% 58%))'
+        }}
+      />
+      
+      {/* Central floating element with white background */}
+      <div 
+        className={cn(
+          'absolute bg-white rounded-full shadow-lg animate-float flex items-center justify-center',
+          centerSizes[size].inner
+        )}
+      >
+        <div 
+          className={cn(
+            'rounded-full',
+            centerSizes[size].core
+          )}
+          style={{
+            background: 'linear-gradient(135deg, hsl(221 83% 53%), hsl(262 83% 58%))'
+          }}
+        />
       </div>
       
-      {/* Floating geometric shapes */}
-      <div className="absolute inset-0">
-        {/* Triangle */}
+      {/* Orbiting dots at cardinal points - clean positioning like v1 */}
+      <div className={cn('absolute inset-0 animate-rotate-clockwise', sizeClasses[size])}>
+        {/* Top */}
         <div 
-          className="absolute animate-bounce"
+          className={cn(
+            'absolute bg-blue-500 rounded-full',
+            orbitDotSizes[size]
+          )}
           style={{
-            top: '20%',
-            left: '20%',
-            animationDuration: '2s',
-            animationDelay: '0ms',
+            top: '-2px',
+            left: '50%',
+            transform: 'translateX(-50%)'
+          }}
+        />
+        {/* Right */}
+        <div 
+          className={cn(
+            'absolute bg-purple-500 rounded-full',
+            orbitDotSizes[size]
+          )}
+          style={{
+            top: '50%',
+            right: '-2px',
+            transform: 'translateY(-50%)'
+          }}
+        />
+        {/* Bottom */}
+        <div 
+          className={cn(
+            'absolute bg-indigo-500 rounded-full',
+            orbitDotSizes[size]
+          )}
+          style={{
+            bottom: '-2px',
+            left: '50%',
+            transform: 'translateX(-50%)'
+          }}
+        />
+        {/* Left */}
+        <div 
+          className={cn(
+            'absolute bg-violet-500 rounded-full',
+            orbitDotSizes[size]
+          )}
+          style={{
+            top: '50%',
+            left: '-2px',
+            transform: 'translateY(-50%)'
+          }}
+        />
+      </div>
+      
+      {/* Geometric shapes around perimeter - positioned like v1 */}
+      <div className="absolute inset-0">
+        {/* Top-left square */}
+        <div 
+          className="absolute animate-bounce-gentle"
+          style={{
+            top: size === 'sm' ? '-6px' : size === 'md' ? '-8px' : size === 'lg' ? '-12px' : size === 'xl' ? '-16px' : '-24px',
+            left: size === 'sm' ? '-6px' : size === 'md' ? '-8px' : size === 'lg' ? '-12px' : size === 'xl' ? '-16px' : '-24px',
           }}
         >
           <div 
-            className="border-primary/60"
+            className={cn(
+              'bg-blue-400 transform rotate-45',
+              shapeSizes[size].square
+            )}
+          />
+        </div>
+        
+        {/* Top-right triangle */}
+        <div 
+          className="absolute animate-float"
+          style={{
+            top: size === 'sm' ? '-6px' : size === 'md' ? '-8px' : size === 'lg' ? '-12px' : size === 'xl' ? '-16px' : '-24px',
+            right: size === 'sm' ? '-6px' : size === 'md' ? '-8px' : size === 'lg' ? '-12px' : size === 'xl' ? '-16px' : '-24px',
+          }}
+        >
+          <div 
             style={{
               width: 0,
               height: 0,
-              borderLeft: size === 'hero' ? '8px solid transparent' : 
-                         size === 'xl' ? '6px solid transparent' :
-                         size === 'lg' ? '4px solid transparent' : '3px solid transparent',
-              borderRight: size === 'hero' ? '8px solid transparent' : 
-                          size === 'xl' ? '6px solid transparent' :
-                          size === 'lg' ? '4px solid transparent' : '3px solid transparent',
-              borderBottom: size === 'hero' ? '12px solid hsl(var(--primary) / 0.6)' : 
-                           size === 'xl' ? '9px solid hsl(var(--primary) / 0.6)' :
-                           size === 'lg' ? '6px solid hsl(var(--primary) / 0.6)' : '4px solid hsl(var(--primary) / 0.6)',
+              borderLeft: `${shapeSizes[size].triangle}px solid transparent`,
+              borderRight: `${shapeSizes[size].triangle}px solid transparent`,
+              borderBottom: `${shapeSizes[size].triangle * 1.5}px solid hsl(262 83% 58%)`,
             }}
           />
         </div>
         
-        {/* Square */}
+        {/* Bottom-left circle */}
         <div 
-          className="absolute animate-bounce"
+          className="absolute animate-pulse-slow"
           style={{
-            top: '70%',
-            right: '20%',
-            animationDuration: '2.5s',
-            animationDelay: '500ms',
+            bottom: size === 'sm' ? '-6px' : size === 'md' ? '-8px' : size === 'lg' ? '-12px' : size === 'xl' ? '-16px' : '-24px',
+            left: size === 'sm' ? '-6px' : size === 'md' ? '-8px' : size === 'lg' ? '-12px' : size === 'xl' ? '-16px' : '-24px',
           }}
         >
           <div 
             className={cn(
-              'bg-primary/50 rotate-45',
-              size === 'hero' ? 'w-4 h-4' :
-              size === 'xl' ? 'w-3 h-3' :
-              size === 'lg' ? 'w-2 h-2' : 'w-1.5 h-1.5'
+              'bg-indigo-400 rounded-full',
+              shapeSizes[size].circle
             )}
           />
         </div>
         
-        {/* Diamond */}
+        {/* Bottom-right diamond */}
         <div 
-          className="absolute animate-bounce"
+          className="absolute animate-spin-slow"
           style={{
-            bottom: '20%',
-            left: '70%',
-            animationDuration: '3s',
-            animationDelay: '1s',
+            bottom: size === 'sm' ? '-6px' : size === 'md' ? '-8px' : size === 'lg' ? '-12px' : size === 'xl' ? '-16px' : '-24px',
+            right: size === 'sm' ? '-6px' : size === 'md' ? '-8px' : size === 'lg' ? '-12px' : size === 'xl' ? '-16px' : '-24px',
           }}
         >
           <div 
             className={cn(
-              'bg-primary/40 rotate-45',
-              size === 'hero' ? 'w-3 h-3' :
-              size === 'xl' ? 'w-2.5 h-2.5' :
-              size === 'lg' ? 'w-2 h-2' : 'w-1 h-1'
+              'bg-violet-400 transform rotate-45',
+              shapeSizes[size].diamond
             )}
-            style={{ clipPath: 'polygon(50% 0%, 0% 50%, 50% 100%, 100% 50%)' }}
           />
         </div>
-      </div>
-      
-      {/* Center pulsing core */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div 
-          className={cn(
-            'bg-primary rounded-full animate-ping',
-            size === 'hero' ? 'w-6 h-6' :
-            size === 'xl' ? 'w-4 h-4' :
-            size === 'lg' ? 'w-3 h-3' :
-            size === 'md' ? 'w-2 h-2' : 'w-1.5 h-1.5'
-          )}
-          style={{ animationDuration: '1.5s' }}
-        />
-        <div 
-          className={cn(
-            'absolute bg-primary rounded-full',
-            size === 'hero' ? 'w-3 h-3' :
-            size === 'xl' ? 'w-2 h-2' :
-            size === 'lg' ? 'w-1.5 h-1.5' :
-            size === 'md' ? 'w-1 h-1' : 'w-0.5 h-0.5'
-          )}
-        />
-      </div>
-      
-      {/* Outer floating particles */}
-      <div className="absolute inset-0 animate-spin" style={{ animationDuration: '8s' }}>
-        {[0, 1, 2].map((i) => (
-          <div
-            key={`particle-${i}`}
-            className={cn(
-              'absolute bg-primary/30 rounded-full animate-pulse',
-              size === 'hero' ? 'w-2 h-2' :
-              size === 'xl' ? 'w-1.5 h-1.5' :
-              'w-1 h-1'
-            )}
-            style={{
-              top: `${20 + i * 20}%`,
-              left: '90%',
-              transformOrigin: '-200% 50%',
-              animationDelay: `${i * 300}ms`,
-              animationDuration: '2s',
-            }}
-          />
-        ))}
       </div>
     </div>
   );
