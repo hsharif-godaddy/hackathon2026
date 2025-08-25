@@ -31,12 +31,19 @@ interface RunningServer {
   url: string
 }
 
+interface AlertState {
+  appId: string | null
+  type: 'stop' | 'delete' | 'stop-all' | 'force-cleanup' | null
+  message: string
+}
+
 function AppsPageContent() {
   const [apps, setApps] = useState<App[]>([])
   const [runningServers, setRunningServers] = useState<RunningServer[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [alertState, setAlertState] = useState<AlertState>({ appId: null, type: null, message: '' })
   const router = useRouter()
 
   useEffect(() => {
@@ -134,11 +141,16 @@ function AppsPageContent() {
     }
   }
 
-  const handleDeleteApp = async (appId: string) => {
-    if (!confirm('Are you sure you want to delete this app? This action cannot be undone.')) {
-      return
-    }
+  const confirmStopServer = (appId: string) => {
+    showAlert(appId, 'stop', 'Are you sure you want to stop this server?')
+  }
 
+  const executeStopServer = async (appId: string) => {
+    clearAlert()
+    await handleStopServer(appId)
+  }
+
+  const handleDeleteApp = async (appId: string) => {
     setActionLoading(`delete-${appId}`)
     try {
       const response = await appFetch(`http://localhost:4000/apps/${appId}`, {
@@ -168,6 +180,15 @@ function AppsPageContent() {
     } finally {
       setActionLoading(null)
     }
+  }
+
+  const confirmDeleteApp = (appId: string) => {
+    showAlert(appId, 'delete', 'Are you sure you want to delete this app? This action cannot be undone.')
+  }
+
+  const executeDeleteApp = async (appId: string) => {
+    clearAlert()
+    await handleDeleteApp(appId)
   }
 
   const handleStopAll = async () => {
@@ -268,6 +289,44 @@ function AppsPageContent() {
       setActionLoading(null)
     }
   }
+
+  const clearAlert = () => {
+    setAlertState({ appId: null, type: null, message: '' })
+  }
+
+  const showAlert = (appId: string | null, type: AlertState['type'], message: string) => {
+    setAlertState({ appId, type, message })
+  }
+
+  // Inline Alert Component
+  const InlineAlert = ({ appId, message, onConfirm, onCancel }: {
+    appId: string | null
+    message: string
+    onConfirm: () => void
+    onCancel: () => void
+  }) => (
+    <div className="absolute inset-0 bg-white border-2 border-red-200 rounded-lg z-10 flex flex-col justify-center items-center p-4 shadow-lg">
+      <div className="flex items-center space-x-2 mb-4">
+        <ExclamationTriangleIcon className="w-6 h-6 text-red-600" />
+        <span className="text-red-800 font-medium">Confirm Action</span>
+      </div>
+      <p className="text-gray-700 text-center mb-6 text-sm">{message}</p>
+      <div className="flex space-x-3">
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          className="px-4 py-2 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors"
+        >
+          Confirm
+        </button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
@@ -374,8 +433,24 @@ function AppsPageContent() {
               return (
                 <div
                   key={app.id}
-                  className="bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all duration-200 p-6"
+                  className="relative bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all duration-200 p-6"
                 >
+                  {/* Inline Alert */}
+                  {alertState.appId === app.id && alertState.type && (
+                    <InlineAlert
+                      appId={app.id}
+                      message={alertState.message}
+                      onConfirm={() => {
+                        if (alertState.type === 'stop') {
+                          executeStopServer(app.id)
+                        } else if (alertState.type === 'delete') {
+                          executeDeleteApp(app.id)
+                        }
+                      }}
+                      onCancel={clearAlert}
+                    />
+                  )}
+                  
                   <div className="flex items-start justify-between mb-4">
                     <div className="w-12 h-12 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg flex items-center justify-center">
                       <CodeBracketIcon className="w-6 h-6 text-purple-600" />
@@ -434,7 +509,7 @@ function AppsPageContent() {
                             <ArrowPathIcon className={`w-4 h-4 ${actionLoading === `restart-${app.id}` ? 'animate-spin' : ''}`} />
                           </button>
                           <button
-                            onClick={() => handleStopServer(app.id)}
+                            onClick={() => confirmStopServer(app.id)}
                             disabled={actionLoading === `stop-${app.id}`}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Stop server"
@@ -444,7 +519,7 @@ function AppsPageContent() {
                         </>
                       )}
                       <button
-                        onClick={() => handleDeleteApp(app.id)}
+                        onClick={() => confirmDeleteApp(app.id)}
                         disabled={actionLoading === `delete-${app.id}`}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Delete app"

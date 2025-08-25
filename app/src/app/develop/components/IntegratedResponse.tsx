@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { Message as MessageType } from './types'
 import MarkdownRenderer from './MarkdownRenderer'
@@ -12,17 +12,62 @@ interface IntegratedResponseProps {
 
 export default function IntegratedResponse({ message }: IntegratedResponseProps) {
   const [isCompletionExpanded, setIsCompletionExpanded] = useState(false)
+  const [showThinkingIndicator, setShowThinkingIndicator] = useState(false)
+  const lastUpdateTimeRef = useRef<number>(Date.now())
+  const thinkingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   const hasSegments = message.segments && message.segments.length > 0
   const hasLegacyTools = message.tool_calls && message.tool_calls.length > 0
   const hasLegacyContent = Boolean(message.content && !message.isThinking && !hasSegments)
   const isComplete = message.is_complete
+
+  // Track content changes to reset thinking indicator timer
+  useEffect(() => {
+    // Don't show thinking indicator if message is complete or in initial thinking state
+    if (isComplete || message.isThinking) {
+      setShowThinkingIndicator(false)
+      if (thinkingTimeoutRef.current) {
+        clearTimeout(thinkingTimeoutRef.current)
+        thinkingTimeoutRef.current = null
+      }
+      return
+    }
+
+    // Update last update time when content or segments change
+    lastUpdateTimeRef.current = Date.now()
+    setShowThinkingIndicator(false)
+
+    // Clear existing timeout
+    if (thinkingTimeoutRef.current) {
+      clearTimeout(thinkingTimeoutRef.current)
+    }
+
+    // Set new timeout to show thinking indicator after 3 seconds
+    thinkingTimeoutRef.current = setTimeout(() => {
+      setShowThinkingIndicator(true)
+    }, 3000)
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (thinkingTimeoutRef.current) {
+        clearTimeout(thinkingTimeoutRef.current)
+        thinkingTimeoutRef.current = null
+      }
+    }
+  }, [
+    message.content, 
+    message.segments?.length, 
+    message.segments?.[message.segments.length - 1]?.content, // Track last segment content changes
+    message.tool_calls?.length, 
+    isComplete, 
+    message.isThinking
+  ])
   
   return (
     <div>
       <div className="bg-gray-100 text-gray-900 p-2 rounded-lg">
-        {/* Thinking indicator */}
-        {message.isThinking && (
+        {/* Initial thinking indicator - show at top only when no content yet */}
+        {message.isThinking && !hasSegments && !hasLegacyContent && (
           <div className="text-sm leading-relaxed break-words flex items-center space-x-2 mb-2">
             <div className="flex space-x-1">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
@@ -90,6 +135,30 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
             </>
           )}
         </div>
+
+        {/* Thinking indicators at the bottom after content */}
+        {message.isThinking && (hasSegments || hasLegacyContent) && (
+          <div className="text-sm leading-relaxed break-words flex items-center space-x-2 mt-2">
+            <div className="flex space-x-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            </div>
+            <span className="text-gray-600">Thinking...</span>
+          </div>
+        )}
+
+        {/* Lightweight thinking indicator for streaming pauses */}
+        {!message.isThinking && !isComplete && showThinkingIndicator && (
+          <div className="flex items-center space-x-2 mt-2 opacity-60">
+            <div className="flex space-x-1">
+              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"></div>
+              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+            </div>
+            <span className="text-xs text-gray-500">thinking...</span>
+          </div>
+        )}
       </div>
 
       {/* Completion drawer - outside the main message bubble */}
