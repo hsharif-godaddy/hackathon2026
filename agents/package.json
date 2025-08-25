@@ -42,7 +42,8 @@
     "sqlite3": "^5.1.7",
     "uuid": "^11.1.0",
     "ws": "^8.14.2",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "magic-string": "0.30.17"
   },
   "devDependencies": {
     "@types/babel__generator": "^7.6.8",
