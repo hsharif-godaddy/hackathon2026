@@ -3,13 +3,15 @@
 import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowRightIcon, SparklesIcon } from '@heroicons/react/24/outline'
+import { ArrowRightIcon, SparklesIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { UserMenu } from '@/components/auth'
 import Image from 'next/image'
 import { appFetch } from '@/lib/gasket-config'
 
 export default function Home() {
   const [promptText, setPromptText] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   const examples = [
@@ -42,9 +44,11 @@ export default function Home() {
 
   // Use useCallback to ensure the function reference stays stable
   const handleStartBuilding = useCallback(async () => {
-    if (!promptText.trim() || isRedirecting) return
+    if (!promptText.trim() || isRedirecting || isLoading) return
     
-    // Set flag to prevent multiple calls
+    // Clear any previous errors and set loading state
+    setError(null)
+    setIsLoading(true)
     setIsRedirecting(true)
     
     try {
@@ -71,7 +75,16 @@ export default function Home() {
       }
 
       if (!response.ok) {
-        throw new Error(`Failed to create app: ${response.status}`)
+        let errorMessage = `Server responded with status ${response.status}`
+        try {
+          const errorData = await response.json()
+          if (errorData.message) {
+            errorMessage = errorData.message
+          }
+        } catch {
+          // Ignore JSON parsing errors, use default message
+        }
+        throw new Error(errorMessage)
       }
 
       const data = await response.json()
@@ -81,11 +94,29 @@ export default function Home() {
       router.push(`/create/${appId}`)
     } catch (error) {
       console.error('Error creating app:', error)
-      // Reset redirect flag on error
+      
+      // Set user-friendly error message
+      let errorMessage = 'Something went wrong. Please try again.'
+      
+      if (error instanceof Error) {
+        if (error.message.includes('fetch')) {
+          errorMessage = 'Unable to connect to the server. Please try again.'
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage = 'Network error. Please check your connection and try again.'
+        } else if (error.message.includes('TypeError')) {
+          errorMessage = 'Connection error. Please ensure the backend service is running.'
+        } else {
+          errorMessage = error.message
+        }
+      }
+      
+      setError(errorMessage)
+      
+      // Reset flags on error
+      setIsLoading(false)
       setIsRedirecting(false)
-      // You might want to show an error message to the user here
     }
-  }, [promptText, router, isRedirecting])
+  }, [promptText, router, isRedirecting, isLoading])
 
   const handleExampleClick = (examplePrompt: string) => {
     setPromptText(examplePrompt)
@@ -111,10 +142,17 @@ export default function Home() {
               <UserMenu />
               <button
                 onClick={handleStartBuilding}
-                disabled={!promptText.trim()}
-                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!promptText.trim() || isLoading}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
               >
-                Get Started
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Creating...</span>
+                  </>
+                ) : (
+                  <span>Get Started</span>
+                )}
               </button>
             </div>
           </div>
@@ -135,21 +173,56 @@ export default function Home() {
             From concept to production, we handle everything.
           </p>
 
+          {/* Error Display */}
+          {error && (
+            <div className="max-w-2xl mx-auto mb-6">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start space-x-3">
+                <ExclamationTriangleIcon className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h3 className="text-sm font-medium text-red-800">Error</h3>
+                  <p className="text-sm text-red-700 mt-1">{error}</p>
+                  <button
+                    onClick={() => setError(null)}
+                    className="text-sm text-red-600 hover:text-red-800 mt-2 underline"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Main CTA Input */}
           <div className="max-w-2xl mx-auto mb-16">
             <div className="relative">
               <textarea
                 value={promptText}
-                onChange={(e) => setPromptText(e.target.value)}
+                onChange={(e) => {
+                  setPromptText(e.target.value)
+                  // Clear error when user starts typing
+                  if (error) setError(null)
+                }}
                 rows={4}
-                className="w-full px-6 py-4 text-lg text-gray-900 font-medium border-2 border-gray-200 rounded-2xl focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all resize-none"
+                disabled={isLoading}
+                className="w-full px-6 py-4 text-lg text-gray-900 font-medium border-2 border-gray-200 rounded-2xl focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                placeholder="Describe the application you'd like to build..."
               />
               <button 
                 onClick={handleStartBuilding}
-                className="absolute right-3 bottom-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2"
+                disabled={!promptText.trim() || isLoading}
+                className="absolute right-3 bottom-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span>Start Building</span>
-                <ArrowRightIcon className="w-4 h-4" />
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Building...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Start Building</span>
+                    <ArrowRightIcon className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -158,7 +231,7 @@ export default function Home() {
           <div className="text-center mb-8">
             <p className="text-gray-500 mb-4 text-sm">Or try one of these popular examples:</p>
             <div className="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
-              {examples.map((example, index) => (
+              {examples.map((example) => (
                 <button
                   key={example.title}
                   onClick={() => handleExampleClick(example.prompt)}
