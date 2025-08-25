@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowRightIcon, SparklesIcon } from '@heroicons/react/24/outline'
 import { UserMenu } from '@/components/auth'
+import Image from 'next/image'
 import { appFetch } from '@/lib/gasket-config'
 
 export default function Home() {
@@ -94,15 +95,12 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
       {/* Header */}
       <header className="border-b border-gray-100 bg-white/80 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg flex items-center justify-center">
-                <SparklesIcon className="w-5 h-5 text-white" />
+              <div className="w-64 h-64 flex items-center justify-center">
+                <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
               </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                Airo
-              </span>
             </div>
             <nav className="hidden md:flex space-x-8">
               <Link href="/apps" className="text-gray-600 hover:text-gray-900 transition-colors">
@@ -189,8 +187,8 @@ export default function Home() {
 
           <div className="grid md:grid-cols-3 gap-8">
             <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-r from-purple-100 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <SparklesIcon className="w-8 h-8 text-purple-600" />
+              <div className="w-64 h-64 flex items-center justify-center mx-auto mb-4">
+                <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">AI-Powered Development</h3>
               <p className="text-gray-600">
@@ -199,8 +197,10 @@ export default function Home() {
             </div>
 
             <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-r from-purple-100 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <SparklesIcon className="w-8 h-8 text-purple-600" />
+              <div className="w-64 h-64 flex items-center justify-center mx-auto mb-4">
+                <div className="w-64 h-64 flex items-center justify-center">
+                  <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
+                </div>
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Enterprise Grade</h3>
               <p className="text-gray-600">
@@ -209,8 +209,8 @@ export default function Home() {
             </div>
 
             <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-r from-purple-100 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <SparklesIcon className="w-8 h-8 text-purple-600" />
+              <div className="w-64 h-64 flex items-center justify-center mx-auto mb-4">
+                <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Deploy Anywhere</h3>
               <p className="text-gray-600">

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   SparklesIcon,
   PlayIcon,
@@ -575,16 +576,13 @@ function DevelopPageContent() {
     <div className="h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <header className="border-b border-gray-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
               <Link href="/" className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg flex items-center justify-center">
-                  <SparklesIcon className="w-5 h-5 text-white" />
+               <div className="w-64 h-64 flex items-center justify-center">
+                  <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
                 </div>
-                <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                  Airo
-                </span>
               </Link>
               <div className="h-6 w-px bg-gray-300" />
               <span className="text-gray-600">
