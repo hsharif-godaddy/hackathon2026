@@ -7,11 +7,11 @@ import { minimatch } from 'minimatch';
 // Types and Schemas
 export const GrepOptionsSchema = z.object({
   query: z.string().describe('Text or regex pattern to search for'),
-  
+
   // Search scope
   paths: z.array(z.string()).optional()
     .describe('Specific files or directories to search in. If not provided, searches entire project'),
-  
+
   // Search options
   regex: z.boolean().optional().default(false)
     .describe('Treat query as a regular expression'),
@@ -19,7 +19,7 @@ export const GrepOptionsSchema = z.object({
     .describe('Case-sensitive search'),
   wholeWord: z.boolean().optional().default(false)
     .describe('Match whole words only'),
-  
+
   // Context options
   contextLines: z.number().optional().default(3)
     .describe('Number of lines to show before and after each match'),
@@ -27,7 +27,7 @@ export const GrepOptionsSchema = z.object({
     .describe('Maximum number of results to return'),
   maxFilesSearched: z.number().optional().default(1000)
     .describe('Maximum number of files to search through'),
-  
+
   // Filtering
   includePatterns: z.array(z.string()).optional()
     .default(['**/*.{ts,tsx,js,jsx,py,java,cpp,c,go,rs,rb,php,swift,kt,scala,r,m,html,css,scss,json,yaml,yml,toml,xml,md,txt}'])
@@ -35,7 +35,7 @@ export const GrepOptionsSchema = z.object({
   excludePatterns: z.array(z.string()).optional()
     .default(['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**', '**/coverage/**', '**/*.min.js', '**/vendor/**', '**/tmp/**', '**/.next/**', '**/.cache/**'])
     .describe('Glob patterns for files to exclude'),
-  
+
   // Output options
   includeLineNumbers: z.boolean().optional().default(true)
     .describe('Include line numbers in results'),
@@ -43,7 +43,7 @@ export const GrepOptionsSchema = z.object({
     .describe('Include file paths in results'),
   groupByFile: z.boolean().optional().default(true)
     .describe('Group results by file'),
-  
+
   // Special modes
   findDefinition: z.boolean().optional().default(false)
     .describe('Try to find function/class/variable definitions'),
@@ -86,18 +86,21 @@ export class GrepTool {
 
   async execute(params: GrepOptions): Promise<GrepResult> {
     const startTime = Date.now();
-    
+
     try {
+      // Parse and validate options with defaults
+      const options = GrepOptionsSchema.parse(params);
+
       // Build search pattern
-      const searchPattern = this.buildSearchPattern(params);
-      
+      const searchPattern = this.buildSearchPattern(options);
+
       // Get files to search
-      const filesToSearch = await this.getFilesToSearch(params);
-      
+      const filesToSearch = await this.getFilesToSearch(options);
+
       if (filesToSearch.length === 0) {
         return {
           success: true,
-          query: params.query,
+          query: options.query,
           matches: [],
           totalMatches: 0,
           filesSearched: 0,
@@ -112,30 +115,30 @@ export class GrepTool {
       let truncated = false;
 
       for (const file of filesToSearch) {
-        if (filesSearched >= params.maxFilesSearched) {
+        if (filesSearched >= options.maxFilesSearched) {
           truncated = true;
           break;
         }
 
-        const fileMatches = await this.searchFile(file, searchPattern, params);
+        const fileMatches = await this.searchFile(file, searchPattern, options);
         allMatches.push(...fileMatches);
         filesSearched++;
 
-        if (allMatches.length >= params.maxResults) {
+        if (allMatches.length >= options.maxResults) {
           truncated = true;
-          allMatches.splice(params.maxResults);
+          allMatches.splice(options.maxResults);
           break;
         }
       }
 
       // Group by file if requested
-      const finalMatches = params.groupByFile 
+      const finalMatches = options.groupByFile
         ? this.groupMatchesByFile(allMatches)
         : allMatches;
 
       return {
         success: true,
-        query: params.query,
+        query: options.query,
         matches: finalMatches,
         totalMatches: allMatches.length,
         filesSearched,
@@ -159,13 +162,13 @@ export class GrepTool {
 
   private buildSearchPattern(options: GrepOptions): RegExp {
     let pattern: string;
-    
+
     if (options.regex) {
       pattern = options.query;
     } else {
       // Escape special regex characters
       pattern = options.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      
+
       if (options.wholeWord) {
         pattern = `\\b${pattern}\\b`;
       }
@@ -177,10 +180,10 @@ export class GrepTool {
 
   private async getFilesToSearch(options: GrepOptions): Promise<string[]> {
     let searchPaths: string[];
-    
+
     if (options.paths && options.paths.length > 0) {
       // Specific paths provided
-      searchPaths = options.paths.map(p => 
+      searchPaths = options.paths.map(p =>
         path.isAbsolute(p) ? p : path.join(this.workingDirectory, p)
       );
     } else {
@@ -192,9 +195,9 @@ export class GrepTool {
 
     for (const searchPath of searchPaths) {
       const stat = await fs.stat(searchPath).catch(() => null);
-      
+
       if (!stat) continue;
-      
+
       if (stat.isFile()) {
         allFiles.add(searchPath);
       } else if (stat.isDirectory()) {
@@ -206,7 +209,7 @@ export class GrepTool {
             nodir: true,
             absolute: true
           });
-          
+
           files.forEach(f => allFiles.add(f));
         }
       }
@@ -215,14 +218,14 @@ export class GrepTool {
     // Filter out excluded patterns
     const filteredFiles = Array.from(allFiles).filter(file => {
       const relativePath = path.relative(this.workingDirectory, file);
-      
+
       // Check if file should be excluded
       for (const excludePattern of options.excludePatterns) {
         if (minimatch(relativePath, excludePattern)) {
           return false;
         }
       }
-      
+
       return true;
     });
 
@@ -230,29 +233,29 @@ export class GrepTool {
   }
 
   private async searchFile(
-    filePath: string, 
-    pattern: RegExp, 
+    filePath: string,
+    pattern: RegExp,
     options: GrepOptions
   ): Promise<Match[]> {
     try {
       const lines = await this.getFileLines(filePath);
       const matches: Match[] = [];
-      
+
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (!line) continue; // Skip undefined lines
-        
+
         const lineNumber = i + 1;
-        
+
         // Reset regex state for global flag
         pattern.lastIndex = 0;
-        
+
         let match;
         while ((match = pattern.exec(line)) !== null) {
           // Get context lines
           const contextBefore: string[] = [];
           const contextAfter: string[] = [];
-          
+
           // Before context
           for (let j = Math.max(0, i - options.contextLines); j < i; j++) {
             const contextLine = lines[j];
@@ -260,7 +263,7 @@ export class GrepTool {
               contextBefore.push(contextLine);
             }
           }
-          
+
           // After context
           for (let j = i + 1; j < Math.min(lines.length, i + 1 + options.contextLines); j++) {
             const contextLine = lines[j];
@@ -268,7 +271,7 @@ export class GrepTool {
               contextAfter.push(contextLine);
             }
           }
-          
+
           matches.push({
             file: path.relative(this.workingDirectory, filePath),
             line: lineNumber,
@@ -279,19 +282,19 @@ export class GrepTool {
               after: contextAfter
             }
           });
-          
+
           // Prevent infinite loop for zero-width matches
           if (match.index === pattern.lastIndex) {
             pattern.lastIndex++;
           }
-          
+
           // For non-global searches, break after first match
           if (!pattern.global) {
             break;
           }
         }
       }
-      
+
       return matches;
     } catch (error) {
       // Silently skip files that can't be read (binary files, permission issues, etc.)
@@ -309,13 +312,13 @@ export class GrepTool {
     // Read file
     const content = await fs.readFile(filePath, 'utf-8');
     const lines = content.split('\n');
-    
+
     // Update cache
     this.cache.set(filePath, {
       content: lines,
       timestamp: Date.now()
     });
-    
+
     // Clean old cache entries
     if (this.cache.size > 100) {
       const cutoff = Date.now() - this.cacheMaxAge;
@@ -325,7 +328,7 @@ export class GrepTool {
         }
       }
     }
-    
+
     return lines;
   }
 
@@ -336,7 +339,7 @@ export class GrepTool {
   }
 
   // Specialized search methods
-  
+
   async findDefinition(symbolName: string, fileTypes?: string[]): Promise<GrepResult> {
     // Language-specific patterns for finding definitions
     const patterns = [
@@ -351,20 +354,20 @@ export class GrepTool {
       `class\\s+${symbolName}\\s*[(:]`,       // Python classes
       `public\\s+.*\\s+${symbolName}\\s*\\(`, // Java/C# methods
     ];
-    
+
     const combinedPattern = patterns.join('|');
-    
+
     const options: Partial<GrepOptions> & { query: string } = {
       query: combinedPattern,
       regex: true,
       contextLines: 5,
       maxResults: 10
     };
-    
+
     if (fileTypes) {
       options.includePatterns = fileTypes;
     }
-    
+
     return this.execute(options as GrepOptions);
   }
 
@@ -376,11 +379,11 @@ export class GrepTool {
       contextLines: 2,
       maxResults: 100
     };
-    
+
     if (fileTypes) {
       options.includePatterns = fileTypes;
     }
-    
+
     return this.execute(options as GrepOptions);
   }
 
@@ -395,14 +398,14 @@ export class GrepTool {
     }
 
     let output = `Found ${result.totalMatches} matches in ${result.filesSearched} files:\n\n`;
-    
+
     let currentFile = '';
     for (const match of result.matches) {
       if (match.file !== currentFile) {
         currentFile = match.file;
         output += `\n📄 ${match.file}\n${'─'.repeat(match.file.length + 3)}\n`;
       }
-      
+
       // Show context before
       if (match.context.before.length > 0) {
         match.context.before.forEach((line, i) => {
@@ -410,10 +413,10 @@ export class GrepTool {
           output += `  ${lineNum.toString().padStart(4)} │ ${line}\n`;
         });
       }
-      
+
       // Show matching line (highlighted)
       output += `▶ ${match.line.toString().padStart(4)} │ ${match.match}\n`;
-      
+
       // Show context after
       if (match.context.after.length > 0) {
         match.context.after.forEach((line, i) => {
@@ -421,14 +424,14 @@ export class GrepTool {
           output += `  ${lineNum.toString().padStart(4)} │ ${line}\n`;
         });
       }
-      
+
       output += '\n';
     }
-    
+
     if (result.truncated) {
       output += `\n⚠️ Results truncated. Showing first ${result.matches.length} matches.`;
     }
-    
+
     return output;
   }
 }

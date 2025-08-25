@@ -271,6 +271,17 @@ OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4
 
+# Image Search Configuration
+IMAGE_SEARCH_DRIVER=getty  # Options: getty (default), openai, unsplash
+
+# Getty Images Configuration (for getty driver)
+SSO_JWT=your_sso_jwt_token
+GETTY_API_URL=https://getty-images-proxy.api.test-godaddy.com/v1/search
+GETTY_APP_KEY=airo-app-builder
+
+# Unsplash Configuration (for unsplash driver)
+UNSPLASH_ACCESS_KEY=your_unsplash_access_key
+
 # MCP Server Configuration (for tool integration)
 MCP_BASE_URL=http://localhost:4000
 MCP_ENDPOINT=/mcp
@@ -278,6 +289,66 @@ MCP_TIMEOUT=30000
 
 # CORS (production only)
 ALLOWED_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+```
+
+## 🖼️ Image Search Tool
+
+The agents include a powerful, driver-based image search tool that supports multiple providers:
+
+### Supported Providers
+
+1. **Getty Images** (default) - Professional stock photos via Getty Images API
+2. **OpenAI** - Web search capabilities through OpenAI's API
+3. **Unsplash** - Free stock photos from Unsplash
+
+### Configuration
+
+Set the `IMAGE_SEARCH_DRIVER` environment variable to choose your preferred provider:
+
+```bash
+# Use Getty Images (default)
+IMAGE_SEARCH_DRIVER=getty
+
+# Use OpenAI web search
+IMAGE_SEARCH_DRIVER=openai
+
+# Use Unsplash
+IMAGE_SEARCH_DRIVER=unsplash
+```
+
+### Provider-Specific Setup
+
+**Getty Images:**
+```bash
+SSO_JWT=your_sso_jwt_token
+GETTY_API_URL=https://getty-images-proxy.api.test-godaddy.com/v1/search
+GETTY_APP_KEY=airo-app-builder
+```
+
+**OpenAI:**
+```bash
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+**Unsplash:**
+```bash
+UNSPLASH_ACCESS_KEY=your_unsplash_access_key
+```
+
+### Usage
+
+```typescript
+import { ImageSearchTool, findImage } from './tools/image-search-tool.js';
+
+// Using the class directly
+const tool = new ImageSearchTool();
+const result = await tool.searchImage("professional office meeting");
+
+// Using the function interface
+const result = await findImage({ prompt: "sunset over mountains" });
+
+// Using a specific driver
+const gettyTool = new ImageSearchTool(new GettyImageSearchDriver());
 ```
 
 ## 🔌 Integration with Agent SDK

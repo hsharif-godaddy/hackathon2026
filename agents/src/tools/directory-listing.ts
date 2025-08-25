@@ -53,6 +53,19 @@ export interface DirectoryTreeResult {
   errors: string[];
 }
 
+interface TreeNode {
+  /** Name of the file or directory */
+  name: string;
+  /** Full path relative to the app root */
+  path: string;
+  /** Whether this is a directory */
+  isDirectory: boolean;
+  /** Size in bytes (for files) */
+  size: number | undefined;
+  /** Child nodes */
+  children: TreeNode[];
+}
+
 /**
  * Directory Listing Tool
  * Provides a comprehensive directory tree listing with filtering capabilities
@@ -305,47 +318,30 @@ export class DirectoryListingTool {
   formatAsTree(result: DirectoryTreeResult): string {
     const lines: string[] = [];
     
-    lines.push(`📁 ${result.rootPath}`);
-    lines.push(`   ${result.totalEntries} items (${result.directoryCount} directories, ${result.fileCount} files)`);
+    lines.push(`${result.rootPath} (${result.directoryCount} dirs, ${result.fileCount} files)`);
     
     if (result.errors.length > 0) {
-      lines.push(`   ⚠️  ${result.errors.length} errors occurred`);
+      lines.push(`${result.errors.length} errors`);
     }
     
     if (result.truncated) {
-      lines.push(`   ⚠️  Results truncated (showing first ${this.MAX_ENTRIES} items)`);
+      lines.push(`truncated (${this.MAX_ENTRIES}+ items)`);
     }
     
-    lines.push('');
+    if (lines.length > 1) lines.push('');
 
-    // Group entries by depth for better tree visualization
-    const entriesByDepth = new Map<number, DirectoryEntry[]>();
-    for (const entry of result.entries) {
-      if (!entriesByDepth.has(entry.depth)) {
-        entriesByDepth.set(entry.depth, []);
-      }
-      entriesByDepth.get(entry.depth)!.push(entry);
-    }
-
-    // Sort and display entries
-    const sortedEntries = result.entries.sort((a, b) => {
-      if (a.depth !== b.depth) return a.depth - b.depth;
-      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-
-    for (const entry of sortedEntries) {
-      const indent = '  '.repeat(entry.depth + 1);
-      const icon = entry.isDirectory ? '📁' : '📄';
-      const size = entry.size !== undefined ? ` (${this.formatSize(entry.size)})` : '';
-      lines.push(`${indent}${icon} ${entry.name}${size}`);
-    }
+    // Build a hierarchical structure for proper tree rendering
+    const treeStructure = this.buildTreeStructure(result.entries);
+    
+    // Render the tree with proper markers
+    const treeLines = this.renderTreeNode(treeStructure, '', true);
+    lines.push(...treeLines);
 
     if (result.errors.length > 0) {
       lines.push('');
       lines.push('Errors:');
       for (const error of result.errors) {
-        lines.push(`  ❌ ${error}`);
+        lines.push(`${error}`);
       }
     }
 
@@ -353,10 +349,98 @@ export class DirectoryListingTool {
   }
 
   /**
+   * Build a hierarchical tree structure from flat entries
+   */
+  private buildTreeStructure(entries: DirectoryEntry[]): TreeNode {
+    const root: TreeNode = { name: '', path: '', isDirectory: true, size: undefined, children: [] };
+    const nodeMap = new Map<string, TreeNode>();
+    nodeMap.set('', root);
+
+    // Sort entries by path to ensure parents are processed before children
+    const sortedEntries = entries.sort((a, b) => {
+      if (a.depth !== b.depth) return a.depth - b.depth;
+      return a.path.localeCompare(b.path);
+    });
+
+    for (const entry of sortedEntries) {
+      const node: TreeNode = {
+        name: entry.name,
+        path: entry.path,
+        isDirectory: entry.isDirectory,
+        size: entry.size,
+        children: []
+      };
+
+      nodeMap.set(entry.path, node);
+
+      // Find parent path
+      const pathParts = entry.path.split('/').filter(part => part.length > 0);
+      const parentPath = pathParts.slice(0, -1).join('/');
+      
+      const parent = nodeMap.get(parentPath);
+      if (parent) {
+        parent.children.push(node);
+      } else {
+        root.children.push(node);
+      }
+    }
+
+    // Sort children: directories first, then alphabetically
+    this.sortTreeNodes(root);
+    
+    return root;
+  }
+
+  /**
+   * Recursively sort tree nodes
+   */
+  private sortTreeNodes(node: TreeNode): void {
+    node.children.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    for (const child of node.children) {
+      this.sortTreeNodes(child);
+    }
+  }
+
+  /**
+   * Render a tree node with proper ASCII tree markers
+   */
+  private renderTreeNode(node: TreeNode, prefix: string, isLast: boolean): string[] {
+    const lines: string[] = [];
+    
+    // Skip rendering the root node itself
+    if (node.name) {
+      const marker = isLast ? '└── ' : '├── ';
+      const dirMarker = node.isDirectory ? '/' : '';
+      const size = node.size !== undefined ? ` ${this.formatSize(node.size)}` : '';
+      lines.push(`${prefix}${marker}${node.name}${dirMarker}${size}`);
+    }
+
+    // Render children
+    const childPrefix = node.name ? 
+      (prefix + (isLast ? '    ' : '│   ')) : 
+      '';
+    
+    for (let i = 0; i < node.children.length; i++) {
+      const child = node.children[i];
+      if (child) {
+        const isLastChild = i === node.children.length - 1;
+        const childLines = this.renderTreeNode(child, childPrefix, isLastChild);
+        lines.push(...childLines);
+      }
+    }
+
+    return lines;
+  }
+
+  /**
    * Format file size in human-readable format
    */
   private formatSize(bytes: number): string {
-    const units = ['B', 'KB', 'MB', 'GB'];
+    const units = ['B', 'K', 'M', 'G'];
     let size = bytes;
     let unitIndex = 0;
     
@@ -365,6 +449,6 @@ export class DirectoryListingTool {
       unitIndex++;
     }
     
-    return `${size.toFixed(unitIndex > 0 ? 1 : 0)}${units[unitIndex]}`;
+    return unitIndex === 0 ? `${size}B` : `${Math.round(size)}${units[unitIndex]}`;
   }
 }

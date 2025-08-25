@@ -519,7 +519,8 @@ async function processLLMChat(context: ChatContext, systemPrompt: string, agentM
       systemPrompt,
       request.message,
       conversation?.id,
-      aiEditContext
+      aiEditContext,
+      executionContext
     );
     
     // Validate messages for Bedrock compatibility

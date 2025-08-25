@@ -1,5 +1,7 @@
 import type { ConversationMessage, ToolCall, MessageSegment } from '../database/schema.js';
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
+import { AppContextManager } from './AppContextManager.js';
+import type { AgentExecutionContext } from '../base/agent.interface.js';
 
 /**
  * LLM message format for OpenAI-style APIs
@@ -26,10 +28,12 @@ interface LLMMessage {
 export class ConversationContextManager {
   private conversationRepo: ConversationRepository;
   private readonly maxMessages: number;
+  private appContextManager: AppContextManager;
 
   constructor(conversationRepo: ConversationRepository, maxMessages: number = 5) {
     this.conversationRepo = conversationRepo;
     this.maxMessages = maxMessages;
+    this.appContextManager = new AppContextManager();
   }
 
   /**
@@ -38,13 +42,15 @@ export class ConversationContextManager {
    * @param currentUserMessage - The current user message
    * @param conversationId - ID of the conversation to load history from
    * @param aiEditContext - Optional AI edit context for selected elements
+   * @param executionContext - Optional execution context for app context generation
    * @returns Array of messages formatted for LLM API
    */
   async buildMessages(
     systemPrompt: string,
     currentUserMessage: string,
     conversationId?: string,
-    aiEditContext?: any
+    aiEditContext?: any,
+    executionContext?: AgentExecutionContext
   ): Promise<LLMMessage[]> {
     // Validate inputs
     if (!systemPrompt || systemPrompt.trim() === '') {
@@ -62,6 +68,14 @@ export class ConversationContextManager {
     if (conversationId) {
       const historyMessages = await this.loadConversationHistory(conversationId);
       messages.push(...historyMessages);
+    }
+
+    // Add app context (directory listing) before AI edit context if execution context is available
+    if (executionContext) {
+      const appContextMessage = await this.appContextManager.generateContextMessage(executionContext);
+      if (appContextMessage) {
+        messages.push({ role: 'user', content: appContextMessage });
+      }
     }
 
     // Add AI edit context as a separate user message if available
@@ -87,10 +101,12 @@ export class ConversationContextManager {
     }
 
     // Debug logging
-    console.log(`ConversationContextManager: Built ${validatedMessages.length} messages for conversation ${conversationId || 'new'}${aiEditContext ? ' (with AI edit context)' : ''}`);
+    const hasAppContext = executionContext && validatedMessages.some(msg => msg.content?.startsWith('[Current Project Structure]'));
+    console.log(`ConversationContextManager: Built ${validatedMessages.length} messages for conversation ${conversationId || 'new'}${hasAppContext ? ' (with app context)' : ''}${aiEditContext ? ' (with AI edit context)' : ''}`);
     validatedMessages.forEach((msg, idx) => {
-      const isContextMessage = msg.content?.startsWith('[AI Edit Context');
-      const prefix = isContextMessage ? '[CONTEXT] ' : '';
+      const isAiEditContext = msg.content?.startsWith('[AI Edit Context');
+      const isAppContext = msg.content?.startsWith('[Current Project Structure]');
+      const prefix = isAiEditContext ? '[AI_EDIT_CONTEXT] ' : (isAppContext ? '[APP_CONTEXT] ' : '');
       console.log(`  Message ${idx}: ${msg.role} - ${prefix}${msg.content?.substring(0, 100)}${msg.content?.length > 100 ? '...' : ''}`);
     });
 

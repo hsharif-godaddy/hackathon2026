@@ -10,6 +10,8 @@ export interface AgentToolConfig {
   description?: string;
   /** Whether this tool is required for the agent to function */
   required?: boolean;
+  /** Tool-specific configuration options */
+  config?: Record<string, unknown>;
 }
 
 /**

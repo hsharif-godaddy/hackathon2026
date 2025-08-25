@@ -23,8 +23,11 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
 
   // Track content changes to reset thinking indicator timer
   useEffect(() => {
-    // Don't show thinking indicator if message is complete or in initial thinking state
-    if (isComplete || message.isThinking) {
+    // Don't show thinking indicator if message is complete, in initial thinking state, or is an old message
+    // Old messages can be identified by having content/segments but no recent timestamp activity
+    const isOldMessage = (hasSegments || hasLegacyContent) && !message.isThinking && message.timestamp && (Date.now() - new Date(message.timestamp).getTime()) > 30000 // 30 seconds
+    
+    if (isComplete || message.isThinking || isOldMessage) {
       setShowThinkingIndicator(false)
       if (thinkingTimeoutRef.current) {
         clearTimeout(thinkingTimeoutRef.current)

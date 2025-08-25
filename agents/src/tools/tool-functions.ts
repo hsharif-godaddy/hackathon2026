@@ -9,7 +9,8 @@ import { generateImage } from './image-generation-tool.js';
 import { findGettyImage } from './getty-image-tool.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js';
-import type { AgentExecutionContext } from '../base/index.js';
+import { AgentRegistry } from '../registry/index.js';
+import type { AgentExecutionContext, AgentToolConfig } from '../base/index.js';
 
 const directoryTool = new DirectoryListingTool();
 const terminalTool = new TerminalTool();
@@ -19,6 +20,7 @@ const readFileTool = new ReadFileTool();
 const grepTool = new GrepTool();
 const appRepo = new AppRepository();
 const tokenUsageRepo = new TokenUsageRepository();
+const agentRegistry = AgentRegistry.getInstance();
 
 /**
  * OpenAI Function definitions for our tools
@@ -478,10 +480,7 @@ export async function executeToolFunction(
     case 'image_search':
       return await executeImageSearch(args as {prompt: string}, context);
     
-    case 'getty_image':
-      return await executeGettyImage(args as {phrase: string, page?: number, pageSize?: number, graphicalStyles?: string, sortOrder?: string}, context);
-    
-    case 'image_generate':
+   case 'image_generate':
       return await executeImageGenerate(args as {prompt: string, size?: string, style?: string, saveToFile?: boolean}, context);
         
     case 'directory_listing':
@@ -527,8 +526,33 @@ async function executeDirectoryListing(
     throw new Error(`App '${appId}' not found`);
   }
 
-  // Use the app's path as the root for directory listing
-  const result = await directoryTool.listDirectory(app.path, options);
+  // Get agent-specific configuration for directory_listing tool
+  const agentId = context.metadata?.agentId as string;
+  let agentSpecificOptions = { ...options };
+  
+  if (agentId) {
+    const agentConfig = agentRegistry.getAgentConfig(agentId);
+    if (agentConfig) {
+      const directoryListingTool = agentConfig.tools.find((tool: AgentToolConfig) => tool.name === 'directory_listing');
+      if (directoryListingTool?.config) {
+        const toolConfig = directoryListingTool.config as {
+          additionalIgnorePatterns?: string[];
+          [key: string]: unknown;
+        };
+        
+        // Merge additional ignore patterns from agent configuration
+        if (toolConfig.additionalIgnorePatterns) {
+          agentSpecificOptions.ignorePatterns = [
+            ...(options.ignorePatterns || []),
+            ...toolConfig.additionalIgnorePatterns
+          ];
+        }
+      }
+    }
+  }
+
+  // Use the app's path as the root for directory listing with agent-specific options
+  const result = await directoryTool.listDirectory(app.path, agentSpecificOptions);
   
   // Return formatted tree view
   return directoryTool.formatAsTree(result);
@@ -554,8 +578,17 @@ async function executeTerminalCommand(
     throw new Error(`App '${appId}' not found`);
   }
 
+  // Add npm-to-pnpm command overrides for the develop agent
+  const enhancedOptions = {
+    ...options,
+    commandOverrides: [
+      ...(options.commandOverrides || []),
+      ...TerminalTool.createNpmToPnpmOverrides()
+    ]
+  };
+
   // Execute the command within the app's directory
-  const result = await terminalTool.executeCommand(app.path, options);
+  const result = await terminalTool.executeCommand(app.path, enhancedOptions);
   
   // Return formatted result
   return terminalTool.formatResult(result);

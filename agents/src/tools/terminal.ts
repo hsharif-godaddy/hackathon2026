@@ -2,6 +2,15 @@ import { spawn } from 'child_process';
 import { join, resolve, relative } from 'path';
 import { existsSync } from 'fs';
 
+export interface CommandOverride {
+  /** Pattern to match against (can be string or regex) */
+  pattern: string | RegExp;
+  /** Replacement command template (use $1, $2, etc. for regex groups) */
+  replacement: string;
+  /** Whether to match only at the start of the command */
+  startOnly?: boolean;
+}
+
 export interface TerminalCommandOptions {
   /** The shell command to execute */
   command: string;
@@ -11,10 +20,14 @@ export interface TerminalCommandOptions {
   timeout?: number;
   /** Environment variables to set */
   env?: Record<string, string>;
+  /** Command overrides to apply before execution */
+  commandOverrides?: CommandOverride[];
 }
 
 export interface TerminalCommandResult {
-  /** The command that was executed */
+  /** The original command that was requested */
+  originalCommand?: string;
+  /** The command that was executed (after overrides) */
   command: string;
   /** The working directory where it was executed */
   workingDir: string;
@@ -111,6 +124,58 @@ export class TerminalTool {
   ];
 
   /**
+   * Create default npm-to-pnpm command overrides
+   */
+  static createNpmToPnpmOverrides(): CommandOverride[] {
+    return [
+      {
+        pattern: /^npm\s+/,
+        replacement: 'pnpm ',
+        startOnly: true,
+      },
+      {
+        pattern: /^npx\s+/,
+        replacement: 'pnpm dlx ',
+        startOnly: true,
+      },
+    ];
+  }
+
+  /**
+   * Apply command overrides to transform the command
+   */
+  private applyCommandOverrides(command: string, overrides: CommandOverride[] = []): string {
+    let transformedCommand = command;
+
+    for (const override of overrides) {
+      const { pattern, replacement, startOnly = false } = override;
+
+      if (typeof pattern === 'string') {
+        // Simple string replacement
+        if (startOnly) {
+          if (transformedCommand.startsWith(pattern)) {
+            transformedCommand = replacement + transformedCommand.slice(pattern.length);
+          }
+        } else {
+          transformedCommand = transformedCommand.replace(new RegExp(pattern, 'g'), replacement);
+        }
+      } else {
+        // Regex pattern replacement
+        if (startOnly) {
+          const match = transformedCommand.match(new RegExp(`^${pattern.source}`, pattern.flags));
+          if (match) {
+            transformedCommand = transformedCommand.replace(new RegExp(`^${pattern.source}`, pattern.flags), replacement);
+          }
+        } else {
+          transformedCommand = transformedCommand.replace(pattern, replacement);
+        }
+      }
+    }
+
+    return transformedCommand;
+  }
+
+  /**
    * Execute a shell command in the specified directory
    */
   async executeCommand(
@@ -119,16 +184,20 @@ export class TerminalTool {
   ): Promise<TerminalCommandResult> {
     const startTime = Date.now();
     const {
-      command,
+      command: originalCommand,
       workingDir = '',
       timeout = this.DEFAULT_TIMEOUT,
       env = {},
+      commandOverrides = [],
     } = options;
+
+    // Apply command overrides
+    const command = this.applyCommandOverrides(originalCommand, commandOverrides);
 
     // Check if this is a noop command (like npm run dev)
     if (this.isNoopCommand(command)) {
       const executionTime = Date.now() - startTime;
-      return {
+      const result: TerminalCommandResult = {
         command,
         workingDir: workingDir || '.',
         exitCode: 0,
@@ -138,6 +207,12 @@ export class TerminalTool {
         executionTime,
         timedOut: false,
       };
+      
+      if (originalCommand !== command) {
+        result.originalCommand = originalCommand;
+      }
+      
+      return result;
     }
 
     // Validate command safety
@@ -164,6 +239,10 @@ export class TerminalTool {
       executionTime: 0,
       timedOut: false,
     };
+    
+    if (originalCommand !== command) {
+      result.originalCommand = originalCommand;
+    }
 
     try {
       const actualTimeout = Math.min(timeout, this.MAX_TIMEOUT);
@@ -238,10 +317,13 @@ export class TerminalTool {
       'npm start',
       'yarn dev',
       'yarn start',
+      'yarn run dev',
       'pnpm dev',
       'pnpm start',
+      'pnpm run dev',
       'bun dev',
-      'bun start'
+      'bun start',
+      'bun run dev'
     ];
 
     return noopCommands.some(noop => trimmedCommand === noop || trimmedCommand.startsWith(noop + ' '));
@@ -354,7 +436,13 @@ export class TerminalTool {
   formatResult(result: TerminalCommandResult): string {
     const lines: string[] = [];
     
-    lines.push(`💻 Command: \`${result.command}\``);
+    if (result.originalCommand) {
+      lines.push(`📝 Original Command: \`${result.originalCommand}\``);
+      lines.push(`🔄 Transformed to: \`${result.command}\``);
+    } else {
+      lines.push(`💻 Command: \`${result.command}\``);
+    }
+    
     lines.push(`📁 Working Directory: ${result.workingDir || '.'}`);
     lines.push(`⏱️  Execution Time: ${result.executionTime}ms`);
     lines.push(`🔢 Exit Code: ${result.exitCode} ${result.success ? '✅' : '❌'}`);

@@ -12,7 +12,13 @@ export class DevelopAgent extends BaseAgent {
       description: 'An AI developer agent that helps build web applications, websites, and digital solutions',
       model: 'claude-sonnet-4-20250514',
       tools: [
-        { name: 'directory_listing', description: 'List directory contents as a tree structure with filtering options' },
+        { 
+          name: 'directory_listing', 
+          description: 'List directory contents as a tree structure with filtering options',
+          config: {
+            additionalIgnorePatterns: ['dev-tools', 'source-mapper']
+          }
+        },
         { name: 'terminal_command', description: 'Execute shell commands within the app directory for development tasks' },
         { name: 'file_edit', description: 'Edit, create, or rewrite files with intelligent mode detection and safety features' },
         { name: 'git_operation', description: 'Perform git operations like status, add, commit, diff, log, and branch management' },

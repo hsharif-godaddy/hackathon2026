@@ -529,5 +529,213 @@ describe('TerminalTool', () => {
       
       expect(formatted).toContain('⏰ Command timed out');
     });
+
+    it('should format result with command transformation', () => {
+      const result = {
+        originalCommand: 'npm install',
+        command: 'pnpm install',
+        workingDir: '.',
+        exitCode: 0,
+        stdout: 'installation complete',
+        stderr: '',
+        success: true,
+        executionTime: 2000,
+        timedOut: false
+      };
+
+      const formatted = terminalTool.formatResult(result);
+      
+      expect(formatted).toContain('📝 Original Command: `npm install`');
+      expect(formatted).toContain('🔄 Transformed to: `pnpm install`');
+      expect(formatted).toContain('📤 **Standard Output:**');
+      expect(formatted).toContain('installation complete');
+    });
+  });
+
+  describe('Command Overrides', () => {
+    describe('createNpmToPnpmOverrides', () => {
+      it('should create npm to pnpm overrides', () => {
+        const overrides = TerminalTool.createNpmToPnpmOverrides();
+        
+        expect(overrides).toHaveLength(2);
+        expect(overrides[0].pattern).toEqual(/^npm\s+/);
+        expect(overrides[0].replacement).toBe('pnpm ');
+        expect(overrides[0].startOnly).toBe(true);
+        expect(overrides[1].pattern).toEqual(/^npx\s+/);
+        expect(overrides[1].replacement).toBe('pnpm dlx ');
+        expect(overrides[1].startOnly).toBe(true);
+      });
+    });
+
+    describe('applyCommandOverrides', () => {
+      it('should apply npm to pnpm transformation', () => {
+        const overrides = TerminalTool.createNpmToPnpmOverrides();
+        const result = (terminalTool as any).applyCommandOverrides('npm install typescript', overrides);
+        
+        expect(result).toBe('pnpm install typescript');
+      });
+
+      it('should apply npx to pnpm dlx transformation', () => {
+        const overrides = TerminalTool.createNpmToPnpmOverrides();
+        const result = (terminalTool as any).applyCommandOverrides('npx create-react-app my-app', overrides);
+        
+        expect(result).toBe('pnpm dlx create-react-app my-app');
+      });
+
+      it('should not transform commands that do not match', () => {
+        const overrides = TerminalTool.createNpmToPnpmOverrides();
+        const commands = [
+          'yarn install',
+          'pnpm install',
+          'bun install',
+          'echo npm install',
+          'git add npm-package.json'
+        ];
+
+        commands.forEach(command => {
+          const result = (terminalTool as any).applyCommandOverrides(command, overrides);
+          expect(result).toBe(command);
+        });
+      });
+
+      it('should handle string patterns with startOnly option', () => {
+        const overrides = [{
+          pattern: 'npm ',
+          replacement: 'pnpm ',
+          startOnly: true
+        }];
+        
+        const result1 = (terminalTool as any).applyCommandOverrides('npm install', overrides);
+        const result2 = (terminalTool as any).applyCommandOverrides('run npm install', overrides);
+        
+        expect(result1).toBe('pnpm install');
+        expect(result2).toBe('run npm install'); // Should not change
+      });
+
+      it('should handle string patterns without startOnly option', () => {
+        const overrides = [{
+          pattern: 'npm',
+          replacement: 'pnpm',
+          startOnly: false
+        }];
+        
+        const result = (terminalTool as any).applyCommandOverrides('echo npm and more npm commands', overrides);
+        
+        expect(result).toBe('echo pnpm and more pnpm commands');
+      });
+
+      it('should handle regex patterns with capturing groups', () => {
+        const overrides = [{
+          pattern: /^(\w+)\s+install\s+(.+)$/,
+          replacement: 'pnpm install $2',
+          startOnly: false
+        }];
+        
+        const result = (terminalTool as any).applyCommandOverrides('npm install @types/node', overrides);
+        
+        expect(result).toBe('pnpm install @types/node');
+      });
+
+      it('should apply multiple overrides in sequence', () => {
+        const overrides = [
+          {
+            pattern: /^npm\s+/,
+            replacement: 'pnpm ',
+            startOnly: true
+          },
+          {
+            pattern: 'install',
+            replacement: 'add',
+            startOnly: false
+          }
+        ];
+        
+        const result = (terminalTool as any).applyCommandOverrides('npm install typescript', overrides);
+        
+        expect(result).toBe('pnpm add typescript');
+      });
+
+      it('should handle empty overrides array', () => {
+        const result = (terminalTool as any).applyCommandOverrides('npm install', []);
+        
+        expect(result).toBe('npm install');
+      });
+    });
+
+    describe('executeCommand with overrides', () => {
+      it('should execute transformed command and track original', async () => {
+        const mockChild = {
+          stdout: { 
+            on: vi.fn((event, callback) => {
+              if (event === 'data') {
+                setTimeout(() => callback(Buffer.from('pnpm installation complete\n')), 10);
+              }
+            })
+          },
+          stderr: { on: vi.fn() },
+          on: vi.fn((event, callback) => {
+            if (event === 'close') {
+              setTimeout(() => callback(0), 20);
+            }
+          }),
+          kill: vi.fn()
+        };
+        mockSpawn.mockReturnValue(mockChild);
+
+        const overrides = TerminalTool.createNpmToPnpmOverrides();
+        const result = await terminalTool.executeCommand('/test/app', { 
+          command: 'npm install typescript',
+          commandOverrides: overrides
+        });
+
+        expect(result.originalCommand).toBe('npm install typescript');
+        expect(result.command).toBe('pnpm install typescript');
+        expect(result.success).toBe(true);
+        expect(result.stdout).toBe('pnpm installation complete');
+      });
+
+      it('should not set originalCommand when no transformation occurs', async () => {
+        const mockChild = {
+          stdout: { 
+            on: vi.fn((event, callback) => {
+              if (event === 'data') {
+                setTimeout(() => callback(Buffer.from('yarn installation complete\n')), 10);
+              }
+            })
+          },
+          stderr: { on: vi.fn() },
+          on: vi.fn((event, callback) => {
+            if (event === 'close') {
+              setTimeout(() => callback(0), 20);
+            }
+          }),
+          kill: vi.fn()
+        };
+        mockSpawn.mockReturnValue(mockChild);
+
+        const overrides = TerminalTool.createNpmToPnpmOverrides();
+        const result = await terminalTool.executeCommand('/test/app', { 
+          command: 'yarn install typescript',
+          commandOverrides: overrides
+        });
+
+        expect(result.originalCommand).toBeUndefined();
+        expect(result.command).toBe('yarn install typescript');
+        expect(result.success).toBe(true);
+      });
+
+      it('should handle noop commands with overrides', async () => {
+        const overrides = TerminalTool.createNpmToPnpmOverrides();
+        const result = await terminalTool.executeCommand('/test/app', { 
+          command: 'npm run dev',
+          commandOverrides: overrides
+        });
+
+        expect(result.originalCommand).toBe('npm run dev');
+        expect(result.command).toBe('pnpm run dev');
+        expect(result.success).toBe(true);
+        expect(result.stdout).toContain('Development server is already running');
+      });
+    });
   });
 });
