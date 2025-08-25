@@ -9,8 +9,13 @@ export default function DevelopmentMode() {
     selectedElement, 
     showEditor, 
     editorPosition,
+    isInlineEditing,
     clearSelection,
-    toggleSelectMode 
+    toggleSelectMode,
+    isTextEditable,
+    startInlineEditing,
+    stopInlineEditing,
+    cancelInlineEditing
   } = useDevelopmentMode()
 
   // State to control indicator visibility on hover
@@ -68,7 +73,7 @@ export default function DevelopmentMode() {
       )}
 
       {/* Development Mode Indicator */}
-      {isSelectMode && (
+      {(isSelectMode || isInlineEditing) && (
         <div 
           data-dev-tools="indicator"
           onMouseEnter={() => setIsIndicatorHovered(true)}
@@ -78,7 +83,9 @@ export default function DevelopmentMode() {
             top: '20px',
             left: '50%',
             transform: 'translateX(-50%)',
-            background: 'rgba(102, 126, 234, 0.95)',
+            background: isInlineEditing 
+              ? 'rgba(5, 150, 105, 0.95)' 
+              : 'rgba(102, 126, 234, 0.95)',
             backdropFilter: 'blur(10px)',
             color: 'white',
             padding: '12px 20px',
@@ -96,7 +103,11 @@ export default function DevelopmentMode() {
           }}
           title="Hover to temporarily hide this indicator"
         >
-          🎯 Click any element to edit its styles
+          {isInlineEditing ? (
+            <>✏️ Editing text - Press Enter to save, Escape to cancel</>
+          ) : (
+            <>🎯 Click any element to edit its styles</>
+          )}
         </div>
       )}
 
@@ -106,6 +117,11 @@ export default function DevelopmentMode() {
         onClose={clearSelection}
         position={editorPosition}
         selectedElement={selectedElement}
+        isInlineEditing={isInlineEditing}
+        isTextEditable={isTextEditable}
+        startInlineEditing={startInlineEditing}
+        stopInlineEditing={stopInlineEditing}
+        cancelInlineEditing={cancelInlineEditing}
       />
     </>
   )

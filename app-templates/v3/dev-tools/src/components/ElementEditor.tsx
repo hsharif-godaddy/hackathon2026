@@ -34,6 +34,11 @@ interface ElementEditorProps {
   onClose: () => void
   position: { top: number; left: number } | null
   selectedElement: SelectedElement | null
+  isInlineEditing: boolean
+  isTextEditable: (element: HTMLElement) => boolean
+  startInlineEditing: () => void
+  stopInlineEditing: () => void
+  cancelInlineEditing: () => void
   _onStyleApply?: (styles: Record<string, string>) => void
 }
 
@@ -41,7 +46,12 @@ export default function ElementEditor({
   isOpen, 
   onClose, 
   position, 
-  selectedElement
+  selectedElement,
+  isInlineEditing,
+  isTextEditable,
+  startInlineEditing,
+  stopInlineEditing: _stopInlineEditing,
+  cancelInlineEditing: _cancelInlineEditing
 }: ElementEditorProps) {
   const [showFontSizeDropdown, setShowFontSizeDropdown] = useState(false)
   const [showColorDropdown, setShowColorDropdown] = useState(false)
@@ -411,7 +421,7 @@ export default function ElementEditor({
     }
   }, [isOpen, updatePositioning])
 
-  if (!isOpen || !position || !adjustedPosition) return null
+  if (!isOpen || !position || !adjustedPosition || isInlineEditing) return null
 
   const fontSizes = [
     { value: 'text-xs', label: '12px' },
@@ -942,6 +952,39 @@ export default function ElementEditor({
             </div>
           )}
         </div>
+
+        {/* Edit Text Button - Show only for text-editable elements */}
+        {selectedElement && (() => {
+          const element = findElement(selectedElement)
+          return element && isTextEditable(element) && (
+            <button
+              onClick={startInlineEditing}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: '500',
+                color: '#059669',
+                backgroundColor: '#ecfdf5',
+                border: '1px solid #a7f3d0',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#d1fae5'
+                e.currentTarget.style.borderColor = '#6ee7b7'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#ecfdf5'
+                e.currentTarget.style.borderColor = '#a7f3d0'
+              }}
+            >
+              ✏️ Edit Text
+            </button>
+          )
+        })()}
 
         {/* Edit with AI Button */}
         <button

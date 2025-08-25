@@ -343,6 +343,54 @@ function DevelopPageContent() {
     }
   }, [appId, selectedElement])
 
+  const sendTextUpdate = useCallback(async (textData: {selector: string; oldText: string; newText: string; devContext: any}) => {
+    if (!appId) return
+
+    console.log('📤 Sending text update to API:', {
+      selector: textData.selector,
+      oldText: textData.oldText?.substring(0, 50) + (textData.oldText?.length > 50 ? '...' : ''),
+      newText: textData.newText?.substring(0, 50) + (textData.newText?.length > 50 ? '...' : ''),
+      devContext: textData.devContext,
+      hasDevContext: !!textData.devContext,
+      hasFileName: !!(textData.devContext && textData.devContext.fileName),
+      hasComponentName: !!(textData.devContext && textData.devContext.componentName)
+    })
+
+    try {
+      const response = await appFetch(`http://localhost:4000/apps/${appId}/text/edit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          selector: textData.selector,
+          oldText: textData.oldText,
+          newText: textData.newText,
+          devContext: textData.devContext
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log('✅ Text update sent to API successfully:', result)
+      } else {
+        const errorData = await response.json()
+        console.error('❌ Failed to send text update to API:', {
+          status: response.status,
+          error: errorData,
+          sentData: {
+            selector: textData.selector,
+            oldText: textData.oldText,
+            newText: textData.newText,
+            devContext: textData.devContext
+          }
+        })
+      }
+    } catch (error) {
+      console.error('❌ Error sending text update to API:', error)
+    }
+  }, [appId])
+
   const handleStyleUpdate = useCallback(async (styleData: {selector: string; property: string; value: string; newClassName: string; newStyle?: string}) => {
     if (!appId) return
 
@@ -388,6 +436,10 @@ function DevelopPageContent() {
           console.log('Style updated in iframe:', event.data.data)
           handleStyleUpdate(event.data.data)
           break
+        case 'TEXT_UPDATED':
+          console.log('Text updated in iframe:', event.data.data)
+          sendTextUpdate(event.data.data)
+          break
         case 'EDIT_WITH_AI':
           setAiEditContext(event.data.data)
           console.log('AI edit requested for element:', event.data.data)
@@ -397,7 +449,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate])
+  }, [handleStyleUpdate, sendTextUpdate])
 
   // Warn user before leaving page with unsaved changes
   useEffect(() => {

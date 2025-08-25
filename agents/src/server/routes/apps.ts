@@ -5,6 +5,7 @@ import { DirectoryListingTool } from '../../tools/directory-listing.js';
 import { ReadFileTool } from '../../tools/read-file.js';
 import { FileEditTool } from '../../tools/file-edit.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
+import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { TokenUsageRepository } from '../../database/index.js';
 
 const router: IRouter = Router();
@@ -13,6 +14,7 @@ const directoryTool = new DirectoryListingTool();
 const readFileTool = new ReadFileTool();
 const fileEditTool = new FileEditTool();
 const astStyleEditor = new ASTStyleEditor();
+const astTextEditor = new ASTTextEditor();
 const tokenUsageRepo = new TokenUsageRepository();
 
 /**
@@ -559,6 +561,98 @@ router.post('/:id/files/edit', async (req: Request, res: Response) => {
     return res.json(result);
   } catch (error) {
     console.error('Error editing file:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/:id/text/edit - Edit text content in app files
+ */
+router.post('/:id/text/edit', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { selector, oldText, newText, devContext } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    if (!selector || !oldText || !newText || !devContext) {
+      console.log('❌ Text edit validation failed:', {
+        hasSelector: !!selector,
+        hasOldText: !!oldText,
+        hasNewText: !!newText,
+        hasDevContext: !!devContext,
+        selector: selector,
+        oldText: oldText?.substring(0, 100),
+        newText: newText?.substring(0, 100),
+        devContext: devContext
+      });
+      return res.status(400).json({ error: 'Selector, oldText, newText, and devContext are required' });
+    }
+
+    // Validate devContext - required for AST-based editing
+    if (!devContext || !devContext.fileName || !devContext.componentName || !devContext.lineNumber) {
+      console.log('❌ DevContext validation failed:', {
+        hasDevContext: !!devContext,
+        hasFileName: !!(devContext && devContext.fileName),
+        hasComponentName: !!(devContext && devContext.componentName),
+        hasLineNumber: !!(devContext && devContext.lineNumber),
+        devContext
+      });
+      return res.status(400).json({
+        error: 'Invalid development context',
+        details: 'AST-based text editing requires complete devContext with fileName, componentName, and lineNumber'
+      });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    // Debug logging
+    console.log('Text edit request received:', {
+      id,
+      selector,
+      oldText: oldText.substring(0, 50) + (oldText.length > 50 ? '...' : ''),
+      newText: newText.substring(0, 50) + (newText.length > 50 ? '...' : ''),
+      devContext
+    });
+
+    console.log(`Text edit: ${id} | ${devContext.fileName}:${devContext.lineNumber} | "${oldText}" → "${newText}"`);
+
+    // Use AST text editor to make precise text changes
+    const editResult = await astTextEditor.editElementText(app.path, {
+      selector,
+      oldText,
+      newText,
+      devContext
+    });
+
+    if (!editResult.success) {
+      console.log('❌ AST text edit failed:', editResult.error);
+      return res.status(400).json({
+        error: 'Failed to edit text',
+        details: editResult.error
+      });
+    }
+
+    console.log('✅ AST text edit completed successfully');
+
+    return res.json({
+      success: true,
+      message: 'Text updated successfully using AST',
+      data: {
+        selector,
+        oldText: editResult.oldText,
+        newText: editResult.newText,
+        filePath: editResult.filePath,
+        diff: editResult.diff
+      }
+    });
+  } catch (error) {
+    console.error('Error editing text:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

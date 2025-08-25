@@ -4,6 +4,7 @@ export { FileEditTool } from './file-edit.js';
 export { GitTool } from './git-tool.js';
 export { ReadFileTool } from './read-file.js';
 export { GrepTool } from './grep-tool.js';
+export { ASTTextEditor } from './ast-text-editor.js';
 export { getToolDefinitions, executeToolFunction, TOOL_FUNCTIONS } from './tool-functions.js';
 export type { 
   DirectoryListingOptions, 
@@ -31,3 +32,8 @@ export type {
   GrepResult,
   Match
 } from './grep-tool.js';
+export type {
+  TextEditContext,
+  TextEditRequest,
+  TextEditResult
+} from './ast-text-editor.js';
