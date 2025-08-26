@@ -1,23 +1,8 @@
-import { readFile, writeFile } from 'fs/promises';
-import { resolve } from 'path';
-import { parse } from '@babel/parser';
-import _traverse from '@babel/traverse';
-import _generate from '@babel/generator';
 import * as t from '@babel/types';
-
-// @ts-ignore - Handle ES module default exports
-const traverse = _traverse.default || _traverse;
-// @ts-ignore - Handle ES module default exports  
-const generate = _generate.default || _generate;
-import { GitTool } from './git-tool.js';
 import { relative } from 'path';
-import { translateDockerPath } from '../utils/path-helper.js';
+import { ASTEditorBase, BaseEditContext, BaseEditResult } from './ast-editor-base.js';
 
-export interface StyleEditContext {
-  fileName: string;
-  componentName: string;
-  lineNumber: number;
-}
+export interface StyleEditContext extends BaseEditContext {}
 
 export interface ElementInfo {
   tagName: string;
@@ -45,39 +30,23 @@ export interface StyleEditRequest {
   elementInfo: ElementInfo;
 }
 
-export interface StyleEditResult {
-  success: boolean;
-  filePath: string;
+export interface StyleEditResult extends BaseEditResult {
   changes: {
     oldClassName: string;
     newClassName: string;
     property: string;
     value: string;
   };
-  diff?: string;
-  error?: string;
   commitHash?: string | undefined;
 }
 
-export class ASTStyleEditor {
-  private gitTool = new GitTool();
-
-  /**
-   * Parse a CSS selector into tagName and className
-   */
-  private parseCSSSelector(selector: string): { tagName: string; className: string } {
-    // Handle selectors like "p.text-xl.text-muted-foreground.max-w-2xl.mx-auto"
-    const match = selector.match(/^([a-zA-Z][a-zA-Z0-9]*)?\.?(.*)$/);
-    if (!match) {
-      return { tagName: 'div', className: '' };
-    }
-    
-    const [, tagPart, classPart] = match;
-    const tagName = tagPart || 'div';
-    const className = classPart ? classPart.replace(/\./g, ' ').trim() : '';
-    
-    return { tagName, className };
-  }
+export class ASTStyleEditor extends ASTEditorBase {
+  private lastProcessResult: { 
+    oldClassName: string; 
+    newClassName: string; 
+    property: string; 
+    value: string; 
+  } | null = null;
 
   /**
    * Edit element styles using AST parsing and manipulation
@@ -86,248 +55,58 @@ export class ASTStyleEditor {
     appPath: string,
     request: StyleEditRequest
   ): Promise<StyleEditResult> {
-    try {
-      const { elementInfo, selector } = request;
-      
-      // Parse the CSS selector to get tagName and className if not provided
-      const parsedSelector = this.parseCSSSelector(selector);
-      
-      // Enhance elementInfo with parsed selector data if missing
-      const enhancedElementInfo = {
-        ...elementInfo,
-        tagName: elementInfo.tagName || parsedSelector.tagName,
-        className: elementInfo.className || parsedSelector.className
-      };
-      
-      const filePath = this.resolveFilePath(appPath, enhancedElementInfo.devContext.fileName);
-      
-      // Read the source file
-      const sourceCode = await readFile(filePath, 'utf-8');
-      
-      // Parse the AST
-      const ast = parse(sourceCode, {
-        sourceType: 'module',
-        plugins: ['jsx', 'typescript', 'decorators-legacy']
-      });
+    const baseResult = await this.editTemplate<StyleEditRequest, StyleEditResult>(
+      appPath,
+      request,
+      (req) => req.elementInfo.devContext.fileName,
+      true // Commit style changes
+    );
 
-      // Find and update the element
-      let elementFound = false;
-      let oldClassName = '';
-      let newClassName = '';
-      let dynamicClassNameError: string | null = null;
-      
-      console.log(`🔍 Starting AST traversal looking for ${enhancedElementInfo.tagName} at line ${enhancedElementInfo.devContext.lineNumber}`);
-      traverse(ast, {
-        JSXElement: (path: any): void => {
-          const element = path.node;
-          const elementLine = element.loc?.start.line;
-          const openingElement = element.openingElement;
-          
-          // Log every JSX element we encounter
-          if (t.isJSXIdentifier(openingElement.name)) {
-            const tagName = openingElement.name.name;
-            console.log(`  - Found JSX element: ${tagName} at line ${elementLine}`);
-          }
-          
-          // Check if this is the target element
-          if (this.isTargetElement(element, enhancedElementInfo)) {
-            elementFound = true;
-            
-            // Get the opening element
-            const openingElement = element.openingElement;
-            
-            // Find or create className attribute
-            let classNameAttr = openingElement.attributes.find(
-              (attr: any) => t.isJSXAttribute(attr) && attr.name.name === 'className'
-            ) as t.JSXAttribute | undefined;
-            
-            if (!classNameAttr) {
-              // Create new className attribute
-              classNameAttr = t.jsxAttribute(
-                t.jsxIdentifier('className'),
-                t.stringLiteral('')
-              );
-              openingElement.attributes.push(classNameAttr);
-            }
-            
-            // Get current className value and ensure it's editable
-            if (t.isStringLiteral(classNameAttr.value)) {
-              oldClassName = classNameAttr.value.value;
-            } else if (t.isJSXExpressionContainer(classNameAttr.value) && 
-                      t.isStringLiteral(classNameAttr.value.expression)) {
-              oldClassName = classNameAttr.value.expression.value;
-            } else if (t.isJSXExpressionContainer(classNameAttr.value)) {
-              // Cannot edit dynamic classNames (template literals, expressions, etc.)
-              dynamicClassNameError = `Cannot edit dynamic className at line ${elementInfo.devContext.lineNumber}. Only static className strings are supported.`;
-              path.stop();
-              return;
-            }
-            
-            // Apply the style change
-            newClassName = this.applyStyleChange(
-              oldClassName,
-              request.property,
-              request.value,
-              request.newStyle
-            );
-            
-            // Update the className attribute (always as string literal)
-            classNameAttr.value = t.stringLiteral(newClassName);
-            
-            // Apply inline styles for properties that use them
-            this.applyInlineStyle(openingElement, request.property, request.value, request.newStyle);
-            
-            // Stop traversing once we find the element
-            path.stop();
-          }
-        }
-      });
-
-      if (dynamicClassNameError) {
-        return {
-          success: false,
-          filePath,
-          changes: {
+    // Add style-specific data to the result using stored changes
+    const changes = this.lastProcessResult || {
             oldClassName: '',
             newClassName: '',
             property: request.property,
             value: request.value
-          },
-          error: dynamicClassNameError
-        };
-      }
+    };
 
-      if (!elementFound) {
         return {
-          success: false,
-          filePath,
-          changes: {
-            oldClassName: '',
-            newClassName: '',
-            property: request.property,
-            value: request.value
-          },
-          error: `Element not found at line ${enhancedElementInfo.devContext.lineNumber} in ${enhancedElementInfo.devContext.fileName}`
-        };
-      }
-
-      // Generate the updated code
-      const result = generate(ast, {
-        retainLines: true,
-        compact: false
-      });
-
-      // Check if the file content actually changed
-      const originalContent = await readFile(filePath, 'utf8');
-      const hasChanges = originalContent !== result.code;
-      
-      if (!hasChanges) {
-        console.log(`⚠️ No file changes detected - skipping commit`);
-        return {
-          success: true,
-          filePath,
-          changes: {
-            oldClassName,
-            newClassName,
-            property: request.property,
-            value: request.value
-          },
-          diff: 'No changes made'
-        };
-      }
-
-      // Write the updated file
-      await writeFile(filePath, result.code, 'utf-8');
-
-      // Create git commit
-      const commitHash = await this.commitChanges(
-        appPath,
-        filePath,
-        request.property,
-        request.value,
-        enhancedElementInfo
-      );
-
-      // Summary log
-      const changes = [];
-      if (oldClassName !== newClassName) {
-        changes.push(`className: "${oldClassName}" → "${newClassName}"`);
-      }
-      if (request.newStyle) {
-        const styleCount = request.newStyle.split(';').filter(s => s.trim()).length;
-        changes.push(`${styleCount} inline style(s)`);
-      }
-      console.log(`✅ Style edit completed: ${changes.join(', ')} | ${commitHash ? 'committed' : 'no commit'}`);
-
-      return {
-        success: true,
-        filePath,
-        changes: {
-          oldClassName,
-          newClassName,
-          property: request.property,
-          value: request.value
-        },
-        diff: this.generateDiff(sourceCode, result.code),
-        commitHash
-      };
-
-    } catch (error) {
-      return {
-        success: false,
-        filePath: '',
-        changes: {
-          oldClassName: '',
-          newClassName: '',
-          property: request.property,
-          value: request.value
-        },
-        error: error instanceof Error ? error.message : String(error)
-      };
-    }
+      ...baseResult,
+      changes,
+      commitHash: (baseResult as any).commitHash
+    };
   }
 
   /**
    * Check if a JSX element matches the target element info
    */
-  private isTargetElement(element: t.JSXElement, elementInfo: ElementInfo): boolean {
-    const openingElement = element.openingElement;
-    
-    // Check tag name
-    let tagName = '';
-    if (t.isJSXIdentifier(openingElement.name)) {
-      tagName = openingElement.name.name.toLowerCase();
-      if (tagName !== elementInfo.tagName.toLowerCase()) {
-        return false;
-      }
-    } else {
+  protected isTargetElement(element: t.JSXElement, elementInfo: ElementInfo): boolean {
+    // Check tag name (using base class helper)
+    const tagName = this.getTagName(element);
+    if (!tagName || tagName.toLowerCase() !== elementInfo.tagName.toLowerCase()) {
       return false;
     }
     
-    // Check line number (approximate match within a few lines)
-    const elementLine = element.loc?.start.line;
-    if (elementLine && Math.abs(elementLine - elementInfo.devContext.lineNumber) > 3) {
+    // Check line number (using base class helper with tolerance of 3 lines)
+    if (!this.isOnTargetLine(element, elementInfo.devContext.lineNumber, 3)) {
       return false;
     }
     
-    console.log(`    ✅ Target element found: ${tagName} at line ${elementLine}`);
+    console.log(`    ✅ Target element found: ${tagName} at line ${element.loc?.start.line}`);
     
-    // Check className if present
-    const classNameAttr = openingElement.attributes.find(
-      attr => t.isJSXAttribute(attr) && attr.name.name === 'className'
-    ) as t.JSXAttribute | undefined;
-    
-    if (classNameAttr && elementInfo.className.trim()) {
-      let currentClassName = '';
+    // Check className if present (using base class helper)
+    if (elementInfo.className.trim()) {
+      const currentClassName = this.getClassName(element);
       
-      if (t.isStringLiteral(classNameAttr.value)) {
-        currentClassName = classNameAttr.value.value;
-      } else if (t.isJSXExpressionContainer(classNameAttr.value) && 
-                t.isStringLiteral(classNameAttr.value.expression)) {
-        currentClassName = classNameAttr.value.expression.value;
-      } else if (t.isJSXExpressionContainer(classNameAttr.value)) {
+      // Check for dynamic className (can't edit these)
+      const openingElement = element.openingElement;
+          const classNameAttr = openingElement.attributes.find(
+        (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'className'
+      ) as t.JSXAttribute | undefined;
+      
+      if (classNameAttr && this.t.isJSXExpressionContainer(classNameAttr.value) && 
+          !this.t.isStringLiteral(classNameAttr.value.expression)) {
         // This is a dynamic className (template literal, expression, etc.)
-        // We can't easily edit these, so return false unless it's a very specific match
         return false;
       }
       
@@ -338,20 +117,21 @@ export class ASTStyleEditor {
       // Calculate intersection
       const intersection = new Set([...currentClasses].filter(x => targetClasses.has(x)));
       
-      // Require at least 50% overlap or exact match
+      // Require at least some overlap
       if (intersection.size === 0 && currentClasses.size > 0 && targetClasses.size > 0) {
         return false;
       }
     }
     
     // Check data-id if present
+    const openingElement = element.openingElement;
     const dataIdAttr = openingElement.attributes.find(
-      attr => t.isJSXAttribute(attr) && attr.name.name === 'data-id'
+      (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'data-id'
     ) as t.JSXAttribute | undefined;
     
     if (dataIdAttr && elementInfo.dataId) {
       let currentDataId = '';
-      if (t.isStringLiteral(dataIdAttr.value)) {
+      if (this.t.isStringLiteral(dataIdAttr.value)) {
         currentDataId = dataIdAttr.value.value;
       }
       
@@ -379,21 +159,21 @@ export class ASTStyleEditor {
     
     // Find existing style attribute
     let styleAttr = openingElement.attributes.find(
-      (attr: any) => t.isJSXAttribute(attr) && attr.name.name === 'style'
+      (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'style'
     ) as t.JSXAttribute | undefined;
     
     // Parse existing styles or create new object
     let styleProperties: Record<string, string> = {};
     
-    if (styleAttr && t.isJSXExpressionContainer(styleAttr.value)) {
+    if (styleAttr && this.t.isJSXExpressionContainer(styleAttr.value)) {
       const expr = styleAttr.value.expression;
-      if (t.isObjectExpression(expr)) {
+      if (this.t.isObjectExpression(expr)) {
         // Parse existing style object
         expr.properties.forEach((prop: any) => {
-          if (t.isObjectProperty(prop) && 
-              (t.isStringLiteral(prop.key) || t.isIdentifier(prop.key)) &&
-              t.isStringLiteral(prop.value)) {
-            const key = t.isStringLiteral(prop.key) ? prop.key.value : prop.key.name;
+          if (this.t.isObjectProperty(prop) && 
+              (this.t.isStringLiteral(prop.key) || this.t.isIdentifier(prop.key)) &&
+              this.t.isStringLiteral(prop.value)) {
+            const key = this.t.isStringLiteral(prop.key) ? prop.key.value : prop.key.name;
             styleProperties[key] = prop.value.value;
           }
         });
@@ -424,19 +204,19 @@ export class ASTStyleEditor {
     
     // Create new style object expression
     const styleObjectProperties = Object.entries(styleProperties).map(([key, val]) =>
-      t.objectProperty(t.identifier(key), t.stringLiteral(val))
+      this.t.objectProperty(this.t.identifier(key), this.t.stringLiteral(val))
     );
     
-    const newStyleExpr = t.objectExpression(styleObjectProperties);
+    const newStyleExpr = this.t.objectExpression(styleObjectProperties);
     
     if (styleAttr) {
       // Update existing style attribute
-      styleAttr.value = t.jsxExpressionContainer(newStyleExpr);
+      styleAttr.value = this.t.jsxExpressionContainer(newStyleExpr);
     } else {
       // Create new style attribute
-      const newStyleAttr = t.jsxAttribute(
-        t.jsxIdentifier('style'),
-        t.jsxExpressionContainer(newStyleExpr)
+      const newStyleAttr = this.t.jsxAttribute(
+        this.t.jsxIdentifier('style'),
+        this.t.jsxExpressionContainer(newStyleExpr)
       );
       openingElement.attributes.push(newStyleAttr);
     }
@@ -562,95 +342,136 @@ export class ASTStyleEditor {
     }
   }
 
+
+
+
+
   /**
-   * Generate a simple diff between old and new content
+   * Process AST to make style changes (implementation of abstract method)
    */
-  private generateDiff(oldContent: string, newContent: string): string {
-    const oldLines = oldContent.split('\n');
-    const newLines = newContent.split('\n');
+  protected processAST(ast: t.File, request: StyleEditRequest): {
+    success: boolean;
+    changes?: { oldClassName: string; newClassName: string; property: string; value: string };
+    error?: string;
+  } {
+    const { elementInfo, selector } = request;
     
-    const diff: string[] = [];
-    const maxLines = Math.max(oldLines.length, newLines.length);
+    // Parse the CSS selector to get tagName and className if not provided
+    const parsedSelector = this.parseCSSSelector(selector);
     
-    for (let i = 0; i < maxLines; i++) {
-      const oldLine = oldLines[i] || '';
-      const newLine = newLines[i] || '';
-      
-      if (oldLine !== newLine) {
-        if (oldLine) {
-          diff.push(`- ${oldLine}`);
+    // Enhance elementInfo with parsed selector data if missing
+    const enhancedElementInfo = {
+      ...elementInfo,
+      tagName: elementInfo.tagName || parsedSelector.tagName,
+      className: elementInfo.className || parsedSelector.className
+    };
+    
+    // Find and update the element
+    let elementFound = false;
+    let oldClassName = '';
+    let newClassName = '';
+    let dynamicClassNameError: string | null = null;
+    
+    console.log(`🔍 Starting AST traversal looking for ${enhancedElementInfo.tagName} at line ${enhancedElementInfo.devContext.lineNumber}`);
+    this.traverse(ast, {
+      JSXElement: (path: any): void => {
+        const element = path.node;
+        const elementLine = element.loc?.start.line;
+        const tagName = this.getTagName(element);
+        
+        // Log every JSX element we encounter
+        if (tagName) {
+          console.log(`  - Found JSX element: ${tagName} at line ${elementLine}`);
         }
-        if (newLine) {
-          diff.push(`+ ${newLine}`);
+        
+        // Check if this is the target element
+        if (this.isTargetElement(element, enhancedElementInfo)) {
+          elementFound = true;
+          
+          // Get the opening element
+          const openingElement = element.openingElement;
+          
+          // Find or create className attribute
+          let classNameAttr = openingElement.attributes.find(
+            (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'className'
+          ) as t.JSXAttribute | undefined;
+          
+          if (!classNameAttr) {
+            // Create new className attribute
+            classNameAttr = this.t.jsxAttribute(
+              this.t.jsxIdentifier('className'),
+              this.t.stringLiteral('')
+            );
+            openingElement.attributes.push(classNameAttr);
+          }
+          
+          // Get current className value and ensure it's editable
+          if (this.t.isStringLiteral(classNameAttr.value)) {
+            oldClassName = classNameAttr.value.value;
+          } else if (this.t.isJSXExpressionContainer(classNameAttr.value) && 
+                    this.t.isStringLiteral(classNameAttr.value.expression)) {
+            oldClassName = classNameAttr.value.expression.value;
+          } else if (this.t.isJSXExpressionContainer(classNameAttr.value)) {
+            // Cannot edit dynamic classNames (template literals, expressions, etc.)
+            dynamicClassNameError = `Cannot edit dynamic className at line ${elementInfo.devContext.lineNumber}. Only static className strings are supported.`;
+            path.stop();
+            return;
+          }
+          
+          // Apply the style change
+          newClassName = this.applyStyleChange(
+            oldClassName,
+            request.property,
+            request.value,
+            request.newStyle
+          );
+          
+          // Update the className attribute (always as string literal)
+          classNameAttr.value = this.t.stringLiteral(newClassName);
+          
+          // Apply inline styles for properties that use them
+          this.applyInlineStyle(openingElement, request.property, request.value, request.newStyle);
+          
+          // Stop traversing once we find the element
+          path.stop();
         }
       }
+    });
+
+    if (dynamicClassNameError) {
+      return {
+        success: false,
+        error: dynamicClassNameError
+      };
     }
-    
-    return diff.join('\n');
+
+    if (!elementFound) {
+      return {
+        success: false,
+        error: `Element not found at line ${enhancedElementInfo.devContext.lineNumber} in ${enhancedElementInfo.devContext.fileName}`
+      };
+    }
+
+    // Store the changes for later use
+    this.lastProcessResult = {
+      oldClassName,
+      newClassName,
+      property: request.property,
+      value: request.value
+    };
+
+    return {
+      success: true,
+      changes: { oldClassName, newClassName, property: request.property, value: request.value }
+    };
   }
 
   /**
-   * Commit changes to git
+   * Generate commit message for style changes
    */
-  private async commitChanges(
-    appPath: string,
-    filePath: string,
-    property: string,
-    value: string,
-    elementInfo: ElementInfo
-  ): Promise<string | undefined> {
-    try {
-      const relativePath = relative(appPath, filePath);
-      
-      // Add the file to git
-      await this.gitTool.executeGitOperation(appPath, {
-        operation: 'add',
-        files: [relativePath]
-      });
-      
-      // Create commit message
-      const commitMessage = `Update ${elementInfo.tagName} ${property} to ${value} in ${elementInfo.devContext.componentName}`;
-      
-      // Commit the changes
-      const commitResult = await this.gitTool.executeGitOperation(appPath, {
-        operation: 'commit',
-        message: commitMessage
-      });
-      
-      if (!commitResult.success) {
-        console.warn('Failed to commit:', commitResult.error || 'Unknown error');
-        return undefined;
-      }
-      
-      // Get the last commit to retrieve the hash
-      const logResult = await this.gitTool.executeGitOperation(appPath, {
-        operation: 'log',
-        options: { count: 1 }
-      });
-      
-      if (logResult.success && logResult.commits && logResult.commits.length > 0) {
-        return logResult.commits[0]?.hash;
-      }
-      
-      return undefined;
-    } catch (error) {
-      console.warn('Failed to commit style changes:', error);
-      return undefined;
-    }
+  protected generateCommitMessage(changes: any, request: StyleEditRequest): string {
+    const { elementInfo } = request;
+    return `Update ${elementInfo.tagName} ${request.property} to ${request.value} in ${elementInfo.devContext.componentName}`;
   }
 
-  /**
-   * Resolve file path safely within the app directory
-   */
-  private resolveFilePath(appPath: string, relativePath: string): string {
-    const normalizedPath = translateDockerPath(relativePath);
-    const resolved = resolve(appPath, normalizedPath);
-    
-    // Ensure the file is within the app directory
-    if (!resolved.startsWith(appPath)) {
-      throw new Error(`File path must be within the app directory. Resolved: ${resolved}, App path: ${appPath}`);
-    }
-    
-    return resolved;
-  }
 }
