@@ -10,6 +10,7 @@ import {
   AgentExecutionContext,
 } from './agent.interface.js';
 import { getTemplateFromEnvironment } from '../utils/template-version.js';
+import { applyOutputGuardrails } from '../utils/openai-guardrails.js';
 
 /**
  * Abstract base class that provides common functionality for all agents
@@ -176,7 +177,7 @@ export abstract class BaseAgent implements IAgent {
    */
   protected customizeSystemPrompt(
     basePrompt: string,
-    context?: AgentExecutionContext
+    _context?: AgentExecutionContext
   ): string {
     // Default implementation returns the base prompt unchanged
     // Subclasses can override to inject dynamic content
@@ -299,6 +300,19 @@ export abstract class BaseAgent implements IAgent {
       hasContextBuilder: !!this._config.contextBuilder,
       handoffCount: this._config.handoffs?.length || 0,
     };
+  }
+
+  /**
+   * Sanitize responses to prevent information leakage using OpenAI SDK guardrails
+   */
+  async sanitizeResponse(response: string, context?: AgentExecutionContext): Promise<string> {
+    try {
+      return await applyOutputGuardrails(response, context);
+    } catch (error) {
+      console.error('Error applying output guardrails:', error);
+      // Return original response if guardrails fail
+      return response;
+    }
   }
 
   /**

@@ -15,6 +15,10 @@ cd agents && pnpm install
 cd ../app && pnpm install  
 cd ../app-templates/v3 && pnpm install && cd ../..
 
+# Configure environment (copy from example)
+cp agents/.env.example agents/.env
+# Edit agents/.env to add your OpenAI API key
+
 # Start services (requires OpenAI API key in agents/.env)
 cd agents && pnpm run dev    # Backend agents API (port 4000)
 cd app && pnpm run dev       # Main Next.js app (port 3000)
@@ -46,6 +50,9 @@ pnpm run build              # Production build
 cd app-templates/v3
 pnpm run dev                # Start template dev server
 pnpm run build              # Build template
+pnpm run type-check         # TypeScript checking
+pnpm run test               # Run vitest tests
+pnpm run lint               # ESLint checking
 ```
 
 ## Architecture Overview
@@ -106,6 +113,11 @@ Comprehensive file system tools in `agents/src/tools/`:
 - `directory-listing.ts` - Directory structure exploration
 - `git-tool.ts` - Git operations integration
 - `terminal.ts` - Command execution capabilities
+- `grep-tool.ts` - File content searching
+- `ast-style-editor.ts` - AST-based code transformations
+- `image-generation-tool.ts` - AI image generation
+- `image-search-tool.ts` - Web image search
+- `getty-image-tool.ts` - Professional stock photos
 
 ## Important Patterns
 
@@ -138,3 +150,24 @@ Apps go through states: `creating` → `created` → `running`/`stopped`/`error`
 - All file operations include security filtering and validation  
 - Process management includes automatic cleanup and orphan recovery
 - Token usage tracking is always enabled regardless of UI settings
+
+## Environment Configuration
+
+Key environment variables in `agents/.env`:
+```bash
+NODE_ENV=development
+OPENAI_API_KEY=""                    # Required: Your OpenAI API key
+OPENAI_BASE_URL=""                   # Optional: Custom OpenAI base URL
+OPENAI_MODEL="claude-sonnet-4"       # Model to use
+APP_TEMPLATE_DIR='app-templates/v3'  # Template directory
+SHOW_USAGE_COST=true                # Show token usage costs
+DOC_APPS=false                      # Use local mode (true for Docker)
+```
+
+## Package Management
+
+This project uses **pnpm** as the package manager. All commands should use `pnpm` instead of `npm`:
+- `pnpm install` - Install dependencies
+- `pnpm run dev` - Start development server
+- `pnpm test` - Run tests
+- `pnpm run lint` - Run linting

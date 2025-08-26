@@ -157,4 +157,10 @@ export interface IAgent {
    * Can be used to transform or validate tool results
    */
   afterToolExecution?(toolName: string, args: unknown, result: unknown): Promise<unknown> | unknown;
+  
+  /**
+   * Optional: Sanitize responses to prevent information leakage using OpenAI SDK guardrails
+   * Called before sending responses to users
+   */
+  sanitizeResponse?(response: string, context?: AgentExecutionContext): Promise<string> | string;
 }

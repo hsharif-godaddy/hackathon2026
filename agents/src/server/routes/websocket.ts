@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { AgentRegistry } from '../../registry/index.js';
 import { getLLMService } from '../../services/index.js';
 import { globalTracer } from '../../utils/index.js';
+import { applyInputGuardrails, applyOutputGuardrails, GuardrailTripwireError } from '../../utils/openai-guardrails.js';
 import { AppRepository } from '../../database/index.js';
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
 import { getToolDefinitions, executeToolFunction } from '../../tools/index.js';
@@ -338,6 +339,24 @@ async function handleChatMessage(wsContext: WebSocketContext, chatRequest: WSCha
     // Get agent and create execution context
     const agent = await wsContext.registry.getAgent(wsContext.agentId);
     const executionContext = createExecutionContext(chatRequest, wsContext.agentId, validationResult.app);
+    
+    // Apply input guardrails using OpenAI SDK
+    try {
+      await applyInputGuardrails(chatRequest.message, executionContext);
+    } catch (error) {
+      if (error instanceof GuardrailTripwireError) {
+        // Send the guardrail response and end the conversation
+        sendError(wsContext.ws, 'security_guardrail_triggered', error.message);
+        traceWebSocketEvent('guardrail_triggered', wsContext.agentId, {
+          type: 'input',
+          message: chatRequest.message.substring(0, 100),
+          reason: error.guardrailResult.outputInfo?.analysis?.reason || 'Security concern detected'
+        });
+        return;
+      }
+      // Log other errors but continue processing
+      console.warn('Input guardrail warning:', error);
+    }
     
     const chatContext: ChatContext = {
       ...wsContext,
@@ -866,7 +885,16 @@ async function handleLLMStreaming(
     if (chunk.content) {
       accumulatedChunk += chunk.content;
       
-      sendContent(context.ws, chunk.content, chunk.isComplete);
+      // Apply output guardrails to chunk content
+      let sanitizedContent = chunk.content;
+      try {
+        sanitizedContent = await applyOutputGuardrails(chunk.content, context.executionContext);
+      } catch (error) {
+        console.warn('Output guardrail warning for chunk:', error);
+        // Use original content if guardrails fail
+      }
+      
+      sendContent(context.ws, sanitizedContent, chunk.isComplete);
       
       // Add content in reasonable chunks (every ~100 chars or on completion)
       if (chunk.isComplete || accumulatedChunk.length >= 100) {
@@ -883,7 +911,14 @@ async function handleLLMStreaming(
     if (chunk.isComplete) {
       // Add any remaining content
       if (accumulatedChunk) {
-        segmentManager.addContentSegment(accumulatedChunk);
+        // Apply final output guardrails to accumulated content
+        try {
+          const sanitizedAccumulated = await applyOutputGuardrails(accumulatedChunk, context.executionContext);
+          segmentManager.addContentSegment(sanitizedAccumulated);
+        } catch (error) {
+          console.warn('Output guardrail warning for accumulated content:', error);
+          segmentManager.addContentSegment(accumulatedChunk);
+        }
       }
       
       // Final save
