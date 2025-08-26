@@ -5,7 +5,9 @@ export const gasketConfig = {
     risk: 'low',   // Security risk level: low, medium, high
     type: ['basic'], // Auth types allowed
     // Dev flag to bypass authentication entirely
-    disableInDev: process.env.NEXT_PUBLIC_DISABLE_AUTH_IN_DEV === 'true',
+    disableInDev: process.env.NODE_ENV === 'development' 
+      ? process.env.NEXT_PUBLIC_AUTH_IN_DEV !== 'true' 
+      : false,
   },
   // SSO configuration
   sso: {
