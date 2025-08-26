@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter } from './routes/index.js';
 import { createWebSocketServer } from './routes/websocket.js';
 import { AgentRegistry } from '../registry/index.js';
 import { ExampleAgent, DevelopAgent } from '../agents/index.js';
@@ -56,6 +56,7 @@ app.use('/health', healthRouter);
 app.use('/agents', agentsRouter);
 app.use('/apps', appsRouter);
 app.use('/agent', chatRouter);
+app.use('/', gitRouter);
 
 // Root endpoint
 app.get('/', (req, res) => {

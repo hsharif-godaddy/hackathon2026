@@ -12,13 +12,15 @@ import {
   EyeIcon,
   ComputerDesktopIcon,
   DevicePhoneMobileIcon,
-  ArrowTopRightOnSquareIcon
+  ArrowTopRightOnSquareIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline'
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
 import CodeEditor from '@/app/develop/components/CodeEditor'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
+import VersionHistory from '@/app/develop/components/VersionHistory'
 import { Message, PlanItem, AiEditContext } from '@/app/develop/components/types'
 import { 
   handleSendMessage as sendMessage, 
@@ -64,6 +66,14 @@ function DevelopPageContent() {
   const [isInitialAppCreation, setIsInitialAppCreation] = useState(false)
   const [chatPaneWidth, setChatPaneWidth] = useState(400)
   const [previewViewMode, setPreviewViewMode] = useState<'desktop' | 'mobile'>('desktop')
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
+  const [selectedCommit, setSelectedCommit] = useState<{
+    hash: string
+    shortHash: string
+    message: string
+    author: string
+    date: string
+  } | null>(null)
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
@@ -588,6 +598,58 @@ function DevelopPageContent() {
     setPreviewViewMode(mode)
   }
 
+  const handleSelectCommit = async (commit: {
+    hash: string
+    shortHash: string
+    message: string
+    author: string
+    date: string
+  } | null) => {
+    try {
+      if (!appId) return
+      
+      // If null, return to latest (main branch)
+      if (commit === null) {
+        if (selectedCommit) {
+          // Return to main branch
+          const response = await appFetch(`http://localhost:4000/apps/${appId}/git/return`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ branch: 'main' })
+          })
+          
+          if (response.ok) {
+            console.log('Returned to latest version')
+            // Refresh preview after switching
+            handlePreviewRefresh()
+            setSelectedCommit(null)
+          } else {
+            console.error('Failed to return to latest version')
+          }
+        }
+        return
+      }
+      
+      // Checkout specific commit
+      const response = await appFetch(`http://localhost:4000/apps/${appId}/git/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commitHash: commit.hash })
+      })
+      
+      if (response.ok) {
+        console.log(`Checked out commit ${commit.shortHash}`)
+        setSelectedCommit(commit)
+        // Refresh preview after switching
+        handlePreviewRefresh()
+      } else {
+        console.error('Failed to checkout commit')
+      }
+    } catch (error) {
+      console.error('Error selecting commit:', error)
+    }
+  }
+
   return (
     <div className="h-screen bg-gray-50 flex flex-col">
       {/* Header */}
@@ -648,6 +710,17 @@ function DevelopPageContent() {
                   {hasUnsavedChanges && viewMode === 'code' && (
                     <div className="w-2 h-2 bg-orange-500 rounded-full ml-1" title="Unsaved changes" />
                   )}
+                </button>
+                <button 
+                  onClick={() => setIsVersionHistoryOpen(!isVersionHistoryOpen)}
+                  className={`flex items-center px-2 py-1 text-xs rounded-md transition-colors ${
+                    isVersionHistoryOpen || selectedCommit
+                      ? 'bg-amber-100 text-amber-700' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <ClockIcon className="w-3 h-3 mr-1" />
+                  {selectedCommit ? 'History*' : 'History'}
                 </button>
               </div>
 
@@ -776,6 +849,7 @@ function DevelopPageContent() {
                 appId={appId} 
                 port={app?.port}
                 viewMode={previewViewMode}
+                selectedCommit={selectedCommit}
                 onRetry={() => {
                   // Optionally refresh app data when retrying
                   if (appId && app) {
@@ -796,6 +870,17 @@ function DevelopPageContent() {
                 onUnsavedChanges={setHasUnsavedChanges}
               />
             </div>
+
+            {/* Version History Panel */}
+            {isVersionHistoryOpen && (
+              <VersionHistory
+                appId={appId}
+                isOpen={isVersionHistoryOpen}
+                onClose={() => setIsVersionHistoryOpen(false)}
+                onSelectCommit={handleSelectCommit}
+                selectedCommit={selectedCommit}
+              />
+            )}
           </div>
         </div>
       </div>

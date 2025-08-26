@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { 
   ExclamationTriangleIcon, 
-  ArrowPathIcon
+  ArrowPathIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline'
 
 interface PreviewPaneProps {
@@ -11,6 +12,13 @@ interface PreviewPaneProps {
   port?: number
   onRetry?: () => void
   viewMode?: 'desktop' | 'mobile'
+  selectedCommit?: {
+    hash: string
+    shortHash: string
+    message: string
+    author: string
+    date: string
+  } | null
 }
 
 interface ServerStatus {
@@ -22,7 +30,7 @@ interface ServerStatus {
 
 
 
-export default function PreviewPane({ appId, port, onRetry, viewMode = 'desktop' }: PreviewPaneProps) {
+export default function PreviewPane({ appId, port, onRetry, viewMode = 'desktop', selectedCommit }: PreviewPaneProps) {
   const [serverStatus, setServerStatus] = useState<ServerStatus>({
     isLoading: true,
     isRunning: false
@@ -203,7 +211,20 @@ export default function PreviewPane({ appId, port, onRetry, viewMode = 'desktop'
   // Success state - show the preview
   return (
     <div className="h-full relative overflow-hidden">
-      <div className={`flex h-full ${viewMode === 'mobile' ? 'justify-center items-center p-4' : 'w-full h-full'}`}>
+      {selectedCommit && (
+        <div className="absolute top-0 left-0 right-0 bg-amber-50 border-b border-amber-200 py-1 px-3 z-10 flex items-center justify-between">
+          <div className="flex items-center">
+            <ClockIcon className="w-4 h-4 text-amber-700 mr-2" />
+            <span className="text-xs text-amber-800">
+              Viewing historical version: <span className="font-mono">{selectedCommit.shortHash}</span>
+            </span>
+          </div>
+          <span className="text-xs text-amber-700 font-medium truncate max-w-md">
+            {selectedCommit.message}
+          </span>
+        </div>
+      )}
+      <div className={`flex h-full ${viewMode === 'mobile' ? 'justify-center items-center p-4' : 'w-full h-full'} ${selectedCommit ? 'pt-8' : ''}`}>
         <iframe
           id="preview-iframe"
           src={previewUrl!}

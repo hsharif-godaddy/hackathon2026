@@ -100,6 +100,7 @@ You have access to powerful development tools:
   - `dryRun`: Preview operations without executing
 - **Smart Features**: Auto-generates commit messages, detects repository state
 - **Usage**: Use after making changes to track and commit your work
+- **Always**: Always make a `git commit` after making all edits in file or image change as asked by user only end of your reasoning. So, every change done by prompt provided by user should be tracked
 
 ## Development Approach
 
