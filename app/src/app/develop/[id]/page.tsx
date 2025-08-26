@@ -74,12 +74,43 @@ function DevelopPageContent() {
     author: string
     date: string
   } | null>(null)
+  const [commitHistory, setCommitHistory] = useState<Array<{
+    hash: string
+    shortHash: string
+    message: string
+    author: string
+    date: string
+  }>>([])
+  const [isLoadingCommits, setIsLoadingCommits] = useState(false)
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
   const appCheckProcessed = useRef(false)
   const autoSendTriggered = useRef(false) // Prevent multiple auto-sends
   const tokenUsageRef = useRef<TokenUsageRef>(null)
+
+  // Fetch commit history
+  const fetchCommitHistory = useCallback(async () => {
+    if (!appId) return
+    
+    setIsLoadingCommits(true)
+    
+    try {
+      const response = await appFetch(`http://localhost:4000/apps/${appId}/git/history`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        const commits = data.commits || []
+        setCommitHistory(commits)
+      } else {
+        console.error('Failed to load commit history')
+      }
+    } catch (err) {
+      console.error('Error loading commit history:', err)
+    } finally {
+      setIsLoadingCommits(false)
+    }
+  }, [appId])
 
   // Ensure app is running (generic backend logic)
   const ensureAppIsRunning = async (appId: string) => {
@@ -203,6 +234,13 @@ function DevelopPageContent() {
 
     loadAppConversations()
   }, [appId, app])
+  
+  // 3b. Load commit history
+  useEffect(() => {
+    if (appId && app && commitHistory.length === 0) {
+      fetchCommitHistory()
+    }
+  }, [appId, app, commitHistory.length, fetchCommitHistory])
 
   // 4. PURE UI STATE - Set initial prompt in input (no actions)
   useEffect(() => {
@@ -879,6 +917,9 @@ function DevelopPageContent() {
                 onClose={() => setIsVersionHistoryOpen(false)}
                 onSelectCommit={handleSelectCommit}
                 selectedCommit={selectedCommit}
+                commits={commitHistory}
+                isLoading={isLoadingCommits}
+                onRefresh={fetchCommitHistory}
               />
             )}
           </div>
