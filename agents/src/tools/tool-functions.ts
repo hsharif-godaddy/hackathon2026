@@ -4,13 +4,19 @@ import { FileEditTool, FileEditOptions } from './file-edit.js';
 import { GitTool, GitToolOptions } from './git-tool.js';
 import { ReadFileTool, ReadFileOptions } from './read-file.js';
 import { GrepTool, GrepOptions, GrepOptionsSchema } from './grep-tool.js';
+import { MySQLTool, MySQLToolOptions } from './mysql-tool.js';
+import { ServerManagementTool, ServerStatusOptions, RestartServerOptions, StopServerOptions } from './server-management-tool.js';
+import { EnvManager, createEnvManager } from './env-manager.js';
+import { createMySQLResponseFormatter } from './mysql-response-formatter.js';
+import { AppRepository } from '../database/repositories/AppRepository.js';
+import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js';
+import type { AgentExecutionContext, AgentToolConfig } from '../base/index.js';
+import { promises as fs } from 'fs';
+import { join } from 'path';
 import { findImage } from './image-search-tool.js';
 import { generateImage } from './image-generation-tool.js';
 import { findGettyImage, GettyImageOptions } from './getty-image-tool.js';
-import { AppRepository } from '../database/repositories/AppRepository.js';
-import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js';
 import { AgentRegistry } from '../registry/index.js';
-import type { AgentExecutionContext, AgentToolConfig } from '../base/index.js';
 
 const directoryTool = new DirectoryListingTool();
 const terminalTool = new TerminalTool();
@@ -18,9 +24,70 @@ const fileEditTool = new FileEditTool();
 const gitTool = new GitTool();
 const readFileTool = new ReadFileTool();
 const grepTool = new GrepTool();
+const mysqlTool = new MySQLTool();
+const serverTool = new ServerManagementTool();
 const appRepo = new AppRepository();
 const tokenUsageRepo = new TokenUsageRepository();
 const agentRegistry = AgentRegistry.getInstance();
+
+/**
+ * Write database credentials to the app's .env file using EnvManager
+ */
+async function writeCredentialsToEnvFile(
+  appId: string, 
+  credentials: {
+    DB_HOST: string;
+    DB_PORT: string;
+    DB_USER: string;
+    DB_PASS: string;
+    DB_NAME: string;
+    DATABASE_URL: string;
+  }
+): Promise<void> {
+  const app = appRepo.findById(appId);
+  if (!app) {
+    throw new Error(`App '${appId}' not found`);
+  }
+
+  try {
+    // Create EnvManager for the app
+    const envManager = createEnvManager(app.path);
+
+    // Check if .env file doesn't exist and copy from .env.example if available
+    if (!(await envManager.exists())) {
+      const envExamplePath = join(app.path, '.env.example');
+      try {
+        const exampleContent = await fs.readFile(envExamplePath, 'utf-8');
+        await fs.writeFile(join(app.path, '.env'), exampleContent, 'utf-8');
+        console.log(`📋 Created .env file from .env.example template`);
+      } catch {
+        // If .env.example doesn't exist, EnvManager will create a new .env file
+      }
+    }
+
+    // Remove existing database variables first
+    await envManager.removeDatabaseVariables();
+
+    // Set new database credentials
+    const result = await envManager.setDatabaseVariables({
+      host: credentials.DB_HOST,
+      port: credentials.DB_PORT,
+      user: credentials.DB_USER,
+      password: credentials.DB_PASS,
+      database: credentials.DB_NAME,
+      url: credentials.DATABASE_URL
+    });
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to update environment variables');
+    }
+
+    console.log(`✅ Database credentials successfully updated in .env file`);
+    
+  } catch (error) {
+    throw new Error(`Failed to write credentials to .env file: ${error}`);
+  }
+}
 
 /**
  * OpenAI Function definitions for our tools
@@ -435,6 +502,95 @@ export const TOOL_FUNCTIONS = {
       required: ['query'],
     },
   },
+  mysql_operation: {
+    name: 'mysql_operation',
+    description: 'Manage MySQL databases: create dedicated databases with user credentials, test connections, and list databases. For enable_database operation: automatically generates secure credentials, creates MySQL user first, then creates dedicated database with user-scoped name (always appends random 4-digit suffix for uniqueness), prepares empty database ready for custom table creation, writes all credentials to the application\'s .env file, and automatically restarts the backend server to load new environment variables.',
+    parameters: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          enum: ['enable_database', 'test_connection', 'list_databases'],
+          description: 'The MySQL operation to perform. enable_database: creates user credentials first, then creates dedicated database, prepares empty database ready for custom table creation, automatically updates .env file with credentials, and restarts backend server to load new environment variables',
+        },
+        databaseName: {
+          type: 'string',
+          description: 'Name for the database (e.g., "blog_app" creates database like "user123_blog_app_1234"). Required for enable_database operation. A dedicated database will be created with this name (user-scoped with random suffix).',
+          pattern: '^[a-zA-Z_][a-zA-Z0-9_]*$',
+          maxLength: 64,
+        },
+        username: {
+          type: 'string',
+          description: 'Custom username for the database user (optional, auto-generated if not provided)',
+          pattern: '^[a-zA-Z_][a-zA-Z0-9_]*$',
+          maxLength: 32,
+        },
+        userId: {
+          type: 'string',
+          description: 'User identifier for database scoping (e.g., "user123"). Combined with databaseName to create unique database names like "user123_blog_app_1234". Required for enable_database operation.',
+          pattern: '^[a-zA-Z_][a-zA-Z0-9_]*$',
+          maxLength: 16,
+        },
+        host: {
+          type: 'string',
+          description: 'MySQL host (optional, defaults to environment variable or localhost)',
+        },
+        port: {
+          type: 'number',
+          description: 'MySQL port (optional, defaults to environment variable or 3306)',
+          minimum: 1,
+          maximum: 65535,
+        },
+        rootUser: {
+          type: 'string',
+          description: 'MySQL root username (optional, defaults to environment variable)',
+        },
+        rootPassword: {
+          type: 'string',
+          description: 'MySQL root password (optional, defaults to environment variable)',
+        },
+      },
+      required: ['operation'],
+    },
+  },
+  server_restart: {
+    name: 'server_restart',
+    description: 'Restart the development server for the current app. Use this after database configuration changes, dependency installations, or when the server becomes unresponsive.',
+    parameters: {
+      type: 'object',
+      properties: {
+        reason: {
+          type: 'string',
+          description: 'Optional reason for the restart (for logging purposes)',
+        },
+      },
+      required: [],
+    },
+  },
+  server_status: {
+    name: 'server_status',
+    description: 'Check the current status of the development server for the current app. Returns whether the server is running, stopped, or in an error state.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  server_stop: {
+    name: 'server_stop',
+    description: 'Stop the development server for the current app. Use this when you need to temporarily stop a server.',
+    parameters: {
+      type: 'object',
+      properties: {
+        reason: {
+          type: 'string',
+          description: 'Optional reason for stopping (for logging purposes)',
+        },
+      },
+      required: [],
+    },
+  },
+
 } as const;
 
 /**
@@ -500,6 +656,18 @@ export async function executeToolFunction(
     
     case 'grep_search':
       return await executeGrepSearch(args as unknown as GrepOptions, context);
+    
+    case 'mysql_operation':
+      return await executeMySQLOperation(args as unknown as MySQLToolOptions, context);
+    
+    case 'server_restart':
+      return await executeServerRestart(args as unknown as RestartServerOptions, context);
+    
+    case 'server_status':
+      return await executeServerStatus(args as unknown as ServerStatusOptions, context);
+    
+    case 'server_stop':
+      return await executeServerStop(args as unknown as StopServerOptions, context);
     
     default:
       throw new Error(`Unknown tool function: ${functionName}`);
@@ -802,6 +970,71 @@ async function executeGrepSearch(
 }
 
 /**
+ * Execute the MySQL operation tool
+ */
+async function executeMySQLOperation(
+  options: MySQLToolOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  // Track tool execution
+  await trackToolExecution('mysql_operation', context, JSON.stringify(options).length);
+
+  // Execute the MySQL operation
+  const result = await mysqlTool.execute(options);
+  
+  console.log('🔍 MySQL operation result:', JSON.stringify(result, null, 2));
+  
+  if (!result.success) {
+    console.error('❌ MySQL operation failed:', result.error, result.message);
+    throw new Error(result.error || result.message || 'MySQL operation failed');
+  }
+
+  // Create formatter for clean output generation
+  const formatter = createMySQLResponseFormatter(result);
+  
+  // Set app context if available
+  const appId = context.metadata?.appId as string;
+  if (appId) {
+    formatter.setAppContext(appId);
+    
+    // Handle environment file writing for enable_database operations
+    const credentials = formatter.getEnvironmentCredentials(result.data || {});
+    if (credentials) {
+      try {
+        await writeCredentialsToEnvFile(appId, credentials);
+        formatter.setEnvironmentWriteResult(true);
+        
+        // Automatically restart server after database creation and .env update
+        if (options.operation === 'enable_database') {
+          console.log('🔄 Auto-restarting server after database creation...');
+          try {
+            const serverRestartResult = await serverTool.restartServer({ 
+              reason: 'Database configuration updated' 
+            }, appId);
+            
+            if (serverRestartResult.success) {
+              console.log('✅ Server restarted successfully');
+              formatter.setServerRestartResult(true);
+            } else {
+              console.error('❌ Server restart failed:', serverRestartResult.error);
+              formatter.setServerRestartResult(false, serverRestartResult.error);
+            }
+          } catch (restartError) {
+            console.error('❌ Server restart error:', restartError);
+            formatter.setServerRestartResult(false, restartError instanceof Error ? restartError.message : String(restartError));
+          }
+        }
+        
+      } catch (envError) {
+        formatter.setEnvironmentWriteResult(false, envError instanceof Error ? envError.message : String(envError));
+      }
+    }
+  }
+  
+  return formatter.renderMarkdown();
+}
+
+/**
  * Get tool definitions for OpenAI function calling
  */
 export function getToolDefinitions(): Array<{
@@ -886,3 +1119,117 @@ async function executeImageGenerate(
   
   return response;
 }
+
+/**
+ * Execute server restart tool
+ */
+async function executeServerRestart(
+  options: RestartServerOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  // Get app ID from execution context
+  const appId = context.metadata?.appId as string;
+  
+  if (!appId) {
+    throw new Error('App ID is required for server restart - ensure agent is running in app context');
+  }
+
+  const { reason } = options;
+
+  // Track tool execution
+  await trackToolExecution('server_restart', context, JSON.stringify(options).length);
+
+  console.log(`🔄 Restarting server for app ${appId}${reason ? ` (Reason: ${reason})` : ''}`);
+
+  const result = await serverTool.restartServer({ 
+    ...(reason && { reason }) 
+  }, appId);
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to restart server');
+  }
+
+  return `✅ ${result.message}`;
+}
+
+/**
+ * Execute server status check tool
+ */
+async function executeServerStatus(
+  options: ServerStatusOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  // Get app ID from execution context
+  const appId = context.metadata?.appId as string;
+  
+  if (!appId) {
+    throw new Error('App ID is required for server status check - ensure agent is running in app context');
+  }
+
+  // Track tool execution
+  await trackToolExecution('server_status', context, JSON.stringify(options).length);
+
+  const result = await serverTool.checkServerStatus({}, appId);
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to check server status');
+  }
+
+  let response = `📊 Server Status for App ${appId}: ${result.status.toUpperCase()}`;
+  
+  if (result.message) {
+    response += `\n${result.message}`;
+  }
+
+  if (result.details) {
+    response += `\nDetails:`;
+    if (result.details.port) {
+      response += `\n• Port: ${result.details.port}`;
+    }
+    if (result.details.url) {
+      response += `\n• URL: ${result.details.url}`;
+    }
+    if (result.details.isV3) {
+      response += `\n• Template: V3`;
+      if (result.details.backendPort) {
+        response += `\n• Backend Port: ${result.details.backendPort}`;
+      }
+    }
+  }
+
+  return response;
+}
+
+/**
+ * Execute server stop tool
+ */
+async function executeServerStop(
+  options: StopServerOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  // Get app ID from execution context
+  const appId = context.metadata?.appId as string;
+  
+  if (!appId) {
+    throw new Error('App ID is required for server stop - ensure agent is running in app context');
+  }
+
+  const { reason } = options;
+
+  // Track tool execution
+  await trackToolExecution('server_stop', context, JSON.stringify(options).length);
+
+  console.log(`🛑 Stopping server for app ${appId}${reason ? ` (Reason: ${reason})` : ''}`);
+
+  const result = await serverTool.stopServer({ 
+    ...(reason && { reason }) 
+  }, appId);
+  
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to stop server');
+  }
+
+  return `✅ ${result.message}`;
+}
+
+

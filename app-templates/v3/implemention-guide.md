@@ -1204,6 +1204,48 @@ export default defineConfig({
 6. **CSP headers:** Content Security Policy in production
 7. **Rate limiting:** Ready to add with Hono middleware
 
+## V3 Template Architecture (Critical Information)
+
+### Container Communication
+- **Frontend**: Runs on Vite dev server (port 5173 internally)
+- **Backend**: Runs on Hono server (port 3000 internally)
+- **Port Exposure**: Only frontend port is exposed externally (dynamically allocated)
+- **API Communication**: Frontend → Backend works via Vite proxy (`/api` routes)
+- **Direct Backend Access**: ❌ NOT available from outside container
+
+### Frontend-Backend Integration
+```javascript
+// ✅ CORRECT: Use relative API calls (proxied by Vite)
+fetch('/api/health')  // Works - proxied to backend
+
+// ❌ INCORRECT: Direct backend calls from frontend
+fetch('http://localhost:3000/api/health')  // Fails - backend not exposed
+```
+
+### Port Configuration
+- **Frontend Port**: Dynamically allocated and exposed externally (varies per container)
+- **Backend Port**: Always 3000 internally, but not directly accessible
+- **Proxy Setup**: Vite automatically proxies `/api/*` to backend
+- **Environment Variables**: 
+  - `VITE_API_URL` - Should use relative paths in Docker
+  - `VITE_BACKEND_PORT` - For reference only, not direct access
+
+### Development Best Practices
+1. **Always use relative API paths** (`/api/endpoint`) in frontend code
+2. **Never hardcode backend URLs** - backend is not directly accessible
+3. **Test API calls through frontend proxy** only
+4. **Use consistent API configuration**:
+   ```javascript
+   // Always use relative paths (proxied by Vite)
+   const API_BASE = '/api';
+   ```
+
+### Debugging
+- **Frontend**: Accessible at dynamically allocated exposed port
+- **Backend**: Only accessible through frontend proxy
+- **Logs**: Check Docker container logs for backend issues
+- **Health Checks**: Use `/api/health` through frontend proxy
+
 ## Summary
 
 This V3 App Template provides a complete, production-ready foundation for building modern web applications with:

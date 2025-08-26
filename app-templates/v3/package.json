@@ -20,7 +20,9 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,json,md}\"",
     "clean": "rm -rf dist node_modules/.vite",
     "reset": "npm run clean && npm install",
-    "setup": "./setup-project.sh"
+    "setup": "./setup-project.sh",
+    "migrate": "tsx src/backend/scripts/migration-runner.ts",
+    "migrate:status": "tsx src/backend/scripts/migration-runner.ts --status"
   },
   "dependencies": {
     "@babel/core": "^7.26.4",
@@ -50,8 +52,10 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.4.5",
     "embla-carousel-react": "^8.6.0",
     "hono": "^4.6.13",
+    "mysql2": "^3.11.3",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.454.0",
     "react": "^19.0.0",

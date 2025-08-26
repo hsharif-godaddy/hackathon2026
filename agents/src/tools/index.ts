@@ -4,11 +4,15 @@ export { FileEditTool } from './file-edit.js';
 export { GitTool } from './git-tool.js';
 export { ReadFileTool } from './read-file.js';
 export { GrepTool } from './grep-tool.js';
+export { MySQLTool } from './mysql-tool.js';
 export { ImageSearchTool, findImage } from './image-search-tool.js';
 export { ImageGenerationTool, generateImage } from './image-generation-tool.js';
 export { GettyImageTool, findGettyImage } from './getty-image-tool.js';
 export { ASTEditorBase } from './ast-editor-base.js';
 export { ASTTextEditor } from './ast-text-editor.js';
+export { ServerManagementTool } from './server-management-tool.js';
+export { EnvManager, createEnvManager } from './env-manager.js';
+export { MySQLResponseFormatter, createMySQLResponseFormatter } from './mysql-response-formatter.js';
 export { ASTStyleEditor } from './ast-style-editor.js';
 export { getToolDefinitions, executeToolFunction, TOOL_FUNCTIONS } from './tool-functions.js';
 export type { 
@@ -37,6 +41,10 @@ export type {
   GrepResult,
   Match
 } from './grep-tool.js';
+export type {
+  MySQLToolOptions,
+  MySQLToolResult
+} from './mysql-tool.js';
 
 export type {
   ImageSearchOptions,
@@ -64,6 +72,28 @@ export type {
   TextEditRequest,
   TextEditResult
 } from './ast-text-editor.js';
+
+export type {
+  ServerStatusOptions,
+  RestartServerOptions,
+
+  StopServerOptions,
+  ServerStatusResult,
+  RestartServerResult,
+  StopServerResult
+} from './server-management-tool.js';
+
+export type {
+  EnvVariable,
+  EnvManagerOptions,
+  EnvUpdateResult
+} from './env-manager.js';
+
+export type {
+  MySQLOperationData,
+  MySQLOperationResult,
+  EnvironmentCredentials
+} from './mysql-response-formatter.js';
 export type {
   StyleEditContext,
   StyleEditRequest,

@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import { join, resolve } from 'path';
+import { join, resolve, basename, dirname } from 'path';
 import { existsSync } from 'fs';
 import { translateDockerPath } from '../utils/path-helper.js';
 
@@ -33,6 +33,87 @@ export interface ReadFileResult {
 }
 
 /**
+ * Check if a file should be blocked from reading based on AI development guardrails
+ */
+function isFileBlocked(filePath: string): { blocked: boolean; reason?: string } {
+  const fileName = basename(filePath);
+  const dirPath = dirname(filePath);
+  const normalizedPath = filePath.replace(/\\/g, '/');
+
+  // Lock files (auto-generated dependency trees)
+  const lockFilePatterns = [
+    'package-lock.json',
+    'pnpm-lock.yaml', 
+    'yarn.lock',
+    'composer.lock',
+    'Gemfile.lock',
+    'Pipfile.lock',
+    'poetry.lock'
+  ];
+
+  if (lockFilePatterns.some(pattern => fileName === pattern) || 
+      fileName.includes('lock') && (fileName.endsWith('.json') || fileName.endsWith('.yaml') || fileName.endsWith('.yml'))) {
+    return {
+      blocked: true,
+      reason: 'Lock files contain thousands of lines of auto-generated dependency data that waste tokens and provide no value for development tasks'
+    };
+  }
+
+  // Node modules and dependency directories
+  if (normalizedPath.includes('node_modules/') || 
+      normalizedPath.includes('vendor/') ||
+      normalizedPath.includes('.pnpm/') ||
+      normalizedPath.includes('.yarn/')) {
+    return {
+      blocked: true,
+      reason: 'Dependency directories contain external code that is not relevant for development tasks'
+    };
+  }
+
+  // Build output directories - DISABLED to allow reading build files
+  // const buildDirectories = ['dist/', 'build/', '.next/', '.nuxt/', 'out/', 'public/build/', 'target/', 'bin/', 'obj/'];
+  // if (buildDirectories.some(dir => normalizedPath.includes(dir))) {
+  //   return {
+  //     blocked: true,
+  //     reason: 'Build output files are generated and not useful for development tasks'
+  //   };
+  // }
+
+  // Cache directories
+  const cacheDirectories = ['.cache/', '.vite/', '.turbo/', '.parcel-cache/', '.rollup.cache/', 'tmp/', 'temp/'];
+  if (cacheDirectories.some(dir => normalizedPath.includes(dir))) {
+    return {
+      blocked: true,
+      reason: 'Cache directories contain temporary files that are not relevant for development'
+    };
+  }
+
+  // Log files
+  if (fileName.endsWith('.log') || 
+      fileName.includes('.log.') ||
+      normalizedPath.includes('logs/') ||
+      fileName.startsWith('npm-debug') ||
+      fileName.startsWith('yarn-error') ||
+      fileName.startsWith('pnpm-debug')) {
+    return {
+      blocked: true,
+      reason: 'Log files contain runtime output that is not useful for code development'
+    };
+  }
+
+  // Large binary or data files that are typically not useful for AI
+  const binaryExtensions = ['.zip', '.tar', '.gz', '.rar', '.7z', '.db', '.sqlite', '.sqlite3', '.bin', '.exe', '.dll', '.so'];
+  if (binaryExtensions.some(ext => fileName.endsWith(ext))) {
+    return {
+      blocked: true,
+      reason: 'Binary files are not readable text and not useful for development tasks'
+    };
+  }
+
+  return { blocked: false };
+}
+
+/**
  * Tool for reading file contents with optional line range support
  */
 export class ReadFileTool {
@@ -52,6 +133,18 @@ export class ReadFileTool {
           content: '',
           totalLines: 0,
           error: 'Access denied: path is outside the app directory',
+        };
+      }
+
+      // AI Development Guardrails: Check if file should be blocked
+      const blockCheck = isFileBlocked(normalizedPath);
+      if (blockCheck.blocked) {
+        return {
+          success: false,
+          path: options.path,
+          content: '',
+          totalLines: 0,
+          error: `File blocked: ${blockCheck.reason}`,
         };
       }
 

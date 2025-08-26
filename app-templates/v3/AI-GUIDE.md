@@ -209,6 +209,30 @@ Request fully typed solutions:
 - Proper return types
 - Null/undefined handling
 
+## 🗄️ Database Management
+
+### MySQL Operations Tool
+AI agents can create and manage MySQL databases using the `mysql_operation` tool:
+
+```javascript
+// Create a new database schema with user
+await executeToolFunction('mysql_operation', {
+  operation: 'create_schema_user',
+  schemaName: 'my_app_db'
+});
+```
+
+**Key Features:**
+- ✅ One-step schema and user creation
+- ✅ Auto-generated secure credentials
+- ✅ Automatic `.env` file updates
+- ✅ Immediate availability for use
+
+**Database Service Usage:**
+- Import functions from `src/backend/services/database.ts`
+- Use `testDatabaseConnection()`, `executeQuery()`, `executeTransaction()`
+- Docker-compatible host detection included
+
 ## 🔧 Troubleshooting AI Development
 
 ### Common Issues and Solutions

@@ -33,6 +33,7 @@ EXPOSE 3000
 # Set development environment variables
 ENV NODE_ENV=development
 ENV VITE_HMR_HOST=0.0.0.0
+ENV RUNNING_IN_DOCKER=true
 
 # Health check for the frontend Vite server
 # Port will be determined by PREFERRED_FRONTEND_PORT or default to 5173
