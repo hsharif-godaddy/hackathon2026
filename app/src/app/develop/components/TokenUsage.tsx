@@ -131,7 +131,7 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
       >
         <CpuChipIcon className="w-4 h-4" />
         <span className="text-sm font-medium">
-          {formatNumber(usage.totalTokens)} tokens
+          {formatNumber(usage.totalTokens)}
         </span>
         {usage.totalCost > 0 && (
           <span className="text-xs text-gray-500">
@@ -145,7 +145,7 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
 
       {/* Expanded View */}
       {isExpanded && (
-        <div className="absolute top-full left-0 right-0 mt-2 p-4 bg-white rounded-lg border shadow-lg z-50 min-w-80">
+        <div className="absolute top-full right-0 mt-2 p-4 bg-white rounded-lg border shadow-lg z-50 min-w-80">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-semibold text-gray-900">Token Usage Breakdown</h4>
             <button

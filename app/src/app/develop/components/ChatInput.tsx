@@ -29,13 +29,14 @@ export default function ChatInput({
               value={inputValue}
               onChange={(e) => onInputChange(e.target.value)}
               onKeyPress={onKeyPress}
-              placeholder="Ask CodeBot-DEV to modify code, add features, or explain implementation..."
+              placeholder="Ask Airo to modify code, add features, or explain implementation..."
               rows={2}
               className="w-full resize-none border-0 focus:ring-0 focus:outline-none text-sm placeholder-gray-500 chat-input-text"
               style={{ minHeight: '44px', maxHeight: '120px' }}
             />
           </div>
           
+          <div className="flex flex-col space-y-2">
           {/* Element Selector Button */}
           <button
             onClick={onToggleSelectMode}
@@ -57,6 +58,7 @@ export default function ChatInput({
           >
             <PaperAirplaneIcon className="w-4 h-4" />
           </button>
+          </div>
         </div>
       </div>
     </div>

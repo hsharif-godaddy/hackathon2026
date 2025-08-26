@@ -1,6 +1,5 @@
 'use client'
 
-import ChatHeader from './ChatHeader'
 import MessageList from './MessageList'
 import PlanTracker from './PlanTracker'
 import ChatInput from './ChatInput'
@@ -37,8 +36,6 @@ export default function ChatPane({
 }: ChatPaneProps) {
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <ChatHeader />
-      
       <PlanTracker 
         developmentPlan={developmentPlan}
         expandedPlan={expandedPlan}

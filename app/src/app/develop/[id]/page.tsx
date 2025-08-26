@@ -8,7 +8,11 @@ import {
   SparklesIcon,
   PlayIcon,
   ArrowPathIcon,
-  Squares2X2Icon
+  Squares2X2Icon,
+  EyeIcon,
+  ComputerDesktopIcon,
+  DevicePhoneMobileIcon,
+  ArrowTopRightOnSquareIcon
 } from '@heroicons/react/24/outline'
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
@@ -59,6 +63,7 @@ function DevelopPageContent() {
   const [aiEditContext, setAiEditContext] = useState<AiEditContext | null>(null)
   const [isInitialAppCreation, setIsInitialAppCreation] = useState(false)
   const [chatPaneWidth, setChatPaneWidth] = useState(400)
+  const [previewViewMode, setPreviewViewMode] = useState<'desktop' | 'mobile'>('desktop')
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
@@ -572,49 +577,144 @@ function DevelopPageContent() {
     setChatPaneWidth(newWidth)
   }, [])
 
+  const handlePreviewRefresh = () => {
+    const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
+    if (iframe) {
+      iframe.src = iframe.src
+    }
+  }
+
+  const togglePreviewViewMode = (mode: 'desktop' | 'mobile') => {
+    setPreviewViewMode(mode)
+  }
+
   return (
     <div className="h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex justify-between items-center h-12">
             <div className="flex items-center space-x-4">
               <Link href="/" className="flex items-center space-x-3">
-               <div className="w-64 h-64 flex items-center justify-center">
-                  <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
+                <div className="flex items-center justify-center">
+                  <Image src="/logo.svg" alt="Airo Logo" width={128} height={48} />
                 </div>
               </Link>
               <div className="h-6 w-px bg-gray-300" />
-              <span className="text-gray-600">
-                {app ? app.name : `App ${appId}`} - Development Environment
+              <div className="flex items-center space-x-2">
+                <span className="text-gray-900 font-medium">
+                  {app ? app.name : `App ${appId}`}
+                </span>
                 {isCheckingApp && (
-                  <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
                     Checking App Status...
                   </span>
                 )}
                 {isStartingApp && !isCheckingApp && (
-                  <span className="ml-2 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                  <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
                     Starting App...
                   </span>
                 )}
                 {isRestarting && !isCheckingApp && !isStartingApp && (
-                  <span className="ml-2 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                  <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
                     Restarting App...
                   </span>
                 )}
-                {isInitialAppCreation && !isCheckingApp && !isRestarting && !isStartingApp && (
-                  <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                    New App
-                  </span>
-                )}
-                {conversationId && !isCheckingApp && !isRestarting && !isStartingApp && (
-                  <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                    Chat: {conversationId.slice(0, 8)}...
-                  </span>
-                )}
-              </span>
+
+              </div>
             </div>
             <div className="flex items-center space-x-4">
+              {/* View Mode Toggle Buttons */}
+              <div className="flex items-center space-x-2">
+                <button 
+                  onClick={() => handleViewModeChange('preview')}
+                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                    viewMode === 'preview' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Preview
+                </button>
+                <button 
+                  onClick={() => handleViewModeChange('code')}
+                  className={`flex items-center px-2 py-1 text-xs rounded-md transition-colors ${
+                    viewMode === 'code' 
+                      ? 'bg-purple-100 text-purple-700' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Code
+                  {hasUnsavedChanges && viewMode === 'code' && (
+                    <div className="w-2 h-2 bg-orange-500 rounded-full ml-1" title="Unsaved changes" />
+                  )}
+                </button>
+              </div>
+
+              {/* Preview controls when in preview mode */}
+              {viewMode === 'preview' && app?.port && (
+                <div className="flex items-center space-x-3">
+                  {/* View Mode Toggles */}
+                  <div className="flex items-center space-x-1 border border-gray-200 rounded-md p-0.5">
+                    <button
+                      onClick={() => togglePreviewViewMode('desktop')}
+                      className={`p-1 rounded transition-colors ${
+                        previewViewMode === 'desktop'
+                          ? 'bg-blue-100 text-blue-600'
+                          : 'hover:bg-gray-100 text-gray-600'
+                      }`}
+                      title="Desktop view"
+                    >
+                      <ComputerDesktopIcon className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => togglePreviewViewMode('mobile')}
+                      className={`p-1 rounded transition-colors ${
+                        previewViewMode === 'mobile'
+                          ? 'bg-blue-100 text-blue-600'
+                          : 'hover:bg-gray-100 text-gray-600'
+                      }`}
+                      title="Mobile view"
+                    >
+                      <DevicePhoneMobileIcon className="w-3 h-3" />
+                    </button>
+                  </div>
+                  
+                  {/* App Control Buttons */}
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={handlePreviewRefresh}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      title="Reload preview (refresh page content)"
+                    >
+                      <ArrowPathIcon className="w-3 h-3 text-gray-600" />
+                    </button>
+                    
+                    <button 
+                      onClick={handleRestartServer}
+                      disabled={!app?.port || isRestarting}
+                      className="p-1 hover:bg-orange-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Restart server (rebuild and restart development server)"
+                    >
+                      <ArrowPathIcon className={`w-3 h-3 ${isRestarting ? 'animate-spin text-orange-600' : 'text-orange-600'}`} />
+                    </button>
+                    
+                    <button 
+                      onClick={() => {
+                        if (app?.port) {
+                          window.open(`http://localhost:${app.port}`, '_blank')
+                        }
+                      }}
+                      disabled={!app?.port || isCheckingApp || isRestarting || isStartingApp}
+                      className="p-1 hover:bg-green-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Open app in new tab"
+                    >
+                      <ArrowTopRightOnSquareIcon className="w-3 h-3 text-green-600" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              
               {appId && (
                 <TokenUsage ref={tokenUsageRef} appId={appId} enabled={showUsageCost} />
               )}
@@ -625,30 +725,6 @@ function DevelopPageContent() {
                 <Squares2X2Icon className="w-4 h-4 mr-2" />
                 My Apps
               </Link>
-              <button 
-                onClick={handleRestartServer}
-                disabled={!app?.port || isRestarting}
-                className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-orange-600 to-red-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ArrowPathIcon className={`w-4 h-4 mr-2 ${isRestarting ? 'animate-spin' : ''}`} />
-                {isRestarting ? 'Restarting...' : 'Restart'}
-              </button>
-              <button 
-                onClick={() => {
-                  if (app?.port) {
-                    window.open(`http://localhost:${app.port}`, '_blank')
-                  }
-                }}
-                disabled={!app?.port || isCheckingApp || isRestarting || isStartingApp}
-                className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-medium rounded-lg hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <PlayIcon className={`w-4 h-4 mr-2 ${(isCheckingApp || isRestarting || isStartingApp) ? 'animate-spin' : ''}`} />
-                {isCheckingApp ? 'Checking App Status...' 
-                 : isStartingApp ? 'Starting App...'
-                 : isRestarting ? 'Restarting App...' 
-                 : app?.port ? 'Open App' 
-                 : 'Loading...'}
-              </button>
             </div>
           </div>
         </div>
@@ -692,44 +768,6 @@ function DevelopPageContent() {
 
         {/* Code/Preview Panel */}
         <div className="flex-1 bg-white flex flex-col">
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center">
-                {viewMode === 'preview' ? 'App Preview' : 'Code Editor'}
-                {viewMode === 'code' && hasUnsavedChanges && (
-                  <span className="ml-2 text-sm text-orange-600 font-normal">
-                    • Unsaved changes
-                  </span>
-                )}
-              </h2>
-              <div className="flex space-x-2">
-                <button 
-                  onClick={() => handleViewModeChange('preview')}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                    viewMode === 'preview' 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Preview
-                </button>
-                <button 
-                  onClick={() => handleViewModeChange('code')}
-                  className={`flex items-center px-3 py-1 text-sm rounded-md transition-colors ${
-                    viewMode === 'code' 
-                      ? 'bg-purple-100 text-purple-700' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Code
-                  {hasUnsavedChanges && (
-                    <div className="w-2 h-2 bg-orange-500 rounded-full ml-2" title="Unsaved changes" />
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-
           {/* Code/Preview Area - Keep both mounted to preserve state */}
           <div className="flex-1 overflow-hidden relative">
             {/* Preview Pane */}
@@ -737,6 +775,7 @@ function DevelopPageContent() {
               <PreviewPane 
                 appId={appId} 
                 port={app?.port}
+                viewMode={previewViewMode}
                 onRetry={() => {
                   // Optionally refresh app data when retrying
                   if (appId && app) {
