@@ -157,13 +157,27 @@ export class GettyImageTool {
           }
         }
         
-        return {
+        const result: GettyImageData = {
           id: image.id,
-          urls,
-          dimensions: image.max_dimensions,
-          title: image.title,
-          caption: image.caption
+          urls
         };
+        
+        if (image.title !== undefined) {
+          result.title = image.title;
+        }
+        
+        if (image.caption !== undefined) {
+          result.caption = image.caption;
+        }
+        
+        if (image.max_dimensions) {
+          result.dimensions = {
+            height: image.max_dimensions.height,
+            width: image.max_dimensions.width
+          };
+        }
+        
+        return result;
       });
       
       return {

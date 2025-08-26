@@ -33,7 +33,7 @@ export const GrepOptionsSchema = z.object({
     .default(['**/*.{ts,tsx,js,jsx,py,java,cpp,c,go,rs,rb,php,swift,kt,scala,r,m,html,css,scss,json,yaml,yml,toml,xml,md,txt}'])
     .describe('Glob patterns for files to include'),
   excludePatterns: z.array(z.string()).optional()
-    .default(['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**', '**/coverage/**', '**/*.min.js', '**/vendor/**', '**/tmp/**', '**/.next/**', '**/.cache/**'])
+    .default(['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**', '**/coverage/**', '**/*.min.js', '**/vendor/**', '**/.next/**', '**/.cache/**'])
     .describe('Glob patterns for files to exclude'),
 
   // Output options

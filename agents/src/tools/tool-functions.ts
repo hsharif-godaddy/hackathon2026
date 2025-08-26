@@ -6,7 +6,7 @@ import { ReadFileTool, ReadFileOptions } from './read-file.js';
 import { GrepTool, GrepOptions, GrepOptionsSchema } from './grep-tool.js';
 import { findImage } from './image-search-tool.js';
 import { generateImage } from './image-generation-tool.js';
-import { findGettyImage } from './getty-image-tool.js';
+import { findGettyImage, GettyImageOptions } from './getty-image-tool.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js';
 import { AgentRegistry } from '../registry/index.js';
@@ -716,14 +716,16 @@ async function executeGettyImage(
   // Track tool execution separately
   await trackToolExecution('getty_image', context, phrase.length);
   
-  const result = await findGettyImage({
-    phrase,
-    page,
-    pageSize,
-    graphicalStyles,
-    sortOrder,
-    appId
-  });
+  const gettyOptions: GettyImageOptions = {
+    phrase
+  };
+  
+  if (page !== undefined) gettyOptions.page = page;
+  if (pageSize !== undefined) gettyOptions.pageSize = pageSize;
+  if (graphicalStyles !== undefined) gettyOptions.graphicalStyles = graphicalStyles;
+  if (sortOrder !== undefined) gettyOptions.sortOrder = sortOrder;
+  
+  const result = await findGettyImage(gettyOptions);
   
   if (!result.success || !result.images || result.images.length === 0) {
     throw new Error(result.error || 'No images found matching your search criteria');
@@ -731,6 +733,10 @@ async function executeGettyImage(
   
   // Get the first image from the results
   const image = result.images[0];
+  
+  if (!image) {
+    throw new Error('No image data found in Getty response');
+  }
   
   // Get the best quality URL available
   const imageUrl = image.urls.highRes || image.urls.standard || image.urls.preview || image.urls.thumbnail;
@@ -867,7 +873,7 @@ async function executeImageGenerate(
     size: validSize,
     style: validStyle,
     appId,
-    filename
+    ...(filename && { filename })
   });
   
   if (!result.success) {

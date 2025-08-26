@@ -128,7 +128,7 @@ export class ImageGenerationTool {
       const imageData = result.data[0];
       
       // Process the base64 data and save to the public directory
-      if (imageData.b64_json) {
+      if (imageData && imageData.b64_json) {
         // Generate a safe filename based on the prompt or use provided filename
         const safeFilename = filename || 
           prompt.trim()
@@ -204,10 +204,10 @@ export async function generateImage(options: ImageGenerationOptions): Promise<Im
     const imageGenerationTool = new ImageGenerationTool();
     const result = await imageGenerationTool.generateImage({
       prompt,
-      size,
-      style,
+      size: size || '1024x1024',
+      style: style || 'vivid',
       appId,
-      filename
+      ...(filename && { filename })
     });
     
     return result;
