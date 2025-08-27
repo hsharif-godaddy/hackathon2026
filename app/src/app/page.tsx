@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowRightIcon, SparklesIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
-import { UserMenu } from '@/components/auth'
-import Image from 'next/image'
 import { appFetch } from '@/lib/gasket-config'
+import Header from './components/Header'
+import HeroSection from './components/HeroSection'
+import ExamplesSection from './components/ExamplesSection'
+import BuiltWithSection from './components/BuiltWithSection'
+import Footer from './components/Footer'
+import { Example, BuiltWithItem } from './components/types'
 
 export default function Home() {
   const [promptText, setPromptText] = useState("")
@@ -14,7 +16,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
-  const examples = [
+  const examples: Example[] = [
     {
       title: "Fitness Studio Website",
       prompt: "I need a modern website for my local fitness studio. We offer personal training, group classes, and nutrition coaching. I want members to be able to book classes online, view schedules, and access workout plans."
@@ -30,6 +32,51 @@ export default function Home() {
     {
       title: "Small Business Directory",
       prompt: "Create a simple directory website for local businesses in my town. Users should be able to browse by category, search businesses, view business profiles with contact info, and submit new business listings."
+    }
+  ]
+
+  const builtWithItems: BuiltWithItem[] = [
+    {
+      id: "1",
+      title: "FitFlow Studio",
+      description: "Modern fitness studio website with online class booking, member portal, and trainer profiles. Built with React and integrated payment processing.",
+      thumbnailPath: "/placeholder-fitness.jpg",
+      category: "Health & Fitness"
+    },
+    {
+      id: "2", 
+      title: "TastyWheels Food Truck",
+      description: "Interactive food truck website featuring live location tracking, digital menu with ordering system, and customer reviews.",
+      thumbnailPath: "/placeholder-foodtruck.jpg",
+      category: "Food & Dining"
+    },
+    {
+      id: "3",
+      title: "Creative Canvas Portfolio",
+      description: "Stunning portfolio site for a graphic designer with image galleries, client testimonials, and project case studies.",
+      thumbnailPath: "/placeholder-portfolio.jpg", 
+      category: "Portfolio"
+    },
+    {
+      id: "4",
+      title: "LocalBiz Directory",
+      description: "Comprehensive business directory with search filters, business profiles, reviews, and submission forms for new listings.",
+      thumbnailPath: "/placeholder-directory.jpg",
+      category: "Business"
+    },
+    {
+      id: "5",
+      title: "EventSpace Manager",
+      description: "Event venue booking platform with calendar integration, space galleries, pricing calculator, and vendor coordination.",
+      thumbnailPath: "/placeholder-events.jpg",
+      category: "Events"
+    },
+    {
+      id: "6",
+      title: "EcoShop Marketplace",
+      description: "Sustainable products e-commerce site with eco-friendly badges, carbon footprint tracking, and subscription boxes.",
+      thumbnailPath: "/placeholder-ecommerce.jpg",
+      category: "E-commerce"
     }
   ]
 
@@ -124,184 +171,31 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
-      {/* Header */}
-      <header className="border-b border-gray-100 bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <div className="w-64 h-64 flex items-center justify-center">
-                <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
-              </div>
-            </div>
-            <nav className="hidden md:flex space-x-8">
-              <Link href="/apps" className="text-gray-600 hover:text-gray-900 transition-colors">
-                My Apps
-              </Link>
-            </nav>
-            <div className="flex items-center space-x-4">
-              <UserMenu />
-              <button
-                onClick={handleStartBuilding}
-                disabled={!promptText.trim() || isLoading}
-                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Creating...</span>
-                  </>
-                ) : (
-                  <span>Get Started</span>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Header 
+        onStartBuilding={handleStartBuilding}
+        promptText={promptText}
+        isLoading={isLoading}
+      />
 
-      {/* Hero Section */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
-        <div className="text-center">
-          <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6">
-            What would you like to{' '}
-            <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-              build today?
-            </span>
-          </h1>
-          <p className="text-xl text-gray-600 mb-12 max-w-3xl mx-auto">
-            Describe your idea and watch our AI team of experts bring it to life. 
-            From concept to production, we handle everything.
-          </p>
+        <HeroSection
+          promptText={promptText}
+          setPromptText={setPromptText}
+          onStartBuilding={handleStartBuilding}
+          isLoading={isLoading}
+          error={error}
+          setError={setError}
+        />
 
-          {/* Error Display */}
-          {error && (
-            <div className="max-w-2xl mx-auto mb-6">
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start space-x-3">
-                <ExclamationTriangleIcon className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
-                <div>
-                  <h3 className="text-sm font-medium text-red-800">Error</h3>
-                  <p className="text-sm text-red-700 mt-1">{error}</p>
-                  <button
-                    onClick={() => setError(null)}
-                    className="text-sm text-red-600 hover:text-red-800 mt-2 underline"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Main CTA Input */}
-          <div className="max-w-2xl mx-auto mb-16">
-            <div className="relative">
-              <textarea
-                value={promptText}
-                onChange={(e) => {
-                  setPromptText(e.target.value)
-                  // Clear error when user starts typing
-                  if (error) setError(null)
-                }}
-                rows={4}
-                disabled={isLoading}
-                className="w-full px-6 py-4 text-lg text-gray-900 font-medium border-2 border-gray-200 rounded-2xl focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
-                placeholder="Describe the application you'd like to build..."
-              />
-              <button 
-                onClick={handleStartBuilding}
-                disabled={!promptText.trim() || isLoading}
-                className="absolute right-3 bottom-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Building...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Start Building</span>
-                    <ArrowRightIcon className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Example Links */}
-          <div className="text-center mb-8">
-            <p className="text-gray-500 mb-4 text-sm">Or try one of these popular examples:</p>
-            <div className="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
-              {examples.map((example) => (
-                <button
-                  key={example.title}
-                  onClick={() => handleExampleClick(example.prompt)}
-                  className="group px-4 py-2 bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all duration-200 text-sm cursor-pointer"
-                >
-                  <span className="font-medium text-gray-700 group-hover:text-purple-600 transition-colors">
-                    {example.title}
-                  </span>
-                  <ArrowRightIcon className="w-3 h-3 ml-1 inline opacity-0 group-hover:opacity-100 transition-opacity" />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Features Preview */}
-        <div className="mt-20">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Built by AI Experts, For You
-            </h2>
-            <p className="text-lg text-gray-600">
-              Our team of specialized AI agents work together to build your application
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="w-64 h-64 flex items-center justify-center mx-auto mb-4">
-                <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">AI-Powered Development</h3>
-              <p className="text-gray-600">
-                Our agents understand your requirements and write production-ready code
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-64 h-64 flex items-center justify-center mx-auto mb-4">
-                <div className="w-64 h-64 flex items-center justify-center">
-                  <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
-                </div>
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Enterprise Grade</h3>
-              <p className="text-gray-600">
-                Built for scale with security, monitoring, and compliance included
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-64 h-64 flex items-center justify-center mx-auto mb-4">
-                <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Deploy Anywhere</h3>
-              <p className="text-gray-600">
-                One-click deployment to our global infrastructure or your own cloud
-              </p>
-            </div>
-          </div>
-        </div>
+        <ExamplesSection
+          examples={examples}
+          onExampleClick={handleExampleClick}
+        />
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="text-center text-gray-600">
-            <p>&copy; 2024 Airo AI Builder. Built with AI for the future.</p>
-          </div>
-        </div>
-      </footer>
+      <BuiltWithSection items={builtWithItems} />
+
+      <Footer />
     </div>
   )
 }
