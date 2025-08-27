@@ -174,8 +174,8 @@ export class MySQLResponseFormatter {
 
     const lines: string[] = ['', '✅ Credentials automatically stored in .env file:'];
     
-    // Use Docker-compatible host for V3 template
-    const dbHost = 'host.docker.internal';
+    // Use localhost for agent connections
+    const dbHost = 'localhost';
     const databaseName = data.databaseName || 'unknown_db';
     
     lines.push(`• DB_HOST=${dbHost}`);
@@ -207,7 +207,7 @@ export class MySQLResponseFormatter {
     const lines: string[] = ['', 'Store these credentials in your application\'s environment variables:'];
     const databaseName = data.databaseName || 'unknown_db';
     
-    lines.push('• DB_HOST=host.docker.internal  # Use localhost if not running in Docker');
+    lines.push('• DB_HOST=localhost  # Use host.docker.internal for V3 template in Docker');
     lines.push('• DB_PORT=3306');
     lines.push(`• DB_USER=${data.username}`);
     lines.push(`• DB_PASS=${data.password}`);
@@ -221,7 +221,7 @@ export class MySQLResponseFormatter {
       return null;
     }
 
-    const dbHost = 'host.docker.internal'; // V3 template runs in Docker
+    const dbHost = 'localhost'; // Agent runs outside Docker
     const databaseName = data.databaseName || 'unknown_db';
 
     return {

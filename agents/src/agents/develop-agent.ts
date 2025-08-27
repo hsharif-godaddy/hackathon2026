@@ -11,7 +11,7 @@ export class DevelopAgent extends BaseAgent {
     const config: AgentConfig = {
       id: 'develop',
       name: 'AI Developer',
-      description: 'An AI developer agent that helps build web applications, websites, and digital solutions',
+      description: 'An AI developer agent that helps build web applications, websites, and digital solutions. Specializes in API generation from database schemas with flexible CRUD operations, full-stack development, and modern web technologies.',
       model: 'claude-sonnet-4-20250514',
       tools: [
         { 
@@ -29,7 +29,7 @@ export class DevelopAgent extends BaseAgent {
         { name: 'server_restart', description: 'Restart development server (use after database changes, dependency installs)' },
         { name: 'server_status', description: 'Check if server is running and get status details' },
         { name: 'server_stop', description: 'Stop development server temporarily' },
-
+        { name: 'auto_api_generator', description: 'Automatically generate API endpoints from database schemas - can create selective operations (e.g., only Create or Read or Update or Delete APIs), analyze database tables, generate TypeScript types, and create REST API routes for any combination of operations' },
 
       ],
       contextBuilder: {
@@ -38,7 +38,7 @@ export class DevelopAgent extends BaseAgent {
       },
       handoffs: [],
       version: '1.0.0',
-      tags: ['developer', 'coding', 'web-development', 'ai-assistant'],
+      tags: ['developer', 'coding', 'web-development', 'ai-assistant', 'api-generation', 'database', 'crud', 'backend'],
       promptComposition: {
         // Templates are now dynamically detected based on the app structure
         // No need to hardcode templates here
@@ -76,7 +76,7 @@ export class DevelopAgent extends BaseAgent {
     customizedPrompt += `\n\n## AI Edit Context
 When a user selects a specific element in their application for editing, you will receive a separate message containing the element details and source code location. Use this information to make precise, targeted edits.
 
-## Development Guidelines:
+## General Development Guidelines:
 - Always write clean, maintainable, and well-documented code
 - Use modern web development best practices
 - Prefer TypeScript for type safety when possible

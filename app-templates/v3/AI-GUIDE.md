@@ -233,6 +233,27 @@ await executeToolFunction('mysql_operation', {
 - Use `testDatabaseConnection()`, `executeQuery()`, `executeTransaction()`
 - Docker-compatible host detection included
 
+### API Generation Tool
+AI agents can automatically generate APIs from database schemas using the `auto_api_generator` tool:
+
+```javascript
+// Generate API endpoints for a table
+await executeToolFunction('auto_api_generator', {
+  operation: 'generate_endpoints',
+  database: { user: 'user', password: 'pass', database: 'db' },
+  tables: ['users'],
+  operations: ['create', 'read_all', 'read', 'update', 'delete']
+});
+```
+
+**Key Features:**
+- ✅ Auto-generates TypeScript types and Zod schemas
+- ✅ Creates Hono.js API routes in `src/backend/api/routes.ts`
+- ✅ Supports selective operations (e.g., read-only APIs)
+- ✅ Includes proper validation and error handling
+
+**Prerequisites:** Database and migrations must be run first before generating APIs.
+
 ## 🔧 Troubleshooting AI Development
 
 ### Common Issues and Solutions

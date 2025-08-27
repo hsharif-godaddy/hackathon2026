@@ -8,6 +8,7 @@ import { MySQLTool, MySQLToolOptions } from './mysql-tool.js';
 import { ServerManagementTool, ServerStatusOptions, RestartServerOptions, StopServerOptions } from './server-management-tool.js';
 import { EnvManager, createEnvManager } from './env-manager.js';
 import { createMySQLResponseFormatter } from './mysql-response-formatter.js';
+import { AutoAPIGenerator, AutoAPIGeneratorOptions } from './auto-api-generator.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js';
 import type { AgentExecutionContext, AgentToolConfig } from '../base/index.js';
@@ -26,6 +27,7 @@ const readFileTool = new ReadFileTool();
 const grepTool = new GrepTool();
 const mysqlTool = new MySQLTool();
 const serverTool = new ServerManagementTool();
+const autoAPIGenerator = new AutoAPIGenerator();
 const appRepo = new AppRepository();
 const tokenUsageRepo = new TokenUsageRepository();
 const agentRegistry = AgentRegistry.getInstance();
@@ -590,6 +592,62 @@ export const TOOL_FUNCTIONS = {
       required: [],
     },
   },
+  auto_api_generator: {
+    name: 'auto_api_generator',
+    description: 'Automatically generate Hono.js API endpoints from database schemas. PREREQUISITE: Database and migrations must be run first before using analyze_schema or generate_endpoints operations. Can analyze database tables, generate TypeScript types, and create Hono.js REST API routes with selective operations (create, read, update, delete). Perfect for generating only specific operations like "create or read only" APIs.',
+    parameters: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          enum: ['analyze_schema', 'generate_types', 'generate_endpoints'],
+          description: 'Operation to perform: analyze_schema (inspect database tables - requires DB & migrations to be run first), generate_types (create TypeScript interfaces), generate_endpoints (create API endpoints with selected operations - requires DB & migrations to be run first)',
+        },
+        database: {
+          type: 'object',
+          properties: {
+            host: { type: 'string', description: 'Database host (default: localhost)' },
+            port: { type: 'number', description: 'Database port (default: 3306)' },
+            user: { type: 'string', description: 'Database username' },
+            password: { type: 'string', description: 'Database password' },
+            database: { type: 'string', description: 'Database name' },
+          },
+          required: ['user', 'password', 'database'],
+          description: 'Database connection configuration',
+        },
+        tables: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific tables to process (if empty, processes all tables)',
+        },
+        operations: {
+          type: 'array',
+          items: { 
+            type: 'string',
+            enum: ['create', 'read', 'read_all', 'update', 'delete']
+          },
+          description: 'Which HTTP operations to generate. Options: create (POST), read (GET by ID), read_all (GET all), update (PUT), delete (DELETE). If empty, generates all operations.',
+        },
+        outputDir: {
+          type: 'string',
+          description: 'Output directory for generated files (default: src/backend/api for V3 template) - API routes are added to existing routes.ts',
+        },
+        apiPrefix: {
+          type: 'string',
+          description: 'API prefix path (default: /api)',
+        },
+        generateTypes: {
+          type: 'boolean',
+          description: 'Whether to generate TypeScript types (default: true)',
+        },
+        overwrite: {
+          type: 'boolean',
+          description: 'Whether to overwrite existing files (default: false)',
+        },
+      },
+      required: ['operation', 'database'],
+    },
+  },
 
 } as const;
 
@@ -668,6 +726,9 @@ export async function executeToolFunction(
     
     case 'server_stop':
       return await executeServerStop(args as unknown as StopServerOptions, context);
+    
+    case 'auto_api_generator':
+      return await executeAutoAPIGenerator(args as unknown as AutoAPIGeneratorOptions, context);
     
     default:
       throw new Error(`Unknown tool function: ${functionName}`);
@@ -1232,4 +1293,73 @@ async function executeServerStop(
   return `✅ ${result.message}`;
 }
 
+/**
+ * Execute Auto API Generator
+ */
+async function executeAutoAPIGenerator(
+  options: AutoAPIGeneratorOptions,
+  context: AgentExecutionContext
+): Promise<any> {
+  // Get app ID and path from execution context
+  const appId = context.metadata?.appId as string;
+  
+  if (!appId) {
+    throw new Error('App ID is required for API generation - ensure agent is running in app context');
+  }
+
+  const app = appRepo.findById(appId);
+  if (!app) {
+    throw new Error(`App '${appId}' not found`);
+  }
+
+  // Track tool execution
+  await trackToolExecution('auto_api_generator', context, JSON.stringify(options).length);
+
+  console.log(`🔧 Generating API endpoints for app ${appId} - Operation: ${options.operation}`);
+
+  try {
+    const result = await autoAPIGenerator.execute(app.path, options);
+    
+    if (!result.success) {
+      throw new Error(result.error || result.message || 'API generation failed');
+    }
+
+    console.log(`✅ API generation completed: ${result.message}`);
+    
+    // Format the response based on the operation
+    let responseMessage = `✅ ${result.message}`;
+    
+    if (result.data) {
+      if (result.data.tables) {
+        responseMessage += `\n\n📊 **Analyzed Tables:**\n${result.data.tables.map(t => `- ${t.name} (${t.columns.length} columns)`).join('\n')}`;
+      }
+      
+      if (result.data.generatedFiles) {
+        responseMessage += `\n\n📁 **Generated Files:**\n${result.data.generatedFiles.map(f => `- ${f}`).join('\n')}`;
+      }
+      
+      if (result.data.endpoints) {
+        const endpointsByTable = result.data.endpoints.reduce((acc, ep) => {
+          if (!acc[ep.table]) acc[ep.table] = [];
+          acc[ep.table]?.push(ep);
+          return acc;
+        }, {} as Record<string, any[]>);
+        
+        responseMessage += `\n\n🚀 **Generated Endpoints:**`;
+        for (const [table, endpoints] of Object.entries(endpointsByTable)) {
+          responseMessage += `\n**${table}:**`;
+          for (const ep of endpoints) {
+            responseMessage += `\n  - ${ep.method} ${ep.path} - ${ep.description}`;
+          }
+        }
+      }
+    }
+    
+    return responseMessage;
+    
+  } catch (error) {
+    console.error('❌ API generation failed:', error);
+    throw error;
+  }
+}
 
