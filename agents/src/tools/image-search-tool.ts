@@ -4,13 +4,20 @@
  * This tool provides image search functionality through multiple providers:
  * - Getty: Uses Getty Images API for professional stock photos (default)
  * - OpenAI: Uses OpenAI's web search capabilities
- * - Unsplash: Uses Unsplash's API for stock photos
+ * - Unsplash: Uses Unsplash's API for stock photos (with file-based caching)
  * 
  * Configuration:
  * - Set IMAGE_SEARCH_DRIVER environment variable to 'getty', 'openai', or 'unsplash'
  * - Getty driver requires SSO_JWT, GETTY_API_URL, and GETTY_APP_KEY
  * - OpenAI driver requires OPENAI_API_KEY
  * - Unsplash driver requires UNSPLASH_ACCESS_KEY
+ * 
+ * Caching (Unsplash only):
+ * - Cache files are stored in /tmp/unsplash/
+ * - Cache expires after 24 hours
+ * - Cache key is based on search prompt + count (case-insensitive)
+ * - Both successful and error results are cached (except network errors)
+ * - Automatic cleanup runs every hour
  * 
  * Usage:
  * ```typescript
@@ -31,6 +38,9 @@
  */
 import OpenAI from 'openai';
 import { GettyImageTool } from './getty-image-tool.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as crypto from 'crypto';
 
 export interface ImageSearchOptions {
   prompt: string;
@@ -49,6 +59,128 @@ export interface ImageSearchResult {
  */
 export interface ImageSearchDriver {
   searchImage(prompt: string, count?: number): Promise<ImageSearchResult>;
+}
+
+/**
+ * Simple file-based cache for image search results
+ */
+class UnsplashCache {
+  private cacheDir: string;
+  private maxAge: number; // in milliseconds
+
+  constructor(cacheDir = '/tmp/unsplash', maxAge = 24 * 60 * 60 * 1000) { // Default 24 hours
+    this.cacheDir = cacheDir;
+    this.maxAge = maxAge;
+    this.ensureCacheDir();
+  }
+
+  /**
+   * Generate a cache key from search prompt and count
+   */
+  private generateCacheKey(prompt: string, count: number): string {
+    const data = `${prompt.trim().toLowerCase()}-${count}`;
+    return crypto.createHash('md5').update(data).digest('hex');
+  }
+
+  /**
+   * Get cache file path for a given key
+   */
+  private getCacheFilePath(key: string): string {
+    return path.join(this.cacheDir, `${key}.json`);
+  }
+
+  /**
+   * Ensure cache directory exists
+   */
+  private ensureCacheDir(): void {
+    try {
+      fs.mkdirSync(this.cacheDir, { recursive: true });
+    } catch (error) {
+      console.warn(`⚠️ Failed to create cache directory ${this.cacheDir}:`, error);
+    }
+  }
+
+  /**
+   * Check if a cached result exists and is still valid
+   */
+  async get(prompt: string, count: number): Promise<ImageSearchResult | null> {
+    try {
+      const key = this.generateCacheKey(prompt, count);
+      const filePath = this.getCacheFilePath(key);
+      
+      if (!fs.existsSync(filePath)) {
+        return null;
+      }
+
+      const fileStats = fs.statSync(filePath);
+      const now = Date.now();
+      const fileAge = now - fileStats.mtime.getTime();
+      
+      if (fileAge > this.maxAge) {
+        // Cache expired, remove file
+        fs.unlinkSync(filePath);
+        return null;
+      }
+
+      const cachedData = fs.readFileSync(filePath, 'utf-8');
+      const result = JSON.parse(cachedData) as ImageSearchResult;
+      
+      console.log(`💾 [Unsplash Cache] Found cached result for prompt: "${prompt}" (count: ${count})`);
+      return result;
+    } catch (error) {
+      console.warn(`⚠️ Failed to read cache for prompt "${prompt}":`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Store a result in the cache
+   */
+  async set(prompt: string, count: number, result: ImageSearchResult): Promise<void> {
+    try {
+      const key = this.generateCacheKey(prompt, count);
+      const filePath = this.getCacheFilePath(key);
+      
+      fs.writeFileSync(filePath, JSON.stringify(result, null, 2));
+      console.log(`💾 [Unsplash Cache] Cached result for prompt: "${prompt}" (count: ${count})`);
+    } catch (error) {
+      console.warn(`⚠️ Failed to write cache for prompt "${prompt}":`, error);
+    }
+  }
+
+  /**
+   * Clean up expired cache files
+   */
+  async cleanup(): Promise<void> {
+    try {
+      if (!fs.existsSync(this.cacheDir)) {
+        return;
+      }
+
+      const files = fs.readdirSync(this.cacheDir);
+      const now = Date.now();
+      let cleanedCount = 0;
+
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        
+        const filePath = path.join(this.cacheDir, file);
+        const fileStats = fs.statSync(filePath);
+        const fileAge = now - fileStats.mtime.getTime();
+        
+        if (fileAge > this.maxAge) {
+          fs.unlinkSync(filePath);
+          cleanedCount++;
+        }
+      }
+
+      if (cleanedCount > 0) {
+        console.log(`🧹 [Unsplash Cache] Cleaned up ${cleanedCount} expired cache files`);
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to cleanup cache:', error);
+    }
+  }
 }
 
 /**
@@ -202,17 +334,33 @@ class GettyImageSearchDriver implements ImageSearchDriver {
 }
 
 /**
- * Unsplash driver for image search
+ * Unsplash driver for image search with file-based caching
  */
 class UnsplashImageSearchDriver implements ImageSearchDriver {
   private accessKey: string | undefined;
+  private cache: UnsplashCache;
 
   constructor() {
     this.accessKey = process.env.UNSPLASH_ACCESS_KEY;
+    this.cache = new UnsplashCache();
     
     if (!this.accessKey) {
       console.warn('⚠️ UNSPLASH_ACCESS_KEY not set. Unsplash image search will not work.');
     }
+
+    // Periodically clean up expired cache files
+    this.scheduleCleanup();
+  }
+
+  /**
+   * Schedule periodic cache cleanup
+   */
+  private scheduleCleanup(): void {
+    // Clean up every hour
+    const interval = setInterval(() => {
+      this.cache.cleanup();
+    }, 60 * 60 * 1000);
+    interval.unref();
   }
 
   async searchImage(prompt: string, count = 1): Promise<ImageSearchResult> {
@@ -222,6 +370,12 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
           success: false,
           error: 'Unsplash access key not configured'
         };
+      }
+
+      // Check cache first
+      const cachedResult = await this.cache.get(prompt, count);
+      if (cachedResult) {
+        return cachedResult;
       }
 
       console.log(`🔍 [Unsplash] Searching for ${count} image(s) with prompt: "${prompt}"`);
@@ -245,10 +399,13 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
       const data = await response.json();
       
       if (!data.results || data.results.length === 0) {
-        return {
-          success: false,
+        const errorResult = {
+          success: false as const,
           error: 'No images found for this search query'
         };
+        // Cache the error result to avoid repeated API calls for unsuccessful searches
+        await this.cache.set(prompt, count, errorResult);
+        return errorResult;
       }
 
       const imageUrls: string[] = [];
@@ -260,31 +417,41 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
       }
       
       if (imageUrls.length === 0) {
-        return {
-          success: false,
+        const errorResult = {
+          success: false as const,
           error: 'No valid image URLs found in Unsplash response'
         };
+        // Cache the error result
+        await this.cache.set(prompt, count, errorResult);
+        return errorResult;
       }
 
       console.log(`✅ [Unsplash] Found ${imageUrls.length} image URL(s): ${imageUrls.join(', ')}`);
       
+      let result: ImageSearchResult;
       if (count === 1) {
-        return {
+        result = {
           success: true,
           url: imageUrls[0]!
         };
       } else {
-        return {
+        result = {
           success: true,
           urls: imageUrls
         };
       }
+
+      // Cache the successful result
+      await this.cache.set(prompt, count, result);
+      return result;
     } catch (error) {
       console.error('❌ Unsplash image search failed:', error);
-      return {
-        success: false,
+      const errorResult = {
+        success: false as const,
         error: `Unsplash image search failed: ${error instanceof Error ? error.message : String(error)}`
       };
+      // Don't cache network errors or API failures as they might be temporary
+      return errorResult;
     }
   }
 }
