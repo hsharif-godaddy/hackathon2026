@@ -11,7 +11,8 @@ import {
   DocumentTextIcon, 
   CodeBracketIcon,
   CommandLineIcon,
-  WrenchScrewdriverIcon
+  WrenchScrewdriverIcon,
+  PhotoIcon
 } from '@heroicons/react/24/outline'
 
 interface ToolCallMessageProps {
@@ -20,7 +21,7 @@ interface ToolCallMessageProps {
   duration?: number
   toolResult?: string
   error?: string
-  toolArgs?: string
+  toolArgs?: string | any
 }
 
 export default function ToolCallMessage({ 
@@ -32,6 +33,7 @@ export default function ToolCallMessage({
   toolArgs 
 }: ToolCallMessageProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [imageError, setImageError] = useState(false)
 
   const getToolIcon = (toolName: string) => {
     switch (toolName) {
@@ -50,6 +52,8 @@ export default function ToolCallMessage({
       case 'run_command':
       case 'run_terminal_cmd':
         return <CommandLineIcon className="w-4 h-4" />
+      case 'image_search':
+        return <PhotoIcon className="w-4 h-4" />
       default:
         return <WrenchScrewdriverIcon className="w-4 h-4" />
     }
@@ -73,6 +77,8 @@ export default function ToolCallMessage({
       case 'run_command':
       case 'run_terminal_cmd':
         return 'Terminal'
+      case 'image_search':
+        return 'Image Search'
       default:
         return toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
     }
@@ -95,20 +101,40 @@ export default function ToolCallMessage({
     return `${(ms / 1000).toFixed(1)}s`
   }
 
-  const formatArgs = (args?: string) => {
+  const formatArgs = (args?: string | any) => {
     if (!args) return ''
-    try {
-      const parsed = JSON.parse(args)
-      return JSON.stringify(parsed, null, 2)
-    } catch {
-      return args
+    
+    // If args is already an object, stringify it directly
+    if (typeof args === 'object') {
+      return JSON.stringify(args, null, 2)
     }
-  }
-
-  const getFileName = (toolName: string, args?: string) => {
-    if ((toolName === 'file_edit' || toolName === 'file_read' || toolName === 'read_file') && args) {
+    
+    // If args is a string, try to parse and reformat it
+    if (typeof args === 'string') {
       try {
         const parsed = JSON.parse(args)
+        return JSON.stringify(parsed, null, 2)
+      } catch {
+        return args
+      }
+    }
+    
+    // For any other type, convert to string
+    return String(args)
+  }
+
+  const getFileName = (toolName: string, args?: string | any) => {
+    if ((toolName === 'file_edit' || toolName === 'file_read' || toolName === 'read_file') && args) {
+      try {
+        let parsed
+        if (typeof args === 'string') {
+          parsed = JSON.parse(args)
+        } else if (typeof args === 'object') {
+          parsed = args
+        } else {
+          return null
+        }
+        
         const fullPath = parsed.path || parsed.target_file || null
         if (fullPath) {
           // Extract just the filename from the path
@@ -117,6 +143,19 @@ export default function ToolCallMessage({
         return null
       } catch {
         return null
+      }
+    }
+    return null
+  }
+
+  const extractImageFromResult = (toolResult?: string) => {
+    if (!toolResult) return null
+    // Match markdown image format: ![alt text](image_url)
+    const imageMatch = toolResult.match(/!\[([^\]]*)\]\(([^\)]+)\)/)
+    if (imageMatch) {
+      return {
+        alt: imageMatch[1],
+        url: imageMatch[2]
       }
     }
     return null
@@ -196,11 +235,45 @@ export default function ToolCallMessage({
             <div className="text-xs text-gray-500 mb-1">
               {error ? 'Error:' : 'Output:'}
             </div>
-            <pre className={`text-xs whitespace-pre-wrap font-mono max-h-64 overflow-y-auto p-2 rounded text-left ${
-              error ? 'text-red-700 bg-red-50' : 'text-gray-600 bg-gray-50'
-            }`}>
-              {error || toolResult}
-            </pre>
+            {toolName === 'image_search' && !error && toolResult ? (
+              <div className="space-y-2">
+                {(() => {
+                  const imageData = extractImageFromResult(toolResult)
+                  if (imageData) {
+                    return (
+                      <div className="bg-gray-50 p-3 rounded border">
+                        {!imageError ? (
+                          <img 
+                            src={imageData.url} 
+                            alt={imageData.alt || 'Search result image'}
+                            className="max-w-full h-auto max-h-64 rounded shadow-sm"
+                            onError={() => setImageError(true)}
+                          />
+                        ) : (
+                          <div className="text-xs text-red-600 mb-2">
+                            Failed to load image: {imageData.url}
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-600 mt-2 font-mono">
+                          {toolResult}
+                        </div>
+                      </div>
+                    )
+                  }
+                  return (
+                    <pre className="text-xs whitespace-pre-wrap font-mono max-h-64 overflow-y-auto p-2 rounded text-left text-gray-600 bg-gray-50">
+                      {toolResult}
+                    </pre>
+                  )
+                })()}
+              </div>
+            ) : (
+              <pre className={`text-xs whitespace-pre-wrap font-mono max-h-64 overflow-y-auto p-2 rounded text-left ${
+                error ? 'text-red-700 bg-red-50' : 'text-gray-600 bg-gray-50'
+              }`}>
+                {error || toolResult}
+              </pre>
+            )}
           </div>
         </div>
       )}

@@ -15,6 +15,7 @@ export { EnvManager, createEnvManager } from './env-manager.js';
 export { MySQLResponseFormatter, createMySQLResponseFormatter } from './mysql-response-formatter.js';
 export { ASTStyleEditor } from './ast-style-editor.js';
 export { AutoAPIGenerator } from './auto-api-generator.js';
+export { AppPlanTool, appPlanTool } from './app-plan-tool.js';
 export { getToolDefinitions, executeToolFunction, TOOL_FUNCTIONS } from './tool-functions.js';
 export type { 
   DirectoryListingOptions, 
@@ -110,3 +111,10 @@ export type {
   RelationshipInfo,
   EndpointInfo
 } from './auto-api-generator.js';
+
+export type {
+  AppPlanData,
+  ColorPalette,
+  AppPlanToolOptions,
+  AppPlanToolResult
+} from './app-plan-tool.js';

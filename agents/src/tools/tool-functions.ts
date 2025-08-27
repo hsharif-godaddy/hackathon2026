@@ -17,6 +17,7 @@ import { join } from 'path';
 import { findImage } from './image-search-tool.js';
 import { generateImage } from './image-generation-tool.js';
 import { findGettyImage, GettyImageOptions } from './getty-image-tool.js';
+import { appPlanTool, AppPlanToolOptions } from './app-plan-tool.js';
 import { AgentRegistry } from '../registry/index.js';
 
 const directoryTool = new DirectoryListingTool();
@@ -730,6 +731,9 @@ export async function executeToolFunction(
     case 'auto_api_generator':
       return await executeAutoAPIGenerator(args as unknown as AutoAPIGeneratorOptions, context);
     
+    case 'app_plan':
+      return await executeAppPlan(args as unknown as AppPlanToolOptions, context);
+    
     default:
       throw new Error(`Unknown tool function: ${functionName}`);
   }
@@ -1359,6 +1363,56 @@ async function executeAutoAPIGenerator(
     
   } catch (error) {
     console.error('❌ API generation failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Execute the app plan tool
+ */
+async function executeAppPlan(
+  options: AppPlanToolOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  try {
+    const result = await appPlanTool.execute(options);
+    
+    if (!result.success) {
+      throw new Error(result.error || 'App plan operation failed');
+    }
+
+    let responseMessage = `✅ **App Plan ${options.operation.toUpperCase()}**\n`;
+    responseMessage += result.message || '';
+
+    if (result.data) {
+      responseMessage += `\n\n📋 **Plan Details:**`;
+      responseMessage += `\n- **App ID:** ${result.data.appId}`;
+      
+      if (result.data.appName) {
+        responseMessage += `\n- **App Name:** ${result.data.appName}`;
+      }
+      
+      if (result.data.colorPalette) {
+        responseMessage += `\n- **Color Scheme:** ${result.data.colorPalette.scheme}`;
+        if (result.data.colorPalette.name) {
+          responseMessage += ` (${result.data.colorPalette.name})`;
+        }
+        responseMessage += `\n- **Primary Color:** ${result.data.colorPalette.primary}`;
+        responseMessage += `\n- **Secondary Color:** ${result.data.colorPalette.secondary}`;
+        responseMessage += `\n- **Accent Color:** ${result.data.colorPalette.accent}`;
+      }
+      
+      if (result.data.planData && Object.keys(result.data.planData).length > 0) {
+        responseMessage += `\n- **Additional Data:** ${Object.keys(result.data.planData).length} items stored`;
+      }
+      
+      responseMessage += `\n- **Last Updated:** ${result.data.updatedAt.toLocaleString()}`;
+    }
+
+    return responseMessage;
+    
+  } catch (error) {
+    console.error('❌ App plan operation failed:', error);
     throw error;
   }
 }

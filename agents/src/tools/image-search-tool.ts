@@ -14,27 +14,33 @@
  * 
  * Usage:
  * ```typescript
- * // Using the default configured driver
+ * // Using the default configured driver - single image
  * const tool = new ImageSearchTool();
  * const result = await tool.searchImage("sunset over mountains");
+ * 
+ * // Searching for multiple images
+ * const multipleResults = await tool.searchImage("sunset over mountains", 5);
  * 
  * // Using a specific driver
  * const customTool = new ImageSearchTool(new GettyImageSearchDriver());
  * 
  * // Using the legacy function interface
  * const result = await findImage({ prompt: "sunset over mountains" });
+ * const multipleResult = await findImage({ prompt: "sunset over mountains", count: 3 });
  * ```
  */
 import OpenAI from 'openai';
-import { GettyImageTool, type GettyImageOptions } from './getty-image-tool.js';
+import { GettyImageTool } from './getty-image-tool.js';
 
 export interface ImageSearchOptions {
   prompt: string;
+  count?: number;
 }
 
 export interface ImageSearchResult {
   success: boolean;
   url?: string;
+  urls?: string[];
   error?: string;
 }
 
@@ -42,7 +48,7 @@ export interface ImageSearchResult {
  * Base interface for image search drivers
  */
 export interface ImageSearchDriver {
-  searchImage(prompt: string): Promise<ImageSearchResult>;
+  searchImage(prompt: string, count?: number): Promise<ImageSearchResult>;
 }
 
 /**
@@ -63,7 +69,7 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
     });
   }
 
-  async searchImage(prompt: string): Promise<ImageSearchResult> {
+  async searchImage(prompt: string, count = 1): Promise<ImageSearchResult> {
     try {
       if (!this.openaiClient) {
         return { 
@@ -72,9 +78,11 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
         };
       }
 
-      const searchPrompt = `Find a relevant image for: ${prompt.trim()}. Return only the direct image URL.`;
+      const searchPrompt = count > 1 
+        ? `Find ${count} relevant images for: ${prompt.trim()}. Return only the direct image URLs, one per line.`
+        : `Find a relevant image for: ${prompt.trim()}. Return only the direct image URL.`;
       
-      console.log(`🔍 [OpenAI] Searching for image with prompt: "${searchPrompt}"`);
+      console.log(`🔍 [OpenAI] Searching for ${count} image(s) with prompt: "${searchPrompt}"`);
       
       const response = await this.openaiClient.responses.create({
         model: "gpt-5",
@@ -85,22 +93,37 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
       });
       
       const responseText = response.output_text || '';
-      const urlMatch = responseText.match(/https?:\/\/[^\s)]+\.(jpg|jpeg|png|gif|webp)/i);
+      const urlMatches = responseText.match(/https?:\/\/[^\s)]+\.(jpg|jpeg|png|gif|webp)/gi);
       
-      if (!urlMatch) {
+      if (!urlMatches || urlMatches.length === 0) {
         return {
           success: false,
-          error: 'No valid image URL found in the response'
+          error: 'No valid image URLs found in the response'
         };
       }
       
-      const imageUrl = urlMatch[0];
-      console.log(`✅ [OpenAI] Found image URL: ${imageUrl}`);
+      const imageUrls = urlMatches.slice(0, count);
       
-      return {
-        success: true,
-        url: imageUrl
-      };
+      if (imageUrls.length === 0) {
+        return {
+          success: false,
+          error: 'No valid image URLs found after filtering'
+        };
+      }
+      
+      console.log(`✅ [OpenAI] Found ${imageUrls.length} image URL(s): ${imageUrls.join(', ')}`);
+      
+      if (count === 1) {
+        return {
+          success: true,
+          url: imageUrls[0]!
+        };
+      } else {
+        return {
+          success: true,
+          urls: imageUrls
+        };
+      }
     } catch (error) {
       console.error('❌ OpenAI image search failed:', error);
       return {
@@ -121,14 +144,14 @@ class GettyImageSearchDriver implements ImageSearchDriver {
     this.gettyTool = new GettyImageTool();
   }
 
-  async searchImage(prompt: string): Promise<ImageSearchResult> {
+  async searchImage(prompt: string, count = 1): Promise<ImageSearchResult> {
     try {
-      console.log(`🔍 [Getty] Searching for image with prompt: "${prompt}"`);
+      console.log(`🔍 [Getty] Searching for ${count} image(s) with prompt: "${prompt}"`);
       
       const result = await this.gettyTool.searchImages({
         phrase: prompt.trim(),
         page: 1,
-        pageSize: 1,
+        pageSize: Math.min(count, 10), // Getty API usually limits page size
         graphicalStyles: 'photography',
         sortOrder: 'best_match'
       });
@@ -140,22 +163,34 @@ class GettyImageSearchDriver implements ImageSearchDriver {
         };
       }
 
-      const image = result.images[0];
-      const imageUrl = image?.urls?.highRes || image?.urls?.standard || image?.urls?.preview || image?.urls?.thumbnail;
+      const imageUrls: string[] = [];
+      for (const image of result.images.slice(0, count)) {
+        const imageUrl = image?.urls?.highRes || image?.urls?.standard || image?.urls?.preview || image?.urls?.thumbnail;
+        if (imageUrl) {
+          imageUrls.push(imageUrl);
+        }
+      }
       
-      if (!imageUrl) {
+      if (imageUrls.length === 0) {
         return {
           success: false,
-          error: 'No valid image URL found in Getty response'
+          error: 'No valid image URLs found in Getty response'
         };
       }
 
-      console.log(`✅ [Getty] Found image URL: ${imageUrl}`);
+      console.log(`✅ [Getty] Found ${imageUrls.length} image URL(s): ${imageUrls.join(', ')}`);
       
-      return {
-        success: true,
-        url: imageUrl
-      };
+      if (count === 1) {
+        return {
+          success: true,
+          url: imageUrls[0]!
+        };
+      } else {
+        return {
+          success: true,
+          urls: imageUrls
+        };
+      }
     } catch (error) {
       console.error('❌ Getty image search failed:', error);
       return {
@@ -180,7 +215,7 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
     }
   }
 
-  async searchImage(prompt: string): Promise<ImageSearchResult> {
+  async searchImage(prompt: string, count = 1): Promise<ImageSearchResult> {
     try {
       if (!this.accessKey) {
         return {
@@ -189,11 +224,11 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
         };
       }
 
-      console.log(`🔍 [Unsplash] Searching for image with prompt: "${prompt}"`);
+      console.log(`🔍 [Unsplash] Searching for ${count} image(s) with prompt: "${prompt}"`);
       
       const searchUrl = new URL('https://api.unsplash.com/search/photos');
       searchUrl.searchParams.set('query', prompt.trim());
-      searchUrl.searchParams.set('per_page', '1');
+      searchUrl.searchParams.set('per_page', Math.min(count, 30).toString()); // Unsplash limits to 30 per page
       searchUrl.searchParams.set('orientation', 'landscape');
       
       const response = await fetch(searchUrl.toString(), {
@@ -216,22 +251,34 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
         };
       }
 
-      const image = data.results[0];
-      const imageUrl = image.urls?.regular || image.urls?.small || image.urls?.thumb;
+      const imageUrls: string[] = [];
+      for (const image of data.results.slice(0, count)) {
+        const imageUrl = image.urls?.regular || image.urls?.small || image.urls?.thumb;
+        if (imageUrl) {
+          imageUrls.push(imageUrl);
+        }
+      }
       
-      if (!imageUrl) {
+      if (imageUrls.length === 0) {
         return {
           success: false,
-          error: 'No valid image URL found in Unsplash response'
+          error: 'No valid image URLs found in Unsplash response'
         };
       }
 
-      console.log(`✅ [Unsplash] Found image URL: ${imageUrl}`);
+      console.log(`✅ [Unsplash] Found ${imageUrls.length} image URL(s): ${imageUrls.join(', ')}`);
       
-      return {
-        success: true,
-        url: imageUrl
-      };
+      if (count === 1) {
+        return {
+          success: true,
+          url: imageUrls[0]!
+        };
+      } else {
+        return {
+          success: true,
+          urls: imageUrls
+        };
+      }
     } catch (error) {
       console.error('❌ Unsplash image search failed:', error);
       return {
@@ -271,11 +318,12 @@ export class ImageSearchTool {
   }
 
   /**
-   * Search for an image based on the given prompt using the configured driver
+   * Search for images based on the given prompt using the configured driver
    * @param prompt The search prompt
-   * @returns An object containing the image URL or an error
+   * @param count The number of images to search for (default: 1)
+   * @returns An object containing the image URL(s) or an error
    */
-  async searchImage(prompt: string): Promise<ImageSearchResult> {
+  async searchImage(prompt: string, count = 1): Promise<ImageSearchResult> {
     // Validate input
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
       return { 
@@ -284,15 +332,22 @@ export class ImageSearchTool {
       };
     }
 
-    return this.driver.searchImage(prompt);
+    if (count < 1 || count > 50) {
+      return {
+        success: false,
+        error: 'Count must be between 1 and 50'
+      };
+    }
+
+    return this.driver.searchImage(prompt, count);
   }
 }
 
 /**
  * Tool interface for image search - maintains backward compatibility
  */
-export async function findImage(options: { prompt: string }): Promise<ImageSearchResult> {
-  const { prompt } = options;
+export async function findImage(options: { prompt: string; count?: number }): Promise<ImageSearchResult> {
+  const { prompt, count = 1 } = options;
   
   if (!prompt || typeof prompt !== 'string') {
     return { 
@@ -303,7 +358,7 @@ export async function findImage(options: { prompt: string }): Promise<ImageSearc
   
   try {
     const imageSearchTool = new ImageSearchTool();
-    const result = await imageSearchTool.searchImage(prompt);
+    const result = await imageSearchTool.searchImage(prompt, count);
     return result;
   } catch (error) {
     console.error('❌ Image search failed:', error);
