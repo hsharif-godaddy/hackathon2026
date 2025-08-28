@@ -7,7 +7,6 @@ import ChatInput from './ChatInput'
 import ChatHeader from './ChatHeader'
 import VersionHistory from './VersionHistory'
 import { Message, PlanItem, AiEditContext } from './types'
-import { useState } from 'react'
 import { useMessageProcessing } from './useMessageProcessing'
 
 interface ChatPaneProps {
