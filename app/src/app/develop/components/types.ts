@@ -1,7 +1,7 @@
 export interface ToolCall {
   id: string
   tool_name: string
-  tool_args?: string
+  tool_args?: string | object // Can be JSON string or object
   tool_result?: string
   error?: string
   start_time?: number
@@ -36,7 +36,7 @@ export interface Message {
   message?: string
   // Tool call specific fields (legacy - keeping for compatibility)
   tool_call_id?: string
-  tool_args?: string
+  tool_args?: string | object // Can be JSON string or object
   start_time?: number
   end_time?: number
   duration_ms?: number

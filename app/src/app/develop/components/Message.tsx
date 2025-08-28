@@ -9,6 +9,7 @@ import ToolResultMessage from './ToolResultMessage'
 import ToolCallMessage from './ToolCallMessage'
 import CompletionMessage from './CompletionMessage'
 import IntegratedResponse from './IntegratedResponse'
+import { serializeToolArgs } from './utils'
 
 interface MessageProps {
   message: MessageType
@@ -43,7 +44,7 @@ export default function Message({ message }: MessageProps) {
                     duration={message.duration_ms}
                     toolResult={message.tool_result}
                     error={message.error}
-                    toolArgs={message.tool_args}
+                    toolArgs={serializeToolArgs(message.tool_args)}
                   />
                 ) : message.type === 'complete' ? (
                   <CompletionMessage 

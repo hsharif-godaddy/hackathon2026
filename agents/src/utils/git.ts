@@ -72,10 +72,10 @@ export class GitUtils {
   private readonly DEFAULT_TIMEOUT = 30000; // 30 seconds
 
   /**
-   * Initialize a new Git repository
+   * Initialize a new Git repository with "main" as the default branch
    */
   async initRepository(repoPath: string, options: GitCommandOptions = {}): Promise<GitCommandResult> {
-    return this.executeGitCommand(['init'], repoPath, options);
+    return this.executeGitCommand(['init', '--initial-branch=main'], repoPath, options);
   }
 
   /**

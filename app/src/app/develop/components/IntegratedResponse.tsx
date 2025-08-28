@@ -5,6 +5,7 @@ import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { Message as MessageType } from './types'
 import MarkdownRenderer from './MarkdownRenderer'
 import ToolCallMessage from './ToolCallMessage'
+import { serializeToolArgs } from './utils'
 
 interface IntegratedResponseProps {
   message: MessageType
@@ -102,7 +103,7 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
                       duration={segment.tool_call.duration_ms}
                       toolResult={segment.tool_call.tool_result}
                       error={segment.tool_call.error}
-                      toolArgs={segment.tool_call.tool_args}
+                      toolArgs={serializeToolArgs(segment.tool_call.tool_args)}
                     />
                   )}
                 </div>
@@ -132,7 +133,7 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
                       duration={toolCall.duration_ms}
                       toolResult={toolCall.tool_result}
                       error={toolCall.error}
-                      toolArgs={toolCall.tool_args}
+                      toolArgs={serializeToolArgs(toolCall.tool_args)}
                     />
                   ))}
                 </div>

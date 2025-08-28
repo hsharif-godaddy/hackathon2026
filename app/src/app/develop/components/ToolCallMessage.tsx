@@ -21,7 +21,7 @@ interface ToolCallMessageProps {
   duration?: number
   toolResult?: string
   error?: string
-  toolArgs?: string | any
+  toolArgs?: string
 }
 
 export default function ToolCallMessage({ 
@@ -101,40 +101,21 @@ export default function ToolCallMessage({
     return `${(ms / 1000).toFixed(1)}s`
   }
 
-  const formatArgs = (args?: string | any) => {
+  const formatArgs = (args?: string) => {
     if (!args) return ''
     
-    // If args is already an object, stringify it directly
-    if (typeof args === 'object') {
-      return JSON.stringify(args, null, 2)
+    try {
+      const parsed = JSON.parse(args)
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      return args
     }
-    
-    // If args is a string, try to parse and reformat it
-    if (typeof args === 'string') {
-      try {
-        const parsed = JSON.parse(args)
-        return JSON.stringify(parsed, null, 2)
-      } catch {
-        return args
-      }
-    }
-    
-    // For any other type, convert to string
-    return String(args)
   }
 
-  const getFileName = (toolName: string, args?: string | any) => {
+  const getFileName = (toolName: string, args?: string) => {
     if ((toolName === 'file_edit' || toolName === 'file_read' || toolName === 'read_file') && args) {
       try {
-        let parsed
-        if (typeof args === 'string') {
-          parsed = JSON.parse(args)
-        } else if (typeof args === 'object') {
-          parsed = args
-        } else {
-          return null
-        }
-        
+        const parsed = JSON.parse(args)
         const fullPath = parsed.path || parsed.target_file || null
         if (fullPath) {
           // Extract just the filename from the path
