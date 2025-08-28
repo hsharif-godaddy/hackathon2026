@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { AppRepository } from '../../database/repositories/AppRepository';
-import { GitTool } from '../../tools/git-tool';
+import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { GitTool } from '../../tools/git-tool.js';
 import path from 'path';
 
-const router = Router();
+const router: Router = Router();
 const gitTool = new GitTool();
 const appRepository = new AppRepository();
 

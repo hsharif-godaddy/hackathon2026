@@ -70,7 +70,7 @@ export function createInputGuardrail(): GuardrailFunction {
     name: 'Security Input Guardrail',
     execute: async ({ input, context }): Promise<GuardrailResult> => {
       try {
-        const response = await guardrailAgent.run({
+        const response = await (guardrailAgent as any).run({
           messages: [
             {
               role: 'user',
@@ -138,7 +138,7 @@ export function createOutputGuardrail(): GuardrailFunction {
     name: 'Security Output Guardrail',
     execute: async ({ input, context }): Promise<GuardrailResult> => {
       try {
-        const response = await guardrailAgent.run({
+        const response = await (guardrailAgent as any).run({
           messages: [
             {
               role: 'user',
@@ -211,7 +211,9 @@ export class GuardrailTripwireError extends Error {
     super(message);
     this.name = 'GuardrailTripwireError';
     this.guardrailResult = result;
-    this.agentId = agentId;
+    if (agentId !== undefined) {
+      this.agentId = agentId;
+    }
   }
 }
 
@@ -225,7 +227,10 @@ export async function applyInputGuardrails(
   const inputGuardrail = createInputGuardrail();
   
   try {
-    const result = await inputGuardrail.execute({ input: message, context });
+    const result = await inputGuardrail.execute({ 
+      input: message, 
+      ...(context !== undefined && { context })
+    });
     
     if (result.tripwireTriggered) {
       const defaultResponse = getDefaultGuardrailResponse(context?.metadata?.agentId as string);
@@ -254,7 +259,10 @@ export async function applyOutputGuardrails(
   const outputGuardrail = createOutputGuardrail();
   
   try {
-    const result = await outputGuardrail.execute({ input: response, context });
+    const result = await outputGuardrail.execute({ 
+      input: response, 
+      ...(context !== undefined && { context })
+    });
     
     if (result.tripwireTriggered) {
       const defaultResponse = getDefaultGuardrailResponse(context?.metadata?.agentId as string);

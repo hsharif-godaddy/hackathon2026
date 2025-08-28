@@ -56,7 +56,9 @@ export class MySQLResponseFormatter {
 
   setServerRestartResult(success: boolean, error?: string): MySQLResponseFormatter {
     this.serverRestartSuccess = success;
-    this.serverRestartError = error;
+    if (error !== undefined) {
+      this.serverRestartError = error;
+    }
     return this;
   }
 

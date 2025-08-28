@@ -396,7 +396,7 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
         throw new Error(`Unsplash API error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as any;
       
       if (!data.results || data.results.length === 0) {
         const errorResult = {
@@ -535,4 +535,3 @@ export async function findImage(options: { prompt: string; count?: number }): Pr
     };
   }
 }
-

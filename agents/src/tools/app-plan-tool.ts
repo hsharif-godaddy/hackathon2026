@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 export interface AppPlanData {
   appId: string;
-  appName?: string;
-  colorPalette?: ColorPalette;
-  planData?: Record<string, any>; // Flexible storage for any additional plan data
+  appName?: string | undefined;
+  colorPalette?: ColorPalette | undefined;
+  planData?: Record<string, any> | undefined; // Flexible storage for any additional plan data
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,9 +28,9 @@ export interface ColorPalette {
 export interface AppPlanToolOptions {
   appId: string;
   operation: 'create' | 'update' | 'get' | 'delete';
-  appName?: string;
-  colorPalette?: Partial<ColorPalette>;
-  planData?: Record<string, any>;
+  appName?: string | undefined;
+  colorPalette?: Partial<ColorPalette> | undefined;
+  planData?: Record<string, any> | undefined;
 }
 
 export interface AppPlanToolResult {
@@ -74,13 +74,13 @@ export class AppPlanTool {
 
       switch (validatedOptions.operation) {
         case 'create':
-          return await this.createPlan(validatedOptions);
+          return await this.createPlan(validatedOptions as AppPlanToolOptions);
         case 'update':
-          return await this.updatePlan(validatedOptions);
+          return await this.updatePlan(validatedOptions as AppPlanToolOptions);
         case 'get':
-          return await this.getPlan(validatedOptions);
+          return await this.getPlan(validatedOptions as AppPlanToolOptions);
         case 'delete':
-          return await this.deletePlan(validatedOptions);
+          return await this.deletePlan(validatedOptions as AppPlanToolOptions);
         default:
           return {
             success: false,
@@ -122,7 +122,7 @@ export class AppPlanTool {
 
     const newPlan: AppPlanData = {
       appId,
-      appName,
+      ...(appName !== undefined && { appName }),
       colorPalette: colorPalette ? { ...defaultColorPalette, ...colorPalette } : defaultColorPalette,
       planData: planData || {},
       createdAt: new Date(),
@@ -151,13 +151,9 @@ export class AppPlanTool {
 
     const updatedPlan: AppPlanData = {
       ...existingPlan,
-      appName: appName !== undefined ? appName : existingPlan.appName,
-      colorPalette: colorPalette 
-        ? { ...existingPlan.colorPalette, ...colorPalette }
-        : existingPlan.colorPalette,
-      planData: planData 
-        ? { ...existingPlan.planData, ...planData }
-        : existingPlan.planData,
+      ...(appName !== undefined && { appName }),
+      ...(colorPalette && { colorPalette: { ...existingPlan.colorPalette, ...colorPalette } as ColorPalette }),
+      ...(planData && { planData: { ...existingPlan.planData, ...planData } }),
       updatedAt: new Date(),
     };
 

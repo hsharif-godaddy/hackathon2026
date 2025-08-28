@@ -352,7 +352,7 @@ async function handleChatMessage(wsContext: WebSocketContext, chatRequest: WSCha
         traceWebSocketEvent('guardrail_triggered', wsContext.agentId, {
           type: 'input',
           message: chatRequest.message.substring(0, 100),
-          reason: error.guardrailResult.outputInfo?.analysis?.reason || 'Security concern detected'
+          reason: (error as any).guardrailResult?.outputInfo?.analysis?.reason || 'Security concern detected'
         });
         return;
       }
