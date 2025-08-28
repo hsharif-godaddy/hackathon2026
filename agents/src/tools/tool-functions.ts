@@ -287,11 +287,7 @@ export const TOOL_FUNCTIONS = {
           description: 'Create parent directories if they don\'t exist',
           default: true,
         },
-        backup: {
-          type: 'boolean',
-          description: 'Create a backup before editing',
-          default: true,
-        },
+
         dryRun: {
           type: 'boolean',
           description: 'Preview changes without applying them',

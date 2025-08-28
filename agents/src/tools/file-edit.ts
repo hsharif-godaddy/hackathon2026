@@ -23,8 +23,7 @@ export interface FileEditOptions {
   content?: string;
   /** Create parent directories if they don't exist */
   createDirs?: boolean;
-  /** Create a backup before editing */
-  backup?: boolean;
+
   /** Preview changes without applying them */
   dryRun?: boolean;
   /** Use fuzzy matching for search text if exact match fails */
@@ -46,8 +45,7 @@ export interface FileEditResult {
   mode: 'create' | 'edit' | 'rewrite';
   /** Diff showing changes made */
   diff?: string;
-  /** Path to backup file if created */
-  backupPath?: string;
+
   /** Summary of changes */
   changes?: {
     additions: number;
@@ -361,17 +359,11 @@ export class FileEditTool {
     }
 
     let originalContent = '';
-    let backupPath: string | undefined;
 
     // Read original content if file exists
     if (existsSync(filePath)) {
       try {
         originalContent = await readFile(filePath, 'utf-8');
-        
-        // Create backup if requested
-        if (options.backup !== false && !options.dryRun) {
-          backupPath = await this.createBackup(filePath, originalContent);
-        }
       } catch (error) {
         return {
           success: false,
@@ -404,7 +396,6 @@ export class FileEditTool {
       path: options.path,
       mode: 'rewrite' as const,
       diff,
-      ...(backupPath ? { backupPath } : {}),
       changes,
     };
 
@@ -466,12 +457,6 @@ export class FileEditTool {
     }
 
     const originalContent = content;
-    let backupPath: string | undefined;
-
-    // Create backup if requested
-    if (options.backup !== false && !options.dryRun) {
-      backupPath = await this.createBackup(filePath, originalContent);
-    }
 
     // Apply edits
     const editResults: string[] = [];
@@ -519,10 +504,6 @@ export class FileEditTool {
       diff,
       changes,
     };
-    
-    if (backupPath) {
-      result.backupPath = backupPath;
-    }
     
     if (editResults.length > 0) {
       result.warning = editResults.join('\n');
@@ -591,16 +572,7 @@ export class FileEditTool {
     return { found: false, match: '' };
   }
 
-  /**
-   * Create a backup of the original file
-   */
-  private async createBackup(filePath: string, content: string): Promise<string> {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupPath = `${filePath}.backup-${timestamp}`;
-    
-    await writeFile(backupPath, content, 'utf-8');
-    return backupPath;
-  }
+
 
   /**
    * Calculate changes between original and new content
@@ -711,9 +683,7 @@ export class FileEditTool {
       lines.push(`📊 **Changes**: +${result.changes.additions} -${result.changes.deletions} lines (${result.changes.totalLines} total)`);
     }
     
-    if (result.backupPath) {
-      lines.push(`💾 **Backup created**: \`${result.backupPath}\``);
-    }
+
     
     if (result.error) {
       lines.push(`❌ **Error**: ${result.error}`);

@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsx watch src/server/app.ts",
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "start": "node dist/server/app.js",
     "test": "vitest",
     "test:watch": "vitest --watch",
