@@ -16,6 +16,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { ProtectedRoute, UserMenu } from '@/components/auth'
 import { appFetch } from '@/lib/gasket-config'
+import { appService } from '@/services/AppService'
 
 interface App {
   id: string
@@ -52,36 +53,21 @@ function AppsPageContent() {
         // First, cleanup any orphaned apps to ensure accurate status
         console.log('🧹 Cleaning up orphaned apps...')
         try {
-          const cleanupResponse = await fetch('http://localhost:4000/apps/cleanup-orphans', {
-            method: 'POST'
-          })
-          if (cleanupResponse.ok) {
-            console.log('✅ Cleanup completed')
-          } else {
-            console.warn('⚠️ Cleanup failed, but continuing...')
-          }
+          await appService.cleanupOrphans()
+          console.log('✅ Cleanup completed')
         } catch (cleanupError) {
           console.warn('⚠️ Cleanup error:', cleanupError)
           // Continue even if cleanup fails
         }
 
         // Then fetch apps and servers data in parallel
-        const [appsResponse, serversResponse] = await Promise.all([
-          appFetch('http://localhost:4000/apps'),
-          appFetch('http://localhost:4000/apps/servers')
+        const [appsData, serversData] = await Promise.all([
+          appService.getAllApps(),
+          appService.getServers()
         ])
         
-        if (appsResponse.ok) {
-          const appsData = await appsResponse.json()
-          setApps(appsData.apps)
-        } else {
-          setError('Failed to load apps')
-        }
-
-        if (serversResponse.ok) {
-          const serversData = await serversResponse.json()
-          setRunningServers(serversData.servers)
-        }
+        setApps(appsData.apps || [])
+        setRunningServers(serversData.servers || [])
       } catch (error) {
         console.error('Error fetching data:', error)
         setError('Failed to connect to server')
@@ -113,26 +99,15 @@ function AppsPageContent() {
   const handleStopServer = async (appId: string) => {
     setActionLoading(`stop-${appId}`)
     try {
-      const response = await appFetch(`http://localhost:4000/apps/${appId}/stop`, {
-        method: 'POST'
-      })
-      
-      if (response.ok) {
-        console.log('✅ Server stopped successfully for app:', appId)
+      const data = await appService.stopApp(appId)
+      console.log('✅ Server stopped successfully for app:', appId)
         
         // Small delay to ensure backend has updated
         await new Promise(resolve => setTimeout(resolve, 500))
         
         // Refresh running servers list
-        const serversResponse = await appFetch('http://localhost:4000/apps/servers')
-        if (serversResponse.ok) {
-          const serversData = await serversResponse.json()
-          setRunningServers(serversData.servers)
-        }
-      } else {
-        console.error('❌ Failed to stop server for app:', appId, response.status)
-        alert('Failed to stop server')
-      }
+        const serversData = await appService.getServers()
+        setRunningServers(serversData.servers || [])
     } catch (error) {
       console.error('❌ Error stopping server for app:', appId, error)
       alert('Failed to stop server')
@@ -153,30 +128,19 @@ function AppsPageContent() {
   const handleDeleteApp = async (appId: string) => {
     setActionLoading(`delete-${appId}`)
     try {
-      const response = await appFetch(`http://localhost:4000/apps/${appId}`, {
-        method: 'DELETE'
-      })
+      await appService.deleteApp(appId)
       
-      if (response.ok) {
-        // Refresh apps list
-        const appsResponse = await appFetch('http://localhost:4000/apps')
-        if (appsResponse.ok) {
-          const appsData = await appsResponse.json()
-          setApps(appsData.apps)
-        }
+      // Refresh apps list
+      const appsData = await appService.getAllApps()
+      setApps(appsData.apps || [])
         
         // Refresh running servers list
-        const serversResponse = await appFetch('http://localhost:4000/apps/servers')
-        if (serversResponse.ok) {
-          const serversData = await serversResponse.json()
-          setRunningServers(serversData.servers)
-        }
-      } else {
-        alert('Failed to delete app')
-      }
+        const serversData = await appService.getServers()
+        setRunningServers(serversData.servers || [])
     } catch (error) {
       console.error('Error deleting app:', error)
-      alert('Failed to delete app')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      alert(`Failed to delete app: ${errorMessage}`)
     } finally {
       setActionLoading(null)
     }
@@ -203,23 +167,12 @@ function AppsPageContent() {
 
     setActionLoading('stop-all')
     try {
-      const response = await appFetch('http://localhost:4000/apps/stop-all', {
-        method: 'POST'
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        alert(data.message)
+      const data = await appService.stopAllApps()
+      alert(data.message || 'All apps stopped successfully')
         
         // Refresh running servers list
-        const serversResponse = await appFetch('http://localhost:4000/apps/servers')
-        if (serversResponse.ok) {
-          const serversData = await serversResponse.json()
-          setRunningServers(serversData.servers)
-        }
-      } else {
-        alert('Failed to stop servers')
-      }
+        const serversData = await appService.getServers()
+        setRunningServers(serversData.servers || [])
     } catch (error) {
       console.error('Error stopping all servers:', error)
       alert('Failed to stop servers')
@@ -231,25 +184,18 @@ function AppsPageContent() {
   const handleRestartServer = async (appId: string) => {
     setActionLoading(`restart-${appId}`)
     try {
-      const response = await appFetch(`http://localhost:4000/apps/${appId}/restart`, {
-        method: 'POST'
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        alert(data.message)
+      const data = await appService.restartApp(appId)
+      alert(data.message || 'App restarted successfully')
         
         // Wait a moment for the server to restart, then refresh data
         setTimeout(async () => {
-          const serversResponse = await appFetch('http://localhost:4000/apps/servers')
-          if (serversResponse.ok) {
-            const serversData = await serversResponse.json()
-            setRunningServers(serversData.servers)
+          try {
+            const serversData = await appService.getServers()
+            setRunningServers(serversData.servers || [])
+          } catch (error) {
+            console.error('Error refreshing servers after restart:', error)
           }
         }, 2000)
-      } else {
-        alert('Failed to restart server')
-      }
     } catch (error) {
       console.error('Error restarting server:', error)
       alert('Failed to restart server')
@@ -265,23 +211,12 @@ function AppsPageContent() {
 
     setActionLoading('force-cleanup')
     try {
-      const response = await appFetch('http://localhost:4000/apps/cleanup-orphans', {
-        method: 'POST'
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        alert(data.message)
+      const data = await appService.cleanupOrphans()
+      alert(data.message || 'Cleanup completed successfully')
         
         // Refresh running servers list
-        const serversResponse = await appFetch('http://localhost:4000/apps/servers')
-        if (serversResponse.ok) {
-          const serversData = await serversResponse.json()
-          setRunningServers(serversData.servers)
-        }
-      } else {
-        alert('Failed to cleanup orphaned processes')
-      }
+        const serversData = await appService.getServers()
+        setRunningServers(serversData.servers || [])
     } catch (error) {
       console.error('Error cleaning up orphans:', error)
       alert('Failed to cleanup orphaned processes')

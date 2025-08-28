@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { SparklesIcon } from '@heroicons/react/24/outline'
 import { appFetch } from '@/lib/gasket-config'
+import { appService } from '@/services/AppService'
 
 interface AppStatus {
   id: string
@@ -26,15 +27,9 @@ export default function CreateAppStatus() {
   useEffect(() => {
     if (!appId || !isPolling) return
 
-    const pollStatus = async () => {
+        const pollStatus = async () => {
       try {
-        const response = await appFetch(`http://localhost:4000/apps/${appId}/status`)
-        
-        if (!response.ok) {
-          throw new Error(`Failed to get app status: ${response.status}`)
-        }
-
-        const data = await response.json()
+        const data = await appService.getAppStatus(appId)
         setAppStatus(data)
 
         // Stop polling if app creation is complete or errored

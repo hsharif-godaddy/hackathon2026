@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react'
+import { appService } from '@/services/AppService'
 import {
   ChartBarIcon,
   CurrencyDollarIcon,
@@ -44,11 +45,7 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
     const fetchUsage = async () => {
       try {
         setIsLoading(true)
-        const response = await fetch(`http://localhost:4000/apps/${appId}/usage`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch usage data')
-        }
-        const data = await response.json()
+        const data = await appService.getTokenUsage(appId)
         setUsage(data.usage)
       } catch (error) {
         console.error('Error fetching token usage:', error)

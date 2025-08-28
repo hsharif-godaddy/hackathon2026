@@ -1,4 +1,6 @@
 import { Message, ToolCall, MessageSegment, AiEditContext } from './types'
+import { buildWsUrl } from '@/config/api'
+import { agentService } from '@/services/AgentService'
 
 /**
  * Message Service using WebSocket for real-time bidirectional communication
@@ -61,7 +63,7 @@ export const cleanup = () => {
  */
 function createWebSocketConnection(agentId: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://localhost:4000/ws/${agentId}`)
+    const ws = new WebSocket(buildWsUrl(`ws/${agentId}`))
     
     ws.onopen = () => {
       console.log('🔌 WebSocket connected')
@@ -420,7 +422,7 @@ function handleWebSocketMessage(
           msg.id === agentMessage.id 
             ? { 
                 ...msg, 
-                content: `Sorry, I encountered an error. Please make sure the agents server is running on localhost:4000 and WebSocket connections are supported.`,
+                content: `Sorry, I encountered an error. Please make sure the agents server is running and WebSocket connections are supported.`,
                 isThinking: false,
                 is_complete: true,
                 error: data.error,
@@ -451,7 +453,7 @@ function handleWebSocketError(
       msg.id === agentMessage.id 
         ? { 
             ...msg, 
-            content: 'Sorry, I encountered an error. Please make sure the agents server is running on localhost:4000 and WebSocket connections are supported.',
+            content: 'Sorry, I encountered an error. Please make sure the agents server is running and WebSocket connections are supported.',
             isThinking: false 
           }
         : msg
@@ -540,11 +542,9 @@ function updateStreamingContent(segments: MessageSegment[], currentContent: stri
  */
 export const loadConversations = async (appId: string) => {
   try {
-    const response = await fetch(`http://localhost:4000/agent/conversations/${appId}`)
-    if (!response.ok) {
-      throw new Error('Failed to fetch conversations')
-    }
-    return await response.json()
+    const conversations = await agentService.getConversations(appId)
+    console.log('loadConversations - loaded conversations:', conversations?.length || 0, conversations)
+    return conversations
   } catch (error) {
     console.error('Error loading conversations:', error)
     return []
@@ -556,16 +556,13 @@ export const loadConversations = async (appId: string) => {
  */
 export const loadConversation = async (appId: string, conversationId: string) => {
   try {
-    const response = await fetch(`http://localhost:4000/agent/conversations/${appId}/${conversationId}`)
-    if (!response.ok) {
-      throw new Error('Failed to fetch conversation')
-    }
-    const data = await response.json()
+    const data = await agentService.getConversation(appId, conversationId)
+    console.log('loadConversation - loaded conversation data:', data)
     
     // Convert database messages to UI message format
     const messages: Message[] = data.messages.map((msg: {id: string; sender: string; content: string; createdAt: string; messageType?: string; toolCalls?: ToolCall[]; segments?: MessageSegment[]; metadata?: Record<string, unknown>}) => ({
       id: msg.id, // Keep as string since database IDs are strings
-      sender: msg.sender,
+      sender: msg.sender as 'user' | 'agent',
       content: msg.content,
       timestamp: new Date(msg.createdAt),
       messageType: msg.messageType,
@@ -574,8 +571,10 @@ export const loadConversation = async (appId: string, conversationId: string) =>
       ...(msg.metadata || {})
     }))
     
+    console.log('loadConversation - converted messages:', messages?.length || 0, messages)
+    
     return {
-      conversation: data.conversation,
+      conversation: data,
       messages
     }
   } catch (error) {
@@ -589,13 +588,8 @@ export const loadConversation = async (appId: string, conversationId: string) =>
  */
 export const deleteConversation = async (conversationId: string) => {
   try {
-    const response = await fetch(`http://localhost:4000/agent/conversations/${conversationId}`, {
-      method: 'DELETE'
-    })
-    if (!response.ok) {
-      throw new Error('Failed to delete conversation')
-    }
-    return true
+    const data = await agentService.deleteConversation(conversationId)
+    return data.success
   } catch (error) {
     console.error('Error deleting conversation:', error)
     return false

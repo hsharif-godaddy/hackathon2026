@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { appFetch } from '@/lib/gasket-config'
+import { appService } from '@/services/AppService'
 import Header from './components/Header'
 import HeroSection from './components/HeroSection'
 import ExamplesSection from './components/ExamplesSection'
@@ -103,16 +104,10 @@ export default function Home() {
       const words = promptText.trim().split(' ').slice(0, 3)
       const appName = words.length > 0 ? words.join(' ') : 'New App'
       
-      // Create the app via POST request
-      const response = await appFetch('http://localhost:4000/apps/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          name: appName,
-          initialPrompt: promptText.trim()
-        }),
+      // Create the app via AppService
+      const response = await appService.createApp({
+        name: appName,
+        initialPrompt: promptText.trim()
       })
 
       // Check if user was redirected to SSO

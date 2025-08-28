@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { appService } from '@/services/AppService'
 import dynamic from 'next/dynamic'
 import { 
   XMarkIcon, 
@@ -51,12 +52,7 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
     if (!appId) return
 
     try {
-      const response = await fetch(`http://localhost:4000/apps/${appId}/files?maxDepth=5`)
-      if (!response.ok) {
-        throw new Error('Failed to load files')
-      }
-      
-      const result = await response.json()
+      const result = await appService.getFiles(appId, 5)
       const fileTree = buildFileTree(result.entries)
       setFiles(fileTree)
     } catch (error) {
@@ -103,12 +99,7 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
   // Load file content from backend
   const loadFileContent = useCallback(async (filePath: string): Promise<string> => {
     try {
-      const response = await fetch(`http://localhost:4000/apps/${appId}/files/read?path=${encodeURIComponent(filePath)}`)
-      if (!response.ok) {
-        throw new Error('Failed to load file content')
-      }
-      
-      const result = await response.json()
+      const result = await appService.readFile(appId, filePath)
       return result.content
     } catch (error) {
       console.error('Error loading file content:', error)
@@ -119,23 +110,8 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
   // Save file content to backend
   const saveFileContent = useCallback(async (filePath: string, content: string): Promise<boolean> => {
     try {
-      const response = await fetch(`http://localhost:4000/apps/${appId}/files/write`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          path: filePath,
-          content: content,
-          mode: 'rewrite'
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to save file')
-      }
-
-      return true
+      const result = await appService.writeFile(appId, filePath, content)
+      return result.success || true
     } catch (error) {
       console.error('Error saving file:', error)
       return false

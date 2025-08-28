@@ -29,17 +29,7 @@ import {
   loadConversation
 } from '@/app/develop/components/messageService'
 import { ProtectedRoute } from '@/components/auth'
-import { appFetch } from '@/lib/gasket-config'
-
-interface App {
-  id: string
-  name: string
-  port: number
-  initialPrompt?: string
-  status: 'creating' | 'created' | 'error'
-  createdAt: string
-  updatedAt: string
-}
+import { appService, App } from '@/services/AppService'
 
 function DevelopPageContent() {
   const params = useParams()
@@ -96,15 +86,9 @@ function DevelopPageContent() {
     setIsLoadingCommits(true)
     
     try {
-      const response = await appFetch(`http://localhost:4000/apps/${appId}/git/history`)
-      
-      if (response.ok) {
-        const data = await response.json()
-        const commits = data.commits || []
-        setCommitHistory(commits)
-      } else {
-        console.error('Failed to load commit history')
-      }
+      const data = await appService.getGitHistory(appId)
+      const commits = data.commits || []
+      setCommitHistory(commits)
     } catch (err) {
       console.error('Error loading commit history:', err)
     } finally {
@@ -118,31 +102,21 @@ function DevelopPageContent() {
       setIsCheckingApp(true)
       console.log('🔍 Ensuring app is running:', appId)
       
-      // Call generic backend endpoint
-      const response = await fetch(`http://localhost:4000/apps/${appId}/ensure-running`, {
-        method: 'POST'
-      })
+      const data = await appService.ensureAppIsRunning(appId)
+      console.log('📊 App ensure-running response:', data)
       
-      if (response.ok) {
-        const data = await response.json()
-        console.log('📊 App ensure-running response:', data)
+      if (data.action === 'rebuild' || data.action === 'start') {
+        setIsStartingApp(true)
+        console.log(`🔄 App is being ${data.action === 'rebuild' ? 'rebuilt' : 'started'}...`)
         
-        if (data.action === 'rebuild' || data.action === 'start') {
-          setIsStartingApp(true)
-          console.log(`🔄 App is being ${data.action === 'rebuild' ? 'rebuilt' : 'started'}...`)
-          
-          // Wait for the action to complete (backend already waits, but show UI feedback)
-          await new Promise(resolve => setTimeout(resolve, 1000))
-          
-          setIsStartingApp(false)
-        }
+        // Wait for the action to complete (backend already waits, but show UI feedback)
+        await new Promise(resolve => setTimeout(resolve, 1000))
         
-        if (data.success) {
-          console.log(`✅ App is now running: ${data.message}`)
-        }
-      } else {
-        const errorData = await response.json().catch(() => ({}))
-        console.error('❌ Failed to ensure app is running:', response.status, errorData.error)
+        setIsStartingApp(false)
+      }
+      
+      if (data.success) {
+        console.log(`✅ App is now running: ${data.message}`)
       }
     } catch (error) {
       console.error('Error ensuring app is running:', error)
@@ -159,22 +133,18 @@ function DevelopPageContent() {
     
     const fetchApp = async () => {
       try {
-        const response = await appFetch(`http://localhost:4000/apps/${appId}`)
-        if (response.ok) {
-          const data = await response.json()
-          setApp(data.app)
-          
-          // Check if this is a newly created app with an initial prompt
-          const isNewApp = data.app.status === 'created' && data.app.initialPrompt
+        const data = await appService.getApp(appId)
+        setApp(data.app)
+        
+                  // Check if this is a newly created app with an initial prompt
+          const isNewApp = data.app.status === 'created' && !!data.app.initialPrompt
+          console.log('🔍 App creation check - status:', data.app.status, 'initialPrompt:', !!data.app.initialPrompt, 'isNewApp:', isNewApp)
           setIsInitialAppCreation(isNewApp)
-          
-          // After fetching app details, ensure app is running if needed (prevent duplicate calls in Strict Mode)
-          if (!appCheckProcessed.current) {
-            appCheckProcessed.current = true
-            await ensureAppIsRunning(appId)
-          }
-        } else {
-          console.error('Failed to fetch app:', response.status)
+        
+        // After fetching app details, ensure app is running if needed (prevent duplicate calls in Strict Mode)
+        if (!appCheckProcessed.current) {
+          appCheckProcessed.current = true
+          await ensureAppIsRunning(appId)
         }
       } catch (error) {
         console.error('Error fetching app:', error)
@@ -190,11 +160,8 @@ function DevelopPageContent() {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const response = await appFetch('http://localhost:4000/apps/config')
-        if (response.ok) {
-          const data = await response.json()
-          setShowUsageCost(data.config.showUsageCost)
-        }
+        const data = await appService.getConfig()
+        setShowUsageCost(data.config.showUsageCost)
       } catch (error) {
         console.error('Error fetching config:', error)
         setShowUsageCost(false)
@@ -211,22 +178,29 @@ function DevelopPageContent() {
       
       try {
         setIsLoadingConversations(true)
+        console.log('🔄 Loading conversations for app:', appId, 'app:', app)
         const conversationList = await loadConversations(appId)
+        console.log('📚 Loaded conversation list:', conversationList?.length || 0, conversationList)
         setConversations(conversationList)
         
         // Load the most recent conversation if available
         if (conversationList.length > 0) {
           const mostRecent = conversationList[0]
+          console.log('🔍 Loading most recent conversation:', mostRecent)
           const conversationData = await loadConversation(appId, mostRecent.id)
           
           if (conversationData) {
-            console.log('Loaded conversation:', mostRecent.id, 'with', conversationData.messages.length, 'messages')
+            console.log('✅ Loaded conversation:', mostRecent.id, 'with', conversationData.messages.length, 'messages')
             setMessages(conversationData.messages)
             setConversationId(mostRecent.id)
+          } else {
+            console.warn('⚠️ No conversation data returned for:', mostRecent.id)
           }
+        } else {
+          console.log('📝 No existing conversations found, app might be new')
         }
       } catch (error) {
-        console.error('Error loading conversations:', error)
+        console.error('❌ Error loading conversations:', error)
       } finally {
         setIsLoadingConversations(false)
       }
@@ -244,13 +218,21 @@ function DevelopPageContent() {
 
   // 4. PURE UI STATE - Set initial prompt in input (no actions)
   useEffect(() => {
+    console.log('🔍 Initial prompt check:', {
+      isInitialAppCreation,
+      hasInitialPrompt: !!app?.initialPrompt,
+      initialMessageProcessed: initialMessageProcessed.current,
+      conversationsLength: conversations.length,
+      isLoadingConversations
+    })
+    
     if (isInitialAppCreation && 
         app?.initialPrompt && 
         !initialMessageProcessed.current &&
         conversations.length === 0 &&
         !isLoadingConversations) {
       
-      console.log('Setting initial prompt in input:', app.initialPrompt)
+      console.log('📝 Setting initial prompt in input:', app.initialPrompt)
       setInputValue(app.initialPrompt)
       initialMessageProcessed.current = true
     }
@@ -371,27 +353,11 @@ function DevelopPageContent() {
     if (!appId) return
 
     try {
-      const response = await appFetch(`http://localhost:4000/apps/${appId}/styles/edit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          selector: styleData.selector,
-          property: styleData.property,
-          value: styleData.value,
-          newClassName: styleData.newClassName,
-          newStyle: styleData.newStyle,
-          elementInfo: selectedElement
-        })
+      const result = await appService.updateStyles(appId, {
+        ...styleData,
+        elementInfo: selectedElement
       })
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log('Style update sent to API:', result)
-      } else {
-        console.error('Failed to send style update to API:', response.status)
-      }
+      console.log('Style update sent to API:', result)
     } catch (error) {
       console.error('Error sending style update to API:', error)
     }
@@ -411,35 +377,8 @@ function DevelopPageContent() {
     })
 
     try {
-      const response = await appFetch(`http://localhost:4000/apps/${appId}/text/edit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          selector: textData.selector,
-          oldText: textData.oldText,
-          newText: textData.newText,
-          devContext: textData.devContext
-        })
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log('✅ Text update sent to API successfully:', result)
-      } else {
-        const errorData = await response.json()
-        console.error('❌ Failed to send text update to API:', {
-          status: response.status,
-          error: errorData,
-          sentData: {
-            selector: textData.selector,
-            oldText: textData.oldText,
-            newText: textData.newText,
-            devContext: textData.devContext
-          }
-        })
-      }
+      const result = await appService.updateText(appId, textData)
+      console.log('✅ Text update sent to API successfully:', result)
     } catch (error) {
       console.error('❌ Error sending text update to API:', error)
     }
@@ -580,28 +519,17 @@ function DevelopPageContent() {
     
     setIsRestarting(true)
     try {
-      const response = await appFetch(`http://localhost:4000/apps/${appId}/restart`, {
-        method: 'POST'
-      })
+      await appService.restartApp(appId)
+      console.log('✅ Manual restart successful')
+      await new Promise(resolve => setTimeout(resolve, 5000))
       
-      if (response.ok) {
-        console.log('✅ Manual restart successful')
-        await new Promise(resolve => setTimeout(resolve, 5000))
-        
-        // Refresh app data
-        try {
-          const appResponse = await appFetch(`http://localhost:4000/apps/${appId}`)
-          if (appResponse.ok) {
-            const data = await appResponse.json()
-            setApp(data.app)
-            console.log('🔄 App data refreshed after restart')
-          }
-        } catch (refreshError) {
-          console.error('❌ Failed to refresh app data:', refreshError)
-        }
-      } else {
-        console.error('❌ Failed to restart server:', response.status)
-        alert('Failed to restart server')
+      // Refresh app data
+      try {
+        const data = await appService.getApp(appId)
+        setApp(data.app)
+        console.log('🔄 App data refreshed after restart')
+      } catch (refreshError) {
+        console.error('❌ Failed to refresh app data:', refreshError)
       }
     } catch (error) {
       console.error('❌ Error restarting server:', error)
@@ -650,39 +578,21 @@ function DevelopPageContent() {
       if (commit === null) {
         if (selectedCommit) {
           // Return to main branch
-          const response = await appFetch(`http://localhost:4000/apps/${appId}/git/return`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ branch: 'main' })
-          })
-          
-          if (response.ok) {
-            console.log('Returned to latest version')
-            // Refresh preview after switching
-            handlePreviewRefresh()
-            setSelectedCommit(null)
-          } else {
-            console.error('Failed to return to latest version')
-          }
+          await appService.returnToMainBranch(appId)
+          console.log('Returned to latest version')
+          // Refresh preview after switching
+          handlePreviewRefresh()
+          setSelectedCommit(null)
         }
         return
       }
       
       // Checkout specific commit
-      const response = await appFetch(`http://localhost:4000/apps/${appId}/git/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commitHash: commit.hash })
-      })
-      
-      if (response.ok) {
-        console.log(`Checked out commit ${commit.shortHash}`)
-        setSelectedCommit(commit)
-        // Refresh preview after switching
-        handlePreviewRefresh()
-      } else {
-        console.error('Failed to checkout commit')
-      }
+      await appService.checkoutCommit(appId, commit.hash)
+      console.log(`Checked out commit ${commit.shortHash}`)
+      setSelectedCommit(commit)
+      // Refresh preview after switching
+      handlePreviewRefresh()
     } catch (error) {
       console.error('Error selecting commit:', error)
     }
@@ -891,8 +801,7 @@ function DevelopPageContent() {
                 onRetry={() => {
                   // Optionally refresh app data when retrying
                   if (appId && app) {
-                    appFetch(`http://localhost:4000/apps/${appId}`)
-                      .then(res => res.json())
+                    appService.getApp(appId)
                       .then(data => setApp(data.app))
                       .catch(console.error)
                   }
