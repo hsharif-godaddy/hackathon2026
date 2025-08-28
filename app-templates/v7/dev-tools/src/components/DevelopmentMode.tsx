@@ -1,0 +1,275 @@
+import { useDevelopmentMode } from '../hooks/useDevelopmentMode'
+import { useState, useEffect } from 'react'
+import ElementEditor from './ElementEditor'
+import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
+
+export default function DevelopmentMode() {
+  const { 
+    isEnabled, 
+    isSelectMode, 
+    selectedElement, 
+    showEditor, 
+    editorPosition,
+    isInlineEditing,
+    clearSelection,
+    toggleSelectMode,
+    isTextEditable,
+    startInlineEditing,
+    stopInlineEditing,
+    cancelInlineEditing
+  } = useDevelopmentMode()
+
+  // State to control indicator visibility on hover
+  const [isIndicatorHovered, setIsIndicatorHovered] = useState(false)
+
+  // Check if floating button should be visible via environment variable
+  const showFloatingButton = import.meta.env.VITE_SHOW_DEV_TOOLS === 'true'
+
+  // Visual context capture for AI assistance
+  useEffect(() => {
+    let activeSection = 'unknown'
+    let sectionsObserver: IntersectionObserver | null = null
+    let isScriptReady = false
+
+    // Set up intersection observer for section detection
+    function setupSectionObserver() {
+      try {
+        // Use compound selector for efficient single DOM query
+        const compoundSelector = [
+          '[data-section]', 'section[id]', 'main > div[id]', 'main > section',
+          '.section', 'header', 'nav', 'main', 'aside', 'footer',
+          '[class*="section"]', '[class*="hero"]', '[class*="about"]',
+          '[class*="contact"]', '[class*="education"]', '[class*="experience"]'
+        ].join(', ')
+        
+        // Single query with compound selector to reduce DOM traversal
+        const sections = Array.from(new Set(document.querySelectorAll(compoundSelector)))
+        
+        console.log('Visual context: Found', sections.length, 'sections for observation')
+        
+        if (sections.length === 0) {
+          activeSection = 'main-content'
+          isScriptReady = true
+          return
+        }
+        
+        sectionsObserver = new IntersectionObserver((entries) => {
+          let bestMatch: Element | null = null
+          let bestRatio = 0
+          
+          entries.forEach(entry => {
+            if (entry.isIntersecting && entry.intersectionRatio > bestRatio) {
+              bestRatio = entry.intersectionRatio
+              bestMatch = entry.target
+            }
+          })
+          
+          if (bestMatch && bestRatio > 0.3) {
+            const element = bestMatch as HTMLElement
+            const sectionName = 
+              element.getAttribute('data-section') ||
+              element.getAttribute('id') ||
+              element.className.split(' ').find((c: string) => 
+                c.includes('section') || c.includes('hero') || c.includes('about') ||
+                c.includes('contact') || c.includes('education') || c.includes('experience')
+              ) ||
+              element.tagName.toLowerCase()
+            
+            if (sectionName && sectionName !== activeSection) {
+              activeSection = sectionName
+              console.log('Visual context: Active section changed to:', activeSection)
+            }
+          }
+        }, {
+          threshold: [0, 0.1, 0.3, 0.5, 0.7, 1],
+          rootMargin: '-10% 0px -10% 0px'
+        })
+        
+        sections.forEach(section => sectionsObserver?.observe(section))
+        isScriptReady = true
+        console.log('Visual context: Section observer setup complete')
+        
+      } catch (error) {
+        console.warn('Visual context: Error setting up section observer:', error)
+        activeSection = 'content'
+        isScriptReady = true
+      }
+    }
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', setupSectionObserver)
+    } else {
+      setupSectionObserver()
+    }
+
+    // Listen for visual context requests from parent window
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        // Validate origin for security
+        if (!isOriginAllowed(event)) {
+          console.warn('Visual context: Message from unauthorized origin:', event.origin)
+          return
+        }
+
+        if (event.data && event.data.type === 'REQUEST_VISUAL_CONTEXT') {
+          console.log('Visual context: Request received, script ready:', isScriptReady)
+          
+          const context = {
+            page: window.location.pathname + window.location.search,
+            scroll_position: {
+              x: window.scrollX || window.pageXOffset || 0,
+              y: window.scrollY || window.pageYOffset || 0
+            },
+            active_section: activeSection,
+            viewport: {
+              width: window.innerWidth,
+              height: window.innerHeight
+            },
+            timestamp: Date.now(),
+            script_ready: isScriptReady
+          }
+          
+          console.log('Visual context: Sending response:', context)
+          
+          // Send response back to parent
+          if (window.parent !== window) {
+            safePostMessage(window.parent, {
+              type: 'VISUAL_CONTEXT_RESPONSE',
+              context: context
+            })
+          }
+        }
+      } catch (error) {
+        console.error('Visual context: Error handling request:', error)
+        
+        // Send error response
+        if (window.parent !== window) {
+          safePostMessage(window.parent, {
+            type: 'VISUAL_CONTEXT_RESPONSE',
+            context: {
+              page: '/',
+              scroll_position: { x: 0, y: 0 },
+              active_section: 'error',
+              viewport: { width: 0, height: 0 },
+              timestamp: Date.now(),
+              error: error instanceof Error ? error.message : 'Unknown error'
+            }
+          })
+        }
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    console.log('Visual context: Script loaded and ready')
+
+    return () => {
+      if (sectionsObserver) {
+        sectionsObserver.disconnect()
+      }
+      window.removeEventListener('message', handleMessage)
+    }
+  }, [])
+  
+  if (!isEnabled) {
+    return null
+  }
+
+  return (
+    <>
+      {/* Development Mode Floating Button - Only show if environment variable is set */}
+      {showFloatingButton && (
+        <button
+        data-dev-tools="floating-button"
+        onClick={() => {
+          toggleSelectMode()
+        }}
+        style={{
+          position: 'fixed',
+          bottom: '20px',
+          left: '20px',
+          width: '60px',
+          height: '60px',
+          borderRadius: '50%',
+          background: isSelectMode 
+            ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
+            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: 'white',
+          border: '3px solid rgba(255, 255, 255, 0.2)',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+          cursor: 'pointer',
+          zIndex: 999999,
+          fontSize: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+          transition: 'all 0.2s ease',
+          pointerEvents: 'auto'
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.transform = 'scale(1.1)'
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.transform = 'scale(1)'
+        }}
+        title={isSelectMode ? 'Exit selection mode' : 'Enter selection mode (Dev Tools)'}
+        >
+          {isSelectMode ? '✕' : '🎨'}
+        </button>
+      )}
+
+      {/* Development Mode Indicator */}
+      {(isSelectMode || isInlineEditing) && (
+        <div 
+          data-dev-tools="indicator"
+          onMouseEnter={() => setIsIndicatorHovered(true)}
+          onMouseLeave={() => setIsIndicatorHovered(false)}
+          style={{
+            position: 'fixed',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: isInlineEditing 
+              ? 'rgba(5, 150, 105, 0.95)' 
+              : 'rgba(102, 126, 234, 0.95)',
+            backdropFilter: 'blur(10px)',
+            color: 'white',
+            padding: '12px 20px',
+            borderRadius: '25px',
+            fontSize: '14px',
+            fontWeight: '600',
+            zIndex: 999998,
+            pointerEvents: 'auto',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
+            border: '2px solid rgba(255, 255, 255, 0.1)',
+            opacity: isIndicatorHovered ? 0 : 1,
+            transition: 'opacity 0.2s ease',
+            cursor: 'pointer'
+          }}
+          title="Hover to temporarily hide this indicator"
+        >
+          {isInlineEditing ? (
+            <>✏️ Editing text - Press Enter to save, Escape to cancel</>
+          ) : (
+            <>🎯 Click any element to edit its styles</>
+          )}
+        </div>
+      )}
+
+      {/* Element Editor */}
+      <ElementEditor
+        isOpen={showEditor}
+        onClose={clearSelection}
+        position={editorPosition}
+        selectedElement={selectedElement}
+        isInlineEditing={isInlineEditing}
+        isTextEditable={isTextEditable}
+        startInlineEditing={startInlineEditing}
+        stopInlineEditing={stopInlineEditing}
+        cancelInlineEditing={cancelInlineEditing}
+      />
+    </>
+  )
+}

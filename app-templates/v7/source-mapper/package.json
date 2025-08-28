@@ -1,0 +1,35 @@
+{
+  "name": "@airo/source-mapper",
+  "version": "1.0.0",
+  "description": "Source mapping plugin for Airo AI Builder development tools",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc && vite build",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "vite": "^6.0.3"
+  },
+  "dependencies": {
+    "@babel/core": "^7.26.4",
+    "@babel/generator": "^7.26.3",
+    "@babel/parser": "^7.26.3",
+    "@babel/traverse": "^7.26.4",
+    "@babel/types": "^7.26.3"
+  },
+  "devDependencies": {
+    "@types/babel__core": "^7.20.5",
+    "@types/babel__generator": "^7.6.8",
+    "@types/babel__traverse": "^7.20.6",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vitest": "^2.1.8"
+  },
+  "files": [
+    "dist"
+  ]
+}
