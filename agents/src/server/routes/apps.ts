@@ -648,7 +648,8 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
         oldText: editResult.oldText,
         newText: editResult.newText,
         filePath: editResult.filePath,
-        diff: editResult.diff
+        diff: editResult.diff,
+        commitHash: editResult.commitHash // Include commit hash in response
       }
     });
   } catch (error) {

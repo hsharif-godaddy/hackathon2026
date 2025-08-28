@@ -13,6 +13,7 @@ export interface TextEditRequest {
 export interface TextEditResult extends BaseEditResult {
   oldText: string;
   newText: string;
+  commitHash?: string; // Include commit hash in the result interface
 }
 
 export class ASTTextEditor extends ASTEditorBase {
@@ -174,6 +175,14 @@ export class ASTTextEditor extends ASTEditorBase {
   /**
    * Edit element text content using AST parsing and manipulation
    */
+  /**
+   * Generate commit message for text changes
+   */
+  protected generateCommitMessage(changes: any, request: TextEditRequest): string {
+    const { devContext } = request;
+    return `Update text content in ${devContext.componentName} component`;
+  }
+
   async editElementText(
     appPath: string,
     request: TextEditRequest
@@ -182,7 +191,7 @@ export class ASTTextEditor extends ASTEditorBase {
       appPath,
       request,
       (req) => req.devContext.fileName,
-      false // Don't commit text changes
+      true // Commit text changes
     );
 
     // Add text-specific data to the result using stored changes

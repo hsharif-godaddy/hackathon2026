@@ -121,10 +121,41 @@ When users provide ambiguous instructions like "edit this" or "change the color 
   }
 
   /**
-   * Log tool usage for development tracking
+   * Log tool usage for development tracking and ensure we're on latest commit
    */
   async beforeToolExecution(toolName: string, args: unknown): Promise<unknown> {
     console.log(`🔧 Executing development tool: ${toolName}`);
+    
+    // For tools that modify files, make sure we're on latest commit
+    const fileModifyingTools = ['file_edit', 'git_operation', 'terminal_command'];
+    
+    if (fileModifyingTools.includes(toolName)) {
+      // If this tool might modify files, double-check we're on main branch
+      try {
+        const { GitTool } = await import('../tools/git-tool.js');
+        const gitTool = new GitTool();
+        
+        // Execute git branch to check current state
+        const result = await gitTool.executeGitOperation(this.appPath, {
+          operation: 'branch'
+        });
+        
+        // If we're not on main branch or in detached HEAD state
+        if (!result.success || !result.currentBranch || result.currentBranch !== 'main') {
+          console.log(`⚠️ Before executing ${toolName}: Not on main branch, attempting to return to main`);
+          
+          // Attempt to return to main branch
+          await gitTool.executeGitOperation(this.appPath, {
+            operation: 'checkout',
+            branch: 'main'
+          });
+        }
+      } catch (error) {
+        console.warn(`⚠️ Error checking git branch state before ${toolName} execution:`, error);
+        // Continue with execution despite error
+      }
+    }
+    
     return args;
   }
 

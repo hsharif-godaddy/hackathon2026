@@ -1,8 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import MessageList from './MessageList'
 import PlanTracker from './PlanTracker'
 import ChatInput from './ChatInput'
+import ChatHeader from './ChatHeader'
+import VersionHistory from './VersionHistory'
 import { Message, PlanItem, AiEditContext } from './types'
 import { useState } from 'react'
 import { useMessageProcessing } from './useMessageProcessing'
@@ -21,6 +24,33 @@ interface ChatPaneProps {
   onToggleSelectMode: () => void
   onToggleExpandedPlan: () => void
   onClearAiEditContext: () => void
+  onToggleVersionHistory?: () => void
+  isVersionHistoryOpen?: boolean
+  hasSelectedCommit?: boolean
+  appId?: string
+  selectedCommit?: {
+    hash: string
+    shortHash: string
+    message: string
+    author: string
+    date: string
+  } | null
+  commits?: Array<{
+    hash: string
+    shortHash: string
+    message: string
+    author: string
+    date: string
+  }>
+  isLoadingCommits?: boolean
+  onRefreshCommits?: () => void
+  onSelectCommit?: (commit: {
+    hash: string
+    shortHash: string
+    message: string
+    author: string
+    date: string
+  } | null) => void
 }
 
 export default function ChatPane({
@@ -36,7 +66,16 @@ export default function ChatPane({
   onKeyPress,
   onToggleSelectMode,
   onToggleExpandedPlan,
-  onClearAiEditContext
+  onClearAiEditContext,
+  onToggleVersionHistory = () => {},
+  isVersionHistoryOpen = false,
+  hasSelectedCommit = false,
+  appId = '',
+  selectedCommit = null,
+  commits = [],
+  isLoadingCommits = false,
+  onRefreshCommits = () => {},
+  onSelectCommit = () => {}
 }: ChatPaneProps) {
   // Track processing state using the hook that follows messageService.ts logic
   const isProcessing = useMessageProcessing(messages, isLoading)
@@ -47,13 +86,34 @@ export default function ChatPane({
   }
   return (
     <div className="flex-1 flex flex-col min-h-0">
+      <ChatHeader 
+        onToggleVersionHistory={onToggleVersionHistory}
+        isVersionHistoryOpen={isVersionHistoryOpen}
+        hasSelectedCommit={hasSelectedCommit}
+      />
       <PlanTracker 
         developmentPlan={developmentPlan}
         expandedPlan={expandedPlan}
         onToggleExpandedPlan={onToggleExpandedPlan}
       />
       
-      <MessageList messages={messages} />
+      {/* Toggle between MessageList and VersionHistory */}
+      {isVersionHistoryOpen ? (
+        <div className="flex-1 overflow-auto">
+          <VersionHistory
+            appId={appId}
+            isOpen={true}
+            onClose={onToggleVersionHistory}
+            onSelectCommit={onSelectCommit}
+            selectedCommit={selectedCommit}
+            commits={commits}
+            isLoading={isLoadingCommits}
+            onRefresh={onRefreshCommits}
+          />
+        </div>
+      ) : (
+        <MessageList messages={messages} />
+      )}
       
       {/* AI Edit Context Display - Simple selector above input */}
       {/* Chat Status Indicator - only shows during processing */}

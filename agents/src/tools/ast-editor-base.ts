@@ -281,20 +281,28 @@ export abstract class ASTEditorBase {
       const { relative } = await import('path');
       const relativePath = relative(appPath, filePath);
       
+      console.log(`🔄 Committing changes to git for file: ${relativePath}`);
+      
       // Add the file to git
-      await this.gitTool.executeGitOperation(appPath, {
+      const addResult = await this.gitTool.executeGitOperation(appPath, {
         operation: 'add',
         files: [relativePath]
       });
       
+      if (!addResult.success) {
+        console.warn(`❌ Failed to add file to git: ${addResult.error || 'Unknown error'}`);
+        return undefined;
+      }
+      
       // Commit the changes
+      console.log(`📝 Creating commit with message: "${commitMessage}"`);
       const commitResult = await this.gitTool.executeGitOperation(appPath, {
         operation: 'commit',
         message: commitMessage
       });
       
       if (!commitResult.success) {
-        console.warn('Failed to commit:', commitResult.error || 'Unknown error');
+        console.warn(`❌ Failed to commit: ${commitResult.error || 'Unknown error'}`);
         return undefined;
       }
       
@@ -305,12 +313,15 @@ export abstract class ASTEditorBase {
       });
       
       if (logResult.success && logResult.commits && logResult.commits.length > 0) {
-        return logResult.commits[0]?.hash;
+        const hash = logResult.commits[0]?.hash;
+        console.log(`✅ Changes committed successfully with hash: ${hash}`);
+        return hash;
       }
       
+      console.log(`⚠️ Commit succeeded but couldn't retrieve commit hash`);
       return undefined;
     } catch (error) {
-      console.warn('Failed to commit changes:', error);
+      console.warn('❌ Failed to commit changes:', error);
       return undefined;
     }
   }

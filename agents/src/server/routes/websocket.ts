@@ -309,6 +309,58 @@ function sendConnectionConfirmation(context: WebSocketContext) {
 
 
 /**
+ * Ensure app is on latest commit before processing chat message
+ */
+async function ensureLatestCommit(appId: string | undefined): Promise<boolean> {
+  if (!appId) return true; // No app ID, nothing to check
+  
+  // Import necessary modules
+  const { GitTool } = await import('../../tools/git-tool.js');
+  const { AppRepository } = await import('../../database/repositories/AppRepository.js');
+  
+  try {
+    const appRepository = new AppRepository();
+    const app = appRepository.findById(appId);
+    if (!app) return false;
+    
+    const gitTool = new GitTool();
+    
+    // Get current branch info
+    const branchResult = await gitTool.executeGitOperation(app.path, {
+      operation: 'branch'
+    });
+    
+    if (!branchResult.success) {
+      console.warn('Could not determine current branch state, proceeding with caution');
+      return true;
+    }
+    
+    // Check if we're in detached HEAD state or not on main branch
+    if (!branchResult.currentBranch || branchResult.currentBranch !== 'main') {
+      console.log(`App ${appId} is not on main branch, returning to main before proceeding`);
+      
+      // Return to main branch
+      const checkoutResult = await gitTool.executeGitOperation(app.path, {
+        operation: 'checkout',
+        branch: 'main'
+      });
+      
+      if (!checkoutResult.success) {
+        console.error(`Failed to return to main branch: ${checkoutResult.error}`);
+        return false;
+      }
+      
+      console.log(`Successfully returned app ${appId} to main branch`);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error ensuring latest commit:', error);
+    return true; // Proceed anyway, don't block the request
+  }
+}
+
+/**
  * Handle chat message via WebSocket
  */
 async function handleChatMessage(wsContext: WebSocketContext, chatRequest: WSChatRequest) {
@@ -324,6 +376,16 @@ async function handleChatMessage(wsContext: WebSocketContext, chatRequest: WSCha
       hasThreadId: !!chatRequest.threadId,
       hasUserId: !!chatRequest.userId,
     });
+    
+    // CRITICAL: Ensure we're on the latest commit before processing any chat messages
+    // This prevents making changes on a detached HEAD state
+    if (chatRequest.appId) {
+      const ensureResult = await ensureLatestCommit(chatRequest.appId);
+      if (!ensureResult) {
+        sendError(wsContext.ws, 'Failed to ensure latest commit. Changes may not be applied correctly.');
+        // Continue processing anyway - we don't want to block the conversation
+      }
+    }
     
     // Validate the chat request
     const validationResult = await validateChatRequest(wsContext, chatRequest);

@@ -86,9 +86,17 @@ function DevelopPageContent() {
     setIsLoadingCommits(true)
     
     try {
-      const data = await appService.getGitHistory(appId)
-      const commits = data.commits || []
-      setCommitHistory(commits)
+      // Request a higher count to ensure we get all commits
+      const response = await appFetch(`http://localhost:4000/apps/${appId}/git/history?count=100`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        const commits = data.commits || []
+        setCommitHistory(commits)
+        console.log(`Loaded ${commits.length} commits from history`)
+      } else {
+        console.error('Failed to load commit history')
+      }
     } catch (err) {
       console.error('Error loading commit history:', err)
     } finally {
@@ -211,10 +219,11 @@ function DevelopPageContent() {
   
   // 3b. Load commit history
   useEffect(() => {
-    if (appId && app && commitHistory.length === 0) {
+    // Always fetch commit history when appId and app are available
+    if (appId && app) {
       fetchCommitHistory()
     }
-  }, [appId, app, commitHistory.length, fetchCommitHistory])
+  }, [appId, app, fetchCommitHistory])
 
   // 4. PURE UI STATE - Set initial prompt in input (no actions)
   useEffect(() => {
@@ -511,6 +520,17 @@ function DevelopPageContent() {
       }, '*')
     }
   }
+  
+  // Toggle version history and refresh commits if opened
+  const handleToggleVersionHistory = () => {
+    const newIsVersionHistoryOpen = !isVersionHistoryOpen
+    setIsVersionHistoryOpen(newIsVersionHistoryOpen)
+    
+    // If opening the history, refresh the commits
+    if (newIsVersionHistoryOpen) {
+      fetchCommitHistory()
+    }
+  }
 
   const handleToggleExpandedPlan = () => {
     setExpandedPlan(!expandedPlan)
@@ -581,24 +601,50 @@ function DevelopPageContent() {
       // If null, return to latest (main branch)
       if (commit === null) {
         if (selectedCommit) {
+          console.log('🔄 Returning to latest version (main branch)')
           // Return to main branch
-          await appService.returnToMainBranch(appId)
-          console.log('Returned to latest version')
-          // Refresh preview after switching
-          handlePreviewRefresh()
-          setSelectedCommit(null)
+          const response = await appFetch(`http://localhost:4000/apps/${appId}/git/return`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ branch: 'main' })
+          })
+          
+          if (response.ok) {
+            const result = await response.json()
+            console.log('✅ Returned to latest version:', result.message)
+            // Refresh preview after switching
+            handlePreviewRefresh()
+            setSelectedCommit(null)
+          } else {
+            const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+            console.error('❌ Failed to return to latest version:', error.error || response.status)
+          }
         }
         return
       }
       
+      console.log(`🔍 Viewing commit ${commit.shortHash}: "${commit.message}" (${commit.date})`)
+      console.log('⚠️ Note: Changes requested after this will be made on latest commit, not the viewed commit')
+      
       // Checkout specific commit
-      await appService.checkoutCommit(appId, commit.hash)
-      console.log(`Checked out commit ${commit.shortHash}`)
-      setSelectedCommit(commit)
-      // Refresh preview after switching
-      handlePreviewRefresh()
+      const response = await appFetch(`http://localhost:4000/apps/${appId}/git/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commitHash: commit.hash })
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        console.log(`✅ Checked out commit ${commit.shortHash}`, result)
+        setSelectedCommit(commit)
+        // Refresh preview after switching
+        handlePreviewRefresh()
+      } else {
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        console.error('❌ Failed to checkout commit:', error.error || response.status)
+      }
     } catch (error) {
-      console.error('Error selecting commit:', error)
+      console.error('❌ Error selecting commit:', error)
     }
   }
 
@@ -662,17 +708,6 @@ function DevelopPageContent() {
                   {hasUnsavedChanges && viewMode === 'code' && (
                     <div className="w-2 h-2 bg-orange-500 rounded-full ml-1" title="Unsaved changes" />
                   )}
-                </button>
-                <button 
-                  onClick={() => setIsVersionHistoryOpen(!isVersionHistoryOpen)}
-                  className={`flex items-center px-2 py-1 text-xs rounded-md transition-colors ${
-                    isVersionHistoryOpen || selectedCommit
-                      ? 'bg-amber-100 text-amber-700' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  <ClockIcon className="w-3 h-3 mr-1" />
-                  {selectedCommit ? 'History*' : 'History'}
                 </button>
               </div>
 
@@ -781,6 +816,15 @@ function DevelopPageContent() {
             onToggleSelectMode={handleToggleSelectMode}
             onToggleExpandedPlan={handleToggleExpandedPlan}
             onClearAiEditContext={() => setAiEditContext(null)}
+            onToggleVersionHistory={handleToggleVersionHistory}
+            isVersionHistoryOpen={isVersionHistoryOpen}
+            hasSelectedCommit={selectedCommit !== null}
+            appId={appId}
+            selectedCommit={selectedCommit}
+            commits={commitHistory}
+            isLoadingCommits={isLoadingCommits}
+            onRefreshCommits={fetchCommitHistory}
+            onSelectCommit={handleSelectCommit}
           />
         </div>
 
@@ -823,19 +867,7 @@ function DevelopPageContent() {
               />
             </div>
 
-            {/* Version History Panel */}
-            {isVersionHistoryOpen && (
-              <VersionHistory
-                appId={appId}
-                isOpen={isVersionHistoryOpen}
-                onClose={() => setIsVersionHistoryOpen(false)}
-                onSelectCommit={handleSelectCommit}
-                selectedCommit={selectedCommit}
-                commits={commitHistory}
-                isLoading={isLoadingCommits}
-                onRefresh={fetchCommitHistory}
-              />
-            )}
+            {/* Version History Panel removed - now integrated in ChatPane */}
           </div>
         </div>
       </div>

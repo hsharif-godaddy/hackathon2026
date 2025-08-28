@@ -185,8 +185,14 @@ export class GitUtils {
     options: GitCommandOptions = {}
   ): Promise<GitCommitInfo[]> {
     const format = '--pretty=format:%H|%h|%s|%an|%ae|%ai';
+    
+    // First, try to find the default branch to ensure we see all history
+    // regardless of what commit is currently checked out
+    let branchOrRef = '--all'; // Default to showing all branches
+    
+    // Execute the log command using the branch or ref
     const result = await this.executeGitCommand(
-      ['log', `--max-count=${limit}`, format],
+      ['log', `--max-count=${limit}`, format, branchOrRef],
       repoPath,
       options
     );

@@ -6,7 +6,8 @@ import {
   ClockIcon, 
   ArrowPathIcon, 
   XMarkIcon,
-  EyeIcon
+  EyeIcon,
+  CheckCircleIcon
 } from '@heroicons/react/24/outline'
 import { appFetch } from '@/lib/gasket-config'
 
@@ -70,8 +71,9 @@ export default function VersionHistory({
   if (!isOpen) return null
 
   return (
-    <div className="absolute top-0 right-0 h-full bg-white z-20 shadow-lg w-80 border-l border-gray-200 flex flex-col">
-      <div className="flex flex-col border-b border-gray-200 bg-gray-50">
+    <div className="flex-1 flex flex-col h-full">
+      {/* Fixed header */}
+      <div className="flex flex-col border-b border-gray-200 bg-gray-50 sticky top-0 z-10">
         <div className="flex items-center justify-between p-3">
           <div className="flex items-center">
             <ClockIcon className="w-5 h-5 mr-2 text-amber-600" />
@@ -112,7 +114,8 @@ export default function VersionHistory({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto p-2" style={{ overflowY: 'auto', height: 'calc(100% - 50px)' }}>
         {isLoading && (
           <div className="flex justify-center items-center h-20">
             <ArrowPathIcon className="w-6 h-6 animate-spin text-blue-500" />
@@ -131,24 +134,24 @@ export default function VersionHistory({
           </div>
         )}
 
-        {selectedCommit && latestCommit && selectedCommit.hash !== latestCommit.hash && (
-          <div className="mb-2 sticky top-0 z-10">
+        {selectedCommit && (
+          <div className="mb-2 sticky top-0 z-10 bg-white py-1 border-b border-gray-100">
             <button
-              onClick={() => onSelectCommit(latestCommit)}
+              onClick={() => onSelectCommit(null)}
               className="w-full py-1.5 px-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-md flex items-center justify-center"
             >
-              <ArrowPathIcon className="w-3 h-3 mr-1" />
-              Jump to Latest Commit
+              <CheckCircleIcon className="w-3 h-3 mr-1" />
+              Return to Current Version
             </button>
           </div>
         )}
 
-        <ul ref={commitsListRef} className="space-y-1">
+        <ul ref={commitsListRef} className="space-y-1 max-h-full">
 
           {commits.map((commit) => (
             <li 
               key={commit.hash}
-              className={`rounded-md overflow-hidden border ${
+              className={`rounded-md overflow-auto border ${
                 selectedCommit?.hash === commit.hash 
                   ? 'border-amber-300 bg-amber-50' 
 

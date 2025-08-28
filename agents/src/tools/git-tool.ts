@@ -325,6 +325,7 @@ export class GitTool {
   private async handleLog(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
       const count = options.options?.count || 10;
+      // Pass options explicitly to ensure we get all commits
       const commits = await this.gitUtils.getCommitHistory(appPath, count);
       
       const output = commits.map(commit => 

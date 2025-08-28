@@ -102,6 +102,36 @@ function createWebSocketConnection(agentId: string): Promise<WebSocket> {
   })
 }
 
+/**
+ * Ensures the app is on the latest commit (HEAD) before making any changes
+ * This prevents making changes on a detached HEAD state
+ */
+async function ensureLatestCommit(appId: string): Promise<boolean> {
+  try {
+    // Only attempt to return to HEAD if we have an app ID
+    if (!appId) return true
+    
+    console.log('Ensuring app is on latest commit before sending message')
+    const response = await fetch(`http://localhost:4000/apps/${appId}/git/return`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch: 'main' })
+    })
+    
+    if (response.ok) {
+      const result = await response.json()
+      console.log('✅ Successfully returned to latest commit:', result.message)
+      return true
+    } else {
+      console.error('❌ Failed to return to latest commit:', response.status)
+      return false
+    }
+  } catch (error) {
+    console.error('❌ Error ensuring latest commit:', error)
+    return false
+  }
+}
+
 export const handleSendMessage = async ({
   messageContent,
   inputValue,
@@ -152,6 +182,10 @@ export const handleSendMessage = async ({
   let agentMessageContent = ''
 
   try {
+    // CRITICAL: Always ensure we're on the latest commit before making changes
+    // This prevents making changes on a detached HEAD state
+    await ensureLatestCommit(appId)
+    
     // Close any existing WebSocket connection
     if (currentWebSocket) {
       currentWebSocket.close()
