@@ -84,6 +84,12 @@ export class ConversationContextManager {
       messages.push({ role: 'user', content: contextMessage });
     }
 
+    // Add visual context as a separate user message if available
+    if (executionContext?.metadata?.visualContext) {
+      const visualContextMessage = this.formatVisualContextMessage(executionContext.metadata.visualContext);
+      messages.push({ role: 'user', content: visualContextMessage });
+    }
+
     // Add the current user message
     messages.push({ role: 'user', content: currentUserMessage.trim() });
 
@@ -395,6 +401,70 @@ Instructions: The following user message refers to changes for this specific sel
     } catch (error) {
       console.warn('Error formatting AI edit context:', error);
       return '[AI Edit Context] Element selected for editing (formatting error)';
+    }
+  }
+
+  /**
+   * Format visual context into a safe user message
+   * @param visualContext - The visual context data from iframe
+   * @returns Formatted context message
+   */
+  private formatVisualContextMessage(visualContext: any): string {
+    try {
+      // Sanitize and validate the visual context data
+      const sanitizedContext = {
+        page: String(visualContext.page || '/').substring(0, 200),
+        scroll_position: {
+          x: typeof visualContext.scroll_position?.x === 'number' && !isNaN(visualContext.scroll_position.x) ? visualContext.scroll_position.x : 0,
+          y: typeof visualContext.scroll_position?.y === 'number' && !isNaN(visualContext.scroll_position.y) ? visualContext.scroll_position.y : 0
+        },
+        active_section: visualContext.active_section ? String(visualContext.active_section).substring(0, 100) : 'unknown',
+        viewport: {
+          width: (typeof visualContext.viewport?.width === 'number' && !isNaN(visualContext.viewport.width)) ? visualContext.viewport.width : 0,
+          height: (typeof visualContext.viewport?.height === 'number' && !isNaN(visualContext.viewport.height)) ? visualContext.viewport.height : 0
+        },
+        timestamp: visualContext.timestamp || Date.now()
+      };
+
+      let activePageSection = ''
+      let contextNotes = ''
+      
+      if (sanitizedContext.active_section === 'dev-tools-initializing') {
+        activePageSection = 'The user\'s preview application is loaded but visual context capture is still initializing.'
+        contextNotes = 'The preview app is running and dev-tools are loading. The visual context system should be available shortly. Focus on understanding the user\'s intent from their message. When they say "this" or "here", ask for clarification about which specific element or section they\'re referring to.'
+      } else if (sanitizedContext.active_section === 'iframe-blocked') {
+        activePageSection = 'The user\'s preview application access is blocked or restricted.'
+        contextNotes = 'Visual context cannot be captured due to technical restrictions. Focus on understanding the user\'s intent from their message context. When they use terms like "this" or "here", ask for clarification or provide general guidance.'
+      } else if (sanitizedContext.active_section === 'no-iframe') {
+        activePageSection = 'No preview application iframe was found.'
+        contextNotes = 'The user may be referring to code or functionality in general. Focus on understanding their development needs and provide appropriate guidance.'
+      } else if (sanitizedContext.active_section === 'unknown') {
+        activePageSection = 'The active page section could not be determined.'
+        contextNotes = `The user's message refers to content visible at their current scroll position (${sanitizedContext.scroll_position.y}px from top). When they say "this" or "here", try to understand from context what they're referring to.`
+      } else {
+        activePageSection = `The user is currently viewing the "${sanitizedContext.active_section}" section.`
+        contextNotes = `The user's message refers to content visible at their current scroll position (${sanitizedContext.scroll_position.y}px from top). When they say "this" or "here", they likely mean elements visible in the "${sanitizedContext.active_section}" section around this scroll position.`
+      }
+
+      return `[User's Current Visual Context]
+
+Page Information:
+- Current Page: ${sanitizedContext.page}
+- ${activePageSection}
+
+Scroll Position:
+- Horizontal: ${sanitizedContext.scroll_position.x}px
+- Vertical: ${sanitizedContext.scroll_position.y}px
+
+Viewport Size:
+- Width: ${sanitizedContext.viewport.width}px
+- Height: ${sanitizedContext.viewport.height}px
+
+Context Notes: ${contextNotes}`;
+
+    } catch (error) {
+      console.warn('Error formatting visual context:', error);
+      return '[Visual Context] User context captured (formatting error)';
     }
   }
 

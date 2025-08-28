@@ -1,0 +1,118 @@
+/**
+ * Visual Context Capture Utility
+ * 
+ * Captures the user's current visual context via dev-tools built into the app template.
+ * The visual context script is automatically included in generated apps.
+ */
+
+/**
+ * Validates if the message event origin is from a trusted source
+ * 
+ * @param origin - The origin to validate
+ * @returns true if origin is allowed, false otherwise
+ */
+function isValidOrigin(origin: string): boolean {
+  // Allow localhost origins for development
+  return origin.startsWith('http://localhost:') || 
+         origin.startsWith('https://localhost:') ||
+         origin === 'http://127.0.0.1' ||
+         origin === 'https://127.0.0.1' ||
+         // Allow same origin
+         origin === window.location.origin
+}
+
+/**
+ * Gets the target origin for postMessage to the iframe
+ * 
+ * @returns The target origin to use for postMessage
+ */
+function getIframeTargetOrigin(): string {
+  const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+  
+  if (!iframe?.src) {
+    // Fallback to same origin if iframe src is not available
+    return window.location.origin
+  }
+  
+  try {
+    const iframeUrl = new URL(iframe.src)
+    return iframeUrl.origin
+  } catch {
+    // If URL parsing fails, use same origin
+    return window.location.origin
+  }
+}
+
+export interface VisualContext {
+  page: string
+  scroll_position: {
+    x: number
+    y: number
+  }
+  active_section?: string
+  viewport: {
+    width: number
+    height: number
+  }
+  timestamp: number
+}
+
+/**
+ * Captures the current visual context from the preview iframe.
+ * Uses postMessage to communicate with dev-tools built into the app.
+ */
+export async function captureVisualContext(): Promise<VisualContext | null> {
+  const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+  
+  if (!iframe || !iframe.contentWindow) {
+    return createFallbackContext()
+  }
+
+  try {
+    const contextPromise = new Promise<VisualContext>((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve(createFallbackContext())
+      }, 3000)
+
+      const handleMessage = (event: MessageEvent) => {
+        if (event.source !== iframe.contentWindow || !isValidOrigin(event.origin)) return
+        
+        if (event.data.type === 'VISUAL_CONTEXT_RESPONSE') {
+          clearTimeout(timeout)
+          window.removeEventListener('message', handleMessage)
+          resolve(event.data.context)
+        }
+      }
+
+      window.addEventListener('message', handleMessage)
+    })
+
+    const targetOrigin = getIframeTargetOrigin()
+    iframe.contentWindow.postMessage({
+      type: 'REQUEST_VISUAL_CONTEXT'
+    }, targetOrigin)
+
+    return await contextPromise
+
+  } catch (error) {
+    return createFallbackContext()
+  }
+}
+
+/**
+ * Creates a fallback visual context when dev-tools are not available
+ */
+function createFallbackContext(): VisualContext {
+  const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+  
+  return {
+    page: '/',
+    scroll_position: { x: 0, y: 0 },
+    active_section: iframe?.contentWindow ? 'dev-tools-initializing' : 'no-iframe',
+    viewport: {
+      width: iframe?.clientWidth || 1200,
+      height: iframe?.clientHeight || 800
+    },
+    timestamp: Date.now()
+  }
+}

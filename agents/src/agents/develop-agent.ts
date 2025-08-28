@@ -72,9 +72,24 @@ export class DevelopAgent extends BaseAgent {
       customizedPrompt += `\nProject thread ID: ${context.threadId}`;
     }
 
+    // Add visual context guidance if available
+    const visualContextSection = this.generateVisualContextSection(
+      context,
+      `Use this context to make targeted, precise changes to the right parts of their application.`
+    );
+    customizedPrompt += visualContextSection;
+
     // Add development-specific context
     customizedPrompt += `\n\n## AI Edit Context
 When a user selects a specific element in their application for editing, you will receive a separate message containing the element details and source code location. Use this information to make precise, targeted edits.
+
+## Visual Context Integration
+When users provide ambiguous instructions like "edit this" or "change the color here":
+1. Check if visual context is available to understand their current view
+2. Focus on elements in the active section they're viewing
+3. Consider their scroll position to target the right content area
+4. If both visual context AND element selection are provided, prioritize the selected element
+5. When visual context suggests a section but no specific element is selected, scan that section for likely targets
 
 ## General Development Guidelines:
 - Always write clean, maintainable, and well-documented code

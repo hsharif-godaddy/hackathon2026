@@ -437,6 +437,10 @@ function DevelopPageContent() {
           setAiEditContext(event.data.data)
           console.log('AI edit requested for element:', event.data.data)
           break
+        case 'SCROLL_POSITION_UPDATE':
+          // Handle real-time scroll position updates from iframe
+          console.log('Scroll position updated in iframe:', event.data)
+          break
       }
     }
 

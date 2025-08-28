@@ -58,6 +58,35 @@ export class ColorSchemeAgent extends BaseAgent {
     basePrompt: string,
     context?: AgentExecutionContext
   ): string {
+    let customizedPrompt = basePrompt;
+
+    // Add current timestamp for time-aware responses
+    if (context?.timestamp) {
+      customizedPrompt += `\n\nCurrent timestamp: ${context.timestamp.toISOString()}`;
+    }
+
+    // Add session context
+    if (context?.userId) {
+      customizedPrompt += `\nColor design session ID: ${context.userId}`;
+    }
+
+    if (context?.threadId) {
+      customizedPrompt += `\nProject thread ID: ${context.threadId}`;
+    }
+
+    // Add visual context guidance if available
+    const visualContext = context?.metadata?.visualContext as any;
+    const visualContextSection = this.generateVisualContextSection(
+      context,
+      `When the user refers to colors like "this color", "these elements", or "this section's colors", they likely mean:
+1. Color elements visible in the "${visualContext?.active_section || 'current'}" section
+2. UI components currently in their viewport
+3. The specific area they're looking at around scroll position ${visualContext?.scroll_position?.y || 0}px
+
+Focus color recommendations and changes on the areas they're currently viewing and interacting with.`
+    );
+    customizedPrompt += visualContextSection;
+
     const colorSpecificInstructions = `
 
 ## Color Design Guidelines
@@ -97,7 +126,7 @@ When presenting color options:
 Remember: You're not just selecting colors, you're crafting a visual identity that enhances user experience and supports the application's goals.
 `;
 
-    return basePrompt + colorSpecificInstructions;
+    return customizedPrompt + colorSpecificInstructions;
   }
 
   /**

@@ -1,6 +1,7 @@
-import { Message, ToolCall, MessageSegment, AiEditContext } from './types'
+import { Message, ToolCall, MessageSegment, AiEditContext, VisualContext } from './types'
 import { buildWsUrl } from '@/config/api'
 import { agentService } from '@/services/AgentService'
+import { captureVisualContext } from './visualContextCapture'
 
 /**
  * Message Service using WebSocket for real-time bidirectional communication
@@ -190,6 +191,21 @@ export const handleSendMessage = async ({
       setIsLoading(false)
     }
 
+    // Capture visual context before sending the message
+    let visualContext = null
+    try {
+      console.log('Attempting to capture visual context...')
+      visualContext = await captureVisualContext()
+      
+      if (visualContext?.active_section === 'unknown') {
+        console.log('Visual context captured with fallback data (preview still loading or not accessible)')
+      } else {
+        console.log('Visual context captured successfully:', visualContext)
+      }
+    } catch (error) {
+      console.warn('Failed to capture visual context, proceeding without it:', error)
+    }
+    
     // Send the chat message
     const chatMessage = {
       type: 'chat',
@@ -205,6 +221,9 @@ export const handleSendMessage = async ({
             selector: aiEditContext.selector,
             devContext: aiEditContext.devContext
           }
+        }),
+        ...(visualContext && {
+          visualContext: visualContext
         })
       }
     }

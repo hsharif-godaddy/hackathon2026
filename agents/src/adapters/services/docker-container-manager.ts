@@ -184,6 +184,7 @@ export class DockerContainerManager {
           `-e PREFERRED_FRONTEND_PORT=${port}`, // v3 template uses this for port configuration
           `-e VITE_HOST=0.0.0.0`, // Make Vite accessible from outside container
           `-e RUNNING_IN_DOCKER=true`, // Flag for v3 template to detect Docker environment
+          `-e VITE_PARENT_ORIGIN=http://localhost:3000`, // Set secure parent origin for postMessage
         ] : [
           `-v /app/.next`, // Anonymous volume for Next.js .next directory
           '-e NEXT_TELEMETRY_DISABLED=1', // Next.js specific

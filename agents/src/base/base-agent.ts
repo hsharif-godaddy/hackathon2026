@@ -185,6 +185,40 @@ export abstract class BaseAgent implements IAgent {
   }
 
   /**
+   * Generate visual context awareness section for agents
+   * This provides common visual context handling that all agents can use
+   */
+  protected generateVisualContextSection(
+    context?: AgentExecutionContext, 
+    customGuidance?: string
+  ): string {
+    if (!context?.metadata?.visualContext) {
+      return '';
+    }
+
+    const visualContext = context.metadata.visualContext as any;
+    
+    let contextSection = `\n\n## Visual Context Awareness
+The user is currently viewing their application at:
+- Page: ${visualContext.page || 'unknown'}
+- Active Section: ${visualContext.active_section || 'unknown'}
+- Scroll Position: ${visualContext.scroll_position?.y || 0}px from top
+- Viewport: ${visualContext.viewport?.width || 0}x${visualContext.viewport?.height || 0}
+
+When the user uses ambiguous references like "this", "here", "that", or "these", they are likely referring to:
+1. Elements visible in the "${visualContext.active_section}" section
+2. Content around the ${visualContext.scroll_position?.y || 0}px scroll position
+3. UI components currently in their viewport`;
+
+    // Add custom guidance if provided
+    if (customGuidance) {
+      contextSection += `\n\n${customGuidance}`;
+    }
+
+    return contextSection;
+  }
+
+  /**
    * Get the list of tools this agent can use
    */
   getTools(): AgentToolConfig[] {

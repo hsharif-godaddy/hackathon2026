@@ -92,6 +92,19 @@ export class DatabaseAgent extends BaseAgent {
       customizedPrompt += `\nProject thread ID: ${context.threadId}`;
     }
 
+    // Add visual context guidance if available
+    const visualContext = context?.metadata?.visualContext as any;
+    const visualContextSection = this.generateVisualContextSection(
+      context,
+      `When the user refers to database features like "this form", "these fields", or "this data", they likely mean:
+1. Database-related components in the "${visualContext?.active_section || 'current'}" section
+2. Forms or data elements currently visible in their viewport
+3. Content they're viewing that needs database integration
+
+Focus database setup and integration on the areas they're currently working with.`
+    );
+    customizedPrompt += visualContextSection;
+
     // Add database-specific context
     customizedPrompt += `\n\n## Database Agent Operation Context
 

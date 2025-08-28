@@ -89,3 +89,7 @@ export interface AiEditContext {
   selector: string
   devContext: DevContext
 }
+
+// Re-export VisualContext from its proper location
+export type { VisualContext } from './visualContextCapture'
+
