@@ -44,10 +44,10 @@ export default function ChatInput({
           <button
             onClick={onToggleSelectMode}
             disabled={isDisabled}
-            className={`p-2 rounded-md transition-all duration-200 ${
+            className={`border p-2 rounded-md transition-all duration-200 ${
               isSelectMode
-                ? 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                ? 'border-blue-100 bg-blue-100 text-blue-600 hover:bg-blue-200'
+                : 'border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-200'
             } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             title={isSelectMode ? 'Select mode active' : 'Enable element selector'}
           >

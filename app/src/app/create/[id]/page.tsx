@@ -144,7 +144,7 @@ export default function CreateAppStatus() {
         {/* Cancel option */}
         <button
           onClick={() => router.push('/')}
-          className="mt-8 text-gray-500 hover:text-gray-700 transition-colors text-sm underline"
+          className="cursor-pointer mt-8 text-gray-500 hover:text-gray-700 transition-colors text-sm underline"
         >
           Cancel and go back
         </button>

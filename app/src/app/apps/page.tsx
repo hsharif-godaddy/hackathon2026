@@ -368,7 +368,7 @@ function AppsPageContent() {
               return (
                 <div
                   key={app.id}
-                  className="relative bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all duration-200 p-6"
+                  className="relative flex flex-col bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all duration-200 px-6 pt-6 pb-4"
                 >
                   {/* Inline Alert */}
                   {alertState.appId === app.id && alertState.type && (
@@ -403,13 +403,12 @@ function AppsPageContent() {
                     </div>
                   </div>
                   
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  <h3 className="text-lg font-semibold text-gray-900">
                     {app.name}
                   </h3>
                   
                   <div className="flex items-center text-sm text-gray-500 space-x-4 mb-4">
-                    <div className="flex items-center space-x-1">
-                      <CalendarIcon className="w-4 h-4" />
+                    <div className="flex items-center space-x-1 italic">
                       <span>Created {formatDate(app.createdAt)}</span>
                     </div>
                   </div>
@@ -428,7 +427,7 @@ function AppsPageContent() {
                     </div>
                   )}
                   
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mt-auto">
                     <span className="text-sm text-gray-600">
                       {formatDate(app.updatedAt)}
                     </span>

@@ -10,14 +10,14 @@ export default function HeroSection({
   setError
 }: HeroSectionProps) {
   return (
-    <div className="text-center">
-      <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6">
+    <div className="text-center gd-fonts">
+      <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6 mt-12">
         What would you like to{' '}
         <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
           build today?
         </span>
       </h1>
-      <p className="text-xl text-gray-600 mb-12 max-w-3xl mx-auto">
+      <p className="text-xl text-gray-600 mb-16 max-w-3xl mx-auto">
         Describe your idea and watch our AI team of experts bring it to life. 
         From concept to production, we handle everything.
       </p>
@@ -51,15 +51,15 @@ export default function HeroSection({
               // Clear error when user starts typing
               if (error) setError(null)
             }}
-            rows={4}
+            rows={5}
             disabled={isLoading}
-            className="w-full px-6 py-4 text-lg text-gray-900 font-medium border-2 border-gray-200 rounded-2xl focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full p-5 text-lg text-gray-900 font-medium border-2 border-gray-200 rounded-2xl focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-200 transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
             placeholder="Describe the application you'd like to build..."
           />
           <button 
             onClick={onStartBuilding}
             disabled={!promptText.trim() || isLoading}
-            className="absolute right-3 bottom-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="group cursor-pointer absolute right-4 bottom-5 mb-0.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <>
@@ -69,7 +69,7 @@ export default function HeroSection({
             ) : (
               <>
                 <span>Start Building</span>
-                <ArrowRightIcon className="w-4 h-4" />
+                <ArrowRightIcon className="w-4 h-4 transition-all group-hover:translate-x-1 group-disabled:translate-x-0" />
               </>
             )}
           </button>

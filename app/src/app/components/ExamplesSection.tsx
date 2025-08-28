@@ -15,7 +15,7 @@ export default function ExamplesSection({ examples, onExampleClick }: ExamplesSe
             <span className="font-medium text-gray-700 group-hover:text-purple-600 transition-colors">
               {example.title}
             </span>
-            <ArrowRightIcon className="w-3 h-3 ml-1 inline opacity-0 group-hover:opacity-100 transition-opacity" />
+            <ArrowRightIcon className="w-3 h-3 ml-1 inline opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
           </button>
         ))}
       </div>

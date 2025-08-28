@@ -13,13 +13,11 @@ export default function Header({ onStartBuilding, promptText, isLoading }: Heade
               <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
             </div>
           </div>
-          <nav className="hidden md:flex space-x-8">
+          <div className="flex items-center space-x-8">
+            <UserMenu />
             <Link href="/apps" className="text-gray-600 hover:text-gray-900 transition-colors">
               My Apps
             </Link>
-          </nav>
-          <div className="flex items-center space-x-4">
-            <UserMenu />
             <button
               onClick={onStartBuilding}
               disabled={!promptText.trim() || isLoading}

@@ -75,7 +75,7 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
   
   return (
     <div>
-      <div className="bg-gray-100 text-gray-900 p-2 rounded-lg">
+      <div className="bg-gray-100 text-gray-900 p-3 rounded-lg">
         {/* Initial thinking indicator - show at top only when no content yet */}
         {/* {message.isThinking && !hasSegments && !hasLegacyContent && (
           <div className="text-sm leading-relaxed break-words flex items-center space-x-2 mb-2">

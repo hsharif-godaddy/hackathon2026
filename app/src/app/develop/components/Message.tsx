@@ -19,16 +19,16 @@ export default function Message({ message }: MessageProps) {
     <div className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'} w-full`}>
       <div className={`w-full ${message.sender === 'user' ? 'order-2 max-w-sm' : 'order-1'}`}>
         <div className={`${message.sender === 'user' ? 'text-right' : ''}`}>
-            <div className={`inline-block p-2 rounded-lg max-w-full ${
+            <div className={`inline-block px-3 py-2 rounded-md max-w-full ${
               message.type === 'status' || message.type === 'tool_result' || message.type === 'tool_call' || message.type === 'complete'
-                ? 'bg-transparent p-0'
+                ? 'bg-transparent p-0!'
                 : message.sender === 'agent' && message.tool_calls !== undefined
-                ? 'bg-transparent p-0'
+                ? 'bg-transparent p-0!'
                 : message.sender === 'user'
                 ? 'bg-purple-600 text-white'
                 : message.handoff
                 ? 'bg-gradient-to-r from-green-50 to-indigo-50 border border-indigo-200'
-                : 'bg-gray-100 text-gray-900'
+                : 'bg-gray-100 text-gray-900 p-0!'
             }`}>
               <div className="overflow-hidden">
                 {message.type === 'status' ? (
@@ -62,7 +62,7 @@ export default function Message({ message }: MessageProps) {
                   ) : (
                     // Legacy agent message handling
                     message.isThinking ? (
-                      <div className="text-sm leading-relaxed break-words flex items-center space-x-2">
+                      <div className="text-sm leading-normal break-words flex items-center space-x-2">
                         <div className="flex space-x-1">
                           <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
                           <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
@@ -73,12 +73,12 @@ export default function Message({ message }: MessageProps) {
                     ) : (
                       <MarkdownRenderer 
                         content={message.content}
-                        className="text-sm leading-relaxed break-words"
+                        className="text-sm leading-normal break-words"
                       />
                     )
                   )
                 ) : (
-                  <p className={`text-sm ${message.handoff ? 'truncate' : 'leading-relaxed break-words'}`}>
+                  <p className={`text-sm ${message.handoff ? 'truncate' : 'leading-normal break-words'}`}>
                     {message.content}
                   </p>
                 )}

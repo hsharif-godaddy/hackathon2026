@@ -9,6 +9,12 @@ Quick setup guide to run the AI builder locally in under 5 minutes.
 ## Setup
 
 ### 1. Install Dependencies
+
+```bash
+npm run install-all
+```
+
+Or, step by step :
 ```bash
 # Install agents backend
 cd agents

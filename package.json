@@ -1,0 +1,8 @@
+{
+  "name": "airo-app-builder-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install-all": "cd agents && npm install && cd ../app && npm install && cd ../app-templates/v3 && npm install"
+  }
+}
