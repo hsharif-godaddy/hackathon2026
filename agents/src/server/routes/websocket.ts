@@ -56,6 +56,7 @@ interface WSCompletionPayload {
   start_time: number;
   end_time: number;
   duration_ms: number;
+  is_complete: boolean;
 }
 
 /**
@@ -119,7 +120,7 @@ function sendStatus(ws: WebSocket, status: string, message?: string) {
  * Send content message
  */
 function sendContent(ws: WebSocket, content: string, isComplete: boolean) {
-  sendWSMessage(ws, 'content', { content, isComplete });
+  sendWSMessage(ws, 'content', { content, isComplete, is_processing: !isComplete });
 }
 
 /**
@@ -169,7 +170,8 @@ function sendCompletion(ws: WebSocket, threadId: string, startTime: number) {
     timestamp: new Date().toISOString(),
     start_time: startTime,
     end_time: endTime,
-    duration_ms: endTime - startTime
+    duration_ms: endTime - startTime,
+    is_complete: true
   };
   sendWSMessage(ws, 'complete', payload);
 }

@@ -23,11 +23,14 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
 
   // Track content changes to reset thinking indicator timer
   useEffect(() => {
-    // Don't show thinking indicator if message is complete, in initial thinking state, or is an old message
+    // Don't show thinking indicator if message is complete (with response timing), in initial thinking state, or is an old message
     // Old messages can be identified by having content/segments but no recent timestamp activity
     const isOldMessage = (hasSegments || hasLegacyContent) && !message.isThinking && message.timestamp && (Date.now() - new Date(message.timestamp).getTime()) > 30000 // 30 seconds
     
-    if (isComplete || message.isThinking || isOldMessage) {
+    // Only hide thinking indicator if message is truly complete with response timing or if it's in initial thinking state
+    const isTrulyComplete = isComplete && message.response_duration_ms
+    
+    if (isTrulyComplete || message.isThinking || isOldMessage) {
       setShowThinkingIndicator(false)
       if (thinkingTimeoutRef.current) {
         clearTimeout(thinkingTimeoutRef.current)
@@ -38,17 +41,19 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
 
     // Update last update time when content or segments change
     lastUpdateTimeRef.current = Date.now()
-    setShowThinkingIndicator(false)
+    
+    // Don't reset thinking indicator if it's already showing and we're still processing
+    if (!showThinkingIndicator) {
+      // Clear existing timeout
+      if (thinkingTimeoutRef.current) {
+        clearTimeout(thinkingTimeoutRef.current)
+      }
 
-    // Clear existing timeout
-    if (thinkingTimeoutRef.current) {
-      clearTimeout(thinkingTimeoutRef.current)
+      // Set new timeout to show thinking indicator after 3 seconds
+      thinkingTimeoutRef.current = setTimeout(() => {
+        setShowThinkingIndicator(true)
+      }, 500)
     }
-
-    // Set new timeout to show thinking indicator after 3 seconds
-    thinkingTimeoutRef.current = setTimeout(() => {
-      setShowThinkingIndicator(true)
-    }, 3000)
 
     // Cleanup timeout on unmount
     return () => {
@@ -63,23 +68,20 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
     message.segments?.[message.segments.length - 1]?.content, // Track last segment content changes
     message.tool_calls?.length, 
     isComplete, 
-    message.isThinking
+    message.response_duration_ms, // Track completion timing
+    message.isThinking,
+    showThinkingIndicator
   ])
   
   return (
     <div>
       <div className="bg-gray-100 text-gray-900 p-2 rounded-lg">
         {/* Initial thinking indicator - show at top only when no content yet */}
-        {message.isThinking && !hasSegments && !hasLegacyContent && (
+        {/* {message.isThinking && !hasSegments && !hasLegacyContent && (
           <div className="text-sm leading-relaxed break-words flex items-center space-x-2 mb-2">
-            <div className="flex space-x-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-            </div>
             <span className="text-gray-600">Thinking...</span>
           </div>
-        )}
+        )} */}
 
         <div className="space-y-2">
           {/* New segmented approach - render interleaved content and tools */}
@@ -139,26 +141,15 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
           )}
         </div>
 
-        {/* Thinking indicators at the bottom after content */}
+        {/* Thinking indicators at the bottom after content
         {message.isThinking && (hasSegments || hasLegacyContent) && (
           <div className="text-sm leading-relaxed break-words flex items-center space-x-2 mt-2">
-            <div className="flex space-x-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-            </div>
             <span className="text-gray-600">Thinking...</span>
           </div>
-        )}
+        )} */}
 
-        {/* Lightweight thinking indicator for streaming pauses */}
         {!message.isThinking && !isComplete && showThinkingIndicator && (
           <div className="flex items-center space-x-2 mt-2 opacity-60">
-            <div className="flex space-x-1">
-              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"></div>
-              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-              <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-            </div>
             <span className="text-xs text-gray-500">thinking...</span>
           </div>
         )}

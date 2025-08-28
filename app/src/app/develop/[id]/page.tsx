@@ -770,6 +770,7 @@ function DevelopPageContent() {
             expandedPlan={expandedPlan}
             isSelectMode={isSelectMode}
             aiEditContext={aiEditContext}
+            isLoading={isLoading}
             onInputChange={setInputValue}
             onSendMessage={() => handleSendMessage()}
             onKeyPress={handleKeyPress}

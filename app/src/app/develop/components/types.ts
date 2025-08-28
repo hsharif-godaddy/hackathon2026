@@ -50,6 +50,7 @@ export interface Message {
   response_end_time?: number
   response_duration_ms?: number
   is_complete?: boolean
+  is_processing?: boolean
 }
 
 export interface PlanItem {
