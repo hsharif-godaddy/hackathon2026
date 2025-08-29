@@ -192,10 +192,6 @@ packages:
   '@gasket/utils@7.6.2':
     resolution: {integrity: sha512-DEBV58j7JqTiYgM/Ut3tkT49607HRJlve09YMYtL2g2Z1zXqEOrkZrbErFP/nmq0cp/emk5XO1XwQmb7TyJXUg==}
 
-  '@godaddy/atlas@1.0.1':
-    resolution: {integrity: sha512-hzuaH5GFvIq5Mpt/cjsHAxpRg6LEhsY0fbSJVYxkJpJ3Ad5qt7IZVYiJsBOOob+Q232DOJfuEomGBOtTMCWg7Q==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/@godaddy/atlas/-/@godaddy/atlas-1.0.1.tgz}
-    engines: {node: '>=22'}
-
   '@godaddy/gasket-auth@3.3.15':
     resolution: {integrity: sha512-yDKGcn9ebQApW2i/zd+Qs6HvbMyRSq11F6XO0eMp9gN8YN289OxAaZJAnrFPTQt11d3dDmITNePCXkjovC84Tw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-auth/-/@godaddy/gasket-auth-3.3.15.tgz}
     peerDependencies:
@@ -2712,8 +2708,6 @@ snapshots:
       is-plain-object: 5.0.0
       semver: 7.7.2
 
-  '@godaddy/atlas@1.0.1': {}
-
   '@godaddy/gasket-auth@3.3.15(@godaddy/gasket-plugin-auth@3.4.2(@godaddy/gasket-plugin-visitor@3.6.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@gasket/data': 7.5.3
@@ -2744,7 +2738,6 @@ snapshots:
   '@godaddy/gasket-plugin-visitor@3.6.0':
     dependencies:
       '@gasket/request': 7.5.3
-      '@godaddy/atlas': 1.0.1
       negotiator: 1.0.0
     transitivePeerDependencies:
       - supports-color

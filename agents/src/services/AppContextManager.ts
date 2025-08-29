@@ -191,7 +191,7 @@ Note: This is the current project context including dependencies and directory s
     const treeLines = treeStartIndex >= 0 ? lines.slice(treeStartIndex) : lines;
 
     // Limit to reasonable number of lines for context
-    const maxLines = 100;
+    const maxLines = 200;
     const limitedLines = treeLines.slice(0, maxLines);
     const truncated = treeLines.length > maxLines;
 
