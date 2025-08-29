@@ -1,4 +1,10 @@
 // Gasket configuration for Airo App Builder authentication
+
+// Extend globalThis type for auth logging flag
+declare global {
+  var __authDisabledLogged: boolean | undefined;
+}
+
 export const gasketConfig = {
   auth: {
     realm: 'idp', // Use 'idp' for customer auth, 'jomax' for employee auth
@@ -27,19 +33,24 @@ export const authConfigs = {
   user: {
     realm: 'idp',
     risk: 'low',
-    type: ['basic']
+    type: ['basic'],
+    allowHeartbeat: true,        // Enable automatic token refresh
+    use12HourExpiration: true    // Use longer token expiration
   },
   // Admin access for administrative functions
   admin: {
     realm: 'jomax',
     risk: 'medium',
-    groups: ['admin', 'developer']
+    groups: ['admin', 'developer'],
+    allowHeartbeat: true,
+    use12HourExpiration: true
   },
   // High security for sensitive operations
   sensitive: {
     realm: 'idp',
     risk: 'high',
-    type: ['basic']
+    type: ['basic'],
+    allowHeartbeat: true         // Keep heartbeat, but shorter expiration for security
   }
 };
 
@@ -67,7 +78,18 @@ export function getLogoutUrl(): string {
 
 // Helper function to check if auth is disabled in dev
 export function isAuthDisabled(): boolean {
-  return gasketConfig.auth.disableInDev;
+  const disabled = gasketConfig.auth.disableInDev;
+  if (disabled && process.env.NODE_ENV === 'development') {
+    // Only log once per session to avoid spam
+    if (!globalThis.__authDisabledLogged) {
+      console.log('🔧 Authentication disabled in development (NEXT_PUBLIC_AUTH_IN_DEV=false)');
+      console.log('   - All protected routes are accessible');
+      console.log('   - JWT validation returns mock success');
+      console.log('   - No SSO calls will be made');
+      globalThis.__authDisabledLogged = true;
+    }
+  }
+  return disabled;
 }
 
 // Helper function to use appropriate fetch method

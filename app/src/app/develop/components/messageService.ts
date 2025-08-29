@@ -2,6 +2,7 @@ import { Message, ToolCall, MessageSegment, AiEditContext, VisualContext } from 
 import { buildWsUrl } from '@/config/api'
 import { agentService } from '@/services/AgentService'
 import { captureVisualContext } from './visualContextCapture'
+import { appFetch } from '@/lib/gasket-config'
 
 /**
  * Message Service using WebSocket for real-time bidirectional communication
@@ -112,7 +113,7 @@ async function ensureLatestCommit(appId: string): Promise<boolean> {
     if (!appId) return true
     
     console.log('Ensuring app is on latest commit before sending message')
-    const response = await fetch(`http://localhost:4000/apps/${appId}/git/return`, {
+    const response = await appFetch(`http://localhost:4000/apps/${appId}/git/return`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ branch: 'main' })

@@ -2,7 +2,7 @@
 
 import { AuthRealmType, AuthRequired } from '@godaddy/gasket-auth';
 import { SparklesIcon } from '@heroicons/react/24/outline';
-import { getLoginUrl, isAuthDisabled } from '@/lib/gasket-config';
+import { getLoginUrl, isAuthDisabled, authConfigs } from '@/lib/gasket-config';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -61,8 +61,10 @@ export default function ProtectedRoute({
     return <div>{children}</div>;
   }
 
-  // Configure auth parameters based on access level
+  // Configure auth parameters based on access level with heartbeat enabled
+  const baseConfig = requiredAccess === 'admin' ? authConfigs.admin : authConfigs.user;
   const authParams = {
+    ...baseConfig,
     realm: requiredAccess === 'admin' ? 'jomax' : realm,
     groups: requiredAccess === 'admin' ? ['admin', 'developer', ...groups] : groups,
     risk: requiredAccess === 'admin' ? 'medium' : risk,
@@ -73,6 +75,8 @@ export default function ProtectedRoute({
       realm={authParams.realm as AuthRealmType}
       groups={authParams.groups}
       risk={authParams.risk}
+      allowHeartbeat={authParams.allowHeartbeat}
+      use12HourExpiration={authParams.use12HourExpiration}
       loading={<LoadingComponent />}
       alt={<UnauthorizedComponent />}
     >

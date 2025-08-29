@@ -16,6 +16,9 @@
         "@microsoft/fetch-event-source": "^2.0.1",
         "@monaco-editor/react": "^4.7.0",
         "@radix-ui/react-slot": "^1.2.3",
+        "@types/better-sqlite3": "^7.6.13",
+        "@types/uuid": "^10.0.0",
+        "better-sqlite3": "^12.2.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "lucide-react": "^0.540.0",
@@ -28,7 +31,8 @@
         "react-markdown": "^10.1.0",
         "react-syntax-highlighter": "^15.6.3",
         "remark-gfm": "^4.0.1",
-        "tailwind-merge": "^3.3.1"
+        "tailwind-merge": "^3.3.1",
+        "uuid": "^11.1.0"
     },
     "devDependencies": {
         "@eslint/eslintrc": "^3.3.1",
@@ -53,6 +57,9 @@
             "caniuse-lite": "1.0.30001736",
             "react": "19.1.0",
             "react-dom": "19.1.0"
-        }
+        },
+        "onlyBuiltDependencies": [
+            "better-sqlite3"
+        ]
     }
 }

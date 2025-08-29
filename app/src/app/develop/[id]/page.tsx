@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
+import { appFetch } from '@/lib/gasket-config'
 import {
   SparklesIcon,
   PlayIcon,
@@ -19,7 +20,6 @@ import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
 import CodeEditor from '@/app/develop/components/CodeEditor'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
-import { appFetch } from '@/lib/gasket-config'
 import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { Message, PlanItem, AiEditContext } from '@/app/develop/components/types'
@@ -29,7 +29,7 @@ import {
   loadConversations,
   loadConversation
 } from '@/app/develop/components/messageService'
-import { ProtectedRoute } from '@/components/auth'
+import { ProtectedRoute, SignOutButton, SignInButton } from '@/components/auth'
 import { appService, App } from '@/services/AppService'
 
 function DevelopPageContent() {
@@ -786,6 +786,8 @@ function DevelopPageContent() {
                 <Squares2X2Icon className="w-4 h-4 mr-2" />
                 My Apps
               </Link>
+              <SignInButton iconOnly />
+              <SignOutButton iconOnly />
             </div>
           </div>
         </div>

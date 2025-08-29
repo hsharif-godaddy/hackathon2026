@@ -14,7 +14,7 @@ import {
   ArrowPathIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
-import { ProtectedRoute, UserMenu } from '@/components/auth'
+import { ProtectedRoute, UserMenu, SignOutButton, SignInButton } from '@/components/auth'
 import { appFetch } from '@/lib/gasket-config'
 import { appService } from '@/services/AppService'
 
@@ -308,6 +308,8 @@ function AppsPageContent() {
                 <PlusIcon className="w-4 h-4" />
                 <span>New App</span>
               </button>
+              <SignInButton />
+              <SignOutButton />
             </div>
           </div>
         </div>

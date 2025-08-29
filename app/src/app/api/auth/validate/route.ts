@@ -1,81 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { JWTValidator } from '@/lib/jwt-validator';
+import { isAuthDisabled } from '@/lib/gasket-config';
+import path from 'path';
+
+const CERT_DIR = process.env.CERT_DIR || path.join(process.cwd(), 'certs');
+const jwtValidator = new JWTValidator(CERT_DIR);
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const realm = searchParams.get('realm') || 'idp';
-    const risk = searchParams.get('risk') || 'low';
+    // Skip JWT validation if auth is disabled in development
+    if (isAuthDisabled()) {
+      console.log('🔧 Auth validation bypassed - development mode (NEXT_PUBLIC_AUTH_IN_DEV=false)');
+      return NextResponse.json({
+        valid: true,
+        payload: {
+          shopperId: "dev-user",
+          cid: "dev-customer-123",
+          exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
+          iat: Math.floor(Date.now() / 1000)
+        },
+        reason: 'Development mode - authentication disabled'
+      }, { status: 200 });
+    }
+    // Get token from Authorization header or cookies
+    let token = null;
     
-    // Check for authentication indicators
-    const cookies = request.cookies;
-    const authIdpCookie = cookies.get('auth_idp'); // Real GoDaddy SSO cookie
-    const hasAuthHeaders = request.headers.get('authorization');
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    } else if (authHeader?.includes('idp-jwt ')) {
+      token = authHeader.split('idp-jwt ')[1];
+    }
     
-    // Determine if user is authenticated
-    let isAuthenticated = false;
-    let userDetails = null;
-    let reason = 'No valid authentication found';
-
-    if (authIdpCookie) {
-      // Found GoDaddy SSO auth_idp cookie - mock validation (return authenticated)
-      isAuthenticated = true;
-      userDetails = {
-        accountName: 'SSO User',
-        email: 'ssouser@godaddy.com',
-        customerId: 'sso_' + Date.now(),
-        plid: 'plid_' + Date.now(),
-        groups: ['user']
-      };
-      reason = 'Valid GoDaddy SSO authentication';
-    } else if (hasAuthHeaders) {
-      // Fallback for other auth methods
-      isAuthenticated = true;
-      userDetails = {
-        accountName: 'Authenticated User',
-        email: 'user@godaddy.com',
-        customerId: 'cust_' + Date.now(),
-        groups: ['user']
-      };
-      reason = 'Valid authentication token found';
+    if (!token) {
+      const cookieToken = request.cookies.get('auth_idp')?.value;
+      if (cookieToken) {
+        token = cookieToken;
+      }
     }
 
-    const authState = {
-      valid: isAuthenticated,
-      realm,
-      risk,
-      reason,
-      details: userDetails,
-      timestamp: Date.now()
-    };
+    if (!token) {
+      return NextResponse.json({ valid: false, reason: 'No token provided' }, { status: 401 });
+    }
 
-    // Return JSON response that Gasket auth expects
-    return NextResponse.json(authState, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
+    const result = await jwtValidator.validateJWT(token);
+    
+    return NextResponse.json({
+      valid: result.valid,
+      payload: result.payload,
+      reason: result.reason
+    }, { 
+      status: result.valid ? 200 : 401 
     });
     
-  } catch {
-    // Return error state in expected format
+  } catch (error) {
     return NextResponse.json(
-      {
-        valid: false,
-        realm: 'idp',
-        risk: 'low',
-        reason: 'Authentication check failed',
-        details: null,
-        timestamp: Date.now()
-      },
-      { 
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
+      { valid: false, reason: `Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
+      { status: 500 }
     );
   }
 }

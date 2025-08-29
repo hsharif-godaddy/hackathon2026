@@ -1,0 +1,1436 @@
+openapi: 3.0.3
+info:
+  title: Airo App Builder - Agent System APIs
+  description: |
+    REST API specification for the Airo App Builder agent system microservice.
+    This Express.js application provides APIs for:
+    - Application lifecycle management (create, deploy, manage)
+    - AI agent interactions and conversations
+    - Git version control operations
+    - File system operations and code editing
+    - Real-time development assistance
+    - Token usage tracking and analytics
+
+    ## Architecture
+    - **Runtime**: Node.js with Express.js
+    - **Database**: SQLite for persistence
+    - **AI Integration**: AWS Bedrock, Claude, and other LLM providers
+    - **Version Control**: Git integration for code management
+    - **Real-time**: WebSocket support for live interactions
+
+    ## Authentication
+    Some endpoints may require authentication (implementation varies by endpoint).
+    Most development-focused endpoints are open for local development.
+  version: 1.0.0
+  contact:
+    name: Airo App Builder Team
+    email: support@airo.build
+  license:
+    name: Private
+    url: https://airo.build/license
+
+servers:
+  - url: http://localhost:4000
+    description: Development server (Express.js)
+  - url: https://agents.airo.build
+    description: Production server
+
+tags:
+  - name: Apps
+    description: Application lifecycle and management operations
+  - name: Chat
+    description: AI conversations and agent interactions
+  - name: Git
+    description: Version control operations and history management
+  - name: Files
+    description: File system operations and code editing
+  - name: Agents
+    description: AI agent management, tracing, and execution
+  - name: Health
+    description: System health monitoring and diagnostics
+  - name: WebSocket
+    description: Real-time communication endpoints
+
+components:
+  schemas:
+    # Application Management Schemas
+    App:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique application identifier
+          example: "app-123456"
+        name:
+          type: string
+          description: Human-readable application name
+          example: "My Portfolio Site"
+        path:
+          type: string
+          description: File system path to application directory
+          example: "/apps/my-portfolio-site"
+        port:
+          type: integer
+          description: Port number assigned to the application
+          example: 3001
+          minimum: 3000
+          maximum: 9999
+        initialPrompt:
+          type: string
+          nullable: true
+          description: Initial development prompt used to create the app
+          example: "Create a modern portfolio website with dark mode support"
+        templateVersion:
+          type: string
+          nullable: true
+          description: Template version used for app creation
+          example: "v3"
+          enum: [v1, v2, v3]
+        status:
+          type: string
+          enum: [creating, created, error]
+          description: Current application status
+          example: "created"
+        createdAt:
+          type: string
+          format: date-time
+          description: Application creation timestamp
+          example: "2024-12-28T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last application update timestamp
+          example: "2024-12-28T10:30:00Z"
+
+    CreateAppRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Application name (must be unique)
+          example: "My Portfolio Site"
+          minLength: 1
+          maxLength: 100
+        initialPrompt:
+          type: string
+          description: Initial development prompt for AI guidance
+          example: "Create a modern portfolio website with dark mode support and responsive design"
+          maxLength: 2000
+
+    UpdateAppRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: New application name
+          example: "Updated Portfolio Site"
+          minLength: 1
+          maxLength: 100
+
+    # Conversation and Messaging Schemas
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique conversation identifier
+          example: "conv-123456"
+        appId:
+          type: string
+          description: Associated application ID
+          example: "app-123456"
+        agentId:
+          type: string
+          description: AI agent handling the conversation
+          example: "develop-agent"
+        title:
+          type: string
+          nullable: true
+          description: Conversation title/summary
+          example: "Adding authentication to user dashboard"
+        messageCount:
+          type: integer
+          description: Total number of messages in conversation
+          example: 15
+        createdAt:
+          type: string
+          format: date-time
+          description: Conversation creation timestamp
+          example: "2024-12-28T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last conversation update timestamp
+          example: "2024-12-28T11:45:00Z"
+
+    ConversationMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique message identifier
+          example: "msg-123456"
+        conversationId:
+          type: string
+          description: Parent conversation ID
+          example: "conv-123456"
+        sender:
+          type: string
+          enum: [user, agent]
+          description: Message sender type
+          example: "user"
+        content:
+          type: string
+          description: Message text content
+          example: "Please add a login form to the homepage"
+        messageType:
+          type: string
+          enum: [status, tool_result, error]
+          nullable: true
+          description: Special message types for system communications
+          example: "tool_result"
+        toolCalls:
+          type: array
+          description: Tool executions associated with this message
+          items:
+            $ref: "#/components/schemas/ToolCall"
+        segments:
+          type: array
+          description: Message segments for complex responses
+          items:
+            $ref: "#/components/schemas/MessageSegment"
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Additional message metadata
+          example:
+            model: "claude-3-sonnet"
+            tokens: 150
+        createdAt:
+          type: string
+          format: date-time
+          description: Message creation timestamp
+          example: "2024-12-28T10:30:00Z"
+
+    ToolCall:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique tool call identifier
+          example: "tool-123456"
+        tool_name:
+          type: string
+          description: Name of the executed tool
+          example: "file-edit"
+        tool_args:
+          type: object
+          additionalProperties: true
+          description: Arguments passed to the tool
+          example:
+            path: "src/components/LoginForm.tsx"
+            content: "import React from 'react'..."
+        tool_result:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Result returned by the tool execution
+          example:
+            success: true
+            linesChanged: 25
+        error:
+          type: string
+          nullable: true
+          description: Error message if tool execution failed
+          example: "File not found: src/components/LoginForm.tsx"
+        start_time:
+          type: integer
+          nullable: true
+          description: Tool execution start timestamp (Unix ms)
+          example: 1703756400000
+        end_time:
+          type: integer
+          nullable: true
+          description: Tool execution end timestamp (Unix ms)
+          example: 1703756401500
+        duration_ms:
+          type: integer
+          nullable: true
+          description: Tool execution duration in milliseconds
+          example: 1500
+        status:
+          type: string
+          enum: [running, success, error]
+          description: Current tool execution status
+          example: "success"
+
+    MessageSegment:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique segment identifier
+          example: "seg-123456"
+        type:
+          type: string
+          enum: [content, tool_call]
+          description: Segment type
+          example: "content"
+        content:
+          type: string
+          nullable: true
+          description: Text content (for content segments)
+          example: "I'll help you add a login form. Let me create the component file."
+        tool_call:
+          nullable: true
+          description: Tool call details (for tool_call segments)
+          $ref: "#/components/schemas/ToolCall"
+        timestamp:
+          type: string
+          format: date-time
+          description: Segment creation timestamp
+          example: "2024-12-28T10:30:00Z"
+
+    # Git Operations Schemas
+    GitCommit:
+      type: object
+      properties:
+        hash:
+          type: string
+          description: Full commit SHA hash
+          example: "a1b2c3d4e5f6789012345678901234567890abcd"
+        shortHash:
+          type: string
+          description: Abbreviated commit hash
+          example: "a1b2c3d"
+        message:
+          type: string
+          description: Commit message
+          example: "Add user authentication system"
+        author:
+          type: string
+          description: Commit author name and email
+          example: "John Doe <john@example.com>"
+        date:
+          type: string
+          format: date-time
+          description: Commit date
+          example: "2024-12-28T10:30:00Z"
+        isCurrent:
+          type: boolean
+          description: Whether this commit is currently checked out
+          example: false
+
+    GitOperation:
+      type: object
+      properties:
+        operation:
+          type: string
+          enum: [log, checkout, status, reset]
+          description: Git operation type
+          example: "checkout"
+        options:
+          type: object
+          description: Operation-specific options
+          properties:
+            commitHash:
+              type: string
+              description: Commit hash for checkout operations
+              example: "a1b2c3d4e5f6789012345678901234567890abcd"
+            count:
+              type: integer
+              description: Number of commits for log operations
+              example: 30
+              minimum: 1
+              maximum: 100
+
+    # Token Usage and Analytics Schemas
+    TokenUsage:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique usage record identifier
+          example: "usage-123456"
+        appId:
+          type: string
+          description: Associated application ID
+          example: "app-123456"
+        operation:
+          type: string
+          enum: [llm_request, file_edit, tool_execution]
+          description: Type of operation that consumed tokens
+          example: "llm_request"
+        promptTokens:
+          type: integer
+          description: Number of input/prompt tokens used
+          example: 1250
+          minimum: 0
+        completionTokens:
+          type: integer
+          description: Number of output/completion tokens generated
+          example: 850
+          minimum: 0
+        totalTokens:
+          type: integer
+          description: Total tokens used (prompt + completion)
+          example: 2100
+          minimum: 0
+        model:
+          type: string
+          nullable: true
+          description: AI model used for the operation
+          example: "claude-3-sonnet-20240229"
+        cost:
+          type: number
+          format: decimal
+          nullable: true
+          description: Estimated cost in USD
+          example: 0.0315
+          minimum: 0
+        conversationId:
+          type: string
+          nullable: true
+          description: Associated conversation ID
+          example: "conv-123456"
+        description:
+          type: string
+          nullable: true
+          description: Human-readable operation description
+          example: "Generated React component for user authentication"
+        createdAt:
+          type: string
+          format: date-time
+          description: Usage record timestamp
+          example: "2024-12-28T10:30:00Z"
+
+    # Running Process Management
+    RunningProcess:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique process identifier
+          example: "proc-123456"
+        appId:
+          type: string
+          description: Associated application ID
+          example: "app-123456"
+        pid:
+          type: integer
+          description: System process ID
+          example: 12345
+        port:
+          type: integer
+          description: Port the process is running on
+          example: 3001
+        startedAt:
+          type: string
+          format: date-time
+          description: Process start timestamp
+          example: "2024-12-28T10:30:00Z"
+        status:
+          type: string
+          enum: [running, stopped, crashed]
+          description: Current process status
+          example: "running"
+
+    # Health and System Schemas
+    SystemHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Overall system health status
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+          example: "2024-12-28T10:30:00Z"
+        uptime:
+          type: number
+          description: System uptime in seconds
+          example: 3661.5
+        memory:
+          type: object
+          description: Memory usage statistics
+          properties:
+            rss:
+              type: integer
+              description: Resident Set Size (bytes)
+              example: 93323264
+            heapTotal:
+              type: integer
+              description: Total heap size (bytes)
+              example: 67108864
+            heapUsed:
+              type: integer
+              description: Used heap size (bytes)
+              example: 47185920
+            external:
+              type: integer
+              description: External memory usage (bytes)
+              example: 2097152
+        registry:
+          type: object
+          description: Agent registry statistics
+          properties:
+            totalAgents:
+              type: integer
+              description: Total number of registered agents
+              example: 5
+            activeAgents:
+              type: integer
+              description: Number of currently active agents
+              example: 3
+        version:
+          type: string
+          description: Service version
+          example: "0.1.0"
+
+    AgentHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded]
+          description: Agent system health status
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+          example: "2024-12-28T10:30:00Z"
+        agents:
+          type: object
+          properties:
+            valid:
+              type: array
+              items:
+                type: string
+              description: List of valid/healthy agent IDs
+              example: ["develop-agent", "database-agent", "color-scheme-agent"]
+            invalid:
+              type: array
+              items:
+                type: string
+              description: List of invalid/unhealthy agent IDs
+              example: []
+            total:
+              type: integer
+              description: Total number of agents checked
+              example: 3
+
+    # Trace and Debug Schemas
+    TraceEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique trace event identifier
+          example: "trace-123456"
+        agentId:
+          type: string
+          nullable: true
+          description: Agent that generated the trace
+          example: "develop-agent"
+        threadId:
+          type: string
+          nullable: true
+          description: Thread/conversation identifier
+          example: "conv-123456"
+        type:
+          type: string
+          description: Event type
+          example: "tool_execution"
+        message:
+          type: string
+          description: Trace message
+          example: "Executing file-edit tool for LoginForm.tsx"
+        data:
+          type: object
+          additionalProperties: true
+          description: Additional trace data
+          example:
+            tool: "file-edit"
+            duration: 1500
+            success: true
+        timestamp:
+          type: string
+          format: date-time
+          description: Trace event timestamp
+          example: "2024-12-28T10:30:00Z"
+
+    # Common Response Schemas
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          description: Success message
+          example: "Operation completed successfully"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Operation failed"
+        details:
+          type: string
+          description: Detailed error information
+          example: "File not found: src/components/LoginForm.tsx"
+
+    PaginationResponse:
+      type: object
+      properties:
+        page:
+          type: integer
+          description: Current page number
+          example: 1
+        limit:
+          type: integer
+          description: Items per page
+          example: 50
+        total:
+          type: integer
+          description: Total number of items
+          example: 150
+        totalPages:
+          type: integer
+          description: Total number of pages
+          example: 3
+        hasNext:
+          type: boolean
+          description: Whether there are more pages
+          example: true
+        hasPrev:
+          type: boolean
+          description: Whether there are previous pages
+          example: false
+
+paths:
+  # ======================================
+  # APPLICATION MANAGEMENT
+  # ======================================
+
+  /apps:
+    get:
+      tags: [Apps]
+      summary: List Applications
+      description: |
+        Get a paginated list of all applications managed by the agent system.
+        Includes basic application metadata and current status.
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+          description: Maximum number of apps per page
+      responses:
+        "200":
+          description: Applications retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apps:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/App"
+                  pagination:
+                    $ref: "#/components/schemas/PaginationResponse"
+              example:
+                apps:
+                  - id: "app-123456"
+                    name: "My Portfolio Site"
+                    path: "/apps/my-portfolio-site"
+                    port: 3001
+                    status: "created"
+                    templateVersion: "v3"
+                    createdAt: "2024-12-28T10:30:00Z"
+                pagination:
+                  page: 1
+                  limit: 50
+                  total: 5
+                  totalPages: 1
+                  hasNext: false
+                  hasPrev: false
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      tags: [Apps]
+      summary: Create New Application
+      description: |
+        Create a new application with AI assistance. The system will:
+        1. Generate a unique app ID and assign a port
+        2. Create the application directory structure
+        3. Initialize git repository
+        4. Set up the chosen template (v1/v2/v3)
+        5. Begin AI-guided development based on initial prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAppRequest"
+      responses:
+        "201":
+          description: Application created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app:
+                    $ref: "#/components/schemas/App"
+              example:
+                app:
+                  id: "app-789012"
+                  name: "E-commerce Store"
+                  path: "/apps/e-commerce-store"
+                  port: 3002
+                  initialPrompt: "Create a modern e-commerce store with product catalog and shopping cart"
+                  templateVersion: "v3"
+                  status: "creating"
+                  createdAt: "2024-12-28T11:00:00Z"
+                  updatedAt: "2024-12-28T11:00:00Z"
+        "400":
+          description: Bad request - invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error during app creation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /apps/{id}:
+    get:
+      tags: [Apps]
+      summary: Get Application Details
+      description: Get detailed information about a specific application
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Application ID
+          example: "app-123456"
+      responses:
+        "200":
+          description: Application details retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app:
+                    $ref: "#/components/schemas/App"
+        "404":
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      tags: [Apps]
+      summary: Update Application
+      description: Update application metadata (currently supports name changes only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Application ID
+          example: "app-123456"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAppRequest"
+      responses:
+        "200":
+          description: Application updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app:
+                    $ref: "#/components/schemas/App"
+        "404":
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags: [Apps]
+      summary: Delete Application
+      description: |
+        Permanently delete an application and all associated data:
+        - Stops any running processes
+        - Removes application directory and files
+        - Deletes conversation history
+        - Removes database records
+        - Clears usage analytics
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Application ID
+          example: "app-123456"
+      responses:
+        "200":
+          description: Application deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error during deletion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ======================================
+  # GIT VERSION CONTROL
+  # ======================================
+
+  /apps/{id}/git/history:
+    get:
+      tags: [Git]
+      summary: Get Git Commit History
+      description: |
+        Retrieve commit history for an application's git repository.
+        Returns commits in reverse chronological order (newest first).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Application ID
+          example: "app-123456"
+        - name: count
+          in: query
+          schema:
+            type: integer
+            default: 30
+            minimum: 1
+            maximum: 100
+          description: Maximum number of commits to return
+      responses:
+        "200":
+          description: Git history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  commits:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GitCommit"
+              example:
+                success: true
+                commits:
+                  - hash: "a1b2c3d4e5f6789012345678901234567890abcd"
+                    shortHash: "a1b2c3d"
+                    message: "Add user authentication system"
+                    author: "AI Agent <agent@airo.build>"
+                    date: "2024-12-28T11:30:00Z"
+                    isCurrent: true
+                  - hash: "b2c3d4e5f6789012345678901234567890abcdef"
+                    shortHash: "b2c3d4e"
+                    message: "Initial project setup"
+                    author: "AI Agent <agent@airo.build>"
+                    date: "2024-12-28T10:30:00Z"
+                    isCurrent: false
+        "404":
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Failed to retrieve git history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /apps/{id}/git/checkout:
+    post:
+      tags: [Git]
+      summary: Checkout Git Commit
+      description: |
+        Checkout a specific commit in the application's git repository.
+        This will update the working directory to match the specified commit.
+        Any running development server will be restarted.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Application ID
+          example: "app-123456"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [commitHash]
+              properties:
+                commitHash:
+                  type: string
+                  description: Full or abbreviated commit hash to checkout
+                  example: "a1b2c3d4e5f6789012345678901234567890abcd"
+      responses:
+        "200":
+          description: Checkout successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+              example:
+                success: true
+                message: "Successfully checked out commit a1b2c3d"
+        "404":
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Checkout failed - invalid commit hash or git error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /apps/{id}/git/return:
+    post:
+      tags: [Git]
+      summary: Return to Latest Commit
+      description: |
+        Return to the latest commit (HEAD) in the main branch.
+        This is equivalent to `git checkout main` followed by `git pull origin main`.
+        Useful for returning to the current development state after exploring history.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Application ID
+          example: "app-123456"
+      responses:
+        "200":
+          description: Successfully returned to latest commit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+              example:
+                success: true
+                message: "Successfully returned to latest commit"
+        "404":
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Git operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ======================================
+  # CHAT AND CONVERSATIONS
+  # ======================================
+
+  /agent/conversations/{appId}:
+    get:
+      tags: [Chat]
+      summary: Get Application Conversations
+      description: |
+        Retrieve all conversations for a specific application.
+        Includes conversation metadata and message counts.
+      parameters:
+        - name: appId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Application ID
+          example: "app-123456"
+      responses:
+        "200":
+          description: Conversations retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+              example:
+                - id: "conv-123456"
+                  appId: "app-123456"
+                  agentId: "develop-agent"
+                  title: "Adding user authentication"
+                  messageCount: 15
+                  createdAt: "2024-12-28T10:30:00Z"
+                  updatedAt: "2024-12-28T11:45:00Z"
+                - id: "conv-789012"
+                  appId: "app-123456"
+                  agentId: "develop-agent"
+                  title: "Implementing dark mode"
+                  messageCount: 8
+                  createdAt: "2024-12-28T12:00:00Z"
+                  updatedAt: "2024-12-28T12:30:00Z"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agent/conversations/{conversationId}/messages:
+    get:
+      tags: [Chat]
+      summary: Get Conversation Messages
+      description: |
+        Retrieve all messages in a specific conversation.
+        Messages are returned in chronological order with tool calls and metadata.
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Conversation ID
+          example: "conv-123456"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+          description: Maximum number of messages to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Number of messages to skip (for pagination)
+      responses:
+        "200":
+          description: Messages retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConversationMessage"
+              example:
+                - id: "msg-123456"
+                  conversationId: "conv-123456"
+                  sender: "user"
+                  content: "Please add a login form to the homepage"
+                  messageType: null
+                  toolCalls: []
+                  createdAt: "2024-12-28T10:30:00Z"
+                - id: "msg-789012"
+                  conversationId: "conv-123456"
+                  sender: "agent"
+                  content: "I'll help you add a login form. Let me create the component file."
+                  messageType: null
+                  toolCalls:
+                    - id: "tool-123456"
+                      tool_name: "file-edit"
+                      status: "success"
+                      duration_ms: 1500
+                  createdAt: "2024-12-28T10:31:00Z"
+        "404":
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ======================================
+  # AGENT MANAGEMENT AND TRACING
+  # ======================================
+
+  /agent/traces:
+    get:
+      tags: [Agents]
+      summary: Get Agent Execution Traces
+      description: |
+        Retrieve execution traces for debugging and monitoring agent behavior.
+        Traces include tool executions, errors, and performance metrics.
+      parameters:
+        - name: agentId
+          in: query
+          schema:
+            type: string
+          description: Filter by specific agent ID
+          example: "develop-agent"
+        - name: threadId
+          in: query
+          schema:
+            type: string
+          description: Filter by specific thread/conversation ID
+          example: "conv-123456"
+        - name: type
+          in: query
+          schema:
+            type: string
+          description: Filter by trace event type
+          example: "tool_execution"
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter traces created after this timestamp
+          example: "2024-12-28T10:00:00Z"
+      responses:
+        "200":
+          description: Traces retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    description: Total number of matching traces
+                    example: 156
+                  filters:
+                    type: object
+                    description: Applied filter criteria
+                    example:
+                      agentId: "develop-agent"
+                      since: "2024-12-28T10:00:00Z"
+                  events:
+                    type: array
+                    description: Trace events (limited to 100 most recent)
+                    items:
+                      $ref: "#/components/schemas/TraceEvent"
+              example:
+                total: 156
+                filters:
+                  agentId: "develop-agent"
+                events:
+                  - id: "trace-123456"
+                    agentId: "develop-agent"
+                    threadId: "conv-123456"
+                    type: "tool_execution"
+                    message: "Executing file-edit tool"
+                    data:
+                      tool: "file-edit"
+                      duration: 1500
+                      success: true
+                    timestamp: "2024-12-28T10:30:00Z"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags: [Agents]
+      summary: Clear All Traces
+      description: |
+        Clear all stored trace data. This is useful for:
+        - Reducing memory usage in development
+        - Starting fresh debugging sessions
+        - Cleaning up before production deployment
+      responses:
+        "200":
+          description: Traces cleared successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Traces cleared"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ======================================
+  # HEALTH AND SYSTEM MONITORING
+  # ======================================
+
+  /health:
+    get:
+      tags: [Health]
+      summary: System Health Check
+      description: |
+        Get overall system health status and basic metrics.
+        Includes uptime, memory usage, and agent registry statistics.
+      responses:
+        "200":
+          description: System health information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemHealth"
+              example:
+                status: "healthy"
+                timestamp: "2024-12-28T10:30:00Z"
+                uptime: 3661.5
+                memory:
+                  rss: 93323264
+                  heapTotal: 67108864
+                  heapUsed: 47185920
+                  external: 2097152
+                registry:
+                  totalAgents: 5
+                  activeAgents: 3
+                version: "0.1.0"
+        "500":
+          description: Health check failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /health/agents:
+    get:
+      tags: [Health]
+      summary: Agent System Health Check
+      description: |
+        Perform detailed health validation of all registered agents.
+        Checks agent availability, configuration, and operational status.
+      responses:
+        "200":
+          description: Agent health information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHealth"
+              example:
+                status: "healthy"
+                timestamp: "2024-12-28T10:30:00Z"
+                agents:
+                  valid:
+                    - "develop-agent"
+                    - "database-agent"
+                    - "color-scheme-agent"
+                  invalid: []
+                  total: 3
+        "200 (degraded)":
+          description: Some agents are unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHealth"
+              example:
+                status: "degraded"
+                timestamp: "2024-12-28T10:30:00Z"
+                agents:
+                  valid:
+                    - "develop-agent"
+                    - "database-agent"
+                  invalid:
+                    - "color-scheme-agent"
+                  total: 3
+        "500":
+          description: Health check failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ======================================
+  # ADDITIONAL ENDPOINTS
+  # ======================================
+  # Note: The following endpoints exist but may have limited documentation
+  # based on the codebase analysis. They represent additional functionality
+  # that may be implemented:
+
+  /apps/{id}/start:
+    post:
+      tags: [Apps]
+      summary: Start Application
+      description: Start the development server for an application
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Application ID
+      responses:
+        "200":
+          description: Application started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  process:
+                    $ref: "#/components/schemas/RunningProcess"
+        "404":
+          description: Application not found
+        "500":
+          description: Failed to start application
+
+  /apps/{id}/stop:
+    post:
+      tags: [Apps]
+      summary: Stop Application
+      description: Stop the running development server for an application
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Application ID
+      responses:
+        "200":
+          description: Application stopped successfully
+        "404":
+          description: Application not found
+        "500":
+          description: Failed to stop application
+
+  /apps/{id}/status:
+    get:
+      tags: [Apps]
+      summary: Get Application Status
+      description: Get the current runtime status of an application
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Application ID
+      responses:
+        "200":
+          description: Application status retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app:
+                    $ref: "#/components/schemas/App"
+                  process:
+                    nullable: true
+                    $ref: "#/components/schemas/RunningProcess"
+        "404":
+          description: Application not found
+# WebSocket endpoints (not REST, but documented for completeness)
+# - ws://localhost:4000/ws - Real-time communication for development updates
+# - Supports: file change notifications, build status updates, agent communication
+
+# File operation endpoints (may exist but not fully documented)
+# - POST /apps/{id}/files - File upload/creation
+# - GET /apps/{id}/files - File listing
+# - PUT /apps/{id}/files/{path} - File editing
+# - DELETE /apps/{id}/files/{path} - File deletion
+
+# Token usage tracking endpoints
+# - GET /apps/{id}/usage - Get token usage for an app
+# - GET /usage/summary - Get overall usage statistics

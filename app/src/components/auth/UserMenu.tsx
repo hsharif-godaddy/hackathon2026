@@ -1,18 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useAuthState } from '@godaddy/gasket-auth';
-import { ChevronDownIcon, UserIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
-import { getLoginUrl, getLogoutUrl, isAuthDisabled } from '@/lib/gasket-config';
+import { useEffect } from 'react';
+import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType } from '@godaddy/gasket-auth';
+import { ArrowRightOnRectangleIcon, UserPlusIcon } from '@heroicons/react/24/outline';
+import { getLoginUrl, getLogoutUrl, isAuthDisabled, authConfigs } from '@/lib/gasket-config';
 
 // Dev mode component when auth is disabled
 function DevModeDisplay() {
   return (
     <div className="flex items-center space-x-3">
-      <div className="flex flex-col text-right">
-        <span className="text-sm font-medium text-gray-900">Dev Mode</span>
-        <span className="text-xs text-gray-500">Auth Disabled</span>
+      {/* Plan Display for Dev Mode */}
+      <div className="flex items-center">
+        <span className="px-3 py-1 text-xs font-medium bg-yellow-50 text-yellow-600 rounded-full border border-yellow-100">
+          Dev Mode
+        </span>
       </div>
+      
+      {/* Dev Mode Indicator */}
       <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
         <span className="text-yellow-600 text-sm">🛠️</span>
       </div>
@@ -22,12 +26,25 @@ function DevModeDisplay() {
 
 // Auth-enabled component
 function AuthEnabledMenu() {
-  const [isOpen, setIsOpen] = useState(false);
+
+
+  // Helper function to get user's plan (can be enhanced to fetch from API)
+  const getUserPlan = (authDetails?: Record<string, unknown>) => {
+    // TODO: Fetch actual plan from /api/accounts API using authDetails?.shopperId
+    // For now, defaulting to 'Free' plan
+    // Future enhancement: Call API to get real plan name (Free, Starter, Pro)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _ = authDetails; // Acknowledge parameter for future use
+    return 'Free';
+  };
   
-  // Get auth state from Gasket auth
+  // Get auth state from Gasket auth with heartbeat enabled
   const authState = useAuthState({
-    realm: 'idp',
-    risk: 'low',
+    realm: authConfigs.user.realm as AuthRealmType,
+    risk: authConfigs.user.risk as AuthRiskType,
+    type: authConfigs.user.type as AuthIdpType[],
+    allowHeartbeat: authConfigs.user.allowHeartbeat,
+    use12HourExpiration: authConfigs.user.use12HourExpiration,
     alt: <div></div> // Don't redirect, handle manually
   });
 
@@ -53,103 +70,114 @@ function AuthEnabledMenu() {
     }
   }, []);
 
+  if (!authState.valid) {
+    return null; // Don't show anything here, Sign In button will be separate
+  }
+
+  return (
+    // Just return plan display for now - logout will be separate
+    <div className="flex items-center">
+      <span className="px-3 py-1 text-xs font-medium bg-green-50 text-green-600 rounded-full border border-green-100">
+        Plan: {getUserPlan(authState.details)}
+      </span>
+    </div>
+  );
+}
+
+// Separate Sign In Button Component
+interface SignInButtonProps {
+  iconOnly?: boolean;
+}
+
+export function SignInButton({ iconOnly = false }: SignInButtonProps) {
+  // Get auth state to check if user is actually signed in
+  const authState = useAuthState({
+    realm: authConfigs.user.realm as AuthRealmType,
+    risk: authConfigs.user.risk as AuthRiskType,
+    type: authConfigs.user.type as AuthIdpType[],
+    allowHeartbeat: authConfigs.user.allowHeartbeat,
+    use12HourExpiration: authConfigs.user.use12HourExpiration,
+    alt: <div></div> // Don't redirect, handle manually
+  });
+
+  // Don't show in dev mode or if user is already authenticated
+  if (isAuthDisabled() || authState.valid) {
+    return null;
+  }
+
   const handleLogin = () => {
-    // Redirect to GoDaddy SSO login
     window.location.href = getLoginUrl();
   };
 
-  const handleLogout = () => {
-    // Simple SSO logout redirect - let SSO handle clearing cookies
-    window.location.href = getLogoutUrl();
-  };
-
-  // Close menu when clicking outside
-  const handleClickOutside = () => {
-    if (isOpen) setIsOpen(false);
-  };
-
-  if (!authState.valid) {
+  if (iconOnly) {
     return (
       <button
         onClick={handleLogin}
-        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+        className="flex items-center justify-center w-10 h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm hover:shadow-md"
+        title="Sign In"
+        aria-label="Sign In"
       >
-        Sign In
+        <UserPlusIcon className="w-5 h-5" />
       </button>
     );
   }
 
   return (
-    <div className="flex items-center space-x-3">
-      {/* User Info Display */}
-      <div className="hidden md:flex flex-col text-right">
-        <span className="text-sm font-medium text-gray-900">
-          Welcome, {authState.details?.accountName || authState.details?.email || 'User'}
-        </span>
-        {authState.details?.groups?.[0] && (
-          <span className="text-xs text-gray-500 capitalize">
-            {authState.details.groups[0]}
-          </span>
-        )}
-      </div>
+    <button
+      onClick={handleLogin}
+      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+    >
+      Sign In
+    </button>
+  );
+}
 
-      {/* Logout Button */}
+// Separate Sign Out Button Component
+interface SignOutButtonProps {
+  iconOnly?: boolean;
+}
+
+export function SignOutButton({ iconOnly = false }: SignOutButtonProps) {
+  // Get auth state first (hooks must be called at top level)
+  const authState = useAuthState({
+    realm: authConfigs.user.realm as AuthRealmType,
+    risk: authConfigs.user.risk as AuthRiskType,
+    type: authConfigs.user.type as AuthIdpType[],
+    allowHeartbeat: authConfigs.user.allowHeartbeat,
+    use12HourExpiration: authConfigs.user.use12HourExpiration,
+    alt: <div></div> // Don't redirect, handle manually
+  });
+
+  // Don't show in dev mode or if user is not authenticated
+  if (isAuthDisabled() || !authState.valid) {
+    return null;
+  }
+
+  const handleLogout = () => {
+    window.location.href = getLogoutUrl();
+  };
+
+  if (iconOnly) {
+    return (
       <button
         onClick={handleLogout}
-        className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+        className="flex items-center justify-center w-10 h-10 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors shadow-sm hover:shadow-md"
+        title="Sign Out"
+        aria-label="Sign Out"
       >
-        <ArrowRightOnRectangleIcon className="w-4 h-4" />
-        <span>Sign Out</span>
+        <ArrowRightOnRectangleIcon className="w-5 h-5" />
       </button>
+    );
+  }
 
-      {/* Mobile Dropdown */}
-      <div className="md:hidden relative">
-        {/* Backdrop for closing menu */}
-        {isOpen && (
-          <div 
-            className="fixed inset-0 z-40" 
-            onClick={handleClickOutside}
-          />
-        )}
-        
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors p-2"
-        >
-          <UserIcon className="w-5 h-5" />
-          <ChevronDownIcon className="w-4 h-4" />
-        </button>
-
-        {isOpen && (
-          <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-lg py-2 z-50 border">
-            <div className="px-4 py-3 border-b">
-              <div className="font-medium text-gray-900">
-                {authState.details?.accountName || authState.details?.email || 'User'}
-              </div>
-              {authState.details?.email && (
-                <div className="text-gray-500 text-sm">{authState.details.email}</div>
-              )}
-              {authState.details?.customerId && (
-                <div className="text-gray-500 text-xs mt-1">ID: {authState.details.customerId}</div>
-              )}
-              {authState.details?.plid && (
-                <div className="text-gray-500 text-xs">PLID: {authState.details.plid}</div>
-              )}
-              {authState.details?.groups?.[0] && (
-                <div className="text-blue-600 text-xs mt-1 capitalize">Role: {authState.details.groups[0]}</div>
-              )}
-            </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center w-full px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors font-medium"
-            >
-              <ArrowRightOnRectangleIcon className="w-4 h-4 mr-2" />
-              Sign Out
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+  return (
+    <button
+      onClick={handleLogout}
+      className="flex items-center space-x-2 bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm"
+    >
+      <ArrowRightOnRectangleIcon className="w-4 h-4" />
+      <span>Sign Out</span>
+    </button>
   );
 }
 

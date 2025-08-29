@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import Image from 'next/image'
-import { UserMenu } from '@/components/auth'
+import { UserMenu, SignOutButton, SignInButton } from '@/components/auth'
 import { HeaderProps } from './types'
 
 export default function Header({ onStartBuilding, promptText, isLoading }: HeaderProps) {
@@ -32,6 +32,8 @@ export default function Header({ onStartBuilding, promptText, isLoading }: Heade
                 <span>Get Started</span>
               )}
             </button>
+            <SignInButton />
+            <SignOutButton />
           </div>
         </div>
       </div>

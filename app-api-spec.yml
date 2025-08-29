@@ -1,0 +1,861 @@
+openapi: 3.0.3
+info:
+  title: Airo App Builder - Frontend Backend APIs
+  description: |
+    REST API specification for the Airo App Builder frontend backend service.
+    This Next.js application provides APIs for:
+    - JWT token validation and authentication
+    - Customer account management  
+    - Subscription plan management
+    - System health monitoring
+
+    ## Authentication
+    All endpoints require GoDaddy SSO JWT tokens via:
+    - `Authorization: Bearer <jwt-token>` header
+    - `auth_idp` cookie
+
+    ## Features
+    - Automatic token heartbeat refresh (60-second intervals)
+    - 12-hour token expiration support
+    - SQLite database for customer accounts
+    - Integration with GoDaddy SSO API for signature verification
+  version: 1.0.0
+  contact:
+    name: Airo App Builder Team
+    email: support@airo.build
+  license:
+    name: Private
+    url: https://airo.build/license
+
+servers:
+  - url: http://localhost:3000/api
+    description: Development server (Next.js)
+  - url: https://airo-builder.test-godaddy.com/api
+    description: Staging server
+  - url: https://app.airo.build/api
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: JWT token validation and logout endpoints
+  - name: Accounts
+    description: Customer account management and CRUD operations
+  - name: Plans
+    description: Subscription plan management and billing
+  - name: Health
+    description: System health monitoring and diagnostics
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        GoDaddy SSO JWT token in Authorization header.
+        Example: `Authorization: Bearer eyJhbGciOiJSUzI1NiIs...`
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_idp
+      description: |
+        GoDaddy SSO JWT token stored in browser cookie.
+        Automatically set by Gasket authentication flow.
+
+  schemas:
+    # Authentication Schemas
+    JWTValidationResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+          description: Whether the JWT token is valid and verified
+          example: true
+        payload:
+          type: object
+          description: Decoded JWT payload data (only present if valid=true)
+          properties:
+            shopperId:
+              type: string
+              description: GoDaddy shopper ID (primary user identifier)
+              example: "7945294"
+            cid:
+              type: string
+              description: Customer ID from GoDaddy SSO
+              example: "6db0ff3d-4cb8-4aa3-a099-0fb33b914b40"
+            plid:
+              type: string
+              description: Plan ID from GoDaddy (if applicable)
+              example: "1"
+            exp:
+              type: integer
+              description: Token expiration timestamp (Unix time)
+              example: 1756407418
+            iat:
+              type: integer
+              description: Token issued at timestamp (Unix time)
+              example: 1756404509
+            identity:
+              type: string
+              description: GoDaddy identity UUID
+              example: "99b7c59a-fc7f-11ee-ac3b-9edde0eb2980"
+        reason:
+          type: string
+          description: Reason for validation failure (only present if valid=false)
+          example: "Token expired"
+
+    # Account Management Schemas
+    Account:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique internal account identifier
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        shopper_id:
+          type: string
+          description: GoDaddy shopper ID (links to SSO)
+          example: "7945294"
+        customer_id:
+          type: string
+          description: Internal customer identifier
+          example: "6db0ff3d-4cb8-4aa3-a099-0fb33b914b40"
+        plan_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Associated subscription plan ID
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        status:
+          type: string
+          enum: [active, suspended, closed]
+          description: Current account status
+          example: "active"
+        created_at:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+          example: "2024-12-28T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last account update timestamp
+          example: "2024-12-28T10:30:00Z"
+
+    AccountWithPlan:
+      allOf:
+        - $ref: "#/components/schemas/Account"
+        - type: object
+          properties:
+            plan_name:
+              type: string
+              description: Associated plan name
+              example: "Starter"
+            plan_site_limit:
+              type: integer
+              description: Maximum sites allowed by plan
+              example: 30
+            plan_price:
+              type: number
+              format: decimal
+              description: Monthly plan price in USD
+              example: 20.00
+
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique plan identifier
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        name:
+          type: string
+          description: Plan name
+          example: "Starter"
+          enum: [Free, Starter, Pro]
+        site_limit:
+          type: integer
+          description: Maximum number of sites allowed
+          example: 30
+          minimum: 1
+        price:
+          type: number
+          format: decimal
+          description: Monthly price in USD
+          example: 20.00
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+          description: Plan creation timestamp
+          example: "2024-12-28T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last plan update timestamp
+          example: "2024-12-28T10:30:00Z"
+
+    # Health Check Schemas
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy]
+          description: Service health status
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+          example: "2024-12-28T10:30:00Z"
+        service:
+          type: string
+          description: Service identifier
+          example: "airo-app-builder-backend"
+        version:
+          type: string
+          description: Application version
+          example: "1.0.0"
+        environment:
+          type: string
+          description: Runtime environment
+          example: "development"
+          enum: [development, staging, production]
+        uptime:
+          type: object
+          description: System uptime information (only in detailed mode)
+          properties:
+            seconds:
+              type: integer
+              description: Uptime in seconds
+              example: 3661
+            human:
+              type: string
+              description: Human-readable uptime
+              example: "1h 1m 1s"
+        memory:
+          type: object
+          description: Memory usage statistics (only in detailed mode)
+          properties:
+            used:
+              type: string
+              description: Used heap memory
+              example: "45 MB"
+            total:
+              type: string
+              description: Total heap memory
+              example: "128 MB"
+            rss:
+              type: string
+              description: Resident set size
+              example: "89 MB"
+        features:
+          type: object
+          description: Enabled feature flags (only in detailed mode)
+          properties:
+            jwtValidation:
+              type: boolean
+              description: JWT validation enabled
+              example: true
+            secureValidation:
+              type: boolean
+              description: Secure JWT validation with SSO API
+              example: true
+            gasketCompatibility:
+              type: boolean
+              description: Gasket authentication compatibility
+              example: true
+
+    # Common Response Schemas
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          description: Success message
+          example: "Operation completed successfully"
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: Error message
+          example: "Validation failed"
+        message:
+          type: string
+          description: Detailed error message
+          example: "The provided shopper_id is invalid"
+
+    AccountListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Account"
+        count:
+          type: integer
+          description: Number of accounts returned
+          example: 25
+
+    PlanListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        plans:
+          type: array
+          items:
+            $ref: "#/components/schemas/Plan"
+        count:
+          type: integer
+          description: Number of plans returned
+          example: 3
+
+paths:
+  /auth/validate:
+    get:
+      tags: [Authentication]
+      summary: Validate JWT Token
+      description: |
+        Validates a GoDaddy SSO JWT token by:
+        1. Extracting token from Authorization header or auth_idp cookie
+        2. Decoding and validating JWT structure
+        3. Checking token expiration
+        4. Verifying signature against GoDaddy SSO public key
+        5. Creating/updating customer account record
+
+        Supports Gasket authentication parameters for heartbeat refresh.
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: allowHeartbeat
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: Enable heartbeat requests for token refresh
+          example: true
+        - name: realm
+          in: query
+          schema:
+            type: string
+            enum: [idp, jomax]
+            default: idp
+          description: Authentication realm
+        - name: risk
+          in: query
+          schema:
+            type: string
+            enum: [low, medium, high]
+            default: low
+          description: Authentication risk level
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [basic, s2s, e2s]
+            default: basic
+          description: Token type filter
+        - name: use12HourExpiration
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: Use 12-hour token expiration
+      responses:
+        "200":
+          description: Token validation successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JWTValidationResponse"
+              examples:
+                valid_token:
+                  summary: Valid token example
+                  value:
+                    valid: true
+                    payload:
+                      shopperId: "7945294"
+                      cid: "6db0ff3d-4cb8-4aa3-a099-0fb33b914b40"
+                      exp: 1756407418
+                      iat: 1756404509
+        "401":
+          description: Invalid, expired, or missing token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JWTValidationResponse"
+              examples:
+                expired_token:
+                  summary: Expired token
+                  value:
+                    valid: false
+                    reason: "Token expired"
+                missing_token:
+                  summary: Missing token
+                  value:
+                    valid: false
+                    reason: "No token provided"
+        "500":
+          description: Internal server error during validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      tags: [Authentication]
+      summary: Validate JWT Token (POST)
+      description: Same as GET method, supports POST requests for certain authentication flows
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        "200":
+          description: Token validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JWTValidationResponse"
+        "401":
+          description: Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Acknowledge Logout
+      description: |
+        Acknowledges a logout request from the client.
+        Note: Actual logout is handled by GoDaddy SSO redirect on the client side.
+        This endpoint simply logs the logout event for monitoring purposes.
+      responses:
+        "200":
+          description: Logout acknowledged successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+              example:
+                success: true
+                message: "Logout acknowledged"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /accounts:
+    get:
+      tags: [Accounts]
+      summary: Get Customer Accounts
+      description: |
+        Retrieve customer accounts with optional filtering by shopper ID.
+        - Without shopper_id: Returns paginated list of all accounts
+        - With shopper_id: Returns specific account with plan details
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: shopper_id
+          in: query
+          schema:
+            type: string
+          description: Filter by specific GoDaddy shopper ID
+          example: "7945294"
+      responses:
+        "200":
+          description: Accounts retrieved successfully
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    description: Single account response (when shopper_id provided)
+                    properties:
+                      success:
+                        type: boolean
+                        example: true
+                      account:
+                        $ref: "#/components/schemas/AccountWithPlan"
+                  - allOf:
+                      - $ref: "#/components/schemas/AccountListResponse"
+                    description: Multiple accounts response (when no shopper_id)
+              examples:
+                single_account:
+                  summary: Single account with plan details
+                  value:
+                    success: true
+                    account:
+                      id: "550e8400-e29b-41d4-a716-446655440000"
+                      shopper_id: "7945294"
+                      customer_id: "6db0ff3d-4cb8-4aa3-a099-0fb33b914b40"
+                      plan_id: "550e8400-e29b-41d4-a716-446655440002"
+                      status: "active"
+                      plan_name: "Starter"
+                      plan_site_limit: 30
+                      plan_price: 20.00
+                all_accounts:
+                  summary: All accounts list
+                  value:
+                    success: true
+                    accounts: []
+                    count: 0
+        "404":
+          description: Account not found (when shopper_id provided)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error: "Account not found"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      tags: [Accounts]
+      summary: Create Customer Account
+      description: |
+        Manually create a new customer account (primarily for testing/admin use).
+        In normal operation, accounts are automatically created during JWT validation.
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shopper_id]
+              properties:
+                shopper_id:
+                  type: string
+                  description: GoDaddy shopper ID
+                  example: "7945294"
+                customer_id:
+                  type: string
+                  description: Optional custom customer ID (auto-generated if not provided)
+                  example: "custom-customer-123"
+      responses:
+        "201":
+          description: Account created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  account:
+                    $ref: "#/components/schemas/Account"
+                  message:
+                    type: string
+                    example: "Account created successfully"
+        "400":
+          description: Bad request - missing shopper_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error: "shopper_id is required"
+        "409":
+          description: Conflict - account already exists for this shopper_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error: "Account already exists for this shopper_id"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    patch:
+      tags: [Accounts]
+      summary: Update Account Status
+      description: |
+        Update the status of a customer account.
+        Available statuses:
+        - active: Account is active and functional
+        - suspended: Account is temporarily disabled
+        - closed: Account is permanently closed
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - name: shopper_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: GoDaddy shopper ID of account to update
+          example: "7945294"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [active, suspended, closed]
+                  description: New account status
+                  example: "suspended"
+      responses:
+        "200":
+          description: Account status updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  account:
+                    $ref: "#/components/schemas/Account"
+                  message:
+                    type: string
+                    example: "Account status updated successfully"
+        "400":
+          description: Bad request - invalid status or missing shopper_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error: "Valid status is required (active, suspended, closed)"
+        "404":
+          description: Account not found or not updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error: "Account not found or not updated"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /plans:
+    get:
+      tags: [Plans]
+      summary: Get Subscription Plans
+      description: |
+        Retrieve all available subscription plans.
+        Default plans:
+        - Free: 10 sites, $5/month
+        - Starter: 30 sites, $20/month  
+        - Pro: 100 sites, $50/month
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        "200":
+          description: Plans retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanListResponse"
+              example:
+                success: true
+                plans:
+                  - id: "550e8400-e29b-41d4-a716-446655440001"
+                    name: "Free"
+                    site_limit: 10
+                    price: 5.00
+                  - id: "550e8400-e29b-41d4-a716-446655440002"
+                    name: "Starter"
+                    site_limit: 30
+                    price: 20.00
+                  - id: "550e8400-e29b-41d4-a716-446655440003"
+                    name: "Pro"
+                    site_limit: 100
+                    price: 50.00
+                count: 3
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      tags: [Plans]
+      summary: Create Subscription Plan
+      description: |
+        Create a new subscription plan (admin only).
+        Plan ID is automatically generated as UUID.
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, site_limit, price]
+              properties:
+                name:
+                  type: string
+                  description: Unique plan name
+                  example: "Enterprise"
+                site_limit:
+                  type: integer
+                  minimum: 1
+                  description: Maximum number of sites allowed
+                  example: 500
+                price:
+                  type: number
+                  format: decimal
+                  minimum: 0
+                  description: Monthly price in USD
+                  example: 99.99
+      responses:
+        "201":
+          description: Plan created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  plan:
+                    $ref: "#/components/schemas/Plan"
+                  message:
+                    type: string
+                    example: "Plan created successfully"
+        "400":
+          description: Bad request - missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error: "All fields are required: name (string), site_limit (number), price (number)"
+        "409":
+          description: Conflict - plan name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error: "A plan with this name already exists"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Backend Service Health Check
+      description: |
+        Get health status and system information for the Next.js backend service.
+        Use ?detailed=true for comprehensive system metrics.
+      parameters:
+        - name: detailed
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include detailed system information (uptime, memory, features)
+          example: true
+      responses:
+        "200":
+          description: Service health information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              examples:
+                basic_health:
+                  summary: Basic health check
+                  value:
+                    status: "healthy"
+                    timestamp: "2024-12-28T10:30:00Z"
+                    service: "airo-app-builder-backend"
+                    version: "1.0.0"
+                    environment: "development"
+                detailed_health:
+                  summary: Detailed health check
+                  value:
+                    status: "healthy"
+                    timestamp: "2024-12-28T10:30:00Z"
+                    service: "airo-app-builder-backend"
+                    version: "1.0.0"
+                    environment: "development"
+                    uptime:
+                      seconds: 3661
+                      human: "1h 1m 1s"
+                    memory:
+                      used: "45 MB"
+                      total: "128 MB"
+                      rss: "89 MB"
+                    features:
+                      jwtValidation: true
+                      secureValidation: true
+                      gasketCompatibility: true
+
+security:
+  - BearerAuth: []
+  - CookieAuth: []
+# Database Configuration
+# The service uses SQLite database at: ./data/airo-builder-platform.db
+# Tables:
+# - accounts: Customer account records
+# - plans: Subscription plan definitions
+# Automatic schema initialization on startup
