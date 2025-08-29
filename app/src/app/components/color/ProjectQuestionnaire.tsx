@@ -69,7 +69,7 @@ export default function ProjectQuestionnaire({
 
   const currentQ = questions[currentQuestion];
   
-  const handleAnswer = (value: any) => {
+  const handleAnswer = (value: string) => {
     if (currentQ.type === 'multi-choice') {
       const currentValues = (answers[currentQ.id as keyof ProjectAnswers] as string[]) || [];
       const newValues = currentValues.includes(value)
@@ -121,7 +121,7 @@ export default function ProjectQuestionnaire({
         const shouldUseColumns = currentQ.options.length > 4;
         return (
           <div className={`grid gap-2 ${shouldUseColumns ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
-            {currentQ.options.map((option: any) => (
+            {currentQ.options.map((option: { id: string; label: string; description?: string }) => (
               <button
                 key={option.id}
                 onClick={() => handleAnswer(option.id)}
@@ -146,7 +146,7 @@ export default function ProjectQuestionnaire({
         const shouldUseColumnsMulti = currentQ.options.length > 4;
         return (
           <div className={`grid gap-2 ${shouldUseColumnsMulti ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
-            {currentQ.options.map((option: any) => {
+            {currentQ.options.map((option: { id: string; label: string; description?: string }) => {
               const isSelected = Array.isArray(currentAnswer) && currentAnswer.includes(option.id);
               return (
                 <button

@@ -39,9 +39,6 @@ ENV PORT=80
 # HEALTHCHECK --interval=30s --timeout=10s \
 #   CMD node -e "require('http').get('http://localhost:80/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
+
 # Start the application directly - no runtime npm access needed
 CMD ["node", "dist/server/app.js"]
-
-
-
-

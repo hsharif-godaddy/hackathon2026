@@ -275,7 +275,7 @@ export default function ColorDesignFlow({
                 Review Your Color Palette
               </h2>
               <p className="text-gray-600">
-                Take a final look at your color scheme and make sure you're happy with it
+                Take a final look at your color scheme and make sure you&apos;re happy with it
               </p>
             </div>
 
@@ -309,7 +309,7 @@ export default function ColorDesignFlow({
             Color Scheme Designer
           </h1>
           <p className="text-gray-600 mb-8">
-            Let's create the perfect color palette for your {projectAnswers?.projectType || 'project'}
+            Let&apos;s create the perfect color palette for your {projectAnswers?.projectType || 'project'}
           </p>
 
           {/* Progress Steps */}

@@ -614,7 +614,8 @@ export const loadConversation = async (appId: string, conversationId: string) =>
     console.log('loadConversation - loaded conversation data:', data)
     
     // Convert database messages to UI message format
-    const messages: Message[] = data.messages.map((msg: {id: string; sender: string; content: string; createdAt: string; messageType?: string; toolCalls?: ToolCall[]; segments?: MessageSegment[]; metadata?: Record<string, unknown>}) => ({
+    type DatabaseMessage = {id: string; sender: string; content: string; createdAt: string; messageType?: string; toolCalls?: ToolCall[]; segments?: MessageSegment[]; metadata?: Record<string, unknown>};
+    const messages: Message[] = (data.messages as DatabaseMessage[]).map((msg: DatabaseMessage) => ({
       id: msg.id, // Keep as string since database IDs are strings
       sender: msg.sender as 'user' | 'agent',
       content: msg.content,

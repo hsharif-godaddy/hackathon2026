@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { ColorPalette, ProjectAnswers } from './types';
+import { ColorPalette, ColorPaletteOption, ProjectAnswers } from './types';
 import ProjectQuestionnaire from './ProjectQuestionnaire';
 import ColorPaletteGrid from './ColorPaletteGrid';
 import ColorSchemePreview from './ColorSchemePreview';
@@ -27,7 +27,7 @@ export default function ColorSchemeDrawer({
   const [projectAnswers, setProjectAnswers] = useState<ProjectAnswers | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedColorName, setSelectedColorName] = useState<string | null>(null);
-  const [paletteOptions, setPaletteOptions] = useState<any[]>([]);
+  const [paletteOptions, setPaletteOptions] = useState<ColorPaletteOption[]>([]);
   const [selectedPalette, setSelectedPalette] = useState<ColorPalette | null>(null);
 
   // Reset state when drawer opens
@@ -42,7 +42,7 @@ export default function ColorSchemeDrawer({
     }
   }, [isOpen]);
 
-  const generatePaletteOptions = (baseColor: string, answers: ProjectAnswers) => {
+  const generatePaletteOptions = (baseColor: string, answers: ProjectAnswers): ColorPaletteOption[] => {
     // Simplified palette generation
     const options = [
       {

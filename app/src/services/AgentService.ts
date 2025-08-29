@@ -10,7 +10,7 @@ export interface Conversation {
 export interface ConversationDetail {
   id: string
   appId: string
-  messages: any[] // Using any[] to match existing message types
+  messages: unknown[] // Using unknown[] to match existing message types
   createdAt: string
   updatedAt: string
 }

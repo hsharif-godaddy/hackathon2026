@@ -213,7 +213,7 @@ export default function ColorSchemePreview({
                 <CardDescription 
                   style={{ color: palette.textSecondary }}
                 >
-                  Here's some helpful information for you.
+                  Here&apos;s some helpful information for you.
                 </CardDescription>
               </CardContent>
             </Card>

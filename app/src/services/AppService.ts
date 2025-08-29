@@ -36,7 +36,7 @@ export interface TextUpdateData {
   selector: string
   oldText: string
   newText: string
-  devContext: any
+  devContext: Record<string, unknown>
 }
 
 export interface CreateAppData {
@@ -96,7 +96,7 @@ export class AppService {
   /**
    * Safely parse JSON response, handling empty responses
    */
-  private async safeJsonParse(response: Response, defaultValue: any = null): Promise<any> {
+  private async safeJsonParse(response: Response, defaultValue: unknown = null): Promise<unknown> {
     const contentLength = response.headers.get('content-length')
     const contentType = response.headers.get('content-type')
     
@@ -212,7 +212,7 @@ export class AppService {
   /**
    * Update element styles
    */
-  async updateStyles(appId: string, styleData: StyleUpdateData): Promise<any> {
+  async updateStyles(appId: string, styleData: StyleUpdateData): Promise<unknown> {
     const response = await appFetch(buildApiUrl(`apps/${appId}/styles/edit`), {
       method: 'POST',
       headers: {
@@ -238,7 +238,7 @@ export class AppService {
   /**
    * Update element text content
    */
-  async updateText(appId: string, textData: TextUpdateData): Promise<any> {
+  async updateText(appId: string, textData: TextUpdateData): Promise<unknown> {
     const response = await appFetch(buildApiUrl(`apps/${appId}/text/edit`), {
       method: 'POST',
       headers: {
@@ -384,7 +384,7 @@ export class AppService {
       throw new Error(`Failed to stop app: ${response.status}`)
     }
     
-    return this.safeJsonParse(response, { success: true, message: 'App stopped successfully' })
+    return (await this.safeJsonParse(response, { success: true, message: 'App stopped successfully' })) as { success: boolean; message?: string }
   }
 
   /**
@@ -406,7 +406,7 @@ export class AppService {
       throw new Error(errorMessage)
     }
     
-    return this.safeJsonParse(response, { success: true, message: 'App deleted successfully' })
+    return (await this.safeJsonParse(response, { success: true, message: 'App deleted successfully' })) as { success: boolean; message?: string }
   }
 
   /**
@@ -421,7 +421,7 @@ export class AppService {
       throw new Error(`Failed to stop all apps: ${response.status}`)
     }
     
-    return this.safeJsonParse(response, { success: true, message: 'All apps stopped successfully' })
+    return (await this.safeJsonParse(response, { success: true, message: 'All apps stopped successfully' })) as { success: boolean; message?: string }
   }
 
   /**
@@ -436,7 +436,7 @@ export class AppService {
       throw new Error(`Failed to cleanup orphaned apps: ${response.status}`)
     }
     
-    return this.safeJsonParse(response, { success: true, message: 'Cleanup completed successfully' })
+    return (await this.safeJsonParse(response, { success: true, message: 'Cleanup completed successfully' })) as { success: boolean; message?: string }
   }
 }
 

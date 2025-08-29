@@ -1,0 +1,102 @@
+name: Dev push deploy to ECR
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        description: "Branch name or full sha of the commit to use"
+        required: true
+        type: string
+
+permissions:
+  id-token: write # required for artifactory token login
+  contents: read
+
+jobs:
+  continuous-integration:
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+
+    steps:
+      - name: Determine Branch to Checkout
+        id: determine-branch
+        run: |
+          if [[ -n "${BRANCH}" ]]; then
+            echo "branch=${BRANCH}" >> "$GITHUB_ENV"
+          elif [[ -n "$HEAD" ]]; then
+            echo "branch=$HEAD" >> "$GITHUB_ENV"
+          elif [[ -n "$REF_NAME" ]]; then
+            echo "branch=$REF_NAME" >> "$GITHUB_ENV"
+          else
+            echo "branch=dev" >> "$GITHUB_ENV"
+          fi
+        env:
+          BRANCH: "${{ inputs.branch }}"
+          HEAD: "${{ github.event.pull_request.head.ref }}"
+          REF_NAME: "${{ github.ref_name }}"
+
+      - name: Checkout Codebase
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.branch }}
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "ARTIFACTORY_NPM_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set Git Hash
+        run: |
+          echo "GIT_SHORT_COMMIT=$(git rev-parse --short=7 HEAD)" >> $GITHUB_ENV
+          echo "Git short commit: $(git rev-parse --short=7 HEAD)"
+
+      - name: Assume Role and Login to ECR
+        run: |
+          set -e
+          
+          assume_role_and_login() {
+            local role_arn=arn:aws:iam::$1:role/GD-AWS-SSG-Deploy-Role
+            local account_id=$1
+            echo "Assuming role for account: $account_id"
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role --role-arn $role_arn --role-session-name GHASession --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+            echo "Logging in to ECR for account: $account_id"
+            aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $account_id.dkr.ecr.us-west-2.amazonaws.com
+          }
+
+          # Login to base image account (764525110978) - needed for Docker build
+          assume_role_and_login 764525110978
+          
+          # Login to target account (694282668781) - needed for push
+          assume_role_and_login 694282668781
+
+      - name: Build Docker Image (App)
+        working-directory: ./app
+        run: |
+          docker build --build-arg NPM_AUTH_TOKEN="${ARTIFACTORY_NPM_TOKEN}" -t airo-app:${{ env.branch }}-${{ env.GIT_SHORT_COMMIT }} .
+      
+      - name: Tag and Push Docker Image to ECR
+        run: |
+          docker tag airo-app:${{ env.branch }}-${{ env.GIT_SHORT_COMMIT }} 694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/app:${{ env.branch }}-${{ env.GIT_SHORT_COMMIT }}
+          docker push 694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/app:${{ env.branch }}-${{ env.GIT_SHORT_COMMIT }}
+
+      - name: Print Success
+        run: |
+          echo "✅ Docker image built and pushed to ECR successfully!"
+          echo "Image: airo-builder/app:${{ env.branch }}-${{ env.GIT_SHORT_COMMIT }}"

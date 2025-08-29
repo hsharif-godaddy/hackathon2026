@@ -391,7 +391,7 @@ function DevelopPageContent() {
     }
   }, [appId, selectedElement])
 
-  const sendTextUpdate = useCallback(async (textData: {selector: string; oldText: string; newText: string; devContext: any}) => {
+  const sendTextUpdate = useCallback(async (textData: {selector: string; oldText: string; newText: string; devContext: Record<string, unknown>}) => {
     if (!appId) return
 
     console.log('📤 Sending text update to API:', {
