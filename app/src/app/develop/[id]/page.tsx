@@ -207,6 +207,10 @@ function DevelopPageContent() {
           }
         } else {
           console.log('📝 No existing conversations found, app might be new')
+          // If this is a new app with an initial prompt, trigger auto-send after a delay
+          if (isInitialAppCreation && app.initialPrompt) {
+            console.log('🔄 New app detected with initial prompt, preparing for auto-send')
+          }
         }
       } catch (error) {
         console.error('❌ Error loading conversations:', error)
@@ -216,7 +220,7 @@ function DevelopPageContent() {
     }
 
     loadAppConversations()
-  }, [appId, app])
+  }, [appId, app, isInitialAppCreation])
   
   // 3b. Load commit history
   useEffect(() => {
@@ -226,7 +230,7 @@ function DevelopPageContent() {
     }
   }, [appId, app, fetchCommitHistory])
 
-  // 4. PURE UI STATE - Set initial prompt in input (no actions)
+  // 4. PURE UI STATE - Set initial prompt in input (more aggressive timing)
   useEffect(() => {
     console.log('🔍 Initial prompt check:', {
       isInitialAppCreation,
@@ -236,17 +240,16 @@ function DevelopPageContent() {
       isLoadingConversations
     })
     
+    // Set initial prompt as soon as we have it, regardless of conversation loading state
     if (isInitialAppCreation && 
         app?.initialPrompt && 
-        !initialMessageProcessed.current &&
-        conversations.length === 0 &&
-        !isLoadingConversations) {
+        !initialMessageProcessed.current) {
       
-      console.log('📝 Setting initial prompt in input:', app.initialPrompt)
+      console.log('📝 Setting initial prompt in input immediately:', app.initialPrompt)
       setInputValue(app.initialPrompt)
       initialMessageProcessed.current = true
     }
-  }, [isInitialAppCreation, app?.initialPrompt, conversations.length, isLoadingConversations])
+  }, [isInitialAppCreation, app?.initialPrompt])
 
   // 5. STABLE MESSAGE HANDLER - No state dependencies that cause loops
   const handleSendMessage = useCallback(async (messageContent?: string) => {
@@ -293,23 +296,34 @@ function DevelopPageContent() {
     }, 100)
   }, [inputValue, isLoading, appId, conversationId, aiEditContext, isInitialAppCreation])
 
-  // 6. AUTO-SEND TRIGGER - Separate effect with stable conditions only
+  // 6. AUTO-SEND TRIGGER - Simplified with better timing
   useEffect(() => {
-    if (isInitialAppCreation && 
-        inputValue && 
-        app?.initialPrompt && 
-        inputValue === app.initialPrompt && 
-        !isLoadingConversations && 
-        conversations.length === 0 &&
-        initialMessageProcessed.current &&
-        !autoSendTriggered.current &&
-        !isLoading) {
+    // Simplified conditions for more reliable auto-send
+    const shouldAutoSend = 
+      isInitialAppCreation && 
+      app?.initialPrompt && 
+      inputValue === app.initialPrompt && 
+      !isLoadingConversations && 
+      conversations.length === 0 &&
+      !autoSendTriggered.current &&
+      !isLoading;
+    
+    if (shouldAutoSend) {
+      console.log('✅ Auto-send conditions met, triggering initial prompt:', {
+        isInitialAppCreation,
+        hasInitialPrompt: !!app?.initialPrompt,
+        inputValueMatches: inputValue === app?.initialPrompt,
+        isLoadingConversations,
+        conversationsLength: conversations.length,
+        autoSendTriggered: autoSendTriggered.current,
+        isLoading
+      })
       
-      console.log('Triggering auto-send for initial prompt:', inputValue)
       autoSendTriggered.current = true
       
-      // Use setTimeout to break out of the effect cycle
+      // Increased delay to ensure UI is ready
       const timer = setTimeout(() => {
+        console.log('🚀 Executing auto-send for initial prompt')
         // Create stable message send function
         sendMessage({
           messageContent: inputValue,
@@ -326,6 +340,7 @@ function DevelopPageContent() {
             tokenUsageRef.current?.refreshUsage()
           }
         }).then(() => {
+          console.log('✅ Auto-send completed successfully')
           // Post-send actions
           setIsInitialAppCreation(false)
           setTimeout(async () => {
@@ -336,8 +351,11 @@ function DevelopPageContent() {
               console.error('Error refreshing conversations:', error)
             }
           }, 100)
+        }).catch(error => {
+          console.error('❌ Auto-send failed:', error)
+          autoSendTriggered.current = false // Reset on failure
         })
-      }, 500)
+      }, 1000) // Increased delay for better reliability
       
       return () => clearTimeout(timer)
     }

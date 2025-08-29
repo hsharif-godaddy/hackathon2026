@@ -332,6 +332,10 @@ export class LocalAppService implements IAppAdapter {
     } else if (templateVersion === 'v2') {
       command = 'npm';
       args = ['run', 'dev', '--', '--turbopack'];
+    } else if (templateVersion === 'v7') {
+      // v7 uses Vite and needs pnpm
+      command = 'pnpm';
+      args = ['run', 'dev'];
     } else {
       // v1 or default
       command = 'npm';

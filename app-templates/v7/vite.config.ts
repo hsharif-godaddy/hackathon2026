@@ -60,7 +60,7 @@ export default defineConfig(({ mode }) => ({
   },
 
   server: {
-    port: 5173,
+    port: parseInt(process.env.PORT || '5173'),
   },
 
   build: {

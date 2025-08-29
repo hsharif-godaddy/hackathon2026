@@ -1,4 +1,3 @@
-import React from 'react';
 
 // Geometric pattern component
 function GeometricPattern() {
