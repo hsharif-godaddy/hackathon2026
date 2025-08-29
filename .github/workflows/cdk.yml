@@ -1,0 +1,124 @@
+name: CDK Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      ENV_NAME:
+        description: 'Environment to deploy the CDK stack'
+        required: true
+        type: choice
+        options:
+          - 'dev'
+        default: 'dev'
+      STACK_NAME:
+        description: 'Stack to deploy'
+        required: true
+        type: choice
+        options:
+          - '--all'
+          - 'AiroBuilderHostedZoneStack'
+          - 'AiroBuilderStack'
+        default: '--all'
+      DEFAULT_ACTION:
+        description: 'Default action to take'
+        required: true
+        type: choice
+        options:
+          - 'diff'
+          - 'deploy'
+        default: 'diff'
+
+permissions:
+  id-token: write # required for artifactory token login
+  contents: read
+
+jobs:
+  build:
+    runs-on:
+      group: 8606-airobuildercdk
+      labels:
+        - self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get Artifactory Token # This action retrieves the Artifactory token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@f748a0599171a192a2668afee8d0497f7c1069df # v4.5.6
+        env:
+          JF_URL: ${{ vars.JF_URL }} # Stored at the org level so you don't have to worry about it
+        with:
+          oidc-provider-name: github
+
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }} # Use the token as you'd normally use a token or password
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "ARTIFACTORY_NPM_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.7
+
+      - name: Set environment variables
+        run: |
+          echo "ENV_NAME=${{ inputs.ENV_NAME || github.event.inputs.ENV_NAME || 'dev' }}" >> $GITHUB_ENV
+          echo "STACK_NAME=${{ inputs.STACK_NAME || github.event.inputs.STACK_NAME || '--all' }}" >> $GITHUB_ENV
+          case "${{ inputs.ENV_NAME || github.event.inputs.ENV_NAME || 'dev' }}" in
+          'dev') ACCOUNT_ID='694282668781' ;;
+          esac
+          echo "CDK_AWS_ACCOUNT_ID=${ACCOUNT_ID}" >> $GITHUB_ENV
+          echo "DEFAULT_ACTION=${{ inputs.DEFAULT_ACTION || github.event.inputs.DEFAULT_ACTION || 'diff' }}" >> $GITHUB_ENV
+
+      - name: Print environment variables
+        run: |
+          echo "ENV_NAME=${{ env.ENV_NAME }}"
+          echo "CDK_AWS_ACCOUNT_ID=${{ env.CDK_AWS_ACCOUNT_ID }}"
+          echo "STACK_NAME=${{ env.STACK_NAME }}"
+          echo "DEFAULT_ACTION=${{ env.DEFAULT_ACTION }}"
+
+      - name: Run Build & Deploy
+        env:
+            ENV_NAME: ${{ env.ENV_NAME }}
+            CDK_AWS_ACCOUNT_ID: ${{ env.CDK_AWS_ACCOUNT_ID }}
+            STACK_NAME: ${{ env.STACK_NAME }}
+            DEFAULT_ACTION: ${{ env.DEFAULT_ACTION }}
+        run: |
+          cd cdk/
+          # Create .npmrc file
+          echo "always-auth=true" > .npmrc
+          echo "progress=false" >> .npmrc
+          echo registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+
+          npm install -g pnpm
+
+
+          pnpm install --frozen-lockfile
+
+          # npx --verbose cdk synth
+
+          # CICD runner needs to assume role
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" $(aws sts assume-role \
+          --role-arn arn:aws:iam::${CDK_AWS_ACCOUNT_ID}:role/GD-AWS-SSG-Deploy-Role --role-session-name CLISession \
+          --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+
+          # bootstrap the CDK, required once per account
+          npx cdk bootstrap --template node_modules/@gd-safeguard/godaddy-constructs/bootstrap-template.yaml --tags godaddy:governance:tool=safeguard | grep -v "warn: ⚙️ \|warn: \""
+
+          if [ "${{ env.DEFAULT_ACTION }}" == "deploy" ]; then
+            if [ "${{ env.STACK_NAME }}" == "--all" ]; then
+              npx cdk synth | grep -v "warn: ⚙️ \|warn: \""
+            else
+              npx cdk synth ${STACK_NAME} | grep -v "warn: ⚙️ \|warn: \""
+            fi
+
+            # deploy if synth is successful
+            npx cdk deploy ${STACK_NAME} --require-approval never --tags godaddy:governance:tool=safeguard | grep -v "warn: ⚙️ \|warn: \""
+          else
+            # diff if synth is successful
+            npx cdk diff ${STACK_NAME} | grep -v "warn: ⚙️ \|warn: \""
+          fi

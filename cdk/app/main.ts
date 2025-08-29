@@ -1,6 +1,7 @@
 import config from "../lib/config";
 import { App } from "aws-cdk-lib";
 import {AiroBuilderStack} from "../lib/application-stack";
+import { AiroBuilderHostedZoneStack } from "../lib/hostedzone-stack";
 
 // Main function to execute the CDK app
 async function main() {
@@ -10,6 +11,8 @@ async function main() {
   const env = { account: config.account, region: config.region };
 
   new AiroBuilderStack(app, 'AiroBuilderStack', { env: env });
+
+  new AiroBuilderHostedZoneStack(app, 'AiroBuilderHostedZoneStack', { env: env });
 
   app.synth();
 }
