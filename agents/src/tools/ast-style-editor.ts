@@ -1,6 +1,7 @@
 import * as t from '@babel/types';
 import { relative } from 'path';
 import { ASTEditorBase, BaseEditContext, BaseEditResult } from './ast-editor-base.js';
+import { logger } from '../logging/index.js';
 
 export interface StyleEditContext extends BaseEditContext {}
 
@@ -59,7 +60,8 @@ export class ASTStyleEditor extends ASTEditorBase {
       appPath,
       request,
       (req) => req.elementInfo.devContext.fileName,
-      true // Commit style changes
+      true, // Commit style changes
+      'style' // editType
     );
 
     // Add style-specific data to the result using stored changes
@@ -92,7 +94,11 @@ export class ASTStyleEditor extends ASTEditorBase {
       return false;
     }
     
-    console.log(`    ✅ Target element found: ${tagName} at line ${element.loc?.start.line}`);
+    logger.debug('Target element found for AST style edit', {
+      component: 'ASTStyleEditor',
+      tagName,
+      line: element.loc?.start.line
+    });
     
     // Check className if present (using base class helper)
     if (elementInfo.className.trim()) {
@@ -185,7 +191,10 @@ export class ASTStyleEditor extends ASTEditorBase {
       const parsedStyles = this.parseInlineStyles(newStyle);
       // Merge parsed styles into styleProperties
       Object.assign(styleProperties, parsedStyles);
-      console.log(`    🎨 Applied inline styles: ${Object.keys(parsedStyles).join(', ')}`);
+      logger.debug('Applied inline styles to element', {
+        component: 'ASTStyleEditor',
+        styleProperties: Object.keys(parsedStyles)
+      });
     } else {
       // Fallback: apply single property
       const cssPropertyMap: Record<string, string> = {
@@ -198,7 +207,11 @@ export class ASTStyleEditor extends ASTEditorBase {
       const reactProperty = cssPropertyMap[property];
       if (reactProperty) {
         styleProperties[reactProperty] = value;
-        console.log(`    🎨 Applied inline style: ${reactProperty}`);
+        logger.debug('Applied inline style property to element', {
+          component: 'ASTStyleEditor',
+          property: reactProperty,
+          value
+        });
       }
     }
     
@@ -372,16 +385,26 @@ export class ASTStyleEditor extends ASTEditorBase {
     let newClassName = '';
     let dynamicClassNameError: string | null = null;
     
-    console.log(`🔍 Starting AST traversal looking for ${enhancedElementInfo.tagName} at line ${enhancedElementInfo.devContext.lineNumber}`);
+    logger.debug('Starting AST traversal for style edit', {
+      component: 'ASTStyleEditor',
+      targetTagName: enhancedElementInfo.tagName,
+      targetLine: enhancedElementInfo.devContext.lineNumber,
+      selector
+    });
+    
     this.traverse(ast, {
       JSXElement: (path: any): void => {
         const element = path.node;
         const elementLine = element.loc?.start.line;
         const tagName = this.getTagName(element);
         
-        // Log every JSX element we encounter
+        // Log every JSX element we encounter (debug level)
         if (tagName) {
-          console.log(`  - Found JSX element: ${tagName} at line ${elementLine}`);
+          logger.debug('Found JSX element during traversal', {
+            component: 'ASTStyleEditor',
+            tagName,
+            line: elementLine
+          });
         }
         
         // Check if this is the target element

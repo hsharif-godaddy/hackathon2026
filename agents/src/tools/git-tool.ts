@@ -1,4 +1,6 @@
 import { GitUtils, GitStatus as GitUtilsStatus, GitCommitInfo } from '../utils/git.js';
+import { logger } from '../logging/index.js';
+import { toolGitEvents } from '../logging/events/index.js';
 
 export interface GitToolOptions {
   /** The git operation to perform */
@@ -84,6 +86,14 @@ export class GitTool {
    * Execute a Git operation
    */
   async executeGitOperation(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+    const startTime = Date.now();
+
+    // Build logging data once to avoid duplication
+    const logData = this.buildLogData(options, appPath);
+
+    // Log operation begin
+    toolGitEvents.begin(logger, logData);
+
     try {
       // Check if we're in a git repository (except for status which can show this)
       if (options.operation !== 'status') {
@@ -98,37 +108,77 @@ export class GitTool {
       }
 
       // Route to appropriate handler
+      let result: GitToolResult;
       switch (options.operation) {
         case 'status':
-          return await this.handleStatus(appPath, options);
+          result = await this.handleStatus(appPath, options);
+          break;
         case 'add':
-          return await this.handleAdd(appPath, options);
+          result = await this.handleAdd(appPath, options);
+          break;
         case 'commit':
-          return await this.handleCommit(appPath, options);
+          result = await this.handleCommit(appPath, options);
+          break;
         case 'diff':
-          return await this.handleDiff(appPath, options);
+          result = await this.handleDiff(appPath, options);
+          break;
         case 'log':
-          return await this.handleLog(appPath, options);
+          result = await this.handleLog(appPath, options);
+          break;
         case 'branch':
-          return await this.handleBranch(appPath, options);
+          result = await this.handleBranch(appPath, options);
+          break;
         case 'checkout':
-          return await this.handleCheckout(appPath, options);
+          result = await this.handleCheckout(appPath, options);
+          break;
         case 'merge':
-          return await this.handleMerge(appPath, options);
+          result = await this.handleMerge(appPath, options);
+          break;
         case 'pull':
-          return await this.handlePull(appPath, options);
+          result = await this.handlePull(appPath, options);
+          break;
         case 'push':
-          return await this.handlePush(appPath, options);
+          result = await this.handlePush(appPath, options);
+          break;
         case 'stash':
-          return await this.handleStash(appPath, options);
+          result = await this.handleStash(appPath, options);
+          break;
         case 'reset':
-          return await this.handleReset(appPath, options);
+          result = await this.handleReset(appPath, options);
+          break;
         case 'revert':
-          return await this.handleRevert(appPath, options);
+          result = await this.handleRevert(appPath, options);
+          break;
         default:
           throw new Error(`Unknown git operation: ${options.operation}`);
       }
+
+      const executionTime = Date.now() - startTime;
+
+      // Log operation success or failure
+      if (result.success) {
+        toolGitEvents.success(logger, {
+          ...logData,
+          resultStats: {
+            success: result.success,
+            filesAffected: result.status ? 
+              (result.status.modified.length + result.status.added.length + result.status.deleted.length + result.status.staged.length) : 
+              (options.files?.length || 0),
+            ...(result.branches?.length !== undefined && { branchesCount: result.branches.length }),
+            ...(result.commits?.length !== undefined && { commitsCount: result.commits.length }),
+            executionTime,
+          },
+        });
+      } else {
+        // Log operation failure for unsuccessful operations that don't throw
+        toolGitEvents.failure(logger, new Error(result.error || 'Git operation failed'), logData);
+      }
+
+      return result;
     } catch (error) {
+      // Log operation failure
+      toolGitEvents.failure(logger, error as Error, logData);
+
       return {
         success: false,
         operation: options.operation,
@@ -515,6 +565,32 @@ export class GitTool {
     }
     
     return lines.join('\n');
+  }
+
+  /**
+   * Build common logging data to avoid duplication
+   */
+  private buildLogData(options: GitToolOptions, appPath: string) {
+    return {
+      toolName: 'git' as const,
+      operation: options.operation,
+      appPath,
+      options: {
+        ...(options.files && { files: options.files }),
+        ...(options.message && { message: options.message }),
+        ...(options.branch && { branch: options.branch }),
+        ...(options.options?.all !== undefined && { all: options.options.all }),
+        ...(options.options?.amend !== undefined && { amend: options.options.amend }),
+        ...(options.options?.force !== undefined && { force: options.options.force }),
+        ...(options.options?.hard !== undefined && { hard: options.options.hard }),
+        ...(options.options?.count !== undefined && { count: options.options.count }),
+        ...(options.options?.createBranch !== undefined && { createBranch: options.options.createBranch }),
+        ...(options.options?.includeUntracked !== undefined && { includeUntracked: options.options.includeUntracked }),
+        ...(options.options?.verbose !== undefined && { verbose: options.options.verbose }),
+        ...(options.autoMessage !== undefined && { autoMessage: options.autoMessage }),
+        ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
+      },
+    };
   }
 
   /**

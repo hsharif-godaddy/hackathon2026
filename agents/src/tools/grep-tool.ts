@@ -3,6 +3,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { glob } from 'glob';
 import { minimatch } from 'minimatch';
+import { logger } from '../logging/index.js';
+import { toolGrepEvents } from '../logging/events/index.js';
 
 // Types and Schemas
 export const GrepOptionsSchema = z.object({
@@ -87,6 +89,21 @@ export class GrepTool {
   async execute(params: GrepOptions): Promise<GrepResult> {
     const startTime = Date.now();
 
+    // Log search begin
+    toolGrepEvents.begin(logger, {
+      toolName: 'grep',
+      query: params.query,
+      ...(params.paths && { paths: params.paths }),
+      searchOptions: {
+        regex: params.regex || false,
+        caseSensitive: params.caseSensitive || false,
+        wholeWord: params.wholeWord || false,
+        contextLines: params.contextLines || 3,
+        maxResults: params.maxResults || 50,
+        maxFilesSearched: params.maxFilesSearched || 1000,
+      },
+    });
+
     try {
       // Parse and validate options with defaults
       const options = GrepOptionsSchema.parse(params);
@@ -136,7 +153,7 @@ export class GrepTool {
         ? this.groupMatchesByFile(allMatches)
         : allMatches;
 
-      return {
+      const result = {
         success: true,
         query: options.query,
         matches: finalMatches,
@@ -146,7 +163,36 @@ export class GrepTool {
         searchTime: Date.now() - startTime
       };
 
+      // Log search success
+      toolGrepEvents.success(logger, {
+        toolName: 'grep',
+        query: options.query,
+        ...(options.paths && { paths: options.paths }),
+        searchOptions: {
+          regex: options.regex,
+          caseSensitive: options.caseSensitive,
+          wholeWord: options.wholeWord,
+          contextLines: options.contextLines,
+          maxResults: options.maxResults,
+          maxFilesSearched: options.maxFilesSearched,
+        },
+        resultStats: {
+          totalMatches: allMatches.length,
+          filesSearched,
+          truncated,
+          searchTime: result.searchTime,
+        },
+      });
+
+      return result;
+
     } catch (error) {
+      // Log search failure
+      toolGrepEvents.failure(logger, error as Error, {
+        toolName: 'grep',
+        query: params.query,
+      });
+
       return {
         success: false,
         query: params.query,

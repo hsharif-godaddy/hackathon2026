@@ -3,6 +3,8 @@ import { promisify } from 'util';
 import path from 'path';
 import { existsSync } from 'fs';
 import { getDatabase } from '../../database/connection.js';
+import { logger } from '../../logging/index.js';
+import { dockerContainerEvents } from '../../logging/events/index.js';
 
 const execAsync = promisify(exec);
 
@@ -49,7 +51,11 @@ export class DockerContainerManager {
       // Default to v1 (basic Next.js)
       return 'v1';
     } catch (error) {
-      console.warn('Could not detect template version, defaulting to v1:', error);
+      logger.warn('Could not detect template version, defaulting to v1', {
+        component: 'DockerContainerManager',
+        appPath,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return 'v1';
     }
   }
@@ -60,24 +66,50 @@ export class DockerContainerManager {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    console.log('🐳 Initializing Docker Container Manager...');
+    const startTime = Date.now();
     
-    // Check if Docker is available
+    // Log initialization begin
+    dockerContainerEvents.begin(logger, {
+      appId: 'system',
+      operation: 'initialize'
+    });
+    
     try {
+      // Check if Docker is available
       await execAsync('docker --version');
-      console.log('✅ Docker is available');
+      logger.info('Docker availability verified', {
+        component: 'DockerContainerManager'
+      });
+
+      // Initialize database table
+      this.initializeDatabase();
+      
+      // Recover any existing running containers
+      await this.recoverExistingContainers();
+      
+      this.initialized = true;
+      
+      const duration = Date.now() - startTime;
+      
+      // Log initialization success
+      dockerContainerEvents.success(logger, {
+        appId: 'system',
+        operation: 'initialize',
+        operationStats: {
+          success: true,
+          duration
+        }
+      });
+      
     } catch (error) {
+      // Log initialization failure
+      dockerContainerEvents.failure(logger, error as Error, {
+        appId: 'system',
+        operation: 'initialize'
+      });
+      
       throw new Error('Docker is not installed or not available in PATH');
     }
-
-    // Initialize database table
-    this.initializeDatabase();
-    
-    // Recover any existing running containers
-    await this.recoverExistingContainers();
-    
-    this.initialized = true;
-    console.log('✅ Docker Container Manager initialized');
   }
 
   /**
@@ -90,9 +122,19 @@ export class DockerContainerManager {
       const containerIds = stdout.trim().split('\n').filter(id => id.length > 0);
       
       if (containerIds.length > 0) {
-        console.log(`🗑️ Removing ${containerIds.length} existing container(s): ${containerName}`);
+        logger.info('Removing existing Docker containers', {
+          component: 'DockerContainerManager',
+          containerName,
+          containerCount: containerIds.length,
+          containerIds: containerIds.slice(0, 3) // Log first 3 IDs to avoid spam
+        });
+        
         await execAsync(`docker rm -f ${containerIds.join(' ')}`);
-        console.log('✅ Container(s) removed successfully');
+        
+        logger.debug('Docker containers removed, waiting for name release', {
+          component: 'DockerContainerManager',
+          containerName
+        });
         
         // Wait for Docker daemon to fully release the name
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -107,7 +149,11 @@ export class DockerContainerManager {
       if (!error.message?.includes('Container name') && !error.message?.includes('No such container')) {
         // Only log if it's not a "name still in use" error (which we want to propagate) 
         // or "no such container" error (which is expected)
-        console.log(`ℹ️ Container ${containerName} cleanup: ${error.message || 'completed'}`);
+        logger.debug('Container cleanup info', {
+          component: 'DockerContainerManager',
+          containerName,
+          message: error.message || 'completed'
+        });
       } else {
         throw error; // Re-throw critical errors
       }
@@ -132,7 +178,8 @@ export class DockerContainerManager {
    * Internal method to create and start a container with optional cleanup skip
    */
   private async createAndStartContainerInternal(appId: string, appPath: string, port: number, skipCleanup: boolean): Promise<ContainerInfo> {
-    console.log(`🚀 Creating Docker container for app ${appId} on port ${port}...`);
+    const startTime = Date.now();
+    const templateVersion = this.detectTemplateVersion(appPath);
     
     // Docker has strict naming requirements: lowercase, alphanumeric, dashes and dots only
     // Remove/replace invalid characters and ensure it doesn't end with special characters
@@ -145,9 +192,24 @@ export class DockerContainerManager {
     const imageName = `airo-app-${dockerSafeId}:dev`;
     const containerName = `airo-app-${dockerSafeId}`;
     
+    // Log container creation begin
+    dockerContainerEvents.begin(logger, {
+      appId,
+      operation: 'create',
+      imageName,
+      port,
+      templateVersion
+    });
+    
     try {
       // Build the Docker image
-      console.log('📦 Building Docker image...');
+      logger.info('Building Docker image', {
+        component: 'DockerContainerManager',
+        appId,
+        imageName,
+        buildCommand: `docker build -f Dockerfile.dev -t ${imageName} .`
+      });
+      
       const buildCommand = `docker build -f Dockerfile.dev -t ${imageName} .`;
       
       const buildProcess = execAsync(buildCommand, {
@@ -155,13 +217,21 @@ export class DockerContainerManager {
         maxBuffer: 1024 * 1024 * 10 // 10MB buffer for build output
       });
 
-      // Show build progress
+      // Show build progress (keep minimal logging during build)
       buildProcess.child.stdout?.on('data', (data) => {
-        console.log('🔨', data.toString().trim());
+        logger.debug('Docker build output', {
+          component: 'DockerContainerManager',
+          appId,
+          output: data.toString().trim().substring(0, 200) // Limit output size
+        });
       });
 
       await buildProcess;
-      console.log(`✅ Docker image built: ${imageName}`);
+      logger.info('Docker image built successfully', {
+        component: 'DockerContainerManager',
+        appId,
+        imageName
+      });
 
       // Ensure any existing container is properly removed (unless skipping cleanup)
       if (!skipCleanup) {
@@ -169,9 +239,13 @@ export class DockerContainerManager {
       }
 
       // Create and start the container with volume mounting for live development
-      console.log('🏃 Starting container...');
-      // Detect template version from path for optimal configuration
-      const templateVersion = this.detectTemplateVersion(appPath);
+      logger.info('Starting Docker container', {
+        component: 'DockerContainerManager',
+        appId,
+        containerName,
+        port,
+        templateVersion
+      });
       
       const runCommand = [
         'docker run -d',
@@ -210,13 +284,37 @@ export class DockerContainerManager {
       this.containers.set(appId, containerInfo);
       this.saveContainerToDb(containerInfo);
 
-      console.log(`✅ Container created and started: ${cleanContainerId}`);
-      console.log(`🌐 App available at: http://localhost:${port}`);
+      const duration = Date.now() - startTime;
+      
+      // Log container creation success
+      dockerContainerEvents.success(logger, {
+        appId,
+        operation: 'create',
+        containerId: cleanContainerId,
+        imageName,
+        port,
+        templateVersion,
+        operationStats: {
+          success: true,
+          duration,
+          containerStatus: 'running'
+        }
+      });
 
       return containerInfo;
 
     } catch (error: any) {
-      console.error(`❌ Failed to create container for app ${appId}:`, error);
+      const duration = Date.now() - startTime;
+      
+      // Log container creation failure
+      dockerContainerEvents.failure(logger, error, {
+        appId,
+        operation: 'create',
+        imageName,
+        port,
+        templateVersion
+      });
+      
       throw new Error(`Container creation failed: ${error.message}`);
     }
   }
@@ -225,24 +323,53 @@ export class DockerContainerManager {
    * Stop a container
    */
   async stopContainer(appId: string): Promise<boolean> {
+    const startTime = Date.now();
     const containerInfo = this.containers.get(appId) || this.getContainerFromDb(appId);
     
     if (!containerInfo) {
-      console.warn(`⚠️ No container found for app ${appId}`);
+      logger.warn('Container not found for stop operation', {
+        component: 'DockerContainerManager',
+        appId
+      });
       return false;
     }
 
+    // Log stop operation begin
+    dockerContainerEvents.begin(logger, {
+      appId,
+      operation: 'stop',
+      containerId: containerInfo.containerId
+    });
+
     try {
-      console.log(`🛑 Stopping container for app ${appId}...`);
       await execAsync(`docker stop ${containerInfo.containerId}`);
       
       containerInfo.status = 'stopped';
       this.saveContainerToDb(containerInfo);
       
-      console.log('✅ Container stopped');
+      const duration = Date.now() - startTime;
+      
+      // Log stop success
+      dockerContainerEvents.success(logger, {
+        appId,
+        operation: 'stop',
+        containerId: containerInfo.containerId,
+        operationStats: {
+          success: true,
+          duration,
+          containerStatus: 'stopped'
+        }
+      });
+      
       return true;
     } catch (error: any) {
-      console.error(`❌ Failed to stop container:`, error);
+      // Log stop failure
+      dockerContainerEvents.failure(logger, error, {
+        appId,
+        operation: 'stop',
+        containerId: containerInfo.containerId
+      });
+      
       return false;
     }
   }
@@ -251,35 +378,72 @@ export class DockerContainerManager {
    * Remove container completely
    */
   async removeContainer(appId: string): Promise<boolean> {
+    const startTime = Date.now();
     const containerInfo = this.containers.get(appId) || this.getContainerFromDb(appId);
     
     if (!containerInfo) {
-      console.warn(`⚠️ No container found for app ${appId}`);
+      logger.warn('Container not found for remove operation', {
+        component: 'DockerContainerManager',
+        appId
+      });
       return false;
     }
 
+    // Log remove operation begin
+    dockerContainerEvents.begin(logger, {
+      appId,
+      operation: 'remove',
+      containerId: containerInfo.containerId,
+      imageName: containerInfo.imageName
+    });
+
     try {
-      console.log(`🗑️ Removing container for app ${appId}...`);
-      
       // Force remove container (stops if running)
       await execAsync(`docker rm -f ${containerInfo.containerId}`);
       
       // Remove image
       try {
         await execAsync(`docker rmi ${containerInfo.imageName}`);
-        console.log('🗑️ Docker image removed');
+        logger.debug('Docker image removed', {
+          component: 'DockerContainerManager',
+          appId,
+          imageName: containerInfo.imageName
+        });
       } catch (imageError) {
-        console.log('ℹ️ Docker image may be in use, skipping image removal');
+        logger.debug('Docker image may be in use, skipping removal', {
+          component: 'DockerContainerManager',
+          appId,
+          imageName: containerInfo.imageName
+        });
       }
       
       // Remove from memory and database
       this.containers.delete(appId);
       this.removeContainerFromDb(appId);
       
-      console.log('✅ Container removed completely');
+      const duration = Date.now() - startTime;
+      
+      // Log remove success
+      dockerContainerEvents.success(logger, {
+        appId,
+        operation: 'remove',
+        containerId: containerInfo.containerId,
+        imageName: containerInfo.imageName,
+        operationStats: {
+          success: true,
+          duration
+        }
+      });
+      
       return true;
     } catch (error: any) {
-      console.error(`❌ Failed to remove container:`, error);
+      // Log remove failure
+      dockerContainerEvents.failure(logger, error, {
+        appId,
+        operation: 'remove',
+        containerId: containerInfo.containerId
+      });
+      
       return false;
     }
   }
@@ -349,24 +513,53 @@ export class DockerContainerManager {
    * Restart container
    */
   async restartContainer(appId: string): Promise<boolean> {
+    const startTime = Date.now();
     const containerInfo = this.containers.get(appId) || this.getContainerFromDb(appId);
     
     if (!containerInfo) {
-      console.warn(`⚠️ No container found for app ${appId}`);
+      logger.warn('Container not found for restart operation', {
+        component: 'DockerContainerManager',
+        appId
+      });
       return false;
     }
 
+    // Log restart operation begin
+    dockerContainerEvents.begin(logger, {
+      appId,
+      operation: 'restart',
+      containerId: containerInfo.containerId
+    });
+
     try {
-      console.log(`🔄 Restarting container for app ${appId}...`);
       await execAsync(`docker restart ${containerInfo.containerId}`);
       
       containerInfo.status = 'running';
       this.saveContainerToDb(containerInfo);
       
-      console.log('✅ Container restarted');
+      const duration = Date.now() - startTime;
+      
+      // Log restart success
+      dockerContainerEvents.success(logger, {
+        appId,
+        operation: 'restart',
+        containerId: containerInfo.containerId,
+        operationStats: {
+          success: true,
+          duration,
+          containerStatus: 'running'
+        }
+      });
+      
       return true;
     } catch (error: any) {
-      console.error(`❌ Failed to restart container:`, error);
+      // Log restart failure
+      dockerContainerEvents.failure(logger, error, {
+        appId,
+        operation: 'restart',
+        containerId: containerInfo.containerId
+      });
+      
       return false;
     }
   }
@@ -396,14 +589,23 @@ export class DockerContainerManager {
    * Recover existing running containers from previous session
    */
   private async recoverExistingContainers(): Promise<void> {
-    console.log('♻️  Recovering existing containers...');
+    const startTime = Date.now();
+    
+    // Log recovery begin
+    dockerContainerEvents.begin(logger, {
+      appId: 'system',
+      operation: 'recover'
+    });
     
     try {
       // Get all container records from database
       const stmt = this.db.prepare('SELECT * FROM docker_containers');
       const containerRecords = stmt.all() as any[];
       
-      console.log(`🔍 Found ${containerRecords.length} container record(s) in database`);
+      logger.info('Starting container recovery process', {
+        component: 'DockerContainerManager',
+        containerRecordsFound: containerRecords.length
+      });
       
       let recoveredCount = 0;
       let cleanedCount = 0;
@@ -433,7 +635,12 @@ export class DockerContainerManager {
             updateStmt.run('running', record.app_id);
             
             recoveredCount++;
-            console.log(`♻️  Recovered running container for app ${record.app_id} on port ${record.port}`);
+            logger.info('Recovered running container', {
+              component: 'DockerContainerManager',
+              appId: record.app_id,
+              containerId: record.container_id,
+              port: record.port
+            });
             
           } else if (dockerStatus === 'exited' || dockerStatus === 'dead') {
             // Container exists but stopped - remove it and clean database
@@ -441,9 +648,18 @@ export class DockerContainerManager {
               await execAsync(`docker rm -f ${record.container_id}`);
               this.removeContainerFromDb(record.app_id);
               cleanedCount++;
-              console.log(`🧹 Cleaned up stopped container for app ${record.app_id}`);
+              logger.info('Cleaned up stopped container', {
+                component: 'DockerContainerManager',
+                appId: record.app_id,
+                containerId: record.container_id,
+                status: dockerStatus
+              });
             } catch (cleanupError) {
-              console.warn(`Failed to clean up stopped container ${record.container_id}:`, cleanupError);
+              logger.warn('Failed to clean up stopped container', {
+                component: 'DockerContainerManager',
+                containerId: record.container_id,
+                error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+              });
             }
           }
           
@@ -451,14 +667,33 @@ export class DockerContainerManager {
           // Container doesn't exist - clean up database record
           this.removeContainerFromDb(record.app_id);
           cleanedCount++;
-          console.log(`🗑️ Cleaned up orphaned database record for app ${record.app_id}`);
+          logger.info('Cleaned up orphaned database record', {
+            component: 'DockerContainerManager',
+            appId: record.app_id
+          });
         }
       }
       
-      console.log(`✅ Container recovery completed: ${recoveredCount} recovered, ${cleanedCount} cleaned up`);
+      const duration = Date.now() - startTime;
+      
+      // Log recovery success
+      dockerContainerEvents.success(logger, {
+        appId: 'system',
+        operation: 'recover',
+        operationStats: {
+          success: true,
+          duration,
+          containersRecovered: recoveredCount,
+          containersCleanedUp: cleanedCount
+        }
+      });
       
     } catch (error) {
-      console.warn('⚠️ Container recovery failed:', error);
+      // Log recovery failure
+      dockerContainerEvents.failure(logger, error as Error, {
+        appId: 'system',
+        operation: 'recover'
+      });
     }
   }
 
@@ -556,27 +791,43 @@ export class DockerContainerManager {
    * Stop all running containers
    */
   async stopAllServers(): Promise<number> {
+    const startTime = Date.now();
     let stoppedCount = 0;
     
     // Get all running containers
     const stmt = this.db.prepare('SELECT app_id FROM docker_containers WHERE status = ?');
     const runningRecords = stmt.all('running') as any[];
     
-    console.log(`🛑 Stopping ${runningRecords.length} running container(s)...`);
+    logger.info('Stopping all running containers', {
+      component: 'DockerContainerManager',
+      runningContainers: runningRecords.length
+    });
     
     for (const record of runningRecords) {
       try {
         const success = await this.stopContainer(record.app_id);
         if (success) {
           stoppedCount++;
-          console.log(`✅ Stopped container for app ${record.app_id}`);
+          logger.debug('Successfully stopped container', {
+            component: 'DockerContainerManager',
+            appId: record.app_id
+          });
         }
       } catch (error) {
-        console.warn(`⚠️ Failed to stop container for app ${record.app_id}:`, error);
+        logger.warn('Failed to stop container during bulk stop', {
+          component: 'DockerContainerManager',
+          appId: record.app_id,
+          error: error instanceof Error ? error.message : String(error)
+        });
       }
     }
     
-    console.log(`✅ Stopped ${stoppedCount} container(s)`);
+    logger.info('Bulk container stop completed', {
+      component: 'DockerContainerManager',
+      totalContainers: runningRecords.length,
+      successfullyStopped: stoppedCount
+    });
+    
     return stoppedCount;
   }
 
@@ -604,7 +855,11 @@ export class DockerContainerManager {
       };
     } catch (error) {
       // Container record exists in DB but Docker container is gone - should rebuild
-      console.log(`⚠️ Container record exists for app ${appId} but Docker container ${containerInfo.containerId} is missing`);
+      logger.warn('Container record exists but Docker container is missing', {
+        component: 'DockerContainerManager',
+        appId,
+        containerId: containerInfo.containerId
+      });
       
       // Clean up orphaned database record
       this.removeContainerFromDb(appId);
@@ -639,25 +894,54 @@ export class DockerContainerManager {
    * Restart container for a specific app
    */
   async restartAppContainer(appId: string): Promise<boolean> {
+    const startTime = Date.now();
     const containerInfo = this.containers.get(appId) || this.getContainerFromDb(appId);
     
     if (!containerInfo) {
-      console.warn(`⚠️ No container found for app ${appId}`);
+      logger.warn('Container not found for app restart', {
+        component: 'DockerContainerManager',
+        appId
+      });
       return false;
     }
 
+    // Log restart begin
+    dockerContainerEvents.begin(logger, {
+      appId,
+      operation: 'restart',
+      containerId: containerInfo.containerId
+    });
+
     try {
-      console.log(`🔄 Restarting container for app ${appId}...`);
       await execAsync(`docker restart ${containerInfo.containerId}`);
       
       // Update status in database
       const stmt = this.db.prepare('UPDATE docker_containers SET status = ? WHERE app_id = ?');
       stmt.run('running', appId);
       
-      console.log(`✅ Container restarted for app ${appId}`);
+      const duration = Date.now() - startTime;
+      
+      // Log restart success
+      dockerContainerEvents.success(logger, {
+        appId,
+        operation: 'restart',
+        containerId: containerInfo.containerId,
+        operationStats: {
+          success: true,
+          duration,
+          containerStatus: 'running'
+        }
+      });
+      
       return true;
     } catch (error) {
-      console.error(`❌ Failed to restart container for app ${appId}:`, error);
+      // Log restart failure
+      dockerContainerEvents.failure(logger, error as Error, {
+        appId,
+        operation: 'restart',
+        containerId: containerInfo.containerId
+      });
+      
       return false;
     }
   }
@@ -674,13 +958,23 @@ export class DockerContainerManager {
    * Used when container doesn't exist but app files are available
    */
   async rebuildAndStartContainer(appId: string, appPath: string, port: number): Promise<ContainerInfo | null> {
+    const startTime = Date.now();
+    
     // Check if rebuild is already in progress for this app
     if (this.activeRebuilds.has(appId)) {
-      console.log(`⏳ Rebuild already in progress for app ${appId}, skipping duplicate request`);
+      logger.warn('Rebuild already in progress, skipping duplicate request', {
+        component: 'DockerContainerManager',
+        appId
+      });
       return null;
     }
 
-    console.log(`🔄 Rebuilding container from scratch for app ${appId}...`);
+    // Log rebuild begin
+    dockerContainerEvents.begin(logger, {
+      appId,
+      operation: 'rebuild',
+      port
+    });
     
     // Mark rebuild as in progress
     this.activeRebuilds.add(appId);
@@ -688,15 +982,27 @@ export class DockerContainerManager {
     try {
       // Validate that app path exists
       if (!existsSync(appPath)) {
-        console.error(`❌ App path does not exist: ${appPath}`);
-        throw new Error(`App directory not found: ${appPath}`);
+        const pathError = new Error(`App directory not found: ${appPath}`);
+        logger.error('App path validation failed', {
+          component: 'DockerContainerManager',
+          appId,
+          appPath,
+          error: pathError.message
+        });
+        throw pathError;
       }
 
       // Check for Dockerfile
       const dockerfilePath = path.join(appPath, 'Dockerfile.dev');
       if (!existsSync(dockerfilePath)) {
-        console.error(`❌ Dockerfile.dev not found in: ${appPath}`);
-        throw new Error(`Dockerfile.dev not found in app directory: ${appPath}`);
+        const dockerfileError = new Error(`Dockerfile.dev not found in app directory: ${appPath}`);
+        logger.error('Dockerfile validation failed', {
+          component: 'DockerContainerManager',
+          appId,
+          dockerfilePath,
+          error: dockerfileError.message
+        });
+        throw dockerfileError;
       }
 
       // Clean up any existing container/image first
@@ -705,11 +1011,32 @@ export class DockerContainerManager {
       // Create new container - skip cleanup since we just did it
       const containerInfo = await this.createAndStartContainerSkipCleanup(appId, appPath, port);
       
-      console.log(`✅ Container rebuilt successfully for app ${appId}`);
+      const duration = Date.now() - startTime;
+      
+      // Log rebuild success
+      dockerContainerEvents.success(logger, {
+        appId,
+        operation: 'rebuild',
+        containerId: containerInfo.containerId,
+        imageName: containerInfo.imageName,
+        port,
+        operationStats: {
+          success: true,
+          duration,
+          containerStatus: 'running'
+        }
+      });
+      
       return containerInfo;
       
     } catch (error) {
-      console.error(`❌ Failed to rebuild container for app ${appId}:`, error);
+      // Log rebuild failure
+      dockerContainerEvents.failure(logger, error as Error, {
+        appId,
+        operation: 'rebuild',
+        port
+      });
+      
       throw error;
     } finally {
       // Always remove the rebuild lock
@@ -736,9 +1063,18 @@ export class DockerContainerManager {
     try {
       // Remove image if it exists to force rebuild
       await execAsync(`docker rmi -f ${imageName}`);
-      console.log(`🗑️ Removed existing image: ${imageName}`);
+      logger.debug('Removed existing image for rebuild', {
+        component: 'DockerContainerManager',
+        appId,
+        imageName
+      });
     } catch (error) {
       // Image doesn't exist, that's fine
+      logger.debug('Image removal skipped, likely did not exist', {
+        component: 'DockerContainerManager',
+        appId,
+        imageName
+      });
     }
 
     // Clean database record
@@ -749,16 +1085,24 @@ export class DockerContainerManager {
    * Force cleanup orphaned containers
    */
   async forceCleanupOrphans(): Promise<number> {
+    const startTime = Date.now();
     let cleanedCount = 0;
     
-    console.log('🧹 Starting force cleanup of orphaned containers...');
+    // Log cleanup begin
+    dockerContainerEvents.begin(logger, {
+      appId: 'system',
+      operation: 'cleanup'
+    });
     
     try {
       // Get all containers from database
       const stmt = this.db.prepare('SELECT * FROM docker_containers');
       const allContainers = stmt.all() as any[];
       
-      console.log(`🔍 Found ${allContainers.length} container record(s) in database`);
+      logger.info('Starting force cleanup of orphaned containers', {
+        component: 'DockerContainerManager',
+        containerRecordsFound: allContainers.length
+      });
       
       for (const containerRecord of allContainers) {
         try {
@@ -771,21 +1115,47 @@ export class DockerContainerManager {
             await execAsync(`docker rm -f ${containerRecord.container_id}`);
             this.removeContainerFromDb(containerRecord.app_id);
             cleanedCount++;
-            console.log(`🗑️ Cleaned up stopped container for app ${containerRecord.app_id}`);
+            logger.debug('Cleaned up stopped container during force cleanup', {
+              component: 'DockerContainerManager',
+              appId: containerRecord.app_id,
+              containerId: containerRecord.container_id,
+              status: dockerStatus
+            });
           }
         } catch (error) {
           // Container doesn't exist, remove database record
           this.removeContainerFromDb(containerRecord.app_id);
           cleanedCount++;
-          console.log(`🗑️ Cleaned up orphaned database record for app ${containerRecord.app_id}`);
+          logger.debug('Cleaned up orphaned database record during force cleanup', {
+            component: 'DockerContainerManager',
+            appId: containerRecord.app_id,
+            containerId: containerRecord.container_id
+          });
         }
       }
       
-      console.log(`✅ Force cleanup completed, cleaned ${cleanedCount} orphaned container(s)`);
+      const duration = Date.now() - startTime;
+      
+      // Log cleanup success
+      dockerContainerEvents.success(logger, {
+        appId: 'system',
+        operation: 'cleanup',
+        operationStats: {
+          success: true,
+          duration,
+          containersCleanedUp: cleanedCount
+        }
+      });
+      
       return cleanedCount;
       
     } catch (error) {
-      console.error('❌ Error during force cleanup:', error);
+      // Log cleanup failure
+      dockerContainerEvents.failure(logger, error as Error, {
+        appId: 'system',
+        operation: 'cleanup'
+      });
+      
       return cleanedCount;
     }
   }

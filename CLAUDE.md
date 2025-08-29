@@ -164,6 +164,34 @@ SHOW_USAGE_COST=true                # Show token usage costs
 DOC_APPS=false                      # Use local mode (true for Docker)
 ```
 
+## Logging Standards
+
+This project uses a structured logging system with TypeScript interfaces and consistent event naming. See [LOGGING-GUIDE.md](LOGGING-GUIDE.md) for complete documentation on:
+
+- **Structured Data Only** - Use typed interfaces, no string interpolation
+- **Hierarchical Required Fields** - Domain-specific context enforcement  
+- **Consistent Lifecycle Naming** - Standardized `begin/success/failure` patterns
+- **Type Safety** - All logging uses TypeScript helpers
+
+### Quick Example
+```typescript
+import { appCreationEvents } from '../../logging/events/index.js';
+
+// ✅ Structured logging with typed helpers
+appCreationEvents.begin(logger, {
+  appId: 'abc123',
+  name: 'my-app',
+  templateVersion: 'v3',
+  baseDir: '/tmp/apps',
+  port: 3000
+});
+
+// ❌ Don't use string interpolation
+logger.info('app.create.begin', { message: `Creating ${name}...` });
+```
+
+**IMPORTANT**: Always use the typed event helpers from `src/logging/events/` instead of direct logger calls with string messages.
+
 ## Package Management
 
 This project uses **pnpm** as the package manager. All commands should use `pnpm` instead of `npm`:

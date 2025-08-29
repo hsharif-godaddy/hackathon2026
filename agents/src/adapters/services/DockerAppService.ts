@@ -8,6 +8,7 @@ import type {
   AppAdapterCapabilities 
 } from '../interfaces/IAppAdapter.js';
 import { ContainerError } from '../interfaces/common.js';
+import { Logger } from '../../logging/index.js';
 
 /**
  * Docker-based App Deployment Service
@@ -19,18 +20,21 @@ export class DockerAppService implements IAppAdapter {
   private db = getDatabase();
   private dockerManager = new DockerContainerManager();
   private initialized = false;
+  private logger = Logger.create({ service: 'docker-app-service' });
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
     
-    console.log('🔄 Initializing Docker Deployment Service...');
+    this.logger.info('docker.service.init.begin', {});
     
     try {
       await this.dockerManager.initialize();
       this.initialized = true;
-      console.log('✅ Docker Deployment Service initialization completed');
+      this.logger.info('docker.service.init.success', {});
     } catch (error) {
-      console.error('❌ Docker Deployment Service initialization failed:', error);
+      this.logger.error('docker.service.init.failure', {
+        error: (error as Error).message
+      });
       throw new ContainerError(`Docker initialization failed: ${(error as Error).message}`);
     }
   }
@@ -55,31 +59,47 @@ export class DockerAppService implements IAppAdapter {
         throw new ContainerError(`App not found: ${appId}`, appId);
       }
       
-      console.log(`🚀 Starting Docker container for app ${appId}...`);
+      this.logger.info('docker.container.start.begin', {
+        appId
+      });
       const containerInfo = await this.dockerManager.createAndStartContainer(appId, app.path, app.port);
       return !!containerInfo;
     } catch (error) {
-      console.error(`❌ Failed to start app ${appId}:`, error);
-      throw new ContainerError(`Failed to start app: ${(error as Error).message}`, appId);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error('docker.container.start.failure', {
+        appId,
+        error: errorMessage
+      });
+      throw new ContainerError(`Failed to start app: ${errorMessage}`, appId);
     }
   }
 
   async stopApp(appId: string): Promise<boolean> {
     try {
-      console.log(`🛑 Stopping Docker container for app ${appId}...`);
+      this.logger.info('docker.container.stop.begin', {
+        appId
+      });
       return await this.dockerManager.stopContainer(appId);
     } catch (error) {
-      console.error(`❌ Failed to stop app ${appId}:`, error);
+      this.logger.error('docker.container.stop.failure', {
+        appId,
+        error: (error as Error).message
+      });
       throw new ContainerError(`Failed to stop app: ${(error as Error).message}`, appId);
     }
   }
 
   async restartApp(appId: string): Promise<boolean> {
     try {
-      console.log(`🔄 Restarting Docker container for app ${appId}...`);
+      this.logger.info('docker.container.restart.begin', {
+        appId
+      });
       return await this.dockerManager.restartAppContainer(appId);
     } catch (error) {
-      console.error(`❌ Failed to restart app ${appId}:`, error);
+      this.logger.error('docker.container.restart.failure', {
+        appId,
+        error: (error as Error).message
+      });
       throw new ContainerError(`Failed to restart app: ${(error as Error).message}`, appId);
     }
   }
@@ -103,17 +123,21 @@ export class DockerAppService implements IAppAdapter {
         }
       }));
     } catch (error) {
-      console.error('❌ Failed to get running servers:', error);
+      this.logger.error('docker.servers.list.failure', {
+        error: (error as Error).message
+      });
       return [];
     }
   }
 
   async stopAllServers(): Promise<number> {
     try {
-      console.log('🐳 Stopping all Docker containers...');
+      this.logger.info('docker.servers.stopAll.begin', {});
       return await this.dockerManager.stopAllServers();
     } catch (error) {
-      console.error('❌ Failed to stop all Docker containers:', error);
+      this.logger.error('docker.servers.stopAll.failure', {
+        error: (error as Error).message
+      });
       return 0;
     }
   }
@@ -137,7 +161,10 @@ export class DockerAppService implements IAppAdapter {
         }
       };
     } catch (error) {
-      console.error(`❌ Failed to get app status for ${appId}:`, error);
+      this.logger.error('docker.container.status.failure', {
+        appId,
+        error: (error as Error).message
+      });
       return {
         status: 'error',
         message: (error as Error).message
@@ -154,7 +181,10 @@ export class DockerAppService implements IAppAdapter {
       const logs = await this.dockerManager.getAppContainerLogs(appId);
       return logs.split('\n').filter(line => line.trim() !== '');
     } catch (error) {
-      console.error(`❌ Failed to get logs for app ${appId}:`, error);
+      this.logger.error('docker.container.logs.failure', {
+        appId,
+        error: (error as Error).message
+      });
       throw new ContainerError(`Failed to get app logs: ${(error as Error).message}`, appId);
     }
   }
@@ -166,11 +196,16 @@ export class DockerAppService implements IAppAdapter {
         throw new ContainerError(`App not found: ${appId}`, appId);
       }
       
-      console.log(`🔄 Rebuilding Docker container for app ${appId}...`);
+      this.logger.info('docker.container.rebuild.begin', {
+        appId
+      });
       const containerInfo = await this.dockerManager.rebuildAndStartContainer(appId, app.path, app.port);
       return !!containerInfo;
     } catch (error) {
-      console.error(`❌ Failed to rebuild app ${appId}:`, error);
+      this.logger.error('docker.container.rebuild.failure', {
+        appId,
+        error: (error as Error).message
+      });
       throw new ContainerError(`Failed to rebuild app: ${(error as Error).message}`, appId);
     }
   }
@@ -183,23 +218,34 @@ export class DockerAppService implements IAppAdapter {
         cleaned: cleanedCount
       };
     } catch (error) {
-      console.error('❌ Failed to cleanup orphans:', error);
+      this.logger.error('docker.cleanup.orphan.failure', {
+        error: (error as Error).message
+      });
       throw new ContainerError(`Cleanup failed: ${(error as Error).message}`);
     }
   }
 
   async removeApp(appId: string): Promise<boolean> {
     try {
-      console.log(`🗑️ Removing Docker container and image for app ${appId}...`);
+      this.logger.info('docker.container.remove.begin', {
+        appId
+      });
       const removed = await this.dockerManager.removeContainer(appId);
       if (removed) {
-        console.log(`✅ Docker artifacts removed for app ${appId}`);
+        this.logger.info('docker.container.remove.success', {
+          appId
+        });
       } else {
-        console.warn(`⚠️ No Docker artifacts found to remove for app ${appId}`);
+        this.logger.warn('docker.container.remove.notFound', {
+          appId
+        });
       }
       return removed;
     } catch (error) {
-      console.error(`❌ Failed to remove Docker artifacts for app ${appId}:`, error);
+      this.logger.error('docker.container.remove.failure', {
+        appId,
+        error: (error as Error).message
+      });
       throw new ContainerError(`Failed to remove Docker artifacts: ${(error as Error).message}`, appId);
     }
   }
@@ -211,9 +257,11 @@ export class DockerAppService implements IAppAdapter {
   async cleanup(): Promise<void> {
     try {
       // DockerContainerManager handles its own cleanup internally
-      console.log('✅ Docker Deployment Service cleanup completed');
+      this.logger.info('docker.service.cleanup.success', {});
     } catch (error) {
-      console.error('❌ Docker Deployment Service cleanup failed:', error);
+      this.logger.error('docker.service.cleanup.failure', {
+        error: (error as Error).message
+      });
     }
   }
 

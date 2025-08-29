@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { v4 as uuidv4 } from 'uuid';
+import { nanoid } from 'nanoid';
 import { AgentRegistry } from '../../registry/index.js';
 import { getLLMService } from '../../services/index.js';
 import { globalTracer } from '../../utils/index.js';
@@ -10,6 +11,8 @@ import { ConversationRepository } from '../../database/repositories/Conversation
 import { getToolDefinitions, executeToolFunction } from '../../tools/index.js';
 import { ConversationContextManager } from '../../services/ConversationContextManager.js';
 import { MessageSegmentManager } from '../../services/MessageSegmentManager.js';
+import { logger } from '../../logging/index.js';
+import { webSocketConnectionEvents, webSocketChatEvents } from '../../logging/events/index.js';
 import type { AgentExecutionContext } from '../../base/index.js';
 
 /**
@@ -65,6 +68,7 @@ interface WSCompletionPayload {
 interface WebSocketContext {
   ws: WebSocket;
   agentId: string;
+  connectionId: string;
   registry: AgentRegistry;
   appRepo: AppRepository;
   conversationRepo: ConversationRepository;
@@ -203,13 +207,14 @@ export function createWebSocketServer(server: any) {
 
   wss.on('connection', (ws: WebSocket, request: IncomingMessage) => {
     const connectionResult = handleConnection(ws, request);
-    if (!connectionResult.success || !connectionResult.agentId) {
+    if (!connectionResult.success || !connectionResult.agentId || !connectionResult.connectionId) {
       return; // Connection was closed
     }
 
     const context: WebSocketContext = {
       ws,
       agentId: connectionResult.agentId,
+      connectionId: connectionResult.connectionId,
       registry,
       appRepo,
       conversationRepo
@@ -225,8 +230,8 @@ export function createWebSocketServer(server: any) {
 /**
  * Handle initial WebSocket connection and validate path
  */
-function handleConnection(ws: WebSocket, request: IncomingMessage): { success: boolean; agentId?: string } {
-  console.log('🔌 WebSocket client connected to:', request.url);
+function handleConnection(ws: WebSocket, request: IncomingMessage): { success: boolean; agentId?: string; connectionId?: string } {
+  const connectionId = nanoid(8);
   
   try {
     const url = new URL(request.url || '', `http://${request.headers.host}`);
@@ -234,25 +239,32 @@ function handleConnection(ws: WebSocket, request: IncomingMessage): { success: b
     
     // Check if this is a WebSocket chat request (/ws/agentId)
     if (pathParts[1] !== 'ws') {
-      console.log('❌ Invalid WebSocket path:', url.pathname);
+      logger.warn('Invalid WebSocket path attempted', {
+        url: url.pathname,
+        connectionId,
+        clientIP: request.socket.remoteAddress
+      });
       ws.close(1000, 'Invalid path');
       return { success: false };
     }
     
     const agentId = pathParts[2] || 'develop';
 
-    globalTracer.trace({
-      type: 'websocket',
-      data: {
-        event: 'connection',
-        agentId,
-        clientIP: request.socket.remoteAddress,
-      },
+    // Log structured connection event
+    webSocketConnectionEvents.connected(logger, {
+      agentId,
+      ...(request.socket.remoteAddress && { clientIP: request.socket.remoteAddress }),
+      ...(request.url && { url: request.url }),
+      connectionId
     });
 
-    return { success: true, agentId };
+    return { success: true, agentId, connectionId };
   } catch (error) {
-    console.error('Error handling WebSocket connection:', error);
+    webSocketConnectionEvents.error(logger, error as Error, {
+      agentId: 'unknown',
+      connectionId,
+      ...(request.url && { url: request.url })
+    });
     ws.close(1002, 'Connection error');
     return { success: false };
   }
@@ -262,7 +274,7 @@ function handleConnection(ws: WebSocket, request: IncomingMessage): { success: b
  * Setup WebSocket event handlers
  */
 function setupWebSocketHandlers(context: WebSocketContext) {
-  const { ws, agentId } = context;
+  const { ws, agentId, connectionId } = context;
 
   ws.on('message', async (data) => {
     try {
@@ -271,31 +283,34 @@ function setupWebSocketHandlers(context: WebSocketContext) {
       if (request.type === 'chat') {
         await handleChatMessage(context, request);
       } else {
+        logger.warn('Unknown WebSocket message type', {
+          messageType: request.type,
+          agentId,
+          connectionId
+        });
         sendError(context.ws, `Unknown message type: ${request.type}`);
       }
     } catch (error) {
-      console.error('Error parsing WebSocket message:', error);
+      logger.error('Error parsing WebSocket message', {
+        error: error instanceof Error ? error.message : String(error),
+        agentId,
+        connectionId
+      });
       sendError(context.ws, 'Invalid message format');
     }
   });
 
   ws.on('close', () => {
-    console.log('🔌 WebSocket client disconnected');
-    globalTracer.trace({
-      type: 'websocket',
-      data: { event: 'disconnection', agentId },
+    webSocketConnectionEvents.disconnected(logger, {
+      agentId,
+      connectionId
     });
   });
 
   ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
-    globalTracer.trace({
-      type: 'error',
-      data: {
-        event: 'websocket_error',
-        agentId,
-        error: error.message,
-      },
+    webSocketConnectionEvents.error(logger, error, {
+      agentId,
+      connectionId
     });
   });
 }
@@ -331,13 +346,18 @@ async function ensureLatestCommit(appId: string | undefined): Promise<boolean> {
     });
     
     if (!branchResult.success) {
-      console.warn('Could not determine current branch state, proceeding with caution');
+      logger.warn('Could not determine current branch state, proceeding with caution', {
+        appId
+      });
       return true;
     }
     
     // Check if we're in detached HEAD state or not on main branch
     if (!branchResult.currentBranch || branchResult.currentBranch !== 'main') {
-      console.log(`App ${appId} is not on main branch, returning to main before proceeding`);
+      logger.info('Returning app to main branch before processing', {
+        appId,
+        currentBranch: branchResult.currentBranch
+      });
       
       // Return to main branch
       const checkoutResult = await gitTool.executeGitOperation(app.path, {
@@ -346,16 +366,24 @@ async function ensureLatestCommit(appId: string | undefined): Promise<boolean> {
       });
       
       if (!checkoutResult.success) {
-        console.error(`Failed to return to main branch: ${checkoutResult.error}`);
+        logger.error('Failed to return to main branch', {
+          appId,
+          error: checkoutResult.error
+        });
         return false;
       }
       
-      console.log(`Successfully returned app ${appId} to main branch`);
+      logger.info('Successfully returned app to main branch', {
+        appId
+      });
     }
     
     return true;
   } catch (error) {
-    console.error('Error ensuring latest commit:', error);
+    logger.error('Error ensuring latest commit', {
+      appId,
+      error: error instanceof Error ? error.message : String(error)
+    });
     return true; // Proceed anyway, don't block the request
   }
 }
@@ -369,12 +397,14 @@ async function handleChatMessage(wsContext: WebSocketContext, chatRequest: WSCha
   let agentMessage: any = null;
   
   try {
-    traceWebSocketEvent('chat_message', wsContext.agentId, {
-      message: chatRequest.message,
-      appId: chatRequest.appId,
-      conversationId: chatRequest.conversationId,
-      hasThreadId: !!chatRequest.threadId,
-      hasUserId: !!chatRequest.userId,
+    // Log chat message with structured logging
+    webSocketChatEvents.message(logger, {
+      agentId: wsContext.agentId,
+      ...(chatRequest.threadId && { threadId: chatRequest.threadId }),
+      ...(chatRequest.conversationId && { conversationId: chatRequest.conversationId }),
+      ...(chatRequest.appId && { appId: chatRequest.appId }),
+      ...(chatRequest.userId && { userId: chatRequest.userId }),
+      messageLength: chatRequest.message.length
     });
     
     // CRITICAL: Ensure we're on the latest commit before processing any chat messages
@@ -411,15 +441,19 @@ async function handleChatMessage(wsContext: WebSocketContext, chatRequest: WSCha
       if (error instanceof GuardrailTripwireError) {
         // Send the guardrail response and end the conversation
         sendError(wsContext.ws, 'security_guardrail_triggered', error.message);
-        traceWebSocketEvent('guardrail_triggered', wsContext.agentId, {
-          type: 'input',
-          message: chatRequest.message.substring(0, 100),
+        logger.warn('Input guardrail triggered', {
+          agentId: wsContext.agentId,
+          threadId: chatRequest.threadId,
+          messagePreview: chatRequest.message.substring(0, 100),
           reason: (error as any).guardrailResult?.outputInfo?.analysis?.reason || 'Security concern detected'
         });
         return;
       }
       // Log other errors but continue processing
-      console.warn('Input guardrail warning:', error);
+      logger.warn('Input guardrail warning', {
+        agentId: wsContext.agentId,
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
     
     const chatContext: ChatContext = {
@@ -456,8 +490,28 @@ async function handleChatMessage(wsContext: WebSocketContext, chatRequest: WSCha
     // Send completion signal
     sendCompletion(wsContext.ws, executionContext.threadId, startTime);
     
+    // Log successful chat response
+    const duration = Date.now() - startTime;
+    webSocketChatEvents.response(logger, {
+      event: 'chat_response',
+      agentId: wsContext.agentId,
+      threadId: executionContext.threadId,
+      ...(chatRequest.conversationId && { conversationId: chatRequest.conversationId }),
+      ...(chatRequest.appId && { appId: chatRequest.appId }),
+      ...(chatRequest.userId && { userId: chatRequest.userId }),
+      responseStats: {
+        duration
+      }
+    });
+    
   } catch (error) {
-    console.error('Chat message error:', error);
+    // Log chat error with structured logging
+    webSocketChatEvents.error(logger, error as Error, {
+      agentId: wsContext.agentId,
+      ...(chatRequest.threadId && { threadId: chatRequest.threadId }),
+      ...(chatRequest.conversationId && { conversationId: chatRequest.conversationId }),
+      ...(chatRequest.appId && { appId: chatRequest.appId })
+    });
     handleChatError(wsContext.ws, error, wsContext.agentId, startTime);
   }
 }

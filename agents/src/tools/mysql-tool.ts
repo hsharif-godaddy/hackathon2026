@@ -1,5 +1,7 @@
 import mysql from 'mysql2/promise';
 import { createHash, randomBytes } from 'crypto';
+import { logger } from '../logging/index.js';
+import { toolMySqlEvents } from '../logging/events/index.js';
 
 export interface MySQLToolOptions {
   operation: 'enable_database' | 'test_connection' | 'list_databases';
@@ -38,23 +40,71 @@ export class MySQLTool {
    * Execute MySQL operations
    */
   async execute(options: MySQLToolOptions): Promise<MySQLToolResult> {
+    const startTime = Date.now();
+    
+    // Build logging data
+    const logData = {
+      toolName: 'mysql',
+      operation: options.operation,
+      connectionInfo: {
+        host: options.host || process.env.MYSQL_ROOT_HOST || 'localhost',
+        port: options.port || parseInt(process.env.MYSQL_ROOT_PORT || '3306', 10),
+        user: options.rootUser || process.env.MYSQL_ROOT_USER || 'root'
+      },
+      databaseInfo: {
+        ...(options.databaseName && { databaseName: options.databaseName }),
+        ...(options.username && { username: options.username }),
+        ...(options.userId && { userId: options.userId })
+      }
+    };
+    
+    // Log operation begin
+    toolMySqlEvents.begin(logger, logData);
+    
     try {
+      let result: MySQLToolResult;
+      
       switch (options.operation) {
         case 'enable_database':
-          return await this.createDatabaseWithUser(options);
+          result = await this.createDatabaseWithUser(options);
+          break;
         case 'test_connection':
-          return await this.testConnection(options);
-
+          result = await this.testConnection(options);
+          break;
         case 'list_databases':
-          return await this.listDatabases(options);
+          result = await this.listDatabases(options);
+          break;
         default:
-          return {
+          result = {
             success: false,
             message: `Unknown operation: ${options.operation}`,
             error: 'INVALID_OPERATION',
           };
       }
+      
+      const executionTime = Date.now() - startTime;
+      
+      // Log success or failure
+      if (result.success) {
+        toolMySqlEvents.success(logger, {
+          ...logData,
+          resultStats: {
+            success: true,
+            databaseCreated: options.operation === 'enable_database' && result.success,
+            userCreated: options.operation === 'enable_database' && result.success,
+            ...(result.data?.databases?.length !== undefined && { databasesFound: result.data.databases.length }),
+            connectionTested: options.operation === 'test_connection' && result.success,
+            executionTime
+          }
+        });
+      } else {
+        toolMySqlEvents.failure(logger, new Error(result.error || 'MySQL operation failed'), logData);
+      }
+      
+      return result;
     } catch (error) {
+      toolMySqlEvents.failure(logger, error as Error, logData);
+      
       return {
         success: false,
         message: `MySQL operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -181,7 +231,12 @@ export class MySQLTool {
       
       // Database is now ready for agents to create their own tables as needed
       // No predefined schema - agents decide what tables they require
-      console.log(`✅ Empty database '${finalDatabaseName}' ready for custom table creation`);
+      logger.info('Empty MySQL database created and ready for custom table creation', {
+        component: 'MySQLTool',
+        databaseName: finalDatabaseName,
+        username,
+        userId
+      });
 
       const createdTables: string[] = []; // Empty database, no predefined tables
       const wasRenamed = true; // Always true since we always add random suffix
@@ -311,20 +366,30 @@ export class MySQLTool {
       password: options.rootPassword || process.env.MYSQL_ROOT_PASS || 'airo',
     };
 
-    console.log('🔍 MySQL Connection Config:', {
+    logger.debug('MySQL connection configuration', {
+      component: 'MySQLTool',
       host: config.host,
       port: config.port,
       user: config.user,
-      password: config.password ? '***' : '(empty)',
+      passwordSet: !!config.password
     });
 
     try {
       const connection = await mysql.createConnection(config);
       await connection.ping(); // Test the connection
-      console.log('✅ MySQL connection successful');
+      logger.debug('MySQL connection successful', {
+        component: 'MySQLTool',
+        host: config.host,
+        port: config.port
+      });
       return connection;
     } catch (error: any) {
-      console.error('❌ MySQL connection failed:', error.message);
+      logger.error('MySQL connection failed', {
+        error: error.message || String(error),
+        host: config.host,
+        port: config.port,
+        user: config.user
+      });
       
       // Provide helpful error messages
       if (error.code === 'ECONNREFUSED') {

@@ -2,6 +2,8 @@ import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
 import { nanoid } from 'nanoid';
+import { logger } from '../logging/index.js';
+import { toolImageGenerationEvents } from '../logging/events/index.js';
 
 export interface ImageGenerationOptions {
   prompt: string;
@@ -31,7 +33,10 @@ export class ImageGenerationTool {
     const apiKey = process.env.OPENAI_API_KEY;
     
     if (!apiKey) {
-      console.warn('⚠️ OPENAI_API_KEY not set. Image generation will not work.');
+      logger.warn('OpenAI API key not configured - image generation will not work', {
+        component: 'ImageGenerationTool',
+        missingConfig: 'OPENAI_API_KEY'
+      });
     }
     
     this.openaiClient = new OpenAI({
@@ -40,7 +45,10 @@ export class ImageGenerationTool {
 
     // Get base directory for apps from environment variable or use default
     this.appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/apps';
-    console.log(`📁 Using apps base directory: ${this.appsBaseDir}`);
+    logger.info('Image generation tool initialized', {
+      component: 'ImageGenerationTool', 
+      appsBaseDir: this.appsBaseDir
+    });
   }
 
   /**
@@ -49,6 +57,23 @@ export class ImageGenerationTool {
    * @returns Object containing success status and filepath or error
    */
   async generateImage(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+    const startTime = Date.now();
+    
+    // Build logging data
+    const logData = {
+      toolName: 'image-generation',
+      appId: options.appId,
+      prompt: options.prompt,
+      options: {
+        size: options.size,
+        style: options.style,
+        filename: options.filename
+      }
+    };
+    
+    // Log operation begin
+    toolImageGenerationEvents.begin(logger, logData);
+    
     try {
       const { prompt, size = '1024x1024', style = 'vivid', appId, filename } = options;
       
@@ -82,7 +107,11 @@ export class ImageGenerationTool {
       if (!fs.existsSync(publicDir)) {
         try {
           fs.mkdirSync(publicDir, { recursive: true });
-          console.log(`📁 Created public directory: ${publicDir}`);
+          logger.debug('Created public directory for app', { 
+            appId, 
+            publicDir,
+            component: 'ImageGenerationTool'
+          });
         } catch (error) {
           return {
             success: false,
@@ -96,7 +125,11 @@ export class ImageGenerationTool {
       if (!fs.existsSync(imagesDir)) {
         try {
           fs.mkdirSync(imagesDir, { recursive: true });
-          console.log(`📁 Created images directory: ${imagesDir}`);
+          logger.debug('Created images directory for app', { 
+            appId, 
+            imagesDir,
+            component: 'ImageGenerationTool'
+          });
         } catch (error) {
           return {
             success: false,
@@ -105,7 +138,13 @@ export class ImageGenerationTool {
         }
       }
 
-      console.log(`🎨 Generating image with prompt: "${prompt.trim()}"`);
+      logger.debug('Generating image with OpenAI', { 
+        appId, 
+        prompt: prompt.trim(), 
+        size, 
+        style,
+        component: 'ImageGenerationTool'
+      });
       
       // Always request base64 data to save the image locally
       const result = await this.openaiClient.images.generate({
@@ -145,10 +184,28 @@ export class ImageGenerationTool {
           const imageBuffer = Buffer.from(imageData.b64_json, 'base64');
           fs.writeFileSync(filePath, imageBuffer);
           
-          console.log(`✅ Image saved to: ${filePath}`);
-          
           // Create public path that can be used in the app
           const publicPath = `/images/${fullFilename}`;
+          const executionTime = Date.now() - startTime;
+          
+          // Log success
+          toolImageGenerationEvents.success(logger, {
+            toolName: logData.toolName,
+            appId: logData.appId,
+            prompt: logData.prompt,
+            options: {
+              ...(logData.options.size && { size: logData.options.size }),
+              ...(logData.options.style && { style: logData.options.style }),
+              ...(logData.options.filename && { filename: logData.options.filename }),
+            },
+            resultStats: {
+              success: true,
+              filePath,
+              publicPath,
+              fileSize: imageBuffer.length,
+              executionTime
+            }
+          });
           
           return {
             success: true,
@@ -157,7 +214,8 @@ export class ImageGenerationTool {
             base64Data: imageData.b64_json
           };
         } catch (fileError) {
-          console.error(`❌ Failed to save image: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
+          // Log failure
+          toolImageGenerationEvents.failure(logger, fileError as Error, logData);
           
           return {
             success: false,
@@ -171,7 +229,9 @@ export class ImageGenerationTool {
         error: 'No image data returned from the API'
       };
     } catch (error) {
-      console.error('❌ Image generation failed:', error);
+      // Log failure
+      toolImageGenerationEvents.failure(logger, error as Error, logData);
+      
       return {
         success: false,
         error: `Image generation failed: ${error instanceof Error ? error.message : String(error)}`
@@ -212,7 +272,11 @@ export async function generateImage(options: ImageGenerationOptions): Promise<Im
     
     return result;
   } catch (error) {
-    console.error('❌ Image generation failed:', error);
+    logger.error('Image generation function failed', {
+      error: error instanceof Error ? error.message : String(error),
+      appId,
+      prompt
+    });
     return {
       success: false,
       error: `Image generation failed: ${error instanceof Error ? error.message : String(error)}`

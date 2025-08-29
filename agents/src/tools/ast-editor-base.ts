@@ -6,6 +6,8 @@ import _generate from '@babel/generator';
 import * as t from '@babel/types';
 import { GitTool } from './git-tool.js';
 import { translateDockerPath } from '../utils/path-helper.js';
+import { logger } from '../logging/index.js';
+import { toolAstEditEvents } from '../logging/events/index.js';
 
 // @ts-ignore - Handle ES module default exports
 const traverse = _traverse.default || _traverse;
@@ -56,7 +58,8 @@ export abstract class ASTEditorBase {
     const translatedPath = translateDockerPath(fileName);
     const fullPath = resolve(appPath, translatedPath);
     
-    console.log(`📁 Resolving file path:`, {
+    logger.debug('Resolving AST edit file path', {
+      component: 'ASTEditorBase',
       appPath,
       fileName,
       translatedPath,
@@ -200,11 +203,27 @@ export abstract class ASTEditorBase {
     appPath: string,
     request: TRequest,
     getFilePath: (request: TRequest) => string,
-    shouldCommit = false
+    shouldCommit = false,
+    editType: 'style' | 'component' | 'generic' = 'generic'
   ): Promise<TResult> {
+    const startTime = Date.now();
+    const filePath = this.resolveFilePath(appPath, getFilePath(request));
+    
+    // Extract app ID from path (basic implementation)
+    const appId = appPath.split('/').pop();
+    
+    // Build logging data
+    const logData = {
+      toolName: 'ast-editor',
+      ...(appId && { appId }),
+      filePath,
+      editType
+    };
+    
+    // Log operation begin
+    toolAstEditEvents.begin(logger, logData);
+    
     try {
-      const filePath = this.resolveFilePath(appPath, getFilePath(request));
-      
       // Read the source file
       const sourceCode = await this.readSourceFile(filePath);
       
@@ -215,6 +234,9 @@ export abstract class ASTEditorBase {
       const processResult = this.processAST(ast, request);
       
       if (!processResult.success) {
+        // Log failure
+        toolAstEditEvents.failure(logger, new Error(processResult.error || 'AST processing failed'), logData);
+        
         return {
           success: false,
           filePath,
@@ -229,7 +251,12 @@ export abstract class ASTEditorBase {
       const hasChanges = sourceCode !== updatedCode;
       
       if (!hasChanges) {
-        console.log(`⚠️ No file changes detected`);
+        logger.debug('No changes detected in AST edit', {
+          component: 'ASTEditorBase',
+          filePath,
+          editType
+        });
+        
         return {
           success: true,
           filePath,
@@ -250,17 +277,34 @@ export abstract class ASTEditorBase {
         );
       }
 
-      console.log(`✅ AST edit completed successfully`);
+      const executionTime = Date.now() - startTime;
+      const diff = this.generateDiff(sourceCode, updatedCode);
+      const linesChanged = diff.split('\n').filter(line => line.startsWith('+') || line.startsWith('-')).length;
+
+      // Log success
+      toolAstEditEvents.success(logger, {
+        ...logData,
+        changes: processResult.changes,
+        resultStats: {
+          success: true,
+          hasChanges,
+          linesChanged,
+          ...(commitHash && { commitHash }),
+          executionTime
+        }
+      });
 
       return {
         success: true,
         filePath,
-        diff: this.generateDiff(sourceCode, updatedCode),
+        diff,
         ...(commitHash && { commitHash })
       } as TResult;
 
     } catch (error) {
-      console.error('❌ AST edit failed:', error);
+      // Log failure
+      toolAstEditEvents.failure(logger, error as Error, logData);
+      
       return {
         success: false,
         filePath: '',
@@ -277,11 +321,16 @@ export abstract class ASTEditorBase {
     filePath: string,
     commitMessage: string
   ): Promise<string | undefined> {
+    const { relative } = await import('path');
+    const relativePath = relative(appPath, filePath);
+    
     try {
-      const { relative } = await import('path');
-      const relativePath = relative(appPath, filePath);
       
-      console.log(`🔄 Committing changes to git for file: ${relativePath}`);
+      logger.debug('Committing AST changes to git', {
+        component: 'ASTEditorBase',
+        relativePath,
+        commitMessage
+      });
       
       // Add the file to git
       const addResult = await this.gitTool.executeGitOperation(appPath, {
@@ -290,19 +339,27 @@ export abstract class ASTEditorBase {
       });
       
       if (!addResult.success) {
-        console.warn(`❌ Failed to add file to git: ${addResult.error || 'Unknown error'}`);
+        logger.warn('Failed to add AST edited file to git', {
+          component: 'ASTEditorBase',
+          relativePath,
+          error: addResult.error
+        });
         return undefined;
       }
       
       // Commit the changes
-      console.log(`📝 Creating commit with message: "${commitMessage}"`);
       const commitResult = await this.gitTool.executeGitOperation(appPath, {
         operation: 'commit',
         message: commitMessage
       });
       
       if (!commitResult.success) {
-        console.warn(`❌ Failed to commit: ${commitResult.error || 'Unknown error'}`);
+        logger.warn('Failed to commit AST changes', {
+          component: 'ASTEditorBase',
+          relativePath,
+          commitMessage,
+          error: commitResult.error
+        });
         return undefined;
       }
       
@@ -314,14 +371,24 @@ export abstract class ASTEditorBase {
       
       if (logResult.success && logResult.commits && logResult.commits.length > 0) {
         const hash = logResult.commits[0]?.hash;
-        console.log(`✅ Changes committed successfully with hash: ${hash}`);
+        logger.debug('AST changes committed successfully', {
+          component: 'ASTEditorBase',
+          relativePath,
+          commitHash: hash
+        });
         return hash;
       }
       
-      console.log(`⚠️ Commit succeeded but couldn't retrieve commit hash`);
+      logger.debug('AST commit succeeded but could not retrieve commit hash', {
+        component: 'ASTEditorBase',
+        relativePath
+      });
       return undefined;
     } catch (error) {
-      console.warn('❌ Failed to commit changes:', error);
+      logger.warn('Failed to commit AST changes', {
+        error: error instanceof Error ? error.message : String(error),
+        relativePath
+      });
       return undefined;
     }
   }

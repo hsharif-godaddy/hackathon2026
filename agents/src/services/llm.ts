@@ -3,6 +3,8 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import { globalTracer } from '../utils/tracing.js';
 import type { AgentExecutionContext } from '../base/index.js';
 import { TokenUsageRepository } from '../database/index.js';
+import { logger } from '../logging/index.js';
+import { llmEvents } from '../logging/events/index.js';
 
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -88,18 +90,34 @@ export class LLMService {
     const startTime = process.hrtime.bigint();
     const model = request.model || this.defaultModel;
 
-    globalTracer.trace({
-      type: 'request',
-      agentId: context?.metadata?.agentId as string | undefined,
-      threadId: context?.threadId,
-      data: {
+    // Log LLM request with structured logging (info level - metadata only)
+    const requestData: any = {
+      model,
+      messageCount: request.messages.length,
+      streaming: false,
+      hasTools: !!request.tools
+    };
+    
+    if (context?.metadata?.agentId) requestData.agentId = context.metadata.agentId;
+    if (context?.threadId) requestData.threadId = context.threadId;
+    if (request.temperature !== undefined) requestData.temperature = request.temperature;
+    if (request.maxTokens !== undefined) requestData.maxTokens = request.maxTokens;
+    
+    llmEvents.request(logger, requestData);
+    
+    // Log full messages at debug level
+    if (request.messages && request.messages.length > 0) {
+      const debugData: any = {
         model,
         messageCount: request.messages.length,
-        temperature: request.temperature,
-        maxTokens: request.maxTokens,
-        messages: request.messages,
-      },
-    });
+        messages: request.messages
+      };
+      
+      if (context?.metadata?.agentId) debugData.agentId = context.metadata.agentId;
+      if (context?.threadId) debugData.threadId = context.threadId;
+      
+      logger.debug('llm.request.messages', debugData);
+    }
 
     try {
       const completion = await this.openai.chat.completions.create({
@@ -135,19 +153,23 @@ export class LLMService {
 
       const duration = Number(process.hrtime.bigint() - startTime) / 1_000_000; // Convert to milliseconds
 
-      globalTracer.trace({
-        type: 'response',
-        agentId: context?.metadata?.agentId as string,
-        threadId: context?.threadId,
-        data: {
-          responseId: response.id,
-          contentLength: response.content?.length || 0,
-          usage: response.usage,
-          finishReason: response.finishReason,
-          duration,
-          model: response.model,
-        },
-      });
+      // Log LLM response with structured logging
+      const responseData: any = {
+        model: response.model,
+        messageCount: request.messages.length,
+        contentLength: response.content?.length || 0,
+        finishReason: response.finishReason,
+        duration,
+        streaming: false,
+        hasTools: !!request.tools
+      };
+      
+      if (response.id) responseData.responseId = response.id;
+      if (context?.metadata?.agentId) responseData.agentId = context.metadata.agentId;
+      if (context?.threadId) responseData.threadId = context.threadId;
+      if (response.usage) responseData.usage = response.usage;
+      
+      llmEvents.response(logger, responseData);
 
       // Track token usage in database
       if (response.usage && context?.metadata?.appId) {
@@ -164,7 +186,11 @@ export class LLMService {
             }
           );
         } catch (tokenError) {
-          console.warn('Failed to record token usage:', tokenError);
+          llmEvents.tokenUsageFailure(logger, tokenError as Error, {
+            appId: context.metadata.appId as string,
+            operation: 'record_usage',
+            tokenType: 'llm_request'
+          });
         }
       }
 
@@ -173,18 +199,12 @@ export class LLMService {
     } catch (error) {
       const duration = Number(process.hrtime.bigint() - startTime) / 1_000_000; // Convert to milliseconds
 
-      globalTracer.trace({
-        type: 'error',
-        agentId: context?.metadata?.agentId as string,
-        threadId: context?.threadId,
-        data: {
-          error: error instanceof Error ? error.message : String(error),
-          errorType: error instanceof Error ? error.constructor.name : 'Unknown',
-          duration,
-          model,
-          stack: error instanceof Error ? error.stack : undefined,
-        },
-      });
+      // Log LLM error with structured logging
+      const errorData: any = { model, duration };
+      if (context?.metadata?.agentId) errorData.agentId = context.metadata.agentId;
+      if (context?.threadId) errorData.threadId = context.threadId;
+      
+      llmEvents.error(logger, error as Error, errorData);
 
       throw error;
     }
@@ -197,19 +217,35 @@ export class LLMService {
     const startTime = process.hrtime.bigint();
     const model = request.model || this.defaultModel;
 
-    globalTracer.trace({
-      type: 'request',
-      agentId: context?.metadata?.agentId as string | undefined,
-      threadId: context?.threadId,
-      data: {
+    // Log streaming LLM request with structured logging (info level - metadata only)
+    const streamRequestData: any = {
+      model,
+      messageCount: request.messages.length,
+      streaming: true,
+      hasTools: !!request.tools
+    };
+    
+    if (context?.metadata?.agentId) streamRequestData.agentId = context.metadata.agentId;
+    if (context?.threadId) streamRequestData.threadId = context.threadId;
+    if (request.temperature !== undefined) streamRequestData.temperature = request.temperature;
+    if (request.maxTokens !== undefined) streamRequestData.maxTokens = request.maxTokens;
+    
+    llmEvents.request(logger, streamRequestData);
+    
+    // Log full messages at debug level
+    if (request.messages && request.messages.length > 0) {
+      const streamDebugData: any = {
         model,
         messageCount: request.messages.length,
-        temperature: request.temperature,
-        maxTokens: request.maxTokens,
         streaming: true,
-        messages: request.messages,
-      },
-    });
+        messages: request.messages
+      };
+      
+      if (context?.metadata?.agentId) streamDebugData.agentId = context.metadata.agentId;
+      if (context?.threadId) streamDebugData.threadId = context.threadId;
+      
+      logger.debug('llm.request.messages', streamDebugData);
+    }
 
     try {
       const stream = await this.openai.chat.completions.create({
@@ -266,19 +302,22 @@ export class LLMService {
           }
           const duration = Number(process.hrtime.bigint() - startTime) / 1_000_000; // Convert to milliseconds
 
-          globalTracer.trace({
-            type: 'response',
-            agentId: context?.metadata?.agentId as string,
-            threadId: context?.threadId,
-            data: {
-              contentLength: fullContent.length,
-              chunkCount,
-              finishReason: chunk.choices[0].finish_reason,
-              duration,
-              model,
-              streaming: true,
-            },
-          });
+          // Log streaming LLM response with structured logging
+          const streamResponseData: any = {
+            model,
+            messageCount: request.messages.length,
+            contentLength: fullContent.length,
+            chunkCount,
+            finishReason: chunk.choices[0].finish_reason,
+            duration,
+            streaming: true,
+            hasTools: !!request.tools
+          };
+          
+          if (context?.metadata?.agentId) streamResponseData.agentId = context.metadata.agentId;
+          if (context?.threadId) streamResponseData.threadId = context.threadId;
+          
+          llmEvents.response(logger, streamResponseData);
 
           // Track token usage for streaming (approximate based on content length)
           if (context?.metadata?.appId) {
@@ -299,7 +338,11 @@ export class LLMService {
                 }
               );
             } catch (tokenError) {
-              console.warn('Failed to record streaming token usage:', tokenError);
+              llmEvents.tokenUsageFailure(logger, tokenError as Error, {
+                appId: context.metadata.appId as string,
+                operation: 'record_streaming_usage',
+                tokenType: 'llm_request'
+              });
             }
           }
 
@@ -311,19 +354,12 @@ export class LLMService {
     } catch (error) {
       const duration = Number(process.hrtime.bigint() - startTime) / 1_000_000; // Convert to milliseconds
 
-      globalTracer.trace({
-        type: 'error',
-        agentId: context?.metadata?.agentId as string,
-        threadId: context?.threadId,
-        data: {
-          error: error instanceof Error ? error.message : String(error),
-          errorType: error instanceof Error ? error.constructor.name : 'Unknown',
-          duration,
-          model,
-          streaming: true,
-          stack: error instanceof Error ? error.stack : undefined,
-        },
-      });
+      // Log streaming LLM error with structured logging
+      const streamErrorData: any = { model, duration };
+      if (context?.metadata?.agentId) streamErrorData.agentId = context.metadata.agentId;
+      if (context?.threadId) streamErrorData.threadId = context.threadId;
+      
+      llmEvents.error(logger, error as Error, streamErrorData);
 
       throw error;
     }

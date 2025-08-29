@@ -8,11 +8,25 @@ import { PortManager } from '../../utils/port-manager.js';
 import { extractTemplateVersion } from '../../utils/template-version.js';
 import type { App, CreateAppRequest, UpdateAppRequest, RunningProcess } from '../schema.js';
 import net from 'net';
-import { error } from 'console';
 // Adapter imports
 import { getAppAdapter, isDockerMode } from '../../adapters/index.js';
 import type { IAppAdapter } from '../../adapters/index.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
+import { Logger, log, createTimer } from '../../logging/index.js';
+import { getErrorMessage } from '../../utils/error.js';
+import {
+  appRepositoryEvents,
+  appProcessEvents, 
+  appCreationEvents,
+  appNameEvents,
+  appTemplateEvents,
+  appDirectoryEvents,
+  appSetupEvents,
+  appServerEvents,
+  appLifecycleEvents,
+  appProcessManagementEvents,
+  appCleanupEvents
+} from '../../logging/events/index.js';
 
 export class AppRepository {
   private db = getDatabase();
@@ -21,6 +35,7 @@ export class AppRepository {
   private runningProcesses = new Map<string, any>(); // Store running dev servers
   private deploymentAdapter: IAppAdapter | null = null; // Adapter for deployment operations
   private initialized = false;
+  private logger = Logger.create({ service: 'app-repository' });
 
   /**
    * Initialize the repository and recover orphaned processes
@@ -29,7 +44,10 @@ export class AppRepository {
     if (this.initialized) return;
     
     const adapterType = isDockerMode() ? 'Docker' : 'Local';
-    console.log(`🔄 Initializing AppRepository with ${adapterType} deployment...`);
+    appRepositoryEvents.initBegin(this.logger, {
+      adapterType,
+      duration: 0
+    });
     
     try {
       // Initialize deployment adapter
@@ -39,9 +57,15 @@ export class AppRepository {
       await this.recoverOrphanedProcesses();
       
       this.initialized = true;
-      console.log(`✅ AppRepository initialization completed (${adapterType} mode)`);
+      appRepositoryEvents.initSuccess(this.logger, {
+        adapterType,
+        duration: Date.now() - (performance.now() || Date.now()),
+        startTime: new Date().toISOString()
+      });
     } catch (error) {
-      console.error('❌ AppRepository initialization failed:', error);
+      appRepositoryEvents.initFailure(this.logger, error as Error, {
+        adapterType
+      });
       throw error;
     }
   }
@@ -53,9 +77,17 @@ export class AppRepository {
     const stmt = this.db.prepare('SELECT * FROM running_processes WHERE status = ?');
     const runningRecords = stmt.all('running') as any[];
     
-    console.log(`🔍 Found ${runningRecords.length} potentially running process(es) in database`);
+    appProcessEvents.recoverBegin(this.logger, {
+      processCount: runningRecords.length
+    });
     
     for (const record of runningRecords) {
+      const processLogger = this.logger.child({ 
+        appId: record.app_id, 
+        pid: record.pid, 
+        port: record.port 
+      });
+      
       const isAlive = await this.isProcessAlive(record.pid);
       
       if (isAlive) {
@@ -63,16 +95,32 @@ export class AppRepository {
         const isValidDevServer = await this.isPortOccupied(record.port);
         
         if (isValidDevServer) {
-          console.log(`♻️  Recovered running dev server for app ${record.app_id} (PID: ${record.pid}, Port: ${record.port})`);
+          appProcessEvents.recoverSuccess(processLogger, {
+            processId: record.pid,
+            port: record.port,
+            status: 'recovered',
+            wasValid: true,
+            portOccupied: true
+          });
           // Don't need to store the actual process object since we can't recreate it
           // Just track that it's running
         } else {
-          console.log(`🧹 Process ${record.pid} alive but not serving on port ${record.port}, cleaning up`);
+          appProcessEvents.recoverSuccess(processLogger, {
+            processId: record.pid,
+            port: record.port,
+            status: 'cleanup',
+            wasValid: false,
+            portOccupied: false
+          });
           await this.killProcess(record.pid);
           this.updateProcessStatus(record.id, 'stopped');
         }
       } else {
-        console.log(`💀 Process ${record.pid} for app ${record.app_id} is no longer running, updating status`);
+        appProcessEvents.recoverSuccess(processLogger, {
+          processId: record.pid,
+          port: record.port,
+          status: 'dead'
+        });
         this.updateProcessStatus(record.id, 'stopped');
       }
     }
@@ -137,7 +185,7 @@ export class AppRepository {
   /**
    * Kill a process by PID
    */
-  private async killProcess(pid: number): Promise<void> {
+  private async killProcess(pid: number, appId?: string): Promise<void> {
     try {
       process.kill(pid, 'SIGTERM');
       // Wait a bit, then force kill if needed
@@ -145,7 +193,14 @@ export class AppRepository {
         try {
           const stillRunning = await this.isProcessRunning(pid);
           if (stillRunning) {
-            console.log(`🔨 Force killing process ${pid} with SIGKILL`);
+            if (appId) {
+              appProcessManagementEvents.killSuccess(this.logger, {
+                appId,
+                processId: pid,
+                operation: 'kill',
+                signal: 'SIGKILL'
+              });
+            }
             process.kill(pid, 'SIGKILL');
           }
         } catch (error) {
@@ -220,6 +275,9 @@ export class AppRepository {
     const id = nanoid(12); // 12 characters, websafe, URL-friendly
     const now = new Date().toISOString();
     
+    // Create a logger for this specific app creation
+    const appLogger = this.logger.child({ appId: id, appName: data.name });
+    
     // Get base directory from environment variable, default to /tmp/apps
     const baseDir = process.env.APPS_BASE_DIR || '/tmp/apps';
     const appPath = path.join(baseDir, id);
@@ -241,13 +299,25 @@ export class AppRepository {
         const suggestedName = await nameSuggestionService.suggestName(data.initialPrompt);
         
         if (suggestedName) {
-          console.log(`Using AI-suggested name "${suggestedName}" instead of "${data.name}"`);
+          appNameEvents.suggestSuccess(this.logger, {
+            appId: id,
+            originalName: data.name,
+            suggestedName,
+            hasPrompt: true
+          });
           appName = suggestedName;
         } else {
-          console.log(`No AI suggestion available, using original name: "${data.name}"`);
+          appNameEvents.suggestSuccess(this.logger, {
+            appId: id,
+            originalName: data.name,
+            hasPrompt: true
+          });
         }
       } catch (nameError) {
-        console.warn(`Failed to get AI-suggested name: ${nameError}`);
+        appNameEvents.suggestFailure(this.logger, nameError as Error, {
+          appId: id,
+          originalName: data.name
+        });
         // Continue with the original name if name suggestion fails
       }
     }
@@ -261,8 +331,7 @@ export class AppRepository {
       templatePath = templateDir;
     } else {
       const currentDir = process.cwd();
-      console.log(`🔍 Current working directory: ${currentDir}`);
-      console.log(`🔍 Template directory from env: ${templateDir}`);
+      // Template resolving will be logged after template version is determined
       
       // Handle relative paths properly
       if (templateDir.startsWith('../')) {
@@ -275,19 +344,36 @@ export class AppRepository {
       }
     }
     
-    console.log(`📁 Template path calculated: ${templatePath}`);
-    
     // Extract template version from template directory
     const templateVersion = extractTemplateVersion(templateDir);
+    
+    appTemplateEvents.resolveSuccess(this.logger, {
+      appId: id,
+      templateVersion,
+      operation: 'resolve' as const,
+      path: templatePath,
+      templatePath
+    });
     
     // Create the directory for the app
     try {
       mkdirSync(appPath, { recursive: true });
-      console.log(`📁 Created app directory: ${appPath}`);
+      appDirectoryEvents.createSuccess(appLogger, {
+        appId: id,
+        path: appPath,
+        permissions: '0755',
+        parentExists: true
+      });
       
       // Copy template contents - THIS IS CRITICAL FOR PROPER APP CREATION
       if (existsSync(templatePath)) {
-        console.log(`📋 Copying template from ${templatePath} to ${appPath}...`);
+        appTemplateEvents.copyBegin(appLogger, {
+          appId: id,
+          templateVersion,
+          operation: 'copy' as const,
+          path: appPath,
+          templatePath
+        });
         
         try {
           // Copy all contents from template directory to app directory, excluding unnecessary files
@@ -339,32 +425,53 @@ export class AppRepository {
             }
           }
           
-          console.log(`✅ Template copied successfully from ${templatePath} to ${appPath}`);
-          console.log(`📁 Template version: ${templateVersion}`);
+          appTemplateEvents.copySuccess(appLogger, {
+            appId: id,
+            templateVersion,
+            operation: 'copy' as const,
+            path: appPath,
+            templatePath
+          });
           
         } catch (templateError) {
-          console.error(`❌ CRITICAL: Template copying failed from ${templatePath}:`, templateError);
-          console.error(`❌ App creation cannot continue without proper template files`);
+          appTemplateEvents.copyFailure(appLogger, templateError as Error, {
+            appId: id,
+            templateVersion,
+            operation: 'copy' as const,
+            path: appPath,
+            templatePath
+          });
           
           // Clean up the partially created app directory
           try {
             rmSync(appPath, { recursive: true, force: true });
-            console.log(`🧹 Cleaned up failed app directory: ${appPath}`);
+            appDirectoryEvents.cleanupSuccess(appLogger, {
+              appId: id,
+              path: appPath,
+              permissions: '',
+              parentExists: false
+            });
           } catch (cleanupError) {
-            console.error(`Failed to cleanup failed app directory:`, cleanupError);
+            appDirectoryEvents.createFailure(appLogger, cleanupError as Error, {
+              appId: id,
+              path: appPath
+            });
           }
           
           throw new Error(`Template copying failed: ${templateError instanceof Error ? templateError.message : String(templateError)}`);
         }
       } else {
         const error = `Template directory not found: ${templatePath}`;
-        console.error(`❌ CRITICAL: ${error}`);
+        // Template not found is logged as part of the error throw below
         
         // Clean up the app directory
         try {
           rmSync(appPath, { recursive: true, force: true });
         } catch (cleanupError) {
-          console.error(`Failed to cleanup app directory:`, cleanupError);
+          appDirectoryEvents.createFailure(appLogger, cleanupError as Error, {
+            appId: id,
+            path: appPath
+          });
         }
         
         throw new Error(error);
@@ -399,16 +506,42 @@ export class AppRepository {
         throw error;
       }
 
+      // Log app creation begin and success
+      appCreationEvents.begin(appLogger, {
+        appId: id,
+        name: appName,
+        templateVersion,
+        baseDir,
+        port,
+        ...(data.initialPrompt && { initialPrompt: data.initialPrompt })
+      });
+
       // Return the app immediately after DB insert
       const app = this.findById(id)!;
       
       // Run setup asynchronously in the background
       this.runAppSetupAsync(id, appPath, port, data.name);
       
+      appCreationEvents.success(appLogger, {
+        appId: id,
+        name: appName,
+        templateVersion,
+        baseDir,
+        port,
+        duration: 0,
+        ...(data.initialPrompt && { initialPrompt: data.initialPrompt })
+      });
+      
       return app;
       
     } catch (error) {
-      console.error(`Failed to create directory for app ${id}:`, error);
+      appCreationEvents.failure(appLogger, error as Error, {
+        appId: id,
+        name: appName,
+        templateVersion,
+        baseDir,
+        port
+      });
       
       // Clean up database entry if app creation fails
       try {
@@ -416,13 +549,13 @@ export class AppRepository {
         // Template copying failures happen before transaction starts
         try {
           this.db.exec('ROLLBACK');
-          console.log(`🔄 Transaction rolled back for failed app ${id}`);
+          // Transaction rollback logged as part of cleanup
         } catch (rollbackError: any) {
           if (rollbackError.code === 'SQLITE_ERROR' && rollbackError.message?.includes('no transaction is active')) {
             // This is fine - no transaction was started yet
-            console.log(`ℹ️  No active transaction to rollback for app ${id}`);
+            // No active transaction - this is expected
           } else {
-            console.warn(`Failed to rollback transaction for app ${id}:`, rollbackError);
+            log.error(appLogger, 'app.transaction.rollback.failed', rollbackError);
           }
         }
         
@@ -431,13 +564,13 @@ export class AppRepository {
         if (existingApp) {
           const cleanupStmt = this.db.prepare('DELETE FROM apps WHERE id = ?');
           cleanupStmt.run(id);
-          console.log(`🧹 Cleaned up database entry for failed app ${id}`);
+          // Database cleanup successful
         } else {
-          console.log(`ℹ️  No database entry to clean up for app ${id}`);
+          // No database entry to clean up
         }
         
       } catch (cleanupError) {
-        console.warn(`Failed to cleanup database entry for app ${id}:`, cleanupError);
+        log.error(appLogger, 'app.database.cleanup.failed', cleanupError);
       }
       
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -449,41 +582,72 @@ export class AppRepository {
    * Run app setup asynchronously after database insert
    */
   private async runAppSetupAsync(id: string, appPath: string, port: number, appName: string): Promise<void> {
+    const setupLogger = this.logger.child({ appId: id, appName, port });
+    
     try {
-      console.log(`⚙️  Starting background setup for app ${id}...`);
+      appSetupEvents.initBegin(setupLogger, {
+        appId: id
+      });
       
       // Run project setup (installs dependencies and configures registry)
-      await this.runProjectSetup(appPath);
+      await this.runProjectSetup(id, appPath);
 
       // Initialize Git repository after template copy
-      await this.initializeGitRepository(appPath, appName);
+      await this.initializeGitRepository(id, appPath, appName);
 
       // Wait a moment to ensure all setup is complete
-      console.log(`⏳ Waiting 2 seconds before starting dev server...`);
+      appSetupEvents.initProgress(setupLogger, {
+        appId: id,
+        operation: 'setup' as const,
+        startTime: new Date().toISOString(),
+        duration: 0
+      });
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       // Start the development servers using the adapter
       try {
         if (this.deploymentAdapter && isDockerMode()) {
-          console.log(`🐳 Starting Docker container for app ${id}...`);
           await this.deploymentAdapter.startApp(id);
-          console.log(`✅ Docker container started for app ${id}`);
         } else {
-          console.log(`💻 Starting local dev server for app ${id}...`);
+          appServerEvents.startBegin(setupLogger, {
+            appId: id,
+            port
+          });
           await this.startDevServer(id, appPath, port);
+          appServerEvents.startSuccess(setupLogger, {
+            appId: id,
+            processId: 0,
+            port,
+            protocol: 'http' as const,
+            startTime: new Date().toISOString(),
+            duration: 0
+          });
         }
       } catch (devServerError) {
-        console.error(`Failed to start dev servers for app ${id}:`, devServerError);
+        appServerEvents.startFailure(setupLogger, devServerError as Error, {
+          appId: id,
+          port
+        });
         // Don't fail app creation if dev servers fail to start
       }
       
       // Update status to 'created' on success
       this.updateStatus(id, 'created');
-      console.log(`✅ App ${id} setup completed successfully`);
+      appSetupEvents.initSuccess(setupLogger, {
+        appId: id,
+        operation: 'setup' as const,
+        startTime: new Date().toISOString(),
+        duration: Date.now() - performance.now()
+      });
+      appLifecycleEvents.ready(setupLogger, {
+        appId: id,
+        newStatus: 'created',
+        duration: 0,
+        startTime: new Date().toISOString()
+      });
       
     } catch (error) {
-      console.error(`❌ Failed to setup app %s: %s`, id, error);
-      // Update status to 'error'
+      // Update status to 'error' (error already logged in runProjectSetup with details)
       this.updateStatus(id, 'error');
     }
   }
@@ -510,19 +674,24 @@ export class AppRepository {
   /**
    * Run project setup script (configures registry and installs dependencies)
    */
-  private async runProjectSetup(appPath: string): Promise<void> {
+  private async runProjectSetup(appId: string, appPath: string): Promise<void> {
     try {
       // Check if package.json exists
       const packageJsonPath = path.join(appPath, 'package.json');
       if (!existsSync(packageJsonPath)) {
-        console.warn(`No package.json found at ${packageJsonPath}, skipping project setup`);
+        this.logger.warn('app.setup.no_package_json', {
+          appId,
+          path: packageJsonPath
+        });
         return;
       }
 
       // Check if setup script exists
       const setupScriptPath = path.join(appPath, 'setup-project.sh');
       if (existsSync(setupScriptPath)) {
-        console.log(`Running project setup script for app at ${appPath}...`);
+        appSetupEvents.initBegin(this.logger, {
+          appId
+        });
         
         // Run the setup script
         const setupProcess = spawn('bash', [setupScriptPath], {
@@ -546,45 +715,65 @@ export class AppRepository {
         await new Promise<void>((resolve, reject) => {
           setupProcess.on('close', (code) => {
             if (code === 0) {
-              console.log(`✅ Project setup completed successfully for ${appPath}`);
-              if (stdout) console.log(`Setup output:`, stdout);
+              appSetupEvents.initSuccess(this.logger, {
+                appId,
+                operation: 'setup',
+                startTime: new Date().toISOString(),
+                duration: 0
+              });
               resolve();
             } else {
-              console.error(`❌ Project setup failed with code ${code} for ${appPath}`);
-              if (stderr) console.error(`Setup stderr:`, stderr);
-              if (stdout) console.error(`Setup stdout:`, stdout);
+              const error = new Error(`Project setup failed with code ${code}`);
+              appSetupEvents.initFailure(this.logger, error, {
+                appId,
+                operation: 'setup',
+                exitCode: code ?? undefined,
+                stdout: stdout.trim(),
+                stderr: stderr.trim(),
+                command: 'bash setup-project.sh'
+              });
               reject(new Error(`Project setup failed with code ${code}`));
             }
           });
 
           setupProcess.on('error', (error) => {
-            console.error(`❌ Project setup process error for %s: %s`, appPath, error);
+            appSetupEvents.initFailure(this.logger, error, {
+              appId,
+              operation: 'setup',
+              stdout: stdout.trim(),
+              stderr: stderr.trim(),
+              command: 'bash setup-project.sh'
+            });
             reject(error);
           });
         });
 
       } else {
         // Fallback to manual dependency installation
-        console.log(`No setup script found, falling back to manual installation for ${appPath}...`);
-        await this.installDependenciesManual(appPath);
+        this.logger.info('app.setup.fallback_manual', { appId, path: appPath });
+        await this.installDependenciesManual(appId, appPath);
       }
 
     } catch (error) {
-      console.error(`Failed to run project setup for %s: %s`, appPath, error);
-      throw new Error(`Failed to run project setup: ${error}`);
+      throw new Error(`Failed to run project setup: ${getErrorMessage(error)}`);
     }
   }
 
   /**
    * Manual dependency installation (fallback when setup script is not available)
    */
-  private async installDependenciesManual(appPath: string): Promise<void> {
+  private async installDependenciesManual(appId: string, appPath: string): Promise<void> {
     try {
       // Check if pnpm is available, fallback to npm
       const hasPnpm = await this.isCommandAvailable('pnpm');
       const packageManager = hasPnpm ? 'pnpm' : 'npm';
       
-      console.log(`Installing dependencies with ${packageManager} for app at ${appPath}...`);
+      appSetupEvents.initProgress(this.logger, {
+        appId,
+        operation: 'install',
+        startTime: new Date().toISOString(),
+        duration: 0
+      });
 
       // Configure registry first
       const configArgs = packageManager === 'pnpm' 
@@ -599,16 +788,26 @@ export class AppRepository {
       await new Promise<void>((resolve, reject) => {
         configProcess.on('close', (code) => {
           if (code === 0) {
-            console.log(`✅ Registry configured for ${packageManager}`);
+            this.logger.debug('app.setup.registry_configured', {
+              appId,
+              packageManager
+            });
             resolve();
           } else {
-            console.warn(`⚠️  Failed to configure registry, continuing anyway...`);
+            this.logger.warn('app.setup.registry_failed', {
+              appId,
+              packageManager
+            });
             resolve(); // Don't fail on registry config
           }
         });
 
         configProcess.on('error', (error) => {
-          console.warn(`⚠️  Registry config error, continuing anyway:`, error);
+          this.logger.warn('app.setup.registry_error', {
+            appId,
+            packageManager,
+            error: error.message
+          });
           resolve(); // Don't fail on registry config
         });
       });
@@ -639,25 +838,37 @@ export class AppRepository {
       await new Promise<void>((resolve, reject) => {
         installProcess.on('close', (code) => {
           if (code === 0) {
-            console.log(`✅ ${packageManager} install completed successfully for ${appPath}`);
-            if (stdout) console.log(`${packageManager} install output:`, stdout);
+            appSetupEvents.initSuccess(this.logger, {
+              appId,
+              operation: 'install',
+              startTime: new Date().toISOString(),
+              duration: 0
+            });
             resolve();
           } else {
-            console.error(`❌ ${packageManager} install failed with code ${code} for ${appPath}`);
-            if (stderr) console.error(`${packageManager} install stderr:`, stderr);
-            if (stdout) console.error(`${packageManager} install stdout:`, stdout);
+            const installError = new Error(`${packageManager} install failed with code ${code}`);
+            appSetupEvents.initFailure(this.logger, installError, {
+              appId,
+              operation: 'install'
+            });
             reject(new Error(`${packageManager} install failed with code ${code}`));
           }
         });
 
         installProcess.on('error', (error) => {
-          console.error(`❌ ${packageManager} install process error for %s: %s`, appPath, error);
+          appSetupEvents.initFailure(this.logger, error, {
+            appId,
+            operation: 'install'
+          });
           reject(error);
         });
       });
 
     } catch (error) {
-      console.error(`Failed to install dependencies manually for %s: %s`, appPath, error);
+      appSetupEvents.initFailure(this.logger, new Error(`Failed to install dependencies: ${error}`), {
+        appId,
+        operation: 'install'
+      });
       throw new Error(`Failed to install dependencies: ${error}`);
     }
   }
@@ -665,14 +876,20 @@ export class AppRepository {
   /**
    * Initialize Git repository for a new app
    */
-  private async initializeGitRepository(appPath: string, appName: string): Promise<void> {
+  private async initializeGitRepository(appId: string, appPath: string, appName: string): Promise<void> {
     try {
-      console.log(`Initializing Git repository for app at ${appPath}...`);
+      this.logger.info('app.git.init.begin', {
+        appId,
+        path: appPath
+      });
       
       // Initialize the Git repository
       const initResult = await this.gitUtils.initRepository(appPath);
       if (!initResult.success) {
-        console.warn(`Failed to initialize Git repository: ${initResult.stderr}`);
+        this.logger.warn('app.git.init.failed', {
+          appId,
+          error: initResult.stderr
+        });
         return; // Don't fail app creation if git init fails
       }
 
@@ -684,7 +901,10 @@ export class AppRepository {
           'ai@airo.dev'
         );
       } catch (configError) {
-        console.warn(`Failed to configure Git user: ${configError}`);
+        this.logger.warn('app.git.config.failed', {
+          appId,
+          error: getErrorMessage(configError)
+        });
         // Continue anyway
       }
 
@@ -696,17 +916,30 @@ export class AppRepository {
         );
         
         if (commitResult.success) {
-          console.log(`Created initial commit for ${appName}`);
+          this.logger.info('app.git.commit.success', {
+            appId,
+            name: appName
+          });
         } else {
-          console.warn(`Failed to create initial commit: ${commitResult.stderr}`);
+          this.logger.warn('app.git.commit.failed', {
+            appId,
+            error: commitResult.stderr
+          });
         }
       } catch (commitError) {
-        console.warn(`Failed to create initial commit: ${commitError}`);
+        this.logger.warn('app.git.commit.error', {
+          appId,
+          error: getErrorMessage(commitError)
+        });
         // Continue anyway - the repo is still initialized
       }
 
     } catch (error) {
-      console.warn(`Git initialization failed for ${appPath}:`, error);
+      this.logger.warn('app.git.init.error', {
+        appId,
+        path: appPath,
+        error: getErrorMessage(error)
+      });
       // Don't fail app creation if Git setup fails
     }
   }
@@ -834,9 +1067,16 @@ export class AppRepository {
     if (this.deploymentAdapter) {
       try {
         await this.deploymentAdapter.removeApp(id);
-        console.log(`✅ Deployment artifacts removed for app ${id}`);
+        appCleanupEvents.directorySuccess(this.logger, {
+          appId: id,
+          operation: 'docker',
+          itemsCleaned: 1
+        });
       } catch (error) {
-        console.warn(`⚠️ Failed to remove deployment artifacts for app ${id}:`, error);
+        this.logger.warn('app.cleanup.docker.failed', {
+          appId: id,
+          error: getErrorMessage(error)
+        });
         // Don't fail the delete operation if artifact cleanup fails
       }
     }
@@ -848,9 +1088,17 @@ export class AppRepository {
       // Try to remove the app directory
       try {
         rmSync(app.path, { recursive: true, force: true });
-        console.log(`✅ App directory removed: ${app.path}`);
+        appCleanupEvents.directorySuccess(this.logger, {
+          appId: id,
+          operation: 'directory',
+          itemsCleaned: 1
+        });
       } catch (error) {
-        console.warn(`Failed to remove directory for app ${id} at ${app.path}:`, error);
+        this.logger.warn('app.cleanup.directory.failed', {
+          appId: id,
+          path: app.path,
+          error: getErrorMessage(error)
+        });
         // Don't fail the operation if directory cleanup fails
       }
     }
@@ -889,12 +1137,18 @@ export class AppRepository {
    */
   private async startDevServer(appId: string, appPath: string, preferredPort: number): Promise<void> {
     try {
-      console.log(`Starting development servers for app ${appId} with preferred frontend port ${preferredPort}...`);
+      appServerEvents.startBegin(this.logger, {
+        appId,
+        port: preferredPort
+      });
       
       // Check if package.json exists and has a dev script
       const packageJsonPath = path.join(appPath, 'package.json');
       if (!existsSync(packageJsonPath)) {
-        console.warn(`No package.json found for app ${appId}, skipping dev server start`);
+        this.logger.warn('app.server.no_package_json', {
+          appId,
+          path: packageJsonPath
+        });
         return;
       }
 
@@ -922,16 +1176,24 @@ export class AppRepository {
       const hasPnpm = await this.isCommandAvailable('pnpm');
       const packageManager = hasPnpm ? 'pnpm' : 'npm';
       
-      console.log(`🚀 Starting ${packageManager} dev servers for app ${appId} with preferred port ${preferredPort}`);
-      console.log(`📝 Logs will be written to:`);
-      console.log(`   stdout: ${stdoutLogPath}`);
-      console.log(`   stderr: ${stderrLogPath}`);
+      this.logger.info('app.server.starting', {
+        appId,
+        packageManager,
+        port: preferredPort,
+        logPaths: {
+          stdout: stdoutLogPath,
+          stderr: stderrLogPath
+        }
+      });
       
       // Always use the smart dev script for consistent port management
       const command = `${packageManager} run dev >> "${stdoutLogPath}" 2>> "${stderrLogPath}"`;
       
-      console.log(`🔧 Running command: ${command}`);
-      console.log(`📁 Working directory: ${appPath}`);
+      this.logger.debug('app.server.command', {
+        appId,
+        command,
+        workingDirectory: appPath
+      });
       
       // Start the dev server with shell redirection (fully detached)
       const child = spawn('sh', ['-c', command], {
@@ -947,38 +1209,61 @@ export class AppRepository {
       // Store the process in memory and database
       this.runningProcesses.set(appId, child);
       
-      console.log(`📝 Adding process record for app ${appId} with PID ${child.pid} on preferred port ${preferredPort}`);
+      this.logger.debug('app.server.process_record', {
+        appId,
+        processId: child.pid!,
+        port: preferredPort
+      });
       
       // Double-check app exists right before process record insertion
       const finalAppCheck = this.db.prepare('SELECT id FROM apps WHERE id = ?').get(appId);
       if (!finalAppCheck) {
         throw new Error(`App ${appId} no longer exists in database before process record insertion`);
       }
-      console.log(`🔍 Final verification: App ${appId} exists in database`);
+      this.logger.debug('app.server.verification', {
+        appId
+      });
       
       const processRecord = this.addProcessRecord(appId, child.pid!, preferredPort);
-      console.log(`✅ Process record added with ID: ${processRecord}`);
+      this.logger.info('app.server.process_added', {
+        appId,
+        processRecordId: processRecord,
+        processId: child.pid!
+      });
 
       // Handle process errors and exits (minimal event handling)
       child.on('error', (error) => {
-        console.error(`Dev server error for app ${appId}:`, error);
+        appServerEvents.startFailure(this.logger, error as Error, {
+          appId,
+          port: preferredPort
+        });
         this.runningProcesses.delete(appId);
         this.removeProcessRecord(appId);
       });
 
       child.on('exit', (code) => {
-        console.log(`Dev server for app ${appId} exited with code ${code}`);
+        this.logger.info('app.server.exited', {
+          appId,
+          exitCode: code
+        });
         this.runningProcesses.delete(appId);
         this.removeProcessRecord(appId);
       });
 
       // Don't wait for the process to start, let it run in background
-      console.log(`Development servers started for app ${appId}:`);
-      console.log(`  Smart script will allocate actual ports (preferred frontend: ${preferredPort})`);
-      console.log(`  Logs: stdout -> ${stdoutLogPath}, stderr -> ${stderrLogPath}`);
+      appServerEvents.startSuccess(this.logger, {
+        appId,
+        processId: child.pid!,
+        port: preferredPort,
+        protocol: 'http',
+        startTime: new Date().toISOString(),
+        duration: 0
+      });
 
     } catch (error) {
-      console.error(`Failed to start dev server for app ${appId}:`, error);
+      appServerEvents.startFailure(this.logger, error as Error, {
+        appId
+      });
       // Don't fail app creation if dev server fails to start
     }
   }
@@ -993,9 +1278,14 @@ export class AppRepository {
         process.kill('SIGTERM');
         this.runningProcesses.delete(appId);
         this.removeProcessRecord(appId);
-        console.log(`Stopped development server for app ${appId}`);
+        this.logger.info('app.server.stopped', {
+          appId
+        });
       } catch (error) {
-        console.warn(`Failed to stop dev server for app ${appId}:`, error);
+        this.logger.warn('app.server.stop_failed_local', {
+          appId,
+          error: getErrorMessage(error)
+        });
       }
     } else {
       // Check if we have a database record but no in-memory process
@@ -1090,7 +1380,9 @@ export class AppRepository {
     const process = this.runningProcesses.get(appId);
     if (process) {
       try {
-        console.log(`🛑 Stopping development server for app ${appId}...`);
+        this.logger.info('app.server.stopping', {
+          appId
+        });
         process.kill('SIGTERM');
         
         // Wait a bit for graceful shutdown, then force kill if needed

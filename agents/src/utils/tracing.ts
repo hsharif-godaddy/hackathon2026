@@ -2,6 +2,9 @@
  * LLM Tracing utilities for debugging agent interactions
  */
 
+import { logger } from '../logging/index.js';
+import { tracingEvents } from '../logging/events/index.js';
+
 export interface TraceEvent {
   id: string;
   timestamp: Date;
@@ -30,29 +33,45 @@ export class Tracer {
 
     this.events.push(traceEvent);
     
-    // Console logging for immediate debugging
-    const logLevel = this.getLogLevel(event.type);
-    const message = this.formatTraceEvent(traceEvent);
-    
-    console[logLevel](message);
+    // Use structured logging instead of console
+    this.logTraceEventStructured(traceEvent);
   }
 
-  private getLogLevel(type: TraceEvent['type']): 'log' | 'warn' | 'error' | 'debug' {
-    switch (type) {
-      case 'error':
-        return 'error';
-      case 'debug':
-        return 'debug';
+  private logTraceEventStructured(traceEvent: TraceEvent): void {
+    const tracingData: any = {
+      traceId: traceEvent.id,
+      eventType: traceEvent.type,
+      data: traceEvent.data
+    };
+    
+    if (traceEvent.agentId) tracingData.agentId = traceEvent.agentId;
+    if (traceEvent.threadId) tracingData.threadId = traceEvent.threadId;
+
+    switch (traceEvent.type) {
       case 'request':
+        tracingEvents.request(logger, tracingData);
+        break;
       case 'response':
+        tracingEvents.response(logger, tracingData);
+        break;
+      case 'error':
+        tracingEvents.error(logger, tracingData);
+        break;
+      case 'debug':
+        tracingEvents.debug(logger, tracingData);
+        break;
       case 'tool_call':
+        tracingEvents.toolCall(logger, tracingData);
+        break;
       case 'websocket':
-        return 'log';
+        tracingEvents.websocket(logger, tracingData);
+        break;
       default:
-        return 'log';
+        tracingEvents.debug(logger, tracingData);
     }
   }
 
+  // Keeping formatTraceEvent for backward compatibility in case other parts use it
   private formatTraceEvent(event: TraceEvent): string {
     const timestamp = event.timestamp.toISOString();
     const prefix = `[${timestamp}] ${event.type.toUpperCase()}`;

@@ -41,6 +41,8 @@ import { GettyImageTool } from './getty-image-tool.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { logger } from '../logging/index.js';
+import { toolImageSearchEvents, toolCacheEvents } from '../logging/events/index.js';
 
 export interface ImageSearchOptions {
   prompt: string;
@@ -96,7 +98,10 @@ class UnsplashCache {
     try {
       fs.mkdirSync(this.cacheDir, { recursive: true });
     } catch (error) {
-      console.warn(`⚠️ Failed to create cache directory ${this.cacheDir}:`, error);
+      toolCacheEvents.setFailure(logger, error as Error, {
+        toolName: 'UnsplashCache',
+        cacheKey: 'directory-creation',
+      });
     }
   }
 
@@ -104,8 +109,8 @@ class UnsplashCache {
    * Check if a cached result exists and is still valid
    */
   async get(prompt: string, count: number): Promise<ImageSearchResult | null> {
+    const key = this.generateCacheKey(prompt, count);
     try {
-      const key = this.generateCacheKey(prompt, count);
       const filePath = this.getCacheFilePath(key);
       
       if (!fs.existsSync(filePath)) {
@@ -125,10 +130,19 @@ class UnsplashCache {
       const cachedData = fs.readFileSync(filePath, 'utf-8');
       const result = JSON.parse(cachedData) as ImageSearchResult;
       
-      console.log(`💾 [Unsplash Cache] Found cached result for prompt: "${prompt}" (count: ${count})`);
+      toolCacheEvents.getSuccess(logger, {
+        toolName: 'UnsplashCache',
+        cacheKey: key,
+        operation: 'get',
+        cacheDir: this.cacheDir,
+        fileAge,
+      });
       return result;
     } catch (error) {
-      console.warn(`⚠️ Failed to read cache for prompt "${prompt}":`, error);
+      toolCacheEvents.getFailure(logger, error as Error, {
+        toolName: 'UnsplashCache',
+        cacheKey: key,
+      });
       return null;
     }
   }
@@ -137,14 +151,22 @@ class UnsplashCache {
    * Store a result in the cache
    */
   async set(prompt: string, count: number, result: ImageSearchResult): Promise<void> {
+    const key = this.generateCacheKey(prompt, count);
     try {
-      const key = this.generateCacheKey(prompt, count);
       const filePath = this.getCacheFilePath(key);
       
       fs.writeFileSync(filePath, JSON.stringify(result, null, 2));
-      console.log(`💾 [Unsplash Cache] Cached result for prompt: "${prompt}" (count: ${count})`);
+      toolCacheEvents.setSuccess(logger, {
+        toolName: 'UnsplashCache',
+        cacheKey: key,
+        operation: 'set',
+        cacheDir: this.cacheDir,
+      });
     } catch (error) {
-      console.warn(`⚠️ Failed to write cache for prompt "${prompt}":`, error);
+      toolCacheEvents.setFailure(logger, error as Error, {
+        toolName: 'UnsplashCache',
+        cacheKey: key,
+      });
     }
   }
 
@@ -175,10 +197,18 @@ class UnsplashCache {
       }
 
       if (cleanedCount > 0) {
-        console.log(`🧹 [Unsplash Cache] Cleaned up ${cleanedCount} expired cache files`);
+        toolCacheEvents.cleanupSuccess(logger, {
+          toolName: 'UnsplashCache',
+          cacheKey: '',
+          operation: 'cleanup',
+          cacheDir: this.cacheDir,
+          itemsProcessed: cleanedCount,
+        });
       }
     } catch (error) {
-      console.warn('⚠️ Failed to cleanup cache:', error);
+      toolCacheEvents.cleanupFailure(logger, error as Error, {
+        toolName: 'UnsplashCache',
+      });
     }
   }
 }
@@ -193,7 +223,9 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
     const apiKey = process.env.OPENAI_API_KEY;
     
     if (!apiKey) {
-      console.warn('⚠️ OPENAI_API_KEY not set. OpenAI image search will not work.');
+      logger.warn('OpenAI API key not configured', {
+        toolName: 'OpenAIImageSearchDriver',
+      });
     }
     
     this.openaiClient = new OpenAI({
@@ -202,6 +234,10 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
   }
 
   async searchImage(prompt: string, count = 1): Promise<ImageSearchResult> {
+    const searchPrompt = count > 1 
+      ? `Find ${count} relevant images for: ${prompt.trim()}. Return only the direct image URLs, one per line.`
+      : `Find a relevant image for: ${prompt.trim()}. Return only the direct image URL.`;
+      
     try {
       if (!this.openaiClient) {
         return { 
@@ -209,12 +245,13 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
           error: 'OpenAI API key not configured' 
         };
       }
-
-      const searchPrompt = count > 1 
-        ? `Find ${count} relevant images for: ${prompt.trim()}. Return only the direct image URLs, one per line.`
-        : `Find a relevant image for: ${prompt.trim()}. Return only the direct image URL.`;
       
-      console.log(`🔍 [OpenAI] Searching for ${count} image(s) with prompt: "${searchPrompt}"`);
+      toolImageSearchEvents.begin(logger, {
+        toolName: 'OpenAIImageSearchDriver',
+        prompt: searchPrompt,
+        count,
+        provider: 'openai',
+      });
       
       const response = await this.openaiClient.responses.create({
         model: "gpt-5",
@@ -228,6 +265,12 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
       const urlMatches = responseText.match(/https?:\/\/[^\s)]+\.(jpg|jpeg|png|gif|webp)/gi);
       
       if (!urlMatches || urlMatches.length === 0) {
+        toolImageSearchEvents.failure(logger, new Error('No valid image URLs found in the response'), {
+          toolName: 'OpenAIImageSearchDriver',
+          prompt: searchPrompt,
+          count,
+          provider: 'openai',
+        });
         return {
           success: false,
           error: 'No valid image URLs found in the response'
@@ -237,13 +280,26 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
       const imageUrls = urlMatches.slice(0, count);
       
       if (imageUrls.length === 0) {
+        toolImageSearchEvents.failure(logger, new Error('No valid image URLs found after filtering'), {
+          toolName: 'OpenAIImageSearchDriver',
+          prompt: searchPrompt,
+          count,
+          provider: 'openai',
+        });
         return {
           success: false,
           error: 'No valid image URLs found after filtering'
         };
       }
       
-      console.log(`✅ [OpenAI] Found ${imageUrls.length} image URL(s): ${imageUrls.join(', ')}`);
+      toolImageSearchEvents.success(logger, {
+        toolName: 'OpenAIImageSearchDriver',
+        prompt: searchPrompt,
+        count,
+        provider: 'openai',
+        resultUrls: imageUrls,
+        resultCount: imageUrls.length,
+      });
       
       if (count === 1) {
         return {
@@ -257,7 +313,12 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
         };
       }
     } catch (error) {
-      console.error('❌ OpenAI image search failed:', error);
+      toolImageSearchEvents.failure(logger, error as Error, {
+        toolName: 'OpenAIImageSearchDriver',
+        prompt: searchPrompt,
+        count,
+        provider: 'openai',
+      });
       return {
         success: false,
         error: `OpenAI image search failed: ${error instanceof Error ? error.message : String(error)}`
@@ -278,7 +339,12 @@ class GettyImageSearchDriver implements ImageSearchDriver {
 
   async searchImage(prompt: string, count = 1): Promise<ImageSearchResult> {
     try {
-      console.log(`🔍 [Getty] Searching for ${count} image(s) with prompt: "${prompt}"`);
+      toolImageSearchEvents.begin(logger, {
+        toolName: 'GettyImageSearchDriver',
+        prompt,
+        count,
+        provider: 'getty',
+      });
       
       const result = await this.gettyTool.searchImages({
         phrase: prompt.trim(),
@@ -289,6 +355,12 @@ class GettyImageSearchDriver implements ImageSearchDriver {
       });
 
       if (!result.success || !result.images || result.images.length === 0) {
+        toolImageSearchEvents.failure(logger, new Error(result.error || 'No images found for this search query'), {
+          toolName: 'GettyImageSearchDriver',
+          prompt,
+          count,
+          provider: 'getty',
+        });
         return {
           success: false,
           error: result.error || 'No images found for this search query'
@@ -304,13 +376,26 @@ class GettyImageSearchDriver implements ImageSearchDriver {
       }
       
       if (imageUrls.length === 0) {
+        toolImageSearchEvents.failure(logger, new Error('No valid image URLs found in Getty response'), {
+          toolName: 'GettyImageSearchDriver',
+          prompt,
+          count,
+          provider: 'getty',
+        });
         return {
           success: false,
           error: 'No valid image URLs found in Getty response'
         };
       }
 
-      console.log(`✅ [Getty] Found ${imageUrls.length} image URL(s): ${imageUrls.join(', ')}`);
+      toolImageSearchEvents.success(logger, {
+        toolName: 'GettyImageSearchDriver',
+        prompt,
+        count,
+        provider: 'getty',
+        resultUrls: imageUrls,
+        resultCount: imageUrls.length,
+      });
       
       if (count === 1) {
         return {
@@ -324,7 +409,12 @@ class GettyImageSearchDriver implements ImageSearchDriver {
         };
       }
     } catch (error) {
-      console.error('❌ Getty image search failed:', error);
+      toolImageSearchEvents.failure(logger, error as Error, {
+        toolName: 'GettyImageSearchDriver',
+        prompt,
+        count,
+        provider: 'getty',
+      });
       return {
         success: false,
         error: `Getty image search failed: ${error instanceof Error ? error.message : String(error)}`
@@ -345,7 +435,9 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
     this.cache = new UnsplashCache();
     
     if (!this.accessKey) {
-      console.warn('⚠️ UNSPLASH_ACCESS_KEY not set. Unsplash image search will not work.');
+      logger.warn('Unsplash access key not configured', {
+        toolName: 'UnsplashImageSearchDriver',
+      });
     }
 
     // Periodically clean up expired cache files
@@ -375,10 +467,25 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
       // Check cache first
       const cachedResult = await this.cache.get(prompt, count);
       if (cachedResult) {
+        toolImageSearchEvents.success(logger, {
+          toolName: 'UnsplashImageSearchDriver',
+          prompt,
+          count,
+          provider: 'unsplash',
+          cacheHit: true,
+          resultUrls: cachedResult.urls || (cachedResult.url ? [cachedResult.url] : []),
+          resultCount: cachedResult.urls?.length || (cachedResult.url ? 1 : 0),
+        });
         return cachedResult;
       }
 
-      console.log(`🔍 [Unsplash] Searching for ${count} image(s) with prompt: "${prompt}"`);
+      toolImageSearchEvents.begin(logger, {
+        toolName: 'UnsplashImageSearchDriver',
+        prompt,
+        count,
+        provider: 'unsplash',
+        cacheHit: false,
+      });
       
       const searchUrl = new URL('https://api.unsplash.com/search/photos');
       searchUrl.searchParams.set('query', prompt.trim());
@@ -396,13 +503,27 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
         throw new Error(`Unsplash API error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json() as any;
+      const data = await response.json() as {
+        results: Array<{
+          urls: {
+            regular?: string;
+            small?: string;
+            thumb?: string;
+          };
+        }>;
+      };
       
       if (!data.results || data.results.length === 0) {
         const errorResult = {
           success: false as const,
           error: 'No images found for this search query'
         };
+        toolImageSearchEvents.failure(logger, new Error('No images found for this search query'), {
+          toolName: 'UnsplashImageSearchDriver',
+          prompt,
+          count,
+          provider: 'unsplash',
+        });
         // Cache the error result to avoid repeated API calls for unsuccessful searches
         await this.cache.set(prompt, count, errorResult);
         return errorResult;
@@ -421,12 +542,26 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
           success: false as const,
           error: 'No valid image URLs found in Unsplash response'
         };
+        toolImageSearchEvents.failure(logger, new Error('No valid image URLs found in Unsplash response'), {
+          toolName: 'UnsplashImageSearchDriver',
+          prompt,
+          count,
+          provider: 'unsplash',
+        });
         // Cache the error result
         await this.cache.set(prompt, count, errorResult);
         return errorResult;
       }
 
-      console.log(`✅ [Unsplash] Found ${imageUrls.length} image URL(s): ${imageUrls.join(', ')}`);
+      toolImageSearchEvents.success(logger, {
+        toolName: 'UnsplashImageSearchDriver',
+        prompt,
+        count,
+        provider: 'unsplash',
+        cacheHit: false,
+        resultUrls: imageUrls,
+        resultCount: imageUrls.length,
+      });
       
       let result: ImageSearchResult;
       if (count === 1) {
@@ -445,7 +580,12 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
       await this.cache.set(prompt, count, result);
       return result;
     } catch (error) {
-      console.error('❌ Unsplash image search failed:', error);
+      toolImageSearchEvents.failure(logger, error as Error, {
+        toolName: 'UnsplashImageSearchDriver',
+        prompt,
+        count,
+        provider: 'unsplash',
+      });
       const errorResult = {
         success: false as const,
         error: `Unsplash image search failed: ${error instanceof Error ? error.message : String(error)}`
@@ -528,7 +668,12 @@ export async function findImage(options: { prompt: string; count?: number }): Pr
     const result = await imageSearchTool.searchImage(prompt, count);
     return result;
   } catch (error) {
-    console.error('❌ Image search failed:', error);
+    toolImageSearchEvents.failure(logger, error as Error, {
+      toolName: 'ImageSearchTool',
+      prompt,
+      count: count || 1,
+      provider: (process.env.IMAGE_SEARCH_DRIVER || 'getty') as 'getty' | 'openai' | 'unsplash',
+    });
     return {
       success: false,
       error: `Image search failed: ${error instanceof Error ? error.message : String(error)}`

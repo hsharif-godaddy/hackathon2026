@@ -1,6 +1,8 @@
 import { readdir, stat } from 'fs/promises';
-import { join, relative, basename } from 'path';
+import { join, relative } from 'path';
 import { existsSync } from 'fs';
+import { logger } from '../logging/index.js';
+import { toolDirectoryListingEvents, toolDirectoryWalkEvents } from '../logging/events/index.js';
 
 export interface DirectoryListingOptions {
   /** The path to list (defaults to app root) */
@@ -120,7 +122,8 @@ export class DirectoryListingTool {
    */
   async listDirectory(
     appPath: string,
-    options: DirectoryListingOptions = {}
+    options: DirectoryListingOptions = {},
+    context?: { appId?: string }
   ): Promise<DirectoryTreeResult> {
     const {
       path: relativePath = '',
@@ -134,7 +137,32 @@ export class DirectoryListingTool {
     } = options;
 
     // Construct the target path, ensuring it's within the app directory
-    const targetPath = this.resolveSafePath(appPath, relativePath);
+    let targetPath: string;
+    try {
+      targetPath = this.resolveSafePath(appPath, relativePath);
+    } catch (error) {
+      toolDirectoryListingEvents.failure(logger, error as Error, {
+        toolName: 'DirectoryListingTool',
+        targetPath: relativePath || '.',
+        ...(context?.appId && { appId: context.appId }),
+      });
+      throw error;
+    }
+    
+    // Log the beginning of the directory listing operation
+    toolDirectoryListingEvents.begin(logger, {
+      toolName: 'DirectoryListingTool',
+      targetPath: relative(appPath, targetPath) || '.',
+      ...(context?.appId && { appId: context.appId }),
+      options: {
+        directoriesOnly,
+        ...(pattern && { pattern }),
+        ...(search && { search }),
+        ...(maxDepth !== Infinity && { maxDepth }),
+        showHidden,
+        ...(ignorePatterns.length > 0 && { ignorePatterns }),
+      },
+    });
     
     // Combine default ignores with user-provided ignores
     const allIgnorePatterns = disableDefaultIgnores 
@@ -162,10 +190,39 @@ export class DirectoryListingTool {
         pattern,
         search,
         showHidden,
-        allIgnorePatterns
+        allIgnorePatterns,
+        context
       );
+      
+      // Log successful completion
+      toolDirectoryListingEvents.success(logger, {
+        toolName: 'DirectoryListingTool',
+        targetPath: relative(appPath, targetPath) || '.',
+        ...(context?.appId && { appId: context.appId }),
+        options: {
+          directoriesOnly,
+          ...(pattern && { pattern }),
+          ...(search && { search }),
+          ...(maxDepth !== Infinity && { maxDepth }),
+          showHidden,
+          ...(ignorePatterns.length > 0 && { ignorePatterns }),
+        },
+        resultStats: {
+          totalEntries: result.totalEntries,
+          directoryCount: result.directoryCount,
+          fileCount: result.fileCount,
+          truncated: result.truncated,
+          errorCount: result.errors.length,
+        },
+      });
     } catch (error) {
       result.errors.push(`Failed to read directory: ${error instanceof Error ? error.message : String(error)}`);
+      
+      toolDirectoryListingEvents.failure(logger, error as Error, {
+        toolName: 'DirectoryListingTool',
+        targetPath: relative(appPath, targetPath) || '.',
+        ...(context?.appId && { appId: context.appId }),
+      });
     }
 
     return result;
@@ -184,14 +241,32 @@ export class DirectoryListingTool {
     pattern?: string,
     search?: string,
     showHidden: boolean = false,
-    ignorePatterns: string[] = []
+    ignorePatterns: string[] = [],
+    context?: { appId?: string }
   ): Promise<void> {
     if (depth > maxDepth || result.entries.length >= this.MAX_ENTRIES) {
       if (result.entries.length >= this.MAX_ENTRIES) {
         result.truncated = true;
+        toolDirectoryWalkEvents.complete(logger, {
+          toolName: 'DirectoryListingTool',
+          currentPath: relative(appPath, currentPath),
+          depth,
+          maxDepth,
+          entriesProcessed: result.entries.length,
+          ...(context?.appId && { appId: context.appId }),
+        });
       }
       return;
     }
+    
+    // Log the beginning of directory walk for this level
+    toolDirectoryWalkEvents.begin(logger, {
+      toolName: 'DirectoryListingTool',
+      currentPath: relative(appPath, currentPath),
+      depth,
+      maxDepth,
+      ...(context?.appId && { appId: context.appId }),
+    });
 
     try {
       const entries = await readdir(currentPath);
@@ -259,17 +334,43 @@ export class DirectoryListingTool {
               pattern,
               search,
               showHidden,
-              ignorePatterns
+              ignorePatterns,
+              context
             );
           } else {
             result.fileCount++;
           }
         } catch (error) {
-          result.errors.push(`Failed to stat ${relativePath}: ${error instanceof Error ? error.message : String(error)}`);
+          const errorMessage = `Failed to stat ${relativePath}: ${error instanceof Error ? error.message : String(error)}`;
+          result.errors.push(errorMessage);
+          
+          toolDirectoryWalkEvents.error(logger, error as Error, {
+            toolName: 'DirectoryListingTool',
+            currentPath: relativePath,
+            depth,
+            ...(context?.appId && { appId: context.appId }),
+          });
         }
       }
+      // Log completion of this directory level
+      toolDirectoryWalkEvents.complete(logger, {
+        toolName: 'DirectoryListingTool',
+        currentPath: relative(appPath, currentPath),
+        depth,
+        maxDepth,
+        entriesProcessed: result.entries.length,
+        ...(context?.appId && { appId: context.appId }),
+      });
     } catch (error) {
-      result.errors.push(`Failed to read directory ${relative(appPath, currentPath)}: ${error instanceof Error ? error.message : String(error)}`);
+      const errorMessage = `Failed to read directory ${relative(appPath, currentPath)}: ${error instanceof Error ? error.message : String(error)}`;
+      result.errors.push(errorMessage);
+      
+      toolDirectoryWalkEvents.error(logger, error as Error, {
+        toolName: 'DirectoryListingTool',
+        currentPath: relative(appPath, currentPath),
+        depth,
+        ...(context?.appId && { appId: context.appId }),
+      });
     }
   }
 
@@ -301,12 +402,26 @@ export class DirectoryListingTool {
     
     // Ensure the resolved path is within the app directory
     if (!normalized.startsWith(appPath)) {
-      throw new Error('Path is outside the allowed app directory');
+      const error = new Error('Path is outside the allowed app directory');
+      logger.warn('Directory listing path validation failed', {
+        appPath,
+        relativePath,
+        resolvedPath: normalized,
+        reason: 'path_outside_app_directory',
+      });
+      throw error;
     }
 
     // Check if path exists
     if (!existsSync(normalized)) {
-      throw new Error(`Path does not exist: ${relativePath || '.'}`);
+      const error = new Error(`Path does not exist: ${relativePath || '.'}`);
+      logger.warn('Directory listing path not found', {
+        appPath,
+        relativePath,
+        resolvedPath: normalized,
+        reason: 'path_not_found',
+      });
+      throw error;
     }
 
     return normalized;

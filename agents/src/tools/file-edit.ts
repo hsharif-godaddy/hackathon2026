@@ -1,6 +1,5 @@
-import { readFile, writeFile, mkdir, stat, copyFile } from 'fs/promises';
+import { readFile, writeFile, mkdir } from 'fs/promises';
 import { dirname, join, resolve, relative } from 'path';
-import { createHash } from 'crypto';
 import { diffLines, createPatch } from 'diff';
 import { existsSync } from 'fs';
 import { TokenUsageRepository, AppRepository } from '../database/index.js';
@@ -8,6 +7,8 @@ import { GitTool } from './git-tool.js';
 import { exec } from 'child_process';
 import axios from 'axios';
 import { translateDockerPath } from '../utils/path-helper.js';
+import { logger } from '../logging/index.js';
+import { toolFileEditEvents, toolBuildEvents, toolServerHealthEvents } from '../logging/events/index.js';
 
 export interface FileEditOptions {
   /** Path to the file to edit (relative to app root) */
@@ -78,35 +79,53 @@ export class FileEditTool {
    */
   private async runBuildCommand(appPath: string, appId?: string): Promise<void> {
     try {
-      console.log('Running safe build validation after file changes...');
+      toolBuildEvents.begin(logger, {
+        toolName: 'FileEditTool',
+        appPath,
+        ...(appId && { appId }),
+      });
       
       // Detect which build strategy to use based on the template
       const buildCommand = await this.getSafeBuildCommand(appPath);
       
-      return new Promise<void>(async (resolve) => {
-        exec(buildCommand, { cwd: appPath }, async (error, stdout, stderr) => {
+      return new Promise<void>((resolve) => {
+        exec(buildCommand, { cwd: appPath }, (error, _stdout, _stderr) => {
           if (error) {
-            console.error(`Build validation error: ${error}`);
-            console.error(stderr);
+            toolBuildEvents.failure(logger, error, {
+              toolName: 'FileEditTool',
+              appPath,
+              buildCommand,
+              ...(appId && { appId }),
+            });
             // Don't reject as we don't want to fail the file edit operation
             // just because the validation failed
             resolve();
             return;
           }
           
-          console.log('Build validation completed successfully');
-          console.log(stdout);
+          toolBuildEvents.success(logger, {
+            toolName: 'FileEditTool',
+            appPath,
+            buildCommand,
+            buildType: 'validation',
+            ...(appId && { appId }),
+          });
           
           // After successful validation, ensure dev server is still healthy
           if (appId) {
-            await this.ensureDevServerHealth(appId);
+            // Use a separate async function to handle the health check
+            this.ensureDevServerHealth(appId).finally(() => resolve());
+          } else {
+            resolve();
           }
-          
-          resolve();
         });
       });
     } catch (error) {
-      console.error('Failed to run build validation:', error);
+      toolBuildEvents.failure(logger, error as Error, {
+        toolName: 'FileEditTool',
+        appPath,
+        ...(appId && { appId }),
+      });
       // Don't throw as we don't want to fail the file edit operation
       // just because the validation failed
     }
@@ -122,7 +141,10 @@ export class FileEditTool {
       
       const app = this.appRepo.findById(appId);
       if (!app) {
-        console.warn(`App ${appId} not found for health check`);
+        logger.warn('App not found for health check', {
+          appId,
+          toolName: 'FileEditTool',
+        });
         return;
       }
 
@@ -130,18 +152,40 @@ export class FileEditTool {
       const isHealthy = await this.checkServerHealth(app.port);
       
       if (!isHealthy) {
-        console.log(`Dev server for app ${appId} appears unhealthy, attempting restart...`);
+        toolServerHealthEvents.unhealthy(logger, {
+          toolName: 'FileEditTool',
+          appId,
+          port: app.port,
+          isHealthy: false,
+        });
         try {
           await this.appRepo.restartServer(appId);
-          console.log(`Successfully restarted dev server for app ${appId}`);
+          toolServerHealthEvents.restart(logger, {
+            toolName: 'FileEditTool',
+            appId,
+            port: app.port,
+            isHealthy: false,
+          });
         } catch (restartError) {
-          console.error(`Failed to restart dev server for app ${appId}:`, restartError);
+          logger.error('Failed to restart dev server', {
+            appId,
+            port: app.port,
+            error: restartError instanceof Error ? restartError.message : String(restartError),
+          });
         }
       } else {
-        console.log(`Dev server for app ${appId} is healthy`);
+        toolServerHealthEvents.healthy(logger, {
+          toolName: 'FileEditTool',
+          appId,
+          port: app.port,
+          isHealthy: true,
+        });
       }
     } catch (error) {
-      console.error(`Error checking dev server health for app ${appId}:`, error);
+      logger.error('Error checking dev server health', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -150,7 +194,7 @@ export class FileEditTool {
    */
   private async checkServerHealth(port: number): Promise<boolean> {
     try {
-      const response = await axios.get(`http://localhost:${port}`, {
+      await axios.get(`http://localhost:${port}`, {
         timeout: 3000,
         validateStatus: (status) => status < 500, // Accept any non-server-error response
       });
@@ -193,7 +237,10 @@ export class FileEditTool {
         }
       }
     } catch (error) {
-      console.warn('Could not parse package.json, using default safe command:', error);
+      logger.warn('Could not parse package.json, using default safe command', {
+        appPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     // Default safe command: just type check and lint
@@ -211,24 +258,71 @@ export class FileEditTool {
       // Auto-detect mode if not specified
       const mode = options.mode || await this.detectMode(filePath, options);
       
+      // Log the beginning of the file edit operation
+      toolFileEditEvents.begin(logger, {
+        toolName: 'FileEditTool',
+        filePath: options.path,
+        mode,
+        ...(context?.appId && { appId: context.appId }),
+        ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
+      });
+      
+      let result: FileEditResult;
+      
       // Route to appropriate handler
       switch (mode) {
         case 'create':
-          return await this.handleCreate(filePath, options, appPath, context);
+          result = await this.handleCreate(filePath, options, appPath, context);
+          break;
         case 'rewrite':
-          return await this.handleRewrite(filePath, options, appPath, context);
+          result = await this.handleRewrite(filePath, options, appPath, context);
+          break;
         case 'edit':
-          return await this.handleEdit(filePath, options, appPath, context);
+          result = await this.handleEdit(filePath, options, appPath, context);
+          break;
         default:
           throw new Error(`Unknown edit mode: ${mode}`);
       }
+      
+      // Log success or failure
+      if (result.success) {
+        toolFileEditEvents.success(logger, {
+          toolName: 'FileEditTool',
+          filePath: options.path,
+          mode,
+          ...(context?.appId && { appId: context.appId }),
+          ...(options.content?.length !== undefined && { contentLength: options.content.length }),
+          ...(options.edits?.length !== undefined && { editsCount: options.edits.length }),
+          ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
+          ...(options.autoCommit !== undefined && { autoCommit: options.autoCommit }),
+          ...(options.autoBuild !== undefined && { autoBuild: options.autoBuild }),
+        });
+      } else {
+        toolFileEditEvents.failure(logger, new Error(result.error || 'Unknown error'), {
+          toolName: 'FileEditTool',
+          filePath: options.path,
+          mode,
+          ...(context?.appId && { appId: context.appId }),
+        });
+      }
+      
+      return result;
     } catch (error) {
-      return {
+      const errorResult = {
         success: false,
         path: options.path,
-        mode: 'edit',
+        mode: 'edit' as const,
         error: error instanceof Error ? error.message : String(error),
       };
+      
+      toolFileEditEvents.failure(logger, error as Error, {
+        toolName: 'FileEditTool',
+        filePath: options.path,
+        mode: options.mode || 'edit',
+        ...(context?.appId && { appId: context.appId }),
+      });
+      
+      return errorResult;
     }
   }
 
@@ -622,7 +716,12 @@ export class FileEditTool {
         }
       );
     } catch (error) {
-      console.warn('Failed to track file edit token usage:', error);
+      logger.warn('Failed to track file edit token usage', {
+        appId: context?.appId,
+        operation,
+        filePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -630,14 +729,15 @@ export class FileEditTool {
    * Automatically commit changes using git
    */
   private async autoCommitChanges(appPath: string, filePath: string, options: FileEditOptions, result: FileEditResult): Promise<void> {
-    try {
-      // Only proceed if auto-commit is enabled and the operation was successful
-      if (!options.autoCommit || !result.success || options.dryRun) {
-        return;
-      }
+    // Only proceed if auto-commit is enabled and the operation was successful
+    if (!options.autoCommit || !result.success || options.dryRun) {
+      return;
+    }
 
+    const relativePath = relative(appPath, filePath);
+    
+    try {
       // First, add the changed file to git
-      const relativePath = relative(appPath, filePath);
       await this.gitTool.executeGitOperation(appPath, {
         operation: 'add',
         files: [relativePath]
@@ -665,7 +765,11 @@ export class FileEditTool {
         message: commitMessage
       });
     } catch (error) {
-      console.error('Failed to auto-commit changes:', error);
+      logger.error('Failed to auto-commit changes', {
+        filePath: relativePath,
+        appPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
       // Don't throw error, as the file operation itself was successful
     }
   }
