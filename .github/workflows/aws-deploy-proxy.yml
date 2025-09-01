@@ -1,0 +1,40 @@
+name: AWS Deploy Proxy
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Custom message to display'
+        required: false
+        type: string
+        default: 'Hello from Airo Builder! Proxy Deployment!'
+
+jobs:
+  hello-world:
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+
+    steps:
+      - name: Print Environment Info
+        run: |
+          echo "📝 Message: ${{ inputs.message }}"
+          echo "🌿 Branch: ${{ github.ref_name }}"
+          echo "👤 Triggered by: ${{ github.actor }}"
+          echo "⏰ Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+      - name: Hello World
+        run: |
+          echo "=================================="
+          echo "🎉 ${{ inputs.message }}"
+          echo "=================================="
+          echo "✅ Hello World job completed successfully!"
+
+      - name: System Info
+        run: |
+          echo "🖥️  System Information:"
+          echo "OS: $(uname -s)"
+          echo "Architecture: $(uname -m)"
+          echo "Kernel: $(uname -r)"
+          echo "Uptime: $(uptime)"
