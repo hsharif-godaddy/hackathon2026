@@ -1,5 +1,4 @@
-import { getLLMService } from './llm.js';
-import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import { getLLMService, LLMMessage } from './llm.js';
 
 export class NameSuggestionService {
   /**
@@ -15,7 +14,7 @@ export class NameSuggestionService {
       }
       const llmService = getLLMService();
 
-      const messages: ChatCompletionMessageParam[] = [
+      const messages: LLMMessage[] = [
         {
           role: 'system',
           content: `You are an expert app name generator. Your task is to suggest a short, catchy, and appropriate name for an app based on the description provided. 

@@ -20,7 +20,7 @@ export const LogErrorSchema = z.object({
   name: z.string(),
   message: z.string(),
   stack: z.string().optional(),
-  code: z.string().optional(),
+  code: z.union([z.string(), z.number()]).optional(),
 });
 
 export const LogEventSchema = z.object({

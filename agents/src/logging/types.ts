@@ -19,7 +19,7 @@ export interface LogError {
   name: string;
   message: string;
   stack?: string | undefined;
-  code?: string | undefined;
+  code?: string | number | undefined;
 }
 
 export interface LogEvent {
