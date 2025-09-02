@@ -1,0 +1,72 @@
+services:
+  # Agents API Service
+  agents:
+    platform: linux/amd64  # Force x64 platform for consistent native module compilation
+    build:
+      context: ./agents
+      platforms:
+        - linux/amd64
+    container_name: airo-agents
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DATABASE_PATH=/app/data/apps.db
+      - DEBUG=true
+      - LOG_LEVEL=info
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - proxy
+    networks:
+      - airo-network
+    restart: unless-stopped
+
+  # Frontend App Service  
+  app:
+    platform: linux/amd64  # Force x64 platform for consistent native module compilation
+    build:
+      context: ./app
+      platforms:
+        - linux/amd64
+      args:
+        - UPSTREAM_VERSION=22
+        - BASE_IMAGE=node
+    container_name: airo-app
+    ports:
+      - "443:3443"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HTTPS_PORT=3443
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
+      - NEXT_PUBLIC_API_WS_URL=ws://localhost:4000
+      - NEXT_PUBLIC_BACKEND_API_URL=http://localhost:4000
+      - DATABASE_PATH=/app/data/airo-builder-platform.db
+    depends_on:
+      - agents
+    networks:
+      - airo-network
+    restart: unless-stopped
+
+  proxy:
+    platform: linux/amd64  # Force x64 platform for consistent native module compilation
+    build:
+      context: ./proxy
+      platforms:
+        - linux/amd64
+    container_name: airo-proxy
+    ports:
+      - "8888:8888"
+    environment:
+      - API_SECRET=${API_SECRET:-<apikey>}
+    restart: unless-stopped
+    networks:
+      - airo-network
+
+# SQLite databases are stored in mounted volumes, no external database service needed
+
+networks:
+  airo-network:
+    driver: bridge

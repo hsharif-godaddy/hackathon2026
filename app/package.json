@@ -5,6 +5,7 @@
     "scripts": {
         "dev": "next dev --turbopack",
         "build": "next build",
+        "build:server": "tsc server.ts --outDir . --target es2020 --module commonjs --moduleResolution node --esModuleInterop --allowSyntheticDefaultImports",
         "start": "next start",
         "lint": "next lint"
     },

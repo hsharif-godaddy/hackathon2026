@@ -1,17 +1,12 @@
-FROM node:18-alpine
+FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:22-alpine
 
-# Build argument for NPM authentication
-ARG NPM_AUTH_TOKEN
+USER root
 
 RUN apk add --no-cache python3 py3-setuptools make g++
 
 WORKDIR /app
 
 RUN npm install -g pnpm
-
-# Create npm configuration for private registry using build arg
-RUN echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc && \
-    echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${NPM_AUTH_TOKEN}" >> .npmrc
 
 COPY package*.json ./
 COPY pnpm-lock.yaml ./
@@ -29,16 +24,14 @@ RUN apk del python3 py3-setuptools make g++ && \
     npm cache clean --force && \
     rm -f .npmrc
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chown -R node:node /app/
 
-EXPOSE 80
+EXPOSE 4000
 
 ENV NODE_ENV=production
-ENV PORT=80
+ENV PORT=4000
 
-# HEALTHCHECK --interval=30s --timeout=10s \
-#   CMD node -e "require('http').get('http://localhost:80/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
-
+USER node
 
 # Start the application directly - no runtime npm access needed
 CMD ["node", "dist/server/app.js"]

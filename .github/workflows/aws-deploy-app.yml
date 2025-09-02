@@ -1,40 +1,82 @@
 name: AWS Deploy App
-
 on:
   workflow_dispatch:
-    inputs:
-      message:
-        description: 'Custom message to display'
-        required: false
-        type: string
-        default: 'Hello from Airo Builder! App Deployment!'
+
+
+permissions:
+  id-token: write # required for artifactory token login
+  contents: read
 
 jobs:
-  hello-world:
+  continuous-integration:
     runs-on:
       group: 8606-awsx64
       labels:
         - self-hosted
 
     steps:
-      - name: Print Environment Info
-        run: |
-          echo "📝 Message: ${{ inputs.message }}"
-          echo "🌿 Branch: ${{ github.ref_name }}"
-          echo "👤 Triggered by: ${{ github.actor }}"
-          echo "⏰ Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
-      - name: Hello World
-        run: |
-          echo "=================================="
-          echo "🎉 ${{ inputs.message }}"
-          echo "=================================="
-          echo "✅ Hello World job completed successfully!"
+      - name: Checkout Codebase
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: System Info
+      # Retrieve Katana application info with the katana-get-app GitHub Action
+      - id: katana-app
+        name: Get Katana App Info
+        uses: gdcorp-actions/katana-get-app@v1
+        with:
+          path: /app
+
+      - name: Get Artifactory Token # This action retrieves the Artifactory token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@f748a0599171a192a2668afee8d0497f7c1069df # v4.5.6
+        env:
+          JF_URL: ${{ vars.JF_URL }} # Stored at the org level so you don't have to worry about it
+        with:
+          oidc-provider-name: github
+  
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }} # Use the token as you'd normally use a token or password
         run: |
-          echo "🖥️  System Information:"
-          echo "OS: $(uname -s)"
-          echo "Architecture: $(uname -m)"
-          echo "Kernel: $(uname -r)"
-          echo "Uptime: $(uptime)"
+          echo "::add-mask::$OIDC_TOKEN"
+          rm -rf app/.npmrc
+          echo "always-auth=true" > app/.npmrc
+          echo "progress=false" >> app/.npmrc
+          echo registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> app/.npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${OIDC_TOKEN}" >> app/.npmrc          
+
+      # Sets up authentication with Amazon ECR in the chosen region. Note that the URL can be obtained from GoDaddy's Golden Containers Registry at `https://gcr.katana.int.gdcorp.tools/`.
+      - name: Golden Container Registry Login
+        run: |
+          aws ecr get-login-password --region us-west-2 | docker login 764525110978.dkr.ecr.us-west-2.amazonaws.com -u AWS --password-stdin
+
+      # Execute the necessary commands to build your application's Docker container image. Place any further build commands under `run:`
+      - name: Build Container
+        run: |
+          docker build --platform linux/amd64 -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} app/
+
+      # Publish the built container image to Katana with the katana-publish-artifact GitHub Action
+      - id: katana-publish
+        name: Publish Katana Artifact
+        uses: gdcorp-actions/katana-publish-artifact@v1
+        with:
+          namespace: ${{ steps.katana-app.outputs.namespace }}
+          app: ${{ steps.katana-app.outputs.app }}
+          image_name: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
+          artifact_kind: ecs
+          artifact_options_json: |
+            {
+              "protocol": "https",
+              "ports": [3443],
+              "healthcheckPath": "/api/health"
+            }
+
+      # Promote the published artifact to the `dev` environment with the katana-promote-artifact GitHub Action
+      - name: Promote to dev Environment
+        uses: gdcorp-actions/katana-promote-artifact@v1
+        with:
+          namespace: ${{ steps.katana-app.outputs.namespace }}
+          app: ${{ steps.katana-app.outputs.app }}
+          environment: dev-private-ecs
+          artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
+
