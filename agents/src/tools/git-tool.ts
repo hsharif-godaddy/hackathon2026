@@ -1,13 +1,27 @@
 import { GitUtils, GitStatus as GitUtilsStatus, GitCommitInfo } from '../utils/git.js';
 import { logger } from '../logging/index.js';
 import { toolGitEvents } from '../logging/events/index.js';
+import { spawn } from 'child_process';
 
 export interface GitToolOptions {
   /** The git operation to perform */
-  operation: 'status' | 'add' | 'commit' | 'diff' | 'log' | 'branch' | 'checkout' | 'merge' | 'pull' | 'push' | 'stash' | 'reset' | 'revert';
+  operation:
+    | 'status'
+    | 'add'
+    | 'commit'
+    | 'diff'
+    | 'log'
+    | 'branch'
+    | 'checkout'
+    | 'merge'
+    | 'pull'
+    | 'push'
+    | 'stash'
+    | 'reset'
+    | 'revert';
   /** Files to operate on (for add, diff, etc.) */
   files?: string[];
-  /** Commit message (for commit operation) */
+  /** Commit message (for commit operation, or to identify commit by message for revert) */
   message?: string;
   /** Branch name (for checkout, merge, etc.) */
   branch?: string;
@@ -15,6 +29,8 @@ export interface GitToolOptions {
   options?: {
     /** Include all files (for add, commit) */
     all?: boolean;
+    /** Commit hash (for revert operation) */
+    shorthash?: string;
     /** Amend last commit (for commit) */
     amend?: boolean;
     /** Force operation (for push, checkout) */
@@ -45,15 +61,10 @@ export interface GitToolResult {
   output?: string;
   /** Git status information */
   status?: {
-    modified: string[];
-    added: string[];
-    deleted: string[];
-    untracked: string[];
-    staged: string[];
-    branch: string;
-    ahead: number;
-    behind: number;
-    isClean: boolean;
+    branch?: string;
+    ahead?: number;
+    behind?: number;
+    isClean?: boolean;
   };
   /** Diff output */
   diff?: string;
@@ -161,9 +172,7 @@ export class GitTool {
           ...logData,
           resultStats: {
             success: result.success,
-            filesAffected: result.status ? 
-              (result.status.modified.length + result.status.added.length + result.status.deleted.length + result.status.staged.length) : 
-              (options.files?.length || 0),
+            filesAffected: options.files?.length || 0,
             ...(result.branches?.length !== undefined && { branchesCount: result.branches.length }),
             ...(result.commits?.length !== undefined && { commitsCount: result.commits.length }),
             executionTime,
@@ -199,11 +208,6 @@ export class GitTool {
           operation: 'status',
           output: 'Not a git repository',
           status: {
-            modified: [],
-            added: [],
-            deleted: [],
-            untracked: [],
-            staged: [],
             branch: 'none',
             ahead: 0,
             behind: 0,
@@ -213,16 +217,11 @@ export class GitTool {
       }
 
       const status = await this.gitUtils.getStatus(appPath);
-      
+
       return {
         success: true,
         operation: 'status',
         status: {
-          modified: [], // Will be populated by parsing status
-          added: [],
-          deleted: [],
-          untracked: [],
-          staged: [],
           branch: status.branch,
           ahead: status.ahead,
           behind: status.behind,
@@ -246,17 +245,17 @@ export class GitTool {
     try {
       const files = options.files || ['.'];
       const result = await this.gitUtils.addFiles(appPath, files);
-      
+
       const toolResult: GitToolResult = {
         success: result.success,
         operation: 'add',
         output: result.success ? `Added files: ${files.join(', ')}` : result.stderr,
       };
-      
+
       if (!result.success) {
         toolResult.error = result.stderr;
       }
-      
+
       return toolResult;
     } catch (error) {
       return {
@@ -273,12 +272,12 @@ export class GitTool {
   private async handleCommit(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
       let message = options.message;
-      
+
       // Auto-generate commit message if requested
       if (options.autoMessage && !message) {
         message = await this.generateCommitMessage(appPath, options.files);
       }
-      
+
       if (!message) {
         return {
           success: false,
@@ -288,17 +287,17 @@ export class GitTool {
       }
 
       const result = await this.gitUtils.commit(appPath, message);
-      
+
       const toolResult: GitToolResult = {
         success: result.success,
         operation: 'commit',
         output: result.success ? `Committed: ${message}` : result.stderr,
       };
-      
+
       if (!result.success) {
         toolResult.error = result.stderr;
       }
-      
+
       return toolResult;
     } catch (error) {
       return {
@@ -314,51 +313,54 @@ export class GitTool {
    */
   private async handleDiff(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
-      // Create git diff command
-      let command = 'git diff';
-      if (options.files && options.files.length > 0) {
-        command += ` ${options.files.join(' ')}`;
-      }
+      // Build git diff arguments array to avoid shell injection
+      const args = ['diff'];
+      
       if (options.options?.verbose) {
-        command += ' --staged';
+        args.push('--staged');
       }
       
-      // Execute using child_process
-      const { spawn } = await import('child_process');
-      const result = await new Promise<{success: boolean; stdout: string; stderr: string}>((resolve) => {
-        let stdout = '';
-        let stderr = '';
-        
-        const child = spawn('sh', ['-c', command], { cwd: appPath });
-        
-        child.stdout?.on('data', (data) => {
-          stdout += data.toString();
-        });
-        
-        child.stderr?.on('data', (data) => {
-          stderr += data.toString();
-        });
-        
-        child.on('close', (code) => {
-          resolve({
-            success: code === 0,
-            stdout: stdout.trim(),
-            stderr: stderr.trim(),
+      if (options.files && options.files.length > 0) {
+        args.push(...options.files);
+      }
+
+      // Execute using child_process with direct git command
+      const result = await new Promise<{ success: boolean; stdout: string; stderr: string }>(
+        (resolve) => {
+          let stdout = '';
+          let stderr = '';
+
+          const child = spawn('git', args, { cwd: appPath });
+
+          child.stdout?.on('data', (data) => {
+            stdout += data.toString();
           });
-        });
-      });
-      
+
+          child.stderr?.on('data', (data) => {
+            stderr += data.toString();
+          });
+
+          child.on('close', (code) => {
+            resolve({
+              success: code === 0,
+              stdout: stdout.trim(),
+              stderr: stderr.trim(),
+            });
+          });
+        }
+      );
+
       const toolResult: GitToolResult = {
         success: result.success,
         operation: 'diff',
         diff: result.stdout || 'No differences found',
         output: result.stdout || 'No differences found',
       };
-      
+
       if (!result.success) {
         toolResult.error = result.stderr;
       }
-      
+
       return toolResult;
     } catch (error) {
       return {
@@ -377,15 +379,18 @@ export class GitTool {
       const count = options.options?.count || 10;
       // Pass options explicitly to ensure we get all commits
       const commits = await this.gitUtils.getCommitHistory(appPath, count);
-      
-      const output = commits.map(commit => 
-        `${commit.shortHash} - ${commit.message} (${commit.author}, ${commit.date.toDateString()})`
-      ).join('\n');
-      
+
+      const output = commits
+        .map(
+          (commit) =>
+            `${commit.shortHash} - ${commit.message} (${commit.author}, ${commit.date.toDateString()})`
+        )
+        .join('\n');
+
       return {
         success: true,
         operation: 'log',
-        commits: commits.map(commit => ({
+        commits: commits.map((commit) => ({
           hash: commit.hash,
           shortHash: commit.shortHash,
           author: commit.author,
@@ -410,15 +415,15 @@ export class GitTool {
     try {
       const branches = await this.gitUtils.listBranches(appPath);
       const currentBranch = await this.gitUtils.getCurrentBranch(appPath);
-      
+
       return {
         success: true,
         operation: 'branch',
         branches,
         currentBranch,
-        output: branches.map(branch => 
-          branch === currentBranch ? `* ${branch}` : `  ${branch}`
-        ).join('\n'),
+        output: branches
+          .map((branch) => (branch === currentBranch ? `* ${branch}` : `  ${branch}`))
+          .join('\n'),
       };
     } catch (error) {
       return {
@@ -448,17 +453,17 @@ export class GitTool {
       } else {
         result = await this.gitUtils.switchBranch(appPath, options.branch);
       }
-      
+
       const toolResult: GitToolResult = {
         success: result.success,
         operation: 'checkout',
         output: result.success ? `Switched to branch: ${options.branch}` : result.stderr,
       };
-      
+
       if (!result.success) {
         toolResult.error = result.stderr;
       }
-      
+
       return toolResult;
     } catch (error) {
       return {
@@ -489,11 +494,124 @@ export class GitTool {
   }
 
   private async handleReset(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
-    return this.handleUnsupportedOperation('reset', 'Git reset operations are not yet supported for safety');
+    return this.handleUnsupportedOperation(
+      'reset',
+      'Git reset operations are not yet supported for safety'
+    );
   }
 
+  /**
+   * Handle git revert - reverts changes introduced by specified commit
+   */
   private async handleRevert(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
-    return this.handleUnsupportedOperation('revert', 'Git revert operations are not yet supported');
+    try {
+      let commitHash = options.options?.shorthash;
+
+      if (!commitHash && options.options?.shorthash) {
+        commitHash = options.options.shorthash;
+      }
+      if (!commitHash && options.options?.count) {
+        try {
+          const count = options.options.count;
+          const commits = await this.gitUtils.getCommitHistory(appPath, count);
+
+          if (commits.length > 0) {
+            const targetCommit = commits[commits.length - 1];
+            if (targetCommit) {
+              commitHash = targetCommit.hash;
+            } else {
+              return {
+                success: false,
+                operation: 'revert',
+                error: 'Could not access target commit',
+              };
+            }
+          } else {
+            return {
+              success: false,
+              operation: 'revert',
+              error: 'No commits found in repository',
+            };
+          }
+        } catch (error) {
+          return {
+            success: false,
+            operation: 'revert',
+            error: `Failed to get commit history: ${error instanceof Error ? error.message : String(error)}`,
+          };
+        }
+      }
+
+      if (!commitHash) {
+        return {
+          success: false,
+          operation: 'revert',
+          error:
+            'Commit hash or reference is required for revert operation. Please provide a commit hash through options.shorthash or options.options.shorthash, or specify the commit number with options.options.count.',
+        };
+      }
+
+      // Create git revert command with appropriate options
+      const args = ['revert', '--no-edit'];
+      if (options.options?.force) {
+        args.push('--no-gpg-sign');
+      }
+      args.push(commitHash);
+      const result = await new Promise<{ success: boolean; stdout: string; stderr: string }>(
+        (resolve) => {
+          let stdout = '';
+          let stderr = '';
+
+          const child = spawn('git', args, { cwd: appPath });
+
+          child.stdout?.on('data', (data) => {
+            stdout += data.toString();
+          });
+
+          child.stderr?.on('data', (data) => {
+            stderr += data.toString();
+          });
+
+          child.on('close', (code) => {
+            resolve({
+              success: code === 0,
+              stdout: stdout.trim(),
+              stderr: stderr.trim(),
+            });
+          });
+        }
+      );
+
+      // Get updated status after revert
+      const status = result.success ? await this.gitUtils.getStatus(appPath) : null;
+
+      const toolResult: GitToolResult = {
+        success: result.success,
+        operation: 'revert',
+        output: result.success ? `Successfully reverted commit: ${commitHash}` : result.stderr,
+      };
+
+      if (status) {
+        toolResult.status = {
+          branch: status.branch,
+          ahead: status.ahead,
+          behind: status.behind,
+          isClean: status.isClean,
+        };
+      }
+
+      if (!result.success) {
+        toolResult.error = result.stderr;
+      }
+
+      return toolResult;
+    } catch (error) {
+      return {
+        success: false,
+        operation: 'revert',
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   private handleUnsupportedOperation(operation: string, message: string): GitToolResult {
@@ -510,7 +628,7 @@ export class GitTool {
   private async generateCommitMessage(appPath: string, files?: string[]): Promise<string> {
     try {
       const status = await this.gitUtils.getStatus(appPath);
-      
+
       if (status.isClean) {
         return 'No changes to commit';
       }
@@ -537,33 +655,33 @@ export class GitTool {
    */
   private formatStatus(status: GitUtilsStatus): string {
     const lines: string[] = [];
-    
+
     lines.push(`On branch ${status.branch}`);
-    
+
     if (status.ahead > 0) {
       lines.push(`Your branch is ahead of 'origin/${status.branch}' by ${status.ahead} commit(s).`);
     }
-    
+
     if (status.behind > 0) {
       lines.push(`Your branch is behind 'origin/${status.branch}' by ${status.behind} commit(s).`);
     }
-    
+
     if (status.isClean) {
       lines.push('Working tree clean');
     } else {
       if (status.stagedFiles > 0) {
         lines.push(`Changes to be committed: ${status.stagedFiles} file(s)`);
       }
-      
+
       if (status.modifiedFiles > 0) {
         lines.push(`Changes not staged for commit: ${status.modifiedFiles} file(s)`);
       }
-      
+
       if (status.untrackedFiles > 0) {
         lines.push(`Untracked files: ${status.untrackedFiles} file(s)`);
       }
     }
-    
+
     return lines.join('\n');
   }
 
@@ -584,8 +702,12 @@ export class GitTool {
         ...(options.options?.force !== undefined && { force: options.options.force }),
         ...(options.options?.hard !== undefined && { hard: options.options.hard }),
         ...(options.options?.count !== undefined && { count: options.options.count }),
-        ...(options.options?.createBranch !== undefined && { createBranch: options.options.createBranch }),
-        ...(options.options?.includeUntracked !== undefined && { includeUntracked: options.options.includeUntracked }),
+        ...(options.options?.createBranch !== undefined && {
+          createBranch: options.options.createBranch,
+        }),
+        ...(options.options?.includeUntracked !== undefined && {
+          includeUntracked: options.options.includeUntracked,
+        }),
         ...(options.options?.verbose !== undefined && { verbose: options.options.verbose }),
         ...(options.autoMessage !== undefined && { autoMessage: options.autoMessage }),
         ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
@@ -598,18 +720,18 @@ export class GitTool {
    */
   formatResult(result: GitToolResult): string {
     const lines: string[] = [];
-    
+
     const statusIcon = result.success ? '✅' : '❌';
     lines.push(`${statusIcon} **Git ${result.operation}**`);
-    
+
     if (result.error) {
       lines.push(`❌ **Error**: ${result.error}`);
     }
-    
+
     if (result.warning) {
       lines.push(`⚠️ **Warning**: ${result.warning}`);
     }
-    
+
     if (result.output) {
       lines.push('');
       lines.push('📤 **Output**:');
@@ -617,7 +739,7 @@ export class GitTool {
       lines.push(result.output);
       lines.push('```');
     }
-    
+
     if (result.diff) {
       lines.push('');
       lines.push('📝 **Diff**:');
@@ -625,25 +747,25 @@ export class GitTool {
       lines.push(result.diff);
       lines.push('```');
     }
-    
+
     if (result.commits && result.commits.length > 0) {
       lines.push('');
       lines.push('📜 **Commit History**:');
-      result.commits.forEach(commit => {
+      result.commits.forEach((commit) => {
         lines.push(`- ${commit.shortHash} - ${commit.message}`);
         lines.push(`  By: ${commit.author} on ${new Date(commit.date).toLocaleDateString()}`);
       });
     }
-    
+
     if (result.branches && result.branches.length > 0) {
       lines.push('');
       lines.push('🌳 **Branches**:');
-      result.branches.forEach(branch => {
+      result.branches.forEach((branch) => {
         const marker = branch === result.currentBranch ? '* ' : '  ';
         lines.push(`${marker}${branch}`);
       });
     }
-    
+
     return lines.join('\n');
   }
 }
