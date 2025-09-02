@@ -72,6 +72,7 @@ function fixBedrockValidationIssues(messages: any[]): any[] {
         }
       } else if (msg.content && msg.content.trim()) {
         // Include assistant message without tool calls if it has content
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { tool_calls, ...msgWithoutToolCalls } = msg;
         fixedMessages.push(msgWithoutToolCalls);
       }

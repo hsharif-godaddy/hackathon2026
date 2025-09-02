@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ImageSearchTool, type ImageSearchDriver, type ImageSearchResult } from '../image-search-tool.js';
 
 // Mock driver for testing

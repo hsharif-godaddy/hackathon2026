@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { GitTool } from '../../tools/git-tool.js';
-import path from 'path';
 
 const router: Router = Router();
 const gitTool = new GitTool();
@@ -90,8 +89,8 @@ router.post('/apps/:id/git/checkout', async (req, res) => {
     const currentBranch = currentBranchResult.currentBranch || 'HEAD';
     console.log(`ℹ️ Git: App ${id} current branch state before checkout: ${currentBranch}`);
     
-    // Create a temporary branch at the specified commit
-    const branchName = `temp-view-${commitHash.substring(0, 7)}`;
+    // Create a temporary branch at the specified commit (not used currently)
+    // const branchName = `temp-view-${commitHash.substring(0, 7)}`;
     
     // Checkout the specific commit
     const result = await gitTool.executeGitOperation(app.path, {

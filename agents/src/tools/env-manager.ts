@@ -120,7 +120,7 @@ export class EnvManager {
 
       // Process each variable
       for (const { key, value } of variables) {
-        if (currentEnv.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(currentEnv, key)) {
           if (currentEnv[key] !== value) {
             updated.push(key);
             currentEnv[key] = value;

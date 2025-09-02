@@ -20,6 +20,8 @@ interface JWTPayload {
   [key: string]: unknown;
 }
 
+
+
 interface JWTHeader {
   kid?: string;
   alg?: string;
@@ -98,7 +100,8 @@ export class JWTValidator {
     }
   }
 
-  private async fetchPublicKeyFromSSO(kid: string): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async fetchPublicKeyFromSSO(kid: string): Promise<any | null> {
     try {
       const ssoUrl = `https://sso.test-godaddy.com/v1/api/key/${kid}`;
       
@@ -184,6 +187,7 @@ export class JWTValidator {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private verifySignatureWithJWK(message: string, signature: string, jwk: any): boolean {
     try {
       const publicKeyPem = this.jwkToPem(jwk);
@@ -201,6 +205,7 @@ export class JWTValidator {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private jwkToPem(jwk: any): string | null {
     try {
       if (jwk.kty !== 'RSA') {

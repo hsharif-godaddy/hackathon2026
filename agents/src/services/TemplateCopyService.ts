@@ -14,7 +14,7 @@ import path from 'path';
 import { extractTemplateVersion } from '../utils/template-version.js';
 import { appTemplateEvents, appDirectoryEvents } from '../logging/events/index.js';
 import type { Logger } from '../logging/index.js';
-import { safeJoin, safeJoinWithOptions, safeResolve, createSafePathBuilder } from '../utils/safe-path.js';
+import { safeJoinWithOptions, safeResolve, createSafePathBuilder } from '../utils/safe-path.js';
 
 /** Default template directory when none is specified in environment or parameters */
 const DEFAULT_TEMPLATE_DIR = 'app-templates/v3';
@@ -175,13 +175,13 @@ export class TemplateCopyService {
    * Perform the actual file copying with filtering
    */
   private performTemplateCopy(templatePath: string, appPath: string): void {
-    // Create safe path builders for validation
-    const templatePathBuilder = createSafePathBuilder(templatePath);
-    const appPathBuilder = createSafePathBuilder(appPath);
+    // Create safe path builders for validation (currently unused)
+    // const templatePathBuilder = createSafePathBuilder(templatePath);
+    // const appPathBuilder = createSafePathBuilder(appPath);
 
     cpSync(templatePath, appPath, { 
       recursive: true,
-      filter: (src, dest) => {
+      filter: (src, _dest) => {
         // Use safe path operations to get relative path
         try {
           // Validate that src is within template directory

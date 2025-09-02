@@ -114,11 +114,11 @@ function sendError(ws: WebSocket, error: string, additionalData: any = {}) {
 }
 
 /**
- * Send status message
+ * Send status message (currently unused)
  */
-function sendStatus(ws: WebSocket, status: string, message?: string) {
-  sendWSMessage(ws, 'status', { status, message });
-}
+// function sendStatus(ws: WebSocket, status: string, message?: string) {
+//   sendWSMessage(ws, 'status', { status, message });
+// }
 
 /**
  * Send content message
@@ -619,7 +619,7 @@ function createExecutionContext(
 /**
  * Handle special commands (placeholder for future extensions)
  */
-async function handleSpecialCommands(context: ChatContext): Promise<boolean> {
+async function handleSpecialCommands(_context: ChatContext): Promise<boolean> {
   // No special commands currently implemented
   return false;
 }
@@ -727,9 +727,9 @@ function handleChatError(ws: WebSocket, error: any, agentId: string, startTime?:
 /**
  * Utility functions for tracing
  */
-function traceWebSocketEvent(event: string, agentId: string, data: any) {
-  globalTracer.trace({ type: 'websocket', data: { event, agentId, ...data } });
-}
+// function traceWebSocketEvent(event: string, agentId: string, data: any) {
+//   globalTracer.trace({ type: 'websocket', data: { event, agentId, ...data } });
+// }
 
 function traceDebug(message: string, agentId: string, threadId: string, data?: any) {
   globalTracer.trace({ type: 'debug', agentId, threadId, data: { message, ...data } });
@@ -904,8 +904,9 @@ async function executeToolCallWithSegments(
 }
 
 /**
- * Execute a single tool call and return the result
+ * Execute a single tool call and return the result (currently unused)
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function executeToolCall(
   context: ChatContext,
   toolCall: any,
@@ -913,7 +914,7 @@ async function executeToolCall(
 ): Promise<{ message: any }> {
   const { ws, executionContext } = context;
   const toolStartTime = Date.now();
-  
+
   // Track tool call for database
   const toolCallRecord = {
     id: toolCall.id,
@@ -923,7 +924,7 @@ async function executeToolCall(
     status: 'running'
   };
   toolCalls.push(toolCallRecord);
-  
+
   // Send tool start event
   sendToolStart(ws, toolCall);
 
@@ -932,7 +933,7 @@ async function executeToolCall(
     const result = await executeToolFunction(toolCall.function.name, args, executionContext);
     const toolEndTime = Date.now();
     const duration = toolEndTime - toolStartTime;
-    
+
     // Update tool call record
     const toolIndex = toolCalls.findIndex(tc => tc.id === toolCall.id);
     if (toolIndex >= 0) {
@@ -944,7 +945,7 @@ async function executeToolCall(
         status: 'success'
       };
     }
-    
+
     // Send tool completion event
     sendToolComplete(ws, toolCall, result, toolStartTime);
 
@@ -960,7 +961,7 @@ async function executeToolCall(
     const toolEndTime = Date.now();
     const duration = toolEndTime - toolStartTime;
     const errorMessage = `Error executing ${toolCall.function.name}: ${error instanceof Error ? error.message : String(error)}`;
-    
+
     // Update tool call record with error
     const toolIndex = toolCalls.findIndex(tc => tc.id === toolCall.id);
     if (toolIndex >= 0) {
@@ -972,7 +973,7 @@ async function executeToolCall(
         status: 'error'
       };
     }
-    
+
     // Send tool error event
     sendToolComplete(ws, toolCall, errorMessage, toolStartTime, true);
 
@@ -1050,27 +1051,27 @@ async function handleLLMStreaming(
 
 
 /**
- * Update agent message in database
+ * Update agent message in database (currently unused)
  */
-async function updateAgentMessage(
-  context: ChatContext,
-  agentMessage: any,
-  content: string,
-  toolCalls: any[] = [],
-  isStreaming = false
-) {
-  if (!agentMessage) return;
-  
-  try {
-    await context.conversationRepo.updateMessage(agentMessage.id, {
-      content,
-      ...(toolCalls.length > 0 && { toolCalls }),
-      metadata: { isStreaming }
-    });
-  } catch (error) {
-    console.warn('Failed to update message in database:', error);
-  }
-}
+// async function updateAgentMessage(
+//   context: ChatContext,
+//   agentMessage: any,
+//   content: string,
+//   toolCalls: any[] = [],
+//   isStreaming = false
+// ) {
+//   if (!agentMessage) return;
+//   
+//   try {
+//     await context.conversationRepo.updateMessage(agentMessage.id, {
+//       content,
+//       ...(toolCalls.length > 0 && { toolCalls }),
+//       metadata: { isStreaming }
+//     });
+//   } catch (error) {
+//     console.warn('Failed to update message in database:', error);
+//   }
+// }
 
 /**
  * Validate messages array for Bedrock compatibility
@@ -1140,6 +1141,7 @@ function fixBedrockValidationIssues(messages: any[]): any[] {
         }
       } else if (msg.content && msg.content.trim()) {
         // Include assistant message without tool calls if it has content
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { tool_calls, ...msgWithoutToolCalls } = msg;
         fixedMessages.push(msgWithoutToolCalls);
       }

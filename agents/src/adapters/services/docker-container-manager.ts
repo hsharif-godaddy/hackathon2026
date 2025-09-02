@@ -1,7 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { getDatabase } from '../../database/connection.js';
 import { logger } from '../../logging/index.js';
 import { dockerContainerEvents } from '../../logging/events/index.js';
@@ -42,7 +42,7 @@ export class DockerContainerManager {
       // Check for v2 indicators (Next.js with Turbopack)
       const packageJsonPath = path.join(appPath, 'package.json');
       if (existsSync(packageJsonPath)) {
-        const packageJson = JSON.parse(require('fs').readFileSync(packageJsonPath, 'utf8'));
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
         if (packageJson.scripts?.dev?.includes('--turbopack')) {
           return 'v2';
         }
@@ -304,7 +304,6 @@ export class DockerContainerManager {
       return containerInfo;
 
     } catch (error: any) {
-      const duration = Date.now() - startTime;
       
       // Log container creation failure
       dockerContainerEvents.failure(logger, error, {
@@ -791,7 +790,6 @@ export class DockerContainerManager {
    * Stop all running containers
    */
   async stopAllServers(): Promise<number> {
-    const startTime = Date.now();
     let stoppedCount = 0;
     
     // Get all running containers

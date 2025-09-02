@@ -625,7 +625,7 @@ export class ProcessService {
    * Cleanup all running processes gracefully
    */
   async cleanup(): Promise<void> {
-    const processCount = this.runningProcesses.size;
+    // const processCount = this.runningProcesses.size;
     
     appCleanupEvents.directoryBegin(this.logger, {
       appId: 'system'

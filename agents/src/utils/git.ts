@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { join, resolve } from 'path';
+import { resolve } from 'path';
 import { existsSync } from 'fs';
 
 export interface GitCommandOptions {
@@ -188,7 +188,7 @@ export class GitUtils {
     
     // First, try to find the default branch to ensure we see all history
     // regardless of what commit is currently checked out
-    let branchOrRef = '--all'; // Default to showing all branches
+    const branchOrRef = '--all'; // Default to showing all branches
     
     // Execute the log command using the branch or ref
     const result = await this.executeGitCommand(

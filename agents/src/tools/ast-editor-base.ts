@@ -9,9 +9,9 @@ import { translateDockerPath } from '../utils/path-helper.js';
 import { logger } from '../logging/index.js';
 import { toolAstEditEvents } from '../logging/events/index.js';
 
-// @ts-ignore - Handle ES module default exports
+// @ts-expect-error - Handle ES module default exports
 const traverse = _traverse.default || _traverse;
-// @ts-ignore - Handle ES module default exports  
+// @ts-expect-error - Handle ES module default exports  
 const generate = _generate.default || _generate;
 
 export interface BaseEditContext {
@@ -125,7 +125,7 @@ export abstract class ASTEditorBase {
   /**
    * Generate commit message for the changes (optional, can be overridden)
    */
-  protected generateCommitMessage(changes: any, request: any): string {
+  protected generateCommitMessage(changes: any, _request: any): string {
     return `AST edit: ${JSON.stringify(changes)}`;
   }
 

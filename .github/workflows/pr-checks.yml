@@ -1,0 +1,82 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  id-token: write # required for artifactory token login
+  contents: read
+
+jobs:
+  lint-and-build:
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+
+    strategy:
+      matrix:
+        package: [agents, app]
+        include:
+          - package: agents
+            working-directory: ./agents
+            node-version: '22.12'
+          - package: app
+            working-directory: ./app
+            node-version: '22.12'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@f748a0599171a192a2668afee8d0497f7c1069df
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "ARTIFACTORY_NPM_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Configure pnpm registry
+        working-directory: ${{ matrix.working-directory }}
+        run: |
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.working-directory }}
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            echo "📦 Installing with pnpm (lock file present)"
+            pnpm install --frozen-lockfile
+          else
+            echo "📦 Installing with pnpm (no lock file)"
+            pnpm install
+          fi
+
+      - name: Run linting
+        run: pnpm run lint
+        working-directory: ${{ matrix.working-directory }}
+
+      - name: Run build
+        run: pnpm run build
+        working-directory: ${{ matrix.working-directory }}
+

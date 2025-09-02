@@ -115,7 +115,7 @@ class DatabaseManager {
   }
 
   // Helper method to run queries
-  public run(sql: string, params: any[] = []): Database.RunResult {
+  public run(sql: string, params: unknown[] = []): Database.RunResult {
     try {
       const stmt = this.db.prepare(sql);
       return stmt.run(...params);
@@ -126,7 +126,7 @@ class DatabaseManager {
   }
 
   // Helper method to get single row
-  public get<T = any>(sql: string, params: any[] = []): T | undefined {
+  public get<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T | undefined {
     try {
       const stmt = this.db.prepare(sql);
       return stmt.get(...params) as T | undefined;
@@ -137,7 +137,7 @@ class DatabaseManager {
   }
 
   // Helper method to get all rows
-  public all<T = any>(sql: string, params: any[] = []): T[] {
+  public all<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {
     try {
       const stmt = this.db.prepare(sql);
       return stmt.all(...params) as T[];

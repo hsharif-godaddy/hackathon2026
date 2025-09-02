@@ -47,7 +47,7 @@ router.get('/:id/container/status', async (req: Request, res: Response) => {
 router.get('/:id/container/logs', async (req: Request, res: Response) => {
   try {
     const appId = req.params.id;
-    const lines = parseInt(req.query.lines as string) || 100;
+    // const lines = parseInt(req.query.lines as string) || 100;
     
     if (!appId) {
       return res.status(400).json({ error: 'App ID is required' });

@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import { logger } from '../logging/index.js';
 import { toolMySqlEvents } from '../logging/events/index.js';
 
@@ -295,7 +295,7 @@ export class MySQLTool {
       connection = await this.createConnection(options);
       
       let query = 'SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME NOT IN (?, ?, ?, ?)';
-      let params: string[] = ['information_schema', 'performance_schema', 'mysql', 'sys'];
+      const params: string[] = ['information_schema', 'performance_schema', 'mysql', 'sys'];
       
       // If userId is provided, filter for user's databases
       if (userId) {

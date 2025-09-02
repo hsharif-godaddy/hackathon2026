@@ -8,11 +8,8 @@ import type {
   ProcessEventData,
   FileEventData,
   DurationInfo, 
-  ResourceUsage, 
   ErrorContext,
   NetworkInfo,
-  LifecycleState,
-  ResourceState,
   OperationType
 } from './base.js';
 

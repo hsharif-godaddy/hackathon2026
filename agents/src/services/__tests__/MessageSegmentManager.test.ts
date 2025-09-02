@@ -20,7 +20,7 @@ describe('MessageSegmentManager', () => {
 
   it('should maintain chronological order of content and tool calls', () => {
     // Add initial content
-    const content1 = segmentManager.addContentSegment('I will help you with that.');
+    segmentManager.addContentSegment('I will help you with that.');
     
     // Add a tool call
     const toolCall: ToolCall = {
@@ -33,7 +33,7 @@ describe('MessageSegmentManager', () => {
     const toolSegment = segmentManager.addToolCallSegment(toolCall);
     
     // Add more content after tool call
-    const content2 = segmentManager.addContentSegment('Here are the files I found:');
+    segmentManager.addContentSegment('Here are the files I found:');
     
     // Update tool call with results
     segmentManager.updateToolCallSegment(toolSegment.id, {
@@ -43,7 +43,7 @@ describe('MessageSegmentManager', () => {
     });
     
     // Add final content
-    const content3 = segmentManager.addContentSegment('The files have been listed successfully.');
+    segmentManager.addContentSegment('The files have been listed successfully.');
 
     const segments = segmentManager.getSegments();
     

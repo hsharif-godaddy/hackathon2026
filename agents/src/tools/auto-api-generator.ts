@@ -1,9 +1,7 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
+import { readFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import mysql from 'mysql2/promise';
 import { FileEditTool } from './file-edit.js';
-import { translateDockerPath } from '../utils/path-helper.js';
 
 export interface AutoAPIGeneratorOptions {
   /** Operation type */
@@ -390,7 +388,7 @@ export class AutoAPIGenerator {
    */
   private generateHonoAPI(table: TableSchema, apiPrefix: string, operations: ('create' | 'read' | 'read_all' | 'update' | 'delete')[]): string {
     const tableName = table.name;
-    const className = this.toPascalCase(tableName);
+    // const className = this.toPascalCase(tableName);
     const primaryKey = table.primaryKey || 'id';
 
     let content = `import { Hono } from 'hono';

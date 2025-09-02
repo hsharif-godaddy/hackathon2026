@@ -154,7 +154,7 @@ export class AppRepository {
         appName
       });
       
-      const { templateVersion, templatePath } = templateResult;
+      const { templateVersion } = templateResult;
 
       // Save app to database BEFORE running setup (reserves the port)
       // Use a transaction to ensure atomicity
@@ -457,8 +457,8 @@ export class AppRepository {
         cwd: appPath,
         stdio: 'pipe'
       });
-
-      await new Promise<void>((resolve, reject) => {
+      
+      await new Promise<void>((resolve, _reject) => {
         configProcess.on('close', (code) => {
           if (code === 0) {
             this.logger.debug('app.setup.registry_configured', {
@@ -495,16 +495,13 @@ export class AppRepository {
         stdio: 'pipe'
       });
 
-      // Capture output for logging
-      let stdout = '';
-      let stderr = '';
-
-      installProcess.stdout?.on('data', (data) => {
-        stdout += data.toString();
+      // Capture output for logging (not used but kept for potential future logging)
+      installProcess.stdout?.on('data', (_data) => {
+        // stdout logging could be added here
       });
 
-      installProcess.stderr?.on('data', (data) => {
-        stderr += data.toString();
+      installProcess.stderr?.on('data', (_data) => {
+        // stderr logging could be added here
       });
 
       // Wait for install to complete

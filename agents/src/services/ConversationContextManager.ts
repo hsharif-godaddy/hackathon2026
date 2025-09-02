@@ -192,7 +192,7 @@ export class ConversationContextManager {
     
     let currentAssistantMessage: LLMMessage | null = null;
     let contentAccumulator = '';
-    let toolCallsAccumulator: any[] = [];
+    const toolCallsAccumulator: any[] = [];
     
     for (const segment of sortedSegments) {
       if (segment.type === 'content' && segment.content) {

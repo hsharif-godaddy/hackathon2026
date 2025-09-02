@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import { join, resolve, basename, dirname } from 'path';
+import { join, resolve, basename } from 'path';
 import { existsSync } from 'fs';
 import { translateDockerPath } from '../utils/path-helper.js';
 
@@ -37,7 +37,7 @@ export interface ReadFileResult {
  */
 function isFileBlocked(filePath: string): { blocked: boolean; reason?: string } {
   const fileName = basename(filePath);
-  const dirPath = dirname(filePath);
+  // const dirPath = dirname(filePath);
   const normalizedPath = filePath.replace(/\\/g, '/');
 
   // Lock files (auto-generated dependency trees)

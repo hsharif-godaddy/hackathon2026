@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Logger, log, createTimer } from '../index.js';
+import { Logger, log } from '../index.js';
 import { TestHandler } from '../handlers/TestHandler.js';
 import { LoggingPresets } from '../config.js';
 

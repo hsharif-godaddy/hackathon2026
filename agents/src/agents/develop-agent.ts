@@ -1,5 +1,6 @@
 import { BaseAgent } from '../base/index.js';
 import type { AgentConfig, AgentExecutionContext } from '../base/index.js';
+import { readFileSync } from 'fs';
 
 /**
  * Develop Agent - AI developer for building web applications
@@ -204,8 +205,7 @@ When users provide ambiguous instructions like "edit this" or "change the color 
    */
   async detectPortConfiguration(): Promise<any> {
     try {
-      const fs = require('fs');
-      const portConfig = JSON.parse(fs.readFileSync('.dev-ports.json', 'utf8'));
+      const portConfig = JSON.parse(readFileSync('.dev-ports.json', 'utf8'));
       return portConfig;
     } catch {
       return {};
@@ -261,7 +261,7 @@ import api from './lib/api-client';
   /**
    * Generate API client code with Vite proxy pattern
    */
-  private generateApiClientCode(backendPort: number): string {
+  private generateApiClientCode(_backendPort: number): string {
     return `// API Client using Vite proxy pattern
 // ALWAYS use relative /api paths - proxied by Vite to backend
 import { API_BASE_URL } from '@/shared/constants';
@@ -324,7 +324,7 @@ export default new ApiClient();`;
   /**
    * Generate React hooks for database operations
    */
-  private generateDatabaseHooksCode(backendPort: number): string {
+  private generateDatabaseHooksCode(_backendPort: number): string {
     return `import { useState, useEffect } from 'react';
 import { API_BASE_URL } from '@/shared/constants';
 

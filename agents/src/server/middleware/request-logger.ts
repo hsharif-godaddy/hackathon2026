@@ -37,14 +37,15 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
     const duration = Date.now() - start;
     const contentLength = res.get('Content-Length');
     
-    const responseData = {
-      ...requestData,
-      responseStats: {
-        statusCode: res.statusCode,
-        contentLength: contentLength ? parseInt(contentLength, 10) : undefined,
-        duration
-      }
-    };
+    // Response data available for potential logging
+    // const responseData = {
+    //   ...requestData,
+    //   responseStats: {
+    //     statusCode: res.statusCode,
+    //     contentLength: contentLength ? parseInt(contentLength, 10) : undefined,
+    //     duration
+    //   }
+    // };
     
     // Log success or error based on status code
     if (res.statusCode >= 400) {

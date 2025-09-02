@@ -6,7 +6,7 @@ import { ReadFileTool, ReadFileOptions } from './read-file.js';
 import { GrepTool, GrepOptions, GrepOptionsSchema } from './grep-tool.js';
 import { MySQLTool, MySQLToolOptions } from './mysql-tool.js';
 import { ServerManagementTool, ServerStatusOptions, RestartServerOptions, StopServerOptions } from './server-management-tool.js';
-import { EnvManager, createEnvManager } from './env-manager.js';
+import { createEnvManager } from './env-manager.js';
 import { createMySQLResponseFormatter } from './mysql-response-formatter.js';
 import { AutoAPIGenerator, AutoAPIGeneratorOptions } from './auto-api-generator.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
@@ -25,7 +25,6 @@ const terminalTool = new TerminalTool();
 const fileEditTool = new FileEditTool();
 const gitTool = new GitTool();
 const readFileTool = new ReadFileTool();
-const grepTool = new GrepTool();
 const mysqlTool = new MySQLTool();
 const serverTool = new ServerManagementTool();
 const autoAPIGenerator = new AutoAPIGenerator();
@@ -757,7 +756,7 @@ async function executeDirectoryListing(
 
   // Get agent-specific configuration for directory_listing tool
   const agentId = context.metadata?.agentId as string;
-  let agentSpecificOptions = { ...options };
+  const agentSpecificOptions = { ...options };
   
   if (agentId) {
     const agentConfig = agentRegistry.getAgentConfig(agentId);
@@ -926,74 +925,75 @@ async function executeReadFile(
 /**
  * Execute the Getty image search tool
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function executeGettyImage(
   options: { phrase: string; page?: number; pageSize?: number; graphicalStyles?: string; sortOrder?: string },
   context: AgentExecutionContext
 ): Promise<string> {
   const { phrase, page, pageSize, graphicalStyles, sortOrder } = options;
-  
+
   if (!phrase || typeof phrase !== 'string' || phrase.trim().length === 0) {
     throw new Error('A valid search phrase is required');
   }
-  
+
   // Get appId from context metadata
   const appId = context.metadata?.appId as string;
   if (!appId) {
     throw new Error('App ID is required for Getty image search and is not available in context');
   }
-  
+
   // Track tool execution separately
   await trackToolExecution('getty_image', context, phrase.length);
-  
+
   const gettyOptions: GettyImageOptions = {
     phrase
   };
-  
+
   if (page !== undefined) gettyOptions.page = page;
   if (pageSize !== undefined) gettyOptions.pageSize = pageSize;
   if (graphicalStyles !== undefined) gettyOptions.graphicalStyles = graphicalStyles;
   if (sortOrder !== undefined) gettyOptions.sortOrder = sortOrder;
-  
+
   const result = await findGettyImage(gettyOptions);
-  
+
   if (!result.success || !result.images || result.images.length === 0) {
     throw new Error(result.error || 'No images found matching your search criteria');
   }
-  
+
   // Get the first image from the results
   const image = result.images[0];
-  
+
   if (!image) {
     throw new Error('No image data found in Getty response');
   }
-  
+
   // Get the best quality URL available
   const imageUrl = image.urls.highRes || image.urls.standard || image.urls.preview || image.urls.thumbnail;
-  
+
   if (!imageUrl) {
     throw new Error('No suitable image URL found in Getty response');
   }
-  
+
   // Format the dimensions if available
   let dimensionsText = '';
   if (image.dimensions && image.dimensions.width && image.dimensions.height) {
     dimensionsText = ` (${image.dimensions.width}x${image.dimensions.height})`;
   }
-  
+
   // Create a markdown response with image info
   let response = `![${phrase}](${imageUrl})\n\n`;
   response += `Getty Image ID: ${image.id}${dimensionsText}\n`;
-  
+
   // Include thumbnail URL if available
   if (image.urls.thumbnail) {
     response += `Thumbnail URL: ${image.urls.thumbnail}\n`;
   }
-  
+
   // Include total results count if available
   if (result.totalResults) {
     response += `Found ${result.totalResults} total images matching your search.`;
   }
-  
+
   return response;
 }
 
@@ -1368,7 +1368,7 @@ async function executeAutoAPIGenerator(
  */
 async function executeAppPlan(
   options: AppPlanToolOptions,
-  context: AgentExecutionContext
+  _context: AgentExecutionContext
 ): Promise<string> {
   try {
     const result = await appPlanTool.execute(options);

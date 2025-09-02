@@ -86,15 +86,16 @@ function createHandlers(config: LoggingEnvironmentConfig): LogHandler[] {
   const handlers: LogHandler[] = [];
 
   switch (config.format) {
-    case 'json':
+    case 'json': {
       const productionOptions: { output?: NodeJS.WriteStream; errorOutput?: NodeJS.WriteStream } = {};
       if (config.outputStream) productionOptions.output = config.outputStream;
       if (config.errorStream) productionOptions.errorOutput = config.errorStream;
       handlers.push(new ProductionHandler(productionOptions));
       break;
+    }
       
     case 'dev':
-    case 'pretty':
+    case 'pretty': {
       const devOptions: { 
         expandThreshold?: number; 
         showTimestamps?: boolean; 
@@ -107,6 +108,7 @@ function createHandlers(config: LoggingEnvironmentConfig): LogHandler[] {
       if (config.colorize !== undefined) devOptions.colorize = config.colorize;
       handlers.push(new DevelopmentHandler(devOptions));
       break;
+    }
       
     default:
       // Auto-detect based on environment

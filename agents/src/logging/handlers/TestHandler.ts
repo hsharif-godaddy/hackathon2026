@@ -106,22 +106,19 @@ export class TestHandler implements LogHandler {
         return;
       }
 
-      let timeout: NodeJS.Timeout;
-      let checkInterval: NodeJS.Timeout;
-
       const cleanup = () => {
         if (timeout) clearTimeout(timeout);
         if (checkInterval) clearInterval(checkInterval);
       };
 
       // Set timeout
-      timeout = setTimeout(() => {
+      const timeout = setTimeout(() => {
         cleanup();
         reject(new Error(`Timeout waiting for log event after ${timeoutMs}ms`));
       }, timeoutMs);
 
       // Check for event periodically
-      checkInterval = setInterval(() => {
+      const checkInterval = setInterval(() => {
         const event = this.events.find(predicate);
         if (event) {
           cleanup();

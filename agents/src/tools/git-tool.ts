@@ -1,4 +1,4 @@
-import { GitUtils, GitStatus as GitUtilsStatus, GitCommitInfo } from '../utils/git.js';
+import { GitUtils, GitStatus as GitUtilsStatus } from '../utils/git.js';
 import { logger } from '../logging/index.js';
 import { toolGitEvents } from '../logging/events/index.js';
 import { spawn } from 'child_process';
@@ -199,7 +199,7 @@ export class GitTool {
   /**
    * Handle git status
    */
-  private async handleStatus(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+  private async handleStatus(appPath: string, _options: GitToolOptions): Promise<GitToolResult> {
     try {
       const isRepo = await this.gitUtils.isGitRepository(appPath);
       if (!isRepo) {
@@ -411,7 +411,7 @@ export class GitTool {
   /**
    * Handle git branch
    */
-  private async handleBranch(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+  private async handleBranch(appPath: string, _options: GitToolOptions): Promise<GitToolResult> {
     try {
       const branches = await this.gitUtils.listBranches(appPath);
       const currentBranch = await this.gitUtils.getCurrentBranch(appPath);
@@ -477,23 +477,23 @@ export class GitTool {
   /**
    * Handle other git operations (simplified implementations)
    */
-  private async handleMerge(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+  private async handleMerge(_appPath: string, _options: GitToolOptions): Promise<GitToolResult> {
     return this.handleUnsupportedOperation('merge', 'Git merge operations are not yet supported');
   }
 
-  private async handlePull(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+  private async handlePull(_appPath: string, _options: GitToolOptions): Promise<GitToolResult> {
     return this.handleUnsupportedOperation('pull', 'Git pull operations are not yet supported');
   }
 
-  private async handlePush(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+  private async handlePush(_appPath: string, _options: GitToolOptions): Promise<GitToolResult> {
     return this.handleUnsupportedOperation('push', 'Git push operations are not yet supported');
   }
 
-  private async handleStash(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+  private async handleStash(_appPath: string, _options: GitToolOptions): Promise<GitToolResult> {
     return this.handleUnsupportedOperation('stash', 'Git stash operations are not yet supported');
   }
 
-  private async handleReset(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+  private async handleReset(_appPath: string, _options: GitToolOptions): Promise<GitToolResult> {
     return this.handleUnsupportedOperation(
       'reset',
       'Git reset operations are not yet supported for safety'
@@ -625,7 +625,7 @@ export class GitTool {
   /**
    * Generate a commit message based on recent changes
    */
-  private async generateCommitMessage(appPath: string, files?: string[]): Promise<string> {
+  private async generateCommitMessage(appPath: string, _files?: string[]): Promise<string> {
     try {
       const status = await this.gitUtils.getStatus(appPath);
 

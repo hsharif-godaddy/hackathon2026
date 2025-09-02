@@ -11,10 +11,10 @@
  * - Error handling and edge cases
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AppRepository } from '../AppRepository.js';
 import { nanoid } from 'nanoid';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, rmSync } from 'fs';
 import path from 'path';
 import type { App, CreateAppRequest } from '../../schema.js';
 
@@ -307,7 +307,7 @@ describe('AppRepository', () => {
     });
 
     it('should not initialize twice', async () => {
-      const mockStatement = mockDb.prepare.mockReturnValue({
+      mockDb.prepare.mockReturnValue({
         all: vi.fn().mockReturnValue([]),
       });
 

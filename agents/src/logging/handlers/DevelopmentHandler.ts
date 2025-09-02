@@ -331,7 +331,7 @@ export class DevelopmentHandler implements LogHandler {
 
   private formatNodeModulesStackLine(line: string): string {
     // Simplify node_modules paths - just show package name and function
-    const match = line.match(/at\s+(.+?)\s+\(.+\/node_modules\/([^\/]+)/);
+    const match = line.match(/at\s+(.+?)\s+\(.+\/node_modules\/([^/]+)/);
     if (match) {
       const [, functionName, packageName] = match;
       return `${functionName} (from ${packageName})`;

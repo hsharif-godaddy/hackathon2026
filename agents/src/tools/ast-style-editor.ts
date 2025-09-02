@@ -1,5 +1,4 @@
 import * as t from '@babel/types';
-import { relative } from 'path';
 import { ASTEditorBase, BaseEditContext, BaseEditResult } from './ast-editor-base.js';
 import { logger } from '../logging/index.js';
 
@@ -164,12 +163,12 @@ export class ASTStyleEditor extends ASTEditorBase {
     }
     
     // Find existing style attribute
-    let styleAttr = openingElement.attributes.find(
+    const styleAttr = openingElement.attributes.find(
       (attr: any) => this.t.isJSXAttribute(attr) && attr.name.name === 'style'
     ) as t.JSXAttribute | undefined;
     
     // Parse existing styles or create new object
-    let styleProperties: Record<string, string> = {};
+    const styleProperties: Record<string, string> = {};
     
     if (styleAttr && this.t.isJSXExpressionContainer(styleAttr.value)) {
       const expr = styleAttr.value.expression;
@@ -291,12 +290,12 @@ export class ASTStyleEditor extends ASTEditorBase {
     currentClassName: string,
     property: string,
     value: string,
-    newStyle?: string
+    _newStyle?: string
   ): string {
     const classes = currentClassName.split(/\s+/).filter(Boolean);
     
     switch (property) {
-      case 'fontSize':
+      case 'fontSize': {
         // Replace existing font size classes while maintaining order
         const fontSizePattern = /^text-(xs|sm|base|lg|xl|2xl|3xl|4xl)$/;
         let replacedFontSize = false;
@@ -313,42 +312,48 @@ export class ASTStyleEditor extends ASTEditorBase {
           updatedClasses.unshift(value);
         }
         return updatedClasses.join(' ');
+      }
         
-      case 'fontWeight':
+      case 'fontWeight': {
         // For font weight, we rely on inline styles now, so no className changes needed
         return currentClassName;
+      }
         
       case 'fontStyle':
         // For font style (italic), we rely on inline styles now, so no className changes needed
         return currentClassName;
         
-      case 'color':
+      case 'color': {
         // Remove existing text color classes (including responsive and state variants)
         const filteredColor = classes.filter(c => !c.match(/^(\w+:)*text-\w+-\d+$/));
         // We now use inline styles for colors, so don't add Tailwind classes
         return filteredColor.join(' ');
+      }
         
-      case 'backgroundColor':
+      case 'backgroundColor': {
         // Remove existing background color classes
         const filteredBg = classes.filter(c => !c.match(/^bg-\w+-\d+$/) && c !== 'bg-transparent');
         // We now use inline styles for background colors, so don't add Tailwind classes
         return filteredBg.join(' ');
+      }
         
-      case 'marginBottom':
+      case 'marginBottom': {
         // Remove existing margin bottom classes
         const filteredMb = classes.filter(c => !c.startsWith('mb-'));
         if (value && value.startsWith('mb-')) {
           filteredMb.push(value);
         }
         return filteredMb.join(' ');
+      }
         
-      case 'padding':
+      case 'padding': {
         // Remove existing padding classes
         const filteredP = classes.filter(c => !c.startsWith('p-'));
         if (value && value.startsWith('p-')) {
           filteredP.push(value);
         }
         return filteredP.join(' ');
+      }
         
       default:
         return currentClassName;

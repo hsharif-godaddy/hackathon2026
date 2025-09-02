@@ -1,5 +1,4 @@
 import { spawn } from 'child_process';
-import path from 'path';
 import net from 'net';
 import { nanoid } from 'nanoid';
 import { getDatabase } from '../../database/connection.js';

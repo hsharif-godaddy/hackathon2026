@@ -1,6 +1,6 @@
 import { Router, IRouter } from 'express';
 import { AgentRegistry } from '../../registry/index.js';
-import { NotFoundError, BadRequestError } from '../middleware/index.js';
+import { NotFoundError } from '../middleware/index.js';
 
 const router: IRouter = Router();
 const registry = AgentRegistry.getInstance();

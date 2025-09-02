@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { GrepTool, GrepOptions, GrepResult, Match } from '../grep-tool';
+import { GrepTool, GrepOptions, GrepResult } from '../grep-tool';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { glob } from 'glob';

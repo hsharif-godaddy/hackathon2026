@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { AutoAPIGenerator, AutoAPIGeneratorOptions, AutoAPIGeneratorResult, TableSchema, ColumnInfo } from '../auto-api-generator';
+import { AutoAPIGenerator, AutoAPIGeneratorOptions, TableSchema } from '../auto-api-generator';
 import mysql from 'mysql2/promise';
 import { readFile } from 'fs/promises';
 

@@ -9,7 +9,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { GrepTool, GrepOptions } from '../grep-tool';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { tmpdir } from 'os';
+// import { tmpdir } from 'os';
 
 describe('GrepTool Integration Tests', () => {
   let grepTool: GrepTool;

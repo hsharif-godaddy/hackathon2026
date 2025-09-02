@@ -246,7 +246,7 @@ describe('TerminalTool', () => {
         }
       ];
 
-      falsePositiveCases.forEach(({ command, blockedSubstring, description }) => {
+      falsePositiveCases.forEach(({ command, blockedSubstring: _, description }) => {
         it(`should NOT block: ${description}`, () => {
           expect(() => {
             (terminalTool as any).validateCommand(command);
@@ -430,7 +430,7 @@ describe('TerminalTool', () => {
       const mockChild = {
         stdout: { on: vi.fn() },
         stderr: { on: vi.fn() },
-        on: vi.fn((event, callback) => {
+        on: vi.fn((_event, _callback) => {
           // Don't call close callback to simulate hanging command
         }),
         kill: vi.fn(),

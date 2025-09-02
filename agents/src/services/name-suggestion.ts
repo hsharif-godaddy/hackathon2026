@@ -41,7 +41,7 @@ export class NameSuggestionService {
 
       let suggestedName = response.content;
       if (suggestedName) {
-        suggestedName = suggestedName.replace(/["""''\.]/g, '').trim();
+        suggestedName = suggestedName.replace(/["""''.]/g, '').trim();
         
         if (suggestedName.length > 30) {
           suggestedName = suggestedName.substring(0, 30).trim();

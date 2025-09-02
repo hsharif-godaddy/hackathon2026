@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { join, resolve, relative } from 'path';
+import { resolve, relative } from 'path';
 import { existsSync } from 'fs';
 
 export interface CommandOverride {
@@ -62,10 +62,13 @@ export class TerminalTool {
   private sanitizeOutput(text: string): string {
     return text
       // Remove ANSI escape sequences (colors, cursor movements, etc.)
+      // eslint-disable-next-line no-control-regex
       .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
-      // Remove other ANSI escape sequences
+      // Remove other ANSI escape sequences  
+      // eslint-disable-next-line no-control-regex
       .replace(/\x1b\][^\x07]*\x07/g, '')
       // Remove other control characters except newlines, tabs, and carriage returns
+      // eslint-disable-next-line no-control-regex
       .replace(/[\x00-\x08\x0E-\x1F\x7F]/g, '')
       // Clean up multiple consecutive newlines
       .replace(/\n{3,}/g, '\n\n')
@@ -105,7 +108,7 @@ export class TerminalTool {
 
   // Potentially dangerous command patterns
   private readonly DANGEROUS_PATTERNS = [
-    /rm\s+-rf\s+[\/~]/,
+    /rm\s+-rf\s+[/~]/,
     />\s*\/(?:etc|bin|usr|var|opt|sys|proc|dev)\//,
     /sudo\s+/,
     /su\s+/,
