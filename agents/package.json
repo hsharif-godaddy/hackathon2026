@@ -13,7 +13,7 @@
     "start": "node dist/server/app.js",
     "test": "vitest run ",
     "test:watch": "vitest --watch",
-    "test:sse": "node test-sse.js",
+    "test:sse": "node tests/test-sse.js",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write src",
