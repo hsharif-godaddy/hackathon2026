@@ -207,10 +207,6 @@ function DevelopPageContent() {
           }
         } else {
           console.log('📝 No existing conversations found, app might be new')
-          // If this is a new app with an initial prompt, trigger auto-send after a delay
-          if (isInitialAppCreation && app.initialPrompt) {
-            console.log('🔄 New app detected with initial prompt, preparing for auto-send')
-          }
         }
       } catch (error) {
         console.error('❌ Error loading conversations:', error)
@@ -230,7 +226,6 @@ function DevelopPageContent() {
     }
   }, [appId, app, fetchCommitHistory])
 
-  // 4. PURE UI STATE - Set initial prompt in input (more aggressive timing)
   useEffect(() => {
     console.log('🔍 Initial prompt check:', {
       isInitialAppCreation,
@@ -240,16 +235,17 @@ function DevelopPageContent() {
       isLoadingConversations
     })
     
-    // Set initial prompt as soon as we have it, regardless of conversation loading state
     if (isInitialAppCreation && 
         app?.initialPrompt && 
-        !initialMessageProcessed.current) {
+        !initialMessageProcessed.current && 
+        conversations.length === 0 &&
+        !isLoadingConversations) {
       
       console.log('📝 Setting initial prompt in input immediately:', app.initialPrompt)
       setInputValue(app.initialPrompt)
       initialMessageProcessed.current = true
     }
-  }, [isInitialAppCreation, app?.initialPrompt])
+  }, [isInitialAppCreation, app?.initialPrompt, conversations.length, isLoadingConversations])
 
   // 5. STABLE MESSAGE HANDLER - No state dependencies that cause loops
   const handleSendMessage = useCallback(async (messageContent?: string) => {
@@ -296,9 +292,7 @@ function DevelopPageContent() {
     }, 100)
   }, [inputValue, isLoading, appId, conversationId, aiEditContext, isInitialAppCreation])
 
-  // 6. AUTO-SEND TRIGGER - Simplified with better timing
   useEffect(() => {
-    // Simplified conditions for more reliable auto-send
     const shouldAutoSend = 
       isInitialAppCreation && 
       app?.initialPrompt && 
