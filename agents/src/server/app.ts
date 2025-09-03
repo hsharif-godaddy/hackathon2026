@@ -6,7 +6,7 @@ import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter } from './routes/index.js';
-// import { createWebSocketServer } from './routes/websocket.js';
+import { createWebSocketServer } from './routes/websocket.js';
 import { AgentRegistry } from '../registry/index.js';
 import { ExampleAgent, DevelopAgent, ColorSchemeAgent } from '../agents/index.js';
 import { getDatabase } from '../database/index.js';
@@ -101,7 +101,7 @@ async function initialize() {
     
     // Setup WebSocket server
     console.log('🔌 Setting up WebSocket server...');
-    // const wss = createWebSocketServer(server);
+    const wss = createWebSocketServer(server);
     console.log('✅ WebSocket server initialized');
     
     // Start server
