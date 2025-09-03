@@ -18,6 +18,7 @@
 /out/
 
 cdk.out/
+cdk.context.json
 
 # production
 /build

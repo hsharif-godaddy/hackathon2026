@@ -15,6 +15,8 @@ export class AiroBuilderStack extends GDStack {
       assumedBy: new iam.CompositePrincipal(
         // Allow other roles in the same account to assume this role
         new iam.AccountRootPrincipal(),
+        // Allow V2 Cell AWS account to assume this role
+          new iam.AccountPrincipal(config.v2CellAccount),
         // Allow specific service principals if needed
         new iam.ServicePrincipal('lambda.amazonaws.com'),
         new iam.ServicePrincipal('ecs-tasks.amazonaws.com')
