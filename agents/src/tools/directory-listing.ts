@@ -2,7 +2,7 @@ import { readdir, stat } from 'fs/promises';
 import { join, relative } from 'path';
 import { existsSync } from 'fs';
 import { logger } from '../logging/index.js';
-import { toolDirectoryListingEvents, toolDirectoryWalkEvents } from '../logging/events/index.js';
+import { toolDirectoryListingEvents } from '../logging/events/index.js';
 
 export interface DirectoryListingOptions {
   /** The path to list (defaults to app root) */
@@ -247,26 +247,26 @@ export class DirectoryListingTool {
     if (depth > maxDepth || result.entries.length >= this.MAX_ENTRIES) {
       if (result.entries.length >= this.MAX_ENTRIES) {
         result.truncated = true;
-        toolDirectoryWalkEvents.complete(logger, {
+        // Only log truncation at debug level to reduce noise
+        logger.debug('Directory listing truncated due to max entries limit', {
           toolName: 'DirectoryListingTool',
           currentPath: relative(appPath, currentPath),
-          depth,
-          maxDepth,
-          entriesProcessed: result.entries.length,
+          maxEntries: this.MAX_ENTRIES,
           ...(context?.appId && { appId: context.appId }),
         });
       }
       return;
     }
     
-    // Log the beginning of directory walk for this level
-    toolDirectoryWalkEvents.begin(logger, {
-      toolName: 'DirectoryListingTool',
-      currentPath: relative(appPath, currentPath),
-      depth,
-      maxDepth,
-      ...(context?.appId && { appId: context.appId }),
-    });
+    // Only log detailed directory walk progress at debug level for the root directory
+    if (depth === 0) {
+      logger.debug('Starting directory walk', {
+        toolName: 'DirectoryListingTool',
+        rootPath: relative(appPath, currentPath) || '.',
+        maxDepth: maxDepth === Infinity ? 'unlimited' : maxDepth,
+        ...(context?.appId && { appId: context.appId }),
+      });
+    }
 
     try {
       const entries = await readdir(currentPath);
@@ -344,31 +344,26 @@ export class DirectoryListingTool {
           const errorMessage = `Failed to stat ${relativePath}: ${error instanceof Error ? error.message : String(error)}`;
           result.errors.push(errorMessage);
           
-          toolDirectoryWalkEvents.error(logger, error as Error, {
+          // Only log stat errors at debug level to reduce noise
+          logger.debug('File stat error', {
             toolName: 'DirectoryListingTool',
             currentPath: relativePath,
             depth,
+            error: error instanceof Error ? error.message : String(error),
             ...(context?.appId && { appId: context.appId }),
           });
         }
       }
-      // Log completion of this directory level
-      toolDirectoryWalkEvents.complete(logger, {
-        toolName: 'DirectoryListingTool',
-        currentPath: relative(appPath, currentPath),
-        depth,
-        maxDepth,
-        entriesProcessed: result.entries.length,
-        ...(context?.appId && { appId: context.appId }),
-      });
     } catch (error) {
       const errorMessage = `Failed to read directory ${relative(appPath, currentPath)}: ${error instanceof Error ? error.message : String(error)}`;
       result.errors.push(errorMessage);
       
-      toolDirectoryWalkEvents.error(logger, error as Error, {
+      // Only log directory read errors at debug level to reduce noise
+      logger.debug('Directory read error', {
         toolName: 'DirectoryListingTool',
         currentPath: relative(appPath, currentPath),
         depth,
+        error: error instanceof Error ? error.message : String(error),
         ...(context?.appId && { appId: context.appId }),
       });
     }
