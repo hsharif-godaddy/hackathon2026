@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { appFetch } from '@/lib/gasket-config'
 import { appService } from '@/services/AppService'
 import Header from './components/Header'
@@ -16,6 +16,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const examples: Example[] = [
     {
@@ -83,6 +84,15 @@ export default function Home() {
 
   // Track if user is redirecting to prevent multiple calls
   const [isRedirecting, setIsRedirecting] = useState(false)
+  
+  // Check for URL parameter and prefill prompt text
+  useEffect(() => {
+    const initialPromptParam = searchParams.get('initialPrompt')
+    if (initialPromptParam && !promptText) {
+      // URL decode and set the prompt text
+      setPromptText(decodeURIComponent(initialPromptParam))
+    }
+  }, [searchParams, promptText])
   
   // Detect and handle back navigation to reset the redirect state
   useEffect(() => {
