@@ -555,6 +555,11 @@ export class FileEditTool {
     // Apply edits
     const editResults: string[] = [];
     for (const edit of options.edits) {
+      if (!edit.old || edit.old === undefined) {
+        editResults.push(`✗ Failed: Invalid edit - missing 'old' value`);
+        continue;
+      }
+      
       const result = this.applyEdit(content, edit, options.fuzzyMatch !== false);
       if (result.success) {
         content = result.content;
@@ -606,6 +611,11 @@ export class FileEditTool {
     // Auto-commit if enabled
     if (options.autoCommit && !options.dryRun) {
       await this.autoCommitChanges(appPath, filePath, options, result);
+    }
+
+    // Auto-build if enabled
+    if (options.autoBuild !== false && !options.dryRun) {
+      await this.runBuildCommand(appPath, context?.appId);
     }
     
     return result;
@@ -712,7 +722,7 @@ export class FileEditTool {
         0, // No completion tokens for file edits
         {
           ...(context.conversationId && { conversationId: context.conversationId }),
-          description: `File ${operation}: ${filePath.split('/').pop()} (${contentLength} chars)`
+          description: `File ${operation}: ${filePath ? filePath.split('/').pop() : 'unknown'} (${contentLength} chars)`
         }
       );
     } catch (error) {
