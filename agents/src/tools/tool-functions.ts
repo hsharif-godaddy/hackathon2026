@@ -11,6 +11,8 @@ import { createMySQLResponseFormatter } from './mysql-response-formatter.js';
 import { AutoAPIGenerator, AutoAPIGeneratorOptions } from './auto-api-generator.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js';
+import { getAppAdapter } from '../adapters/index.js';
+import type { DockerAppService } from '../adapters/services/DockerAppService.js';
 import type { AgentExecutionContext, AgentToolConfig } from '../base/index.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
@@ -22,7 +24,7 @@ import { validateLucideIcons, IconsValidatorOptions } from './icons-validator.js
 import { AgentRegistry } from '../registry/index.js';
 
 const directoryTool = new DirectoryListingTool();
-const terminalTool = new TerminalTool();
+// No global terminal tool - create per-request with proper socket path
 const fileEditTool = new FileEditTool();
 const gitTool = new GitTool();
 const readFileTool = new ReadFileTool();
@@ -838,11 +840,33 @@ async function executeTerminalCommand(
     ]
   };
 
+  // Get the app adapter to access per-app socket path
+  const appAdapter = getAppAdapter();
+  let socketPath: string | undefined;
+  
+  // Try to get the per-app socket path if using Docker mode
+  if (appAdapter && 'getDevSupervisorSocketPath' in appAdapter) {
+    try {
+      socketPath = (appAdapter as DockerAppService).getDevSupervisorSocketPath(appId);
+      if (!socketPath) {
+        throw new Error(`No dev-supervisor socket path found for app ${appId} - container may not be running`);
+      }
+    } catch (error) {
+      throw new Error(`Failed to get dev-supervisor socket path for app ${appId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  } else {
+    // For non-Docker mode, we don't have dev-supervisor
+    socketPath = undefined;
+  }
+
+  // Create a TerminalTool instance with the appropriate socket path
+  const contextualTerminalTool = new TerminalTool(socketPath);
+
   // Execute the command within the app's directory
-  const result = await terminalTool.executeCommand(app.path, enhancedOptions);
+  const result = await contextualTerminalTool.executeCommand(app.path, enhancedOptions);
   
   // Return formatted result
-  return terminalTool.formatResult(result);
+  return contextualTerminalTool.formatResult(result);
 }
 
 /**

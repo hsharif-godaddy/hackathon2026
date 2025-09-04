@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "${PREFERRED_FRONTEND_PORT:-5173}:${PREFERRED_FRONTEND_PORT:-5173}"
+      - "3000:3000"
+    volumes:
+      # Mount source code for development
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+      - ./package.json:/app/package.json
+      - ./vite.config.ts:/app/vite.config.ts
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./tailwind.config.js:/app/tailwind.config.js
+      # Mount supervisor socket for external access
+      - /tmp/dev-supervisor-sockets:/tmp/supervisor
+      # Mount logs directory
+      - ./logs:/app/logs
+    environment:
+      - NODE_ENV=development
+      - VITE_HMR_HOST=0.0.0.0
+      - RUNNING_IN_DOCKER=true
+      - DEV_SUPERVISOR_SOCKET_PATH=/tmp/supervisor/dev-supervisor.sock
+      - PREFERRED_FRONTEND_PORT=${PREFERRED_FRONTEND_PORT:-5173}
+    # Health check using dev-supervisor API
+    healthcheck:
+      test: ["CMD", "curl", "--unix-socket", "/tmp/supervisor/dev-supervisor.sock", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    # Use dev-supervisor as PID 1
+    init: false  # We're using our own init system (dev-supervisor)
+    restart: unless-stopped
+
+volumes:
+  supervisor_sockets:
+    driver: local

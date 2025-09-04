@@ -1,6 +1,7 @@
 # Docker ignore for V3 App Template (Vite + React + Hono)
 node_modules
-dist
+# Exclude Vite build output
+dist/
 .git
 .gitignore
 README.md

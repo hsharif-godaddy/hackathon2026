@@ -1,0 +1,177 @@
+name: dev-supervisor CI
+
+on:
+  push:
+    paths:
+      - "dev-supervisor/**"
+      - ".github/workflows/dev-supervisor.yml"
+  pull_request:
+    paths:
+      - "dev-supervisor/**"
+      - ".github/workflows/dev-supervisor.yml"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('dev-supervisor/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+      - name: Run golangci-lint
+        working-directory: dev-supervisor
+        run: golangci-lint run --timeout=5m ./...
+
+      - name: Run go vet
+        working-directory: dev-supervisor
+        run: go vet ./...
+
+      - name: Run go fmt check
+        working-directory: dev-supervisor
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not properly formatted:"
+            gofmt -s -l .
+            exit 1
+          fi
+
+  test:
+    name: Test
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('dev-supervisor/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        working-directory: dev-supervisor
+        run: go mod download
+
+      - name: Run tests
+        working-directory: dev-supervisor
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: dev-supervisor/coverage.out
+          flags: dev-supervisor
+          name: dev-supervisor
+
+  build:
+    name: Build
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+    needs: [lint, test]
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('dev-supervisor/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        working-directory: dev-supervisor
+        run: go mod download
+
+      - name: Build binary
+        working-directory: dev-supervisor
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          BINARY_NAME="dev-supervisor"
+          if [ "$GOOS" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          go build -ldflags="-w -s" -o "dist/${BINARY_NAME}-${GOOS}-${GOARCH}" .
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-supervisor-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dev-supervisor/dist/
+
+  docker-build:
+    name: Docker Build
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+    needs: [lint, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        working-directory: dev-supervisor
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --tag dev-supervisor:latest \
+            --file Dockerfile \
+            .

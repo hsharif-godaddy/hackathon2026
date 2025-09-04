@@ -1,7 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { getDatabase } from '../../database/connection.js';
 import { logger } from '../../logging/index.js';
 import { dockerContainerEvents } from '../../logging/events/index.js';
@@ -15,6 +15,7 @@ export interface ContainerInfo {
   status: 'building' | 'running' | 'stopped' | 'error';
   imageName: string;
   createdAt: Date;
+  hostSocketPath?: string; // Path to dev-supervisor socket on host filesystem
 }
 
 /**
@@ -26,6 +27,18 @@ export class DockerContainerManager {
   private containers = new Map<string, ContainerInfo>();
   private initialized = false;
   private activeRebuilds = new Set<string>(); // Track ongoing rebuilds
+
+  /**
+   * Sanitize app ID for safe use in file paths and Docker names
+   * Removes/replaces invalid characters to prevent path traversal and command injection
+   */
+  private sanitizeAppId(appId: string): string {
+    return appId
+      .toLowerCase()
+      .replace(/[^a-z0-9.-]/g, '') // Remove invalid chars (including underscores)
+      .replace(/^[.-]+|[.-]+$/g, '') // Remove leading/trailing dots or dashes
+      .substring(0, 63); // Limit length
+  }
 
   /**
    * Detect template version from app path
@@ -80,6 +93,9 @@ export class DockerContainerManager {
       logger.info('Docker availability verified', {
         component: 'DockerContainerManager'
       });
+
+      // Build dev-supervisor image if needed
+      await this.ensureDevSupervisorImage();
 
       // Initialize database table
       this.initializeDatabase();
@@ -181,13 +197,8 @@ export class DockerContainerManager {
     const startTime = Date.now();
     const templateVersion = this.detectTemplateVersion(appPath);
     
-    // Docker has strict naming requirements: lowercase, alphanumeric, dashes and dots only
-    // Remove/replace invalid characters and ensure it doesn't end with special characters
-    const dockerSafeId = appId
-      .toLowerCase()
-      .replace(/[^a-z0-9.-]/g, '') // Remove invalid chars (including underscores)
-      .replace(/^[.-]+|[.-]+$/g, '') // Remove leading/trailing dots or dashes
-      .substring(0, 63); // Docker name limit
+    // Sanitize appId for Docker names and file paths
+    const dockerSafeId = this.sanitizeAppId(appId);
       
     const imageName = `airo-app-${dockerSafeId}:dev`;
     const containerName = `airo-app-${dockerSafeId}`;
@@ -202,6 +213,9 @@ export class DockerContainerManager {
     });
     
     try {
+      // Ensure dev-supervisor image is available before building app image
+      await this.ensureDevSupervisorImage();
+      
       // Build the Docker image
       logger.info('Building Docker image', {
         component: 'DockerContainerManager',
@@ -246,6 +260,22 @@ export class DockerContainerManager {
         port,
         templateVersion
       });
+
+      // Create unique socket directory for this app on the host using sanitized ID
+      const hostSocketDir = `/tmp/dev-supervisor-${dockerSafeId}`;
+      const hostSocketPath = `${hostSocketDir}/dev-supervisor.sock`;
+      
+      // Ensure socket directory exists and has correct permissions using safe fs operations
+      try {
+        mkdirSync(hostSocketDir, { recursive: true, mode: 0o755 });
+      } catch (error) {
+        logger.warn('Failed to create socket directory', {
+          component: 'DockerContainerManager',
+          appId,
+          hostSocketDir,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
       
       const runCommand = [
         'docker run -d',
@@ -253,6 +283,7 @@ export class DockerContainerManager {
         `-p ${port}:${templateVersion === 'v3' ? port : '3000'}`, // v3 uses dynamic port, v1/v2 use 3000
         `-v "${appPath}:/app"`, // Mount app directory for live editing
         `-v /app/node_modules`, // Anonymous volume for node_modules to avoid conflicts
+        `-v "${hostSocketDir}:/tmp/supervisor"`, // Mount socket directory for dev-supervisor communication
         ...(templateVersion === 'v3' ? [
           `-v /app/dist`, // Anonymous volume for Vite dist directory
           `-e PREFERRED_FRONTEND_PORT=${port}`, // v3 template uses this for port configuration
@@ -264,6 +295,7 @@ export class DockerContainerManager {
           '-e NEXT_TELEMETRY_DISABLED=1', // Next.js specific
         ]),
         '-e NODE_ENV=development',
+        '-e DEV_SUPERVISOR_SOCKET_PATH=/tmp/supervisor/dev-supervisor.sock', // Configure dev-supervisor socket path inside container
         '--restart unless-stopped',
         imageName
       ].join(' ');
@@ -277,7 +309,8 @@ export class DockerContainerManager {
         port,
         status: 'running',
         imageName,
-        createdAt: new Date()
+        createdAt: new Date(),
+        hostSocketPath
       };
 
       // Store in memory and database
@@ -568,7 +601,7 @@ export class DockerContainerManager {
    */
   getAllContainers(): ContainerInfo[] {
     const stmt = this.db.prepare(`
-      SELECT app_id, container_id, port, status, image_name, created_at 
+      SELECT app_id, container_id, port, status, image_name, host_socket_path, created_at 
       FROM docker_containers 
       ORDER BY created_at DESC
     `);
@@ -580,6 +613,7 @@ export class DockerContainerManager {
       port: row.port,
       status: row.status,
       imageName: row.image_name,
+      hostSocketPath: row.host_socket_path,
       createdAt: new Date(row.created_at)
     }));
   }
@@ -617,21 +651,24 @@ export class DockerContainerManager {
           
           if (dockerStatus === 'running') {
             // Container is running - recover it
+            const safeAppId = this.sanitizeAppId(record.app_id);
+            const hostSocketPath = record.host_socket_path || `/tmp/dev-supervisor-${safeAppId}/dev-supervisor.sock`;
             const containerInfo: ContainerInfo = {
               appId: record.app_id,
               containerId: record.container_id,
               port: record.port,
               status: 'running',
               imageName: record.image_name,
+              hostSocketPath,
               createdAt: new Date(record.created_at)
             };
             
             // Add to in-memory tracking
             this.containers.set(record.app_id, containerInfo);
             
-            // Update database status to running
-            const updateStmt = this.db.prepare('UPDATE docker_containers SET status = ? WHERE app_id = ?');
-            updateStmt.run('running', record.app_id);
+            // Update database status and socket path if missing
+            const updateStmt = this.db.prepare('UPDATE docker_containers SET status = ?, host_socket_path = ? WHERE app_id = ?');
+            updateStmt.run('running', hostSocketPath, record.app_id);
             
             recoveredCount++;
             logger.info('Recovered running container', {
@@ -697,6 +734,69 @@ export class DockerContainerManager {
   }
 
   /**
+   * Ensure dev-supervisor image is built and available
+   */
+  private async ensureDevSupervisorImage(): Promise<void> {
+    const imageName = 'airo-dev-supervisor:latest';
+    
+    try {
+      // Check if image already exists
+      await execAsync(`docker inspect ${imageName}`);
+      logger.debug('Dev-supervisor image already exists', {
+        component: 'DockerContainerManager',
+        imageName
+      });
+      return;
+    } catch (error) {
+      // Image doesn't exist, need to build it
+      logger.info('Building dev-supervisor image', {
+        component: 'DockerContainerManager',
+        imageName
+      });
+    }
+
+    try {
+      // Build dev-supervisor image from the dev-supervisor directory
+      // Need to build from project root so docker can access dev-supervisor/ directory
+      const projectRoot = process.cwd();
+      const buildCommand = `docker build -t ${imageName} -f dev-supervisor/Dockerfile dev-supervisor/`;
+      
+      logger.debug('Building dev-supervisor from project root', {
+        component: 'DockerContainerManager',
+        projectRoot,
+        buildCommand
+      });
+      
+      const buildProcess = execAsync(buildCommand, {
+        cwd: projectRoot,
+        maxBuffer: 1024 * 1024 * 10 // 10MB buffer for build output
+      });
+
+      // Show build progress
+      buildProcess.child.stdout?.on('data', (data) => {
+        logger.debug('Dev-supervisor build output', {
+          component: 'DockerContainerManager',
+          output: data.toString().trim().substring(0, 200) // Limit output size
+        });
+      });
+
+      await buildProcess;
+      
+      logger.info('Dev-supervisor image built successfully', {
+        component: 'DockerContainerManager',
+        imageName
+      });
+    } catch (error) {
+      logger.error('Failed to build dev-supervisor image', {
+        component: 'DockerContainerManager',
+        imageName,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw new Error(`Failed to build dev-supervisor image: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
    * Initialize database table for container tracking
    */
   private initializeDatabase(): void {
@@ -707,10 +807,21 @@ export class DockerContainerManager {
         port INTEGER NOT NULL,
         status TEXT NOT NULL,
         image_name TEXT NOT NULL,
+        host_socket_path TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
       )
     `);
+
+    // Migration: Add host_socket_path column if it doesn't exist
+    try {
+      this.db.exec(`ALTER TABLE docker_containers ADD COLUMN host_socket_path TEXT`);
+    } catch (error) {
+      // Ignore error if column already exists (SQLITE_ERROR with message about duplicate column)
+      if (error instanceof Error && !error.message.includes('duplicate column name')) {
+        throw error;
+      }
+    }
   }
 
   /**
@@ -719,8 +830,8 @@ export class DockerContainerManager {
   private saveContainerToDb(containerInfo: ContainerInfo): void {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO docker_containers 
-      (app_id, container_id, port, status, image_name, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      (app_id, container_id, port, status, image_name, host_socket_path, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     
     stmt.run(
@@ -729,6 +840,7 @@ export class DockerContainerManager {
       containerInfo.port,
       containerInfo.status,
       containerInfo.imageName,
+      containerInfo.hostSocketPath || null,
       containerInfo.createdAt.toISOString()
     );
   }
@@ -750,6 +862,7 @@ export class DockerContainerManager {
       port: row.port,
       status: row.status,
       imageName: row.image_name,
+      hostSocketPath: row.host_socket_path,
       createdAt: new Date(row.created_at)
     };
   }
@@ -1046,11 +1159,7 @@ export class DockerContainerManager {
    * Clean up container and associated image
    */
   private async cleanupContainerAndImage(appId: string): Promise<void> {
-    const dockerSafeId = appId
-      .toLowerCase()
-      .replace(/[^a-z0-9.-]/g, '')
-      .replace(/^[.-]+|[.-]+$/g, '')
-      .substring(0, 63);
+    const dockerSafeId = this.sanitizeAppId(appId);
       
     const imageName = `airo-app-${dockerSafeId}:dev`;
     const containerName = `airo-app-${dockerSafeId}`;
@@ -1077,6 +1186,14 @@ export class DockerContainerManager {
 
     // Clean database record
     this.removeContainerFromDb(appId);
+  }
+
+  /**
+   * Get the host socket path for a specific app
+   */
+  getHostSocketPath(appId: string): string | null {
+    const containerInfo = this.containers.get(appId) || this.getContainerFromDb(appId);
+    return containerInfo?.hostSocketPath || null;
   }
 
   /**

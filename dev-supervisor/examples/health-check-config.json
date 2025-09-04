@@ -1,0 +1,20 @@
+{
+  "health_check": {
+    "type": "command",
+    "command": "curl -f http://localhost:3000/health || exit 1",
+    "interval": "30s",
+    "timeout": "10s",
+    "retries": 3,
+    "start_period": "60s",
+    "success_threshold": 1,
+    "failure_threshold": 3
+  },
+  "restart_policy": {
+    "enabled": true,
+    "max_restarts": 5,
+    "restart_window": "5m",
+    "backoff_multiplier": 2.0,
+    "max_backoff": "5m",
+    "initial_delay": "1s"
+  }
+}

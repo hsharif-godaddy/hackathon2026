@@ -89,6 +89,9 @@ export class TemplateCopyService {
         // Perform the actual copy
         this.performTemplateCopy(templatePath, appPath);
 
+        // Copy dev-supervisor binary for Docker mode
+        this.copyDevSupervisorBinary(appPath, appId, appLogger);
+
         // Validate the copied template
         this.validateCopiedTemplate(appPath, templateVersion);
 
@@ -326,5 +329,58 @@ export class TemplateCopyService {
       valid: errors.length === 0,
       errors
     };
+  }
+
+  /**
+   * Copy dev-supervisor source code to app directory for Docker builds
+   */
+  private copyDevSupervisorBinary(appPath: string, appId: string, appLogger: Logger): void {
+    try {
+      // Find the dev-supervisor source directory in the project root
+      const projectRoot = path.resolve(process.cwd(), '..');
+      const devSupervisorSourcePath = path.join(projectRoot, 'dev-supervisor');
+      
+      if (!existsSync(devSupervisorSourcePath)) {
+        appLogger.warn('app.template.dev_supervisor.not_found', {
+          appId,
+          expectedPath: devSupervisorSourcePath,
+          message: 'dev-supervisor source directory not found, Docker build may fail'
+        });
+        return;
+      }
+
+      // Create dev-supervisor directory in app and copy source code
+      const appDevSupervisorPath = path.join(appPath, 'dev-supervisor');
+
+      // Copy the entire dev-supervisor source directory
+      cpSync(devSupervisorSourcePath, appDevSupervisorPath, { 
+        recursive: true,
+        force: true,
+        filter: (src, _dest) => {
+          // Skip build artifacts and git directories
+          const relativePath = path.relative(devSupervisorSourcePath, src);
+          if (relativePath.includes('dist') || 
+              relativePath.includes('.git') ||
+              relativePath.includes('node_modules')) {
+            return false;
+          }
+          return true;
+        }
+      });
+
+      appLogger.info('app.template.dev_supervisor.copied', {
+        appId,
+        sourcePath: devSupervisorSourcePath,
+        destPath: appDevSupervisorPath,
+        type: 'source_code'
+      });
+
+    } catch (error) {
+      appLogger.warn('app.template.dev_supervisor.copy_failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+        message: 'Failed to copy dev-supervisor source code, Docker build may fail'
+      });
+    }
   }
 }

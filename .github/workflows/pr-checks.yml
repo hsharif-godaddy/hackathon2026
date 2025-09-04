@@ -2,7 +2,7 @@ name: PR Checks
 
 on:
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -22,10 +22,10 @@ jobs:
         include:
           - package: agents
             working-directory: ./agents
-            node-version: '22.12'
+            node-version: "22.12"
           - package: app
             working-directory: ./app
-            node-version: '22.12'
+            node-version: "22.12"
 
     steps:
       - name: Checkout repository
@@ -79,4 +79,3 @@ jobs:
       - name: Run build
         run: pnpm run build
         working-directory: ${{ matrix.working-directory }}
-

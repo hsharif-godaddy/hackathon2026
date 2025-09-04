@@ -74,7 +74,7 @@ export const cleanup = (appId?: string) => {
 /**
  * Create WebSocket connection with automatic reconnection
  */
-function createWebSocketConnection(agentId: string): Promise<WebSocket> {
+function createWebSocketConnection(agentId: string, appId?: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(buildWsUrl(`ws/${agentId}`))
     
@@ -100,9 +100,12 @@ function createWebSocketConnection(agentId: string): Promise<WebSocket> {
         console.log(`🔄 Attempting to reconnect WebSocket (${reconnectAttempts}/${maxReconnectAttempts}) in ${delay}ms...`)
         
         setTimeout(() => {
-          createWebSocketConnection(agentId)
+          createWebSocketConnection(agentId, appId)
             .then(newWs => {
-              currentWebSocket = newWs
+              // Update the WebSocket connection for the app if appId is provided
+              if (appId) {
+                webSocketConnections.set(appId, newWs)
+              }
               console.log('🔌 WebSocket reconnected successfully')
             })
             .catch(error => {
@@ -210,7 +213,7 @@ export const handleSendMessage = async ({
     const agentId = 'develop'
 
     // Create new WebSocket connection for this app
-    const newWebSocket = await createWebSocketConnection(agentId)
+    const newWebSocket = await createWebSocketConnection(agentId, appId)
     webSocketConnections.set(appId, newWebSocket)
 
     // Set up message handler

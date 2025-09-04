@@ -1,0 +1,420 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/gorilla/mux"
+)
+
+const (
+	Version        = "0.2.0"
+	AppName        = "dev-supervisor"
+	defaultTimeout = 30 * time.Second
+)
+
+type Config struct {
+	SocketPath      string
+	ShowVersion     bool
+	ShowHelp        bool
+	ShutdownTimeout time.Duration
+}
+
+func getSocketPath() string {
+	path := os.Getenv("DEV_SUPERVISOR_SOCKET_PATH")
+	if path == "" {
+		return "/tmp/dev-supervisor.sock"
+	}
+	return path
+}
+
+type Server struct {
+	router    *mux.Router
+	procMgr   *ProcessManager
+	cmdExec   *CommandExecutor
+	envMgr    *EnvironmentManager
+	logMgr    *LogManager
+	pid1Mgr   *PID1Manager
+	startTime time.Time
+	config    *Config
+}
+
+type HealthResponse struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+	Uptime  string `json:"uptime"`
+}
+
+type ErrorResponse struct {
+	Error   string `json:"error"`
+	Message string `json:"message"`
+}
+
+func NewServer() *Server {
+	logMgr := NewLogManager(10000)
+	pid1Mgr := NewPID1Manager()
+	s := &Server{
+		router:    mux.NewRouter(),
+		logMgr:    logMgr,
+		pid1Mgr:   pid1Mgr,
+		procMgr:   NewProcessManager(logMgr, pid1Mgr),
+		cmdExec:   NewCommandExecutor(),
+		envMgr:    NewEnvironmentManager(),
+		startTime: time.Now(),
+	}
+
+	s.setupRoutes()
+	return s
+}
+
+func (s *Server) setupRoutes() {
+	// Health endpoints
+	s.router.HandleFunc("/health", s.handleHealth).Methods("GET")
+	s.router.HandleFunc("/info", s.handleInfo).Methods("GET")
+
+	// Process control endpoints
+	processRouter := s.router.PathPrefix("/process").Subrouter()
+	processRouter.HandleFunc("/start", s.handleProcessStart).Methods("POST")
+	processRouter.HandleFunc("/stop", s.handleProcessStop).Methods("POST")
+	processRouter.HandleFunc("/restart", s.handleProcessRestart).Methods("POST")
+	processRouter.HandleFunc("/status", s.handleProcessStatus).Methods("GET")
+
+	// Command execution endpoints
+	s.router.HandleFunc("/exec", s.handleExec).Methods("POST")
+
+	// Environment management endpoints
+	envRouter := s.router.PathPrefix("/environment").Subrouter()
+	envRouter.HandleFunc("", s.handleEnvironmentGet).Methods("GET")
+	envRouter.HandleFunc("", s.handleEnvironmentSet).Methods("PUT")
+	envRouter.HandleFunc("", s.handleEnvironmentReset).Methods("DELETE")
+
+	// Log endpoints
+	logRouter := s.router.PathPrefix("/logs").Subrouter()
+	logRouter.HandleFunc("", s.handleLogs).Methods("GET")
+	logRouter.HandleFunc("/stream", s.handleLogsStream).Methods("GET")
+
+	// Health monitoring endpoints
+	healthRouter := s.router.PathPrefix("/health-config").Subrouter()
+	healthRouter.HandleFunc("", s.handleHealthConfigGet).Methods("GET")
+	healthRouter.HandleFunc("", s.handleHealthConfigSet).Methods("PUT")
+	healthRouter.HandleFunc("/status", s.handleHealthStatus).Methods("GET")
+	healthRouter.HandleFunc("/restart-stats", s.handleRestartStats).Methods("GET")
+}
+
+func (s *Server) getConfiguredSocketPath() string {
+	if s.config != nil && s.config.SocketPath != "" {
+		return s.config.SocketPath
+	}
+	return getSocketPath()
+}
+
+// waitForServerReady waits for the server to be ready to accept connections
+func (s *Server) waitForServerReady(socketPath string, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("server failed to become ready within %v", timeout)
+		default:
+			// Try to connect to the socket
+			conn, err := net.Dial("unix", socketPath)
+			if err == nil {
+				conn.Close()
+				return nil
+			}
+			time.Sleep(10 * time.Millisecond) // Small delay between attempts
+		}
+	}
+}
+
+func (s *Server) StartWithConfig(config *Config) error {
+	s.config = config
+	return s.startServer(config.SocketPath, config.ShutdownTimeout)
+}
+
+func (s *Server) Start() error {
+	config := &Config{
+		SocketPath:      getSocketPath(),
+		ShutdownTimeout: 5 * time.Second,
+	}
+	return s.StartWithConfig(config)
+}
+
+func (s *Server) startServer(socketPath string, shutdownTimeout time.Duration) error {
+	// Remove existing socket file if it exists
+	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	// Create Unix domain socket listener
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		return err
+	}
+
+	// Set socket permissions
+	if err := os.Chmod(socketPath, 0666); err != nil {
+		if closeErr := listener.Close(); closeErr != nil {
+			slog.Warn("failed to close listener during error handling", "error", closeErr)
+		}
+		return err
+	}
+
+	slog.Info("dev-supervisor starting", "socket_path", socketPath, "pid", os.Getpid())
+
+	// Create HTTP server
+	server := &http.Server{
+		Handler:      s.router,
+		ReadTimeout:  defaultTimeout,
+		WriteTimeout: defaultTimeout,
+		IdleTimeout:  2 * defaultTimeout,
+	}
+
+	// Start PID 1 manager with shutdown callback
+	s.pid1Mgr.Start(func() {
+		slog.Info("shutdown initiated by PID 1 manager")
+		// Trigger graceful server shutdown with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+
+		shutdownComplete := make(chan error, 1)
+		go func() {
+			shutdownComplete <- server.Shutdown(ctx)
+		}()
+
+		select {
+		case err := <-shutdownComplete:
+			if err != nil {
+				slog.Error("PID 1 shutdown error", "error", err)
+			} else {
+				slog.Info("PID 1 shutdown completed gracefully")
+			}
+		case <-ctx.Done():
+			slog.Warn("PID 1 shutdown timeout exceeded", "timeout", shutdownTimeout)
+		}
+	})
+
+	// Start server in a goroutine
+	go func() {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			slog.Error("server failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// If we're not PID 1, still wait for signals manually
+	if os.Getpid() != 1 {
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		<-quit
+
+		slog.Info("shutting down server")
+
+		// Graceful shutdown with configurable timeout
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+
+		// Shutdown in background and wait for completion or timeout
+		shutdownComplete := make(chan error, 1)
+		go func() {
+			shutdownComplete <- server.Shutdown(ctx)
+		}()
+
+		select {
+		case err := <-shutdownComplete:
+			if err != nil {
+				slog.Error("server shutdown error", "error", err)
+			} else {
+				slog.Info("server shutdown completed gracefully")
+			}
+		case <-ctx.Done():
+			slog.Warn("server shutdown timeout exceeded, forcing shutdown", "timeout", shutdownTimeout)
+		}
+	} else {
+		// If we are PID 1, the PID1Manager handles shutdown
+		// Wait for server to be shut down
+		<-make(chan struct{}) // Block forever, PID1Manager will call shutdown
+	}
+
+	// Clean up socket file
+	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+		slog.Warn("failed to clean up socket file", "path", socketPath, "error", err)
+	}
+
+	slog.Info("server stopped")
+	return nil
+}
+
+// StartCommandOnStartup starts a command when dev-supervisor starts
+func (s *Server) StartCommandOnStartup(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("no command provided")
+	}
+
+	// Build the full command with proper argument handling
+	fullCommand := strings.Join(args, " ")
+
+	// Validate command is not empty after joining
+	if strings.TrimSpace(fullCommand) == "" {
+		return fmt.Errorf("command cannot be empty")
+	}
+
+	// Convert environment slice to map
+	envMap := make(map[string]string)
+	for _, env := range os.Environ() {
+		if parts := strings.SplitN(env, "=", 2); len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+
+	// Set working directory - use /app if it exists, otherwise current directory
+	workingDir := "/app"
+	if _, err := os.Stat("/app"); os.IsNotExist(err) {
+		if cwd, err := os.Getwd(); err == nil {
+			workingDir = cwd
+		} else {
+			workingDir = defaultTmpDir
+		}
+	}
+
+	// Use the ProcessManager to start the command
+	startReq := ProcessStartRequest{
+		Command:    fullCommand,
+		Env:        envMap,
+		WorkingDir: workingDir,
+	}
+
+	slog.Info("starting initial command", "command", startReq.Command)
+
+	if err := s.procMgr.Start(startReq); err != nil {
+		return fmt.Errorf("failed to start command: %w", err)
+	}
+
+	slog.Info("initial command started", "command", startReq.Command)
+	return nil
+}
+
+// WaitForShutdown waits for shutdown signals
+func (s *Server) WaitForShutdown() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	<-sigChan
+	slog.Info("shutdown signal received, cleaning up...")
+
+	// Stop all managed processes
+	s.procMgr.StopAllProcesses()
+	slog.Info("server stopped")
+}
+
+func parseFlags() *Config {
+	config := &Config{}
+
+	flag.StringVar(&config.SocketPath, "socket", "", "Unix domain socket path (overrides DEV_SUPERVISOR_SOCKET_PATH)")
+	flag.BoolVar(&config.ShowVersion, "version", false, "Show version and exit")
+	flag.BoolVar(&config.ShowVersion, "v", false, "Show version and exit (shorthand)")
+	flag.BoolVar(&config.ShowHelp, "help", false, "Show help and exit")
+	flag.BoolVar(&config.ShowHelp, "h", false, "Show help and exit (shorthand)")
+	flag.DurationVar(&config.ShutdownTimeout, "shutdown-timeout", 10*time.Second, "Graceful shutdown timeout")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", AppName)
+		fmt.Fprintf(os.Stderr, "%s - A containerized service that acts as PID 1 in Docker containers,\n", AppName)
+		fmt.Fprintf(os.Stderr, "providing centralized process management through an HTTP API over Unix domain sockets.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Environment Variables:\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_SOCKET_PATH  Path for Unix domain socket (default: /tmp/dev-supervisor.sock)\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Examples:\n")
+		fmt.Fprintf(os.Stderr, "  %s                                    # Use default settings\n", AppName)
+		fmt.Fprintf(os.Stderr, "  %s -socket /app/supervisor.sock       # Custom socket path\n", AppName)
+		fmt.Fprintf(os.Stderr, "  %s -shutdown-timeout 30s              # Custom shutdown timeout\n", AppName)
+		fmt.Fprintf(os.Stderr, "\n")
+	}
+
+	flag.Parse()
+
+	// Override socket path from flag if provided
+	if config.SocketPath == "" {
+		config.SocketPath = getSocketPath()
+	}
+
+	return config
+}
+
+func showVersion() {
+	fmt.Printf("%s version %s\n", AppName, Version)
+}
+
+func main() {
+	config := parseFlags()
+
+	if config.ShowHelp {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	if config.ShowVersion {
+		showVersion()
+		os.Exit(0)
+	}
+
+	// Initialize structured logging
+	initLogging()
+
+	slog.Info("starting dev-supervisor",
+		"version", Version,
+		"socket_path", config.SocketPath,
+		"pid", os.Getpid(),
+		"shutdown_timeout", config.ShutdownTimeout)
+
+	server := NewServer()
+
+	// Check for additional command arguments to auto-start
+	args := flag.Args()
+	if len(args) > 0 {
+		slog.Info("auto-starting command", "command", args)
+
+		// Start the server in a goroutine so we can also start the command
+		go func() {
+			if err := server.StartWithConfig(config); err != nil {
+				slog.Error("failed to start server", "error", err)
+				os.Exit(1)
+			}
+		}()
+
+		// Wait for server to be ready
+		if err := server.waitForServerReady(config.SocketPath, 5*time.Second); err != nil {
+			slog.Error("server failed to start", "error", err)
+			os.Exit(1)
+		}
+
+		// Start the specified command
+		if err := server.StartCommandOnStartup(args); err != nil {
+			slog.Error("failed to start initial command", "error", err, "command", args)
+			os.Exit(1)
+		}
+
+		// Wait for shutdown signals
+		server.WaitForShutdown()
+	} else {
+		// No command specified, just start the server normally
+		if err := server.StartWithConfig(config); err != nil {
+			slog.Error("failed to start server", "error", err)
+			os.Exit(1)
+		}
+	}
+}

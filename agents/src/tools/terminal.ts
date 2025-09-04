@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import { resolve, relative } from 'path';
 import { existsSync } from 'fs';
+import { DevSupervisorClient, createDevSupervisorClient } from '../services/DevSupervisorClient.js';
 
 export interface CommandOverride {
   /** Pattern to match against (can be string or regex) */
@@ -55,6 +56,23 @@ export class TerminalTool {
   private readonly DEFAULT_TIMEOUT = 30000; // 30 seconds
   private readonly MAX_TIMEOUT = 300000; // 5 minutes
   private readonly MAX_OUTPUT_LENGTH = 50000; // 50KB output limit
+  private devSupervisor?: DevSupervisorClient | null;
+
+  constructor(socketPath?: string) {
+    // Only create dev-supervisor client if explicit socket path is provided
+    if (socketPath) {
+      this.devSupervisor = createDevSupervisorClient(socketPath);
+    } else {
+      this.devSupervisor = null;
+    }
+  }
+
+  /**
+   * Check if dev-supervisor is available for command execution
+   */
+  isDevSupervisorAvailable(): boolean {
+    return this.devSupervisor?.isAvailable() ?? false;
+  }
 
   /**
    * Sanitize terminal output by removing ANSI escape codes and other control characters
@@ -221,8 +239,106 @@ export class TerminalTool {
     // Validate command safety
     this.validateCommand(command);
 
-    // Resolve and validate working directory
-    const resolvedWorkingDir = this.resolveWorkingDirectory(appPath, workingDir);
+    // Validate working directory (needed for both execution paths)
+    if (workingDir) {
+      this.resolveWorkingDirectory(appPath, workingDir);
+    }
+
+    // Check if we should use dev-supervisor
+    if (this.devSupervisor && this.isDevSupervisorAvailable()) {
+      return await this.executeWithDevSupervisor(command, originalCommand, appPath, workingDir, timeout, env, startTime);
+    }
+
+    // Fallback to direct execution
+    return await this.executeDirectly(command, originalCommand, appPath, workingDir, timeout, env, startTime);
+  }
+
+  /**
+   * Execute command using dev-supervisor
+   */
+  private async executeWithDevSupervisor(
+    command: string,
+    originalCommand: string,
+    appPath: string,
+    workingDir: string,
+    timeout: number,
+    env: Record<string, string>,
+    startTime: number
+  ): Promise<TerminalCommandResult> {
+    try {
+      const actualTimeout = Math.min(Math.floor(timeout / 1000), Math.floor(this.MAX_TIMEOUT / 1000));
+      
+      const execOptions: { command: string; timeout: number; capture_output: boolean; working_dir?: string } = {
+        command,
+        timeout: actualTimeout,
+        capture_output: true
+      };
+      
+      if (workingDir) {
+        execOptions.working_dir = workingDir;
+      }
+      
+      const execResult = await this.devSupervisor!.exec(execOptions);
+
+      const result: TerminalCommandResult = {
+        command,
+        workingDir: workingDir || '.',
+        exitCode: execResult.exit_code,
+        stdout: this.sanitizeOutput(execResult.stdout).trim(),
+        stderr: this.sanitizeOutput(execResult.stderr).trim(),
+        success: execResult.success,
+        executionTime: Date.now() - startTime,
+        timedOut: false, // dev-supervisor handles timeout internally
+      };
+
+      if (originalCommand !== command) {
+        result.originalCommand = originalCommand;
+      }
+
+      return result;
+    } catch (error) {
+      // If dev-supervisor fails due to unavailability, fall back to direct execution
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('not available at')) {
+        // Dev-supervisor is not running, fall back to direct execution
+        return await this.executeDirectly(command, originalCommand, appPath, workingDir, timeout, env, startTime);
+      }
+
+      // For other errors, return error result
+      const result: TerminalCommandResult = {
+        command,
+        workingDir: workingDir || '.',
+        exitCode: -1,
+        stdout: '',
+        stderr: '',
+        success: false,
+        executionTime: Date.now() - startTime,
+        timedOut: false,
+        error: errorMessage,
+      };
+
+      if (originalCommand !== command) {
+        result.originalCommand = originalCommand;
+      }
+
+      return result;
+    }
+  }
+
+  /**
+   * Execute command directly (fallback method)
+   */
+  private async executeDirectly(
+    command: string,
+    originalCommand: string,
+    appPath: string,
+    workingDir: string,
+    timeout: number,
+    env: Record<string, string>,
+    startTime: number
+  ): Promise<TerminalCommandResult> {
+    // Resolve working directory (validation already done)
+    const resolvedWorkingDir = workingDir ? resolve(appPath, workingDir) : appPath;
 
     // Prepare environment
     const environment = {

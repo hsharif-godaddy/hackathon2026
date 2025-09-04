@@ -1,11 +1,14 @@
 # Development Dockerfile for Next.js App Template v2 (with Turbopack)
-FROM node:20-alpine
+FROM node:22-alpine
 
-# Install curl for health checks
-RUN apk add --no-cache curl
+# Install curl for health checks and dev-supervisor dependencies
+RUN apk add --no-cache curl ca-certificates tzdata
 
 # Set working directory
 WORKDIR /app
+
+# Copy dev-supervisor binary from pre-built image
+COPY --from=airo-dev-supervisor:latest /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
 
 # Create clean npm environment
 RUN echo "registry=https://registry.npmjs.org/" > /root/.npmrc
@@ -17,8 +20,8 @@ RUN npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
 # Copy source code (node_modules excluded via .dockerignore)
 COPY . .
 
-# Create logs directory
-RUN mkdir -p logs
+# Create logs directory and supervisor socket directory
+RUN mkdir -p logs /tmp/supervisor
 
 # Expose the port (will be overridden by environment)
 EXPOSE 3000
@@ -26,10 +29,12 @@ EXPOSE 3000
 # Set development environment
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV DEV_SUPERVISOR_SOCKET_PATH=/tmp/supervisor/dev-supervisor.sock
 
-# Health check
+# Health check using dev-supervisor API
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD curl -f http://localhost:3000/api/health || curl -f http://localhost:3000/ || exit 1
+    CMD curl --unix-socket /tmp/supervisor/dev-supervisor.sock http://localhost/health || exit 1
 
-# Start development server with Turbopack
+# Use dev-supervisor as PID 1 to manage the development process
+ENTRYPOINT ["/usr/local/bin/dev-supervisor"]
 CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]

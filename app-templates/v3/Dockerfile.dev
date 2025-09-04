@@ -1,11 +1,14 @@
 # Development Dockerfile for V3 App Template (Vite + React + Hono)
-FROM node:20-alpine
+FROM node:22-alpine
 
-# Install curl for health checks
-RUN apk add --no-cache curl
+# Install curl for health checks and dev-supervisor dependencies
+RUN apk add --no-cache curl ca-certificates tzdata
 
 # Set working directory
 WORKDIR /app
+
+# Copy dev-supervisor binary from pre-built image
+COPY --from=airo-dev-supervisor:latest /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
 
 # Create clean npm environment
 RUN echo "registry=https://registry.npmjs.org/" > /root/.npmrc
@@ -15,17 +18,17 @@ RUN echo "registry=https://registry.npmjs.org/" > /root/.npmrc
 COPY package.json ./
 COPY pnpm-lock.yaml* ./
 RUN if [ -f pnpm-lock.yaml ]; then \
-      corepack enable && corepack prepare pnpm@latest --activate && \
-      pnpm install --registry=https://registry.npmjs.org/; \
+    corepack enable && corepack prepare pnpm@latest --activate && \
+    pnpm install --registry=https://registry.npmjs.org/; \
     else \
-      npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit; \
+    npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit; \
     fi
 
 # Copy source code (node_modules excluded via .dockerignore)
 COPY . .
 
-# Create logs directory
-RUN mkdir -p logs
+# Create logs directory and supervisor socket directory  
+RUN mkdir -p logs /tmp/supervisor
 
 # Expose the frontend port (will be overridden by PREFERRED_FRONTEND_PORT)
 EXPOSE 3000
@@ -34,11 +37,12 @@ EXPOSE 3000
 ENV NODE_ENV=development
 ENV VITE_HMR_HOST=0.0.0.0
 ENV RUNNING_IN_DOCKER=true
+ENV DEV_SUPERVISOR_SOCKET_PATH=/tmp/supervisor/dev-supervisor.sock
 
-# Health check for the frontend Vite server
-# Port will be determined by PREFERRED_FRONTEND_PORT or default to 5173
+# Health check using dev-supervisor API
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD curl -f http://localhost:${PREFERRED_FRONTEND_PORT:-5173}/ || curl -f http://localhost:3000/ || exit 1
+    CMD curl --unix-socket /tmp/supervisor/dev-supervisor.sock http://localhost/health || exit 1
 
-# Start development server (runs both frontend Vite and backend Hono)
+# Use dev-supervisor as PID 1 to manage the development process
+ENTRYPOINT ["/usr/local/bin/dev-supervisor"]
 CMD ["npm", "run", "dev"]
