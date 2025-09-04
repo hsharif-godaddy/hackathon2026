@@ -25,6 +25,13 @@ export class AiroBuilderStack extends GDStack {
         // Use AWS managed policy for Bedrock access
         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonBedrockLimitedAccess')
       ],
+
+      // Apply permissions boundary to restrict Bedrock access according to organizational security policies.
+      permissionsBoundary: iam.ManagedPolicy.fromManagedPolicyName(
+        this,
+        'BedrockPermissionBoundary',
+        'GD-AWS-SSG-PB-BEDROCK'
+      ),
     });
 
     // Output Bedrock role ARN
