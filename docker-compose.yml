@@ -60,7 +60,7 @@ services:
     ports:
       - "8888:8888"
     environment:
-      - API_SECRET=${API_SECRET:-<apikey>}
+      - API_SECRET=${OPENAI_API_KEY:-<apikey>}
     restart: unless-stopped
     networks:
       - airo-network
