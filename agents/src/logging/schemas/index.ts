@@ -93,10 +93,25 @@ function sanitizeSensitiveData(obj: Record<string, any>): Record<string, any> {
     'authorization', 'auth', 'credential', 'credentials'
   ];
   
+  // Keys that should NOT be redacted even if they contain sensitive keywords
+  const allowedKeys = [
+    'promptTokens', 'completionTokens', 'totalTokens', 'tokens',
+    'tokenCount', 'tokenUsage', 'tokenType'
+  ];
+  
   const sanitized = { ...obj };
   
   for (const [key, value] of Object.entries(sanitized)) {
     const lowerKey = key.toLowerCase();
+    
+    // Skip redaction for allowed token usage fields
+    if (allowedKeys.some(allowed => lowerKey === allowed.toLowerCase())) {
+      // Still recursively sanitize nested objects
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        sanitized[key] = sanitizeSensitiveData(value);
+      }
+      continue;
+    }
     
     // Check if key is sensitive
     if (sensitiveKeys.some(sensitive => lowerKey.includes(sensitive))) {

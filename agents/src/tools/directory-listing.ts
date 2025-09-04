@@ -258,15 +258,6 @@ export class DirectoryListingTool {
       return;
     }
     
-    // Only log detailed directory walk progress at debug level for the root directory
-    if (depth === 0) {
-      logger.debug('Starting directory walk', {
-        toolName: 'DirectoryListingTool',
-        rootPath: relative(appPath, currentPath) || '.',
-        maxDepth: maxDepth === Infinity ? 'unlimited' : maxDepth,
-        ...(context?.appId && { appId: context.appId }),
-      });
-    }
 
     try {
       const entries = await readdir(currentPath);

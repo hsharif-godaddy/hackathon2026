@@ -29,43 +29,26 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
     ...(req.method !== 'GET' && req.body && JSON.stringify(req.body).length < 1000 && { body: req.body })
   };
   
-  // Log request begin
-  httpRequestEvents.begin(logger, requestData);
-
-  // Log response when finished
+  // Log response when finished (single log message)
   res.on('finish', () => {
     const duration = Date.now() - start;
     const contentLength = res.get('Content-Length');
     
-    // Response data available for potential logging
-    // const responseData = {
-    //   ...requestData,
-    //   responseStats: {
-    //     statusCode: res.statusCode,
-    //     contentLength: contentLength ? parseInt(contentLength, 10) : undefined,
-    //     duration
-    //   }
-    // };
+    // Create consolidated request/response data for single log message
+    const logData = {
+      ...requestData,
+      responseStats: {
+        statusCode: res.statusCode,
+        ...(contentLength && { contentLength: parseInt(contentLength, 10) }),
+        duration
+      }
+    };
     
     // Log success or error based on status code
     if (res.statusCode >= 400) {
-      const errorData = {
-        method: req.method,
-        url: req.url,
-        ...(userAgent && { userAgent }),
-        ...(req.ip && { ip: req.ip }),
-        requestId
-      };
-      httpRequestEvents.error(logger, new Error(`HTTP ${res.statusCode}`), errorData);
+      httpRequestEvents.error(logger, new Error(`HTTP ${res.statusCode}`), logData);
     } else {
-      httpRequestEvents.success(logger, {
-        ...requestData,
-        responseStats: {
-          statusCode: res.statusCode,
-          ...(contentLength && { contentLength: parseInt(contentLength, 10) }),
-          duration
-        }
-      });
+      httpRequestEvents.success(logger, logData);
     }
   });
 

@@ -45,6 +45,26 @@ export class DevelopmentHandler implements LogHandler {
   }
 
   private formatEvent(event: LogEvent): string {
+    // Special compact formatting for HTTP requests
+    if (event.event.startsWith('http.request.')) {
+      return this.formatHttpRequest(event);
+    }
+
+    // Special compact formatting for WebSocket events
+    if (event.event.startsWith('websocket.')) {
+      return this.formatWebSocketEvent(event);
+    }
+
+    // Special compact formatting for LLM events
+    if (event.event.startsWith('llm.')) {
+      return this.formatLLMEvent(event);
+    }
+
+    // Special compact formatting for tool events
+    if (event.event.startsWith('tool.')) {
+      return this.formatToolEvent(event);
+    }
+
     const parts: string[] = [];
 
     // Timestamp
@@ -195,6 +215,12 @@ export class DevelopmentHandler implements LogHandler {
       return this.formatSetupError(obj);
     }
 
+    // Try compact formatting for common patterns
+    const compactFormat = this.tryCompactFormat(obj);
+    if (compactFormat) {
+      return compactFormat;
+    }
+
     const jsonStr = JSON.stringify(obj, null, 2);
     
     if (jsonStr.length <= this.expandThreshold) {
@@ -236,6 +262,187 @@ export class DevelopmentHandler implements LogHandler {
     }
     
     return lines.join('\n');
+  }
+
+  private tryCompactFormat(obj: any): string | null {
+    // Handle simple objects with few keys and short values
+    if (this.isSimpleObject(obj)) {
+      return this.formatSimpleObject(obj);
+    }
+
+    // Handle operation-based objects (common pattern in the codebase)
+    if (this.isOperationObject(obj)) {
+      return this.formatOperationObject(obj);
+    }
+
+    // Handle stats-only objects
+    if (this.isStatsObject(obj)) {
+      return this.formatStatsObject(obj);
+    }
+
+    // Handle error objects
+    if (this.isErrorInfoObject(obj)) {
+      return this.formatErrorInfoObject(obj);
+    }
+
+    return null;
+  }
+
+  private isSimpleObject(obj: any): boolean {
+    const keys = Object.keys(obj);
+    if (keys.length > 4) return false;
+    
+    // Check if all values are simple (strings, numbers, booleans, small arrays)
+    return keys.every(key => {
+      const value = obj[key];
+      if (typeof value === 'string') return value.length < 50;
+      if (typeof value === 'number' || typeof value === 'boolean') return true;
+      if (Array.isArray(value)) return value.length < 3 && value.every(item => typeof item === 'string' && item.length < 20);
+      return false;
+    });
+  }
+
+  private isOperationObject(obj: any): boolean {
+    return obj.operation && (obj.appId || obj.operationStats || obj.duration !== undefined);
+  }
+
+  private isStatsObject(obj: any): boolean {
+    const keys = Object.keys(obj);
+    return keys.length <= 6 && keys.every(key => 
+      ['success', 'duration', 'count', 'size', 'status', 'error'].some(statKey => 
+        key.toLowerCase().includes(statKey)) || 
+      typeof obj[key] === 'number' || typeof obj[key] === 'boolean'
+    );
+  }
+
+  private isErrorInfoObject(obj: any): boolean {
+    return obj.error || obj.message || obj.code || obj.statusCode;
+  }
+
+  private formatSimpleObject(obj: any): string {
+    const parts = Object.entries(obj).map(([key, value]) => {
+      const coloredKey = this.cyan(key);
+      let coloredValue: string;
+      
+      if (typeof value === 'string') {
+        coloredValue = `"${this.green(value)}"`;
+      } else if (typeof value === 'number') {
+        coloredValue = this.yellow(value.toString());
+      } else if (typeof value === 'boolean') {
+        coloredValue = value ? this.green('true') : this.red('false');
+      } else if (Array.isArray(value)) {
+        coloredValue = `[${value.map(v => `"${this.green(v)}"`).join(', ')}]`;
+      } else {
+        coloredValue = String(value);
+      }
+      
+      return `${coloredKey}:${coloredValue}`;
+    });
+    
+    return `  {${parts.join(', ')}}`;
+  }
+
+  private formatOperationObject(obj: any): string {
+    const parts: string[] = [];
+    
+    if (obj.operation) {
+      parts.push(`op:${this.yellow(obj.operation)}`);
+    }
+    
+    if (obj.appId) {
+      parts.push(`app:${this.cyan(obj.appId)}`);
+    }
+    
+    // Handle operationStats inline
+    if (obj.operationStats) {
+      const stats = obj.operationStats;
+      const statParts: string[] = [];
+      
+      if (stats.success !== undefined) {
+        statParts.push(stats.success ? this.green('✓') : this.red('✗'));
+      }
+      
+      if (stats.duration !== undefined) {
+        statParts.push(this.gray(`${stats.duration}ms`));
+      }
+      
+      // Add numeric stats
+      Object.entries(stats).forEach(([key, value]) => {
+        if (key !== 'success' && key !== 'duration' && typeof value === 'number' && value > 0) {
+          statParts.push(`${key}:${this.yellow(value.toString())}`);
+        }
+      });
+      
+      if (statParts.length > 0) {
+        parts.push(`[${statParts.join(' ')}]`);
+      }
+    }
+    
+    // Add other important fields
+    Object.entries(obj).forEach(([key, value]) => {
+      if (!['operation', 'appId', 'operationStats'].includes(key)) {
+        if (typeof value === 'string' && value.length < 30) {
+          parts.push(`${key}:${this.green(value)}`);
+        } else if (typeof value === 'number') {
+          parts.push(`${key}:${this.yellow(value.toString())}`);
+        } else if (typeof value === 'boolean') {
+          parts.push(`${key}:${value ? this.green('true') : this.red('false')}`);
+        }
+      }
+    });
+    
+    return `  ${parts.join(' ')}`;
+  }
+
+  private formatStatsObject(obj: any): string {
+    const parts = Object.entries(obj).map(([key, value]) => {
+      if (typeof value === 'boolean') {
+        if (key.toLowerCase().includes('success')) {
+          return value ? this.green('✓') : this.red('✗');
+        }
+        return `${key}:${value ? this.green('true') : this.red('false')}`;
+      } else if (typeof value === 'number') {
+        if (key.toLowerCase().includes('duration') || key.toLowerCase().includes('time')) {
+          return this.gray(`${value}ms`);
+        }
+        return `${key}:${this.yellow(value.toString())}`;
+      } else if (typeof value === 'string') {
+        return `${key}:${this.green(value)}`;
+      }
+      return `${key}:${value}`;
+    });
+    
+    return `  [${parts.join(' ')}]`;
+  }
+
+  private formatErrorInfoObject(obj: any): string {
+    const parts: string[] = [];
+    
+    if (obj.error) {
+      parts.push(this.red(`error:${obj.error}`));
+    }
+    if (obj.message) {
+      parts.push(this.red(`msg:${obj.message}`));
+    }
+    if (obj.code) {
+      parts.push(`code:${this.yellow(obj.code.toString())}`);
+    }
+    if (obj.statusCode) {
+      parts.push(`status:${this.yellow(obj.statusCode.toString())}`);
+    }
+    
+    // Add other fields
+    Object.entries(obj).forEach(([key, value]) => {
+      if (!['error', 'message', 'code', 'statusCode'].includes(key)) {
+        if (typeof value === 'string' && value.length < 30) {
+          parts.push(`${key}:${this.green(value)}`);
+        } else if (typeof value === 'number') {
+          parts.push(`${key}:${this.yellow(value.toString())}`);
+        }
+      }
+    });
+    
+    return `  ${parts.join(' ')}`;
   }
 
   private formatError(error: any): string {
@@ -344,6 +551,440 @@ export class DevelopmentHandler implements LogHandler {
   private formatOtherStackLine(line: string): string {
     // Format other stack lines (system, etc.)
     return this.gray(line);
+  }
+
+  private formatHttpRequest(event: LogEvent): string {
+    const parts: string[] = [];
+
+    // Timestamp
+    if (this.showTimestamps) {
+      const timestamp = new Date(event.timestamp).toLocaleTimeString();
+      parts.push(this.gray(`[${timestamp}]`));
+    }
+
+    // HTTP icon and level
+    const isError = event.event === 'http.request.error';
+    const httpIcon = isError ? this.red('🌐') : this.blue('🌐');
+    parts.push(httpIcon);
+
+    // Extract key info from data
+    const data = event.data || {};
+    const method = data.method || 'GET';
+    const url = data.url || '/';
+    const statusCode = data.responseStats?.statusCode;
+    const duration = data.responseStats?.duration;
+    const requestId = data.requestId;
+
+    // Format: METHOD /path - 200 (123ms) [req:abcd1234]
+    const coloredMethod = this.getMethodColor(method)(method);
+    parts.push(coloredMethod);
+    parts.push(this.cyan(url));
+
+    if (statusCode !== undefined) {
+      const coloredStatus = this.getStatusColor(statusCode)(statusCode.toString());
+      parts.push(`- ${coloredStatus}`);
+    }
+
+    if (duration !== undefined) {
+      parts.push(this.gray(`(${duration}ms)`));
+    }
+
+    if (requestId) {
+      parts.push(this.gray(`[req:${requestId}]`));
+    }
+
+    // Add error details on same line if it's an error
+    if (isError && event.error) {
+      parts.push(this.red(`- ${event.error.message}`));
+    }
+
+    return parts.join(' ');
+  }
+
+  private formatWebSocketEvent(event: LogEvent): string {
+    const parts: string[] = [];
+
+    // Timestamp
+    if (this.showTimestamps) {
+      const timestamp = new Date(event.timestamp).toLocaleTimeString();
+      parts.push(this.gray(`[${timestamp}]`));
+    }
+
+    // WebSocket icon
+    const data = event.data || {};
+    const isError = event.event.includes('.error');
+    const wsIcon = isError ? this.red('🔌') : this.purple('🔌');
+    parts.push(wsIcon);
+
+    // Determine event type and format accordingly
+    if (event.event.includes('.connection.')) {
+      return this.formatWebSocketConnection(event, parts, data);
+    } else if (event.event.includes('.chat.')) {
+      return this.formatWebSocketChat(event, parts, data);
+    }
+
+    // Fallback to generic format
+    parts.push(this.purple(event.event));
+    if (data.agentId) {
+      parts.push(`agent:${data.agentId}`);
+    }
+    
+    return parts.join(' ');
+  }
+
+  private formatWebSocketConnection(event: LogEvent, parts: string[], data: any): string {
+    const agentId = data.agentId || 'unknown';
+    const connectionId = data.connectionId;
+    const clientIP = data.clientIP;
+    const url = data.url;
+
+    if (event.event.includes('.connected')) {
+      parts.push(this.green('CONNECT'));
+      parts.push(`agent:${this.cyan(agentId)}`);
+      if (url) {
+        parts.push(this.gray(url));
+      }
+      if (clientIP && clientIP !== '::1' && clientIP !== '127.0.0.1') {
+        parts.push(`from:${this.gray(clientIP)}`);
+      }
+      if (connectionId) {
+        parts.push(this.gray(`[${connectionId}]`));
+      }
+    } else if (event.event.includes('.disconnected')) {
+      parts.push(this.yellow('DISCONNECT'));
+      parts.push(`agent:${this.cyan(agentId)}`);
+      if (connectionId) {
+        parts.push(this.gray(`[${connectionId}]`));
+      }
+    } else if (event.event.includes('.error')) {
+      parts.push(this.red('ERROR'));
+      parts.push(`agent:${this.cyan(agentId)}`);
+      if (event.error) {
+        parts.push(this.red(`- ${event.error.message}`));
+      }
+      if (connectionId) {
+        parts.push(this.gray(`[${connectionId}]`));
+      }
+    }
+
+    return parts.join(' ');
+  }
+
+  private formatWebSocketChat(event: LogEvent, parts: string[], data: any): string {
+    const agentId = data.agentId || 'unknown';
+    const threadId = data.threadId;
+    const messageLength = data.messageLength;
+    const hasToolCalls = data.hasToolCalls;
+    const duration = data.responseStats?.duration;
+
+    if (event.event.includes('.message')) {
+      parts.push(this.blue('MESSAGE'));
+      parts.push(`agent:${this.cyan(agentId)}`);
+      if (messageLength) {
+        parts.push(this.gray(`(${messageLength} chars)`));
+      }
+      if (threadId) {
+        parts.push(this.gray(`[${threadId.substring(0, 8)}]`));
+      }
+    } else if (event.event.includes('.response')) {
+      parts.push(this.green('RESPONSE'));
+      parts.push(`agent:${this.cyan(agentId)}`);
+      if (hasToolCalls) {
+        parts.push(this.yellow('with-tools'));
+      }
+      if (duration) {
+        parts.push(this.gray(`(${duration}ms)`));
+      }
+      if (threadId) {
+        parts.push(this.gray(`[${threadId.substring(0, 8)}]`));
+      }
+    } else if (event.event.includes('.error')) {
+      parts.push(this.red('CHAT-ERROR'));
+      parts.push(`agent:${this.cyan(agentId)}`);
+      if (event.error) {
+        parts.push(this.red(`- ${event.error.message}`));
+      }
+      if (threadId) {
+        parts.push(this.gray(`[${threadId.substring(0, 8)}]`));
+      }
+    }
+
+    return parts.join(' ');
+  }
+
+  private formatLLMEvent(event: LogEvent): string {
+    const parts: string[] = [];
+
+    // Timestamp
+    if (this.showTimestamps) {
+      const timestamp = new Date(event.timestamp).toLocaleTimeString();
+      parts.push(this.gray(`[${timestamp}]`));
+    }
+
+    // LLM icon and level
+    const data = event.data || {};
+    const isError = event.event.includes('.error');
+    const llmIcon = isError ? this.red('🧠') : this.magenta('🧠');
+    parts.push(llmIcon);
+
+    if (event.event === 'llm.request') {
+      return this.formatLLMRequest(event, parts, data);
+    } else if (event.event === 'llm.response') {
+      return this.formatLLMResponse(event, parts, data);
+    } else if (event.event.includes('.error')) {
+      return this.formatLLMError(event, parts, data);
+    }
+
+    // Fallback
+    parts.push(this.magenta(event.event));
+    return parts.join(' ');
+  }
+
+  private formatLLMRequest(event: LogEvent, parts: string[], data: any): string {
+    const model = data.model || 'unknown';
+    const messageCount = data.messageCount || 0;
+    const hasTools = data.hasTools;
+    const streaming = data.streaming;
+    const agentId = data.agentId;
+    const threadId = data.threadId;
+
+    parts.push(this.blue('REQUEST'));
+    
+    // Model name (simplified)
+    const modelDisplay = model.replace('claude-sonnet-4-20250514', 'claude-4').replace('claude-', '');
+    parts.push(this.cyan(modelDisplay));
+    
+    // Message count
+    parts.push(`${messageCount}msg`);
+    
+    // Capabilities
+    const caps: string[] = [];
+    if (hasTools) caps.push('tools');
+    if (streaming) caps.push('stream');
+    if (caps.length > 0) {
+      parts.push(this.yellow(`[${caps.join('+')}]`));
+    }
+    
+    // Context info
+    if (agentId) {
+      parts.push(`agent:${this.cyan(agentId)}`);
+    }
+    if (threadId) {
+      parts.push(this.gray(`[${threadId.substring(0, 8)}]`));
+    }
+
+    return parts.join(' ');
+  }
+
+  private formatLLMResponse(event: LogEvent, parts: string[], data: any): string {
+    const model = data.model || 'unknown';
+    const contentLength = data.contentLength;
+    const duration = data.duration;
+    const finishReason = data.finishReason;
+    const usage = data.usage;
+    const agentId = data.agentId;
+    const threadId = data.threadId;
+
+    parts.push(this.green('RESPONSE'));
+    
+    // Model name (simplified)
+    const modelDisplay = model.replace('claude-sonnet-4-20250514', 'claude-4').replace('claude-', '');
+    parts.push(this.cyan(modelDisplay));
+    
+    // Content info
+    if (contentLength) {
+      parts.push(`${contentLength}chars`);
+    }
+    
+    // Duration
+    if (duration) {
+      const durationMs = Math.round(duration);
+      parts.push(this.gray(`(${durationMs}ms)`));
+    }
+    
+    // Usage tokens (if not redacted)
+    if (usage && usage.totalTokens && usage.totalTokens !== '[REDACTED]') {
+      parts.push(this.yellow(`${usage.totalTokens}tok`));
+    }
+    
+    // Finish reason
+    if (finishReason && finishReason !== 'stop') {
+      parts.push(this.yellow(`[${finishReason}]`));
+    }
+    
+    // Context info
+    if (agentId) {
+      parts.push(`agent:${this.cyan(agentId)}`);
+    }
+    if (threadId) {
+      parts.push(this.gray(`[${threadId.substring(0, 8)}]`));
+    }
+
+    return parts.join(' ');
+  }
+
+  private formatLLMError(event: LogEvent, parts: string[], data: any): string {
+    const model = data.model || 'unknown';
+    const duration = data.duration;
+    const agentId = data.agentId;
+    const threadId = data.threadId;
+
+    parts.push(this.red('ERROR'));
+    
+    // Model name (simplified)
+    const modelDisplay = model.replace('claude-sonnet-4-20250514', 'claude-4').replace('claude-', '');
+    parts.push(this.cyan(modelDisplay));
+    
+    // Duration if available
+    if (duration) {
+      const durationMs = Math.round(duration);
+      parts.push(this.gray(`(${durationMs}ms)`));
+    }
+    
+    // Error message
+    if (event.error) {
+      parts.push(this.red(`- ${event.error.message}`));
+    }
+    
+    // Context info
+    if (agentId) {
+      parts.push(`agent:${this.cyan(agentId)}`);
+    }
+    if (threadId) {
+      parts.push(this.gray(`[${threadId.substring(0, 8)}]`));
+    }
+
+    return parts.join(' ');
+  }
+
+  private formatToolEvent(event: LogEvent): string {
+    const parts: string[] = [];
+
+    // Timestamp
+    if (this.showTimestamps) {
+      const timestamp = new Date(event.timestamp).toLocaleTimeString();
+      parts.push(this.gray(`[${timestamp}]`));
+    }
+
+    // Tool icon
+    const data = event.data || {};
+    const isError = event.event.includes('.failure') || event.event.includes('.error');
+    const toolIcon = isError ? this.red('⚒️') : this.yellow('⚒️');
+    parts.push(toolIcon);
+
+    // Handle directory listing specifically
+    if (event.event.includes('tool.directory.listing.')) {
+      return this.formatDirectoryListingTool(event, parts, data);
+    }
+
+    // Handle other tool types with generic formatting
+    return this.formatGenericTool(event, parts, data);
+  }
+
+  private formatDirectoryListingTool(event: LogEvent, parts: string[], data: any): string {
+    const targetPath = data.targetPath || '.';
+    const toolName = data.toolName || 'DirectoryTool';
+    const options = data.options || {};
+    const resultStats = data.resultStats;
+
+    if (event.event.includes('.begin')) {
+      parts.push(this.blue('LIST'));
+      parts.push(this.cyan(targetPath === '.' ? 'current' : targetPath));
+      
+      // Add key options compactly
+      const optParts: string[] = [];
+      if (options.directoriesOnly) optParts.push('dirs-only');
+      if (options.maxDepth && options.maxDepth !== 1) optParts.push(`depth:${options.maxDepth}`);
+      if (options.showHidden) optParts.push('hidden');
+      if (options.ignorePatterns && options.ignorePatterns.length > 0) {
+        optParts.push(`ignore:${options.ignorePatterns.length}`);
+      }
+      
+      if (optParts.length > 0) {
+        parts.push(this.gray(`[${optParts.join(',')}]`));
+      }
+      
+    } else if (event.event.includes('.success')) {
+      parts.push(this.green('LISTED'));
+      parts.push(this.cyan(targetPath === '.' ? 'current' : targetPath));
+      
+      if (resultStats) {
+        const statParts: string[] = [];
+        if (resultStats.totalEntries) statParts.push(`${resultStats.totalEntries}items`);
+        if (resultStats.directoryCount) statParts.push(`${resultStats.directoryCount}dirs`);
+        if (resultStats.fileCount) statParts.push(`${resultStats.fileCount}files`);
+        if (resultStats.truncated) statParts.push(this.yellow('truncated'));
+        if (resultStats.errorCount > 0) statParts.push(this.red(`${resultStats.errorCount}errors`));
+        
+        if (statParts.length > 0) {
+          parts.push(`[${statParts.join(' ')}]`);
+        }
+      }
+      
+    } else if (event.event.includes('.failure')) {
+      parts.push(this.red('LIST-ERROR'));
+      parts.push(this.cyan(targetPath === '.' ? 'current' : targetPath));
+      
+      if (event.error) {
+        parts.push(this.red(`- ${event.error.message}`));
+      }
+    }
+
+    return parts.join(' ');
+  }
+
+  private formatGenericTool(event: LogEvent, parts: string[], data: any): string {
+    const toolName = data.toolName || 'Tool';
+    
+    // Extract operation type from event name
+    let operation = 'UNKNOWN';
+    if (event.event.includes('.begin')) operation = 'START';
+    else if (event.event.includes('.success')) operation = 'SUCCESS';
+    else if (event.event.includes('.failure') || event.event.includes('.error')) operation = 'ERROR';
+    
+    // Simplify tool name
+    const displayName = toolName
+      .replace('Tool', '')
+      .replace(/([A-Z])/g, ' $1')
+      .trim()
+      .toUpperCase();
+    
+    // Apply color based on operation type
+    if (operation === 'SUCCESS') {
+      parts.push(this.green(operation));
+    } else if (operation === 'ERROR') {
+      parts.push(this.red(operation));
+    } else {
+      parts.push(this.blue(operation));
+    }
+    
+    parts.push(this.cyan(displayName));
+    
+    // Add error message if present
+    if (event.error && operation === 'ERROR') {
+      parts.push(this.red(`- ${event.error.message}`));
+    }
+    
+    return parts.join(' ');
+  }
+
+  private getMethodColor(method: string): (text: string) => string {
+    switch (method.toUpperCase()) {
+      case 'GET': return this.green.bind(this);
+      case 'POST': return this.blue.bind(this);
+      case 'PUT': return this.yellow.bind(this);
+      case 'DELETE': return this.red.bind(this);
+      case 'PATCH': return this.magenta.bind(this);
+      default: return this.gray.bind(this);
+    }
+  }
+
+  private getStatusColor(statusCode: number): (text: string) => string {
+    if (statusCode >= 200 && statusCode < 300) return this.green.bind(this);
+    if (statusCode >= 300 && statusCode < 400) return this.yellow.bind(this);
+    if (statusCode >= 400 && statusCode < 500) return this.red.bind(this);
+    if (statusCode >= 500) return this.red.bind(this);
+    return this.gray.bind(this);
   }
 
   private indent(text: string, spaces: number): string {
