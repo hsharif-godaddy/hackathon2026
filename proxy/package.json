@@ -1,0 +1,17 @@
+{
+  "name": "airo-proxy",
+  "version": "1.0.0",
+  "description": "Simple Node.js proxy server with gd-* token validation",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "http-proxy-middleware": "^3.0.5"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
