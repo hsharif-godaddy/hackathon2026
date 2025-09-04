@@ -22,6 +22,9 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
   const hasLegacyContent = Boolean(message.content && !message.isThinking && !hasSegments)
   const isComplete = message.is_complete
 
+  // Check if message has any meaningful content to display
+  const hasMeaningfulContent = hasSegments || hasLegacyContent || hasLegacyTools || message.isThinking
+
   // Track content changes to reset thinking indicator timer
   useEffect(() => {
     // Don't show thinking indicator if message is complete (with response timing), in initial thinking state, or is an old message
@@ -64,15 +67,17 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
       }
     }
   }, [
-    message.content, 
-    message.segments?.length, 
-    message.segments?.[message.segments.length - 1]?.content, // Track last segment content changes
-    message.tool_calls?.length, 
+    message,
     isComplete, 
-    message.response_duration_ms, // Track completion timing
-    message.isThinking,
-    showThinkingIndicator
+    showThinkingIndicator,
+    hasLegacyContent,
+    hasSegments,
   ])
+
+  // Don't render anything if the message has no meaningful content to display
+  if (!hasMeaningfulContent && !showThinkingIndicator) {
+    return null
+  }
   
   return (
     <div>
@@ -151,14 +156,14 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
 
         {!message.isThinking && !isComplete && showThinkingIndicator && (
           <div className="flex items-center space-x-2 mt-2 opacity-60">
-            <span className="text-xs text-gray-500">thinking...</span>
+            <span className="text-xs text-gray-500 animate-pulse">thinking...</span>
           </div>
         )}
       </div>
 
       {/* Completion drawer - outside the main message bubble */}
       {isComplete && message.response_duration_ms && (
-        <div className="border-t border-gray-200 pt-2 mt-2">
+        <div className="border-t border-gray-200 px-3 py-1 mt-2">
           <div 
             className="flex items-center justify-between cursor-pointer py-1 hover:opacity-70"
             onClick={() => setIsCompletionExpanded(!isCompletionExpanded)}

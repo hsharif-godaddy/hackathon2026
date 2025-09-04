@@ -6,6 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Airo App Builder is an AI-powered application development platform that combines artificial intelligence with enterprise-grade hosting and development tools. It uses a multi-service architecture with AI agents, real-time collaboration, and flexible deployment options.
 
+## General rules
+
+- You don't have to agree with everything, stop using empty phrases like "You are right!", be concise and go to the point.
+- You can challenge me if you think you have a better solution.
+- Never make assumptions about props, imports or path. Validate that thing exist before using them.
+- If you are unsure about something, at the start or anywhere in your execution process, stop and ask questions.
+- NEVER EDIT FILES UNDER `/tmp/apps/**`, these are **OUTPUT** of our system, not source code. **Always fix the generation logic instead**
+- We want QUALITY code. Take the time you need to think, explore multiple solutions if you need to.
+
 ## Key Commands
 
 ### Development Setup
@@ -13,47 +22,14 @@ Airo App Builder is an AI-powered application development platform that combines
 # Install dependencies for all components
 cd agents && pnpm install
 cd ../app && pnpm install  
-cd ../app-templates/v3 && pnpm install && cd ../..
-
-# Configure environment (copy from example)
-cp agents/.env.example agents/.env
-# Edit agents/.env to add your OpenAI API key
+cd ../app-templates/v8 && pnpm install && cd ../..
 
 # Start services (requires OpenAI API key in agents/.env)
 cd agents && pnpm run dev    # Backend agents API (port 4000)
 cd app && pnpm run dev       # Main Next.js app (port 3000)
 ```
 
-### Testing and Quality
-```bash
-# Agents backend
-cd agents
-pnpm test                    # Run vitest tests
-pnpm run test:watch         # Watch mode testing
-pnpm run lint               # ESLint checking
-pnpm run lint:fix           # Auto-fix linting issues
-
-# Main app (Next.js)
-cd app
-pnpm run lint               # Next.js linting
-pnpm run build              # Production build
-
-# Website
-cd website  
-pnpm run lint               # Next.js linting
-pnpm run build              # Production build
-```
-
-### Template Development
-```bash
-# App templates have their own commands
-cd app-templates/v3
-pnpm run dev                # Start template dev server
-pnpm run build              # Build template
-pnpm run type-check         # TypeScript checking
-pnpm run test               # Run vitest tests
-pnpm run lint               # ESLint checking
-```
+**IMPORTANT** Agent needs to run on port 4000 and App on port 3000, if something else is already running on one of this port, kill it
 
 ## Architecture Overview
 
@@ -72,8 +48,8 @@ pnpm run lint               # ESLint checking
   - Authentication integration
 
 - **app-templates/** - Template system for new applications
-  - v1, v2, v3 templates with different architectures
-  - v3 is current: Vite + React frontend + Node.js backend
+  - v1, v2, v3, v7, v8 templates with different architectures
+  - v8 is current: Vite + React frontend + Node.js backend
   - Templates are copied and customized for new apps
 
 ### Deployment Adapter Pattern

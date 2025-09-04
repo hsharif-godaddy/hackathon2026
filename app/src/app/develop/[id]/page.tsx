@@ -265,6 +265,10 @@ function DevelopPageContent() {
       setConversationId,
       onTokenUsageUpdate: () => {
         tokenUsageRef.current?.refreshUsage()
+      },
+      onMessageComplete: () => {
+        // Auto-refresh preview when agent completes a message
+        handlePreviewRefresh()
       }
     })
 
@@ -332,6 +336,10 @@ function DevelopPageContent() {
           setConversationId,
           onTokenUsageUpdate: () => {
             tokenUsageRef.current?.refreshUsage()
+          },
+          onMessageComplete: () => {
+            // Auto-refresh preview when agent completes a message
+            handlePreviewRefresh()
           }
         }).then(() => {
           console.log('✅ Auto-send completed successfully')
@@ -355,16 +363,16 @@ function DevelopPageContent() {
     }
   }, [isInitialAppCreation, inputValue, app?.initialPrompt, isLoadingConversations, conversations.length, isLoading, appId])
 
-  // Cleanup SSE connections and batched updates on unmount
+  // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
     return () => {
-      cleanupMessageService()
+      cleanupMessageService(appId) // Clean up specific app connection
       // Clear any pending style update timeout
       if (batchTimeoutRef.current) {
         clearTimeout(batchTimeoutRef.current)
       }
     }
-  }, [])
+  }, [appId])
 
   // Batching state for style updates
   const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null)

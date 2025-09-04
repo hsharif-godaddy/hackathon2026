@@ -30,7 +30,7 @@ export class ConversationContextManager {
   private readonly maxMessages: number;
   private appContextManager: AppContextManager;
 
-  constructor(conversationRepo: ConversationRepository, maxMessages: number = 5) {
+  constructor(conversationRepo: ConversationRepository, maxMessages: number = 10) {
     this.conversationRepo = conversationRepo;
     this.maxMessages = maxMessages;
     this.appContextManager = new AppContextManager();

@@ -16,6 +16,7 @@ export { MySQLResponseFormatter, createMySQLResponseFormatter } from './mysql-re
 export { ASTStyleEditor } from './ast-style-editor.js';
 export { AutoAPIGenerator } from './auto-api-generator.js';
 export { AppPlanTool, appPlanTool } from './app-plan-tool.js';
+export { validateLucideIcons } from './icons-validator.js';
 export { getToolDefinitions, executeToolFunction, TOOL_FUNCTIONS } from './tool-functions.js';
 export type { 
   DirectoryListingOptions, 
@@ -118,3 +119,8 @@ export type {
   AppPlanToolOptions,
   AppPlanToolResult
 } from './app-plan-tool.js';
+
+export type {
+  IconsValidatorOptions,
+  IconsValidationResult
+} from './icons-validator.js';

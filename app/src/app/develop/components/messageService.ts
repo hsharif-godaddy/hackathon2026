@@ -40,22 +40,33 @@ export interface SendMessageParams {
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>
   setConversationId?: React.Dispatch<React.SetStateAction<string | null>>
   onTokenUsageUpdate?: () => void
+  onMessageComplete?: () => void
 }
 
-// WebSocket connection management
-let currentWebSocket: WebSocket | null = null
+// WebSocket connection management - Per app instance to avoid conflicts
+const webSocketConnections = new Map<string, WebSocket>()
 let reconnectAttempts = 0
 const maxReconnectAttempts = 5
 const reconnectDelay = 1000 // Start with 1 second, will be exponential backoff
 
 /**
- * Cleanup function to close any ongoing WebSocket connections
+ * Cleanup function to close WebSocket connections
  * Should be called when component unmounts or when you want to cancel ongoing connections
  */
-export const cleanup = () => {
-  if (currentWebSocket) {
-    currentWebSocket.close()
-    currentWebSocket = null
+export const cleanup = (appId?: string) => {
+  if (appId) {
+    // Clean up specific app connection
+    const ws = webSocketConnections.get(appId)
+    if (ws) {
+      ws.close()
+      webSocketConnections.delete(appId)
+    }
+  } else {
+    // Clean up all connections
+    for (const [id, ws] of webSocketConnections) {
+      ws.close()
+    }
+    webSocketConnections.clear()
   }
   reconnectAttempts = 0
 }
@@ -144,7 +155,8 @@ export const handleSendMessage = async ({
   setInputValue,
   setIsLoading,
   setConversationId,
-  onTokenUsageUpdate
+  onTokenUsageUpdate,
+  onMessageComplete
 }: SendMessageParams) => {
   const content = messageContent || inputValue.trim()
   if (!content || isLoading) return
@@ -187,20 +199,22 @@ export const handleSendMessage = async ({
     // This prevents making changes on a detached HEAD state
     await ensureLatestCommit(appId)
     
-    // Close any existing WebSocket connection
-    if (currentWebSocket) {
-      currentWebSocket.close()
-      currentWebSocket = null
+    // Close any existing WebSocket connection for this app
+    const existingWs = webSocketConnections.get(appId)
+    if (existingWs) {
+      existingWs.close()
+      webSocketConnections.delete(appId)
     }
     
     // Always use develop agent
     const agentId = 'develop'
 
-    // Create new WebSocket connection
-    currentWebSocket = await createWebSocketConnection(agentId)
+    // Create new WebSocket connection for this app
+    const newWebSocket = await createWebSocketConnection(agentId)
+    webSocketConnections.set(appId, newWebSocket)
 
     // Set up message handler
-    currentWebSocket.onmessage = (event) => {
+    newWebSocket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
         agentMessageContent = handleWebSocketMessage(
@@ -212,7 +226,8 @@ export const handleSendMessage = async ({
           updateThrottleMs,
           setIsLoading,
           setConversationId,
-          onTokenUsageUpdate
+          onTokenUsageUpdate,
+          onMessageComplete
         )
       } catch (error) {
         console.warn('Failed to parse WebSocket data:', event.data, error)
@@ -220,7 +235,7 @@ export const handleSendMessage = async ({
     }
 
     // Set up error handler
-    currentWebSocket.onerror = (error) => {
+    newWebSocket.onerror = (error) => {
       console.error('WebSocket Error:', error)
       handleWebSocketError(agentMessage, setMessages)
       setIsLoading(false)
@@ -263,7 +278,7 @@ export const handleSendMessage = async ({
       }
     }
 
-    currentWebSocket.send(JSON.stringify(chatMessage))
+    newWebSocket.send(JSON.stringify(chatMessage))
 
   } catch (error) {
     console.error('Error sending message via WebSocket:', error)
@@ -281,7 +296,8 @@ function handleWebSocketMessage(
   updateThrottleMs: number,
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
   setConversationId?: React.Dispatch<React.SetStateAction<string | null>>,
-  onTokenUsageUpdate?: () => void
+  onTokenUsageUpdate?: () => void,
+  onMessageComplete?: () => void
 ): string {
   switch (data.type) {
     case 'metadata':
@@ -465,6 +481,13 @@ function handleWebSocketMessage(
       // Refresh token usage after completion
       if (onTokenUsageUpdate) {
         onTokenUsageUpdate()
+      }
+      
+      // Trigger preview refresh when message completes
+      if (onMessageComplete) {
+        setTimeout(() => {
+          onMessageComplete()
+        }, 500) // Small delay to ensure file changes are processed
       }
       break
       

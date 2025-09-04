@@ -1,0 +1,44 @@
+# Development Dockerfile for V7 App Template (Vite + React + Hono)
+FROM node:22-alpine
+
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Set working directory
+WORKDIR /app
+
+# Create clean npm environment
+RUN echo "registry=https://registry.npmjs.org/" > /root/.npmrc
+
+# Copy package files and install dependencies
+# Support both npm and pnpm (v3 templates may use pnpm)
+COPY package.json ./
+COPY pnpm-lock.yaml* ./
+RUN if [ -f pnpm-lock.yaml ]; then \
+    corepack enable && corepack prepare pnpm@latest --activate && \
+    pnpm install --registry=https://registry.npmjs.org/; \
+    else \
+    npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit; \
+    fi
+
+# Copy source code (node_modules excluded via .dockerignore)
+COPY . .
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Expose the frontend port (will be overridden by PREFERRED_FRONTEND_PORT)
+EXPOSE 3000
+
+# Set development environment variables
+ENV NODE_ENV=development
+ENV VITE_HMR_HOST=0.0.0.0
+ENV RUNNING_IN_DOCKER=true
+
+# Health check for the frontend Vite server
+# Port will be determined by PREFERRED_FRONTEND_PORT or default to 5173
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:${PREFERRED_FRONTEND_PORT:-5173}/ || curl -f http://localhost:3000/ || exit 1
+
+# Start development server (runs both frontend Vite and backend Hono)
+CMD ["npm", "run", "dev"]

@@ -18,6 +18,7 @@ import { findImage } from './image-search-tool.js';
 import { generateImage } from './image-generation-tool.js';
 import { findGettyImage, GettyImageOptions } from './getty-image-tool.js';
 import { appPlanTool, AppPlanToolOptions } from './app-plan-tool.js';
+import { validateLucideIcons, IconsValidatorOptions } from './icons-validator.js';
 import { AgentRegistry } from '../registry/index.js';
 
 const directoryTool = new DirectoryListingTool();
@@ -644,7 +645,26 @@ export const TOOL_FUNCTIONS = {
       required: ['operation', 'database'],
     },
   },
-
+  icons_validator: {
+    name: 'icons_validator',
+    description: 'Validate icons used in generated content. Use this tool when the site is nearly complete to ensure all icons exist. This prevents runtime errors from invalid icon names.',
+    parameters: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific files to validate (relative paths). If empty, validates all .tsx/.ts/.jsx/.js files',
+        },
+        fixSuggestions: {
+          type: 'boolean',
+          description: 'Include detailed fix suggestions in the output',
+          default: true,
+        },
+      },
+      required: [],
+    },
+  },
 } as const;
 
 /**
@@ -728,6 +748,9 @@ export async function executeToolFunction(
     
     case 'app_plan':
       return await executeAppPlan(args as unknown as AppPlanToolOptions, context);
+
+    case 'icon_validator':
+      return await executeIconsValidator(args as unknown as IconsValidatorOptions, context);
     
     default:
       throw new Error(`Unknown tool function: ${functionName}`);
@@ -1359,6 +1382,99 @@ async function executeAutoAPIGenerator(
     
   } catch (error) {
     console.error('❌ API generation failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Execute content validation tool
+ */
+async function executeIconsValidator(
+  options: IconsValidatorOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  // Get app information from context
+  const appId = context.metadata?.appId as string;
+
+  if (!appId) {
+    throw new Error('App ID is required for content validation');
+  }
+
+  // Get app metadata to determine the allowed path
+  const app = appRepo.findById(appId);
+  if (!app) {
+    throw new Error(`App '${appId}' not found`);
+  }
+
+  try {
+    // Track tool execution
+    await trackToolExecution('icons_validator', context, JSON.stringify(options).length);
+
+    const files = options.files || [];
+    const fixSuggestions = options.fixSuggestions !== false;
+
+    console.log(`🔍 Running icons validation for app ${appId}...`);
+
+    // Use the existing content validation system
+    const result = await validateLucideIcons(app.path, files);
+
+    if (!result) {
+      throw new Error('Icons validation failed to execute');
+    }
+
+    // Format the response based on the operation and results
+    let responseMessage = '';
+
+    if (result.valid) {
+      responseMessage = `✅ **Icons Validation PASSED**\n\n`;
+      responseMessage += `📊 **Summary:**\n`;
+      responseMessage += `- 
+       scanned: ${result.scannedFiles.length}\n`;
+      responseMessage += `- Errors found: 0\n`;
+      responseMessage += `- Warnings: ${result.warnings.length}\n\n`;
+
+      if (result.warnings.length > 0) {
+        responseMessage += `⚠️ **Warnings:**\n`;
+        result.warnings.forEach(warning => {
+          responseMessage += `- **${warning.file}**: ${warning.message}\n`;
+        });
+        responseMessage += '\n';
+      }
+
+      responseMessage += `🎉 **All icons are valid!** Your site is ready for production.`;
+    } else {
+      responseMessage = `❌ **Icons Validation FAILED**\n\n`;
+      responseMessage += `📊 **Summary:**\n`;
+      responseMessage += `- Files scanned: ${result.scannedFiles.length}\n`;
+      responseMessage += `- Errors found: ${result.errors.length}\n`;
+      responseMessage += `- Warnings: ${result.warnings.length}\n\n`;
+
+      responseMessage += `🚨 **Critical Errors:**\n`;
+      result.errors.forEach(error => {
+        responseMessage += `- **${error.file}**: ${error.message}\n`;
+      });
+
+      if (result.warnings.length > 0) {
+        responseMessage += `\n⚠️ **Warnings:**\n`;
+        result.warnings.forEach(warning => {
+          responseMessage += `- **${warning.file}**: ${warning.message}\n`;
+        });
+      }
+
+      if (fixSuggestions && result.fixSuggestions.length > 0) {
+        responseMessage += `\n💡 **Fix Suggestions:**\n`;
+        result.fixSuggestions.forEach(suggestion => {
+          responseMessage += `- ${suggestion}\n`;
+        });
+      }
+
+      responseMessage += `\n🔧 **Next Steps**: Fix the errors above to ensure your site works correctly in production.`;
+    }
+
+    return responseMessage;
+
+  } catch (error) {
+    console.error('❌ Icons validation failed:', error);
     throw error;
   }
 }
