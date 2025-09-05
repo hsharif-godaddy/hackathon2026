@@ -92,19 +92,22 @@ export default function Header({
               >
                 Preview
               </button>
-              <button 
-                onClick={() => onViewModeChange('code')}
-                className={`flex items-center px-2 py-1 text-xs rounded-md transition-colors ${
-                  viewMode === 'code' 
-                    ? 'bg-purple-100 text-purple-700' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Code
-                {hasUnsavedChanges && viewMode === 'code' && (
-                  <div className="w-2 h-2 bg-orange-500 rounded-full ml-1" title="Unsaved changes" />
-                )}
-              </button>
+              {/* Code Editor Button - Environment Variable Controlled (Hidden by default) */}
+              {process.env.NEXT_PUBLIC_SHOW_CODE_EDITOR === 'true' && (
+                <button 
+                  onClick={() => onViewModeChange('code')}
+                  className={`flex items-center px-2 py-1 text-xs rounded-md transition-colors ${
+                    viewMode === 'code' 
+                      ? 'bg-purple-100 text-purple-700' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Code
+                  {hasUnsavedChanges && viewMode === 'code' && (
+                    <div className="w-2 h-2 bg-orange-500 rounded-full ml-1" title="Unsaved changes" />
+                  )}
+                </button>
+              )}
             </div>
 
             {/* Preview controls when in preview mode */}
