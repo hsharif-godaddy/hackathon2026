@@ -1,22 +1,26 @@
-name: PR Checks
+name: Code Quality Checks
+
 
 on:
   pull_request:
     branches: [main, develop]
     types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
 
 permissions:
   id-token: write # required for artifactory token login
   contents: read
 
 jobs:
-  lint-and-build:
+  quality-checks:
     runs-on:
       group: 8606-awsx64
       labels:
         - self-hosted
 
     strategy:
+      fail-fast: false  # Continue other jobs even if one fails
       matrix:
         package: [agents, app]
         include:
@@ -54,6 +58,9 @@ jobs:
       - name: Install pnpm
         run: npm install -g pnpm
 
+      - name: Install license checker
+        run: npm install -g license-checker
+
       - name: Configure pnpm registry
         working-directory: ${{ matrix.working-directory }}
         run: |
@@ -71,6 +78,42 @@ jobs:
             echo "📦 Installing with pnpm (no lock file)"
             pnpm install
           fi
+      - name: Check license compliance
+        working-directory: ${{ matrix.working-directory }}
+        run: |
+          echo "🔍 Checking license compliance..."
+          
+          # Package-specific configurations
+          if [ "${{ matrix.package }}" = "agents" ]; then
+            EXCLUSIONS="argparse@2.0.1;tslib@2.8.1"
+            ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0"
+          elif [ "${{ matrix.package }}" = "app" ]; then
+            EXCLUSIONS="@godaddy/gasket-auth@3.3.15;website@0.1.0;@godaddy/gasket-plugin-auth@3.4.3"
+            ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC"
+          fi
+          
+          echo "🚫 Excluding packages: $EXCLUSIONS"
+          echo "✅ Allowed licenses: $ALLOWED_LICENSES"
+          
+          license-checker \
+            --onlyAllow "$ALLOWED_LICENSES" \
+            --excludePackages "$EXCLUSIONS" \
+            --summary
+          
+          echo "📋 Generating detailed license report..."
+          license-checker \
+            --onlyAllow "$ALLOWED_LICENSES" \
+            --excludePackages "$EXCLUSIONS" \
+            --out licenses-report.txt
+        continue-on-error: false
+
+      - name: Upload license report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report-${{ matrix.package }}
+          path: ${{ matrix.working-directory }}/licenses-report.txt
+          retention-days: 30
 
       - name: Run linting
         run: pnpm run lint
@@ -79,3 +122,63 @@ jobs:
       - name: Run build
         run: pnpm run build
         working-directory: ${{ matrix.working-directory }}
+
+  
+  v8-template-license-check:
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22.12
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.12"
+
+      - name: Install license checker
+        run: npm install -g license-checker
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install v8 template dependencies
+        working-directory: ./app-templates/v8
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            echo "📦 Installing with pnpm (lock file present)"
+            pnpm install --frozen-lockfile
+          else
+            echo "📦 Installing with pnpm (no lock file)"
+            pnpm install
+          fi
+
+      - name: Check v8 template license compliance
+        working-directory: ./app-templates/v8
+        run: |
+          echo "🔍 Checking v8 template license compliance..."
+          
+          ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC"
+          
+          echo "✅ Allowed licenses: $ALLOWED_LICENSES"
+          
+          license-checker \
+            --onlyAllow "$ALLOWED_LICENSES" \
+            --summary
+          
+          echo "📋 Generating detailed license report..."
+          license-checker \
+            --onlyAllow "$ALLOWED_LICENSES" \
+            --out licenses-report.txt
+        continue-on-error: false
+
+      - name: Upload v8 template license report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report-v8-template
+          path: ./app-templates/v8/licenses-report.txt
+          retention-days: 30
