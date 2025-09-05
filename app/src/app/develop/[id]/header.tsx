@@ -15,6 +15,7 @@ import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
 import { SignOutButton } from '@/components/auth'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerStore } from '@/stores/useServerStore'
+import { isFeatureEnabled } from '@/lib/features'
 
 interface HeaderProps {
   app: { name?: string; port?: number } | null // App data from page state
@@ -113,19 +114,22 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
               >
                 Preview
               </button>
-              <button 
-                onClick={() => handleViewModeChange('code', hasUnsavedChanges)}
-                className={`flex items-center px-2 py-1 text-xs rounded-md transition-colors ${
-                  viewMode === 'code' 
-                    ? 'bg-purple-100 text-purple-700' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Code
-                {hasUnsavedChanges && viewMode === 'code' && (
-                  <div className="w-2 h-2 bg-orange-500 rounded-full ml-1" title="Unsaved changes" />
-                )}
-              </button>
+              {/* Code Editor Button - Feature Flag Controlled */}
+              {isFeatureEnabled.codeEditor() && (
+                <button 
+                  onClick={() => handleViewModeChange('code', hasUnsavedChanges)}
+                  className={`flex items-center px-2 py-1 text-xs rounded-md transition-colors ${
+                    viewMode === 'code' 
+                      ? 'bg-purple-100 text-purple-700' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Code
+                  {hasUnsavedChanges && viewMode === 'code' && (
+                    <div className="w-2 h-2 bg-orange-500 rounded-full ml-1" title="Unsaved changes" />
+                  )}
+                </button>
+              )}
             </div>
 
             {/* Preview controls when in preview mode and server is ready */}
