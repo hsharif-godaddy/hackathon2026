@@ -28,12 +28,19 @@
  * // Searching for multiple images
  * const multipleResults = await tool.searchImage("sunset over mountains", 5);
  * 
+ * // Parallel search with multiple prompts
+ * const parallelResults = await tool.searchImage(["sunset over mountains", "forest landscape", "ocean waves"]);
+ * 
+ * // Parallel search with multiple images per prompt
+ * const parallelMultiple = await tool.searchImage(["cats", "dogs"], 3);
+ * 
  * // Using a specific driver
  * const customTool = new ImageSearchTool(new GettyImageSearchDriver());
  * 
  * // Using the legacy function interface
  * const result = await findImage({ prompt: "sunset over mountains" });
  * const multipleResult = await findImage({ prompt: "sunset over mountains", count: 3 });
+ * const parallelResult = await findImage({ prompt: ["cats", "dogs"], count: 2 });
  * ```
  */
 import OpenAI from 'openai';
@@ -45,7 +52,7 @@ import { logger } from '../logging/index.js';
 import { toolImageSearchEvents, toolCacheEvents } from '../logging/events/index.js';
 
 export interface ImageSearchOptions {
-  prompt: string;
+  prompt: string | string[];
   count?: number;
 }
 
@@ -54,6 +61,13 @@ export interface ImageSearchResult {
   url?: string;
   urls?: string[];
   error?: string;
+  results?: Array<{
+    prompt: string;
+    success: boolean;
+    url?: string;
+    urls?: string[];
+    error?: string;
+  }>;
 }
 
 /**
@@ -61,6 +75,7 @@ export interface ImageSearchResult {
  */
 export interface ImageSearchDriver {
   searchImage(prompt: string, count?: number): Promise<ImageSearchResult>;
+  searchImagesParallel(prompts: string[], count?: number): Promise<ImageSearchResult>;
 }
 
 /**
@@ -112,7 +127,7 @@ class UnsplashCache {
     const key = this.generateCacheKey(prompt, count);
     try {
       const filePath = this.getCacheFilePath(key);
-      
+
       if (!fs.existsSync(filePath)) {
         return null;
       }
@@ -120,7 +135,7 @@ class UnsplashCache {
       const fileStats = fs.statSync(filePath);
       const now = Date.now();
       const fileAge = now - fileStats.mtime.getTime();
-      
+
       if (fileAge > this.maxAge) {
         // Cache expired, remove file
         fs.unlinkSync(filePath);
@@ -129,7 +144,7 @@ class UnsplashCache {
 
       const cachedData = fs.readFileSync(filePath, 'utf-8');
       const result = JSON.parse(cachedData) as ImageSearchResult;
-      
+
       toolCacheEvents.getSuccess(logger, {
         toolName: 'UnsplashCache',
         cacheKey: key,
@@ -154,7 +169,7 @@ class UnsplashCache {
     const key = this.generateCacheKey(prompt, count);
     try {
       const filePath = this.getCacheFilePath(key);
-      
+
       fs.writeFileSync(filePath, JSON.stringify(result, null, 2));
       toolCacheEvents.setSuccess(logger, {
         toolName: 'UnsplashCache',
@@ -185,11 +200,11 @@ class UnsplashCache {
 
       for (const file of files) {
         if (!file.endsWith('.json')) continue;
-        
+
         const filePath = path.join(this.cacheDir, file);
         const fileStats = fs.statSync(filePath);
         const fileAge = now - fileStats.mtime.getTime();
-        
+
         if (fileAge > this.maxAge) {
           fs.unlinkSync(filePath);
           cleanedCount++;
@@ -221,38 +236,38 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
 
   constructor() {
     const apiKey = process.env.OPENAI_API_KEY;
-    
+
     if (!apiKey) {
       logger.warn('OpenAI API key not configured', {
         toolName: 'OpenAIImageSearchDriver',
       });
     }
-    
+
     this.openaiClient = new OpenAI({
       apiKey: apiKey
     });
   }
 
   async searchImage(prompt: string, count = 1): Promise<ImageSearchResult> {
-    const searchPrompt = count > 1 
+    const searchPrompt = count > 1
       ? `Find ${count} relevant images for: ${prompt.trim()}. Return only the direct image URLs, one per line.`
       : `Find a relevant image for: ${prompt.trim()}. Return only the direct image URL.`;
-      
+
     try {
       if (!this.openaiClient) {
-        return { 
-          success: false, 
-          error: 'OpenAI API key not configured' 
+        return {
+          success: false,
+          error: 'OpenAI API key not configured'
         };
       }
-      
+
       toolImageSearchEvents.begin(logger, {
         toolName: 'OpenAIImageSearchDriver',
         prompt: searchPrompt,
         count,
         provider: 'openai',
       });
-      
+
       const response = await this.openaiClient.responses.create({
         model: "gpt-5",
         tools: [
@@ -260,10 +275,10 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
         ],
         input: searchPrompt
       });
-      
+
       const responseText = response.output_text || '';
       const urlMatches = responseText.match(/https?:\/\/[^\s)]+\.(jpg|jpeg|png|gif|webp)/gi);
-      
+
       if (!urlMatches || urlMatches.length === 0) {
         toolImageSearchEvents.failure(logger, new Error('No valid image URLs found in the response'), {
           toolName: 'OpenAIImageSearchDriver',
@@ -276,9 +291,9 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
           error: 'No valid image URLs found in the response'
         };
       }
-      
+
       const imageUrls = urlMatches.slice(0, count);
-      
+
       if (imageUrls.length === 0) {
         toolImageSearchEvents.failure(logger, new Error('No valid image URLs found after filtering'), {
           toolName: 'OpenAIImageSearchDriver',
@@ -291,7 +306,7 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
           error: 'No valid image URLs found after filtering'
         };
       }
-      
+
       toolImageSearchEvents.success(logger, {
         toolName: 'OpenAIImageSearchDriver',
         prompt: searchPrompt,
@@ -300,11 +315,11 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
         resultUrls: imageUrls,
         resultCount: imageUrls.length,
       });
-      
-      if (count === 1) {
+
+      if (count === 1 && imageUrls.length > 0) {
         return {
           success: true,
-          url: imageUrls[0]!
+          url: imageUrls[0]!  // Safe: we just checked length > 0
         };
       } else {
         return {
@@ -322,6 +337,72 @@ class OpenAIImageSearchDriver implements ImageSearchDriver {
       return {
         success: false,
         error: `OpenAI image search failed: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+
+  async searchImagesParallel(prompts: string[], count = 1): Promise<ImageSearchResult> {
+    try {
+      toolImageSearchEvents.begin(logger, {
+        toolName: 'OpenAIImageSearchDriver',
+        prompt: `Parallel search: ${prompts.join(', ')}`,
+        count,
+        provider: 'openai',
+      });
+
+      const searchPromises = prompts.map(prompt => this.searchImage(prompt, count));
+      const results = await Promise.all(searchPromises);
+
+      const combinedResults = results.map((result, index) => {
+        const combined: {
+          prompt: string;
+          success: boolean;
+          url?: string;
+          urls?: string[];
+          error?: string;
+        } = {
+          prompt: prompts[index] || '',
+          success: result.success,
+        };
+        if (result.url) combined.url = result.url;
+        if (result.urls) combined.urls = result.urls;
+        if (result.error) combined.error = result.error;
+        return combined;
+      });
+
+      const hasAnySuccess = results.some(r => r.success);
+
+      toolImageSearchEvents.success(logger, {
+        toolName: 'OpenAIImageSearchDriver',
+        prompt: `Parallel search: ${prompts.join(', ')}`,
+        count,
+        provider: 'openai',
+        resultUrls: results.flatMap(r => r.urls || (r.url ? [r.url] : [])),
+        resultCount: results.reduce((sum, r) => sum + (r.urls?.length || (r.url ? 1 : 0)), 0),
+      });
+
+      if (hasAnySuccess) {
+        return {
+          success: true,
+          results: combinedResults
+        };
+      } else {
+        return {
+          success: false,
+          results: combinedResults,
+          error: 'All parallel searches failed'
+        };
+      }
+    } catch (error) {
+      toolImageSearchEvents.failure(logger, error as Error, {
+        toolName: 'OpenAIImageSearchDriver',
+        prompt: `Parallel search: ${prompts.join(', ')}`,
+        count,
+        provider: 'openai',
+      });
+      return {
+        success: false,
+        error: `OpenAI parallel image search failed: ${error instanceof Error ? error.message : String(error)}`
       };
     }
   }
@@ -345,7 +426,7 @@ class GettyImageSearchDriver implements ImageSearchDriver {
         count,
         provider: 'getty',
       });
-      
+
       const result = await this.gettyTool.searchImages({
         phrase: prompt.trim(),
         page: 1,
@@ -374,7 +455,7 @@ class GettyImageSearchDriver implements ImageSearchDriver {
           imageUrls.push(imageUrl);
         }
       }
-      
+
       if (imageUrls.length === 0) {
         toolImageSearchEvents.failure(logger, new Error('No valid image URLs found in Getty response'), {
           toolName: 'GettyImageSearchDriver',
@@ -396,11 +477,11 @@ class GettyImageSearchDriver implements ImageSearchDriver {
         resultUrls: imageUrls,
         resultCount: imageUrls.length,
       });
-      
-      if (count === 1) {
+
+      if (count === 1 && imageUrls.length > 0) {
         return {
           success: true,
-          url: imageUrls[0]!
+          url: imageUrls[0]!  // Safe: we just checked length > 0
         };
       } else {
         return {
@@ -421,6 +502,72 @@ class GettyImageSearchDriver implements ImageSearchDriver {
       };
     }
   }
+
+  async searchImagesParallel(prompts: string[], count = 1): Promise<ImageSearchResult> {
+    try {
+      toolImageSearchEvents.begin(logger, {
+        toolName: 'GettyImageSearchDriver',
+        prompt: `Parallel search: ${prompts.join(', ')}`,
+        count,
+        provider: 'getty',
+      });
+
+      const searchPromises = prompts.map(prompt => this.searchImage(prompt, count));
+      const results = await Promise.all(searchPromises);
+
+      const combinedResults = results.map((result, index) => {
+        const combined: {
+          prompt: string;
+          success: boolean;
+          url?: string;
+          urls?: string[];
+          error?: string;
+        } = {
+          prompt: prompts[index] || '',
+          success: result.success,
+        };
+        if (result.url) combined.url = result.url;
+        if (result.urls) combined.urls = result.urls;
+        if (result.error) combined.error = result.error;
+        return combined;
+      });
+
+      const hasAnySuccess = results.some(r => r.success);
+
+      toolImageSearchEvents.success(logger, {
+        toolName: 'GettyImageSearchDriver',
+        prompt: `Parallel search: ${prompts.join(', ')}`,
+        count,
+        provider: 'getty',
+        resultUrls: results.flatMap(r => r.urls || (r.url ? [r.url] : [])),
+        resultCount: results.reduce((sum, r) => sum + (r.urls?.length || (r.url ? 1 : 0)), 0),
+      });
+
+      if (hasAnySuccess) {
+        return {
+          success: true,
+          results: combinedResults
+        };
+      } else {
+        return {
+          success: false,
+          results: combinedResults,
+          error: 'All parallel searches failed'
+        };
+      }
+    } catch (error) {
+      toolImageSearchEvents.failure(logger, error as Error, {
+        toolName: 'GettyImageSearchDriver',
+        prompt: `Parallel search: ${prompts.join(', ')}`,
+        count,
+        provider: 'getty',
+      });
+      return {
+        success: false,
+        error: `Getty parallel image search failed: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
 }
 
 /**
@@ -433,7 +580,7 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
   constructor() {
     this.accessKey = process.env.UNSPLASH_ACCESS_KEY;
     this.cache = new UnsplashCache();
-    
+
     if (!this.accessKey) {
       logger.warn('Unsplash access key not configured', {
         toolName: 'UnsplashImageSearchDriver',
@@ -486,12 +633,12 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
         provider: 'unsplash',
         cacheHit: false,
       });
-      
+
       const searchUrl = new URL('https://api.unsplash.com/search/photos');
       searchUrl.searchParams.set('query', prompt.trim());
       searchUrl.searchParams.set('per_page', Math.min(count, 30).toString()); // Unsplash limits to 30 per page
       searchUrl.searchParams.set('orientation', 'landscape');
-      
+
       const response = await fetch(searchUrl.toString(), {
         headers: {
           'Authorization': `Client-ID ${this.accessKey}`,
@@ -512,7 +659,7 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
           };
         }>;
       };
-      
+
       if (!data.results || data.results.length === 0) {
         const errorResult = {
           success: false as const,
@@ -536,7 +683,7 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
           imageUrls.push(imageUrl);
         }
       }
-      
+
       if (imageUrls.length === 0) {
         const errorResult = {
           success: false as const,
@@ -562,12 +709,12 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
         resultUrls: imageUrls,
         resultCount: imageUrls.length,
       });
-      
+
       let result: ImageSearchResult;
-      if (count === 1) {
+      if (count === 1 && imageUrls.length > 0) {
         result = {
           success: true,
-          url: imageUrls[0]!
+          url: imageUrls[0]!  // Safe: we just checked length > 0
         };
       } else {
         result = {
@@ -594,6 +741,74 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
       return errorResult;
     }
   }
+
+  async searchImagesParallel(prompts: string[], count = 1): Promise<ImageSearchResult> {
+    try {
+      toolImageSearchEvents.begin(logger, {
+        toolName: 'UnsplashImageSearchDriver',
+        prompt: `Parallel search: ${prompts.join(', ')}`,
+        count,
+        provider: 'unsplash',
+        cacheHit: false,
+      });
+
+      const searchPromises = prompts.map(prompt => this.searchImage(prompt, count));
+      const results = await Promise.all(searchPromises);
+
+      const combinedResults = results.map((result, index) => {
+        const combined: {
+          prompt: string;
+          success: boolean;
+          url?: string;
+          urls?: string[];
+          error?: string;
+        } = {
+          prompt: prompts[index] || '',
+          success: result.success,
+        };
+        if (result.url) combined.url = result.url;
+        if (result.urls) combined.urls = result.urls;
+        if (result.error) combined.error = result.error;
+        return combined;
+      });
+
+      const hasAnySuccess = results.some(r => r.success);
+
+      toolImageSearchEvents.success(logger, {
+        toolName: 'UnsplashImageSearchDriver',
+        prompt: `Parallel search: ${prompts.join(', ')}`,
+        count,
+        provider: 'unsplash',
+        cacheHit: false,
+        resultUrls: results.flatMap(r => r.urls || (r.url ? [r.url] : [])),
+        resultCount: results.reduce((sum, r) => sum + (r.urls?.length || (r.url ? 1 : 0)), 0),
+      });
+
+      if (hasAnySuccess) {
+        return {
+          success: true,
+          results: combinedResults
+        };
+      } else {
+        return {
+          success: false,
+          results: combinedResults,
+          error: 'All parallel searches failed'
+        };
+      }
+    } catch (error) {
+      toolImageSearchEvents.failure(logger, error as Error, {
+        toolName: 'UnsplashImageSearchDriver',
+        prompt: `Parallel search: ${prompts.join(', ')}`,
+        count,
+        provider: 'unsplash',
+      });
+      return {
+        success: false,
+        error: `Unsplash parallel image search failed: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
 }
 
 /**
@@ -601,7 +816,7 @@ class UnsplashImageSearchDriver implements ImageSearchDriver {
  */
 function createImageSearchDriver(): ImageSearchDriver {
   const driverType = process.env.IMAGE_SEARCH_DRIVER || 'getty';
-  
+
   switch (driverType.toLowerCase()) {
     case 'openai':
       return new OpenAIImageSearchDriver();
@@ -625,17 +840,22 @@ export class ImageSearchTool {
   }
 
   /**
-   * Search for images based on the given prompt using the configured driver
-   * @param prompt The search prompt
-   * @param count The number of images to search for (default: 1)
+   * Search for images based on the given prompt(s) using the configured driver
+   * @param prompt The search prompt or array of prompts
+   * @param count The number of images to search for per prompt (default: 1)
    * @returns An object containing the image URL(s) or an error
    */
-  async searchImage(prompt: string, count = 1): Promise<ImageSearchResult> {
-    // Validate input
+  async searchImage(prompt: string | string[], count = 1): Promise<ImageSearchResult> {
+    // Handle array of prompts
+    if (Array.isArray(prompt)) {
+      return this.searchImagesParallel(prompt, count);
+    }
+
+    // Validate single prompt input
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
-      return { 
-        success: false, 
-        error: 'A valid search prompt is required' 
+      return {
+        success: false,
+        error: 'A valid search prompt is required'
       };
     }
 
@@ -648,29 +868,76 @@ export class ImageSearchTool {
 
     return this.driver.searchImage(prompt, count);
   }
+
+  /**
+   * Search for images using multiple prompts in parallel
+   * @param prompts Array of search prompts
+   * @param count The number of images to search for per prompt (default: 1)
+   * @returns An object containing results for each prompt
+   */
+  async searchImagesParallel(prompts: string[], count = 1): Promise<ImageSearchResult> {
+    // Validate input
+    if (!Array.isArray(prompts) || prompts.length === 0) {
+      return {
+        success: false,
+        error: 'A valid array of search prompts is required'
+      };
+    }
+
+    if (prompts.some(p => !p || typeof p !== 'string' || p.trim().length === 0)) {
+      return {
+        success: false,
+        error: 'All prompts must be valid non-empty strings'
+      };
+    }
+
+    if (count < 1 || count > 50) {
+      return {
+        success: false,
+        error: 'Count must be between 1 and 50'
+      };
+    }
+
+    if (prompts.length > 20) {
+      return {
+        success: false,
+        error: 'Maximum 20 prompts allowed for parallel search'
+      };
+    }
+
+    return this.driver.searchImagesParallel(prompts, count);
+  }
 }
 
 /**
  * Tool interface for image search - maintains backward compatibility
  */
-export async function findImage(options: { prompt: string; count?: number }): Promise<ImageSearchResult> {
+export async function findImage(options: { prompt: string | string[]; count?: number }): Promise<ImageSearchResult> {
   const { prompt, count = 1 } = options;
-  
-  if (!prompt || typeof prompt !== 'string') {
-    return { 
-      success: false, 
-      error: 'A valid search prompt is required' 
+
+  if (Array.isArray(prompt)) {
+    if (prompt.length === 0 || prompt.some(p => !p || typeof p !== 'string')) {
+      return {
+        success: false,
+        error: 'A valid array of search prompts is required'
+      };
+    }
+  } else if (!prompt || typeof prompt !== 'string') {
+    return {
+      success: false,
+      error: 'A valid search prompt is required'
     };
   }
-  
+
   try {
     const imageSearchTool = new ImageSearchTool();
     const result = await imageSearchTool.searchImage(prompt, count);
     return result;
   } catch (error) {
+    const promptForLog = Array.isArray(prompt) ? prompt.join(', ') : prompt;
     toolImageSearchEvents.failure(logger, error as Error, {
       toolName: 'ImageSearchTool',
-      prompt,
+      prompt: promptForLog,
       count: count || 1,
       provider: (process.env.IMAGE_SEARCH_DRIVER || 'getty') as 'getty' | 'openai' | 'unsplash',
     });

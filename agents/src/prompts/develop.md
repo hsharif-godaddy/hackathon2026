@@ -102,7 +102,7 @@ You have access to powerful development tools:
 - **IMPORTANT**: Never run `pnpm run dev` or `pnpm start` - there is already a development server running and watching for file changes automatically
 
 ### Server Management Tools
-- **Functions**: `server_restart`, `server_status`, `server_stop`, `server_list` - Manage development servers
+- **Functions**: `server_restart`, `server_status`, `server_stop` - Manage development servers
 - **Purpose**: Control backend server operations for applications
 - **Key Functions**:
   - `server_restart`: Restart development server (use after database changes, dependency installs)
@@ -321,8 +321,8 @@ border-gray-300 text-slate-900
 
 ### Getting Images
 
-- Use the `image_search` tool for finding images, specify count if you need multiple images.
-- Only use the `image_generation` tool if asked to generate or create an image specifically
+- Use the `image_search` tool for finding images. Supports single prompts for one image, or arrays of prompts for parallel search (each prompt returns one high-quality image).
+- Only use the `image_generate` tool if asked to generate or create an image specifically
 
 ## Important Security Guidelines
 

@@ -102,14 +102,17 @@ async function writeCredentialsToEnvFile(
 export const TOOL_FUNCTIONS = {
   image_search: {
     name: 'image_search',
-    description: 'Search for an image on the web based on a text prompt and return a single image URL. Use this when you need to find a relevant image to illustrate a concept.',
+    description: 'Search for images on the web based on text prompts. Supports single prompts or arrays of prompts for parallel search. Each prompt returns one high-quality image. Use this when you need to find relevant images to illustrate concepts.',
     parameters: {
       type: 'object',
       properties: {
         prompt: {
-          type: 'string',
-          description: 'The text prompt describing the image to search for',
-        },
+          type: ['string', 'array'],
+          description: 'Text prompt(s) describing the image(s) to search for. Can be a single string or array of strings for parallel search. Each prompt returns one image.',
+          items: {
+            type: 'string'
+          }
+        }
       },
       required: ['prompt'],
     },
@@ -744,7 +747,7 @@ export async function executeToolFunction(
 
   switch (functionName) {
     case 'image_search':
-      return await executeImageSearch(args as {prompt: string}, context);
+      return await executeImageSearch(args as {prompt: string | string[]}, context);
     
    case 'image_generate':
       return await executeImageGenerate(args as {prompt: string, size?: string, style?: string, saveToFile?: boolean}, context);
@@ -1182,12 +1185,28 @@ async function executeMySQLOperation(
 
 /**
  * Get tool definitions for OpenAI function calling
+ * Optionally filtered by agent's configured tools
  */
-export function getToolDefinitions(): Array<{
+export function getToolDefinitions(agentToolNames?: string[]): Array<{
   type: 'function';
   function: typeof TOOL_FUNCTIONS[keyof typeof TOOL_FUNCTIONS];
 }> {
-  return Object.values(TOOL_FUNCTIONS).map(func => ({
+  const availableTools = Object.values(TOOL_FUNCTIONS);
+  
+  // If no filter provided, return all tools (backward compatibility)
+  if (!agentToolNames || agentToolNames.length === 0) {
+    return availableTools.map(func => ({
+      type: 'function' as const,
+      function: func,
+    }));
+  }
+  
+  // Filter tools based on agent configuration
+  const filteredTools = availableTools.filter(tool => 
+    agentToolNames.includes(tool.name)
+  );
+  
+  return filteredTools.map(func => ({
     type: 'function' as const,
     function: func,
   }));
@@ -1197,25 +1216,51 @@ export function getToolDefinitions(): Array<{
  * Execute the image search tool
  */
 async function executeImageSearch(
-  options: { prompt: string },
+  options: { prompt: string | string[] },
   context: AgentExecutionContext
 ): Promise<string> {
   const { prompt } = options;
   
-  if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+  // Validate prompt
+  if (Array.isArray(prompt)) {
+    if (prompt.length === 0 || prompt.some(p => !p || typeof p !== 'string' || p.trim().length === 0)) {
+      throw new Error('A valid array of image search prompts is required');
+    }
+  } else if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
     throw new Error('A valid image search prompt is required');
   }
   
   // Track tool execution separately
-  await trackToolExecution('image_search', context, prompt.length);
+  const promptSize = Array.isArray(prompt) ? prompt.join(', ').length : prompt.length;
+  await trackToolExecution('image_search', context, promptSize);
   
   const result = await findImage({ prompt });
   
-  if (!result.success || !result.url) {
-    throw new Error(result.error || 'Failed to find image');
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to find image(s)');
   }
   
-  return `![${prompt}](${result.url})`;
+  // Handle single prompt case
+  if (!Array.isArray(prompt) && result.url) {
+    return `![${prompt}](${result.url})`;
+  }
+  
+  // Handle array prompts case
+  if (Array.isArray(prompt) && result.results) {
+    const markdownImages = result.results.map(r => {
+      if (r.success && r.url) {
+        return `![${r.prompt}](${r.url})`;
+      } else if (r.success && r.urls && r.urls.length > 0) {
+        return r.urls.map(url => `![${r.prompt}](${url})`).join('\n');
+      } else {
+        return `<!-- Error for "${r.prompt}": ${r.error || 'No image found'} -->`;
+      }
+    }).join('\n\n');
+    
+    return markdownImages;
+  }
+  
+  throw new Error('Unexpected result format from image search');
 }
 
 async function executeImageGenerate(

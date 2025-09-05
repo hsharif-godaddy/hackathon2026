@@ -56,16 +56,19 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
     }
   }
 
-  const extractImageFromResult = (toolResult: string) => {
-    // Match markdown image format: ![alt text](image_url)
-    const imageMatch = toolResult.match(/!\[([^\]]*)\]\(([^\)]+)\)/)
-    if (imageMatch) {
-      return {
-        alt: imageMatch[1],
-        url: imageMatch[2]
-      }
+  const extractImagesFromResult = (toolResult: string) => {
+    // Match all markdown image formats: ![alt text](image_url)
+    const imageMatches = toolResult.matchAll(/!\[([^\]]*)\]\(([^\)]+)\)/g)
+    const images = []
+    
+    for (const match of imageMatches) {
+      images.push({
+        alt: match[1] || 'Search result image',
+        url: match[2]
+      })
     }
-    return null
+    
+    return images.length > 0 ? images : null
   }
 
   // Format the tool result for better display
@@ -89,29 +92,48 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
       </div>
       <div className="p-3">
         {toolName === 'image_search' ? (
-          <div className="space-y-2">
+          <div className="space-y-4">
             {(() => {
-              const imageData = extractImageFromResult(toolResult)
-              if (imageData) {
+              const images = extractImagesFromResult(toolResult)
+              if (images && images.length > 0) {
                 return (
-                  <div>
-                    <img
-                      src={imageData.url}
-                      alt={imageData.alt || 'Search result image'}
-                      className="max-w-full h-auto max-h-64 rounded shadow-sm mb-2"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement
-                        target.style.display = 'none'
-                        const fallback = target.nextSibling as HTMLElement
-                        if (fallback) fallback.style.display = 'block'
-                      }}
-                    />
-                    <div className="text-xs text-red-600 hidden">
-                      Failed to load image: {imageData.url}
+                  <div className="space-y-4">
+                    {/* Image grid for multiple images */}
+                    <div className={`grid gap-3 ${images.length === 1 ? 'grid-cols-1' : images.length === 2 ? 'grid-cols-2' : images.length === 3 ? 'grid-cols-3' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
+                      {images.map((imageData, index) => (
+                        <div key={index} className="space-y-2">
+                          <img
+                            src={imageData.url}
+                            alt={imageData.alt}
+                            className="w-full h-auto max-h-48 object-cover rounded-lg shadow-sm border border-gray-200"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement
+                              target.style.display = 'none'
+                              const fallback = target.nextSibling as HTMLElement
+                              if (fallback) fallback.style.display = 'block'
+                            }}
+                          />
+                          <div className="text-xs text-red-600 hidden p-2 bg-red-50 rounded border border-red-200">
+                            Failed to load image: {imageData.alt}
+                          </div>
+                          {imageData.alt && (
+                            <p className="text-xs text-gray-600 font-medium text-center">
+                              {imageData.alt}
+                            </p>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                    <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono leading-relaxed">
-                      {toolResult}
-                    </pre>
+                    
+                    {/* Show raw markdown for reference */}
+                    <details className="mt-4">
+                      <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                        Show raw markdown ({images.length} image{images.length !== 1 ? 's' : ''})
+                      </summary>
+                      <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono leading-relaxed mt-2 p-2 bg-gray-50 rounded border">
+                        {toolResult}
+                      </pre>
+                    </details>
                   </div>
                 )
               }

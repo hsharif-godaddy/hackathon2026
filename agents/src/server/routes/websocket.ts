@@ -676,7 +676,8 @@ async function processLLMChat(context: ChatContext, systemPrompt: string, agentM
       conversationId: conversation?.id,
     });
     
-    const tools = agent.getTools().length > 0 ? getToolDefinitions() : undefined;
+    const agentTools = agent.getTools();
+    const tools = agentTools.length > 0 ? getToolDefinitions(agentTools.map((t: any) => t.name)) : undefined;
     const model = agent.getConfig().model;
     
     const llmRequest = { messages, tools, model };

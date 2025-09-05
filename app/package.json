@@ -8,6 +8,7 @@
     "build:server": "tsc server.ts --outDir . --target es2020 --module commonjs --moduleResolution node --esModuleInterop --allowSyntheticDefaultImports",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "install-gd-packages": "pnpm --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ install @godaddy/gasket-plugin-auth"
   },
   "dependencies": {

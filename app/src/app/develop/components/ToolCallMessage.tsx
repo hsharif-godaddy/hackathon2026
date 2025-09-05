@@ -129,17 +129,20 @@ export default function ToolCallMessage({
     return null
   }
 
-  const extractImageFromResult = (toolResult?: string) => {
+  const extractImagesFromResult = (toolResult?: string) => {
     if (!toolResult) return null
-    // Match markdown image format: ![alt text](image_url)
-    const imageMatch = toolResult.match(/!\[([^\]]*)\]\(([^\)]+)\)/)
-    if (imageMatch) {
-      return {
-        alt: imageMatch[1],
-        url: imageMatch[2]
-      }
+    // Match all markdown image formats: ![alt text](image_url)
+    const imageMatches = toolResult.matchAll(/!\[([^\]]*)\]\(([^\)]+)\)/g)
+    const images = []
+    
+    for (const match of imageMatches) {
+      images.push({
+        alt: match[1] || 'Search result image',
+        url: match[2]
+      })
     }
-    return null
+    
+    return images.length > 0 ? images : null
   }
 
   const filename = getFileName(toolName, toolArgs)
@@ -219,24 +222,38 @@ export default function ToolCallMessage({
             {toolName === 'image_search' && !error && toolResult ? (
               <div className="space-y-2">
                 {(() => {
-                  const imageData = extractImageFromResult(toolResult)
-                  if (imageData) {
+                  const images = extractImagesFromResult(toolResult)
+                  if (images && images.length > 0) {
                     return (
                       <div className="bg-gray-50 p-3 rounded border">
-                        {!imageError ? (
-                          <img 
-                            src={imageData.url} 
-                            alt={imageData.alt || 'Search result image'}
-                            className="max-w-full h-auto max-h-64 rounded shadow-sm"
-                            onError={() => setImageError(true)}
-                          />
-                        ) : (
-                          <div className="text-xs text-red-600 mb-2">
-                            Failed to load image: {imageData.url}
-                          </div>
-                        )}
-                        <div className="text-xs text-gray-600 mt-2 font-mono">
-                          {toolResult}
+                        {/* Compact grid for multiple images */}
+                        <div className={`grid gap-2 mb-3 ${images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                          {images.map((imageData, index) => (
+                            <div key={index} className="space-y-1">
+                              <img 
+                                src={imageData.url} 
+                                alt={imageData.alt}
+                                className="w-full h-auto max-h-32 object-cover rounded shadow-sm"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement
+                                  target.style.display = 'none'
+                                  const fallback = target.nextSibling as HTMLElement
+                                  if (fallback) fallback.style.display = 'block'
+                                }}
+                              />
+                              <div className="text-xs text-red-600 hidden p-1 bg-red-50 rounded text-center">
+                                Failed to load: {imageData.alt}
+                              </div>
+                              {imageData.alt && (
+                                <p className="text-xs text-gray-600 text-center truncate">
+                                  {imageData.alt}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="text-xs text-gray-600 font-mono">
+                          {images.length} image{images.length !== 1 ? 's' : ''} found
                         </div>
                       </div>
                     )
