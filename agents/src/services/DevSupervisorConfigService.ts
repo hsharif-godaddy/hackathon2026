@@ -38,7 +38,7 @@ export interface DevSupervisorConfig {
  */
 export class DevSupervisorConfigService {
   private logger: Logger;
-  private cachedEnvironment?: DevSupervisorEnvironment;
+  private cachedEnvironment: DevSupervisorEnvironment | undefined;
 
   constructor() {
     this.logger = Logger.create({ service: 'dev-supervisor-config' });
@@ -77,7 +77,7 @@ export class DevSupervisorConfigService {
       socketPath,
       environment,
       isPid1,
-      version
+      ...(version !== undefined && { version })
     };
 
     this.logger.info('dev_supervisor.environment.detected', {
@@ -279,7 +279,7 @@ export class DevSupervisorConfigService {
     enabled: boolean;
     environment: DevSupervisorEnvironment;
     config: DevSupervisorConfig;
-    validation: Awaited<ReturnType<typeof this.validateConfiguration>>;
+    validation: Awaited<ReturnType<DevSupervisorConfigService['validateConfiguration']>>;
   }> {
     const [environment, config, validation] = await Promise.all([
       this.detectEnvironment(),

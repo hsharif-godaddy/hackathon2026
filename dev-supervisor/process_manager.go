@@ -67,19 +67,23 @@ type ManagedProcess struct {
 
 // ProcessManager manages the current process instance and persistent configuration
 type ProcessManager struct {
-	mu             sync.RWMutex
-	currentProcess *ManagedProcess // nil when no process running
-	logMgr         *LogManager
-	healthMon      *HealthMonitor
-	pid1Mgr        *PID1Manager
-	restartCount   int
+	mu                      sync.RWMutex
+	currentProcess          *ManagedProcess // nil when no process running
+	logMgr                  *LogManager
+	healthMon               *HealthMonitor
+	pid1Mgr                 *PID1Manager
+	restartCount            int
+	enableLogging           bool // Control whether to log child process stdout/stderr
+	outputToStructuredLog   bool // Control whether to output child process logs to structured logging
 }
 
 func NewProcessManager(logMgr *LogManager, pid1Mgr *PID1Manager) *ProcessManager {
 	return &ProcessManager{
-		logMgr:    logMgr,
-		pid1Mgr:   pid1Mgr,
-		healthMon: NewHealthMonitor(logMgr),
+		logMgr:                logMgr,
+		pid1Mgr:               pid1Mgr,
+		healthMon:             NewHealthMonitor(logMgr),
+		enableLogging:         true,                         // Default: enable child process logging
+		outputToStructuredLog: getProcessLoggingToStdout(), // Default: enable structured logging output, configurable via env
 	}
 }
 
@@ -129,7 +133,7 @@ func NewManagedProcess(config ProcessStartRequest) (*ManagedProcess, error) {
 }
 
 // Start starts the managed process and begins monitoring it
-func (mp *ManagedProcess) Start(logMgr *LogManager, pid1Mgr *PID1Manager) error {
+func (mp *ManagedProcess) Start(logMgr *LogManager, pid1Mgr *PID1Manager, enableLogging bool, outputToStructuredLog bool) error {
 	// Set up pipes for stdout and stderr
 	stdout, err := mp.cmd.StdoutPipe()
 	if err != nil {
@@ -160,10 +164,10 @@ func (mp *ManagedProcess) Start(logMgr *LogManager, pid1Mgr *PID1Manager) error 
 		pid1Mgr.RegisterChildProcess(mp.cmd.Process)
 	}
 
-	// Start log streaming
-	if logMgr != nil {
-		go mp.streamLogs(logMgr, stdout, "stdout")
-		go mp.streamLogs(logMgr, stderr, "stderr")
+	// Start log streaming if enabled
+	if logMgr != nil && enableLogging {
+		go mp.streamLogs(logMgr, stdout, "stdout", outputToStructuredLog)
+		go mp.streamLogs(logMgr, stderr, "stderr", outputToStructuredLog)
 	}
 
 	// Wait for process completion in background
@@ -306,16 +310,37 @@ func (mp *ManagedProcess) waitForCompletion(pid1Mgr *PID1Manager) {
 	}
 }
 
-// streamLogs streams process output to the log manager
-func (mp *ManagedProcess) streamLogs(logMgr *LogManager, reader io.Reader, source string) {
+// streamLogs streams process output to the log manager and optionally to structured logging
+func (mp *ManagedProcess) streamLogs(logMgr *LogManager, reader io.Reader, source string, outputToStructuredLog bool) {
+	// Cache PID and command values once to avoid mutex contention on every log line
+	var cachedPID int
+	var cachedCommand string
+	if outputToStructuredLog {
+		mp.infoMu.RLock()
+		cachedPID = mp.info.PID
+		cachedCommand = mp.config.Command
+		mp.infoMu.RUnlock()
+	}
+
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		line := scanner.Text()
+		
+		// Always add to LogManager for API access
 		logMgr.AddLog(LogEntry{
 			Timestamp: time.Now(),
 			Source:    source,
 			Message:   line,
 		})
+		
+		// Optionally output to structured logging for Docker logs
+		if outputToStructuredLog {
+			slog.Info("child process output",
+				"pid", cachedPID,
+				"command", cachedCommand,
+				"source", source,
+				"message", line)
+		}
 	}
 }
 
@@ -338,7 +363,7 @@ func (pm *ProcessManager) Start(req ProcessStartRequest) error {
 	}
 
 	// Start the managed process
-	if err := managedProcess.Start(pm.logMgr, pm.pid1Mgr); err != nil {
+	if err := managedProcess.Start(pm.logMgr, pm.pid1Mgr, pm.enableLogging, pm.outputToStructuredLog); err != nil {
 		return err
 	}
 
@@ -415,7 +440,7 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 		return err
 	}
 
-	if err := managedProcess.Start(pm.logMgr, pm.pid1Mgr); err != nil {
+	if err := managedProcess.Start(pm.logMgr, pm.pid1Mgr, pm.enableLogging, pm.outputToStructuredLog); err != nil {
 		return err
 	}
 
@@ -491,4 +516,32 @@ func (pm *ProcessManager) StopAllProcesses() {
 			pm.currentProcess.WaitForCompletion()
 		}
 	}
+}
+
+// SetProcessLogging enables or disables child process stdout/stderr logging
+func (pm *ProcessManager) SetProcessLogging(enabled bool) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.enableLogging = enabled
+}
+
+// GetProcessLogging returns the current process logging configuration
+func (pm *ProcessManager) GetProcessLogging() bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.enableLogging
+}
+
+// SetStructuredLogging enables or disables child process output to structured logging
+func (pm *ProcessManager) SetStructuredLogging(enabled bool) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.outputToStructuredLog = enabled
+}
+
+// GetStructuredLogging returns the current structured logging configuration
+func (pm *ProcessManager) GetStructuredLogging() bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.outputToStructuredLog
 }

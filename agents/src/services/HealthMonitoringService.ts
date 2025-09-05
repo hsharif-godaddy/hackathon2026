@@ -140,7 +140,7 @@ export class HealthMonitoringService {
   /**
    * Create default health check configuration for HTTP applications
    */
-  static createHttpHealthCheck(port: number, path: string = '/health'): HealthCheckConfig {
+  static createHttpHealthCheck(port: number, path: string = '/'): HealthCheckConfig {
     return {
       type: 'http',
       url: `http://localhost:${port}${path}`,

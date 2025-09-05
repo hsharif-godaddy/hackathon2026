@@ -32,18 +32,19 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 	restartStats := s.procMgr.GetRestartStats()
 
 	info := map[string]interface{}{
-		"name":          AppName,
-		"version":       Version,
-		"pid":           os.Getpid(),
-		"is_pid1":       os.Getpid() == 1,
-		"socket_path":   s.getConfiguredSocketPath(),
-		"uptime":        uptime.String(),
-		"process":       processStatus,
-		"health":        healthStatus,
-		"restarts":      restartStats,
-		"logs":          logStats,
-		"child_count":   s.pid1Mgr.GetChildProcessCount(),
-		"shutting_down": s.pid1Mgr.IsShuttingDown(),
+		"name":                    AppName,
+		"version":                 Version,
+		"pid":                     os.Getpid(),
+		"is_pid1":                 os.Getpid() == 1,
+		"socket_path":             s.getConfiguredSocketPath(),
+		"uptime":                  uptime.String(),
+		"process":                 processStatus,
+		"health":                  healthStatus,
+		"restarts":                restartStats,
+		"logs":                    logStats,
+		"process_logging_enabled": s.procMgr.GetProcessLogging(),
+		"child_count":             s.pid1Mgr.GetChildProcessCount(),
+		"shutting_down":           s.pid1Mgr.IsShuttingDown(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -334,6 +335,49 @@ func (s *Server) handleRestartStats(w http.ResponseWriter, _ *http.Request) {
 	stats := s.procMgr.GetRestartStats()
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		slog.Error("failed to encode JSON response", "error", err)
+	}
+}
+
+func (s *Server) handleLogsConfigGet(w http.ResponseWriter, _ *http.Request) {
+	enabled := s.procMgr.GetProcessLogging()
+	response := map[string]interface{}{
+		"process_logging_enabled": enabled,
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		slog.Error("failed to encode JSON response", "error", err)
+	}
+}
+
+func (s *Server) handleLogsConfigSet(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ProcessLoggingEnabled bool `json:"process_logging_enabled"`
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.sendError(w, http.StatusBadRequest, "invalid_json", "Invalid JSON in request body")
+		return
+	}
+	
+	// Update the process manager configuration
+	s.procMgr.SetProcessLogging(req.ProcessLoggingEnabled)
+	
+	// Update the server configuration
+	s.processLogging = req.ProcessLoggingEnabled
+	if s.config != nil {
+		s.config.ProcessLogging = req.ProcessLoggingEnabled
+	}
+	
+	slog.Info("process logging configuration updated", "enabled", req.ProcessLoggingEnabled)
+	
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "configured",
+		"process_logging_enabled": req.ProcessLoggingEnabled,
+	}); err != nil {
 		slog.Error("failed to encode JSON response", "error", err)
 	}
 }

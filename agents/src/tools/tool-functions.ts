@@ -847,7 +847,8 @@ async function executeTerminalCommand(
   // Try to get the per-app socket path if using Docker mode
   if (appAdapter && 'getDevSupervisorSocketPath' in appAdapter) {
     try {
-      socketPath = (appAdapter as DockerAppService).getDevSupervisorSocketPath(appId);
+      const socketResult = (appAdapter as unknown as DockerAppService).getDevSupervisorSocketPath(appId);
+      socketPath = socketResult ?? undefined;
       if (!socketPath) {
         throw new Error(`No dev-supervisor socket path found for app ${appId} - container may not be running`);
       }

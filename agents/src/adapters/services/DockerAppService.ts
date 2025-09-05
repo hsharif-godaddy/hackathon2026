@@ -406,7 +406,7 @@ export class DockerAppService implements IAppAdapter {
         await devSupervisorClient.configureHealthCheck(
           {
             type: 'http',
-            url: `http://localhost:${port}/health`,
+            url: `http://localhost:${port}/`,
             interval: '30s',
             timeout: '10s',
             retries: 3,

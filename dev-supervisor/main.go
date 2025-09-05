@@ -23,10 +23,12 @@ const (
 )
 
 type Config struct {
-	SocketPath      string
-	ShowVersion     bool
-	ShowHelp        bool
-	ShutdownTimeout time.Duration
+	SocketPath              string
+	ShowVersion             bool
+	ShowHelp                bool
+	ShutdownTimeout         time.Duration
+	ProcessLogging          bool // Enable/disable child process stdout/stderr logging
+	ProcessLoggingToStdout  bool // Enable/disable outputting child process logs to structured logging (stdout)
 }
 
 func getSocketPath() string {
@@ -37,15 +39,23 @@ func getSocketPath() string {
 	return path
 }
 
+func getProcessLoggingToStdout() bool {
+	env := os.Getenv("DEV_SUPERVISOR_DISABLE_PROCESS_STDOUT")
+	// Default is true (enabled), only disable if explicitly set to "true"
+	return env != "true"
+}
+
 type Server struct {
-	router    *mux.Router
-	procMgr   *ProcessManager
-	cmdExec   *CommandExecutor
-	envMgr    *EnvironmentManager
-	logMgr    *LogManager
-	pid1Mgr   *PID1Manager
-	startTime time.Time
-	config    *Config
+	router                 *mux.Router
+	procMgr                *ProcessManager
+	cmdExec                *CommandExecutor
+	envMgr                 *EnvironmentManager
+	logMgr                 *LogManager
+	pid1Mgr                *PID1Manager
+	startTime              time.Time
+	config                 *Config
+	processLogging         bool // Current process logging configuration
+	processLoggingToStdout bool // Current structured logging configuration
 }
 
 type HealthResponse struct {
@@ -62,14 +72,22 @@ type ErrorResponse struct {
 func NewServer() *Server {
 	logMgr := NewLogManager(10000)
 	pid1Mgr := NewPID1Manager()
+	procMgr := NewProcessManager(logMgr, pid1Mgr)
+	
+	// Set default configuration
+	procMgr.SetProcessLogging(true)                   // Default: enable child process logging
+	procMgr.SetStructuredLogging(getProcessLoggingToStdout()) // Default: enable structured output, configurable via env
+	
 	s := &Server{
-		router:    mux.NewRouter(),
-		logMgr:    logMgr,
-		pid1Mgr:   pid1Mgr,
-		procMgr:   NewProcessManager(logMgr, pid1Mgr),
-		cmdExec:   NewCommandExecutor(),
-		envMgr:    NewEnvironmentManager(),
-		startTime: time.Now(),
+		router:                 mux.NewRouter(),
+		logMgr:                 logMgr,
+		pid1Mgr:                pid1Mgr,
+		procMgr:                procMgr,
+		cmdExec:                NewCommandExecutor(),
+		envMgr:                 NewEnvironmentManager(),
+		startTime:              time.Now(),
+		processLogging:         true,                   // Default: enable child process logging
+		processLoggingToStdout: getProcessLoggingToStdout(), // Default: enable structured output, configurable via env
 	}
 
 	s.setupRoutes()
@@ -101,6 +119,8 @@ func (s *Server) setupRoutes() {
 	logRouter := s.router.PathPrefix("/logs").Subrouter()
 	logRouter.HandleFunc("", s.handleLogs).Methods("GET")
 	logRouter.HandleFunc("/stream", s.handleLogsStream).Methods("GET")
+	logRouter.HandleFunc("/config", s.handleLogsConfigGet).Methods("GET")
+	logRouter.HandleFunc("/config", s.handleLogsConfigSet).Methods("PUT")
 
 	// Health monitoring endpoints
 	healthRouter := s.router.PathPrefix("/health-config").Subrouter()
@@ -140,13 +160,20 @@ func (s *Server) waitForServerReady(socketPath string, timeout time.Duration) er
 
 func (s *Server) StartWithConfig(config *Config) error {
 	s.config = config
+	s.processLogging = config.ProcessLogging
+	s.processLoggingToStdout = config.ProcessLoggingToStdout
+	// Configure process manager logging
+	s.procMgr.SetProcessLogging(config.ProcessLogging)
+	s.procMgr.SetStructuredLogging(config.ProcessLoggingToStdout)
 	return s.startServer(config.SocketPath, config.ShutdownTimeout)
 }
 
 func (s *Server) Start() error {
 	config := &Config{
-		SocketPath:      getSocketPath(),
-		ShutdownTimeout: 5 * time.Second,
+		SocketPath:             getSocketPath(),
+		ShutdownTimeout:        5 * time.Second,
+		ProcessLogging:         true,                   // Default: enable child process logging
+		ProcessLoggingToStdout: getProcessLoggingToStdout(), // Default: enable structured output, configurable via env
 	}
 	return s.StartWithConfig(config)
 }
@@ -351,6 +378,10 @@ func parseFlags() *Config {
 	if config.SocketPath == "" {
 		config.SocketPath = getSocketPath()
 	}
+
+	// Set default process logging configuration
+	config.ProcessLogging = true                   // Default: enable child process logging
+	config.ProcessLoggingToStdout = getProcessLoggingToStdout() // Default: enable structured output, configurable via env
 
 	return config
 }
