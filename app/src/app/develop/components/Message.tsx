@@ -145,8 +145,6 @@ export default function Message({ message }: MessageProps) {
   if (!shouldRenderMessage(message)) {
     return null
   }
-
-  console.log('Message', message)
   
   return (
     <div className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'} w-full`}>

@@ -1,7 +1,6 @@
 'use client'
 
 import { useRef, useEffect } from 'react'
-import { CodeBracketIcon } from '@heroicons/react/24/outline'
 import Message from './Message'
 import { Message as MessageType } from './types'
 

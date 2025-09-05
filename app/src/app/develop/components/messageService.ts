@@ -92,8 +92,8 @@ function createWebSocketConnection(agentId: string, appId?: string): Promise<Web
     ws.onclose = (event) => {
       console.log('🔌 WebSocket connection closed:', event.code, event.reason)
       
-      // Only attempt reconnection if this was an unexpected close
-      if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts) {
+      // Only attempt reconnection if this was an unexpected close and we have an appId
+      if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts && appId) {
         reconnectAttempts++
         const delay = reconnectDelay * Math.pow(2, reconnectAttempts - 1) // Exponential backoff
         
@@ -102,10 +102,7 @@ function createWebSocketConnection(agentId: string, appId?: string): Promise<Web
         setTimeout(() => {
           createWebSocketConnection(agentId, appId)
             .then(newWs => {
-              // Update the WebSocket connection for the app if appId is provided
-              if (appId) {
-                webSocketConnections.set(appId, newWs)
-              }
+              webSocketConnections.set(appId, newWs)
               console.log('🔌 WebSocket reconnected successfully')
             })
             .catch(error => {

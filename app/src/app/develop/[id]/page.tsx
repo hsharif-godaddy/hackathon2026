@@ -2,26 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
-import Link from 'next/link'
-import Image from 'next/image'
 import { appFetch } from '@/lib/gasket-config'
-import {
-  SparklesIcon,
-  PlayIcon,
-  ArrowPathIcon,
-  Squares2X2Icon,
-  EyeIcon,
-  ComputerDesktopIcon,
-  DevicePhoneMobileIcon,
-  ArrowTopRightOnSquareIcon,
-  ClockIcon
-} from '@heroicons/react/24/outline'
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
 import CodeEditor from '@/app/develop/components/CodeEditor'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
-import VersionHistory from '@/app/develop/components/VersionHistory'
+import Header from './header'
 import { Message, PlanItem, AiEditContext } from '@/app/develop/components/types'
 import { 
   handleSendMessage as sendMessage, 
@@ -29,7 +16,7 @@ import {
   loadConversations,
   loadConversation
 } from '@/app/develop/components/messageService'
-import { ProtectedRoute, SignOutButton, SignInButton } from '@/components/auth'
+import { ProtectedRoute } from '@/components/auth'
 import { appService, App } from '@/services/AppService'
 
 function DevelopPageContent() {
@@ -42,7 +29,6 @@ function DevelopPageContent() {
   const [isLoading, setIsLoading] = useState(false)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [conversations, setConversations] = useState<Array<{id: string; updatedAt: string}>>([])
-  const [isLoadingConversations, setIsLoadingConversations] = useState(true)
   const [developmentPlan] = useState<PlanItem[]>([])
   const [expandedPlan, setExpandedPlan] = useState(false)
   const [isSelectMode, setIsSelectMode] = useState(false)
@@ -58,6 +44,9 @@ function DevelopPageContent() {
   const [chatPaneWidth, setChatPaneWidth] = useState(400)
   const [previewViewMode, setPreviewViewMode] = useState<'desktop' | 'mobile'>('desktop')
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
+  
+  // App loading state machine
+  const [loadingState, setLoadingState] = useState<'idle' | 'loading-app' | 'loading-conversations' | 'ready'>('idle')
   const [selectedCommit, setSelectedCommit] = useState<{
     hash: string
     shortHash: string
@@ -79,6 +68,7 @@ function DevelopPageContent() {
   const appCheckProcessed = useRef(false)
   const autoSendTriggered = useRef(false) // Prevent multiple auto-sends
   const tokenUsageRef = useRef<TokenUsageRef>(null)
+  const previousAppIdRef = useRef<string | null>(null)
 
   // Fetch commit history
   const fetchCommitHistory = useCallback(async () => {
@@ -135,117 +125,120 @@ function DevelopPageContent() {
     }
   }
 
-  // 1. PURE DATA LOADING - Fetch app details (no side effects)
+  // Consolidated App Initialization - handles cleanup, app loading, and conversations
   useEffect(() => {
-    // Reset app check flag when appId changes
-    appCheckProcessed.current = false
-    
-    const fetchApp = async () => {
+    const initializeApp = async () => {
+      // 1. Handle app ID change cleanup
+      if (previousAppIdRef.current && previousAppIdRef.current !== appId) {
+        console.log('🔄 App ID changed - cleaning up previous app state')
+        cleanupMessageService(previousAppIdRef.current)
+        
+        // Clear all state immediately
+        setApp(null)
+        setMessages([])
+        setConversations([])
+        setConversationId(null)
+        setIsInitialAppCreation(false)
+        setCommitHistory([])
+        setSelectedCommit(null)
+        setInputValue('')
+        setLoadingState('idle')
+        
+        // Reset flags
+        initialMessageProcessed.current = false
+        autoSendTriggered.current = false
+        appCheckProcessed.current = false
+      }
+      
+      previousAppIdRef.current = appId
+      
+      if (!appId) return
+
       try {
-        const data = await appService.getApp(appId)
-        setApp(data.app)
+        // 2. Load app data
+        setLoadingState('loading-app')
+        console.log('📱 Loading app data:', appId)
         
-                  // Check if this is a newly created app with an initial prompt
-          const isNewApp = data.app.status === 'created' && !!data.app.initialPrompt
-          console.log('🔍 App creation check - status:', data.app.status, 'initialPrompt:', !!data.app.initialPrompt, 'isNewApp:', isNewApp)
-          setIsInitialAppCreation(isNewApp)
+        const [appData, configData] = await Promise.all([
+          appService.getApp(appId),
+          appService.getConfig()
+        ])
         
-        // After fetching app details, ensure app is running if needed (prevent duplicate calls in Strict Mode)
+        setApp(appData.app)
+        setShowUsageCost(configData.config.showUsageCost)
+        
+        // Check if this is initial app creation
+        const isNewApp = appData.app.status === 'created' && !!appData.app.initialPrompt
+        setIsInitialAppCreation(isNewApp)
+        
+        // 3. Ensure app is running (one-time check)
         if (!appCheckProcessed.current) {
           appCheckProcessed.current = true
           await ensureAppIsRunning(appId)
         }
+        
+        // 4. Load conversations and commit history
+        setLoadingState('loading-conversations')
+        console.log('💬 Loading conversations and history')
+        
+        const [conversationList] = await Promise.all([
+          loadConversations(appId),
+          fetchCommitHistory()
+        ])
+        
+        setConversations(conversationList || [])
+        
+        // 5. Load most recent conversation if available
+        if (conversationList && conversationList.length > 0) {
+          const mostRecent = conversationList[0]
+          const conversationData = await loadConversation(appId, mostRecent.id)
+          
+          if (conversationData) {
+            setMessages(conversationData.messages)
+            setConversationId(mostRecent.id)
+          }
+        }
+        
+        setLoadingState('ready')
+        console.log('✅ App initialization complete')
+        
       } catch (error) {
-        console.error('Error fetching app:', error)
+        console.error('❌ App initialization failed:', error)
+        setLoadingState('idle')
       }
     }
-
-    if (appId) {
-      fetchApp()
-    }
+    
+    initializeApp()
   }, [appId])
 
-  // 2. PURE DATA LOADING - Fetch config (no side effects)
+  // One-time config loading
   useEffect(() => {
-    const fetchConfig = async () => {
+    const loadConfig = async () => {
       try {
         const data = await appService.getConfig()
         setShowUsageCost(data.config.showUsageCost)
       } catch (error) {
-        console.error('Error fetching config:', error)
+        console.error('Error loading config:', error)
         setShowUsageCost(false)
       }
     }
-
-    fetchConfig()
+    
+    loadConfig()
   }, [])
 
-  // 3. PURE DATA LOADING - Load conversations (minimal side effects)
+  // Handle initial prompt setup - only when app is fully loaded
   useEffect(() => {
-    const loadAppConversations = async () => {
-      if (!appId || !app) return
-      
-      try {
-        setIsLoadingConversations(true)
-        console.log('🔄 Loading conversations for app:', appId, 'app:', app)
-        const conversationList = await loadConversations(appId)
-        console.log('📚 Loaded conversation list:', conversationList?.length || 0, conversationList)
-        setConversations(conversationList)
-        
-        // Load the most recent conversation if available
-        if (conversationList.length > 0) {
-          const mostRecent = conversationList[0]
-          console.log('🔍 Loading most recent conversation:', mostRecent)
-          const conversationData = await loadConversation(appId, mostRecent.id)
-          
-          if (conversationData) {
-            console.log('✅ Loaded conversation:', mostRecent.id, 'with', conversationData.messages.length, 'messages')
-            setMessages(conversationData.messages)
-            setConversationId(mostRecent.id)
-          } else {
-            console.warn('⚠️ No conversation data returned for:', mostRecent.id)
-          }
-        } else {
-          console.log('📝 No existing conversations found, app might be new')
-        }
-      } catch (error) {
-        console.error('❌ Error loading conversations:', error)
-      } finally {
-        setIsLoadingConversations(false)
-      }
-    }
-
-    loadAppConversations()
-  }, [appId, app, isInitialAppCreation])
-  
-  // 3b. Load commit history
-  useEffect(() => {
-    // Always fetch commit history when appId and app are available
-    if (appId && app) {
-      fetchCommitHistory()
-    }
-  }, [appId, app, fetchCommitHistory])
-
-  useEffect(() => {
-    console.log('🔍 Initial prompt check:', {
-      isInitialAppCreation,
-      hasInitialPrompt: !!app?.initialPrompt,
-      initialMessageProcessed: initialMessageProcessed.current,
-      conversationsLength: conversations.length,
-      isLoadingConversations
-    })
-    
-    if (isInitialAppCreation && 
+    if (loadingState === 'ready' && 
+        isInitialAppCreation && 
         app?.initialPrompt && 
         !initialMessageProcessed.current && 
-        conversations.length === 0 &&
-        !isLoadingConversations) {
+        conversations.length === 0) {
       
-      console.log('📝 Setting initial prompt in input immediately:', app.initialPrompt)
+      console.log('📝 Setting initial prompt:', app.initialPrompt)
       setInputValue(app.initialPrompt)
       initialMessageProcessed.current = true
     }
-  }, [isInitialAppCreation, app?.initialPrompt, conversations.length, isLoadingConversations])
+  }, [loadingState, isInitialAppCreation, app?.initialPrompt, conversations.length])
 
   // 5. STABLE MESSAGE HANDLER - No state dependencies that cause loops
   const handleSendMessage = useCallback(async (messageContent?: string) => {
@@ -296,33 +289,22 @@ function DevelopPageContent() {
     }, 100)
   }, [inputValue, isLoading, appId, conversationId, aiEditContext, isInitialAppCreation])
 
+  // Auto-send initial prompt - only when fully ready and conditions met
   useEffect(() => {
     const shouldAutoSend = 
+      loadingState === 'ready' &&
       isInitialAppCreation && 
       app?.initialPrompt && 
       inputValue === app.initialPrompt && 
-      !isLoadingConversations && 
       conversations.length === 0 &&
       !autoSendTriggered.current &&
       !isLoading;
     
     if (shouldAutoSend) {
-      console.log('✅ Auto-send conditions met, triggering initial prompt:', {
-        isInitialAppCreation,
-        hasInitialPrompt: !!app?.initialPrompt,
-        inputValueMatches: inputValue === app?.initialPrompt,
-        isLoadingConversations,
-        conversationsLength: conversations.length,
-        autoSendTriggered: autoSendTriggered.current,
-        isLoading
-      })
-      
+      console.log('🚀 Auto-sending initial prompt')
       autoSendTriggered.current = true
       
-      // Increased delay to ensure UI is ready
       const timer = setTimeout(() => {
-        console.log('🚀 Executing auto-send for initial prompt')
-        // Create stable message send function
         sendMessage({
           messageContent: inputValue,
           inputValue,
@@ -338,30 +320,20 @@ function DevelopPageContent() {
             tokenUsageRef.current?.refreshUsage()
           },
           onMessageComplete: () => {
-            // Auto-refresh preview when agent completes a message
             handlePreviewRefresh()
           }
         }).then(() => {
-          console.log('✅ Auto-send completed successfully')
-          // Post-send actions
+          console.log('✅ Auto-send completed')
           setIsInitialAppCreation(false)
-          setTimeout(async () => {
-            try {
-              const updatedConversations = await loadConversations(appId)
-              setConversations(updatedConversations)
-            } catch (error) {
-              console.error('Error refreshing conversations:', error)
-            }
-          }, 100)
         }).catch(error => {
           console.error('❌ Auto-send failed:', error)
-          autoSendTriggered.current = false // Reset on failure
+          autoSendTriggered.current = false
         })
-      }, 1000) // Increased delay for better reliability
+      }, 500)
       
       return () => clearTimeout(timer)
     }
-  }, [isInitialAppCreation, inputValue, app?.initialPrompt, isLoadingConversations, conversations.length, isLoading, appId])
+  }, [loadingState, isInitialAppCreation, inputValue, app?.initialPrompt, conversations.length, isLoading, appId])
 
   // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
@@ -492,34 +464,25 @@ function DevelopPageContent() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [hasUnsavedChanges])
 
-  // Handle initial message from URL parameter
+  // Handle URL message parameter - simplified logic
   useEffect(() => {
+    if (loadingState !== 'ready') return
+    
     const message = searchParams.get('message')
-    if (message && !initialMessageProcessed.current && !isLoadingConversations) {
+    if (message && !initialMessageProcessed.current && conversations.length === 0) {
       const decodedMessage = decodeURIComponent(message)
-      
-      // Only auto-send if we don't have any existing conversations
-      // (i.e., this is a brand new app or we're starting fresh)
-      if (conversations.length === 0) {
-        setInputValue(decodedMessage)
-        initialMessageProcessed.current = true
-        // Auto-send the message (this will create a new conversation)
-        setTimeout(() => {
-          handleSendMessage(decodedMessage)
-          // Clear URL parameter after sending
-          const url = new URL(window.location.href)
-          url.searchParams.delete('message')
-          router.replace(url.pathname + url.search, { scroll: false })
-        }, 100)
-      } else {
-        // We have existing conversations, just mark as processed without sending
-        initialMessageProcessed.current = true
-      }
-    } else if (!message && !initialMessageProcessed.current && !isLoadingConversations) {
-      setInputValue('')
+      setInputValue(decodedMessage)
       initialMessageProcessed.current = true
+      
+      // Auto-send and clear URL
+      setTimeout(() => {
+        handleSendMessage(decodedMessage)
+        const url = new URL(window.location.href)
+        url.searchParams.delete('message')
+        router.replace(url.pathname + url.search, { scroll: false })
+      }, 500)
     }
-  }, [searchParams, isLoadingConversations, conversations.length, handleSendMessage, router])
+  }, [loadingState, searchParams, conversations.length, handleSendMessage, router])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
@@ -672,146 +635,22 @@ function DevelopPageContent() {
   return (
     <div className="h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-12">
-            <div className="flex items-center space-x-4">
-              <Link href="/" className="flex items-center space-x-3">
-                <div className="flex items-center justify-center">
-                  <Image src="/logo.svg" alt="Airo Logo" width={128} height={48} />
-                </div>
-              </Link>
-              <div className="h-6 w-px bg-gray-300" />
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-900 font-medium">
-                  {app ? app.name : `App ${appId}`}
-                </span>
-                {isCheckingApp && (
-                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                    Checking App Status...
-                  </span>
-                )}
-                {isStartingApp && !isCheckingApp && (
-                  <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
-                    Starting App...
-                  </span>
-                )}
-                {isRestarting && !isCheckingApp && !isStartingApp && (
-                  <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
-                    Restarting App...
-                  </span>
-                )}
-
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              {/* View Mode Toggle Buttons */}
-              <div className="flex items-center space-x-2">
-                <button 
-                  onClick={() => handleViewModeChange('preview')}
-                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                    viewMode === 'preview' 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Preview
-                </button>
-                <button 
-                  onClick={() => handleViewModeChange('code')}
-                  className={`flex items-center px-2 py-1 text-xs rounded-md transition-colors ${
-                    viewMode === 'code' 
-                      ? 'bg-purple-100 text-purple-700' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Code
-                  {hasUnsavedChanges && viewMode === 'code' && (
-                    <div className="w-2 h-2 bg-orange-500 rounded-full ml-1" title="Unsaved changes" />
-                  )}
-                </button>
-              </div>
-
-              {/* Preview controls when in preview mode */}
-              {viewMode === 'preview' && app?.port && (
-                <div className="flex items-center space-x-3">
-                  {/* View Mode Toggles */}
-                  <div className="flex items-center space-x-1 border border-gray-200 rounded-md p-0.5">
-                    <button
-                      onClick={() => togglePreviewViewMode('desktop')}
-                      className={`p-1 rounded transition-colors ${
-                        previewViewMode === 'desktop'
-                          ? 'bg-blue-100 text-blue-600'
-                          : 'hover:bg-gray-100 text-gray-600'
-                      }`}
-                      title="Desktop view"
-                    >
-                      <ComputerDesktopIcon className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={() => togglePreviewViewMode('mobile')}
-                      className={`p-1 rounded transition-colors ${
-                        previewViewMode === 'mobile'
-                          ? 'bg-blue-100 text-blue-600'
-                          : 'hover:bg-gray-100 text-gray-600'
-                      }`}
-                      title="Mobile view"
-                    >
-                      <DevicePhoneMobileIcon className="w-3 h-3" />
-                    </button>
-                  </div>
-                  
-                  {/* App Control Buttons */}
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={handlePreviewRefresh}
-                      className="p-1 hover:bg-gray-100 rounded transition-colors"
-                      title="Reload preview (refresh page content)"
-                    >
-                      <ArrowPathIcon className="w-3 h-3 text-gray-600" />
-                    </button>
-                    
-                    <button 
-                      onClick={handleRestartServer}
-                      disabled={!app?.port || isRestarting}
-                      className="p-1 hover:bg-orange-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Restart server (rebuild and restart development server)"
-                    >
-                      <ArrowPathIcon className={`w-3 h-3 ${isRestarting ? 'animate-spin text-orange-600' : 'text-orange-600'}`} />
-                    </button>
-                    
-                    <button 
-                      onClick={() => {
-                        if (app?.port) {
-                          window.open(`http://localhost:${app.port}`, '_blank')
-                        }
-                      }}
-                      disabled={!app?.port || isCheckingApp || isRestarting || isStartingApp}
-                      className="p-1 hover:bg-green-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Open app in new tab"
-                    >
-                      <ArrowTopRightOnSquareIcon className="w-3 h-3 text-green-600" />
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              {appId && (
-                <TokenUsage ref={tokenUsageRef} appId={appId} enabled={showUsageCost} />
-              )}
-              <Link
-                href="/apps"
-                className="inline-flex items-center px-3 py-2 text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
-              >
-                <Squares2X2Icon className="w-4 h-4 mr-2" />
-                My Apps
-              </Link>
-              <SignInButton iconOnly />
-              <SignOutButton iconOnly />
-            </div>
-          </div>
-        </div>
-      </header>
+      <Header
+        appId={appId}
+        app={app}
+        viewMode={viewMode}
+        previewViewMode={previewViewMode}
+        hasUnsavedChanges={hasUnsavedChanges}
+        showUsageCost={showUsageCost}
+        isCheckingApp={isCheckingApp}
+        isStartingApp={isStartingApp}
+        isRestarting={isRestarting}
+        onViewModeChange={handleViewModeChange}
+        onTogglePreviewViewMode={togglePreviewViewMode}
+        onPreviewRefresh={handlePreviewRefresh}
+        onRestartServer={handleRestartServer}
+        tokenUsageRef={tokenUsageRef}
+      />
 
       {/* Main Content Area */}
       <div className="flex-1 flex min-h-0 overflow-hidden">

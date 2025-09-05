@@ -25,17 +25,16 @@ export default function ChatInput({
     <div className="p-4 bg-white border-t border-gray-200">
       {/* Cursor-style Chat Input */}
       <div className="relative">
-        <div className="flex items-end space-x-2 p-3 border border-gray-300 rounded-lg bg-white shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+        <div className="flex items-stretch space-x-2 p-3 border border-gray-300 rounded-lg bg-white shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
           <div className="flex-1">
             <textarea
               value={inputValue}
               onChange={(e) => onInputChange(e.target.value)}
               onKeyPress={onKeyPress}
               placeholder={isDisabled ? "Processing... please wait" : "Ask Airo to modify code, add features, or explain implementation..."}
-              rows={2}
+              rows={3}
               disabled={isDisabled}
-              className={`w-full resize-none border-0 focus:ring-0 focus:outline-none text-sm ${isDisabled ? ' placeholder-gray-400' : 'placeholder-gray-500'} chat-input-text`}
-              style={{ minHeight: '44px', maxHeight: '120px' }}
+              className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-sm ${isDisabled ? ' placeholder-gray-400' : 'placeholder-gray-500'} chat-input-text`}
             />
           </div>
           
