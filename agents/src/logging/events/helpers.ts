@@ -31,6 +31,7 @@ import type {
   ToolImageGenerationData,
   ToolAstEditData,
   ToolMySqlData,
+  ToolLogReaderData,
   HttpRequestData,
 
   WebSocketChatData,
@@ -605,6 +606,41 @@ export const toolMySqlEvents = {
 
   failure: (logger: ILogger, error: Error, data: { toolName: string; appId?: string; operation: 'enable_database' | 'test_connection' | 'list_databases' }) => {
     log.error(logger, AppEvents.tool.mysql.failure, error, data);
+  },
+};
+
+/**
+ * Tool Log Reader logging helpers
+ */
+export const toolLogReaderEvents = {
+  readBegin: (logger: ILogger, data: { toolName: string; appId?: string; source?: 'stdout' | 'stderr'; lines?: number; since?: string; format?: boolean }) => {
+    logger.info(AppEvents.tool.logReader.read.begin, {
+      ...data,
+      operation: 'read' as const,
+    });
+  },
+
+  readSuccess: (logger: ILogger, data: ToolLogReaderData) => {
+    logger.info(AppEvents.tool.logReader.read.success, data);
+  },
+
+  readFailure: (logger: ILogger, error: Error, data: { toolName: string; appId?: string; operation: 'read' }) => {
+    log.error(logger, AppEvents.tool.logReader.read.failure, error, data);
+  },
+
+  summaryBegin: (logger: ILogger, data: { toolName: string; appId?: string }) => {
+    logger.info(AppEvents.tool.logReader.summary.begin, {
+      ...data,
+      operation: 'summary' as const,
+    });
+  },
+
+  summarySuccess: (logger: ILogger, data: ToolLogReaderData) => {
+    logger.info(AppEvents.tool.logReader.summary.success, data);
+  },
+
+  summaryFailure: (logger: ILogger, error: Error, data: { toolName: string; appId?: string; operation: 'summary' }) => {
+    log.error(logger, AppEvents.tool.logReader.summary.failure, error, data);
   },
 };
 

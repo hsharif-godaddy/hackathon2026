@@ -38,6 +38,7 @@ export {
   toolImageGenerationEvents,
   toolAstEditEvents,
   toolMySqlEvents,
+  toolLogReaderEvents,
   httpRequestEvents,
   webSocketConnectionEvents,
   webSocketChatEvents,

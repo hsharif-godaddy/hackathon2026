@@ -343,6 +343,26 @@ export interface ToolMySqlData {
   };
 }
 
+export interface ToolLogReaderData {
+  toolName: string;
+  appId?: string;
+  operation: 'read' | 'summary';
+  logOptions?: {
+    source?: 'stdout' | 'stderr';
+    lines?: number;
+    since?: string;
+    format?: boolean;
+  };
+  resultStats?: {
+    success: boolean;
+    totalEntries?: number;
+    linesRequested?: number;
+    sourceFilter?: string;
+    sinceFilter?: string;
+    executionTime?: number;
+  };
+}
+
 // HTTP Request Events
 export interface HttpRequestData {
   method: string;
@@ -687,6 +707,18 @@ export const AppEvents = {
       begin: 'tool.mysql.operation.begin' as const,
       success: 'tool.mysql.operation.success' as const,
       failure: 'tool.mysql.operation.failure' as const,
+    },
+    logReader: {
+      read: {
+        begin: 'tool.log.reader.read.begin' as const,
+        success: 'tool.log.reader.read.success' as const,
+        failure: 'tool.log.reader.read.failure' as const,
+      },
+      summary: {
+        begin: 'tool.log.reader.summary.begin' as const,
+        success: 'tool.log.reader.summary.success' as const,
+        failure: 'tool.log.reader.summary.failure' as const,
+      },
     },
   },
 
