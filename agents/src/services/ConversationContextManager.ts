@@ -260,14 +260,27 @@ export class ConversationContextManager {
    * Create legacy assistant message for backward compatibility
    */
   private createLegacyAssistantMessage(message: ConversationMessage): LLMMessage | null {
-    if (!message.content || message.content.trim() === '') {
-      console.warn(`Skipping message ${message.id} with empty content from conversation`);
+    // Check if message has content or segments with content
+    const hasMainContent = message.content && message.content.trim() !== '';
+    const hasSegmentContent = message.segments && message.segments.length > 0 && 
+      message.segments.some(segment => segment.type === 'content' && segment.content && segment.content.trim() !== '');
+    
+    if (!hasMainContent && !hasSegmentContent) {
       return null;
+    }
+
+    // Use content from segments if main content is empty but segments have content
+    let messageContent = message.content;
+    if ((!messageContent || messageContent.trim() === '') && hasSegmentContent) {
+      messageContent = message.segments!
+        .filter(segment => segment.type === 'content' && segment.content)
+        .map(segment => segment.content)
+        .join('');
     }
 
     const assistantMessage: LLMMessage = {
       role: 'assistant',
-      content: message.content.trim()
+      content: messageContent.trim()
     };
 
     // Add tool calls if present (only those with results to avoid Bedrock validation errors)

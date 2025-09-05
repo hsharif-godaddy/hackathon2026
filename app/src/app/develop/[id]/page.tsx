@@ -2,152 +2,148 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
-import { appFetch } from '@/lib/gasket-config'
 import ChatPane from '@/app/develop/components/ChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPane'
 import CodeEditor from '@/app/develop/components/CodeEditor'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
-import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
-import Header from './header'
-import { Message, PlanItem, AiEditContext } from '@/app/develop/components/types'
+import Header, { HeaderRef } from './header'
 import { 
-  handleSendMessage as sendMessage, 
-  cleanup as cleanupMessageService,
-  loadConversations,
-  loadConversation
+  cleanup as cleanupMessageService
 } from '@/app/develop/components/messageService'
 import { ProtectedRoute } from '@/components/auth'
 import { appService, App } from '@/services/AppService'
+import { useMessagesStore, cleanupMessagesStore } from '@/stores/useMessagesStore'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useGitHistory } from '@/hooks/useGitHistory'
+import { useAppStore, AppStatus } from '@/stores/useAppStore'
+import { useServerStore } from '@/stores/useServerStore'
 
 function DevelopPageContent() {
   const params = useParams()
   const router = useRouter()
   const appId = params.id as string
+  
+  // App store - for app lifecycle operations
+  const { ensureAppIsRunning: appStoreEnsureAppIsRunning, restartApp: appStoreRestartApp, loadApps, syncActualPorts } = useAppStore()
+  
+  // Server store - for server status and management
+  const { registerServer, getServerInfo, cleanup: cleanupServerStore } = useServerStore()
+  
+  // Messages store - for conversations and messages
+  const {
+    conversations,
+    inputValue,
+    isLoading,
+    setInputValue,
+    setAiEditContext,
+    initializeConversations,
+    handleSendMessage: sendMessageFromStore
+  } = useMessagesStore()
+  
+  // Develop page store - for UI state and coordination
+  const {
+    viewMode,
+    previewViewMode,
+    isSelectMode,
+    expandedPlan,
+    chatPaneWidth,
+    hasUnsavedChanges,
+    isVersionHistoryOpen,
+    selectedCommit,
+    setHasUnsavedChanges,
+    ensureAppIsRunning: ensureAppIsRunningFromStore,
+    selectCommit: selectCommitFromStore,
+    toggleSelectMode,
+    toggleExpandedPlan,
+    toggleVersionHistory,
+    restartApp: restartAppFromStore,
+    setChatPaneWidth,
+    setIsSelectMode
+  } = useDevelopPageStore()
+  
+  // Git history hook - handles loading with smart retry logic
+  const {
+    commits: commitHistory,
+    isLoading: isLoadingCommits,
+    refresh: refreshGitHistory
+  } = useGitHistory(appId, false) // Don't auto-load, we'll trigger it manually
+  
+  // Local state (only what's not in stores)
   const [app, setApp] = useState<App | null>(null)
-  const [inputValue, setInputValue] = useState('')
-  const [messages, setMessages] = useState<Message[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [conversationId, setConversationId] = useState<string | null>(null)
-  const [conversations, setConversations] = useState<Array<{id: string; updatedAt: string}>>([])
-  const [developmentPlan] = useState<PlanItem[]>([])
-  const [expandedPlan, setExpandedPlan] = useState(false)
-  const [isSelectMode, setIsSelectMode] = useState(false)
-  const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
-  const [isRestarting, setIsRestarting] = useState(false)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [showUsageCost, setShowUsageCost] = useState(false)
-  const [isCheckingApp, setIsCheckingApp] = useState(false)
-  const [isStartingApp, setIsStartingApp] = useState(false)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
-  const [aiEditContext, setAiEditContext] = useState<AiEditContext | null>(null)
   const [isInitialAppCreation, setIsInitialAppCreation] = useState(false)
-  const [chatPaneWidth, setChatPaneWidth] = useState(400)
-  const [previewViewMode, setPreviewViewMode] = useState<'desktop' | 'mobile'>('desktop')
-  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false)
   
   // App loading state machine
   const [loadingState, setLoadingState] = useState<'idle' | 'loading-app' | 'loading-conversations' | 'ready'>('idle')
-  const [selectedCommit, setSelectedCommit] = useState<{
-    hash: string
-    shortHash: string
-    message: string
-    author: string
-    date: string
-  } | null>(null)
-  const [commitHistory, setCommitHistory] = useState<Array<{
-    hash: string
-    shortHash: string
-    message: string
-    author: string
-    date: string
-  }>>([])
-  const [isLoadingCommits, setIsLoadingCommits] = useState(false)
 
   const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
   const appCheckProcessed = useRef(false)
   const autoSendTriggered = useRef(false) // Prevent multiple auto-sends
-  const tokenUsageRef = useRef<TokenUsageRef>(null)
+  const headerRef = useRef<HeaderRef>(null)
   const previousAppIdRef = useRef<string | null>(null)
-
-  // Fetch commit history
-  const fetchCommitHistory = useCallback(async () => {
-    if (!appId) return
-    
-    setIsLoadingCommits(true)
-    
-    try {
-      // Request a higher count to ensure we get all commits
-      const response = await appFetch(`http://localhost:4000/apps/${appId}/git/history?count=100`)
-      
-      if (response.ok) {
-        const data = await response.json()
-        const commits = data.commits || []
-        setCommitHistory(commits)
-        console.log(`Loaded ${commits.length} commits from history`)
-      } else {
-        console.error('Failed to load commit history')
-      }
-    } catch (err) {
-      console.error('Error loading commit history:', err)
-    } finally {
-      setIsLoadingCommits(false)
-    }
-  }, [appId])
-
-  // Ensure app is running (generic backend logic)
-  const ensureAppIsRunning = async (appId: string) => {
-    try {
-      setIsCheckingApp(true)
-      console.log('🔍 Ensuring app is running:', appId)
-      
-      const data = await appService.ensureAppIsRunning(appId)
-      console.log('📊 App ensure-running response:', data)
-      
-      if (data.action === 'rebuild' || data.action === 'start') {
-        setIsStartingApp(true)
-        console.log(`🔄 App is being ${data.action === 'rebuild' ? 'rebuilt' : 'started'}...`)
-        
-        // Wait for the action to complete (backend already waits, but show UI feedback)
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        setIsStartingApp(false)
-      }
-      
-      if (data.success) {
-        console.log(`✅ App is now running: ${data.message}`)
-      }
-    } catch (error) {
-      console.error('Error ensuring app is running:', error)
-    } finally {
-      setIsCheckingApp(false)
-      setIsStartingApp(false)
-    }
-  }
+  const initializationStarted = useRef<string | null>(null)
 
   // Consolidated App Initialization - handles cleanup, app loading, and conversations
   useEffect(() => {
     const initializeApp = async () => {
-      // 1. Handle app ID change cleanup
-      if (previousAppIdRef.current && previousAppIdRef.current !== appId) {
-        console.log('🔄 App ID changed - cleaning up previous app state')
-        cleanupMessageService(previousAppIdRef.current)
+      // Prevent double initialization in React Strict Mode
+      if (initializationStarted.current === appId) {
+        console.log('🛑 Initialization already in progress for appId:', appId, '- skipping duplicate')
+        return
+      }
+      initializationStarted.current = appId
+      
+      // 1. Always ensure clean state before initializing new app
+      const currentAppInStore = useMessagesStore.getState().currentAppId
+      if (currentAppInStore && currentAppInStore !== appId) {
+        console.log('🔄 Store has different app ID:', currentAppInStore, '-> cleaning up before loading', appId)
         
-        // Clear all state immediately
+        // Get app data first to preserve initial prompt during cleanup
+        const appData = await appService.getApp(appId)
+        const hasInitialPrompt = appData.app?.initialPrompt
+        
+        if (hasInitialPrompt) {
+          console.log('🔒 Preserving initial prompt during cleanup:', appData.app.initialPrompt)
+          // Clean up but preserve the initial prompt
+          const { cleanup } = useMessagesStore.getState()
+          cleanup()
+          cleanupServerStore()
+          
+          // Set the initial prompt immediately after cleanup
+          useMessagesStore.getState().setInputValue(appData.app.initialPrompt)
+        } else {
+          cleanupMessagesStore()
+          cleanupServerStore()
+        }
+        
+        // Clear local state
         setApp(null)
-        setMessages([])
-        setConversations([])
-        setConversationId(null)
         setIsInitialAppCreation(false)
-        setCommitHistory([])
-        setSelectedCommit(null)
-        setInputValue('')
         setLoadingState('idle')
         
         // Reset flags
         initialMessageProcessed.current = false
         autoSendTriggered.current = false
         appCheckProcessed.current = false
+      } else if (previousAppIdRef.current && previousAppIdRef.current !== appId) {
+        console.log('🔄 App ID changed from', previousAppIdRef.current, 'to', appId, '- cleaning up previous app state')
+        cleanupMessagesStore()
+        cleanupServerStore()
+        
+        // Clear local state
+        setApp(null)
+        setIsInitialAppCreation(false)
+        setLoadingState('idle')
+        
+        // Reset flags
+        initialMessageProcessed.current = false
+        autoSendTriggered.current = false
+        appCheckProcessed.current = false
+        initializationStarted.current = null // Reset for new app
+      } else if (previousAppIdRef.current === null) {
+        console.log('🏁 Initial app load for appId:', appId, '- checking for stale store data')
       }
       
       previousAppIdRef.current = appId
@@ -155,49 +151,53 @@ function DevelopPageContent() {
       if (!appId) return
 
       try {
-        // 2. Load app data
+        // 2. Load app data and refresh apps store
         setLoadingState('loading-app')
         console.log('📱 Loading app data:', appId)
         
         const [appData, configData] = await Promise.all([
           appService.getApp(appId),
-          appService.getConfig()
+          appService.getConfig(),
+          loadApps() // Load all apps into the store for PreviewPane
         ])
         
         setApp(appData.app)
         setShowUsageCost(configData.config.showUsageCost)
         
+        // Register server in server store for tracking
+        if (appData.app.port && !getServerInfo(appId)) {
+          registerServer(appId, appData.app.port)
+        }
+        
         // Check if this is initial app creation
-        const isNewApp = appData.app.status === 'created' && !!appData.app.initialPrompt
+        const isNewApp = appData.app.status === AppStatus.CREATED && !!appData.app.initialPrompt
         setIsInitialAppCreation(isNewApp)
         
         // 3. Ensure app is running (one-time check)
         if (!appCheckProcessed.current) {
           appCheckProcessed.current = true
-          await ensureAppIsRunning(appId)
+          await ensureAppIsRunningFromStore(appId, appStoreEnsureAppIsRunning)
         }
         
-        // 4. Load conversations and commit history
+        // 4. Give server time to settle on final port (avoid race condition with Vite port selection)
+        if (isNewApp) {
+          console.log('⏳ New app detected - waiting for server to settle on final port...')
+          await new Promise(resolve => setTimeout(resolve, 3000)) // Wait 3 seconds for Vite to settle
+        }
+        
+        // 5. Load conversations (required) and commit history (optional)
         setLoadingState('loading-conversations')
         console.log('💬 Loading conversations and history')
         
-        const [conversationList] = await Promise.all([
-          loadConversations(appId),
-          fetchCommitHistory()
-        ])
+        // CRITICAL: Load conversations AFTER we're sure no cleanup will happen
+        // Add a small delay to ensure all cleanup is complete
+        await new Promise(resolve => setTimeout(resolve, 100))
+        await initializeConversations(appId)
         
-        setConversations(conversationList || [])
-        
-        // 5. Load most recent conversation if available
-        if (conversationList && conversationList.length > 0) {
-          const mostRecent = conversationList[0]
-          const conversationData = await loadConversation(appId, mostRecent.id)
-          
-          if (conversationData) {
-            setMessages(conversationData.messages)
-            setConversationId(mostRecent.id)
-          }
-        }
+        // Load commit history after a delay to ensure app is ready
+        setTimeout(() => {
+          refreshGitHistory() // This handles retries and proper timing internally
+        }, 6000) // Wait 6 seconds to ensure app is fully ready
         
         setLoadingState('ready')
         console.log('✅ App initialization complete')
@@ -205,6 +205,8 @@ function DevelopPageContent() {
       } catch (error) {
         console.error('❌ App initialization failed:', error)
         setLoadingState('idle')
+      } finally {
+        initializationStarted.current = null // Reset flag when done
       }
     }
     
@@ -240,58 +242,24 @@ function DevelopPageContent() {
     }
   }, [loadingState, isInitialAppCreation, app?.initialPrompt, conversations.length])
 
-  // 5. STABLE MESSAGE HANDLER - No state dependencies that cause loops
+  // MESSAGE HANDLER - Uses store for message handling
   const handleSendMessage = useCallback(async (messageContent?: string) => {
-    const content = messageContent || inputValue
-    if (!content.trim() || isLoading) return
-
-    await sendMessage({
-      messageContent: content,
-      inputValue,
-      isLoading,
-      appId,
-      conversationId: conversationId || undefined,
-      aiEditContext,
-      setMessages,
-      setInputValue,
-      setIsLoading,
-      setConversationId,
-      onTokenUsageUpdate: () => {
-        tokenUsageRef.current?.refreshUsage()
-      },
-      onMessageComplete: () => {
-        // Auto-refresh preview when agent completes a message
-        handlePreviewRefresh()
-      }
-    })
-
-    // Clear the AI edit context after sending message
-    if (aiEditContext) {
-      setAiEditContext(null)
-    }
+    await sendMessageFromStore(messageContent)
     
-    // Post-send cleanup - using refs to avoid circular dependencies
-    setTimeout(async () => {
-      // Refresh conversations if this was the first message
-      if (!conversationId) {
-        try {
-          const updatedConversations = await loadConversations(appId)
-          setConversations(updatedConversations)
-        } catch (error) {
-          console.error('Error refreshing conversations:', error)
-        }
-      }
-      
-      // Mark initial app creation as complete
-      if (isInitialAppCreation) {
-        setIsInitialAppCreation(false)
-      }
-    }, 100)
-  }, [inputValue, isLoading, appId, conversationId, aiEditContext, isInitialAppCreation])
+    // Additional side effects after message sent
+    headerRef.current?.refreshTokenUsage()
+    handlePreviewRefresh()
+    
+    // Mark initial app creation as complete
+    if (isInitialAppCreation) {
+      setIsInitialAppCreation(false)
+    }
+  }, [isInitialAppCreation])
 
   // Auto-send initial prompt - only when fully ready and conditions met
   useEffect(() => {
-    const shouldAutoSend = 
+    // Primary auto-send: for initial app creation
+    const shouldAutoSendInitial = 
       loadingState === 'ready' &&
       isInitialAppCreation && 
       app?.initialPrompt && 
@@ -299,36 +267,32 @@ function DevelopPageContent() {
       conversations.length === 0 &&
       !autoSendTriggered.current &&
       !isLoading;
+
+    // Backup auto-send: for unsent messages in textarea (any app with no conversations)
+    const shouldAutoSendUnsent = 
+      loadingState === 'ready' &&
+      inputValue && 
+      inputValue.length > 10 && // Has substantial content
+      conversations.length === 0 &&
+      !autoSendTriggered.current &&
+      !isLoading;
     
-    if (shouldAutoSend) {
-      console.log('🚀 Auto-sending initial prompt')
+    if (shouldAutoSendInitial || shouldAutoSendUnsent) {
+      const reason = shouldAutoSendInitial ? 'initial app creation' : 'unsent message in textarea'
+      console.log(`🚀 Auto-sending message for ${reason}:`, inputValue?.substring(0, 50) + '...')
       autoSendTriggered.current = true
       
-      const timer = setTimeout(() => {
-        sendMessage({
-          messageContent: inputValue,
-          inputValue,
-          isLoading: false,
-          appId,
-          conversationId: undefined,
-          aiEditContext: null,
-          setMessages,
-          setInputValue,
-          setIsLoading,
-          setConversationId,
-          onTokenUsageUpdate: () => {
-            tokenUsageRef.current?.refreshUsage()
-          },
-          onMessageComplete: () => {
-            handlePreviewRefresh()
-          }
-        }).then(() => {
+      const timer = setTimeout(async () => {
+        try {
+          await sendMessageFromStore()
           console.log('✅ Auto-send completed')
           setIsInitialAppCreation(false)
-        }).catch(error => {
+          headerRef.current?.refreshTokenUsage()
+          handlePreviewRefresh()
+        } catch (error) {
           console.error('❌ Auto-send failed:', error)
           autoSendTriggered.current = false
-        })
+        }
       }, 500)
       
       return () => clearTimeout(timer)
@@ -345,6 +309,43 @@ function DevelopPageContent() {
       }
     }
   }, [appId])
+
+  // Port synchronization - use centralized store approach
+  useEffect(() => {
+    if (!appId) return
+    
+    // Initial sync
+    syncActualPorts()
+    
+    // Aggressive sync during server startup for this specific app
+    let attempts = 0
+    const maxFastAttempts = 20 // 10 seconds of fast polling
+    let timeoutId: NodeJS.Timeout | null = null
+    let intervalId: NodeJS.Timeout | null = null
+    let cleanup = false
+    
+    const aggressiveSync = async () => {
+      if (cleanup) return
+      
+      await syncActualPorts()
+      attempts++
+      
+      if (attempts < maxFastAttempts) {
+        timeoutId = setTimeout(aggressiveSync, 500) // Fast polling for 10 seconds
+      } else {
+        // Switch to normal interval after fast polling
+        intervalId = setInterval(syncActualPorts, 2000)
+      }
+    }
+    
+    aggressiveSync()
+    
+    return () => {
+      cleanup = true
+      if (timeoutId) clearTimeout(timeoutId)
+      if (intervalId) clearInterval(intervalId)
+    }
+  }, [appId, syncActualPorts])
 
   // Batching state for style updates
   const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -448,7 +449,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate])
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode])
 
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
@@ -482,7 +483,7 @@ function DevelopPageContent() {
         router.replace(url.pathname + url.search, { scroll: false })
       }, 500)
     }
-  }, [loadingState, searchParams, conversations.length, handleSendMessage, router])
+  }, [loadingState, searchParams, conversations.length, router])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
@@ -491,45 +492,11 @@ function DevelopPageContent() {
     }
   }
 
-  const handleToggleSelectMode = () => {
-    const newSelectMode = !isSelectMode
-    setIsSelectMode(newSelectMode)
-    
-    // Send message to preview iframe to toggle select mode
-    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
-    if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage({
-        type: 'TOGGLE_SELECT_MODE',
-        data: { isSelectMode: newSelectMode }
-      }, '*')
-    }
-  }
-  
-  // Toggle version history and refresh commits if opened
-  const handleToggleVersionHistory = () => {
-    const newIsVersionHistoryOpen = !isVersionHistoryOpen
-    setIsVersionHistoryOpen(newIsVersionHistoryOpen)
-    
-    // If opening the history, refresh the commits
-    if (newIsVersionHistoryOpen) {
-      fetchCommitHistory()
-    }
-  }
-
-  const handleToggleExpandedPlan = () => {
-    setExpandedPlan(!expandedPlan)
-  }
-
-
-
   const handleRestartServer = async () => {
     if (!appId) return
     
-    setIsRestarting(true)
     try {
-      await appService.restartApp(appId)
-      console.log('✅ Manual restart successful')
-      await new Promise(resolve => setTimeout(resolve, 5000))
+      await restartAppFromStore(appId, appStoreRestartApp)
       
       // Refresh app data
       try {
@@ -542,24 +509,13 @@ function DevelopPageContent() {
     } catch (error) {
       console.error('❌ Error restarting server:', error)
       alert('Failed to restart server')
-    } finally {
-      setIsRestarting(false)
     }
   }
 
-  const handleViewModeChange = (newMode: 'preview' | 'code') => {
-    if (hasUnsavedChanges && viewMode === 'code' && newMode === 'preview') {
-      const confirmed = window.confirm(
-        'You have unsaved changes in the code editor. Switching to preview will keep your changes, but they won\'t be reflected in the preview until saved. Continue?'
-      )
-      if (!confirmed) return
-    }
-    setViewMode(newMode)
-  }
 
   const handlePanelResize = useCallback((newWidth: number) => {
     setChatPaneWidth(newWidth)
-  }, [])
+  }, [setChatPaneWidth])
 
   const handlePreviewRefresh = () => {
     const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
@@ -568,88 +524,15 @@ function DevelopPageContent() {
     }
   }
 
-  const togglePreviewViewMode = (mode: 'desktop' | 'mobile') => {
-    setPreviewViewMode(mode)
-  }
-
-  const handleSelectCommit = async (commit: {
-    hash: string
-    shortHash: string
-    message: string
-    author: string
-    date: string
-  } | null) => {
-    try {
-      if (!appId) return
-      
-      // If null, return to latest (main branch)
-      if (commit === null) {
-        if (selectedCommit) {
-          console.log('🔄 Returning to latest version (main branch)')
-          // Return to main branch
-          const response = await appFetch(`http://localhost:4000/apps/${appId}/git/return`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ branch: 'main' })
-          })
-          
-          if (response.ok) {
-            const result = await response.json()
-            console.log('✅ Returned to latest version:', result.message)
-            // Refresh preview after switching
-            handlePreviewRefresh()
-            setSelectedCommit(null)
-          } else {
-            const error = await response.json().catch(() => ({ error: 'Unknown error' }))
-            console.error('❌ Failed to return to latest version:', error.error || response.status)
-          }
-        }
-        return
-      }
-      
-      console.log(`🔍 Viewing commit ${commit.shortHash}: "${commit.message}" (${commit.date})`)
-      console.log('⚠️ Note: Changes requested after this will be made on latest commit, not the viewed commit')
-      
-      // Checkout specific commit
-      const response = await appFetch(`http://localhost:4000/apps/${appId}/git/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commitHash: commit.hash })
-      })
-      
-      if (response.ok) {
-        const result = await response.json()
-        console.log(`✅ Checked out commit ${commit.shortHash}`, result)
-        setSelectedCommit(commit)
-        // Refresh preview after switching
-        handlePreviewRefresh()
-      } else {
-        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
-        console.error('❌ Failed to checkout commit:', error.error || response.status)
-      }
-    } catch (error) {
-      console.error('❌ Error selecting commit:', error)
-    }
-  }
-
   return (
     <div className="h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <Header
-        appId={appId}
+        ref={headerRef}
         app={app}
-        viewMode={viewMode}
-        previewViewMode={previewViewMode}
-        hasUnsavedChanges={hasUnsavedChanges}
         showUsageCost={showUsageCost}
-        isCheckingApp={isCheckingApp}
-        isStartingApp={isStartingApp}
-        isRestarting={isRestarting}
-        onViewModeChange={handleViewModeChange}
-        onTogglePreviewViewMode={togglePreviewViewMode}
         onPreviewRefresh={handlePreviewRefresh}
         onRestartServer={handleRestartServer}
-        tokenUsageRef={tokenUsageRef}
       />
 
       {/* Main Content Area */}
@@ -665,28 +548,23 @@ function DevelopPageContent() {
 
         >
           <ChatPane
-            messages={messages}
-            developmentPlan={developmentPlan}
-            inputValue={inputValue}
             expandedPlan={expandedPlan}
             isSelectMode={isSelectMode}
-            aiEditContext={aiEditContext}
-            isLoading={isLoading}
-            onInputChange={setInputValue}
-            onSendMessage={() => handleSendMessage()}
             onKeyPress={handleKeyPress}
-            onToggleSelectMode={handleToggleSelectMode}
-            onToggleExpandedPlan={handleToggleExpandedPlan}
-            onClearAiEditContext={() => setAiEditContext(null)}
-            onToggleVersionHistory={handleToggleVersionHistory}
+            onToggleSelectMode={toggleSelectMode}
+            onToggleExpandedPlan={toggleExpandedPlan}
+            onToggleVersionHistory={() => toggleVersionHistory(appId)}
             isVersionHistoryOpen={isVersionHistoryOpen}
             hasSelectedCommit={selectedCommit !== null}
             appId={appId}
             selectedCommit={selectedCommit}
             commits={commitHistory}
             isLoadingCommits={isLoadingCommits}
-            onRefreshCommits={fetchCommitHistory}
-            onSelectCommit={handleSelectCommit}
+            onRefreshCommits={refreshGitHistory}
+            onSelectCommit={async (commit) => {
+              await selectCommitFromStore(appId, commit)
+              handlePreviewRefresh()
+            }}
           />
         </div>
 
@@ -705,8 +583,7 @@ function DevelopPageContent() {
             {/* Preview Pane */}
             <div className={`absolute inset-0 ${viewMode === 'preview' ? 'block' : 'hidden'}`}>
               <PreviewPane 
-                appId={appId} 
-                port={app?.port}
+                appId={appId}
                 viewMode={previewViewMode}
                 selectedCommit={selectedCommit}
                 onRetry={() => {

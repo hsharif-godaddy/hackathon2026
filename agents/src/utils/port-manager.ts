@@ -30,21 +30,59 @@ export class PortManager {
 
   /**
    * Check if a port is available on the system
+   * Uses lsof to check for actual processes using the port
    */
   private async isPortAvailable(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-      const server = createServer();
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
+    
+    try {
+      // Check if any process is actually using this port
+      const { stdout } = await execAsync(`lsof -i :${port}`);
       
-      server.listen(port, () => {
-        server.close(() => {
-          resolve(true);
+      // If lsof returns any output, the port is in use
+      if (stdout.trim()) {
+        console.log(`🚫 Port ${port} is occupied by existing process:`);
+        console.log(stdout.trim());
+        return false;
+      }
+      
+      // Double-check by trying to bind to the port
+      return new Promise((resolve) => {
+        const server = createServer();
+        
+        server.listen(port, () => {
+          server.close(() => {
+            console.log(`✅ Port ${port} is available`);
+            resolve(true);
+          });
+        });
+        
+        server.on('error', () => {
+          console.log(`❌ Port ${port} failed bind test`);
+          resolve(false);
         });
       });
       
-      server.on('error', () => {
-        resolve(false);
+    } catch (error) {
+      // If lsof fails (port not in use), fall back to bind test
+      return new Promise((resolve) => {
+        const server = createServer();
+        
+        server.listen(port, () => {
+          server.close(() => {
+            console.log(`✅ Port ${port} is available (lsof fallback)`);
+            resolve(true);
+          });
+        });
+        
+        server.on('error', () => {
+          console.log(`❌ Port ${port} failed bind test (lsof fallback)`);
+          resolve(false);
+        });
       });
-    });
+    }
   }
 
   /**

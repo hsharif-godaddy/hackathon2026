@@ -1,28 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef } from 'react'
 import MessageList from './MessageList'
 import PlanTracker from './PlanTracker'
 import ChatInput from './ChatInput'
 import ChatHeader from './ChatHeader'
 import VersionHistory from './VersionHistory'
-import { Message, PlanItem, AiEditContext } from './types'
 import { useMessageProcessing } from './useMessageProcessing'
+import { useMessagesStore } from '@/stores/useMessagesStore'
 
 interface ChatPaneProps {
-  messages: Message[]
-  developmentPlan: PlanItem[]
-  inputValue: string
   expandedPlan: boolean
   isSelectMode: boolean
-  aiEditContext: AiEditContext | null
-  isLoading: boolean
-  onInputChange: (value: string) => void
-  onSendMessage: () => void
   onKeyPress: (e: React.KeyboardEvent) => void
   onToggleSelectMode: () => void
   onToggleExpandedPlan: () => void
-  onClearAiEditContext: () => void
   onToggleVersionHistory?: () => void
   isVersionHistoryOpen?: boolean
   hasSelectedCommit?: boolean
@@ -53,19 +45,11 @@ interface ChatPaneProps {
 }
 
 export default function ChatPane({
-  messages,
-  developmentPlan,
-  inputValue,
   expandedPlan,
   isSelectMode,
-  aiEditContext,
-  isLoading,
-  onInputChange,
-  onSendMessage,
   onKeyPress,
   onToggleSelectMode,
   onToggleExpandedPlan,
-  onClearAiEditContext,
   onToggleVersionHistory = () => {},
   isVersionHistoryOpen = false,
   hasSelectedCommit = false,
@@ -76,12 +60,49 @@ export default function ChatPane({
   onRefreshCommits = () => {},
   onSelectCommit = () => {}
 }: ChatPaneProps) {
+  // Get state from messages store
+  const {
+    messages: rawMessages,
+    developmentPlan,
+    inputValue,
+    aiEditContext,
+    isLoading,
+    currentAppId,
+    setInputValue,
+    setAiEditContext,
+    handleSendMessage: sendMessageFromStore
+  } = useMessagesStore()
+  
+  // Only show messages and state if they belong to the current app context
+  const messages = (currentAppId === appId) ? rawMessages : []
+  const safeInputValue = (currentAppId === appId) ? inputValue : ''
+  const safeAiEditContext = (currentAppId === appId) ? aiEditContext : null
+  
+  // Debug current state (only log when there's a significant change)
+  const prevDebugRef = useRef<string>('')
+  const currentDebugState = `${appId}-${currentAppId}-${messages?.length}`
+  
+  // Only log if app changed or messages changed (ignore loading/input changes)
+  if (prevDebugRef.current !== currentDebugState) {
+    console.log('🎯 ChatPane state changed:', {
+      appIdFromProps: appId,
+      currentAppIdFromStore: currentAppId,
+      messagesCount: messages?.length,
+      isLoading
+    })
+    prevDebugRef.current = currentDebugState
+  }
+  
   // Track processing state using the hook that follows messageService.ts logic
   const isProcessing = useMessageProcessing(messages, isLoading)
   
   // Handle sending a message
   const handleSendMessage = () => {
-    onSendMessage()
+    console.log('🎯 ChatPane handleSendMessage called:', {
+      inputValue: inputValue?.slice(0, 50) + '...',
+      sendMessageFromStore: typeof sendMessageFromStore
+    })
+    sendMessageFromStore()
   }
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -126,18 +147,18 @@ export default function ChatPane({
         </div>
       )}
       
-      {aiEditContext && (
+      {safeAiEditContext && (
         <div className="mx-4 mb-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm">✨</span>
               <span className="text-sm font-medium text-blue-900">Selected Element</span>
               <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
-                {aiEditContext.elementInfo.tagName}
+                {safeAiEditContext.elementInfo.tagName}
               </span>
             </div>
             <button
-              onClick={onClearAiEditContext}
+              onClick={() => setAiEditContext(null)}
               className="text-blue-400 hover:text-blue-600 text-sm"
               title="Clear selection"
             >
@@ -148,10 +169,10 @@ export default function ChatPane({
       )}
       
       <ChatInput
-        inputValue={inputValue}
+        inputValue={safeInputValue}
         isSelectMode={isSelectMode}
         isDisabled={isProcessing}
-        onInputChange={onInputChange}
+        onInputChange={setInputValue}
         onSendMessage={handleSendMessage}
         onKeyPress={onKeyPress}
         onToggleSelectMode={onToggleSelectMode}

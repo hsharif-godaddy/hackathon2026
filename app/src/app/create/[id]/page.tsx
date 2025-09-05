@@ -1,66 +1,66 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { SparklesIcon } from '@heroicons/react/24/outline'
-import { appFetch } from '@/lib/gasket-config'
-import { appService } from '@/services/AppService'
-
-interface AppStatus {
-  id: string
-  status: 'creating' | 'created' | 'error'
-  name: string
-  createdAt: string
-  updatedAt: string
-}
+import { useAppStore, cleanupAppStore, AppStatus } from '@/stores/useAppStore'
 
 export default function CreateAppStatus() {
   const router = useRouter()
   const params = useParams()
   const appId = params.id as string
   
-  const [appStatus, setAppStatus] = useState<AppStatus | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [isPolling, setIsPolling] = useState(true)
+  const {
+    currentApp,
+    creationError,
+    startPolling,
+    clearCreationState,
+    shouldRedirect,
+    syncActualPorts
+  } = useAppStore()
 
-  // Poll app status
+  // Start polling and handle cleanup
   useEffect(() => {
-    if (!appId || !isPolling) return
+    if (!appId) return
 
-        const pollStatus = async () => {
-      try {
-        const data = await appService.getAppStatus(appId)
-        setAppStatus(data)
+    startPolling(appId)
 
-        // Stop polling if app creation is complete or errored
-        if (data.status === 'created' || data.status === 'error') {
-          setIsPolling(false)
-          
-          if (data.status === 'created') {
-            // Wait a moment before redirecting to allow user to see success
-            setTimeout(() => {
-              router.replace(`/develop/${appId}`)
-            }, 2000)
-          }
-        }
-      } catch (err) {
-        console.error('Error polling app status:', err)
-        setError(err instanceof Error ? err.message : 'Unknown error occurred')
-        setIsPolling(false)
-      }
+    return () => {
+      cleanupAppStore()
     }
+  }, [appId, startPolling])
 
-    // Initial poll
-    pollStatus()
-
-    // Set up polling interval
-    const interval = setInterval(pollStatus, 2000) // Poll every 2 seconds
-
+  // Sync actual ports while on create page
+  useEffect(() => {
+    if (!appId) return
+    
+    // Initial sync
+    syncActualPorts()
+    
+    // Keep syncing ports while app is being created
+    const interval = setInterval(async () => {
+      try {
+        await syncActualPorts()
+      } catch (error) {
+        console.error('Error syncing ports on create page:', error)
+      }
+    }, 2000) // Sync every 2 seconds during creation
+    
     return () => clearInterval(interval)
-  }, [appId, isPolling, router])
+  }, [appId, syncActualPorts])
+
+  // Handle redirect when app is ready
+  useEffect(() => {
+    if (shouldRedirect() && currentApp) {
+      // Wait a moment before redirecting to allow user to see success
+      setTimeout(() => {
+        router.replace(`/develop/${appId}`)
+      }, 2000)
+    }
+  }, [shouldRedirect, currentApp, appId, router])
 
   // Show error state
-  if (error || appStatus?.status === 'error') {
+  if (creationError || currentApp?.status === AppStatus.ERROR) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center">
         <div className="text-center max-w-md mx-auto px-6">
@@ -69,7 +69,7 @@ export default function CreateAppStatus() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">App Creation Failed</h1>
           <p className="text-gray-600 mb-6">
-            {error || 'An error occurred while creating your app. Please try again.'}
+            {creationError || 'An error occurred while creating your app. Please try again.'}
           </p>
           <div className="space-y-3">
             <button
@@ -80,8 +80,8 @@ export default function CreateAppStatus() {
             </button>
             <button
               onClick={() => {
-                setError(null)
-                setIsPolling(true)
+                clearCreationState()
+                startPolling(appId)
               }}
               className="w-full border border-gray-300 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-50 transition-colors"
             >
@@ -94,7 +94,7 @@ export default function CreateAppStatus() {
   }
 
   // Show success state (briefly before redirect)
-  if (appStatus?.status === 'created') {
+  if (currentApp?.status === AppStatus.CREATED) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center">
         <div className="text-center">
@@ -103,7 +103,7 @@ export default function CreateAppStatus() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">App Created Successfully!</h1>
           <p className="text-gray-600 mb-4">
-            <strong>{appStatus.name}</strong> is ready to build.
+            <strong>{currentApp.name}</strong> is ready to build.
           </p>
           <p className="text-sm text-gray-500">Redirecting to development environment...</p>
         </div>
@@ -119,9 +119,9 @@ export default function CreateAppStatus() {
           <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
         </div>
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Creating Your App</h1>
-        {appStatus && (
+        {currentApp && (
           <p className="text-lg text-gray-700 mb-2">
-            <strong>{appStatus.name}</strong>
+            <strong>{currentApp.name}</strong>
           </p>
         )}
         <p className="text-gray-600 mb-6">

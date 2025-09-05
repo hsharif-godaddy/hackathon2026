@@ -377,9 +377,26 @@ export class LocalAppService implements IAppAdapter {
       this.removeProcessRecord(appId);
     });
     
-    // Log output
+    // Log output and detect actual running port
     child.stdout?.on('data', (data) => {
-      console.log(`[${appId}] ${data.toString().trim()}`);
+      const output = data.toString().trim();
+      console.log(`[${appId}] ${output}`);
+      
+      // Parse actual port from Vite output
+      const vitePortMatch = output.match(/Local:\s+http:\/\/localhost:(\d+)/);
+      if (vitePortMatch) {
+        const actualPort = parseInt(vitePortMatch[1]);
+        if (actualPort !== port) {
+          console.log(`🔄 Port changed for app ${appId}: ${port} → ${actualPort}`);
+          // Update the process info with actual port
+          const processInfo = this.runningProcesses.get(appId);
+          if (processInfo) {
+            processInfo.port = actualPort;
+          }
+          // Update database with actual port
+          this.updateProcessPort(appId, actualPort);
+        }
+      }
     });
     
     child.stderr?.on('data', (data) => {
@@ -483,5 +500,17 @@ export class LocalAppService implements IAppAdapter {
   private removeProcessRecord(appId: string): void {
     const stmt = this.db.prepare('DELETE FROM running_processes WHERE app_id = ?');
     stmt.run(appId);
+  }
+
+  private updateProcessPort(appId: string, port: number): void {
+    // Update running_processes table
+    const processStmt = this.db.prepare('UPDATE running_processes SET port = ? WHERE app_id = ?');
+    processStmt.run(port, appId);
+    
+    // Update apps table with actual running port
+    const appStmt = this.db.prepare('UPDATE apps SET port = ? WHERE id = ?');
+    appStmt.run(port, appId);
+    
+    console.log(`📊 Updated database port for app ${appId}: ${port}`);
   }
 }

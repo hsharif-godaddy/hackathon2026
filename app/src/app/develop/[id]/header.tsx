@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { useRef } from 'react'
+import { useRef, useImperativeHandle, forwardRef } from 'react'
+import { useParams } from 'next/navigation'
 import {
   ArrowPathIcon,
   Squares2X2Icon,
@@ -11,42 +12,62 @@ import {
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline'
 import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
-import { ProtectedRoute, SignOutButton, SignInButton } from '@/components/auth'
-import { App } from '@/services/AppService'
+import { SignOutButton } from '@/components/auth'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useServerStore } from '@/stores/useServerStore'
 
 interface HeaderProps {
-  appId: string
-  app: App | null
-  viewMode: 'preview' | 'code'
-  previewViewMode: 'desktop' | 'mobile'
-  hasUnsavedChanges: boolean
+  app: { name?: string; port?: number } | null // App data from page state
   showUsageCost: boolean
-  isCheckingApp: boolean
-  isStartingApp: boolean
-  isRestarting: boolean
-  onViewModeChange: (mode: 'preview' | 'code') => void
-  onTogglePreviewViewMode: (mode: 'desktop' | 'mobile') => void
   onPreviewRefresh: () => void
   onRestartServer: () => void
-  tokenUsageRef: React.RefObject<TokenUsageRef>
 }
 
-export default function Header({
-  appId,
+export interface HeaderRef {
+  refreshTokenUsage: () => void
+}
+
+const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
   app,
-  viewMode,
-  previewViewMode,
-  hasUnsavedChanges,
   showUsageCost,
-  isCheckingApp,
-  isStartingApp,
-  isRestarting,
-  onViewModeChange,
-  onTogglePreviewViewMode,
   onPreviewRefresh,
-  onRestartServer,
-  tokenUsageRef
-}: HeaderProps) {
+  onRestartServer
+}, ref) {
+  const params = useParams()
+  const appId = params.id as string
+  const tokenUsageRef = useRef<TokenUsageRef>(null)
+  
+  // Expose refresh functionality to parent
+  useImperativeHandle(ref, () => ({
+    refreshTokenUsage: () => {
+      tokenUsageRef.current?.refreshUsage()
+    }
+  }), [])
+  
+  // Get state from stores
+  const {
+    viewMode,
+    previewViewMode,
+    hasUnsavedChanges,
+    isCheckingApp,
+    isStartingApp,
+    isRestarting,
+    handleViewModeChange,
+    setPreviewViewMode
+  } = useDevelopPageStore()
+  
+  // Get real-time server status
+  const {
+    getServerInfo,
+    getServerUrl,
+    isServerReady
+  } = useServerStore()
+  
+  const serverInfo = getServerInfo(appId)
+  const serverUrl = getServerUrl(appId)
+  const actualPort = serverInfo?.actualPort
+  const isServerRunning = isServerReady(appId)
+  
   return (
     <header className="border-b border-gray-200 bg-white">
       <div className="mx-auto px-4 sm:px-6 lg:px-8">
@@ -83,7 +104,7 @@ export default function Header({
             {/* View Mode Toggle Buttons */}
             <div className="flex items-center space-x-2">
               <button 
-                onClick={() => onViewModeChange('preview')}
+                onClick={() => handleViewModeChange('preview', hasUnsavedChanges)}
                 className={`px-2 py-1 text-xs rounded-md transition-colors ${
                   viewMode === 'preview' 
                     ? 'bg-blue-100 text-blue-700' 
@@ -92,31 +113,28 @@ export default function Header({
               >
                 Preview
               </button>
-              {/* Code Editor Button - Environment Variable Controlled (Hidden by default) */}
-              {process.env.NEXT_PUBLIC_SHOW_CODE_EDITOR === 'true' && (
-                <button 
-                  onClick={() => onViewModeChange('code')}
-                  className={`flex items-center px-2 py-1 text-xs rounded-md transition-colors ${
-                    viewMode === 'code' 
-                      ? 'bg-purple-100 text-purple-700' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Code
-                  {hasUnsavedChanges && viewMode === 'code' && (
-                    <div className="w-2 h-2 bg-orange-500 rounded-full ml-1" title="Unsaved changes" />
-                  )}
-                </button>
-              )}
+              <button 
+                onClick={() => handleViewModeChange('code', hasUnsavedChanges)}
+                className={`flex items-center px-2 py-1 text-xs rounded-md transition-colors ${
+                  viewMode === 'code' 
+                    ? 'bg-purple-100 text-purple-700' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Code
+                {hasUnsavedChanges && viewMode === 'code' && (
+                  <div className="w-2 h-2 bg-orange-500 rounded-full ml-1" title="Unsaved changes" />
+                )}
+              </button>
             </div>
 
-            {/* Preview controls when in preview mode */}
-            {viewMode === 'preview' && app?.port && (
+            {/* Preview controls when in preview mode and server is ready */}
+            {viewMode === 'preview' && isServerRunning && actualPort && (
               <div className="flex items-center space-x-3">
                 {/* View Mode Toggles */}
                 <div className="flex items-center space-x-1 border border-gray-200 rounded-md p-0.5">
                   <button
-                    onClick={() => onTogglePreviewViewMode('desktop')}
+                    onClick={() => setPreviewViewMode('desktop')}
                     className={`p-1 rounded transition-colors ${
                       previewViewMode === 'desktop'
                         ? 'bg-blue-100 text-blue-600'
@@ -127,7 +145,7 @@ export default function Header({
                     <ComputerDesktopIcon className="w-3 h-3" />
                   </button>
                   <button
-                    onClick={() => onTogglePreviewViewMode('mobile')}
+                    onClick={() => setPreviewViewMode('mobile')}
                     className={`p-1 rounded transition-colors ${
                       previewViewMode === 'mobile'
                         ? 'bg-blue-100 text-blue-600'
@@ -151,7 +169,7 @@ export default function Header({
                   
                   <button 
                     onClick={onRestartServer}
-                    disabled={!app?.port || isRestarting}
+                    disabled={!isServerRunning || isRestarting}
                     className="p-1 hover:bg-orange-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Restart server (rebuild and restart development server)"
                   >
@@ -160,11 +178,11 @@ export default function Header({
                   
                   <button 
                     onClick={() => {
-                      if (app?.port) {
-                        window.open(`http://localhost:${app.port}`, '_blank')
+                      if (serverUrl) {
+                        window.open(serverUrl, '_blank')
                       }
                     }}
-                    disabled={!app?.port || isCheckingApp || isRestarting || isStartingApp}
+                    disabled={!isServerRunning || isCheckingApp || isRestarting || isStartingApp}
                     className="p-1 hover:bg-green-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Open app in new tab"
                   >
@@ -184,11 +202,12 @@ export default function Header({
               <Squares2X2Icon className="w-4 h-4 mr-2" />
               My Apps
             </Link>
-            <SignInButton iconOnly />
             <SignOutButton iconOnly />
           </div>
         </div>
       </div>
     </header>
   )
-}
+})
+
+export default Header

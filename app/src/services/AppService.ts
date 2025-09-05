@@ -1,12 +1,14 @@
 import { appFetch } from '@/lib/gasket-config'
 import { buildApiUrl } from '@/config/api'
+import { type AppStatusType } from '@/stores/useAppStore'
+import { type ServerStatusType } from '@/stores/useServerStore'
 
 export interface App {
   id: string
   name: string
   port: number
   initialPrompt?: string
-  status: 'creating' | 'created' | 'error'
+  status: AppStatusType
   createdAt: string
   updatedAt: string
 }
@@ -44,9 +46,9 @@ export interface CreateAppData {
   initialPrompt: string
 }
 
-export interface AppStatus {
+export interface AppStatusData {
   id: string
-  status: 'creating' | 'created' | 'error'
+  status: AppStatusType
   name: string
   port?: number
   createdAt: string
@@ -79,7 +81,7 @@ export interface ServerInfo {
   appId: string
   port: number
   url: string
-  status?: 'running' | 'stopped' | 'error'
+  status?: ServerStatusType
   lastActivity?: string
 }
 
@@ -278,7 +280,7 @@ export class AppService {
   /**
    * Get app status (for polling during creation)
    */
-  async getAppStatus(appId: string): Promise<AppStatus> {
+  async getAppStatus(appId: string): Promise<AppStatusData> {
     const response = await appFetch(buildApiUrl(`apps/${appId}/status`))
     
     if (!response.ok) {

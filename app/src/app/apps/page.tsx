@@ -15,25 +15,13 @@ import {
   CheckCircleIcon,
   ClockIcon,
   XCircleIcon,
-  ArrowTopRightOnSquareIcon
+  ArrowTopRightOnSquareIcon,
+  PlayIcon
 } from '@heroicons/react/24/outline'
 import { ProtectedRoute, UserMenu, SignOutButton, SignInButton } from '@/components/auth'
-import { appService } from '@/services/AppService'
-
-interface App {
-  id: string
-  name: string
-  port: number
-  status: 'creating' | 'created' | 'error'
-  createdAt: string
-  updatedAt: string
-}
-
-interface RunningServer {
-  appId: string
-  port: number
-  url: string
-}
+import { appService, type App } from '@/services/AppService'
+import { useAppStore, AppStatus } from '@/stores/useAppStore'
+import { useServerStore } from '@/stores/useServerStore'
 
 interface AlertState {
   appId: string | null
@@ -42,10 +30,25 @@ interface AlertState {
 }
 
 function AppsPageContent() {
-  const [apps, setApps] = useState<App[]>([])
-  const [runningServers, setRunningServers] = useState<RunningServer[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState('')
+  // Use the app store instead of local state
+  const { 
+    apps, 
+    isLoadingApps: isLoading,
+    appsError: error,
+    loadApps,
+    restartApp,
+    ensureAppIsRunning,
+    syncActualPorts
+  } = useAppStore()
+
+  // Use the centralized server store for server status
+  const {
+    getServerInfo,
+    getServerUrl,
+    isServerReady,
+    startPeriodicBackendSync
+  } = useServerStore()
+  
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [alertState, setAlertState] = useState<AlertState>({ appId: null, type: null, message: '' })
   const router = useRouter()
@@ -53,24 +56,30 @@ function AppsPageContent() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch apps and servers data in parallel
-        const [appsData, serversData] = await Promise.all([
-          appService.getAllApps(),
-          appService.getServers()
-        ])
+        // Load apps using the store (this will also sync ports automatically)
+        await loadApps()
         
-        setApps(appsData.apps || [])
-        setRunningServers(serversData.servers || [])
+        // Start centralized server monitoring
+        startPeriodicBackendSync()
       } catch (error) {
         console.error('Error fetching data:', error)
-        setError('Failed to connect to server')
-      } finally {
-        setIsLoading(false)
       }
     }
 
+    // Initial fetch
     fetchData()
-  }, [])
+    
+    // Periodic refresh to sync ports only (server monitoring is now centralized)
+    const interval = setInterval(async () => {
+      try {
+        await syncActualPorts() // Sync ports in the app store
+      } catch (error) {
+        console.error('Error syncing ports:', error)
+      }
+    }, 10000) // Reduced frequency since server monitoring is centralized
+    
+    return () => clearInterval(interval)
+  }, [loadApps, syncActualPorts, startPeriodicBackendSync])
 
   const handleCreateNew = () => {
     router.push('/')
@@ -87,19 +96,19 @@ function AppsPageContent() {
 
   const getStatusBadge = (status: App['status']) => {
     switch (status) {
-      case 'created':
+      case AppStatus.CREATED:
         return {
           label: 'Ready',
           className: 'bg-green-100 text-green-800',
           icon: CheckCircleIcon
         }
-      case 'creating':
+      case AppStatus.CREATING:
         return {
           label: 'Creating',
           className: 'bg-yellow-100 text-yellow-800',
           icon: ClockIcon
         }
-      case 'error':
+      case AppStatus.ERROR:
         return {
           label: 'Error',
           className: 'bg-red-100 text-red-800',
@@ -116,11 +125,11 @@ function AppsPageContent() {
 
   const getAppIcon = (status: App['status']) => {
     switch (status) {
-      case 'created':
+      case AppStatus.CREATED:
         return CheckCircleIcon
-      case 'creating':
+      case AppStatus.CREATING:
         return ClockIcon
-      case 'error':
+      case AppStatus.ERROR:
         return XCircleIcon
       default:
         return CodeBracketIcon
@@ -129,11 +138,11 @@ function AppsPageContent() {
 
   const getAppIconColor = (status: App['status']) => {
     switch (status) {
-      case 'created':
+      case AppStatus.CREATED:
         return 'text-green-600'
-      case 'creating':
+      case AppStatus.CREATING:
         return 'text-yellow-600'
-      case 'error':
+      case AppStatus.ERROR:
         return 'text-red-600'
       default:
         return 'text-purple-600'
@@ -141,7 +150,31 @@ function AppsPageContent() {
   }
 
   const isServerRunning = (appId: string) => {
-    return runningServers.some(server => server.appId === appId)
+    return isServerReady(appId)
+  }
+
+  const getServerPortForApp = (appId: string) => {
+    const serverInfo = getServerInfo(appId)
+    return serverInfo?.actualPort
+  }
+
+
+  const handleStartServer = async (appId: string) => {
+    setActionLoading(`start-${appId}`)
+    try {
+      const result = await ensureAppIsRunning(appId)
+      if (result.success) {
+        console.log('✅ Server started successfully for app:', appId)
+      }
+        
+      // Small delay to let server store update via its monitoring
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    } catch (error) {
+      console.error('❌ Error starting server for app:', appId, error)
+      alert('Failed to start server')
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   const handleStopServer = async (appId: string) => {
@@ -150,12 +183,8 @@ function AppsPageContent() {
       await appService.stopApp(appId)
       console.log('✅ Server stopped successfully for app:', appId)
         
-      // Small delay to ensure backend has updated
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      // Refresh running servers list
-      const serversData = await appService.getServers()
-      setRunningServers(serversData.servers || [])
+      // Small delay to let server store update via its monitoring
+      await new Promise(resolve => setTimeout(resolve, 1000))
     } catch (error) {
       console.error('❌ Error stopping server for app:', appId, error)
       alert('Failed to stop server')
@@ -178,13 +207,8 @@ function AppsPageContent() {
     try {
       await appService.deleteApp(appId)
       
-      // Refresh apps list
-      const appsData = await appService.getAllApps()
-      setApps(appsData.apps || [])
-        
-        // Refresh running servers list
-        const serversData = await appService.getServers()
-        setRunningServers(serversData.servers || [])
+      // Refresh apps list using store
+      await loadApps()
     } catch (error) {
       console.error('Error deleting app:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
@@ -204,12 +228,15 @@ function AppsPageContent() {
   }
 
   const handleStopAll = async () => {
-    if (runningServers.length === 0) {
+    // Count running servers from server store
+    const runningCount = apps.filter(app => isServerRunning(app.id)).length
+    
+    if (runningCount === 0) {
       alert('No servers are currently running')
       return
     }
 
-    if (!confirm(`Are you sure you want to stop all ${runningServers.length} running server${runningServers.length !== 1 ? 's' : ''}?`)) {
+    if (!confirm(`Are you sure you want to stop all ${runningCount} running server${runningCount !== 1 ? 's' : ''}?`)) {
       return
     }
 
@@ -218,9 +245,8 @@ function AppsPageContent() {
       const data = await appService.stopAllApps()
       alert(data.message || 'All apps stopped successfully')
         
-        // Refresh running servers list
-        const serversData = await appService.getServers()
-        setRunningServers(serversData.servers || [])
+      // Small delay to let server store update via its monitoring
+      await new Promise(resolve => setTimeout(resolve, 1000))
     } catch (error) {
       console.error('Error stopping all servers:', error)
       alert('Failed to stop servers')
@@ -232,18 +258,12 @@ function AppsPageContent() {
   const handleRestartServer = async (appId: string) => {
     setActionLoading(`restart-${appId}`)
     try {
-      const data = await appService.restartApp(appId)
-      alert(data.message || 'App restarted successfully')
+      // Use the store method
+      await restartApp(appId)
+      alert('App restarted successfully')
         
-        // Wait a moment for the server to restart, then refresh data
-        setTimeout(async () => {
-          try {
-            const serversData = await appService.getServers()
-            setRunningServers(serversData.servers || [])
-          } catch (error) {
-            console.error('Error refreshing servers after restart:', error)
-          }
-        }, 2000)
+      // Wait for the server store to update via its monitoring
+      await new Promise(resolve => setTimeout(resolve, 2000))
     } catch (error) {
       console.error('Error restarting server:', error)
       alert('Failed to restart server')
@@ -262,9 +282,8 @@ function AppsPageContent() {
       const data = await appService.cleanupOrphans()
       alert(data.message || 'Cleanup completed successfully')
         
-        // Refresh running servers list
-        const serversData = await appService.getServers()
-        setRunningServers(serversData.servers || [])
+      // Wait for server store to update via its monitoring
+      await new Promise(resolve => setTimeout(resolve, 1000))
     } catch (error) {
       console.error('Error cleaning up orphans:', error)
       alert('Failed to cleanup orphaned processes')
@@ -337,18 +356,21 @@ function AppsPageContent() {
                   {actionLoading === 'force-cleanup' ? 'Cleaning...' : 'Force Cleanup'}
                 </span>
               </button>
-              {runningServers.length > 0 && (
-                <button
-                  onClick={handleStopAll}
-                  disabled={actionLoading === 'stop-all'}
-                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <StopIcon className="w-4 h-4" />
-                  <span>
-                    {actionLoading === 'stop-all' ? 'Stopping...' : `Stop All (${runningServers.length})`}
-                  </span>
-                </button>
-              )}
+              {(() => {
+                const runningCount = apps.filter(app => isServerRunning(app.id)).length
+                return runningCount > 0 && (
+                  <button
+                    onClick={handleStopAll}
+                    disabled={actionLoading === 'stop-all'}
+                    className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <StopIcon className="w-4 h-4" />
+                    <span>
+                      {actionLoading === 'stop-all' ? 'Stopping...' : `Stop All (${runningCount})`}
+                    </span>
+                  </button>
+                )
+              })()}
               <button
                 onClick={handleCreateNew}
                 className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2"
@@ -369,11 +391,14 @@ function AppsPageContent() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">My Apps</h1>
           <p className="text-gray-600">
             Manage your AI-built applications
-            {runningServers.length > 0 && (
-              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                {runningServers.length} server{runningServers.length !== 1 ? 's' : ''} running
-              </span>
-            )}
+            {(() => {
+              const runningCount = apps.filter(app => isServerRunning(app.id)).length
+              return runningCount > 0 && (
+                <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  {runningCount} server{runningCount !== 1 ? 's' : ''} running
+                </span>
+              )
+            })()}
           </p>
         </div>
 
@@ -476,26 +501,29 @@ function AppsPageContent() {
                     </div>
                   </div>
 
-                  {isRunning && (
-                    <div className="mb-4 p-3 bg-green-50 rounded-lg">
-                      <p className="text-sm text-green-700 font-medium">Server running on port {app.port}</p>
-                      <a 
-                        href={`http://localhost:${app.port}`}
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-sm text-green-600 hover:text-green-800 underline"
-                      >
-                        View live app →
-                      </a>
-                    </div>
-                  )}
+                  {(() => {
+                    const actualPort = getServerPortForApp(app.id)
+                    return isRunning && actualPort && (
+                      <div className="mb-4 p-3 bg-green-50 rounded-lg">
+                        <p className="text-sm text-green-700 font-medium">Server running on port {actualPort}</p>
+                        <a 
+                          href={`http://localhost:${actualPort}`}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-sm text-green-600 hover:text-green-800 underline"
+                        >
+                          View live app →
+                        </a>
+                      </div>
+                    )
+                  })()}
                   
                   <div className="flex items-center justify-between mt-auto">
                     <span className="text-sm text-gray-600">
                       {formatDate(app.updatedAt)}
                     </span>
                     <div className="flex items-center space-x-2">
-                      {isRunning && (
+                      {isRunning ? (
                         <>
                           <button
                             onClick={() => handleRestartServer(app.id)}
@@ -514,6 +542,15 @@ function AppsPageContent() {
                             <StopIcon className="w-4 h-4" />
                           </button>
                         </>
+                      ) : (
+                        <button
+                          onClick={() => handleStartServer(app.id)}
+                          disabled={actionLoading === `start-${app.id}` || app.status !== AppStatus.CREATED}
+                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={app.status !== AppStatus.CREATED ? 'App must be ready to start' : 'Start server'}
+                        >
+                          <PlayIcon className={`w-4 h-4 ${actionLoading === `start-${app.id}` ? 'animate-pulse' : ''}`} />
+                        </button>
                       )}
                       <button
                         onClick={() => confirmDeleteApp(app.id)}
@@ -523,17 +560,20 @@ function AppsPageContent() {
                       >
                         <TrashIcon className="w-4 h-4" />
                       </button>
-                      {isRunning && (
-                        <a
-                          href={`http://localhost:${app.port}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Visit live app"
-                        >
-                          <ArrowTopRightOnSquareIcon className="w-4 h-4" />
-                        </a>
-                      )}
+                      {(() => {
+                        const actualPort = getServerPortForApp(app.id)
+                        return isRunning && actualPort && (
+                          <a
+                            href={`http://localhost:${actualPort}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Visit live app"
+                          >
+                            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                          </a>
+                        )
+                      })()}
                       <button
                         onClick={() => router.push(`/develop/${app.id}`)}
                         className="px-3 py-1 text-sm text-purple-600 hover:bg-purple-50 rounded-lg transition-colors font-medium"

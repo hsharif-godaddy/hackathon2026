@@ -1,4 +1,5 @@
-import { Message, ToolCall, MessageSegment, AiEditContext, VisualContext } from './types'
+import { Message, ToolCall, MessageSegment, AiEditContext, PlanItem } from './types'
+import { Conversation } from '@/services/AgentService'
 import { buildWsUrl } from '@/config/api'
 import { agentService } from '@/services/AgentService'
 import { captureVisualContext } from './visualContextCapture'
@@ -39,6 +40,8 @@ export interface SendMessageParams {
   setInputValue: React.Dispatch<React.SetStateAction<string>>
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>
   setConversationId?: React.Dispatch<React.SetStateAction<string | null>>
+  setDevelopmentPlan?: (plan: PlanItem[]) => void
+  setConversations?: (conversations: Conversation[]) => void
   onTokenUsageUpdate?: () => void
   onMessageComplete?: () => void
 }
@@ -256,7 +259,9 @@ export const handleSendMessage = async ({
       console.warn('Failed to capture visual context, proceeding without it:', error)
     }
     
-    // Send the chat message
+    // Send the chat message  
+    console.log('📤 Sending message for app:', appId, 'with conversationId:', conversationId)
+    
     const chatMessage = {
       type: 'chat',
       message: content,

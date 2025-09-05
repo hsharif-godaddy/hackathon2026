@@ -224,6 +224,11 @@ export async function applyInputGuardrails(
   message: string, 
   context?: AgentExecutionContext
 ): Promise<string> {
+  // Temporarily disable guardrails to fix ChatPane message display issue
+  // TODO: Fix guardrailAgent.run is not a function error
+  /*console.log('🔒 Input guardrails temporarily disabled for debugging');
+  return message;*/
+
   const inputGuardrail = createInputGuardrail();
   
   try {
