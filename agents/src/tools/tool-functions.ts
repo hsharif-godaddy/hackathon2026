@@ -1,6 +1,7 @@
 import { DirectoryListingTool, DirectoryListingOptions } from './directory-listing.js';
 import { TerminalTool, TerminalCommandOptions } from './terminal.js';
 import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { FileEditTool, FileEditOptions } from './file-edit.js';
 import { GitTool, GitToolOptions } from './git-tool.js';
 import { ReadFileTool, ReadFileOptions } from './read-file.js';
@@ -20,6 +21,7 @@ import { generateImage } from './image-generation-tool.js';
 import { findGettyImage, GettyImageOptions } from './getty-image-tool.js';
 import { appPlanTool, AppPlanToolOptions } from './app-plan-tool.js';
 import { validateLucideIcons, IconsValidatorOptions } from './icons-validator.js';
+import { ViewLogsTool, DevLogsOptions } from './view-logs-tool.js';
 import { AgentRegistry } from '../registry/index.js';
 
 const directoryTool = new DirectoryListingTool();
@@ -669,6 +671,35 @@ export const TOOL_FUNCTIONS = {
       required: [],
     },
   },
+  view_logs: {
+    name: 'view_logs',
+    description: 'Read development server logs for debugging and monitoring. Provides access to stdout, stderr, and formatted log output from the running development server.',
+    parameters: {
+      type: 'object',
+      properties: {
+        lines: {
+          type: 'number',
+          description: 'Number of recent log lines to retrieve (default: 50, max: 1000)',
+          default: 50,
+        },
+        source: {
+          type: 'string',
+          enum: ['stdout', 'stderr'],
+          description: 'Filter logs by source: stdout (normal output) or stderr (errors)',
+        },
+        since: {
+          type: 'string',
+          description: 'Get logs since specific time (ISO 8601 format, e.g., "2024-01-01T10:00:00Z")',
+        },
+        summary: {
+          type: 'boolean',
+          description: 'Get log summary with statistics instead of raw logs',
+          default: false,
+        },
+      },
+      required: [],
+    },
+  },
 } as const;
 
 /**
@@ -755,6 +786,9 @@ export async function executeToolFunction(
 
     case 'icon_validator':
       return await executeIconsValidator(args as unknown as IconsValidatorOptions, context);
+    
+    case 'view_logs':
+      return await executeViewLogs(args as unknown as DevLogsOptions, context);
     
     default:
       throw new Error(`Unknown tool function: ${functionName}`);
@@ -844,14 +878,8 @@ async function executeTerminalCommand(
 
   let devSupervisorClient: DevSupervisorClient | undefined;
   
-  // Use the app's specific socket path if available
-  if (app.socketPath) {
-    // Check if the socket file exists before creating the client
-    const { existsSync } = await import('fs');
-    if (existsSync(app.socketPath)) {
-      devSupervisorClient = new DevSupervisorClient(app.socketPath);
-    }
-  }
+  // Use the factory to create a DevSupervisorClient for the app
+  devSupervisorClient = DevSupervisorClientFactory.createForApp(appId) || undefined;
 
   // Create a TerminalTool instance with the DevSupervisorClient (or undefined)
   const contextualTerminalTool = new TerminalTool(devSupervisorClient);
@@ -1549,6 +1577,34 @@ async function executeAppPlan(
     
   } catch (error) {
     console.error('❌ App plan operation failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Execute the view logs tool
+ */
+async function executeViewLogs(
+  options: DevLogsOptions,
+  context: AgentExecutionContext
+): Promise<string> {
+  try {
+    const appId = context.metadata?.appId as string;
+    if (!appId) {
+      throw new Error('App ID is required for view logs operation');
+    }
+
+    const viewLogsTool = new ViewLogsTool();
+    const result = await viewLogsTool.readLogs(appId, options);
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to read development logs');
+    }
+
+    return result.output;
+    
+  } catch (error) {
+    console.error('❌ View logs operation failed:', error);
     throw error;
   }
 }

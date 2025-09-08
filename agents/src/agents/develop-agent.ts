@@ -30,7 +30,7 @@ export class DevelopAgent extends BaseAgent {
         { name: 'server_restart', description: 'Restart development server (use after database changes, dependency installs)' },
         { name: 'server_status', description: 'Check if server is running and get status details' },
         { name: 'server_stop', description: 'Stop development server temporarily' },
-        { name: 'dev_logs', description: 'Read development server logs for debugging and monitoring - shows recent log output to help troubleshoot issues' },
+        { name: 'view_logs', description: 'Read server logs for debugging and error checking - shows recent log output to help troubleshoot issues' },
         { name: 'auto_api_generator', description: 'Automatically generate API endpoints from database schemas - can create selective operations (e.g., only Create or Read or Update or Delete APIs), analyze database tables, generate TypeScript types, and create REST API routes for any combination of operations' },
         { name: 'image_search', description: 'Search for images on the web based on text prompts - supports single prompts or arrays of prompts for parallel search, returns image URLs for use in applications' },
         { name: 'image_generate', description: 'Generate custom images using AI based on detailed text prompts - creates unique images when specific visuals are needed that cannot be found through search' },

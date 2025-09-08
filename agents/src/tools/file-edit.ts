@@ -9,6 +9,7 @@ import axios from 'axios';
 import { translateDockerPath } from '../utils/path-helper.js';
 import { logger } from '../logging/index.js';
 import { toolFileEditEvents, toolBuildEvents, toolServerHealthEvents } from '../logging/events/index.js';
+import { ServerManagementTool } from './server-management-tool.js';
 
 export interface FileEditOptions {
   /** Path to the file to edit (relative to app root) */
@@ -159,13 +160,18 @@ export class FileEditTool {
           isHealthy: false,
         });
         try {
-          await this.appRepo.restartServer(appId);
-          toolServerHealthEvents.restart(logger, {
-            toolName: 'FileEditTool',
-            appId,
-            port: app.port,
-            isHealthy: false,
-          });
+          // Use the server management tool for consistent restart behavior
+          const serverTool = new ServerManagementTool();
+          const restartResult = await serverTool.restartServer({ reason: 'File edit triggered restart' }, appId);
+          
+          if (restartResult.success) {
+            toolServerHealthEvents.restart(logger, {
+              toolName: 'FileEditTool',
+              appId,
+              port: app.port,
+              isHealthy: true,
+            });
+          }
         } catch (restartError) {
           logger.error('Failed to restart dev server', {
             appId,

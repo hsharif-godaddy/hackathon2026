@@ -17,6 +17,8 @@ export { ASTStyleEditor } from './ast-style-editor.js';
 export { AutoAPIGenerator } from './auto-api-generator.js';
 export { AppPlanTool, appPlanTool } from './app-plan-tool.js';
 export { validateLucideIcons } from './icons-validator.js';
+export { DevSupervisorLogClient } from './dev-supervisor-log-client.js';
+export { ViewLogsTool } from './view-logs-tool.js';
 export { getToolDefinitions, executeToolFunction, TOOL_FUNCTIONS } from './tool-functions.js';
 export type { 
   DirectoryListingOptions, 
@@ -120,3 +122,13 @@ export type {
   IconsValidatorOptions,
   IconsValidationResult
 } from './icons-validator.js';
+
+export type {
+  LogReaderOptions,
+  LogReaderResult
+} from './dev-supervisor-log-client.js';
+
+export type {
+  DevLogsOptions,
+  DevLogsResult
+} from './view-logs-tool.js';

@@ -7,6 +7,7 @@ import { FileEditTool } from '../../tools/file-edit.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { TokenUsageRepository } from '../../database/index.js';
+import { ServerManagementTool } from '../../tools/server-management-tool.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -393,7 +394,10 @@ router.post('/:id/restart', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'App ID is required' });
     }
     
-    const restarted = await appRepo.restartServer(id);
+    // Use the server management tool for consistent restart behavior
+    const serverTool = new ServerManagementTool();
+    const restartResult = await serverTool.restartServer({ reason: 'Manual restart via API' }, id);
+    const restarted = restartResult.success;
     
     if (!restarted) {
       return res.status(404).json({ error: 'App not found or failed to restart' });

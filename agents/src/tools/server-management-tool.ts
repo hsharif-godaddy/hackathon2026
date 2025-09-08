@@ -1,6 +1,6 @@
-import { AppRepository } from '../database/index.js';
-import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
-import { existsSync } from 'fs';
+import { Logger } from '../logging/index.js';
+import { toolServerHealthEvents } from '../logging/events/index.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 
 export interface RestartServerOptions {
   /** Optional reason for restart (for logging) */
@@ -36,20 +36,30 @@ export interface ServerStatusResult {
  * Focuses on restart operations and basic status checks through dev supervisor
  */
 export class ServerManagementTool {
-  private appRepo: AppRepository;
+  private logger: Logger;
 
   constructor() {
-    this.appRepo = new AppRepository();
+    this.logger = Logger.create({ service: 'server-management-tool' });
   }
 
   /**
    * Check basic server status via dev supervisor
    */
   async checkServerStatus(appId: string): Promise<ServerStatusResult> {
+    toolServerHealthEvents.check(this.logger, {
+      toolName: 'server-management-tool',
+      appId,
+      port: 0, // Will be updated when we get app info
+    });
+
     try {
-      // Check if app exists
-      const app = this.appRepo.findById(appId);
-      if (!app) {
+      // Get app info and create dev supervisor client
+      const appInfo = DevSupervisorClientFactory.getAppInfo(appId);
+      if (!appInfo) {
+        this.logger.error('server.status.app_not_found', {
+          appId,
+          error: `App with ID ${appId} not found`,
+        });
         return {
           success: false,
           appId,
@@ -58,28 +68,47 @@ export class ServerManagementTool {
         };
       }
 
-      // Use dev supervisor to check process status if socket is available
-      if (app.socketPath && existsSync(app.socketPath)) {
+      // Use dev supervisor to check process status if available
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      if (devSupervisor) {
         try {
-          const devSupervisor = new DevSupervisorClient(app.socketPath);
           
-          // Try to execute a simple status command to see if dev server process is responsive
-          const result = await devSupervisor.exec({
-            command: 'ps aux | grep -E "(npm run dev|next dev|vite)" | grep -v grep || echo "NO_DEV_PROCESS"',
-            working_dir: app.path,
-            timeout: 5,
-            capture_output: true
-          });
-
-          const isRunning = result.exit_code === 0 && !result.stdout.includes('NO_DEV_PROCESS');
+          // Use built-in process status API instead of exec with ps/grep
+          const processInfo = await devSupervisor.getProcessStatus();
+          
+          const isRunning = processInfo.state === 'running';
+          const status = processInfo.state === 'running' ? 'running' : 
+                        processInfo.state === 'error' ? 'error' : 'stopped';
+          
+          // Log health status
+          if (isRunning) {
+            toolServerHealthEvents.healthy(this.logger, {
+              toolName: 'server-management-tool',
+              appId,
+              port: appInfo.port,
+              isHealthy: true,
+            });
+          } else {
+            toolServerHealthEvents.unhealthy(this.logger, {
+              toolName: 'server-management-tool',
+              appId,
+              port: appInfo.port,
+              isHealthy: false,
+            });
+          }
           
           return {
             success: true,
             appId,
-            status: isRunning ? 'running' : 'stopped',
-            message: isRunning ? 'Dev server process detected' : 'No dev server process found',
+            status,
+            message: `Process state: ${processInfo.state}${processInfo.pid ? ` (PID: ${processInfo.pid})` : ''}`,
           };
         } catch (error) {
+          this.logger.error('server.status.supervisor_error', {
+            appId,
+            socketPath: appInfo.socketPath,
+            error: error instanceof Error ? error.message : 'Unknown supervisor error',
+          });
           return {
             success: true,
             appId,
@@ -89,6 +118,11 @@ export class ServerManagementTool {
           };
         }
       } else {
+        this.logger.info('server.status.supervisor_unavailable', {
+          appId,
+          socketPath: appInfo.socketPath,
+          socketExists: DevSupervisorClientFactory.isAvailableForApp(appId),
+        });
         return {
           success: true,
           appId,
@@ -97,6 +131,10 @@ export class ServerManagementTool {
         };
       }
     } catch (error) {
+      this.logger.error('server.status.error', {
+        appId,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      });
       return {
         success: false,
         appId,
@@ -110,12 +148,22 @@ export class ServerManagementTool {
    * Restart the development server for a specific app via dev supervisor
    */
   async restartServer(options: RestartServerOptions, appId: string): Promise<RestartServerResult> {
+    this.logger.info('server.restart.begin', {
+      appId,
+      reason: options.reason,
+      toolName: 'server-management-tool',
+    });
+
     try {
       const { reason } = options;
 
-      // Check if app exists
-      const app = this.appRepo.findById(appId);
-      if (!app) {
+      // Get app info and create dev supervisor client
+      const appInfo = DevSupervisorClientFactory.getAppInfo(appId);
+      if (!appInfo) {
+        this.logger.error('server.restart.app_not_found', {
+          appId,
+          error: `App with ID ${appId} not found`,
+        });
         return {
           success: false,
           appId,
@@ -124,32 +172,76 @@ export class ServerManagementTool {
         };
       }
 
-      console.log(`🔄 ServerManagementTool: Restarting server for app ${appId}${reason ? ` (Reason: ${reason})` : ''}`);
-
-      // Use AppRepository's restartServer which delegates to dev supervisor
-      const restarted = await this.appRepo.restartServer(appId);
-
-      if (restarted) {
-        const message = `Server restarted successfully for app ${appId}`;
-        console.log(`✅ ${message}`);
-        return {
-          success: true,
-          appId,
-          message,
-        };
+      // Use dev supervisor directly for restart if available
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      if (devSupervisor) {
+        try {
+          
+          // Use built-in restart process API
+          const restarted = await devSupervisor.restartProcess({ graceful: true });
+          
+          if (restarted) {
+            toolServerHealthEvents.restart(this.logger, {
+              toolName: 'server-management-tool',
+              appId,
+              port: appInfo.port,
+              isHealthy: true,
+            });
+            this.logger.info('server.restart.success', {
+              appId,
+              reason,
+              graceful: true,
+            });
+            return {
+              success: true,
+              appId,
+              message: `Server restarted successfully for app ${appId}`,
+            };
+          } else {
+            this.logger.error('server.restart.failed', {
+              appId,
+              reason,
+              error: 'Server restart operation failed',
+            });
+            return {
+              success: false,
+              appId,
+              message: `Failed to restart server for app ${appId}`,
+              error: 'Server restart operation failed',
+            };
+          }
+        } catch (error) {
+          this.logger.error('server.restart.supervisor_error', {
+            appId,
+            socketPath: appInfo.socketPath,
+            error: error instanceof Error ? error.message : 'Unknown dev supervisor error',
+          });
+          return {
+            success: false,
+            appId,
+            message: `Failed to restart server for app ${appId}`,
+            error: error instanceof Error ? error.message : 'Unknown dev supervisor error',
+          };
+        }
       } else {
-        const message = `Failed to restart server for app ${appId}`;
-        console.error(`❌ ${message}`);
+        this.logger.error('server.restart.supervisor_unavailable', {
+          appId,
+          socketPath: appInfo.socketPath,
+          socketExists: DevSupervisorClientFactory.isAvailableForApp(appId),
+        });
         return {
           success: false,
           appId,
-          message,
-          error: 'Server restart operation failed',
+          message: `Failed to restart server for app ${appId}`,
+          error: 'Dev supervisor not available for this app',
         };
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error(`❌ ServerManagementTool: Error restarting server for app ${appId}:`, error);
+      this.logger.error('server.restart.error', {
+        appId,
+        error: errorMessage,
+      });
       return {
         success: false,
         appId,
