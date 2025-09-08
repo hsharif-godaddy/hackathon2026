@@ -21,11 +21,16 @@ export interface App {
   status: 'creating' | 'created' | 'error';
   createdAt: Date;
   updatedAt: Date;
+  // Extended properties for AI name generation
+  aiGeneratedName?: string;
+  nameSuggested?: boolean;
+  originalName?: string;
 }
 
 export interface CreateAppRequest {
   name: string;
   initialPrompt?: string;
+  siteId?: string;
 }
 
 export interface UpdateAppRequest {

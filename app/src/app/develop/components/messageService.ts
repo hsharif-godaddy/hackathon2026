@@ -1,6 +1,5 @@
 import { Message, ToolCall, MessageSegment, AiEditContext, PlanItem } from './types'
 import { Conversation } from '@/services/AgentService'
-import { buildWsUrl } from '@/config/api'
 import { agentService } from '@/services/AgentService'
 import { captureVisualContext } from './visualContextCapture'
 import { appFetch } from '@/lib/gasket-config'
@@ -77,44 +76,53 @@ export const cleanup = (appId?: string) => {
 /**
  * Create WebSocket connection with automatic reconnection
  */
-function createWebSocketConnection(agentId: string, appId?: string): Promise<WebSocket> {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(buildWsUrl(`ws/${agentId}`))
-    
-    ws.onopen = () => {
-      console.log('🔌 WebSocket connected')
-      reconnectAttempts = 0 // Reset reconnect attempts on successful connection
-      resolve(ws)
+function createWebSocketConnection(agentId: string, appId: string): Promise<WebSocket> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const { buildDynamicWsUrl } = await import('@/config/dynamic-api')
+      const wsUrl = await buildDynamicWsUrl(`ws/${agentId}`, appId)
+
+      console.log('🔌 Creating WebSocket connection to:', wsUrl);
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log('🔌 WebSocket connected');
+        reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+        resolve(ws);
+      };
+
+      ws.onerror = (error) => {
+        console.error('🔌 WebSocket connection error:', error);
+        reject(new Error('Failed to connect to WebSocket'));
+      };
+
+      ws.onclose = (event) => {
+        console.log('🔌 WebSocket connection closed:', event.code, event.reason);
+
+        // Only attempt reconnection if this was an unexpected close and we have an appId
+        if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts && appId) {
+          reconnectAttempts++;
+          const delay = reconnectDelay * Math.pow(2, reconnectAttempts - 1); // Exponential backoff
+
+          console.log(`🔄 Attempting to reconnect WebSocket (${reconnectAttempts}/${maxReconnectAttempts}) in ${delay}ms...`);
+
+          setTimeout(() => {
+            createWebSocketConnection(agentId, appId)
+              .then(newWs => {
+                webSocketConnections.set(appId, newWs);
+                console.log('🔌 WebSocket reconnected successfully');
+              })
+              .catch(error => {
+                console.error('🔌 WebSocket reconnection failed:', error);
+              });
+          }, delay);
+        }
+      };
+    } catch (error) {
+      console.error('🔌 Failed to build WebSocket URL:', error);
+      reject(error);
     }
-    
-    ws.onerror = (error) => {
-      console.error('🔌 WebSocket connection error:', error)
-      reject(new Error('Failed to connect to WebSocket'))
-    }
-    
-    ws.onclose = (event) => {
-      console.log('🔌 WebSocket connection closed:', event.code, event.reason)
-      
-      // Only attempt reconnection if this was an unexpected close and we have an appId
-      if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts && appId) {
-        reconnectAttempts++
-        const delay = reconnectDelay * Math.pow(2, reconnectAttempts - 1) // Exponential backoff
-        
-        console.log(`🔄 Attempting to reconnect WebSocket (${reconnectAttempts}/${maxReconnectAttempts}) in ${delay}ms...`)
-        
-        setTimeout(() => {
-          createWebSocketConnection(agentId, appId)
-            .then(newWs => {
-              webSocketConnections.set(appId, newWs)
-              console.log('🔌 WebSocket reconnected successfully')
-            })
-            .catch(error => {
-              console.error('🔌 WebSocket reconnection failed:', error)
-            })
-        }, delay)
-      }
-    }
-  })
+  });
 }
 
 /**
@@ -127,7 +135,8 @@ async function ensureLatestCommit(appId: string): Promise<boolean> {
     if (!appId) return true
     
     console.log('Ensuring app is on latest commit before sending message')
-    const response = await appFetch(`http://localhost:4000/apps/${appId}/git/return`, {
+    
+    const response = await appFetch(`/api/apps/${appId}/git/return`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ branch: 'main' })
@@ -338,19 +347,22 @@ function handleWebSocketMessage(
 
         if (timeSinceLastUpdate >= updateThrottleMs) {
           lastUpdateTimeRef.current = now
-          setMessages(prev => 
-            prev.map(msg => 
-              msg.id === agentMessage.id 
-                ? { 
-                    ...msg, 
-                    content: agentMessageContent, 
-                    isThinking: false,
-                    // Update streaming content in segments
-                    segments: updateStreamingContent(msg.segments || [], agentMessageContent)
-                  }
-                : msg
-            )
-          )
+          setMessages(prev => {
+            const updatedMessages = [...prev]
+            const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
+            
+            if (thinkingAgentIndex >= 0) {
+              updatedMessages[thinkingAgentIndex] = {
+                ...updatedMessages[thinkingAgentIndex],
+                content: agentMessageContent,
+                isThinking: false,
+                // Update streaming content in segments
+                segments: updateStreamingContent(updatedMessages[thinkingAgentIndex].segments || [], agentMessageContent)
+              }
+            }
+            
+            return updatedMessages
+          })
         }
       }
       break
@@ -363,38 +375,42 @@ function handleWebSocketMessage(
       // 2. Add the tool call as a new segment
       // 3. Reset agentMessageContent to start accumulating new content after the tool
       
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === agentMessage.id 
-            ? {
-                ...msg,
-                // Keep legacy tool_calls for backward compatibility
-                tool_calls: [
-                  ...(msg.tool_calls || []),
-                  ...(data.tool_call_id && data.tool_name ? [{
-                    id: data.tool_call_id,
-                    tool_name: data.tool_name,
-                    tool_args: typeof data.tool_args === 'string' ? data.tool_args : JSON.stringify(data.tool_args),
-                    start_time: data.start_time,
-                    status: 'running' as const
-                  }] : [])
-                ],
-                // Add to segments for the new rendering approach
-                segments: (data.tool_call_id && data.tool_name) ? finalizeContentAndAddTool(
-                  msg.segments || [], 
-                  agentMessageContent,
-                  {
-                    id: data.tool_call_id,
-                    tool_name: data.tool_name,
-                    tool_args: typeof data.tool_args === 'string' ? data.tool_args : JSON.stringify(data.tool_args),
-                    start_time: data.start_time,
-                    status: 'running' as const
-                  }
-                ) : msg.segments || []
+      setMessages(prev => {
+        const updatedMessages = [...prev]
+        const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
+        
+        if (thinkingAgentIndex >= 0) {
+          const msg = updatedMessages[thinkingAgentIndex]
+          updatedMessages[thinkingAgentIndex] = {
+            ...msg,
+            // Keep legacy tool_calls for backward compatibility
+            tool_calls: [
+              ...(msg.tool_calls || []),
+              ...(data.tool_call_id && data.tool_name ? [{
+                id: data.tool_call_id,
+                tool_name: data.tool_name,
+                tool_args: typeof data.tool_args === 'string' ? data.tool_args : JSON.stringify(data.tool_args),
+                start_time: data.start_time,
+                status: 'running' as const
+              }] : [])
+            ],
+            // Add to segments for the new rendering approach
+            segments: (data.tool_call_id && data.tool_name) ? finalizeContentAndAddTool(
+              msg.segments || [], 
+              agentMessageContent,
+              {
+                id: data.tool_call_id,
+                tool_name: data.tool_name,
+                tool_args: typeof data.tool_args === 'string' ? data.tool_args : JSON.stringify(data.tool_args),
+                start_time: data.start_time,
+                status: 'running' as const
               }
-            : msg
-        )
-      )
+            ) : msg.segments || []
+          }
+        }
+        
+        return updatedMessages
+      })
       
       // Reset content to start accumulating post-tool content
       agentMessageContent = agentMessageContent // Keep accumulating for now, but mark where tool happened
@@ -403,51 +419,55 @@ function handleWebSocketMessage(
     case 'tool_complete':
       console.log('Tool Complete:', data.tool_name, data.status)
       // Update the specific tool call in both legacy and segments structures
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === agentMessage.id 
-            ? {
-                ...msg,
-                // Update legacy tool_calls
-                tool_calls: (msg.tool_calls || []).map(toolCall =>
-                  toolCall.id === data.tool_call_id
-                    ? {
-                        ...toolCall,
-                        tool_result: typeof data.tool_result === 'string' ? data.tool_result : JSON.stringify(data.tool_result),
-                        error: data.error,
-                        end_time: data.end_time,
-                        duration_ms: data.duration_ms,
-                        status: data.status as 'success' | 'error'
-                      }
-                    : toolCall
-                ),
-                // Update segments
-                segments: (msg.segments || []).map(segment =>
-                  segment.type === 'tool_call' && segment.tool_call?.id === data.tool_call_id && segment.tool_call
-                    ? {
-                        ...segment,
-                        tool_call: {
-                          ...segment.tool_call,
-                          tool_result: typeof data.tool_result === 'string' ? data.tool_result : JSON.stringify(data.tool_result),
-                          error: data.error,
-                          end_time: data.end_time,
-                          duration_ms: data.duration_ms,
-                          status: data.status as 'success' | 'error'
-                        }
-                      }
-                    : segment
-                )
-              }
-            : msg
-        )
-      )
+      setMessages(prev => {
+        const updatedMessages = [...prev]
+        const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
+        
+        if (thinkingAgentIndex >= 0) {
+          const msg = updatedMessages[thinkingAgentIndex]
+          updatedMessages[thinkingAgentIndex] = {
+            ...msg,
+            // Update legacy tool_calls
+            tool_calls: (msg.tool_calls || []).map(toolCall =>
+              toolCall.id === data.tool_call_id
+                ? {
+                    ...toolCall,
+                    tool_result: typeof data.tool_result === 'string' ? data.tool_result : JSON.stringify(data.tool_result),
+                    error: data.error,
+                    end_time: data.end_time,
+                    duration_ms: data.duration_ms,
+                    status: data.status as 'success' | 'error'
+                  }
+                : toolCall
+            ),
+            // Update segments
+            segments: (msg.segments || []).map(segment =>
+              segment.type === 'tool_call' && segment.tool_call?.id === data.tool_call_id && segment.tool_call
+                ? {
+                    ...segment,
+                    tool_call: {
+                      ...segment.tool_call,
+                      tool_result: typeof data.tool_result === 'string' ? data.tool_result : JSON.stringify(data.tool_result),
+                      error: data.error,
+                      end_time: data.end_time,
+                      duration_ms: data.duration_ms,
+                      status: data.status as 'success' | 'error'
+                    }
+                  }
+                : segment
+            )
+          }
+        }
+        
+        return updatedMessages
+      })
       break
       
     case 'tool_result':
       console.log('Tool Result (legacy):', data.tool_name, data.tool_result)
       // Keep for backward compatibility - this shouldn't be used with new tool_start/tool_complete flow
       const toolResultMessage: Message = {
-        id: Date.now() + Math.random(),
+        id: Math.random().toString(36).substring(2, 15),
         sender: 'agent',
         content: typeof data.tool_result === 'string' ? data.tool_result : JSON.stringify(data.tool_result) || '',
         timestamp: new Date(),
@@ -465,21 +485,24 @@ function handleWebSocketMessage(
     case 'complete':
       console.log('WebSocket Complete:', data)
       // Mark the main agent message as complete with final content and duration
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === agentMessage.id 
-            ? { 
-                ...msg, 
-                content: agentMessageContent, 
-                isThinking: false,
-                is_complete: true,
-                response_start_time: data.start_time,
-                response_end_time: data.end_time,
-                response_duration_ms: data.duration_ms
-              }
-            : msg
-        )
-      )
+      setMessages(prev => {
+        const updatedMessages = [...prev]
+        const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
+        
+        if (thinkingAgentIndex >= 0) {
+          updatedMessages[thinkingAgentIndex] = {
+            ...updatedMessages[thinkingAgentIndex],
+            content: agentMessageContent,
+            isThinking: false,
+            is_complete: true,
+            response_start_time: data.start_time,
+            response_end_time: data.end_time,
+            response_duration_ms: data.duration_ms
+          }
+        }
+        
+        return updatedMessages
+      })
       
       setIsLoading(false)
       
@@ -499,22 +522,25 @@ function handleWebSocketMessage(
     case 'error':
       console.error('WebSocket Error:', data.error)
       // Update the main agent message with error state
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === agentMessage.id 
-            ? { 
-                ...msg, 
-                content: `Sorry, I encountered an error. Please make sure the agents server is running and WebSocket connections are supported.`,
-                isThinking: false,
-                is_complete: true,
-                error: data.error,
-                response_start_time: data.start_time,
-                response_end_time: data.end_time,
-                response_duration_ms: data.duration_ms
-              }
-            : msg
-        )
-      )
+      setMessages(prev => {
+        const updatedMessages = [...prev]
+        const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
+        
+        if (thinkingAgentIndex >= 0) {
+          updatedMessages[thinkingAgentIndex] = {
+            ...updatedMessages[thinkingAgentIndex],
+            content: `Sorry, I encountered an error. Please make sure the agents server is running and WebSocket connections are supported.`,
+            isThinking: false,
+            is_complete: true,
+            error: data.error,
+            response_start_time: data.start_time,
+            response_end_time: data.end_time,
+            response_duration_ms: data.duration_ms
+          }
+        }
+        
+        return updatedMessages
+      })
       
       setIsLoading(false)
       break
@@ -526,21 +552,39 @@ function handleWebSocketMessage(
   return agentMessageContent
 }
 
+/**
+ * Helper function to find the most recent agent message that's currently thinking/streaming
+ */
+function findThinkingAgentMessageIndex(messages: Message[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.sender === 'agent' && (msg.isThinking === true || !msg.is_complete)) {
+      return i
+    }
+  }
+  return -1
+}
+
 function handleWebSocketError(
   agentMessage: Message,
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
 ) {
-  setMessages(prev => 
-    prev.map(msg => 
-      msg.id === agentMessage.id 
-        ? { 
-            ...msg, 
-            content: 'Sorry, I encountered an error. Please make sure the agents server is running and WebSocket connections are supported.',
-            isThinking: false 
-          }
-        : msg
-    )
-  )
+  setMessages(prev => {
+    const updatedMessages = [...prev]
+    const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
+    
+    if (thinkingAgentIndex >= 0) {
+      updatedMessages[thinkingAgentIndex] = {
+        ...updatedMessages[thinkingAgentIndex],
+        content: 'Sorry, I encountered an error. Please make sure the agents server is running and WebSocket connections are supported.',
+        isThinking: false,
+        is_complete: true,
+        error: 'WebSocket connection error'
+      }
+    }
+    
+    return updatedMessages
+  })
 }
 
 /**
@@ -669,9 +713,9 @@ export const loadConversation = async (appId: string, conversationId: string) =>
 /**
  * Delete a conversation
  */
-export const deleteConversation = async (conversationId: string) => {
+export const deleteConversation = async (appId: string, conversationId: string) => {
   try {
-    const data = await agentService.deleteConversation(conversationId)
+    const data = await agentService.deleteConversation(appId, conversationId)
     return data.success
   } catch (error) {
     console.error('Error deleting conversation:', error)

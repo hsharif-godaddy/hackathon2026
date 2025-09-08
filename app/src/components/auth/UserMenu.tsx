@@ -1,95 +1,23 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType } from '@godaddy/gasket-auth';
-import { ArrowRightOnRectangleIcon, UserPlusIcon } from '@heroicons/react/24/outline';
+import { ArrowRightOnRectangleIcon, ChevronDownIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
 import { getLoginUrl, getLogoutUrl, isAuthDisabled, authConfigs } from '@/lib/gasket-config';
-
-// Dev mode component when auth is disabled
-function DevModeDisplay() {
-  return (
-    <div className="flex items-center space-x-3">
-      {/* Plan Display for Dev Mode */}
-      <div className="flex items-center">
-        <span className="px-3 py-1 text-xs font-medium bg-yellow-50 text-yellow-600 rounded-full border border-yellow-100">
-          Dev Mode
-        </span>
-      </div>
-      
-      {/* Dev Mode Indicator */}
-      <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-        <span className="text-yellow-600 text-sm">🛠️</span>
-      </div>
-    </div>
-  );
-}
-
-// Auth-enabled component
-function AuthEnabledMenu() {
+import { isFeatureEnabled } from '@/lib/features';
+import { useMockAuth } from '@/hooks/useMockAuth';
+import { MockLoginDialog } from './MockLogin';
+import Link from 'next/link';
 
 
-  // Helper function to get user's plan (can be enhanced to fetch from API)
-  const getUserPlan = (authDetails?: Record<string, unknown>) => {
-    // TODO: Fetch actual plan from /api/accounts API using authDetails?.shopperId
-    // For now, defaulting to 'Free' plan
-    // Future enhancement: Call API to get real plan name (Free, Starter, Pro)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _ = authDetails; // Acknowledge parameter for future use
-    return 'Free';
-  };
+export default function UserMenu() {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [showMockLogin, setShowMockLogin] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   
-  // Get auth state from Gasket auth with heartbeat enabled
-  const authState = useAuthState({
-    realm: authConfigs.user.realm as AuthRealmType,
-    risk: authConfigs.user.risk as AuthRiskType,
-    type: authConfigs.user.type as AuthIdpType[],
-    allowHeartbeat: authConfigs.user.allowHeartbeat,
-    use12HourExpiration: authConfigs.user.use12HourExpiration,
-    alt: <div></div> // Don't redirect, handle manually
-  });
-
-
-
-
-
-  // Check for successful login return from SSO and clean up URL
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const hasAuthParams = urlParams.has('token') || urlParams.has('auth') || urlParams.has('session');
-    
-    if (hasAuthParams) {
-      // Clean up URL parameters after SSO return
-      const cleanUrl = window.location.pathname;
-      window.history.replaceState({}, document.title, cleanUrl);
-      
-      // Force a refresh of auth state after SSO return
-      // The auth_idp cookie should now be set by GoDaddy SSO
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
-    }
-  }, []);
-
-  if (!authState.valid) {
-    return null; // Don't show anything here, Sign In button will be separate
-  }
-
-  return (
-    // Just return plan display for now - logout will be separate
-    <div className="flex items-center">
-      <span className="px-3 py-1 text-xs font-medium bg-green-50 text-green-600 rounded-full border border-green-100">
-        Plan: {getUserPlan(authState.details)}
-      </span>
-    </div>
-  );
-}
-
-// Separate Sign In Button Component
-interface SignInButtonProps {
-  iconOnly?: boolean;
-}
-
-export function SignInButton({ iconOnly = false }: SignInButtonProps) {
+  const isMockLoginEnabled = isFeatureEnabled.mockLogin();
+  const mockAuth = useMockAuth();
+  
   // Get auth state to check if user is actually signed in
   const authState = useAuthState({
     realm: authConfigs.user.realm as AuthRealmType,
@@ -97,95 +25,134 @@ export function SignInButton({ iconOnly = false }: SignInButtonProps) {
     type: authConfigs.user.type as AuthIdpType[],
     allowHeartbeat: authConfigs.user.allowHeartbeat,
     use12HourExpiration: authConfigs.user.use12HourExpiration,
-    alt: <div></div> // Don't redirect, handle manually
   });
 
-  // Don't show in dev mode or if user is already authenticated
-  if (isAuthDisabled() || authState.valid) {
-    return null;
-  }
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
 
-  const handleLogin = () => {
-    window.location.href = getLoginUrl();
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Helper function to get user name
+  const getUserName = () => {
+    if (isMockLoginEnabled && mockAuth.isAuthenticated && mockAuth.user) {
+      return mockAuth.user.name;
+    }
+    // For real auth, you might extract name from authState.details
+    return 'User';
   };
 
-  if (iconOnly) {
-    return (
-      <button
-        onClick={handleLogin}
-        className="flex items-center justify-center w-10 h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm hover:shadow-md"
-        title="Sign In"
-        aria-label="Sign In"
-      >
-        <UserPlusIcon className="w-5 h-5" />
-      </button>
-    );
-  }
+  // Determine if user is authenticated (either mock or real)
+  const isAuthenticated = isMockLoginEnabled 
+    ? mockAuth.isAuthenticated 
+    : authState.valid;
 
-  return (
-    <button
-      onClick={handleLogin}
-      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-    >
-      Sign In
-    </button>
-  );
-}
-
-// Separate Sign Out Button Component
-interface SignOutButtonProps {
-  iconOnly?: boolean;
-}
-
-export function SignOutButton({ iconOnly = false }: SignOutButtonProps) {
-  // Get auth state first (hooks must be called at top level)
-  const authState = useAuthState({
-    realm: authConfigs.user.realm as AuthRealmType,
-    risk: authConfigs.user.risk as AuthRiskType,
-    type: authConfigs.user.type as AuthIdpType[],
-    allowHeartbeat: authConfigs.user.allowHeartbeat,
-    use12HourExpiration: authConfigs.user.use12HourExpiration,
-    alt: <div></div> // Don't redirect, handle manually
-  });
-
-  // Don't show in dev mode or if user is not authenticated
-  if (isAuthDisabled() || !authState.valid) {
-    return null;
-  }
-
-  const handleLogout = () => {
-    window.location.href = getLogoutUrl();
+  // Handle sign out
+  const handleSignOut = async () => {
+    setIsDropdownOpen(false);
+    if (isMockLoginEnabled) {
+      await mockAuth.logout();
+    } else {
+      window.location.href = getLogoutUrl();
+    }
   };
 
-  if (iconOnly) {
-    return (
-      <button
-        onClick={handleLogout}
-        className="flex items-center justify-center w-10 h-10 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors shadow-sm hover:shadow-md"
-        title="Sign Out"
-        aria-label="Sign Out"
-      >
-        <ArrowRightOnRectangleIcon className="w-5 h-5" />
-      </button>
-    );
-  }
+  // Handle sign in
+  const handleSignIn = () => {
+    if (isMockLoginEnabled) {
+      setShowMockLogin(true);
+    } else {
+      window.location.href = getLoginUrl();
+    }
+  };
 
-  return (
-    <button
-      onClick={handleLogout}
-      className="flex items-center space-x-2 bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors font-medium shadow-sm"
-    >
-      <ArrowRightOnRectangleIcon className="w-4 h-4" />
-      <span>Sign Out</span>
-    </button>
-  );
-}
-
-export default function UserMenu() {
-  // Show dev mode when auth is disabled
+  // If auth is disabled, show dev mode indicator
   if (isAuthDisabled()) {
-    return <DevModeDisplay />;
+    return (
+      <div className="flex items-center space-x-3">
+        <span className="px-3 py-1 text-xs font-medium bg-gray-50 text-gray-600 rounded-full border border-gray-100">
+          Auth Disabled
+        </span>
+        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+          <span className="text-gray-600 text-sm">🛠️</span>
+        </div>
+      </div>
+    );
   }
 
-  return <AuthEnabledMenu />;
+  // If not authenticated, show Sign In button
+  if (!isAuthenticated) {
+    return (
+      <>
+        <button
+          onClick={handleSignIn}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+        >
+          Sign In
+        </button>
+        {isMockLoginEnabled && (
+          <MockLoginDialog 
+            isOpen={showMockLogin} 
+            onClose={() => setShowMockLogin(false)} 
+          />
+        )}
+      </>
+    );
+  }
+
+  // If authenticated, show user dropdown
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+        className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors"
+      >
+        <span className="font-medium">{getUserName()}</span>
+        {isMockLoginEnabled && (
+          <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-700 rounded">
+            Mock
+          </span>
+        )}
+        <ChevronDownIcon className="w-4 h-4" />
+      </button>
+
+      {isDropdownOpen && (
+        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
+          {/* User Info Header */}
+          <div className="px-4 py-3 border-b border-gray-100">
+            <div className="font-medium text-gray-900">{getUserName()}</div>
+            {isMockLoginEnabled && mockAuth.user && (
+              <div className="text-sm text-gray-500">{mockAuth.user.email}</div>
+            )}
+          </div>
+
+          {/* Menu Items */}
+          <div className="py-1">
+            <Link
+              href="/sites"
+              className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              onClick={() => setIsDropdownOpen(false)}
+            >
+              <Squares2X2Icon className="w-4 h-4 mr-3" />
+              My Apps
+            </Link>
+            
+            <button
+              onClick={handleSignOut}
+              className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <ArrowRightOnRectangleIcon className="w-4 h-4 mr-3" />
+              Sign Out
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

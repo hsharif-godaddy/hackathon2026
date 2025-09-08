@@ -49,15 +49,38 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
 
   // Load real files from backend
   const loadFiles = useCallback(async () => {
-    if (!appId) return
+    if (!(appId)) return
+
+    setIsLoading(true)
+    setError(null)
 
     try {
+      // First try to ensure the app is running
+      await appService.ensureAppIsRunning(appId)
+      
+      // Small delay to let the app fully start
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
       const result = await appService.getFiles(appId, 5)
-      const fileTree = buildFileTree(result.entries)
-      setFiles(fileTree)
+      
+      if (result.entries && result.entries.length > 0) {
+        const fileTree = buildFileTree(result.entries)
+        setFiles(fileTree)
+      } else {
+        setError('Project is initializing... Please wait a moment and refresh.')
+      }
     } catch (error) {
-      console.error('Error loading files:', error)
-      setError('Failed to load project files')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      if (errorMessage.includes('500') || errorMessage.includes('Failed to start app')) {
+        setError('Application is starting up. Please wait a moment and try again.')
+      } else {
+        setError(`Failed to load project files: ${errorMessage}`)
+      }
+      
+      // Retry after a delay
+      setTimeout(() => {
+        loadFiles()
+      }, 5000)
     } finally {
       setIsLoading(false)
     }
@@ -110,7 +133,7 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
   // Save file content to backend
   const saveFileContent = useCallback(async (filePath: string, content: string): Promise<boolean> => {
     try {
-      const result = await appService.writeFile(appId, filePath, content)
+      const result = await appService.writeFile(appId, filePath, content, 'rewrite')
       return result.success || true
     } catch (error) {
       console.error('Error saving file:', error)
@@ -277,9 +300,16 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
   if (error) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="text-center text-red-600">
-          <div className="text-lg font-semibold mb-2">Error loading files</div>
-          <div className="text-sm">{error}</div>
+        <div className="text-center">
+          <div className="text-lg font-semibold mb-2 text-red-600">Project Loading</div>
+          <div className="text-sm text-gray-600 mb-4">{error}</div>
+          <button
+            onClick={loadFiles}
+            disabled={isLoading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+          >
+            {isLoading ? 'Loading...' : 'Retry Loading Files'}
+          </button>
         </div>
       </div>
     )

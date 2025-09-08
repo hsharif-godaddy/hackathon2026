@@ -1,22 +1,42 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType } from '@godaddy/gasket-auth'
 import { appFetch } from '@/lib/gasket-config'
 import { appService } from '@/services/AppService'
-import Header from './components/Header'
+import { authConfigs, getLoginUrl, isAuthDisabled } from '@/lib/gasket-config'
+import { useIntegratedAuthState } from '@/lib/mock-auth-integration'
+import { isFeatureEnabled } from '@/lib/features'
+import Header from '@/components/layout/Header'
 import HeroSection from './components/HeroSection'
 import ExamplesSection from './components/ExamplesSection'
 import BuiltWithSection from './components/BuiltWithSection'
 import Footer from './components/Footer'
 import { Example, BuiltWithItem } from './components/types'
 
-export default function Home() {
+function HomeContent() {
   const [promptText, setPromptText] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // Get auth state - allow gasket to handle refresh but control redirects
+  const originalAuthState = useAuthState({
+    realm: authConfigs.user.realm as AuthRealmType,
+    risk: authConfigs.user.risk as AuthRiskType,
+    type: authConfigs.user.type as AuthIdpType[],
+    allowHeartbeat: authConfigs.user.allowHeartbeat,
+    use12HourExpiration: authConfigs.user.use12HourExpiration,
+    // Remove alt to allow proper token refresh, handle redirects in our logic instead
+  })
+  
+  // Use integrated auth state that considers mock auth
+  const authState = useIntegratedAuthState(originalAuthState)
+
+  // Track if user is redirecting to prevent multiple calls
+  const [isRedirecting, setIsRedirecting] = useState(false)
 
   const examples: Example[] = [
     {
@@ -81,9 +101,6 @@ export default function Home() {
       category: "E-commerce"
     }
   ]
-
-  // Track if user is redirecting to prevent multiple calls
-  const [isRedirecting, setIsRedirecting] = useState(false)
   
   // Check for URL parameter and prefill prompt text
   useEffect(() => {
@@ -110,48 +127,49 @@ export default function Home() {
     setIsRedirecting(true)
     
     try {
-      // Generate a simple app name from the prompt (first few words)
-      const words = promptText.trim().split(' ').slice(0, 3)
-      const appName = words.length > 0 ? words.join(' ') : 'New App'
-      
-      // Create the app via AppService
-      const response = await appService.createApp({
-        name: appName,
-        initialPrompt: promptText.trim()
-      })
-
-      // Check if user was redirected to SSO
-      if (response.ssoRedirect) {
-        console.log('User redirected to SSO for authentication')
+      // Step 1: Quick auth check - only redirect to login if needed
+      if (!isAuthDisabled() && !authState.valid) {
+        console.log('🔐 User not authenticated, redirecting to login')
+        if (isFeatureEnabled.mockLogin()) {
+          throw new Error('Please sign in using the mock authentication system')
+        }
+        window.location.href = getLoginUrl(window.location.href)
         return
       }
 
-      if (!response.ok) {
-        let errorMessage = `Server responded with status ${response.status}`
-        try {
-          const errorData = await response.json()
-          if (errorData.message) {
-            errorMessage = errorData.message
-          }
-        } catch {
-          // Ignore JSON parsing errors, use default message
-        }
-        throw new Error(errorMessage)
+      // Step 2: Super fast create - only create database record, no deployment
+      console.log('🚀 Quick creating site record...')
+      
+      const createSiteResponse = await appFetch('/api/sites/quick-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          initialPrompt: promptText.trim()
+        })
+      })
+      
+      if (!createSiteResponse.ok) {
+        const errorData = await createSiteResponse.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to create site')
       }
-
-      const data = await response.json()
-      const appId = data.app.id
-
-      // Redirect to the new app's creation status page
-      router.push(`/create/${appId}`)
+      
+      const siteData = await createSiteResponse.json()
+      console.log('✅ Site record created instantly:', siteData.id)
+      
+      // Immediately redirect to /create/{siteId} - deployment will happen there
+      router.push(`/create/${siteData.id}`)
     } catch (error) {
-      console.error('Error creating app:', error)
+      console.error('❌ Error in start building flow:', error)
       
       // Set user-friendly error message
       let errorMessage = 'Something went wrong. Please try again.'
       
       if (error instanceof Error) {
-        if (error.message.includes('fetch')) {
+        if (error.message.includes('Failed to create site')) {
+          errorMessage = 'Failed to create your development environment. Please try again or contact support.'
+        } else if (error.message.includes('Failed to validate account')) {
+          errorMessage = 'Authentication failed. Please try logging in again.'
+        } else if (error.message.includes('fetch')) {
           errorMessage = 'Unable to connect to the server. Please try again.'
         } else if (error.message.includes('Failed to fetch')) {
           errorMessage = 'Network error. Please check your connection and try again.'
@@ -168,7 +186,7 @@ export default function Home() {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [promptText, router, isRedirecting, isLoading])
+  }, [promptText, router, isRedirecting, isLoading, authState])
 
   const handleExampleClick = (examplePrompt: string) => {
     setPromptText(examplePrompt)
@@ -177,9 +195,22 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
       <Header 
-        onStartBuilding={handleStartBuilding}
-        promptText={promptText}
-        isLoading={isLoading}
+        actions={
+          <button
+            onClick={handleStartBuilding}
+            disabled={!promptText.trim() || isLoading}
+            className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+          >
+            {isLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <span>Creating...</span>
+              </>
+            ) : (
+              <span>Get Started</span>
+            )}
+          </button>
+        }
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
@@ -202,5 +233,13 @@ export default function Home() {
 
       <Footer />
     </div>
+  )
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <HomeContent />
+    </Suspense>
   )
 }

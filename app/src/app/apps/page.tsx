@@ -18,7 +18,8 @@ import {
   ArrowTopRightOnSquareIcon,
   PlayIcon
 } from '@heroicons/react/24/outline'
-import { ProtectedRoute, UserMenu, SignOutButton, SignInButton } from '@/components/auth'
+import { ProtectedRoute } from '@/components/auth'
+import Header from '@/components/layout/Header'
 import { appService, type App } from '@/services/AppService'
 import { useAppStore, AppStatus } from '@/stores/useAppStore'
 import { useServerStore } from '@/stores/useServerStore'
@@ -177,16 +178,16 @@ function AppsPageContent() {
     }
   }
 
-  const handleStopServer = async (appId: string) => {
-    setActionLoading(`stop-${appId}`)
+  const handleStopServer = async (siteId: string) => {
+    setActionLoading(`stop-${siteId}`)
     try {
-      await appService.stopApp(appId)
-      console.log('✅ Server stopped successfully for app:', appId)
+      await appService.stopApp(siteId)
+      console.log('✅ Server stopped successfully for app:', siteId)
         
       // Small delay to let server store update via its monitoring
       await new Promise(resolve => setTimeout(resolve, 1000))
     } catch (error) {
-      console.error('❌ Error stopping server for app:', appId, error)
+      console.error('❌ Error stopping server for app:', siteId, error)
       alert('Failed to stop server')
     } finally {
       setActionLoading(null)
@@ -197,9 +198,9 @@ function AppsPageContent() {
     showAlert(appId, 'stop', 'Are you sure you want to stop this server?')
   }
 
-  const executeStopServer = async (appId: string) => {
+  const executeStopServer = async (siteId: string) => {
     clearAlert()
-    await handleStopServer(appId)
+    await handleStopServer(siteId)
   }
 
   const handleDeleteApp = async (appId: string) => {
@@ -332,63 +333,68 @@ function AppsPageContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
-      {/* Header */}
-      <header className="border-b border-gray-100 bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <Link href="/" className="flex items-center space-x-3">
-                <div className="w-64 h-64 flex items-center justify-center">
-                    <Image src="/logo.svg" alt="Airo Logo" width={140} height={140} />
-                  </div>
-              </Link>
-            </div>
-            <div className="flex items-center space-x-4">
-              <UserMenu />
-              <button
-                onClick={handleForceCleanup}
-                disabled={actionLoading === 'force-cleanup'}
-                className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Force cleanup orphaned processes"
-              >
-                <ExclamationTriangleIcon className="w-4 h-4" />
-                <span>
-                  {actionLoading === 'force-cleanup' ? 'Cleaning...' : 'Force Cleanup'}
-                </span>
-              </button>
-              {(() => {
-                const runningCount = apps.filter(app => isServerRunning(app.id)).length
-                return runningCount > 0 && (
-                  <button
-                    onClick={handleStopAll}
-                    disabled={actionLoading === 'stop-all'}
-                    className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <StopIcon className="w-4 h-4" />
-                    <span>
-                      {actionLoading === 'stop-all' ? 'Stopping...' : `Stop All (${runningCount})`}
-                    </span>
-                  </button>
-                )
-              })()}
-              <button
-                onClick={handleCreateNew}
-                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2"
-              >
-                <PlusIcon className="w-4 h-4" />
-                <span>New App</span>
-              </button>
-              <SignInButton />
-              <SignOutButton />
-            </div>
-          </div>
-        </div>
-      </header>
+      <Header 
+        actions={
+          <>
+            <button
+              onClick={handleForceCleanup}
+              disabled={actionLoading === 'force-cleanup'}
+              className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Force cleanup orphaned processes"
+            >
+              <ExclamationTriangleIcon className="w-4 h-4" />
+              <span>
+                {actionLoading === 'force-cleanup' ? 'Cleaning...' : 'Force Cleanup'}
+              </span>
+            </button>
+            {(() => {
+              const runningCount = apps.filter(app => isServerRunning(app.id)).length
+              return runningCount > 0 && (
+                <button
+                  onClick={handleStopAll}
+                  disabled={actionLoading === 'stop-all'}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <StopIcon className="w-4 h-4" />
+                  <span>
+                    {actionLoading === 'stop-all' ? 'Stopping...' : `Stop All (${runningCount})`}
+                  </span>
+                </button>
+              )
+            })()}
+            <button
+              onClick={handleCreateNew}
+              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2"
+            >
+              <PlusIcon className="w-4 h-4" />
+              <span>New App</span>
+            </button>
+          </>
+        }
+      />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Apps</h1>
+          {/* Migration Notice */}
+          <div className="mb-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded-r-lg">
+            <div className="flex">
+              <div className="flex-1">
+                <p className="text-sm text-blue-700">
+                  <span className="font-semibold">New:</span> Check out the improved{" "}
+                  <button
+                    onClick={() => router.push('/sites')}
+                    className="underline font-medium hover:text-blue-800 transition-colors"
+                  >
+                    My App
+                  </button>{" "}
+                  page with better site management and dynamic agent URLs.
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Apps (Legacy)</h1>
           <p className="text-gray-600">
             Manage your AI-built applications
             {(() => {

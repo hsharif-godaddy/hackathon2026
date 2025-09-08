@@ -7,7 +7,7 @@ import {
   ClockIcon
 } from '@heroicons/react/24/outline'
 import { useAppStore } from '@/stores/useAppStore'
-import { useServerStore, ServerStatus } from '@/stores/useServerStore'
+import { useServerPollingStore } from '@/stores/useServerPollingStore'
 
 interface PreviewPaneProps {
   appId: string
@@ -27,19 +27,13 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
   const currentApp = apps.find(app => app.id === appId)
   
   const { 
-    getServerInfo, 
-    getServerUrl, 
-    registerServer,
-    retryConnection,
-    startHealthMonitoring,
-    stopHealthMonitoring,
-    waitForServerReady,
-    startPeriodicBackendSync,
-    maxRetries 
-  } = useServerStore()
+    getServerState,
+    startPollingForServer,
+    stopPollingForServer
+  } = useServerPollingStore()
   
-  const serverInfo = getServerInfo(appId)
-  const previewUrl = getServerUrl(appId)
+  const serverState = getServerState(appId)
+  const previewUrl = serverState?.isReady ? serverState.url : null
   
   // Track if we've initialized this appId to prevent duplicate setups
   const initializedRef = useRef<Set<string>>(new Set())
@@ -51,72 +45,37 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
   const [iframeKey, setIframeKey] = useState(0) // Force iframe re-render
   const [documentReady, setDocumentReady] = useState(false) // Additional verification
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const retryTimeoutRef = useRef<NodeJS.Timeout>()
-  const verificationTimeoutRef = useRef<NodeJS.Timeout>()
+  const retryTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
+  const verificationTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
   
   const MAX_IFRAME_RETRIES = 5
   const RETRY_DELAYS = [2000, 3000, 5000, 8000, 12000] // Progressive delays
 
-  // Start periodic backend sync once on component mount
+  // Initialize server polling - much simpler with unified store
   useEffect(() => {
-    startPeriodicBackendSync()
-  }, [startPeriodicBackendSync])
-
-  // Initialize server registration and wait for backend confirmation
-  useEffect(() => {
-    if (!currentApp || !appId) return
+    if (!appId) return
 
     // Skip if already initialized
     if (initializedRef.current.has(appId)) {
       return
     }
 
-    // Register server and wait for backend confirmation
-    const initializeServer = async () => {
-      // Register if not already registered
-      if (!getServerInfo(appId)) {
-        registerServer(appId, currentApp.port)
-      }
-      
-      console.log(`🔍 PreviewPane: Waiting for server confirmation for appId: ${appId}`)
-      
-      // Wait for backend to confirm the server is running
-      const serverUrl = await waitForServerReady(appId)
-      
-      if (serverUrl) {
-        console.log(`✅ PreviewPane: Server confirmed for appId: ${appId} at ${serverUrl}`)
-        // Start health monitoring with delay to allow server to fully start accepting connections
-        startHealthMonitoring(appId, true)
-      } else {
-        console.log(`❌ PreviewPane: Server confirmation failed for appId: ${appId}`)
-      }
-    }
+    console.log(`🔍 PreviewPane: Starting polling for appId: ${appId}`)
+    startPollingForServer(appId)
     
-    // Mark as initialized and start the process
+    // Mark as initialized
     initializedRef.current.add(appId)
-    initializeServer()
 
     return () => {
-      stopHealthMonitoring(appId)
+      stopPollingForServer(appId)
       initializedRef.current.delete(appId)
     }
-  }, [appId, currentApp, getServerInfo, registerServer, startHealthMonitoring, stopHealthMonitoring, waitForServerReady])
-
-  // Auto-retry logic for server startup
-  useEffect(() => {
-    if (serverInfo && !serverInfo.isHealthy && serverInfo.retryCount < maxRetries && serverInfo.status !== ServerStatus.RUNNING) {
-      const timer = setTimeout(async () => {
-        await retryConnection(appId)
-      }, serverInfo.retryCount === 0 ? 1000 : Math.min(2000 + serverInfo.retryCount * 1000, 10000))
-      
-      return () => clearTimeout(timer)
-    }
-  }, [serverInfo, retryConnection, appId, maxRetries])
+  }, [appId, startPollingForServer, stopPollingForServer])
 
   // Listen for file save events to auto-refresh preview
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'file-saved' && serverInfo?.isHealthy) {
+      if (event.data.type === 'file-saved' && serverState?.isReady) {
         // Debounce refreshes to avoid too many reloads
         setTimeout(() => {
           const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
@@ -129,15 +88,13 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [serverInfo?.isHealthy])
+  }, [serverState?.isReady])
 
-  const handleManualRetry = async () => {
+  const handleManualRetry = () => {
     console.log(`🔄 Manual retry for appId: ${appId}`)
-    const serverUrl = await waitForServerReady(appId)
-    if (serverUrl) {
-      // Use delayed health check for manual retries too, in case server is restarting
-      startHealthMonitoring(appId, true)
-    }
+    // Restart polling for this server
+    stopPollingForServer(appId)
+    startPollingForServer(appId)
     onRetry?.()
   }
 
@@ -164,7 +121,7 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
 
   // Verify document is actually ready when server becomes healthy - but wait for actual health check
   useEffect(() => {
-    if (serverInfo?.isHealthy && previewUrl && !documentReady) {
+    if (serverState?.isReady && previewUrl && !documentReady) {
       console.log(`🔍 Server marked healthy, waiting additional 4 seconds before document verification for ${appId}`)
       
       // Wait 4 seconds to ensure the delayed health check has actually completed
@@ -208,14 +165,14 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
     }
     
     // Reset document ready state when server becomes unhealthy
-    if (!serverInfo?.isHealthy) {
+    if (!serverState?.isReady) {
       setDocumentReady(false)
     }
-  }, [serverInfo?.isHealthy, previewUrl, appId, documentReady])
+  }, [serverState?.isReady, previewUrl, appId, documentReady])
 
   // Reset iframe state when server becomes healthy and document is ready
   useEffect(() => {
-    if (serverInfo?.isHealthy && previewUrl && documentReady && (iframeError || iframeRetries > 0)) {
+    if (serverState?.isReady && previewUrl && documentReady && (iframeError || iframeRetries > 0)) {
       console.log(`✅ Server healthy and document ready, resetting iframe state for ${appId}`)
       setIframeError(false)
       setIframeRetries(0)
@@ -227,7 +184,7 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
         clearTimeout(retryTimeoutRef.current)
       }
     }
-  }, [serverInfo?.isHealthy, previewUrl, documentReady, appId, iframeError, iframeRetries])
+  }, [serverState?.isReady, previewUrl, documentReady, appId, iframeError, iframeRetries])
 
   // Cleanup retry timeouts
   useEffect(() => {
@@ -254,10 +211,10 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
     setIframeError(true)
     
     // Only auto-retry if we haven't exceeded max retries and server is supposed to be healthy
-    if (iframeRetries < MAX_IFRAME_RETRIES && serverInfo?.isHealthy) {
+    if (iframeRetries < MAX_IFRAME_RETRIES && serverState?.isReady) {
       retryIframe()
     }
-  }, [appId, previewUrl, iframeRetries, MAX_IFRAME_RETRIES, serverInfo?.isHealthy, retryIframe])
+  }, [appId, previewUrl, iframeRetries, MAX_IFRAME_RETRIES, serverState?.isReady, retryIframe])
 
   // Get iframe dimensions based on view mode
   const getIframeDimensions = () => {
@@ -281,25 +238,27 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
     }
   }
 
-  // Loading state while server is starting or not yet confirmed healthy or document not ready
-  if (!serverInfo || 
-      (serverInfo.status === ServerStatus.STARTING) || 
-      (!serverInfo.isHealthy && serverInfo.retryCount < maxRetries) ||
-      (previewUrl && !serverInfo.isHealthy) ||
-      (previewUrl && serverInfo.isHealthy && !documentReady)) {
+  // Loading state while server is starting or not yet confirmed ready or document not ready
+  if (!serverState || 
+      (serverState.status === 'pending') || 
+      (!serverState.isReady) ||
+      (previewUrl && serverState.isReady && !documentReady)) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-gray-50 text-gray-600">
         <ArrowPathIcon className="w-12 h-12 animate-spin text-blue-500 mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Waiting for Server Confirmation</h3>
+        <h3 className="text-lg font-semibold mb-2">Waiting for Server</h3>
         <p className="text-sm text-gray-500 mb-2">
-          {!serverInfo || serverInfo.retryCount === 0 ? 'Waiting for backend to confirm server is running...' : `Checking server status (attempt ${serverInfo.retryCount}/${maxRetries})`}
+          {!serverState ? 'Initializing server polling...' : 
+           serverState.status === 'pending' ? 'Server is starting up...' :
+           !serverState.isReady ? 'Waiting for server to be ready...' :
+           'Verifying document readiness...'}
         </p>
         <p className="text-xs text-gray-400 mb-2 text-center max-w-md">
-          We&apos;re polling the backend to find this specific app running instead of guessing ports.
+          We&apos;re polling the backend to find this specific app running.
         </p>
-        {serverInfo?.actualPort && (
+        {serverState?.port && (
           <p className="text-xs text-gray-400">
-            Server detected at: <span className="font-mono">localhost:{serverInfo.actualPort}</span>
+            Server port: <span className="font-mono">{serverState.port}</span>
           </p>
         )}
         <div className="mt-4 flex items-center space-x-2">
@@ -311,22 +270,22 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
     )
   }
 
-  // Error state when server failed to start after all retries
-  if (serverInfo && !serverInfo.isHealthy && serverInfo.retryCount >= maxRetries) {
+  // Error state when server failed to start
+  if (serverState && (serverState.status === 'failed' || serverState.status === 'error')) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-gray-50 text-gray-600">
         <ExclamationTriangleIcon className="w-12 h-12 text-amber-500 mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Server Confirmation Failed</h3>
+        <h3 className="text-lg font-semibold mb-2">Server Failed</h3>
         <p className="text-sm text-gray-500 mb-4 text-center max-w-md">
-          {serverInfo.error || `Could not confirm server is running for this app after waiting 1 minute. The development server may be taking longer than expected or there may be an issue with app startup.`}
+          {serverState.error || `The development server failed to start or encountered an error.`}
         </p>
-        {serverInfo.actualPort && (
+        {serverState.port && (
           <p className="text-xs text-gray-400 mb-4">
-            Expected URL: <span className="font-mono">localhost:{serverInfo.actualPort}</span>
+            Expected port: <span className="font-mono">{serverState.port}</span>
           </p>
         )}
         <button
-          onClick={handleManualRetry}
+          onClick={onRetry}
           className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
         >
           <ArrowPathIcon className="w-4 h-4 mr-2" />
@@ -340,14 +299,14 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
   }
 
   // Success state - only render if we have a confirmed URL AND server is healthy AND document is ready
-  if (!previewUrl || !serverInfo?.isHealthy || !documentReady) {
+  if (!previewUrl || !serverState?.isReady || !documentReady) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-gray-50 text-gray-600">
         <ArrowPathIcon className="w-12 h-12 animate-spin text-blue-500 mb-4" />
         <h3 className="text-lg font-semibold mb-2">
           {!previewUrl 
             ? 'Waiting for Server URL' 
-            : !serverInfo?.isHealthy 
+            : !serverState?.isReady 
               ? 'Waiting for Server Health Check'
               : 'Verifying Document Readiness'
           }
@@ -355,7 +314,7 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
         <p className="text-sm text-gray-500 mb-2">
           {!previewUrl 
             ? 'Waiting for backend to confirm the exact server URL for this app...'
-            : !serverInfo?.isHealthy 
+            : !serverState?.isReady 
               ? 'Server URL confirmed. Waiting for health check to pass before loading preview...'
               : 'Health check passed. Verifying the document is ready to load...'
           }

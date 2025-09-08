@@ -1,4 +1,4 @@
-import { buildApiUrl } from '@/config/api'
+import { buildDynamicApiUrl } from '@/config/dynamic-api'
 
 export interface Conversation {
   id: string
@@ -29,7 +29,14 @@ export class AgentService {
    * Load all conversations for an app
    */
   async getConversations(appId: string): Promise<Conversation[]> {
-    const response = await fetch(buildApiUrl(`agent/conversations/${appId}`))
+    // Conversations endpoint is global under /agent/, not app-specific
+    const { dynamicApiConfigService } = await import('@/config/dynamic-api')
+    const config = await dynamicApiConfigService.getConfigForSite(appId)
+    // Remove the app-specific path and use the base agent URL
+    const baseAgentUrl = config.agentUrl.replace(`/apps/${appId}`, '')
+    const apiUrl = `${baseAgentUrl}/agent/conversations/${appId}`
+    
+    const response = await fetch(apiUrl)
     
     if (!response.ok) {
       throw new Error(`Failed to fetch conversations: ${response.status}`)
@@ -57,7 +64,14 @@ export class AgentService {
    * Load a specific conversation
    */
   async getConversation(appId: string, conversationId: string): Promise<ConversationDetail> {
-    const response = await fetch(buildApiUrl(`agent/conversations/${appId}/${conversationId}`))
+    // Conversations endpoint is global under /agent/, not app-specific
+    const { dynamicApiConfigService } = await import('@/config/dynamic-api')
+    const config = await dynamicApiConfigService.getConfigForSite(appId)
+    // Remove the app-specific path and use the base agent URL
+    const baseAgentUrl = config.agentUrl.replace(`/apps/${appId}`, '')
+    const apiUrl = `${baseAgentUrl}/agent/conversations/${appId}/${conversationId}`
+    
+    const response = await fetch(apiUrl)
     
     if (!response.ok) {
       throw new Error(`Failed to fetch conversation: ${response.status}`)
@@ -69,8 +83,10 @@ export class AgentService {
   /**
    * Delete a conversation
    */
-  async deleteConversation(conversationId: string): Promise<{ success: boolean; message?: string }> {
-    const response = await fetch(buildApiUrl(`agent/conversations/${conversationId}`), {
+  async deleteConversation(appId: string, conversationId: string): Promise<{ success: boolean; message?: string }> {
+    const apiUrl = await buildDynamicApiUrl(`agent/conversations/${conversationId}`, appId);
+    
+    const response = await fetch(apiUrl, {
       method: 'DELETE'
     })
     

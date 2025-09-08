@@ -61,7 +61,7 @@ RUN if npx tsc server.ts --outDir . --target es2020 --module commonjs --moduleRe
         echo "❌ Failed to compile server.ts" && exit 1; \
     fi
 
-RUN pnpm build
+RUN IS_BUILDING=true pnpm build
 
 
 FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:22-alpine AS runner
@@ -85,6 +85,7 @@ COPY --from=builder --chown=node:node /app/server.js ./
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next ./.next
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/certs ./certs
 
 # Install only production dependencies (no dev dependencies, no auth needed for public packages)
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts

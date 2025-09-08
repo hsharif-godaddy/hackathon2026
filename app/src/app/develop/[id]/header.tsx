@@ -12,7 +12,7 @@ import {
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline'
 import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
-import { SignOutButton } from '@/components/auth'
+import { UserMenu } from '@/components/auth'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerStore } from '@/stores/useServerStore'
 import { isFeatureEnabled } from '@/lib/features'
@@ -200,13 +200,13 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
               <TokenUsage ref={tokenUsageRef} appId={appId} enabled={showUsageCost} />
             )}
             <Link
-              href="/apps"
+              href="/sites"
               className="inline-flex items-center px-3 py-2 text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
             >
               <Squares2X2Icon className="w-4 h-4 mr-2" />
               My Apps
             </Link>
-            <SignOutButton iconOnly />
+            <UserMenu />
           </div>
         </div>
       </div>

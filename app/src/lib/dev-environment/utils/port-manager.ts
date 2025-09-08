@@ -1,0 +1,130 @@
+import { createServer } from 'net';
+import { DevDatabase } from '../database/DevDatabase';
+
+/**
+ * Port Manager
+ * Manages port allocation for dev apps starting from 5000
+ */
+export class PortManager {
+  private devDb: DevDatabase;
+  private readonly START_PORT = 5000;
+  private readonly MAX_PORT = 65535;
+
+  constructor(devDb: DevDatabase) {
+    this.devDb = devDb;
+  }
+
+  /**
+   * Find the next available port starting from 5000
+   * Uses database-level checking with retry logic to handle race conditions
+   */
+  async getNextAvailablePort(): Promise<number> {
+    const maxRetries = 10;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      // Get all currently used ports from the dev database (fresh query each time)
+      const usedPorts = this.devDb.getAllocatedPorts();
+
+      // Find the first available port starting from START_PORT
+      for (let port = this.START_PORT; port <= this.MAX_PORT; port++) {
+        if (!usedPorts.includes(port) && await this.isPortAvailable(port)) {
+          // Double-check the database again right before returning
+          // This helps catch race conditions where another process allocated this port
+          const freshUsedPorts = this.devDb.getAllocatedPorts();
+          if (!freshUsedPorts.includes(port)) {
+            console.log(`✅ Port ${port} allocated successfully (attempt ${attempt + 1})`);
+            return port;
+          } else {
+            console.log(`⚠️ Port ${port} was allocated by another process, retrying...`);
+            break; // Break inner loop to retry with fresh port list
+          }
+        }
+      }
+      
+      if (attempt < maxRetries - 1) {
+        // Small delay before retry to avoid tight polling
+        await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 50));
+      }
+    }
+
+    throw new Error('No available ports found after multiple attempts');
+  }
+
+  /**
+   * Check if a port is available on the system
+   * Uses lsof to check for actual processes using the port
+   */
+  private async isPortAvailable(port: number): Promise<boolean> {
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
+    
+    try {
+      // Check if any process is actually using this port
+      const { stdout } = await execAsync(`lsof -i :${port}`);
+      
+      // If lsof returns any output, the port is in use
+      if (stdout.trim()) {
+        console.log(`🚫 Port ${port} is occupied by existing process:`);
+        console.log(stdout.trim());
+        return false;
+      }
+      
+      // Double-check by trying to bind to the port
+      return new Promise((resolve) => {
+        const server = createServer();
+        
+        server.listen(port, () => {
+          server.close(() => {
+            console.log(`✅ Port ${port} is available`);
+            resolve(true);
+          });
+        });
+        
+        server.on('error', () => {
+          console.log(`❌ Port ${port} failed bind test`);
+          resolve(false);
+        });
+      });
+      
+    } catch (error) {
+      // If lsof fails (port not in use), fall back to bind test
+      return new Promise((resolve) => {
+        const server = createServer();
+        
+        server.listen(port, () => {
+          server.close(() => {
+            console.log(`✅ Port ${port} is available (lsof fallback)`);
+            resolve(true);
+          });
+        });
+        
+        server.on('error', () => {
+          console.log(`❌ Port ${port} failed bind test (lsof fallback)`);
+          resolve(false);
+        });
+      });
+    }
+  }
+
+  /**
+   * Get all allocated ports
+   */
+  getAllocatedPorts(): number[] {
+    return this.devDb.getAllocatedPorts();
+  }
+
+  /**
+   * Check if a specific port is allocated to an app
+   */
+  isPortAllocated(port: number): boolean {
+    return this.devDb.isPortAllocated(port);
+  }
+
+  /**
+   * Get the app that owns a specific port
+   */
+  getAppByPort(port: number): { appId: string } | null {
+    return this.devDb.getAppByPort(port);
+  }
+}

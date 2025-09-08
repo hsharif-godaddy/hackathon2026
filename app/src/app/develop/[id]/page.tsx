@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import ChatPane from '@/app/develop/components/ChatPane'
-import PreviewPane from '@/app/develop/components/PreviewPane'
+import PreviewPane from '@/app/develop/components/PreviewPaneSimple'
 import CodeEditor from '@/app/develop/components/CodeEditor'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import Header, { HeaderRef } from './header'
@@ -16,18 +16,23 @@ import { useMessagesStore, cleanupMessagesStore } from '@/stores/useMessagesStor
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitHistory } from '@/hooks/useGitHistory'
 import { useAppStore, AppStatus } from '@/stores/useAppStore'
-import { useServerStore } from '@/stores/useServerStore'
+import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { useSite } from '@/stores/useSiteStore'
 
 function DevelopPageContent() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const router = useRouter()
   const appId = params.id as string
   
   // App store - for app lifecycle operations
-  const { ensureAppIsRunning: appStoreEnsureAppIsRunning, restartApp: appStoreRestartApp, loadApps, syncActualPorts } = useAppStore()
+  const { ensureAppIsRunning: appStoreEnsureAppIsRunning, restartApp: appStoreRestartApp, loadApps } = useAppStore()
   
-  // Server store - for server status and management
-  const { registerServer, getServerInfo, cleanup: cleanupServerStore } = useServerStore()
+  // Server polling store - unified server status management
+  const { startPollingForServer, stopPollingForServer, getServerState, cleanup: cleanupServerPolling } = useServerPollingStore()
+  
+  // Site store - for site data and metadata
+  const { site, isLoading: siteLoading, fetchSite } = useSite(appId)
   
   // Messages store - for conversations and messages
   const {
@@ -77,13 +82,20 @@ function DevelopPageContent() {
   // App loading state machine
   const [loadingState, setLoadingState] = useState<'idle' | 'loading-app' | 'loading-conversations' | 'ready'>('idle')
 
-  const searchParams = useSearchParams()
   const initialMessageProcessed = useRef(false)
   const appCheckProcessed = useRef(false)
   const autoSendTriggered = useRef(false) // Prevent multiple auto-sends
   const headerRef = useRef<HeaderRef>(null)
   const previousAppIdRef = useRef<string | null>(null)
   const initializationStarted = useRef<string | null>(null)
+
+  // Fetch site data when appId changes
+  useEffect(() => {
+    if (appId && !site && !siteLoading) {
+      console.log('🌐 Fetching site data for appId:', appId)
+      fetchSite()
+    }
+  }, [appId, site, siteLoading, fetchSite])
 
   // Consolidated App Initialization - handles cleanup, app loading, and conversations
   useEffect(() => {
@@ -109,13 +121,15 @@ function DevelopPageContent() {
           // Clean up but preserve the initial prompt
           const { cleanup } = useMessagesStore.getState()
           cleanup()
-          cleanupServerStore()
+          cleanupServerPolling()
           
           // Set the initial prompt immediately after cleanup
-          useMessagesStore.getState().setInputValue(appData.app.initialPrompt)
+          if (appData.app.initialPrompt) {
+            useMessagesStore.getState().setInputValue(appData.app.initialPrompt)
+          }
         } else {
           cleanupMessagesStore()
-          cleanupServerStore()
+          cleanupServerPolling()
         }
         
         // Clear local state
@@ -130,7 +144,7 @@ function DevelopPageContent() {
       } else if (previousAppIdRef.current && previousAppIdRef.current !== appId) {
         console.log('🔄 App ID changed from', previousAppIdRef.current, 'to', appId, '- cleaning up previous app state')
         cleanupMessagesStore()
-        cleanupServerStore()
+        cleanupServerPolling()
         
         // Clear local state
         setApp(null)
@@ -151,41 +165,50 @@ function DevelopPageContent() {
       if (!appId) return
 
       try {
-        // 2. Load app data and refresh apps store
+        // 2. Ensure messages store has currentAppId set early for auto-send functionality
+        console.log('🔗 Ensuring messages store currentAppId is set:', appId)
+        const messagesState = useMessagesStore.getState()
+        if (!messagesState.currentAppId || messagesState.currentAppId !== appId) {
+          // Set currentAppId directly in the store
+          useMessagesStore.setState(state => ({ 
+            ...state, 
+            currentAppId: appId 
+          }))
+          console.log('✅ Messages store currentAppId set:', appId)
+        }
+
+        // 3. Load app data and refresh apps store
         setLoadingState('loading-app')
         console.log('📱 Loading app data:', appId)
         
         const [appData, configData] = await Promise.all([
           appService.getApp(appId),
-          appService.getConfig(),
+          appService.getConfig(appId),
           loadApps() // Load all apps into the store for PreviewPane
         ])
         
         setApp(appData.app)
         setShowUsageCost(configData.config.showUsageCost)
         
-        // Register server in server store for tracking
-        if (appData.app.port && !getServerInfo(appId)) {
-          registerServer(appId, appData.app.port)
-        }
+        // Server tracking is now handled by useServerPollingStore
         
         // Check if this is initial app creation
         const isNewApp = appData.app.status === AppStatus.CREATED && !!appData.app.initialPrompt
         setIsInitialAppCreation(isNewApp)
         
-        // 3. Ensure app is running (one-time check)
+        // 4. Ensure app is running (one-time check)
         if (!appCheckProcessed.current) {
           appCheckProcessed.current = true
           await ensureAppIsRunningFromStore(appId, appStoreEnsureAppIsRunning)
         }
         
-        // 4. Give server time to settle on final port (avoid race condition with Vite port selection)
+        // 5. Give server time to settle on final port (avoid race condition with Vite port selection)
         if (isNewApp) {
           console.log('⏳ New app detected - waiting for server to settle on final port...')
           await new Promise(resolve => setTimeout(resolve, 3000)) // Wait 3 seconds for Vite to settle
         }
         
-        // 5. Load conversations (required) and commit history (optional)
+        // 6. Load conversations (required) and commit history (optional)
         setLoadingState('loading-conversations')
         console.log('💬 Loading conversations and history')
         
@@ -213,34 +236,28 @@ function DevelopPageContent() {
     initializeApp()
   }, [appId])
 
-  // One-time config loading
+  // Handle initial prompt setup - site-based only
   useEffect(() => {
-    const loadConfig = async () => {
-      try {
-        const data = await appService.getConfig()
-        setShowUsageCost(data.config.showUsageCost)
-      } catch (error) {
-        console.error('Error loading config:', error)
-        setShowUsageCost(false)
-      }
-    }
+    console.log('🔍 Initial prompt check:', {
+      loadingState,
+      hasSiteInitialPrompt: !!site?.initial_prompt,
+      siteStatus: site?.status,
+      initialMessageProcessed: initialMessageProcessed.current,
+      conversationsLength: conversations.length,
+      currentInputValue: inputValue?.substring(0, 30) + (inputValue?.length > 30 ? '...' : '')
+    })
     
-    loadConfig()
-  }, [])
-
-  // Handle initial prompt setup - only when app is fully loaded
-  useEffect(() => {
+    // Set initial prompt from site data
     if (loadingState === 'ready' && 
-        isInitialAppCreation && 
-        app?.initialPrompt && 
+        site?.initial_prompt && 
+        site.status === 'running' && 
         !initialMessageProcessed.current && 
         conversations.length === 0) {
-      
-      console.log('📝 Setting initial prompt:', app.initialPrompt)
-      setInputValue(app.initialPrompt)
+      console.log('📝 Setting initial prompt from site:', site.initial_prompt)
+      setInputValue(site.initial_prompt)
       initialMessageProcessed.current = true
     }
-  }, [loadingState, isInitialAppCreation, app?.initialPrompt, conversations.length])
+  }, [loadingState, site?.initial_prompt, site?.status, conversations.length, inputValue])
 
   // MESSAGE HANDLER - Uses store for message handling
   const handleSendMessage = useCallback(async (messageContent?: string) => {
@@ -256,37 +273,23 @@ function DevelopPageContent() {
     }
   }, [isInitialAppCreation])
 
-  // Auto-send initial prompt - only when fully ready and conditions met
+  // Auto-send initial prompt - simple site-based logic
   useEffect(() => {
-    // Primary auto-send: for initial app creation
-    const shouldAutoSendInitial = 
-      loadingState === 'ready' &&
-      isInitialAppCreation && 
-      app?.initialPrompt && 
-      inputValue === app.initialPrompt && 
-      conversations.length === 0 &&
-      !autoSendTriggered.current &&
-      !isLoading;
-
-    // Backup auto-send: for unsent messages in textarea (any app with no conversations)
-    const shouldAutoSendUnsent = 
-      loadingState === 'ready' &&
-      inputValue && 
-      inputValue.length > 10 && // Has substantial content
+    const shouldAutoSend = 
+      site?.initial_prompt && 
+      site.status === 'running' &&
       conversations.length === 0 &&
       !autoSendTriggered.current &&
       !isLoading;
     
-    if (shouldAutoSendInitial || shouldAutoSendUnsent) {
-      const reason = shouldAutoSendInitial ? 'initial app creation' : 'unsent message in textarea'
-      console.log(`🚀 Auto-sending message for ${reason}:`, inputValue?.substring(0, 50) + '...')
+    if (shouldAutoSend) {
+      console.log('🚀 Auto-sending initial prompt:', site.initial_prompt?.substring(0, 50) + '...')
       autoSendTriggered.current = true
       
       const timer = setTimeout(async () => {
         try {
-          await sendMessageFromStore()
+          await sendMessageFromStore(site.initial_prompt)
           console.log('✅ Auto-send completed')
-          setIsInitialAppCreation(false)
           headerRef.current?.refreshTokenUsage()
           handlePreviewRefresh()
         } catch (error) {
@@ -297,55 +300,32 @@ function DevelopPageContent() {
       
       return () => clearTimeout(timer)
     }
-  }, [loadingState, isInitialAppCreation, inputValue, app?.initialPrompt, conversations.length, isLoading, appId])
+  }, [site?.initial_prompt, site?.status, conversations.length, isLoading])
 
   // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
     return () => {
       cleanupMessageService(appId) // Clean up specific app connection
+      cleanupServerPolling() // Clean up server polling
       // Clear any pending style update timeout
       if (batchTimeoutRef.current) {
         clearTimeout(batchTimeoutRef.current)
       }
     }
-  }, [appId])
+  }, [appId, cleanupServerPolling])
 
-  // Port synchronization - use centralized store approach
+  // Server polling - unified approach with adaptive backoff
   useEffect(() => {
     if (!appId) return
     
-    // Initial sync
-    syncActualPorts()
-    
-    // Aggressive sync during server startup for this specific app
-    let attempts = 0
-    const maxFastAttempts = 20 // 10 seconds of fast polling
-    let timeoutId: NodeJS.Timeout | null = null
-    let intervalId: NodeJS.Timeout | null = null
-    let cleanup = false
-    
-    const aggressiveSync = async () => {
-      if (cleanup) return
-      
-      await syncActualPorts()
-      attempts++
-      
-      if (attempts < maxFastAttempts) {
-        timeoutId = setTimeout(aggressiveSync, 500) // Fast polling for 10 seconds
-      } else {
-        // Switch to normal interval after fast polling
-        intervalId = setInterval(syncActualPorts, 2000)
-      }
-    }
-    
-    aggressiveSync()
+    console.log('🚀 Starting unified server polling for:', appId)
+    startPollingForServer(appId)
     
     return () => {
-      cleanup = true
-      if (timeoutId) clearTimeout(timeoutId)
-      if (intervalId) clearInterval(intervalId)
+      console.log('⏹️ Stopping server polling for:', appId)
+      stopPollingForServer(appId)
     }
-  }, [appId, syncActualPorts])
+  }, [appId, startPollingForServer, stopPollingForServer])
 
   // Batching state for style updates
   const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -512,7 +492,6 @@ function DevelopPageContent() {
     }
   }
 
-
   const handlePanelResize = useCallback((newWidth: number) => {
     setChatPaneWidth(newWidth)
   }, [setChatPaneWidth])
@@ -529,7 +508,10 @@ function DevelopPageContent() {
       {/* Header */}
       <Header
         ref={headerRef}
-        app={app}
+        app={{
+          ...app,
+          name: site?.name || app?.name || `App ${appId}` // Prioritize site name over app name
+        }}
         showUsageCost={showUsageCost}
         onPreviewRefresh={handlePreviewRefresh}
         onRestartServer={handleRestartServer}
@@ -585,10 +567,10 @@ function DevelopPageContent() {
               <PreviewPane 
                 appId={appId}
                 viewMode={previewViewMode}
-                selectedCommit={selectedCommit}
+                selectedCommit={selectedCommit || undefined}
                 onRetry={() => {
-                  // Optionally refresh app data when retrying
-                  if (appId && app) {
+                  // Refresh app data when retrying
+                  if (appId) {
                     appService.getApp(appId)
                       .then(data => setApp(data.app))
                       .catch(console.error)
@@ -621,7 +603,9 @@ export default function Develop() {
       loadingMessage="Loading Development Environment"
       unauthorizedMessage="You need to be signed in to access the development environment."
     >
-      <DevelopPageContent />
+      <Suspense fallback={<div>Loading development environment...</div>}>
+        <DevelopPageContent />
+      </Suspense>
     </ProtectedRoute>
   );
 }

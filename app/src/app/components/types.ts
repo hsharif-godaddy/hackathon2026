@@ -11,12 +11,6 @@ export interface BuiltWithItem {
   category: string
 }
 
-export interface HeaderProps {
-  onStartBuilding: () => void
-  promptText: string
-  isLoading: boolean
-}
-
 export interface HeroSectionProps {
   promptText: string
   setPromptText: (text: string) => void

@@ -29,7 +29,6 @@
 certs/*.key
 certs/*.p12
 certs/*.pfx
-certs/*.crt
 
 # database files
 /data/
@@ -56,3 +55,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma

@@ -179,7 +179,9 @@ async function shutdown() {
 }
 
 // Handle shutdown signals
-process.on('SIGINT', shutdown);
+if (!process.env.NOMAD_TASK_NAME) {
+  process.on('SIGINT', shutdown);
+}
 process.on('SIGTERM', shutdown);
 
 // Handle uncaught exceptions

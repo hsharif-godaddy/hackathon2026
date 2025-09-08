@@ -5,6 +5,8 @@
 
 interface FeatureConfig {
   showCodeEditor: boolean
+  useMockLogin: boolean
+  developmentMode: boolean
   // Add more features here as needed
 }
 
@@ -14,6 +16,8 @@ interface FeatureConfig {
 function parseEnvironmentFeatures(): FeatureConfig {
   return {
     showCodeEditor: process.env.NEXT_PUBLIC_SHOW_CODE_EDITOR === 'true',
+    useMockLogin: process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_LOGIN === 'true',
+    developmentMode: process.env.NODE_ENV === 'development',
     // Add more feature parsing here
   }
 }
@@ -29,6 +33,8 @@ export const features = parseEnvironmentFeatures()
  */
 export const isFeatureEnabled = {
   codeEditor: () => features.showCodeEditor,
+  mockLogin: () => features.useMockLogin,
+  developmentMode: () => features.developmentMode,
   // Add more feature checkers here
 } as const
 

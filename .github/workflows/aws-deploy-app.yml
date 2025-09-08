@@ -52,6 +52,13 @@ jobs:
 
       # Execute the necessary commands to build your application's Docker container image. Place any further build commands under `run:`
       - name: Build Container
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_SSO_LOGIN_URL: https://sso.test-godaddy.com/login
+          NEXT_PUBLIC_SSO_LOGOUT_URL: https://sso.test-godaddy.com/logout
+          NEXT_PUBLIC_LOGIN_REDIRECT_URL: https://airo-builder.test-godaddy.com/
+          NEXT_PUBLIC_LOGOUT_REDIRECT_URL: https://airo-builder.test-godaddy.com/
+          NEXT_PUBLIC_AUTH_IN_DEV: false
         run: |
           docker build --platform linux/amd64 -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} app/
 

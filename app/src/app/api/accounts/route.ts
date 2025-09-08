@@ -1,41 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AccountService } from '@/lib/database/account-service';
+import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
+import { 
+  withCustomerAuth, 
+  customerHasAccount,
+  canAccessOwnAccount,
+  createCustomerAuthError,
+  type CustomerAuthContext 
+} from '@/lib/customer-auth';
 
-const accountService = new AccountService();
-
-// GET /api/accounts - Get all accounts or specific account by shopper_id
-export async function GET(request: NextRequest) {
+// GET /api/accounts?shopper_id=xxx - Get authenticated customer's own account only
+export const GET = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const { searchParams } = new URL(request.url);
     const shopperId = searchParams.get('shopper_id');
+    const { user } = authContext;
 
-    if (shopperId) {
-      // Get specific account with plan details
-      const account = accountService.getAccountWithPlan(shopperId);
-      
-      if (!account) {
-        return NextResponse.json(
-          { error: 'Account not found' },
-          { status: 404 }
-        );
-      }
-
-      return NextResponse.json({
-        success: true,
-        account
-      });
-    } else {
-      // Get all accounts
-      const accounts = accountService.getAllAccounts();
-      
-      return NextResponse.json({
-        success: true,
-        accounts,
-        count: accounts.length
-      });
+    // shopper_id parameter is required
+    if (!shopperId) {
+      return NextResponse.json(
+        { error: 'shopper_id parameter is required' },
+        { status: 400 }
+      );
     }
+
+    // Get account adapter and check access permissions
+    const accountAdapter = AccountAdapterFactory.getInstance();
+    
+    // Customer can only access their own account (if auth is required)
+    if (accountAdapter.requiresAuth() && !canAccessOwnAccount(user, shopperId)) {
+      return createCustomerAuthError('You can only access your own account', 403);
+    }
+
+    // Get specific account with plan details (includes plan_name, plan_site_limit, plan_price)
+    const account = await accountAdapter.getAccountWithPlan(shopperId);
+    
+    if (!account) {
+      return NextResponse.json(
+        { error: 'Account not found' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      account // Contains: account info + plan_name + plan_site_limit + plan_price
+    });
+    
   } catch (error) {
-    console.error('Error fetching accounts:', error);
+    console.error('Error fetching account:', error);
     return NextResponse.json(
       { 
         success: false, 
@@ -45,32 +57,34 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
-// POST /api/accounts - Create new account manually (for testing/admin)
-export async function POST(request: NextRequest) {
+// POST /api/accounts - Create new account for authenticated customer who doesn't have one
+export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
-    const body = await request.json();
-    const { shopper_id, customer_id } = body;
+    const { user } = authContext;
 
-    if (!shopper_id) {
-      return NextResponse.json(
-        { error: 'shopper_id is required' },
-        { status: 400 }
-      );
+    // Get account adapter
+    const accountAdapter = AccountAdapterFactory.getInstance();
+    
+    // Check if customer already has an account (if auth is required)
+    if (accountAdapter.requiresAuth() && customerHasAccount(user)) {
+      return createCustomerAuthError('You already have an account with us', 409);
     }
 
-    // Check if account already exists
-    const existingAccount = accountService.findByShopperId(shopper_id);
+    // Double-check by querying adapter (in case account was created since token was issued)
+    const existingAccount = await accountAdapter.getAccountByShopperId(user.shopperId);
     if (existingAccount) {
-      return NextResponse.json(
-        { error: 'Account already exists for this shopper_id' },
-        { status: 409 }
-      );
+      return createCustomerAuthError('Account already exists for your shopper ID', 409);
     }
 
-    // Create new account
-    const newAccount = accountService.createAccount(shopper_id, customer_id);
+    // Create new account using authenticated user's information
+    const newAccount = await accountAdapter.createAccount(user.shopperId, user.customerId);
+
+    console.log('✅ New account created for authenticated customer:', {
+      shopperId: user.shopperId,
+      accountId: newAccount.id
+    });
 
     return NextResponse.json({
       success: true,
@@ -89,14 +103,16 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
-// PATCH /api/accounts?shopper_id=xxx - Update account status
-export async function PATCH(request: NextRequest) {
+// PATCH /api/accounts?shopper_id=xxx - Update authenticated customer's own account only  
+export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const { searchParams } = new URL(request.url);
     const shopperId = searchParams.get('shopper_id');
+    const { user } = authContext;
     
+    // shopper_id parameter is required
     if (!shopperId) {
       return NextResponse.json(
         { error: 'shopper_id parameter is required' },
@@ -104,9 +120,18 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Get account adapter and check access permissions
+    const accountAdapter = AccountAdapterFactory.getInstance();
+    
+    // Customer can only update their own account (if auth is required)
+    if (accountAdapter.requiresAuth() && !canAccessOwnAccount(user, shopperId)) {
+      return createCustomerAuthError('You can only update your own account', 403);
+    }
+
     const body = await request.json();
     const { status } = body;
 
+    // Validate status field (customers can manage basic account status)
     if (!status || !['active', 'suspended', 'closed'].includes(status)) {
       return NextResponse.json(
         { error: 'Valid status is required (active, suspended, closed)' },
@@ -114,7 +139,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const updated = accountService.updateAccountStatus(shopperId, status);
+    const updated = await accountAdapter.updateAccountStatus(shopperId, status);
     
     if (!updated) {
       return NextResponse.json(
@@ -124,7 +149,12 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Get updated account
-    const updatedAccount = accountService.findByShopperId(shopperId);
+    const updatedAccount = await accountAdapter.getAccountByShopperId(shopperId);
+
+    console.log('✅ Account updated by authenticated customer:', {
+      shopperId: user.shopperId,
+      newStatus: status
+    });
 
     return NextResponse.json({
       success: true,
@@ -143,4 +173,4 @@ export async function PATCH(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

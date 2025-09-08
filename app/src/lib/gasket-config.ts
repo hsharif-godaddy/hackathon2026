@@ -12,7 +12,7 @@ export const gasketConfig = {
     type: ['basic'], // Auth types allowed
     // Dev flag to bypass authentication entirely
     disableInDev: process.env.NODE_ENV === 'development' 
-      ? process.env.NEXT_PUBLIC_AUTH_IN_DEV !== 'true' 
+      ? process.env.NEXT_PUBLIC_AUTH_IN_DEV === 'true' 
       : false,
   },
   // SSO configuration
@@ -82,7 +82,7 @@ export function isAuthDisabled(): boolean {
   if (disabled && process.env.NODE_ENV === 'development') {
     // Only log once per session to avoid spam
     if (!globalThis.__authDisabledLogged) {
-      console.log('🔧 Authentication disabled in development (NEXT_PUBLIC_AUTH_IN_DEV=false)');
+      console.log('🔧 Authentication disabled in development (NEXT_PUBLIC_AUTH_IN_DEV=true)');
       console.log('   - All protected routes are accessible');
       console.log('   - JWT validation returns mock success');
       console.log('   - No SSO calls will be made');
@@ -94,11 +94,12 @@ export function isAuthDisabled(): boolean {
 
 // Helper function to use appropriate fetch method
 export async function appFetch(url: string, options?: RequestInit): Promise<Response> {
+  // Use regular fetch when auth is disabled in development
   if (isAuthDisabled()) {
     return fetch(url, options);
   }
   
-  // Import authFetch dynamically to avoid loading it when not needed
+  // Use authenticated fetch for production
   const { authFetch } = await import('@godaddy/gasket-auth');
   return authFetch(url, options);
 }

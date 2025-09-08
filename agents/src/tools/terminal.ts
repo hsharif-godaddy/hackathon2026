@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { resolve, relative } from 'path';
 import { existsSync } from 'fs';
-import { DevSupervisorClient, createDevSupervisorClient } from '../services/DevSupervisorClient.js';
+// DevSupervisorClient functionality has been moved to the app service
 
 export interface CommandOverride {
   /** Pattern to match against (can be string or regex) */
@@ -56,22 +56,18 @@ export class TerminalTool {
   private readonly DEFAULT_TIMEOUT = 30000; // 30 seconds
   private readonly MAX_TIMEOUT = 300000; // 5 minutes
   private readonly MAX_OUTPUT_LENGTH = 50000; // 50KB output limit
-  private devSupervisor?: DevSupervisorClient | null;
 
   constructor(socketPath?: string) {
-    // Only create dev-supervisor client if explicit socket path is provided
-    if (socketPath) {
-      this.devSupervisor = createDevSupervisorClient(socketPath);
-    } else {
-      this.devSupervisor = null;
-    }
+    // DevSupervisorClient functionality has been moved to the app service
+    // Terminal tool now operates without dev-supervisor integration
   }
 
   /**
    * Check if dev-supervisor is available for command execution
    */
   isDevSupervisorAvailable(): boolean {
-    return this.devSupervisor?.isAvailable() ?? false;
+    // Dev-supervisor functionality has been moved to the app service
+    return false;
   }
 
   /**

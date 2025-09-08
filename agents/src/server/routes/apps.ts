@@ -131,23 +131,30 @@ router.get('/:id/status', (req: Request, res: Response) => {
  */
 router.post('/create', async (req: Request, res: Response) => {
   try {
-    const { name, initialPrompt } = req.body;
+    const { name, initialPrompt, siteId } = req.body;
 
     // Validate required fields
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return res.status(400).json({ error: 'Name is required and must be a non-empty string' });
     }
 
+    if (!siteId || typeof siteId !== 'string' || siteId.trim().length === 0) {
+      return res.status(400).json({ error: 'Site ID is required and must be a non-empty string' });
+    }
+
     const data: CreateAppRequest = {
       name: name.trim(),
-      initialPrompt: initialPrompt?.trim() || undefined
+      initialPrompt: initialPrompt?.trim() || undefined,
+      siteId: siteId.trim()
     };
 
     const app = await appRepo.create(data);
     return res.status(201).json({ 
       app,
-      nameSuggested: app.name !== data.name, // Indicate if the name was changed by AI
-      originalName: data.name // Include the original name for reference
+      // Pass through the AI name generation info from AppRepository
+      nameSuggested: app.nameSuggested || false,
+      originalName: app.originalName || data.name,
+      aiGeneratedName: app.aiGeneratedName
     });
   } catch (error) {
     console.error('Error creating app:', error);
@@ -263,6 +270,15 @@ router.post('/:id/stop', async (req: Request, res: Response) => {
  * POST /apps/:id/ensure-running - Ensure app is running (start if needed)
  */
 router.post('/:id/ensure-running', async (req: Request, res: Response) => {
+  // if running on nomad, return success as these should be managed from main application
+  if (process.env.NOMAD_TASK_NAME) {
+    return res.json({
+      success: true,
+      action: 'none',
+      status: 'running',
+      message: 'App is already running'
+    });
+  }
   try {
     const { id } = req.params;
     if (!id) {
@@ -299,7 +315,7 @@ router.post('/:id/ensure-running', async (req: Request, res: Response) => {
       console.log(`🏗️ App ${id} needs to be built from scratch...`);
       action = 'rebuild';
       
-      if (appRepo.isDockerMode()) {
+      if ((appRepo as any).isDockerMode()) {
         success = await appRepo.rebuildAppContainer(id);
       } else {
         // For local mode, use restart server which handles both modes
@@ -855,8 +871,65 @@ router.delete('/:id/usage', async (req: Request, res: Response) => {
   }
 });
 
-// Import and use Docker-specific routes
-import { dockerAppsRouter } from './docker-apps-extensions.js';
-router.use('/', dockerAppsRouter);
+/**
+ * POST /apps/suggest-name - Generate a suggested name for a project based on prompt
+ */
+router.post('/suggest-name', async (req: Request, res: Response) => {
+  try {
+    const { prompt } = req.body;
+
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+      return res.status(400).json({ error: 'Prompt is required and must be a non-empty string' });
+    }
+
+    console.log('🏷️ Generating name suggestion for prompt:', prompt.substring(0, 100) + '...');
+
+    // Use a simple OpenAI call to generate a name suggestion
+    // This is a lightweight call that doesn't require the full agent system
+    const openai = await import('openai');
+    const client = new openai.OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.OPENAI_BASE_URL || undefined,
+    });
+
+    const response = await client.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a creative name generator for web applications. Generate a concise, memorable, and relevant name (2-4 words max) based on the user\'s project description. Return only the name, nothing else.'
+        },
+        {
+          role: 'user',
+          content: `Generate a name for this project: ${prompt.trim()}`
+        }
+      ],
+      max_tokens: 50,
+      temperature: 0.7
+    });
+
+    const suggestedName = response.choices[0]?.message?.content?.trim();
+    
+    if (!suggestedName) {
+      throw new Error('Failed to generate name suggestion');
+    }
+
+    console.log('✅ Generated name suggestion:', suggestedName);
+
+    return res.json({ 
+      name: suggestedName,
+      suggestedName: suggestedName,
+      prompt: prompt.trim()
+    });
+  } catch (error) {
+    console.error('Error generating name suggestion:', error);
+    return res.status(500).json({ 
+      error: 'Failed to generate name suggestion',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Docker-specific routes have been moved to the app service
 
 export { router as appsRouter };

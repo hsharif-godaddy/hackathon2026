@@ -5,20 +5,37 @@ info:
     REST API specification for the Airo App Builder frontend backend service.
     This Next.js application provides APIs for:
     - JWT token validation and authentication
-    - Customer account management  
-    - Subscription plan management
+    - Customer account management (authenticated customers only)
+    - Customer site management with Nomad container deployment (authenticated customers only)  
+    - Public subscription plan viewing
     - System health monitoring
 
-    ## Authentication
-    All endpoints require GoDaddy SSO JWT tokens via:
+    ## Authentication & Authorization
+
+    ### Customer Authentication
+    Most endpoints require GoDaddy SSO JWT tokens (shopper tokens) via:
     - `Authorization: Bearer <jwt-token>` header
     - `auth_idp` cookie
 
+    ### Customer Authorization Rules
+    - **Account Management**: Customers can only access and modify their own account
+    - **Site Management**: Customers can only create, view, update, and delete their own sites
+    - **Data Isolation**: Complete separation between customer data - no cross-customer access
+    - **Account Required**: Customers must have an account before accessing site functionality
+
+    ### Public Endpoints
+    - `GET /api/health` - System health check (no authentication required)
+    - `POST /api/auth/validate` - JWT token validation (no authentication required)
+
     ## Features
-    - Automatic token heartbeat refresh (60-second intervals)
-    - 12-hour token expiration support
-    - SQLite database for customer accounts
-    - Integration with GoDaddy SSO API for signature verification
+    - **Secure Customer Data Isolation**: Each customer can only access their own resources
+    - **Automatic Account Scoping**: API calls automatically scope to authenticated customer's account
+    - **Site Limit Enforcement**: Plan-based site creation limits
+    - **Nomad Container Orchestration**: Automatic container deployment for customer sites
+    - **Automatic token heartbeat refresh** (60-second intervals)
+    - **12-hour token expiration support**
+    - **SQLite database** for customer accounts, sites, and plans
+    - **Integration with GoDaddy SSO API** for signature verification
   version: 1.0.0
   contact:
     name: Airo App Builder Team
@@ -37,30 +54,34 @@ servers:
 
 tags:
   - name: Authentication
-    description: JWT token validation and logout endpoints
+    description: JWT token validation and logout endpoints (public)
   - name: Accounts
-    description: Customer account management and CRUD operations
+    description: Customer account management (authenticated customers can only access their own account)
+  - name: Sites
+    description: Customer site management with Nomad deployment (authenticated customers can only access their own sites)
   - name: Plans
-    description: Subscription plan management and billing
+    description: Subscription plan viewing (public endpoint - no authentication required)
   - name: Health
-    description: System health monitoring and diagnostics
+    description: System health monitoring and diagnostics (public endpoint)
 
 components:
   securitySchemes:
-    BearerAuth:
+    CustomerBearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
       description: |
-        GoDaddy SSO JWT token in Authorization header.
+        GoDaddy SSO JWT token (shopper token) in Authorization header for customer authentication.
+        Provides access to customer's own account and sites only.
         Example: `Authorization: Bearer eyJhbGciOiJSUzI1NiIs...`
-    CookieAuth:
+    CustomerCookieAuth:
       type: apiKey
       in: cookie
       name: auth_idp
       description: |
-        GoDaddy SSO JWT token stored in browser cookie.
+        GoDaddy SSO JWT token (shopper token) stored in browser cookie for customer authentication.
         Automatically set by Gasket authentication flow.
+        Provides access to customer's own account and sites only.
 
   schemas:
     # Authentication Schemas
@@ -340,9 +361,7 @@ paths:
         5. Creating/updating customer account record
 
         Supports Gasket authentication parameters for heartbeat refresh.
-      security:
-        - BearerAuth: []
-        - CookieAuth: []
+        This is a public endpoint used for token validation.
       parameters:
         - name: allowHeartbeat
           in: query
@@ -422,10 +441,9 @@ paths:
     post:
       tags: [Authentication]
       summary: Validate JWT Token (POST)
-      description: Same as GET method, supports POST requests for certain authentication flows
-      security:
-        - BearerAuth: []
-        - CookieAuth: []
+      description:
+        Same as GET method, supports POST requests for certain authentication flows.
+        This is a public endpoint used for token validation.
       responses:
         "200":
           description: Token validation result
@@ -474,42 +492,38 @@ paths:
   /accounts:
     get:
       tags: [Accounts]
-      summary: Get Customer Accounts
+      summary: Get Customer's Own Account
       description: |
-        Retrieve customer accounts with optional filtering by shopper ID.
-        - Without shopper_id: Returns paginated list of all accounts
-        - With shopper_id: Returns specific account with plan details
+        Retrieve authenticated customer's own account with plan details.
+        Customer can only access their own account information.
+        The shopper_id parameter must match the authenticated customer's shopper ID.
       security:
-        - BearerAuth: []
-        - CookieAuth: []
+        - CustomerBearerAuth: []
+        - CustomerCookieAuth: []
       parameters:
         - name: shopper_id
           in: query
+          required: true
           schema:
             type: string
-          description: Filter by specific GoDaddy shopper ID
+          description: Must be the authenticated customer's own shopper ID
           example: "7945294"
       responses:
         "200":
-          description: Accounts retrieved successfully
+          description: Customer's own account retrieved successfully
           content:
             application/json:
               schema:
-                oneOf:
-                  - type: object
-                    description: Single account response (when shopper_id provided)
-                    properties:
-                      success:
-                        type: boolean
-                        example: true
-                      account:
-                        $ref: "#/components/schemas/AccountWithPlan"
-                  - allOf:
-                      - $ref: "#/components/schemas/AccountListResponse"
-                    description: Multiple accounts response (when no shopper_id)
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  account:
+                    $ref: "#/components/schemas/AccountWithPlan"
               examples:
-                single_account:
-                  summary: Single account with plan details
+                own_account:
+                  summary: Customer's own account with plan details
                   value:
                     success: true
                     account:
@@ -521,12 +535,28 @@ paths:
                       plan_name: "Starter"
                       plan_site_limit: 30
                       plan_price: 20.00
-                all_accounts:
-                  summary: All accounts list
-                  value:
-                    success: true
-                    accounts: []
-                    count: 0
+                      created_at: "2025-01-01T00:00:00Z"
+                      updated_at: "2025-01-01T00:00:00Z"
+        "401":
+          description: Unauthorized - Missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Unauthorized"
+                message: "No authentication token provided. Please log in."
+                requiresAuth: true
+        "403":
+          description: Forbidden - Cannot access other customer's account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Forbidden"
+                message: "You can only access your own account"
+                customerOnly: true
         "404":
           description: Account not found (when shopper_id provided)
           content:
@@ -545,32 +575,17 @@ paths:
 
     post:
       tags: [Accounts]
-      summary: Create Customer Account
+      summary: Create Account for Authenticated Customer
       description: |
-        Manually create a new customer account (primarily for testing/admin use).
-        In normal operation, accounts are automatically created during JWT validation.
+        Create a new account for the authenticated customer who doesn't already have one.
+        Uses the authenticated customer's shopper ID and customer ID from their JWT token.
+        No request body is required - all account information is derived from the authenticated token.
       security:
-        - BearerAuth: []
-        - CookieAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [shopper_id]
-              properties:
-                shopper_id:
-                  type: string
-                  description: GoDaddy shopper ID
-                  example: "7945294"
-                customer_id:
-                  type: string
-                  description: Optional custom customer ID (auto-generated if not provided)
-                  example: "custom-customer-123"
+        - CustomerBearerAuth: []
+        - CustomerCookieAuth: []
       responses:
         "201":
-          description: Account created successfully
+          description: Account created successfully for authenticated customer
           content:
             application/json:
               schema:
@@ -584,24 +599,40 @@ paths:
                   message:
                     type: string
                     example: "Account created successfully"
-        "400":
-          description: Bad request - missing shopper_id
+              examples:
+                new_account:
+                  summary: New account created for authenticated customer
+                  value:
+                    success: true
+                    account:
+                      id: "550e8400-e29b-41d4-a716-446655440000"
+                      shopper_id: "7945294"
+                      customer_id: "6db0ff3d-4cb8-4aa3-a099-0fb33b914b40"
+                      plan_id: "550e8400-e29b-41d4-a716-446655440001"
+                      status: "active"
+                      created_at: "2025-01-01T00:00:00Z"
+                      updated_at: "2025-01-01T00:00:00Z"
+                    message: "Account created successfully"
+        "401":
+          description: Unauthorized - Missing or invalid authentication token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                success: false
-                error: "shopper_id is required"
+                error: "Unauthorized"
+                message: "No authentication token provided. Please log in."
+                requiresAuth: true
         "409":
-          description: Conflict - account already exists for this shopper_id
+          description: Conflict - authenticated customer already has an account
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                success: false
-                error: "Account already exists for this shopper_id"
+                error: "Forbidden"
+                message: "You already have an account with us"
+                customerOnly: true
         "500":
           description: Internal server error
           content:
@@ -611,23 +642,24 @@ paths:
 
     patch:
       tags: [Accounts]
-      summary: Update Account Status
+      summary: Update Customer's Own Account Status
       description: |
-        Update the status of a customer account.
+        Update the authenticated customer's own account status.
+        Customer can only update their own account.
         Available statuses:
         - active: Account is active and functional
         - suspended: Account is temporarily disabled
         - closed: Account is permanently closed
       security:
-        - BearerAuth: []
-        - CookieAuth: []
+        - CustomerBearerAuth: []
+        - CustomerCookieAuth: []
       parameters:
         - name: shopper_id
           in: query
           required: true
           schema:
             type: string
-          description: GoDaddy shopper ID of account to update
+          description: Must be the authenticated customer's own shopper ID
           example: "7945294"
       requestBody:
         required: true
@@ -686,16 +718,19 @@ paths:
   /plans:
     get:
       tags: [Plans]
-      summary: Get Subscription Plans
+      summary: Get Available Subscription Plans
       description: |
         Retrieve all available subscription plans.
+        Requires customer authentication.
+        Authenticated customers can view available plans for selection.
+
         Default plans:
         - Free: 10 sites, $5/month
         - Starter: 30 sites, $20/month  
         - Pro: 100 sites, $50/month
       security:
-        - BearerAuth: []
-        - CookieAuth: []
+        - CustomerBearerAuth: []
+        - CustomerCookieAuth: []
       responses:
         "200":
           description: Plans retrieved successfully
@@ -719,6 +754,129 @@ paths:
                     site_limit: 100
                     price: 50.00
                 count: 3
+        "401":
+          description: Unauthorized - Missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sites:
+    get:
+      tags: [Sites]
+      summary: Get Customer's Own Sites
+      description: |
+        Retrieve authenticated customer's own sites with optional filtering by site ID.
+        Customer can only access sites from their own account.
+        Returns all customer's sites if no site_id parameter provided.
+      security:
+        - CustomerBearerAuth: []
+        - CustomerCookieAuth: []
+      parameters:
+        - name: site_id
+          in: query
+          schema:
+            type: string
+          description: Get specific site by ID (must belong to authenticated customer)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        "200":
+          description: Sites retrieved successfully
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    description: Single site response (when site_id provided)
+                    properties:
+                      id:
+                        type: string
+                        example: "550e8400-e29b-41d4-a716-446655440000"
+                      account_id:
+                        type: string
+                        example: "550e8400-e29b-41d4-a716-446655440001"
+                      title:
+                        type: string
+                        example: "My Blog Site"
+                      domain:
+                        type: string
+                        example: "myblog.example.com"
+                      status:
+                        type: string
+                        enum: [pending, running, failed, stopped]
+                        example: "running"
+                      agent_url:
+                        type: string
+                        example: "https://agent-site-123.ab.sxb1.test-secureserver.net/api"
+                      preview_url:
+                        type: string
+                        example: "https://preview-site-123.ab.sxb1.test-secureserver.net"
+                      created_at:
+                        type: string
+                        format: date-time
+                      updated_at:
+                        type: string
+                        format: date-time
+                  - type: array
+                    description: Multiple sites response (when no site_id)
+                    items:
+                      type: object
+              examples:
+                single_site:
+                  summary: Single site belonging to customer
+                  value:
+                    id: "550e8400-e29b-41d4-a716-446655440000"
+                    account_id: "550e8400-e29b-41d4-a716-446655440001"
+                    title: "My Blog Site"
+                    status: "running"
+                    agent_url: "https://agent-site-123.ab.sxb1.test-secureserver.net/api"
+                    preview_url: "https://preview-site-123.ab.sxb1.test-secureserver.net"
+                customer_sites:
+                  summary: All sites belonging to customer
+                  value:
+                    - id: "550e8400-e29b-41d4-a716-446655440000"
+                      title: "My Blog Site"
+                      status: "running"
+                    - id: "550e8400-e29b-41d4-a716-446655440002"
+                      title: "My Portfolio"
+                      status: "pending"
+        "401":
+          description: Unauthorized - Missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - Cannot access other customer's sites or account required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                other_customer_site:
+                  summary: Trying to access another customer's site
+                  value:
+                    error: "Forbidden"
+                    message: "You can only access your own sites"
+                    customerOnly: true
+                no_account:
+                  summary: Customer doesn't have an account
+                  value:
+                    error: "Forbidden"
+                    message: "You must have an account to access sites"
+                    customerOnly: true
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -727,40 +885,177 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
     post:
-      tags: [Plans]
-      summary: Create Subscription Plan
+      tags: [Sites]
+      summary: Create New Site for Customer
       description: |
-        Create a new subscription plan (admin only).
-        Plan ID is automatically generated as UUID.
+        Create a new site in the authenticated customer's account.
+        Site will be deployed as a Nomad container with unique subdomain URLs.
+        Customer must have an account before creating sites.
       security:
-        - BearerAuth: []
-        - CookieAuth: []
+        - CustomerBearerAuth: []
+        - CustomerCookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [name, site_limit, price]
+              required: [title]
               properties:
-                name:
+                title:
                   type: string
-                  description: Unique plan name
-                  example: "Enterprise"
-                site_limit:
-                  type: integer
-                  minimum: 1
-                  description: Maximum number of sites allowed
-                  example: 500
-                price:
-                  type: number
-                  format: decimal
-                  minimum: 0
-                  description: Monthly price in USD
-                  example: 99.99
+                  description: Site title/name
+                  example: "My New Blog"
+                prompt:
+                  type: string
+                  description: Optional prompt for site generation
+                  example: "Create a blog about technology"
       responses:
         "201":
-          description: Plan created successfully
+          description: Site created successfully and deployment started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    example: "550e8400-e29b-41d4-a716-446655440000"
+                  account_id:
+                    type: string
+                    example: "550e8400-e29b-41d4-a716-446655440001"
+                  title:
+                    type: string
+                    example: "My New Blog"
+                  status:
+                    type: string
+                    example: "pending"
+        "400":
+          description: Bad request - missing title
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - Missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - No account or site limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                no_account:
+                  summary: Customer doesn't have an account
+                  value:
+                    error: "Forbidden"
+                    message: "You must have an account to create sites. Please create an account first."
+                    customerOnly: true
+                site_limit:
+                  summary: Site limit exceeded
+                  value:
+                    error: "Site limit exceeded"
+                    current: 10
+                    limit: 10
+        "500":
+          description: Internal server error or deployment failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    patch:
+      tags: [Sites]
+      summary: Update Customer's Own Site
+      description: |
+        Update a site belonging to the authenticated customer.
+        Customer can only update their own sites.
+      security:
+        - CustomerBearerAuth: []
+        - CustomerCookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [site_id]
+              properties:
+                site_id:
+                  type: string
+                  description: ID of site to update (must belong to customer)
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+                title:
+                  type: string
+                  description: New site title
+                  example: "Updated Blog Title"
+                status:
+                  type: string
+                  enum: [pending, running, failed, stopped]
+                  description: New site status
+      responses:
+        "200":
+          description: Site updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Bad request - missing site_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - Missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - Cannot update other customer's sites or no account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags: [Sites]
+      summary: Delete Customer's Own Site
+      description: |
+        Delete a site belonging to the authenticated customer.
+        This will stop the Nomad container and remove all site data.
+        Customer can only delete their own sites.
+      security:
+        - CustomerBearerAuth: []
+        - CustomerCookieAuth: []
+      parameters:
+        - name: site_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: ID of site to delete (must belong to customer)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        "200":
+          description: Site deleted successfully
           content:
             application/json:
               schema:
@@ -769,29 +1064,30 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  plan:
-                    $ref: "#/components/schemas/Plan"
-                  message:
-                    type: string
-                    example: "Plan created successfully"
         "400":
-          description: Bad request - missing or invalid fields
+          description: Bad request - missing site_id
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-              example:
-                success: false
-                error: "All fields are required: name (string), site_limit (number), price (number)"
-        "409":
-          description: Conflict - plan name already exists
+        "401":
+          description: Unauthorized - Missing or invalid authentication token
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-              example:
-                success: false
-                error: "A plan with this name already exists"
+        "403":
+          description: Forbidden - Cannot delete other customer's sites or no account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:

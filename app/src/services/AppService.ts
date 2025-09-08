@@ -1,5 +1,6 @@
 import { appFetch } from '@/lib/gasket-config'
 import { buildApiUrl } from '@/config/api'
+import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { type AppStatusType } from '@/stores/useAppStore'
 import { type ServerStatusType } from '@/stores/useServerStore'
 
@@ -119,21 +120,38 @@ export class AppService {
    * Fetch app details by ID
    */
   async getApp(appId: string): Promise<{ app: App }> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}`))
+    const apiUrl = await buildDynamicApiUrl(``, appId)
+    const response = await appFetch(apiUrl)
+    
     if (!response.ok) {
       throw new Error(`Failed to fetch app: ${response.status}`)
     }
+    
     return response.json()
   }
 
   /**
    * Fetch app configuration
    */
-  async getConfig(): Promise<{ config: AppConfig }> {
-    const response = await appFetch(buildApiUrl('apps/config'))
+  async getConfig(siteId?: string): Promise<{ config: AppConfig }> {
+    let url: string
+    if (siteId) {
+      // Config is global, but we need to use the correct agent base URL
+      const { dynamicApiConfigService } = await import('@/config/dynamic-api')
+      const config = await dynamicApiConfigService.getConfigForSite(siteId)
+      // Remove the app-specific path and use the base agent URL
+      const baseAgentUrl = config.agentUrl.replace(`/apps/${siteId}`, '')
+      url = `${baseAgentUrl}/apps/config`
+    } else {
+      url = buildApiUrl('apps/config')
+    }
+    
+    const response = await appFetch(url)
+    
     if (!response.ok) {
       throw new Error(`Failed to fetch config: ${response.status}`)
     }
+    
     return response.json()
   }
 
@@ -141,13 +159,13 @@ export class AppService {
    * Ensure app is running
    */
   async ensureAppIsRunning(appId: string): Promise<{ success: boolean; action?: string; message?: string }> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/ensure-running`), {
+    const apiUrl = await buildDynamicApiUrl(`ensure-running`, appId)
+    const response = await appFetch(apiUrl, {
       method: 'POST'
     })
     
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(`Failed to ensure app is running: ${response.status} ${errorData.error || ''}`)
+      throw new Error(`Failed to ensure app is running: ${response.status}`)
     }
     
     return response.json()
@@ -157,7 +175,8 @@ export class AppService {
    * Restart app server
    */
   async restartApp(appId: string): Promise<{ success: boolean; message?: string }> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/restart`), {
+    const apiUrl = await buildDynamicApiUrl(`restart`, appId)
+    const response = await appFetch(apiUrl, {
       method: 'POST'
     })
     
@@ -172,7 +191,8 @@ export class AppService {
    * Get git commit history for an app
    */
   async getGitHistory(appId: string): Promise<{ commits: GitCommit[] }> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/git/history`))
+    const apiUrl = await buildDynamicApiUrl(`git/history`, appId)
+    const response = await appFetch(apiUrl)
     
     if (!response.ok) {
       throw new Error(`Failed to load commit history: ${response.status}`)
@@ -185,7 +205,8 @@ export class AppService {
    * Checkout a specific git commit
    */
   async checkoutCommit(appId: string, commitHash: string): Promise<void> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/git/checkout`), {
+    const apiUrl = await buildDynamicApiUrl(`git/checkout`, appId)
+    const response = await appFetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ commitHash })
@@ -200,7 +221,8 @@ export class AppService {
    * Return to main branch (latest version)
    */
   async returnToMainBranch(appId: string): Promise<void> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/git/return`), {
+    const apiUrl = await buildDynamicApiUrl(`git/return`, appId)
+    const response = await appFetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ branch: 'main' })
@@ -215,25 +237,26 @@ export class AppService {
    * Update element styles
    */
   async updateStyles(appId: string, styleData: StyleUpdateData): Promise<unknown> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/styles/edit`), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        selector: styleData.selector,
-        property: styleData.property,
-        value: styleData.value,
-        newClassName: styleData.newClassName,
-        newStyle: styleData.newStyle,
-        elementInfo: styleData.elementInfo
-      })
-    })
+    const requestBody = {
+      selector: styleData.selector,
+      property: styleData.property,
+      value: styleData.value,
+      newClassName: styleData.newClassName,
+      newStyle: styleData.newStyle,
+      elementInfo: styleData.elementInfo
+    };
 
+    const apiUrl = await buildDynamicApiUrl(`styles/edit`, appId)
+    const response = await appFetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    })
+    
     if (!response.ok) {
       throw new Error(`Failed to send style update to API: ${response.status}`)
     }
-
+    
     return response.json()
   }
 
@@ -241,24 +264,24 @@ export class AppService {
    * Update element text content
    */
   async updateText(appId: string, textData: TextUpdateData): Promise<unknown> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/text/edit`), {
+    const requestBody = {
+      selector: textData.selector,
+      oldText: textData.oldText,
+      newText: textData.newText,
+      devContext: textData.devContext
+    };
+
+    const apiUrl = await buildDynamicApiUrl(`text/edit`, appId)
+    const response = await appFetch(apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        selector: textData.selector,
-        oldText: textData.oldText,
-        newText: textData.newText,
-        devContext: textData.devContext
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
     })
-
+    
     if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(`Failed to send text update to API: ${response.status} - ${JSON.stringify(errorData)}`)
+      throw new Error(`Failed to send text update to API: ${response.status}`)
     }
-
+    
     return response.json()
   }
 
@@ -266,22 +289,20 @@ export class AppService {
    * Create a new app
    */
   async createApp(appData: CreateAppData): Promise<Response> {
-    const response = await appFetch(buildApiUrl('apps/create'), {
+    return await appFetch(buildApiUrl('apps/create'), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(appData)
-    })
-
-    return response
+    });
   }
 
   /**
    * Get app status (for polling during creation)
    */
   async getAppStatus(appId: string): Promise<AppStatusData> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/status`))
+    // appId is the same as siteId in our system
+    const apiUrl = await buildDynamicApiUrl(`status`, appId)
+    const response = await appFetch(apiUrl)
     
     if (!response.ok) {
       throw new Error(`Failed to get app status: ${response.status}`)
@@ -294,7 +315,8 @@ export class AppService {
    * Get token usage for an app
    */
   async getTokenUsage(appId: string): Promise<{ usage: TokenUsage }> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/usage`))
+    const apiUrl = await buildDynamicApiUrl(`usage`, appId)
+    const response = await appFetch(apiUrl)
     
     if (!response.ok) {
       throw new Error(`Failed to fetch usage data: ${response.status}`)
@@ -307,7 +329,8 @@ export class AppService {
    * Get file tree for an app
    */
   async getFiles(appId: string, maxDepth: number = 5): Promise<{ entries: Array<{name: string; isDirectory: boolean; path: string; depth: number}> }> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/files?maxDepth=${maxDepth}`))
+    const apiUrl = await buildDynamicApiUrl(`files?maxDepth=${maxDepth}`, appId)
+    const response = await appFetch(apiUrl)
     
     if (!response.ok) {
       throw new Error(`Failed to load files: ${response.status}`)
@@ -320,7 +343,8 @@ export class AppService {
    * Read file content
    */
   async readFile(appId: string, filePath: string): Promise<{ content: string }> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/files/read?path=${encodeURIComponent(filePath)}`))
+    const apiUrl = await buildDynamicApiUrl(`files/read?path=${encodeURIComponent(filePath)}`, appId)
+    const response = await appFetch(apiUrl)
     
     if (!response.ok) {
       throw new Error(`Failed to load file content: ${response.status}`)
@@ -333,12 +357,12 @@ export class AppService {
    * Write file content
    */
   async writeFile(appId: string, filePath: string, content: string, mode: string = 'rewrite'): Promise<{ success: boolean }> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/files/write`), {
+    const requestBody = { path: filePath, content, mode };
+    const apiUrl = await buildDynamicApiUrl(`files/write`, appId)
+    const response = await appFetch(apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ path: filePath, content, mode })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
     })
     
     if (!response.ok) {
@@ -365,7 +389,8 @@ export class AppService {
    * Get running servers
    */
   async getServers(): Promise<{ servers: ServerInfo[] }> {
-    const response = await appFetch(buildApiUrl('apps/servers'))
+    // Call local API route instead of external service
+    const response = await appFetch('/api/servers')
     
     if (!response.ok) {
       throw new Error(`Failed to fetch servers: ${response.status}`)
@@ -378,7 +403,8 @@ export class AppService {
    * Stop an app
    */
   async stopApp(appId: string): Promise<{ success: boolean; message?: string }> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}/stop`), {
+    const apiUrl = await buildDynamicApiUrl(`stop`, appId)
+    const response = await appFetch(apiUrl, {
       method: 'POST'
     })
     
@@ -393,7 +419,8 @@ export class AppService {
    * Delete an app
    */
   async deleteApp(appId: string): Promise<{ success: boolean; message?: string }> {
-    const response = await appFetch(buildApiUrl(`apps/${appId}`), {
+    const apiUrl = await buildDynamicApiUrl(``, appId)
+    const response = await appFetch(apiUrl, {
       method: 'DELETE'
     })
     
@@ -402,7 +429,7 @@ export class AppService {
       try {
         const errorData = await response.json()
         errorMessage = errorData.message || errorData.error || errorMessage
-      } catch (parseError) {
+      } catch {
         // Unable to parse error response, use default message
       }
       throw new Error(errorMessage)

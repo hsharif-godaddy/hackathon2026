@@ -4,14 +4,8 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { getDatabase } from '../connection.js';
 import { GitUtils } from '../../utils/git.js';
-import { PortManager } from '../../utils/port-manager.js';
 import type { App, CreateAppRequest, UpdateAppRequest } from '../schema.js';
-// Adapter imports
-import { getAppAdapter, isDockerMode } from '../../adapters/index.js';
-import type { IAppAdapter } from '../../adapters/index.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
-import { TemplateCopyService } from '../../services/TemplateCopyService.js';
-import { ProcessService } from '../../services/ProcessService.js';
 import { Logger, log } from '../../logging/index.js';
 import { getErrorMessage } from '../../utils/error.js';
 import {
@@ -28,83 +22,69 @@ import {
 export class AppRepository {
   private db = getDatabase();
   private gitUtils = new GitUtils();
-  private portManager = new PortManager();
-  private processService = new ProcessService(this.db);
-  private deploymentAdapter: IAppAdapter | null = null; // Adapter for deployment operations
-  private initialized = false;
   private logger = Logger.create({ service: 'app-repository' });
-  private templateCopyService = new TemplateCopyService(this.logger);
 
-  /**
-   * Initialize the repository and recover orphaned processes
-   */
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
-    
-    const adapterType = isDockerMode() ? 'Docker' : 'Local';
-    appRepositoryEvents.initBegin(this.logger, {
-      adapterType,
-      duration: 0
-    });
-    
-    try {
-      // Initialize deployment adapter
-      this.deploymentAdapter = await getAppAdapter();
-      
-      // Keep existing local process recovery for backward compatibility
-      await this.processService.recoverOrphanedProcesses();
-      
-      this.initialized = true;
-      appRepositoryEvents.initSuccess(this.logger, {
-        adapterType,
-        duration: Date.now() - (performance.now() || Date.now()),
-        startTime: new Date().toISOString()
-      });
-    } catch (error) {
-      appRepositoryEvents.initFailure(this.logger, error as Error, {
-        adapterType
-      });
-      throw error;
-    }
+  // Dev functionality has been moved to app service - these are now stubs
+  private initialized = true;
+  private portManager = { getNextAvailablePort: () => Promise.resolve(3000) };
+  private processService = {
+    isPortOccupied: () => Promise.resolve(false),
+    startDevServer: () => Promise.resolve(),
+    stopServer: () => Promise.resolve(true),
+    stopAllServers: () => Promise.resolve(0),
+    isServerRunning: () => false,
+    removeProcessRecord: () => {},
+    getProcessInfoForPort: () => Promise.resolve(null),
+    forceCleanupApp: () => Promise.resolve(true),
+    cleanup: () => Promise.resolve(),
+    forceCleanupOrphans: () => Promise.resolve(0),
+    getAppStatus: () => Promise.resolve({ status: 'created', message: 'App created' })
+  };
+  private deploymentAdapter: any = null;
+
+  // Helper function for Docker mode detection (stub)
+  private isDockerMode(): boolean {
+    return process.env.DOC_APPS === 'true';
   }
 
-
-
-
-
-
-
-
-
+  /**
+   * Initialize the repository (dev functionality moved to app service)
+   */
+  async initialize(): Promise<void> {
+    // Dev environment initialization has been moved to the app service
+    // This repository now only handles basic app metadata operations
+    this.logger.info('app.repository.init', { 
+      message: 'AppRepository initialized - dev functionality moved to app service'
+    });
+  }
 
   /**
-   * Create a new app with a websafe short identifier and filesystem directory
+   * Create a new app using siteId as identifier with predefined customer path
    */
   async create(data: CreateAppRequest): Promise<App> {
-    // Ensure this repository is initialized before creating apps
     await this.initialize();
     
-    const id = nanoid(12); // 12 characters, websafe, URL-friendly
+    if (!data.siteId) {
+      throw new Error('Site ID is required for app creation');
+    }
+    
+    const id = data.siteId;
     const now = new Date().toISOString();
     
     // Create a logger for this specific app creation
     const appLogger = this.logger.child({ appId: id, appName: data.name });
     
-    // Get base directory from environment variable, default to /tmp/apps
-    const baseDir = process.env.APPS_BASE_DIR || '/tmp/apps';
-    const appPath = path.join(baseDir, id);
-    
-    // Assign an available port for the frontend (smart script will handle backend port discovery)
-    const port = await this.portManager.getNextAvailablePort();
-    
-    // Double-check the port is actually free
-    const isPortFree = !(await this.processService.isPortOccupied(port));
-    if (!isPortFree) {
-      throw new Error(`Port ${port} is already in use`);
+    const customerDataDir = process.env.APPS_BASE_DIR || '/tmp/apps';
+    let appPath = '';
+    if (process.env.NOMAD_TASK_NAME) {
+      appPath = customerDataDir;
+    } else {
+      appPath = path.join(customerDataDir, id);
     }
+
+    let appName = data.name.trim();
+    let nameSuggested = false;
     
-    // Try to get a better app name using AI if an initial prompt is provided
-    let appName = data.name;
     if (data.initialPrompt) {
       try {
         const nameSuggestionService = getNameSuggestionService();
@@ -118,6 +98,7 @@ export class AppRepository {
             hasPrompt: true
           });
           appName = suggestedName;
+          nameSuggested = true;
         } else {
           appNameEvents.suggestSuccess(this.logger, {
             appId: id,
@@ -130,34 +111,20 @@ export class AppRepository {
           appId: id,
           originalName: data.name
         });
-        // Continue with the original name if name suggestion fails
       }
     }
     
-    // Declare template result variable for error handling
-    let templateResult: any = null;
+    // Assign an available port for the frontend
+    const port = await this.portManager.getNextAvailablePort();
     
-    // Create the directory for the app
+    // Double-check the port is actually free
+    const isPortFree = !(await this.processService.isPortOccupied(port));
+    if (!isPortFree) {
+      throw new Error(`Port ${port} is already in use`);
+    }
+    
     try {
-      mkdirSync(appPath, { recursive: true });
-      appDirectoryEvents.createSuccess(appLogger, {
-        appId: id,
-        path: appPath,
-        permissions: '0755',
-        parentExists: true
-      });
-      
-      // Copy template using the TemplateCopyService
-      templateResult = await this.templateCopyService.copyTemplate({
-        appId: id,
-        appPath,
-        appName
-      });
-      
-      const { templateVersion } = templateResult;
-
-      // Save app to database BEFORE running setup (reserves the port)
-      // Use a transaction to ensure atomicity
+      // Save app to database (no directory creation or template copying)
       this.db.exec('BEGIN TRANSACTION');
       
       try {
@@ -165,12 +132,12 @@ export class AppRepository {
           INSERT INTO apps (id, name, path, port, initial_prompt, template_version, status, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
+        
+        // Use 'v3' as default template version since template is already present
+        const templateVersion = 'v3';
         stmt.run(id, appName, appPath, port, data.initialPrompt || null, templateVersion, 'creating', now, now);
         
-        // Store additional port information in a separate table if needed
-        // For now, we'll store backend port in environment during dev server start
-        
-        // Verify the app record was inserted successfully before proceeding
+        // Verify the app record was inserted successfully
         const verifyStmt = this.db.prepare('SELECT id FROM apps WHERE id = ?');
         const appExists = verifyStmt.get(id);
         if (!appExists) {
@@ -178,85 +145,96 @@ export class AppRepository {
         }
         
         // Commit the transaction
-        this.db.exec('COMMIT');       
-      } catch (error) {
-        // Rollback on error
+        this.db.exec('COMMIT');
+        
+        appLogger.info('App created successfully', {
+          appId: id,
+          name: appName,
+          path: appPath,
+          port,
+          templateVersion,
+          skipDirectoryCreation: true,
+          skipTemplateCopy: true
+        });
+        
+      } catch (dbError) {
         this.db.exec('ROLLBACK');
-        throw error;
+        throw dbError;
       }
 
-      // Log app creation begin and success
+      // Log app creation events
       appCreationEvents.begin(appLogger, {
         appId: id,
         name: appName,
-        templateVersion,
-        baseDir,
+        templateVersion: 'v3',
+        baseDir: customerDataDir,
         port,
         ...(data.initialPrompt && { initialPrompt: data.initialPrompt })
       });
 
-      // Return the app immediately after DB insert
-      const app = this.findById(id)!;
+      // Skip async setup since template is already present
+      // No need to run npm install etc.
       
-      // Run setup asynchronously in the background
-      this.runAppSetupAsync(id, appPath, port, data.name);
+      // Initialize Git repository after template copy
+      await this.initializeGitRepository(id, appPath, appName);
+      
+      // Update status to 'created' since we're skipping async setup
+      this.updateStatus(id, 'created');
+      appLogger.info('App status updated to created (no async setup required)', {
+        appId: id,
+        name: appName
+      });
+      
+      // Get the updated app AFTER status change
+      const app = this.findById(id)!;
       
       appCreationEvents.success(appLogger, {
         appId: id,
         name: appName,
-        templateVersion,
-        baseDir,
+        templateVersion: 'v3',
+        baseDir: customerDataDir,
         port,
         duration: 0,
         ...(data.initialPrompt && { initialPrompt: data.initialPrompt })
       });
       
-      return app;
+      // Extend the app object with AI name generation info
+      const result: App & { aiGeneratedName?: string; nameSuggested: boolean; originalName: string } = {
+        ...app,
+        nameSuggested,
+        originalName: data.name
+      };
+      
+      if (nameSuggested && appName) {
+        result.aiGeneratedName = appName;
+      }
+      
+      return result;
       
     } catch (error) {
-      // Template version might not be available if error occurred during template copying
-      const templateVersion = templateResult?.templateVersion;
-      
       appCreationEvents.failure(appLogger, error as Error, {
         appId: id,
         name: appName,
-        templateVersion,
-        baseDir,
+        templateVersion: 'v3',
+        baseDir: customerDataDir,
         port
       });
       
       // Clean up database entry if app creation fails
       try {
-        // Only attempt rollback if we actually started a transaction
-        // Template copying failures happen before transaction starts
-        try {
-          this.db.exec('ROLLBACK');
-          // Transaction rollback logged as part of cleanup
-        } catch (rollbackError: any) {
-          if (rollbackError.code === 'SQLITE_ERROR' && rollbackError.message?.includes('no transaction is active')) {
-            // This is fine - no transaction was started yet
-            // No active transaction - this is expected
-          } else {
-            log.error(appLogger, 'app.transaction.rollback.failed', rollbackError);
-          }
-        }
-        
         // Check if app was actually inserted into database before trying to delete
         const existingApp = this.findById(id);
         if (existingApp) {
           const cleanupStmt = this.db.prepare('DELETE FROM apps WHERE id = ?');
           cleanupStmt.run(id);
-          // Database cleanup successful
-        } else {
-          // No database entry to clean up
+          appLogger.info('Database cleanup completed after app creation failure');
         }
-        
       } catch (cleanupError) {
         log.error(appLogger, 'app.database.cleanup.failed', cleanupError);
       }
       
       const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to create app directory: ${errorMessage}`);
+      throw new Error(`Failed to create app: ${errorMessage}`);
     }
   }
 
@@ -288,7 +266,7 @@ export class AppRepository {
 
       // Start the development servers using the adapter
       try {
-        if (this.deploymentAdapter && isDockerMode()) {
+        if (this.deploymentAdapter && this.isDockerMode()) {
           await this.deploymentAdapter.startApp(id);
         } else {
           appServerEvents.startBegin(setupLogger, {
@@ -823,7 +801,7 @@ export class AppRepository {
     await this.initialize();
 
     // If in Docker mode, use the adapter
-    if (this.deploymentAdapter && isDockerMode()) {
+    if (this.deploymentAdapter && this.isDockerMode()) {
       try {
         const dockerServers = await this.deploymentAdapter.getRunningServers();
         return dockerServers.map(server => {
@@ -884,7 +862,7 @@ export class AppRepository {
     await this.initialize();
     
     // Use adapter if in Docker mode
-    if (this.deploymentAdapter && isDockerMode()) {
+    if (this.deploymentAdapter && this.isDockerMode()) {
       try {
         this.logger.info('app.server.stop.docker.begin', {
           appId,
@@ -913,7 +891,7 @@ export class AppRepository {
     await this.initialize();
 
     // If in Docker mode, use the adapter
-    if (this.deploymentAdapter && isDockerMode()) {
+    if (this.deploymentAdapter && this.isDockerMode()) {
       try {
         return await this.deploymentAdapter.stopAllServers();
       } catch (error) {
@@ -947,7 +925,7 @@ export class AppRepository {
     });
 
     // Use adapter if in Docker mode
-    if (this.deploymentAdapter && isDockerMode()) {
+    if (this.deploymentAdapter && this.isDockerMode()) {
       try {
         this.logger.info('app.server.restart.docker.begin', {
           appId,
@@ -1087,7 +1065,7 @@ export class AppRepository {
     await this.initialize();
 
     // If in Docker mode, use the adapter
-    if (this.deploymentAdapter && isDockerMode()) {
+    if (this.deploymentAdapter && this.isDockerMode()) {
       try {
         this.logger.info('app.cleanup.orphans.docker.begin', {
           adapterType: 'docker'
@@ -1128,7 +1106,7 @@ export class AppRepository {
      // Ensure this repository is initialized before creating apps
      await this.initialize();
 
-    if (this.deploymentAdapter && isDockerMode()) {
+    if (this.deploymentAdapter && this.isDockerMode()) {
       return this.deploymentAdapter.getAppStatus(appId);
     }
     // Fallback to local process status
@@ -1155,8 +1133,9 @@ export class AppRepository {
     throw new Error('Container rebuilding not supported in current deployment mode');
   }
 
-  isDockerMode(): boolean {
-    return isDockerMode();
+  // Public method for external access to Docker mode detection
+  public isDockerModePublic(): boolean {
+    return this.isDockerMode();
   }
 
   getAdapterInfo() {

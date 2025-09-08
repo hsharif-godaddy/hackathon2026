@@ -26,6 +26,7 @@ interface TokenUsageInfo {
 
 interface TokenUsageProps {
   appId: string
+  siteId?: string
   className?: string
   enabled?: boolean // Control visibility via SHOW_USAGE_COST env variable
 }
@@ -35,7 +36,7 @@ export interface TokenUsageRef {
 }
 
 const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
-  ({ appId, className = '', enabled = false }, ref) => {
+  ({ appId, siteId, className = '', enabled = false }, ref) => {
     const [usage, setUsage] = useState<TokenUsageInfo | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -45,7 +46,7 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
     const fetchUsage = async () => {
       try {
         setIsLoading(true)
-        const data = await appService.getTokenUsage(appId)
+        const data = await appService.getTokenUsage(siteId || appId)
         setUsage(data.usage)
       } catch (error) {
         console.error('Error fetching token usage:', error)
@@ -58,7 +59,7 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
     // Expose refresh function via ref
     useImperativeHandle(ref, () => ({
       refreshUsage: fetchUsage
-    }), [appId])
+    }), [appId, siteId])
 
     useEffect(() => {
       if (appId && enabled) {

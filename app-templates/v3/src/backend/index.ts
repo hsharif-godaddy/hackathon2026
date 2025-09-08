@@ -14,20 +14,27 @@ let frontendPort = 5173;
 try {
   const portConfig = JSON.parse(readFileSync('.dev-ports.json', 'utf8'));
   frontendPort = portConfig.frontendPort || 5173;
+
 } catch {
   // Use default if config file doesn't exist
 }
 
 // Global middleware
 app.use('*', logger());
+const corsOrigin = [
+  `http://localhost:${frontendPort}`,
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://localhost:3000',
+];
+
+if (process.env.FRONTEND_DOMAIN) {
+  corsOrigin.push(...[process.env.FRONTEND_DOMAIN, `http://${process.env.FRONTEND_DOMAIN}`, `https://${process.env.FRONTEND_DOMAIN}`]);
+}
+
 app.use('/api/*', cors({
-  origin: [
-    `http://localhost:${frontendPort}`,
-    'http://localhost:5173',
-    'http://localhost:5174', 
-    'http://localhost:5175',
-    'http://localhost:3000'
-  ],
+  origin: corsOrigin,
   credentials: true,
 }));
 
@@ -74,6 +81,7 @@ async function startServer() {
     serve({
       fetch: app.fetch,
       port,
+      hostname: '0.0.0.0',
     });
     
     console.log(`✅ Backend server ready on http://localhost:${port}`);

@@ -9,7 +9,7 @@ import {
   AgentHandoffConfig,
   AgentExecutionContext,
 } from './agent.interface.js';
-import { getTemplateFromEnvironment } from '../utils/template-version.js';
+// Template version detection has been moved to the app service
 import { applyOutputGuardrails } from '../utils/openai-guardrails.js';
 
 /**
@@ -159,13 +159,14 @@ export abstract class BaseAgent implements IAgent {
       return appTemplateVersion;
     }
     
-    // Fallback to environment variable detection
+    // Fallback to environment variable (template version detection moved to app service)
     const templateDir = process.env.APP_TEMPLATE_DIR || 'app-templates/v3';
-    const templateFromEnv = getTemplateFromEnvironment(templateDir);
-    if (templateFromEnv !== 'default') {
-      console.log(`🌍 Environment fallback: ${templateFromEnv}`);
-      return templateFromEnv;
-    }
+    const templateVersion = templateDir.includes('v8') ? 'v8' : 
+                           templateDir.includes('v7') ? 'v7' :
+                           templateDir.includes('v3') ? 'v3' : 
+                           templateDir.includes('v2') ? 'v2' : 'v1';
+    console.log(`🌍 Environment fallback: ${templateVersion}`);
+    return templateVersion;
     
     // Final fallback to default
     console.log(`❓ No template detected, using default`);

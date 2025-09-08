@@ -1,7 +1,7 @@
 services:
   # Agents API Service
   agents:
-    platform: linux/amd64  # Force x64 platform for consistent native module compilation
+    platform: linux/amd64 # Force x64 platform for consistent native module compilation
     build:
       context: ./agents
       platforms:
@@ -23,9 +23,9 @@ services:
       - airo-network
     restart: unless-stopped
 
-  # Frontend App Service  
+  # Frontend App Service
   app:
-    platform: linux/amd64  # Force x64 platform for consistent native module compilation
+    platform: linux/amd64 # Force x64 platform for consistent native module compilation
     build:
       context: ./app
       platforms:
@@ -40,9 +40,6 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HTTPS_PORT=3443
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
-      - NEXT_PUBLIC_API_WS_URL=ws://localhost:4000
-      - NEXT_PUBLIC_BACKEND_API_URL=http://localhost:4000
       - DATABASE_PATH=/app/data/airo-builder-platform.db
     depends_on:
       - agents
@@ -51,7 +48,7 @@ services:
     restart: unless-stopped
 
   proxy:
-    platform: linux/amd64  # Force x64 platform for consistent native module compilation
+    platform: linux/amd64 # Force x64 platform for consistent native module compilation
     build:
       context: ./proxy
       platforms:

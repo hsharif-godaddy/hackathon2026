@@ -2,7 +2,10 @@
  * API Configuration
  * 
  * Centralizes API endpoint configuration with environment variable support
+ * Now supports dynamic site-based URLs
  */
+
+import { buildDynamicApiUrl, buildDynamicWsUrl } from './dynamic-api'
 
 export interface ApiConfig {
   baseUrl: string
@@ -11,100 +14,65 @@ export interface ApiConfig {
 }
 
 /**
- * Get the API configuration from environment variables with fallbacks
+ * Get empty API configuration - all URLs are now dynamic based on site data
  */
 function getApiConfig(): ApiConfig {
-  // Default to localhost for development
-  const defaultBaseUrl = 'http://localhost:4000'
-  const defaultWsUrl = 'ws://localhost:4000'
-  
-  // Environment variables for configuration
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || defaultBaseUrl
-  const wsUrl = process.env.NEXT_PUBLIC_API_WS_URL || defaultWsUrl
-  
-  // Ensure URLs don't have trailing slashes
-  const cleanBaseUrl = baseUrl.replace(/\/$/, '')
-  const cleanWsUrl = wsUrl.replace(/\/$/, '')
-  
+  // No static configuration - all URLs are dynamic based on site data
   return {
-    baseUrl: cleanBaseUrl,
-    wsUrl: cleanWsUrl,
-    agentUrl: cleanBaseUrl // Agent endpoints use the same base URL
+    baseUrl: '',
+    wsUrl: '',
+    agentUrl: ''
   }
 }
 
-// Export singleton configuration
+// Export singleton configuration (empty - dynamic URLs only)
 export const apiConfig = getApiConfig()
 
 /**
- * Helper function to build API URLs
+ * DEPRECATED: Static API URL builder - no longer supported
+ * Use buildDynamicApiUrl() with a siteId instead
  */
 export function buildApiUrl(endpoint: string): string {
-  // Remove leading slash if present to avoid double slashes
-  const cleanEndpoint = endpoint.replace(/^\//, '')
-  return `${apiConfig.baseUrl}/${cleanEndpoint}`
+  throw new Error(`Static API URLs are no longer supported. Use buildDynamicApiUrl('${endpoint}', siteId) instead.`)
 }
 
 /**
- * Helper function to build WebSocket URLs
+ * DEPRECATED: Static WebSocket URL builder - no longer supported  
+ * Use buildDynamicWsUrl() with a siteId instead
  */
 export function buildWsUrl(endpoint: string): string {
-  // Remove leading slash if present to avoid double slashes
-  const cleanEndpoint = endpoint.replace(/^\//, '')
-  return `${apiConfig.wsUrl}/${cleanEndpoint}`
+  throw new Error(`Static WebSocket URLs are no longer supported. Use buildDynamicWsUrl('${endpoint}', siteId) instead.`)
 }
 
 /**
- * Helper function to build agent URLs
+ * DEPRECATED: Static agent URL builder - no longer supported
+ * Use buildDynamicApiUrl() with a siteId instead
  */
 export function buildAgentUrl(endpoint: string): string {
-  // Remove leading slash if present to avoid double slashes
-  const cleanEndpoint = endpoint.replace(/^\//, '')
-  return `${apiConfig.agentUrl}/${cleanEndpoint}`
+  throw new Error(`Static agent URLs are no longer supported. Use buildDynamicApiUrl('${endpoint}', siteId) instead.`)
 }
 
 /**
- * Validate that the API configuration is valid
+ * Build API URLs using dynamic site-based configuration
+ * siteId is required - there is no static fallback
  */
-export function validateApiConfig(): { isValid: boolean; errors: string[] } {
-  const errors: string[] = []
-  
-  if (!apiConfig.baseUrl) {
-    errors.push('Base URL is required')
-  }
-  
-  if (!apiConfig.wsUrl) {
-    errors.push('WebSocket URL is required')
-  }
-  
-  try {
-    new URL(apiConfig.baseUrl)
-  } catch {
-    errors.push('Base URL is not a valid URL')
-  }
-  
-  try {
-    new URL(apiConfig.wsUrl.replace('ws://', 'http://').replace('wss://', 'https://'))
-  } catch {
-    errors.push('WebSocket URL is not a valid URL')
-  }
-  
-  return {
-    isValid: errors.length === 0,
-    errors
-  }
+export async function buildApiUrlWithSite(endpoint: string, siteId: string): Promise<string> {
+  // Always use dynamic URL based on site
+  return await buildDynamicApiUrl(endpoint, siteId)
+}
+
+/**
+ * Build WebSocket URLs using dynamic site-based configuration
+ * siteId is required - there is no static fallback
+ */
+export async function buildWsUrlWithSite(endpoint: string, siteId: string): Promise<string> {
+  // Always use dynamic WebSocket URL based on site
+  return await buildDynamicWsUrl(endpoint, siteId)
 }
 
 // Log configuration in development
 if (process.env.NODE_ENV === 'development') {
-  console.log('🔧 API Configuration:', {
-    baseUrl: apiConfig.baseUrl,
-    wsUrl: apiConfig.wsUrl,
-    agentUrl: apiConfig.agentUrl
-  })
-  
-  const validation = validateApiConfig()
-  if (!validation.isValid) {
-    console.warn('⚠️  API Configuration issues:', validation.errors)
-  }
+  console.log('🌐 Using Dynamic URLs Only - No static configuration')
+  console.log('💡 All API calls use site-specific agent URLs from database')
+  console.log('🚫 Static environment variables (NEXT_PUBLIC_API_BASE_URL, NEXT_PUBLIC_API_WS_URL) are no longer used')
 }

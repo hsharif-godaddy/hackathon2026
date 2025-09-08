@@ -11,8 +11,6 @@ import { createMySQLResponseFormatter } from './mysql-response-formatter.js';
 import { AutoAPIGenerator, AutoAPIGeneratorOptions } from './auto-api-generator.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js';
-import { getAppAdapter } from '../adapters/index.js';
-import type { DockerAppService } from '../adapters/services/DockerAppService.js';
 import type { AgentExecutionContext, AgentToolConfig } from '../base/index.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
@@ -21,7 +19,6 @@ import { generateImage } from './image-generation-tool.js';
 import { findGettyImage, GettyImageOptions } from './getty-image-tool.js';
 import { appPlanTool, AppPlanToolOptions } from './app-plan-tool.js';
 import { validateLucideIcons, IconsValidatorOptions } from './icons-validator.js';
-import { DevLogsTool, DevLogsOptions } from './dev-logs-tool.js';
 import { AgentRegistry } from '../registry/index.js';
 
 const directoryTool = new DirectoryListingTool();
@@ -32,7 +29,6 @@ const readFileTool = new ReadFileTool();
 const mysqlTool = new MySQLTool();
 const serverTool = new ServerManagementTool();
 const autoAPIGenerator = new AutoAPIGenerator();
-const devLogsTool = new DevLogsTool();
 const appRepo = new AppRepository();
 const tokenUsageRepo = new TokenUsageRepository();
 const agentRegistry = AgentRegistry.getInstance();
@@ -672,38 +668,6 @@ export const TOOL_FUNCTIONS = {
       required: [],
     },
   },
-  dev_logs: {
-    name: 'dev_logs',
-    description: 'Read development server logs for debugging and monitoring. Shows recent log output from the running development process, including both normal output and errors. Use this to troubleshoot issues, monitor server status, or understand what the development server is doing.',
-    parameters: {
-      type: 'object',
-      properties: {
-        lines: {
-          type: 'number',
-          description: 'Number of recent log lines to retrieve (default: 50, max: 1000)',
-          minimum: 1,
-          maximum: 1000,
-          default: 50,
-        },
-        source: {
-          type: 'string',
-          enum: ['stdout', 'stderr'],
-          description: 'Filter logs by source: stdout (normal output) or stderr (errors only)',
-        },
-        since: {
-          type: 'string',
-          description: 'Get logs since specific time (ISO 8601 format, e.g., "2024-01-01T10:00:00Z")',
-          pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?Z?$',
-        },
-        summary: {
-          type: 'boolean',
-          description: 'Get log summary with statistics instead of raw logs',
-          default: false,
-        },
-      },
-      required: [],
-    },
-  },
 } as const;
 
 /**
@@ -791,9 +755,6 @@ export async function executeToolFunction(
     case 'icon_validator':
       return await executeIconsValidator(args as unknown as IconsValidatorOptions, context);
     
-    case 'dev_logs':
-      return await executeDevLogs(args as unknown as DevLogsOptions, context);
-    
     default:
       throw new Error(`Unknown tool function: ${functionName}`);
   }
@@ -880,25 +841,9 @@ async function executeTerminalCommand(
     ]
   };
 
-  // Get the app adapter to access per-app socket path
-  const appAdapter = getAppAdapter();
-  let socketPath: string | undefined;
-  
-  // Try to get the per-app socket path if using Docker mode
-  if (appAdapter && 'getDevSupervisorSocketPath' in appAdapter) {
-    try {
-      const socketResult = (appAdapter as unknown as DockerAppService).getDevSupervisorSocketPath(appId);
-      socketPath = socketResult ?? undefined;
-      if (!socketPath) {
-        throw new Error(`No dev-supervisor socket path found for app ${appId} - container may not be running`);
-      }
-    } catch (error) {
-      throw new Error(`Failed to get dev-supervisor socket path for app ${appId}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  } else {
-    // For non-Docker mode, we don't have dev-supervisor
-    socketPath = undefined;
-  }
+  // Dev-supervisor functionality has been moved to the app service
+  // Terminal commands will run without dev-supervisor integration for now
+  const socketPath: string | undefined = undefined;
 
   // Create a TerminalTool instance with the appropriate socket path
   const contextualTerminalTool = new TerminalTool(socketPath);
@@ -1636,33 +1581,4 @@ async function executeAppPlan(
   }
 }
 
-/**
- * Execute the dev logs tool
- */
-async function executeDevLogs(
-  options: DevLogsOptions,
-  context: AgentExecutionContext
-): Promise<string> {
-  // Get app information from context
-  const appId = context.metadata?.appId as string;
-  
-  if (!appId) {
-    throw new Error('App ID is required for reading development logs');
-  }
-
-  try {
-    // Track tool execution
-    await trackToolExecution('dev_logs', context, JSON.stringify(options).length);
-
-    // Use the dev logs tool to read logs
-    const result = await devLogsTool.readLogs(appId, options);
-    
-    // Return formatted output for the agent
-    return devLogsTool.formatForAgent(result);
-    
-  } catch (error) {
-    console.error('❌ Dev logs operation failed:', error);
-    throw error;
-  }
-}
 

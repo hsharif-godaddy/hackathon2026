@@ -4,6 +4,17 @@ import path from 'path';
 import sourceMapperPlugin from './source-mapper/src/index';
 import { devToolsPlugin } from './dev-tools/src/vite-plugin';
 
+let allowedHosts: string[] = [];
+if (process.env.FRONTEND_DOMAIN) {
+  allowedHosts.push(process.env.FRONTEND_DOMAIN, `http://${process.env.FRONTEND_DOMAIN}`, `https://${process.env.FRONTEND_DOMAIN}`);
+}
+if (process.env.ALLOWED_ORIGINS) {
+  allowedHosts.push(...process.env.ALLOWED_ORIGINS.split(','));
+}
+if (allowedHosts.length === 0) {
+  allowedHosts.push('*');
+}
+
 export default defineConfig(({ mode }) => ({
   plugins: [
     react({
@@ -27,9 +38,17 @@ export default defineConfig(({ mode }) => ({
 
   server: {
     port: 5173,
+    host: '0.0.0.0',
+    allowedHosts,
+    cors: {
+      origin: allowedHosts,
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'User-Agent']
+    },
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: `http://localhost:${process.env.PREFERRED_BACKEND_PORT || 3000}`,
         changeOrigin: true,
       },
     },

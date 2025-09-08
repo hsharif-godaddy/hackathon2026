@@ -30,12 +30,13 @@ export class AccountService {
   /**
    * Find account by shopper_id
    */
-  findByShopperId(shopperId: string): Account | null {
+  async findByShopperId(shopperId: string): Promise<Account | null> {
     try {
-      const account = this.db.get<Account>(
+      const account = await this.db.get<Account>(
         'SELECT * FROM accounts WHERE shopper_id = ?',
         [shopperId]
       );
+      
       return account || null;
     } catch (error) {
       console.error('Error finding account by shopper_id:', error);
@@ -46,9 +47,9 @@ export class AccountService {
   /**
    * Find account by customer_id (our internal ID)
    */
-  findByCustomerId(customerId: string): Account | null {
+  async findByCustomerId(customerId: string): Promise<Account | null> {
     try {
-      const account = this.db.get<Account>(
+      const account = await this.db.get<Account>(
         'SELECT * FROM accounts WHERE customer_id = ?',
         [customerId]
       );
@@ -62,7 +63,7 @@ export class AccountService {
   /**
    * Create a new account for a shopper
    */
-  createAccount(shopperId: string, customerId?: string): Account {
+  async createAccount(shopperId: string, customerId?: string): Promise<Account> {
     try {
       const id = uuidv4();
       
@@ -70,27 +71,25 @@ export class AccountService {
       let finalCustomerId: string;
       if (customerId) {
         finalCustomerId = customerId;
-        console.log(`📄 Using customer ID from JWT: ${customerId}`);
       } else {
         finalCustomerId = `cust_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        console.log(`🔄 Generated customer ID: ${finalCustomerId}`);
       }
       
       // Get default plan ID
-      const defaultPlan = this.db.get<Plan>(
+      const defaultPlan = await this.db.get<Plan>(
         'SELECT id FROM plans WHERE name = ?',
         ['Free']
       );
 
       const planId = defaultPlan?.id || '550e8400-e29b-41d4-a716-446655440001';
 
-      this.db.run(
+      await this.db.run(
         `INSERT INTO accounts (id, shopper_id, customer_id, plan_id, status)
          VALUES (?, ?, ?, ?, ?)`,
         [id, shopperId, finalCustomerId, planId, 'active']
       );
 
-      const newAccount = this.db.get<Account>(
+      const newAccount = await this.db.get<Account>(
         'SELECT * FROM accounts WHERE id = ?',
         [id]
       );
@@ -99,7 +98,6 @@ export class AccountService {
         throw new Error('Failed to create account');
       }
 
-      console.log(`✅ Created new account for shopper ${shopperId}: ${finalCustomerId}`);
       return newAccount;
     } catch (error) {
       console.error('Error creating account:', error);
@@ -110,9 +108,9 @@ export class AccountService {
   /**
    * Update account status
    */
-  updateAccountStatus(shopperId: string, status: 'active' | 'suspended' | 'closed'): boolean {
+  async updateAccountStatus(shopperId: string, status: 'active' | 'suspended' | 'closed'): Promise<boolean> {
     try {
-      const result = this.db.run(
+      const result = await this.db.run(
         'UPDATE accounts SET status = ? WHERE shopper_id = ?',
         [status, shopperId]
       );
@@ -126,14 +124,14 @@ export class AccountService {
   /**
    * Get or create account for shopper (used in JWT validation)
    */
-  getOrCreateAccount(shopperId: string, customerId?: string): Account {
+  async getOrCreateAccount(shopperId: string, customerId?: string): Promise<Account> {
     try {
       // Try to find existing account
-      let account = this.findByShopperId(shopperId);
+      let account = await this.findByShopperId(shopperId);
       
       if (!account) {
         // Create new account if not found, use customerId from JWT if available
-        account = this.createAccount(shopperId, customerId);
+        account = await this.createAccount(shopperId, customerId);
       }
 
       return account;
@@ -146,9 +144,9 @@ export class AccountService {
   /**
    * Get all accounts (for admin purposes)
    */
-  getAllAccounts(): Account[] {
+  async getAllAccounts(): Promise<Account[]> {
     try {
-      return this.db.all<Account>('SELECT * FROM accounts ORDER BY created_at DESC');
+      return await this.db.all<Account>('SELECT * FROM accounts ORDER BY created_at DESC');
     } catch (error) {
       console.error('Error getting all accounts:', error);
       throw error;
@@ -158,22 +156,22 @@ export class AccountService {
   /**
    * Get account with plan details
    */
-  getAccountWithPlan(shopperId: string): (Account & { 
+  async getAccountWithPlan(shopperId: string): Promise<(Account & { 
     plan_name?: string; 
     plan_site_limit?: number; 
     plan_price?: number; 
-  }) | null {
+  }) | null> {
     try {
-      const accountWithPlan = this.db.get<Account & { 
+      const accountWithPlan = await this.db.get<Account & { 
         plan_name?: string; 
         plan_site_limit?: number; 
         plan_price?: number; 
       }>(
         `SELECT a.*, p.name as plan_name, p.site_limit as plan_site_limit, 
-                p.price as plan_price
-         FROM accounts a 
-         LEFT JOIN plans p ON a.plan_id = p.id 
-         WHERE a.shopper_id = ?`,
+               p.price as plan_price
+        FROM accounts a 
+        LEFT JOIN plans p ON a.plan_id = p.id 
+        WHERE a.shopper_id = ?`,
         [shopperId]
       );
       return accountWithPlan || null;
@@ -186,17 +184,17 @@ export class AccountService {
   /**
    * Create a new plan (for admin purposes)
    */
-  createPlan(name: string, siteLimit: number, price: number): Plan {
+  async createPlan(name: string, siteLimit: number, price: number): Promise<Plan> {
     try {
       const id = uuidv4();
       
-      this.db.run(
+      await this.db.run(
         `INSERT INTO plans (id, name, site_limit, price)
          VALUES (?, ?, ?, ?)`,
         [id, name, siteLimit, price]
       );
 
-      const newPlan = this.db.get<Plan>(
+      const newPlan = await this.db.get<Plan>(
         'SELECT * FROM plans WHERE id = ?',
         [id]
       );
@@ -216,9 +214,9 @@ export class AccountService {
   /**
    * Get all plans (for admin/frontend usage)
    */
-  getAllPlans(): Plan[] {
+  async getAllPlans(): Promise<Plan[]> {
     try {
-      return this.db.all<Plan>('SELECT * FROM plans ORDER BY price ASC');
+      return await this.db.all<Plan>('SELECT * FROM plans ORDER BY price ASC');
     } catch (error) {
       console.error('Error getting all plans:', error);
       throw error;

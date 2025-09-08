@@ -44,7 +44,8 @@ async function startDevelopment() {
     // Find available ports (prefer AppRepository's suggestion if provided)
     const preferredFrontendPort = parseInt(process.env.PREFERRED_FRONTEND_PORT || '5173', 10);
     const frontendPort = await findAvailablePort(preferredFrontendPort);
-    const backendPort = await findAvailablePort(3000);
+    const backendPort = await findAvailablePort(process.env.PREFERRED_BACKEND_PORT || 3000);
+    const viteApiUrl = process.env.VITE_API_URL || `http://localhost:${backendPort}/api`;
     
     console.log(`📋 Port allocation:`);
     console.log(`   Frontend (Vite): http://localhost:${frontendPort}`);
@@ -57,8 +58,7 @@ async function startDevelopment() {
     // Start backend server
     const backendEnv = {
       ...process.env,
-      BACKEND_PORT: backendPort.toString(),
-      FRONTEND_PORT: frontendPort.toString(),
+      BACKEND_PORT: backendPort.toString()
     };
     
     const backend = spawn('npx', ['tsx', 'watch', 'src/backend/index.ts'], {
@@ -78,8 +78,7 @@ async function startDevelopment() {
     const frontendEnv = {
       ...process.env,
       PORT: frontendPort.toString(),
-      VITE_API_URL: `http://localhost:${backendPort}/api`,
-      VITE_BACKEND_PORT: backendPort.toString(),
+      VITE_API_URL: viteApiUrl
     };
     
     // Build Vite command arguments - add --host 0.0.0.0 when running in Docker
