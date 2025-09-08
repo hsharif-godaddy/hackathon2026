@@ -119,6 +119,19 @@ jobs:
         run: pnpm run lint
         working-directory: ${{ matrix.working-directory }}
 
+      - name: Run tests
+        run: |
+          if [ "${{ matrix.package }}" = "agents" ]; then
+            echo "🧪 Running unit tests with coverage..."
+            pnpm test:coverage:unit
+            echo "🔧 Running integration tests..."
+            pnpm test:integration
+          else
+            echo "⚠️ No tests configured yet, skipping..."
+          fi
+        working-directory: ${{ matrix.working-directory }}
+        continue-on-error: true
+
       - name: Run build
         run: pnpm run build
         working-directory: ${{ matrix.working-directory }}
