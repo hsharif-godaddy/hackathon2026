@@ -62,8 +62,8 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
         throw new Error(result.error || 'Failed to create dev app');
       }
 
-      // Step 3: Create app record in agents service (using port from result)
-      await this.createAgentApp(siteId, title || `App ${siteId}`, prompt, result.appPath || appPath);
+      // Step 3: Register app with agents service for AI assistance
+      await this.registerWithAgents(siteId, title || `App ${siteId}`, prompt, result.appPath || appPath);
 
       // Step 4: Start the app using Docker
       const started = await this.devEnvironmentManager.startDevServer(siteId);
@@ -253,51 +253,45 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   }
 
   /**
-   * Create app record in agents service
+   * Register app with agents service for AI assistance
    */
-  private async createAgentApp(siteId: string, name: string, initialPrompt: string, appPath: string): Promise<void> {
+  private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string): Promise<void> {
     try {
-      this.log('info', 'Creating app record in agents service', { siteId, name });
+      this.log('info', 'Registering app with agents service', { siteId, name });
       
-      const response = await fetch(`${this.agentsServiceUrl}/apps/create`, {
+      const response = await fetch(`${this.agentsServiceUrl}/apps/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          siteId,
           name,
-          initialPrompt,
-          siteId
+          appPath,
+          initialPrompt
         }),
         signal: AbortSignal.timeout(10000) // 10 second timeout
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        
-        // If the error is a duplicate app (UNIQUE constraint), check if the app already exists
-        if (response.status === 500 && errorText.includes('UNIQUE constraint failed: apps.id')) {
-          this.log('warn', 'App already exists in agents service, continuing', { siteId });
-          return; // Don't treat this as a failure
-        }
-        
-        throw new Error(`Failed to create app in agents service: ${response.status} ${errorText}`);
+        throw new Error(`Failed to register app with agents service: ${response.status} ${errorText}`);
       }
 
       const result = await response.json();
-      this.log('info', 'App record created in agents service', { 
+      this.log('info', 'App registered with agents service', { 
         siteId, 
-        agentAppId: result.app?.id,
         success: result.success 
       });
 
     } catch (error) {
-      this.log('error', 'Failed to create app record in agents service', {
+      this.log('warn', 'Failed to register app with agents service', {
         siteId,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
-      // Don't throw - this is not critical for Docker deployment
-      // The app can still run in Docker even if agents service creation fails
+      // Don't throw - agents registration is not critical for deployment
+      // The app can still run in Docker even if agents registration fails
     }
   }
+
 }

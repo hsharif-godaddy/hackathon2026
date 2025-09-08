@@ -51,13 +51,11 @@ router.get('/', (req: Request, res: Response) => {
  * GET /apps/servers - Get running development servers
  */
 router.get('/servers', async (req: Request, res: Response) => {
-  try {
-    const runningServers = await appRepo.getRunningServers();
-    return res.json({ servers: runningServers });
-  } catch (error) {
-    console.error('Error getting running servers:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
+  // Running servers are now managed by the main app service
+  return res.status(501).json({ 
+    error: 'Server listing has been moved to the main app service',
+    message: 'Use the main app API for server management operations'
+  });
 });
 
 /**
@@ -148,16 +146,79 @@ router.post('/create', async (req: Request, res: Response) => {
       siteId: siteId.trim()
     };
 
-    const app = await appRepo.create(data);
-    return res.status(201).json({ 
-      app,
-      // Pass through the AI name generation info from AppRepository
-      nameSuggested: app.nameSuggested || false,
-      originalName: app.originalName || data.name,
-      aiGeneratedName: app.aiGeneratedName
+    // App creation is now handled by the main app service
+    return res.status(501).json({ 
+      error: 'App creation has been moved to the main app service',
+      message: 'Use the main app API for app creation operations'
     });
   } catch (error) {
     console.error('Error creating app:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /register - Register an existing app from main service
+ */
+router.post('/register', async (req: Request, res: Response) => {
+  try {
+    const { siteId, name, appPath, port, initialPrompt } = req.body;
+
+    if (!siteId) {
+      return res.status(400).json({ error: 'siteId is required' });
+    }
+
+    console.log(`📝 Registering app ${siteId} in agents service`);
+
+    // Check if app already exists
+    const existingApp = appRepo.findById(siteId);
+    if (existingApp) {
+      console.log(`ℹ️ App ${siteId} already registered`);
+      return res.json({ 
+        success: true, 
+        message: 'App already registered',
+        app: existingApp 
+      });
+    }
+
+    // Create minimal app record for agents tracking
+    const now = new Date().toISOString();
+    const finalAppPath = appPath || (process.env.APPS_BASE_DIR ? `${process.env.APPS_BASE_DIR}/${siteId}` : `/tmp/apps/${siteId}`);
+    const finalPort = port || 3000;
+    const socketPath = `/tmp/dev-supervisor-${siteId}/dev-supervisor.sock`;
+    
+    const stmt = appRepo['db'].prepare(`
+      INSERT INTO apps (id, name, path, port, socket_path, initial_prompt, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    stmt.run(
+      siteId,
+      name || `App ${siteId}`,
+      finalAppPath,
+      finalPort,
+      socketPath,
+      initialPrompt || null,
+      'created',
+      now,
+      now
+    );
+
+    const app = appRepo.findById(siteId);
+    if (!app) {
+      throw new Error('Failed to create app record');
+    }
+
+    console.log(`✅ Registered app ${siteId} in agents service`);
+    
+    return res.status(201).json({ 
+      success: true, 
+      message: 'App registered successfully',
+      app 
+    });
+
+  } catch (error) {
+    console.error('Error registering app:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -177,11 +238,10 @@ router.post('/', async (req: Request, res: Response) => {
     // Trim whitespace
     data.name = data.name.trim();
 
-    const app = await appRepo.create(data);
-    return res.status(201).json({ 
-      app,
-      nameSuggested: app.name !== data.name, // Indicate if the name was changed by AI
-      originalName: data.name // Include the original name for reference
+    // App creation is now handled by the main app service
+    return res.status(501).json({ 
+      error: 'App creation has been moved to the main app service',
+      message: 'Use the main app API for app creation operations'
     });
   } catch (error) {
     console.error('Error creating app:', error);
@@ -253,13 +313,11 @@ router.post('/:id/stop', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'App ID is required' });
     }
     
-    const stopped = await appRepo.stopServer(id);
-    
-    if (!stopped) {
-      return res.status(404).json({ error: 'App not found or server not running' });
-    }
-
-    return res.json({ success: true, message: `Server stopped for app ${id}` });
+    // Server stopping is now handled by deployment adapters or main app service
+    return res.status(501).json({ 
+      error: 'Server stop operations have been moved to deployment adapters',
+      message: 'Direct server control is no longer available through agents API'
+    });
   } catch (error) {
     console.error('Error stopping server:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -289,64 +347,25 @@ router.post('/:id/ensure-running', async (req: Request, res: Response) => {
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
+    
+    console.log(`🔍 Checking app ${id} status...`);
 
-    console.log(`🔍 Ensuring app ${id} is running...`);
-
-    // Get current app status using adapter
+    // Get current app status
     const currentStatus = await appRepo.getAppStatus(id);
     console.log(`📊 App ${id} current status:`, currentStatus?.status);
 
-    if (currentStatus?.status === 'running') {
-      console.log(`✅ App ${id} is already running - no action needed`);
-      return res.json({ 
-        success: true, 
-        action: 'none',
-        status: 'running',
-        message: 'App is already running' 
-      });
-    }
-
-    // App needs to be started/restarted
-    let action = 'unknown';
-    let success = false;
-
-    if (!currentStatus || currentStatus.status === 'not_found' || currentStatus.status === 'container_missing') {
-      // App needs to be rebuilt/created
-      console.log(`🏗️ App ${id} needs to be built from scratch...`);
-      action = 'rebuild';
-      
-      if ((appRepo as any).isDockerMode()) {
-        success = await appRepo.rebuildAppContainer(id);
-      } else {
-        // For local mode, use restart server which handles both modes
-        success = await appRepo.restartServer(id);
+    // Just return the current status - no building or starting
+    return res.json({ 
+      success: true, 
+      status: currentStatus?.status || 'unknown',
+      message: currentStatus?.message || 'Status checked successfully',
+      app: {
+        id: app.id,
+        name: app.name,
+        path: app.path,
+        port: app.port
       }
-    } else {
-      // App just needs to be started/restarted
-      console.log(`🔄 App ${id} needs to be started...`);
-      action = 'start';
-      success = await appRepo.restartServer(id);
-    }
-
-    if (success) {
-      console.log(`✅ App ${id} ${action} completed successfully`);
-      // Wait a moment for the app to be ready
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      return res.json({ 
-        success: true, 
-        action,
-        status: 'running',
-        message: `App ${action === 'rebuild' ? 'rebuilt and started' : 'started'} successfully` 
-      });
-    } else {
-      console.error(`❌ Failed to ${action} app ${id}`);
-      return res.status(500).json({ 
-        error: `Failed to ${action} app`,
-        action,
-        status: 'error'
-      });
-    }
+    });
   } catch (error) {
     console.error('Error ensuring app is running:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -357,17 +376,11 @@ router.post('/:id/ensure-running', async (req: Request, res: Response) => {
  * POST /apps/stop-all - Stop all running development servers
  */
 router.post('/stop-all', async (req: Request, res: Response) => {
-  try {
-    const stoppedCount = await appRepo.stopAllServers();
-    return res.json({ 
-      success: true, 
-      message: `Stopped ${stoppedCount} server${stoppedCount !== 1 ? 's' : ''}`,
-      stoppedCount 
-    });
-  } catch (error) {
-    console.error('Error stopping all servers:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
+  // Server stopping is now handled by deployment adapters or main app service
+  return res.status(501).json({ 
+    error: 'Bulk server operations have been moved to deployment adapters',
+    message: 'Use the main app service or deployment adapter APIs for bulk operations'
+  });
 });
 
 /**
@@ -397,17 +410,11 @@ router.post('/:id/restart', async (req: Request, res: Response) => {
  * POST /apps/cleanup-orphans - Force cleanup of orphaned processes
  */
 router.post('/cleanup-orphans', async (req: Request, res: Response) => {
-  try {
-    const cleaned = await appRepo.forceCleanupOrphans();
-    return res.json({ 
-      success: true, 
-      message: `Cleaned up ${cleaned} orphaned process${cleaned !== 1 ? 'es' : ''}`,
-      cleanedCount: cleaned
-    });
-  } catch (error) {
-    console.error('Error cleaning up orphans:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
+  // Process cleanup is now handled by deployment adapters
+  return res.status(501).json({ 
+    error: 'Process cleanup operations have been moved to deployment adapters',
+    message: 'Use the deployment adapter APIs for process management'
+  });
 });
 
 /**
@@ -420,15 +427,10 @@ router.post('/:id/force-cleanup', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'App ID is required' });
     }
     
-    const cleaned = await appRepo.forceCleanupApp(id);
-    
-    if (!cleaned) {
-      return res.status(404).json({ error: 'App not found' });
-    }
-
-    return res.json({ 
-      success: true, 
-      message: `Force cleanup completed for app ${id}`
+    // App-specific cleanup is now handled by deployment adapters
+    return res.status(501).json({ 
+      error: 'App cleanup operations have been moved to deployment adapters',
+      message: 'Use the deployment adapter APIs for app-specific cleanup'
     });
   } catch (error) {
     console.error('Error force cleaning up app:', error);

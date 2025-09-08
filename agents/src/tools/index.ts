@@ -77,13 +77,9 @@ export type {
 } from './ast-text-editor.js';
 
 export type {
-  ServerStatusOptions,
   RestartServerOptions,
-
-  StopServerOptions,
   ServerStatusResult,
-  RestartServerResult,
-  StopServerResult
+  RestartServerResult
 } from './server-management-tool.js';
 
 export type {

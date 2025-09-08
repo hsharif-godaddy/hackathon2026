@@ -1,7 +1,5 @@
-import { spawn } from 'child_process';
-import { resolve, relative } from 'path';
-import { existsSync } from 'fs';
-// DevSupervisorClient functionality has been moved to the app service
+import { relative } from 'path';
+import { DevSupervisorClient, ExecOptions, ExecResult } from '../services/DevSupervisorClient.js';
 
 export interface CommandOverride {
   /** Pattern to match against (can be string or regex) */
@@ -50,24 +48,23 @@ export interface TerminalCommandResult {
 
 /**
  * Terminal Tool
- * Allows execution of shell commands within the app directory with safety restrictions
+ * Allows execution of shell commands within the app directory via dev-supervisor only
  */
 export class TerminalTool {
   private readonly DEFAULT_TIMEOUT = 30000; // 30 seconds
   private readonly MAX_TIMEOUT = 300000; // 5 minutes
   private readonly MAX_OUTPUT_LENGTH = 50000; // 50KB output limit
+  private devSupervisor: DevSupervisorClient | null;
 
-  constructor(socketPath?: string) {
-    // DevSupervisorClient functionality has been moved to the app service
-    // Terminal tool now operates without dev-supervisor integration
+  constructor(devSupervisor?: DevSupervisorClient) {
+    this.devSupervisor = devSupervisor || null;
   }
 
   /**
    * Check if dev-supervisor is available for command execution
    */
   isDevSupervisorAvailable(): boolean {
-    // Dev-supervisor functionality has been moved to the app service
-    return false;
+    return this.devSupervisor !== null && this.devSupervisor !== undefined;
   }
 
   /**
@@ -235,18 +232,22 @@ export class TerminalTool {
     // Validate command safety
     this.validateCommand(command);
 
-    // Validate working directory (needed for both execution paths)
+    // Validate working directory
     if (workingDir) {
       this.resolveWorkingDirectory(appPath, workingDir);
     }
 
-    // Check if we should use dev-supervisor
-    if (this.devSupervisor && this.isDevSupervisorAvailable()) {
-      return await this.executeWithDevSupervisor(command, originalCommand, appPath, workingDir, timeout, env, startTime);
+    // Check if dev-supervisor is available - throw error if not
+    if (!this.isDevSupervisorAvailable()) {
+      throw new Error(
+        'Terminal tool requires dev-supervisor to be available for command execution. ' +
+        'This typically means the system is not running in a containerized environment with dev-supervisor installed, ' +
+        'or the dev-supervisor socket is not accessible. For security reasons, direct command execution has been disabled.'
+      );
     }
 
-    // Fallback to direct execution
-    return await this.executeDirectly(command, originalCommand, appPath, workingDir, timeout, env, startTime);
+    // Execute using dev-supervisor
+    return await this.executeWithDevSupervisor(command, originalCommand, appPath, workingDir, timeout, env, startTime);
   }
 
   /**
@@ -264,7 +265,7 @@ export class TerminalTool {
     try {
       const actualTimeout = Math.min(Math.floor(timeout / 1000), Math.floor(this.MAX_TIMEOUT / 1000));
       
-      const execOptions: { command: string; timeout: number; capture_output: boolean; working_dir?: string } = {
+      const execOptions: ExecOptions = {
         command,
         timeout: actualTimeout,
         capture_output: true
@@ -274,7 +275,7 @@ export class TerminalTool {
         execOptions.working_dir = workingDir;
       }
       
-      const execResult = await this.devSupervisor!.exec(execOptions);
+      const execResult: ExecResult = await this.devSupervisor!.exec(execOptions);
 
       const result: TerminalCommandResult = {
         command,
@@ -293,14 +294,8 @@ export class TerminalTool {
 
       return result;
     } catch (error) {
-      // If dev-supervisor fails due to unavailability, fall back to direct execution
+      // Return error result for any dev-supervisor failures
       const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('not available at')) {
-        // Dev-supervisor is not running, fall back to direct execution
-        return await this.executeDirectly(command, originalCommand, appPath, workingDir, timeout, env, startTime);
-      }
-
-      // For other errors, return error result
       const result: TerminalCommandResult = {
         command,
         workingDir: workingDir || '.',
@@ -310,7 +305,7 @@ export class TerminalTool {
         success: false,
         executionTime: Date.now() - startTime,
         timedOut: false,
-        error: errorMessage,
+        error: `Dev-supervisor execution failed: ${errorMessage}`,
       };
 
       if (originalCommand !== command) {
@@ -321,59 +316,6 @@ export class TerminalTool {
     }
   }
 
-  /**
-   * Execute command directly (fallback method)
-   */
-  private async executeDirectly(
-    command: string,
-    originalCommand: string,
-    appPath: string,
-    workingDir: string,
-    timeout: number,
-    env: Record<string, string>,
-    startTime: number
-  ): Promise<TerminalCommandResult> {
-    // Resolve working directory (validation already done)
-    const resolvedWorkingDir = workingDir ? resolve(appPath, workingDir) : appPath;
-
-    // Prepare environment
-    const environment = {
-      ...process.env,
-      ...env,
-      // Ensure PATH is available
-      PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
-    };
-
-    const result: TerminalCommandResult = {
-      command,
-      workingDir: relative(appPath, resolvedWorkingDir),
-      exitCode: -1,
-      stdout: '',
-      stderr: '',
-      success: false,
-      executionTime: 0,
-      timedOut: false,
-    };
-    
-    if (originalCommand !== command) {
-      result.originalCommand = originalCommand;
-    }
-
-    try {
-      const actualTimeout = Math.min(timeout, this.MAX_TIMEOUT);
-      const commandResult = await this.runCommand(command, resolvedWorkingDir, environment, actualTimeout);
-      
-      Object.assign(result, commandResult);
-      result.executionTime = Date.now() - startTime;
-      result.success = result.exitCode === 0 && !result.timedOut;
-
-    } catch (error) {
-      result.error = error instanceof Error ? error.message : String(error);
-      result.executionTime = Date.now() - startTime;
-    }
-
-    return result;
-  }
 
   /**
    * Validate that the command is safe to execute
@@ -447,102 +389,16 @@ export class TerminalTool {
   /**
    * Resolve and validate the working directory
    */
-  private resolveWorkingDirectory(appPath: string, workingDir: string): string {
-    // Start with the app path
-    const resolvedPath = resolve(appPath, workingDir);
-
-    // Ensure the resolved path is within the app directory
-    if (!resolvedPath.startsWith(appPath)) {
-      throw new Error('Working directory must be within the app directory');
+  private resolveWorkingDirectory(appPath: string, workingDir: string): void {
+    // We just need to validate that the directory path is reasonable
+    // The actual path resolution is handled by dev-supervisor
+    if (workingDir.includes('..')) {
+      throw new Error('Working directory cannot contain ".." path segments');
     }
-
-    // Check if directory exists
-    if (!existsSync(resolvedPath)) {
-      throw new Error(`Working directory does not exist: ${workingDir || '.'}`);
+    
+    if (workingDir.startsWith('/')) {
+      throw new Error('Working directory must be relative to the app directory');
     }
-
-    return resolvedPath;
-  }
-
-  /**
-   * Execute the command using child_process
-   */
-  private runCommand(
-    command: string,
-    workingDir: string,
-    env: Record<string, string>,
-    timeout: number
-  ): Promise<Omit<TerminalCommandResult, 'command' | 'workingDir' | 'executionTime' | 'success'>> {
-    return new Promise((resolve) => {
-      let stdout = '';
-      let stderr = '';
-      let timedOut = false;
-
-      // Use shell to execute the command
-      const child = spawn('sh', ['-c', command], {
-        cwd: workingDir,
-        env,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-
-      // Set up timeout
-      const timeoutId = setTimeout(() => {
-        timedOut = true;
-        child.kill('SIGTERM');
-        
-        // Force kill after 5 seconds if still running
-        setTimeout(() => {
-          if (!child.killed) {
-            child.kill('SIGKILL');
-          }
-        }, 5000);
-      }, timeout);
-
-      // Collect stdout
-      child.stdout?.on('data', (data) => {
-        const sanitized = this.sanitizeOutput(data.toString());
-        stdout += sanitized;
-        // Prevent memory issues with very large outputs
-        if (stdout.length > this.MAX_OUTPUT_LENGTH) {
-          stdout = stdout.substring(0, this.MAX_OUTPUT_LENGTH) + '\n... (output truncated)';
-          child.kill('SIGTERM');
-        }
-      });
-
-      // Collect stderr
-      child.stderr?.on('data', (data) => {
-        const sanitized = this.sanitizeOutput(data.toString());
-        stderr += sanitized;
-        // Prevent memory issues with very large outputs
-        if (stderr.length > this.MAX_OUTPUT_LENGTH) {
-          stderr = stderr.substring(0, this.MAX_OUTPUT_LENGTH) + '\n... (error output truncated)';
-          child.kill('SIGTERM');
-        }
-      });
-
-      // Handle process completion
-      child.on('close', (code) => {
-        clearTimeout(timeoutId);
-        resolve({
-          exitCode: code || 0,
-          stdout: this.sanitizeOutput(stdout).trim(),
-          stderr: this.sanitizeOutput(stderr).trim(),
-          timedOut,
-        });
-      });
-
-      // Handle process errors
-      child.on('error', (error) => {
-        clearTimeout(timeoutId);
-        resolve({
-          exitCode: -1,
-          stdout: this.sanitizeOutput(stdout).trim(),
-          stderr: this.sanitizeOutput(error.message),
-          timedOut,
-          error: this.sanitizeOutput(error.message),
-        });
-      });
-    });
   }
 
   /**

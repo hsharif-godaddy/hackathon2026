@@ -70,7 +70,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
     pollingInterval: null,
     lastPollTime: null,
     maxRetries: 3,
-    pollingIntervalMs: 3000, // 3 seconds
+    pollingIntervalMs: 5000, // 5 seconds (reduced frequency)
     
     // Initialize site creation flow
     initializeSite: async (siteId: string) => {
@@ -232,12 +232,16 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
             console.log('✅ Agent endpoint verified! Starting name update...')
             await get()._updateSiteName()
           } else {
-            // Agent not ready yet, go back to polling
-            console.log('⏳ Agent endpoint not ready yet, resuming polling...')
+            // Agent not ready yet, wait longer before retrying (likely still registering)
+            console.log('⏳ Agent endpoint not ready yet, waiting 10 seconds before resuming polling...')
             set((state) => {
               state.phase = 'polling'
             })
-            get()._startPolling()
+            
+            // Wait 10 seconds before resuming polling to give agents service time to register
+            setTimeout(() => {
+              get()._startPolling()
+            }, 10000)
           }
         } else if (siteData.status === 'failed') {
           get()._stopPolling()
@@ -277,6 +281,9 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           const data = await response.json()
           console.log('✅ Agent endpoint responded:', data)
           return true
+        } else if (response.status === 404) {
+          console.log('⚠️ Agent endpoint not found (404) - likely still registering with agents service')
+          return false
         } else {
           console.log('⚠️ Agent endpoint returned non-OK status:', response.status, response.statusText)
           const errorText = await response.text().catch(() => 'Unable to read response')

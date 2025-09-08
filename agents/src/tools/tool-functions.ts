@@ -1,11 +1,12 @@
 import { DirectoryListingTool, DirectoryListingOptions } from './directory-listing.js';
 import { TerminalTool, TerminalCommandOptions } from './terminal.js';
+import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
 import { FileEditTool, FileEditOptions } from './file-edit.js';
 import { GitTool, GitToolOptions } from './git-tool.js';
 import { ReadFileTool, ReadFileOptions } from './read-file.js';
 import { GrepTool, GrepOptions, GrepOptionsSchema } from './grep-tool.js';
 import { MySQLTool, MySQLToolOptions } from './mysql-tool.js';
-import { ServerManagementTool, ServerStatusOptions, RestartServerOptions, StopServerOptions } from './server-management-tool.js';
+import { ServerManagementTool, RestartServerOptions } from './server-management-tool.js';
 import { createEnvManager } from './env-manager.js';
 import { createMySQLResponseFormatter } from './mysql-response-formatter.js';
 import { AutoAPIGenerator, AutoAPIGeneratorOptions } from './auto-api-generator.js';
@@ -741,10 +742,10 @@ export async function executeToolFunction(
       return await executeServerRestart(args as unknown as RestartServerOptions, context);
     
     case 'server_status':
-      return await executeServerStatus(args as unknown as ServerStatusOptions, context);
+      return await executeServerStatus(args as any, context);
     
     case 'server_stop':
-      return await executeServerStop(args as unknown as StopServerOptions, context);
+      return await executeServerStop(args as any, context);
     
     case 'auto_api_generator':
       return await executeAutoAPIGenerator(args as unknown as AutoAPIGeneratorOptions, context);
@@ -841,12 +842,19 @@ async function executeTerminalCommand(
     ]
   };
 
-  // Dev-supervisor functionality has been moved to the app service
-  // Terminal commands will run without dev-supervisor integration for now
-  const socketPath: string | undefined = undefined;
+  let devSupervisorClient: DevSupervisorClient | undefined;
+  
+  // Use the app's specific socket path if available
+  if (app.socketPath) {
+    // Check if the socket file exists before creating the client
+    const { existsSync } = await import('fs');
+    if (existsSync(app.socketPath)) {
+      devSupervisorClient = new DevSupervisorClient(app.socketPath);
+    }
+  }
 
-  // Create a TerminalTool instance with the appropriate socket path
-  const contextualTerminalTool = new TerminalTool(socketPath);
+  // Create a TerminalTool instance with the DevSupervisorClient (or undefined)
+  const contextualTerminalTool = new TerminalTool(devSupervisorClient);
 
   // Execute the command within the app's directory
   const result = await contextualTerminalTool.executeCommand(app.path, enhancedOptions);
@@ -1292,7 +1300,7 @@ async function executeServerRestart(
  * Execute server status check tool
  */
 async function executeServerStatus(
-  options: ServerStatusOptions,
+  options: any,
   context: AgentExecutionContext
 ): Promise<string> {
   // Get app ID from execution context
@@ -1305,7 +1313,7 @@ async function executeServerStatus(
   // Track tool execution
   await trackToolExecution('server_status', context, JSON.stringify(options).length);
 
-  const result = await serverTool.checkServerStatus({}, appId);
+  const result = await serverTool.checkServerStatus(appId);
   
   if (!result.success) {
     throw new Error(result.error || 'Failed to check server status');
@@ -1317,55 +1325,19 @@ async function executeServerStatus(
     response += `\n${result.message}`;
   }
 
-  if (result.details) {
-    response += `\nDetails:`;
-    if (result.details.port) {
-      response += `\n• Port: ${result.details.port}`;
-    }
-    if (result.details.url) {
-      response += `\n• URL: ${result.details.url}`;
-    }
-    if (result.details.isV3) {
-      response += `\n• Template: V3`;
-      if (result.details.backendPort) {
-        response += `\n• Backend Port: ${result.details.backendPort}`;
-      }
-    }
-  }
+  // Note: Detailed server information is now handled by deployment adapters
 
   return response;
 }
 
 /**
- * Execute server stop tool
+ * Execute server stop tool - DEPRECATED
  */
 async function executeServerStop(
-  options: StopServerOptions,
+  options: any,
   context: AgentExecutionContext
 ): Promise<string> {
-  // Get app ID from execution context
-  const appId = context.metadata?.appId as string;
-  
-  if (!appId) {
-    throw new Error('App ID is required for server stop - ensure agent is running in app context');
-  }
-
-  const { reason } = options;
-
-  // Track tool execution
-  await trackToolExecution('server_stop', context, JSON.stringify(options).length);
-
-  console.log(`🛑 Stopping server for app ${appId}${reason ? ` (Reason: ${reason})` : ''}`);
-
-  const result = await serverTool.stopServer({ 
-    ...(reason && { reason }) 
-  }, appId);
-  
-  if (!result.success) {
-    throw new Error(result.error || 'Failed to stop server');
-  }
-
-  return `✅ ${result.message}`;
+  throw new Error('Server stop functionality has been moved to deployment adapters. Direct server control is no longer available through the agents API.');
 }
 
 /**

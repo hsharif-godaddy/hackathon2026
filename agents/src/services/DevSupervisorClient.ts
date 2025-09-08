@@ -1,0 +1,488 @@
+import http from 'http';
+import { existsSync } from 'fs';
+import { Logger } from '../logging/index.js';
+import { getErrorMessage } from '../utils/error.js';
+
+export interface ExecOptions {
+  /** The command to execute */
+  command: string;
+  /** Working directory (optional) */
+  working_dir?: string;
+  /** Timeout in seconds (default: 30) */
+  timeout?: number;
+  /** Capture output (default: true) */
+  capture_output?: boolean;
+}
+
+export interface ExecResult {
+  /** The command that was executed */
+  command: string;
+  /** Exit code */
+  exit_code: number;
+  /** Standard output */
+  stdout: string;
+  /** Standard error */
+  stderr: string;
+  /** Execution time in milliseconds */
+  execution_time: number;
+  /** Whether the command succeeded */
+  success: boolean;
+}
+
+export interface ProcessStartOptions {
+  /** The command to start */
+  command: string;
+  /** Environment variables */
+  env?: Record<string, string>;
+  /** Working directory */
+  working_dir?: string;
+}
+
+export interface ProcessInfo {
+  /** Process ID */
+  pid: number;
+  /** Command being executed */
+  command: string;
+  /** Process state */
+  state: 'stopped' | 'starting' | 'running' | 'stopping' | 'error';
+  /** Start time */
+  start_time: string;
+  /** Exit code if stopped */
+  exit_code?: number;
+  /** Error message if failed */
+  error?: string;
+}
+
+export interface ProcessStopOptions {
+  /** Signal to send (default: SIGTERM) */
+  signal?: string;
+  /** Timeout in seconds (default: 30) */
+  timeout?: number;
+}
+
+export interface ProcessRestartOptions {
+  /** Graceful restart (default: true) */
+  graceful?: boolean;
+}
+
+export interface LogOptions {
+  /** Source filter (stdout, stderr) */
+  source?: string;
+  /** Number of lines to retrieve */
+  lines?: number;
+  /** Since timestamp (ISO 8601) */
+  since?: string;
+}
+
+export interface LogEntry {
+  /** Timestamp */
+  timestamp: string;
+  /** Source (stdout, stderr, system) */
+  source: string;
+  /** Log level */
+  level?: string;
+  /** Log message */
+  message: string;
+}
+
+export interface HealthCheckConfig {
+  /** Health check type */
+  type: 'command' | 'http' | 'tcp';
+  /** Command to execute (for command type) */
+  command?: string;
+  /** URL to check (for http type) */
+  url?: string;
+  /** Address to check (for tcp type) */
+  address?: string;
+  /** Check interval */
+  interval: string;
+  /** Check timeout */
+  timeout: string;  
+  /** Number of retries before failure */
+  retries?: number;
+  /** Failure threshold */
+  failure_threshold: number;
+  /** Success threshold */
+  success_threshold?: number;
+  /** Start period */
+  start_period?: string;
+}
+
+export interface RestartPolicy {
+  /** Enable restart policy */
+  enabled: boolean;
+  /** Maximum restarts in window */
+  max_restarts: number;
+  /** Restart window duration */
+  restart_window: string;
+  /** Backoff multiplier */
+  backoff_multiplier?: number;
+  /** Maximum backoff duration */
+  max_backoff?: string;
+  /** Initial delay */
+  initial_delay?: string;
+}
+
+export interface HealthStatus {
+  /** Health status */
+  status: 'healthy' | 'unhealthy' | 'starting' | 'disabled';
+  /** Status message */
+  message: string;
+  /** Last check time */
+  last_check: string;
+  /** Check duration */
+  duration: number;
+  /** Consecutive failures */
+  consecutive_failures: number;
+  /** Consecutive successes */
+  consecutive_successes: number;
+}
+
+export interface RestartStats {
+  /** Total restarts */
+  total_restarts: number;
+  /** Recent restarts in window */
+  recent_restarts: number;
+  /** Restart window */
+  restart_window: string;
+  /** Maximum restarts */
+  max_restarts: number;
+  /** Manual restarts */
+  manual_restarts?: number;
+}
+
+/**
+ * Client for communicating with dev-supervisor over Unix domain socket
+ */
+export class DevSupervisorClient {
+  private socketPath: string;
+  private logger: Logger;
+
+  constructor(socketPath: string) {
+    if (!socketPath) {
+      throw new Error('DevSupervisorClient requires an explicit socket path - no default allowed');
+    }
+    this.socketPath = socketPath;
+    this.logger = Logger.create({ service: 'dev-supervisor-client' });
+  }
+
+  /**
+   * Check if dev-supervisor is available
+   */
+  isAvailable(): boolean {
+    return existsSync(this.socketPath);
+  }
+
+  /**
+   * Execute a command via dev-supervisor
+   */
+  async exec(options: ExecOptions): Promise<ExecResult> {
+    this.logger.info('dev_supervisor.exec.begin', {
+      command: options.command,
+      working_dir: options.working_dir,
+      timeout: options.timeout
+    });
+
+    try {
+      const response = await this.makeRequest('POST', '/exec', {
+        command: options.command,
+        working_dir: options.working_dir,
+        timeout: options.timeout || 30,
+        capture_output: options.capture_output !== false
+      });
+
+      this.logger.info('dev_supervisor.exec.success', {
+        command: options.command,
+        exit_code: response.exit_code,
+        execution_time: response.execution_time
+      });
+
+      return response;
+    } catch (error) {
+      this.logger.error('dev_supervisor.exec.failure', {
+        command: options.command,
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Start a process via dev-supervisor
+   */
+  async startProcess(options: ProcessStartOptions): Promise<ProcessInfo> {
+    this.logger.info('dev_supervisor.process.start.begin', {
+      command: options.command,
+      working_dir: options.working_dir
+    });
+
+    try {
+      await this.makeRequest('POST', '/process/start', {
+        command: options.command,
+        env: options.env,
+        working_dir: options.working_dir
+      });
+
+      // Get the process status after starting
+      const status = await this.getProcessStatus();
+      
+      this.logger.info('dev_supervisor.process.start.success', {
+        command: options.command,
+        pid: status.pid,
+        state: status.state
+      });
+
+      return status;
+    } catch (error) {
+      this.logger.error('dev_supervisor.process.start.failure', {
+        command: options.command,
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Stop the current process
+   */
+  async stopProcess(options: ProcessStopOptions = {}): Promise<boolean> {
+    this.logger.info('dev_supervisor.process.stop.begin', {
+      signal: options.signal,
+      timeout: options.timeout
+    });
+
+    try {
+      await this.makeRequest('POST', '/process/stop', {
+        signal: options.signal || 'SIGTERM',
+        timeout: options.timeout || 30
+      });
+
+      this.logger.info('dev_supervisor.process.stop.success', {});
+      return true;
+    } catch (error) {
+      this.logger.error('dev_supervisor.process.stop.failure', {
+        error: getErrorMessage(error)
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Restart the current process
+   */
+  async restartProcess(options: ProcessRestartOptions = {}): Promise<boolean> {
+    this.logger.info('dev_supervisor.process.restart.begin', {
+      graceful: options.graceful
+    });
+
+    try {
+      await this.makeRequest('POST', '/process/restart', {
+        graceful: options.graceful !== false
+      });
+
+      this.logger.info('dev_supervisor.process.restart.success', {});
+      return true;
+    } catch (error) {
+      this.logger.error('dev_supervisor.process.restart.failure', {
+        error: getErrorMessage(error)
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Get current process status
+   */
+  async getProcessStatus(): Promise<ProcessInfo> {
+    try {
+      const response = await this.makeRequest('GET', '/process/status');
+      return response;
+    } catch (error) {
+      this.logger.error('dev_supervisor.process.status.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get logs from dev-supervisor
+   */
+  async getLogs(options: LogOptions = {}): Promise<LogEntry[]> {
+    try {
+      const params = new URLSearchParams();
+      if (options.source) params.set('source', options.source);
+      if (options.lines) params.set('lines', options.lines.toString());
+      if (options.since) params.set('since', options.since);
+
+      const url = `/logs${params.toString() ? '?' + params.toString() : ''}`;
+      const response = await this.makeRequest('GET', url);
+      
+      return response.logs || [];
+    } catch (error) {
+      this.logger.error('dev_supervisor.logs.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Configure health monitoring
+   */
+  async configureHealthCheck(healthCheck?: HealthCheckConfig, restartPolicy?: RestartPolicy): Promise<void> {
+    this.logger.info('dev_supervisor.health.configure.begin', {
+      health_check_type: healthCheck?.type,
+      restart_policy_enabled: restartPolicy?.enabled
+    });
+
+    try {
+      await this.makeRequest('PUT', '/health-config', {
+        health_check: healthCheck,
+        restart_policy: restartPolicy
+      });
+
+      this.logger.info('dev_supervisor.health.configure.success', {});
+    } catch (error) {
+      this.logger.error('dev_supervisor.health.configure.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get health status
+   */
+  async getHealthStatus(): Promise<HealthStatus> {
+    try {
+      const response = await this.makeRequest('GET', '/health-config/status');
+      return response;
+    } catch (error) {
+      this.logger.error('dev_supervisor.health.status.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get restart statistics
+   */
+  async getRestartStats(): Promise<RestartStats> {
+    try {
+      const response = await this.makeRequest('GET', '/health-config/restart-stats');
+      return response;
+    } catch (error) {
+      this.logger.error('dev_supervisor.health.restart_stats.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get system information
+   */
+  async getInfo(): Promise<any> {
+    try {
+      const response = await this.makeRequest('GET', '/info');
+      return response;
+    } catch (error) {
+      this.logger.error('dev_supervisor.info.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Health check for dev-supervisor itself
+   */
+  async healthCheck(): Promise<{ status: string; version: string; uptime: string }> {
+    try {
+      const response = await this.makeRequest('GET', '/health');
+      return response;
+    } catch (error) {
+      this.logger.error('dev_supervisor.health_check.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Make HTTP request to dev-supervisor over Unix socket
+   */
+  private makeRequest(method: string, path: string, data?: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const options: http.RequestOptions = {
+        socketPath: this.socketPath,
+        method,
+        path,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      };
+
+      const req = http.request(options, (res) => {
+        let body = '';
+        
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        
+        res.on('end', () => {
+          try {
+            const response = body ? JSON.parse(body) : {};
+            
+            if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+              resolve(response);
+            } else {
+              reject(new Error(`HTTP ${res.statusCode}: ${response.error || response.message || 'Request failed'}`));
+            }
+          } catch (error) {
+            reject(new Error(`Failed to parse response: ${body}`));
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        if ((error as any).code === 'ENOENT') {
+          reject(new Error(`dev-supervisor not available at ${this.socketPath}`));
+        } else {
+          reject(error);
+        }
+      });
+
+      if (data) {
+        req.write(JSON.stringify(data));
+      }
+      
+      req.end();
+    });
+  }
+}
+
+/**
+ * Check if dev-supervisor is available in the current environment
+ */
+export function isDevSupervisorAvailable(socketPath: string): boolean {
+  if (!socketPath) {
+    throw new Error('isDevSupervisorAvailable requires an explicit socket path - no default allowed');
+  }
+  return existsSync(socketPath);
+}
+
+/**
+ * Create a DevSupervisorClient instance if available
+ */
+export function createDevSupervisorClient(socketPath: string): DevSupervisorClient | null {
+  if (!socketPath) {
+    throw new Error('createDevSupervisorClient requires an explicit socket path - no default allowed');
+  }
+  if (isDevSupervisorAvailable(socketPath)) {
+    return new DevSupervisorClient(socketPath);
+  }
+  return null;
+}

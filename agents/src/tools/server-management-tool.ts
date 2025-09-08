@@ -1,39 +1,10 @@
 import { AppRepository } from '../database/index.js';
-
-export interface ServerStatusOptions {
-  /** No options needed - app ID comes from execution context */
-}
+import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
+import { existsSync } from 'fs';
 
 export interface RestartServerOptions {
   /** Optional reason for restart (for logging) */
   reason?: string;
-}
-
-
-
-export interface StopServerOptions {
-  /** Optional reason for stop (for logging) */
-  reason?: string;
-}
-
-export interface ServerStatusResult {
-  /** Whether the operation succeeded */
-  success: boolean;
-  /** App ID */
-  appId: string;
-  /** Current server status */
-  status: 'running' | 'stopped' | 'error' | 'not_found';
-  /** Additional status message */
-  message?: string;
-  /** Server details if running */
-  details?: {
-    port?: number;
-    url?: string;
-    isV3?: boolean;
-    backendPort?: number;
-  };
-  /** Error message if operation failed */
-  error?: string;
 }
 
 export interface RestartServerResult {
@@ -47,22 +18,22 @@ export interface RestartServerResult {
   error?: string;
 }
 
-
-
-export interface StopServerResult {
-  /** Whether the stop succeeded */
+export interface ServerStatusResult {
+  /** Whether the operation succeeded */
   success: boolean;
   /** App ID */
   appId: string;
-  /** Result message */
-  message: string;
-  /** Error message if stop failed */
+  /** Current server status */
+  status: 'running' | 'stopped' | 'error' | 'not_found';
+  /** Additional status message */
+  message?: string;
+  /** Error message if operation failed */
   error?: string;
 }
 
 /**
- * Tool for managing backend server operations
- * Provides restart, status check, and server management capabilities
+ * Tool for managing backend server operations via dev supervisor
+ * Focuses on restart operations and basic status checks through dev supervisor
  */
 export class ServerManagementTool {
   private appRepo: AppRepository;
@@ -72,11 +43,10 @@ export class ServerManagementTool {
   }
 
   /**
-   * Check the status of a server for a specific app
+   * Check basic server status via dev supervisor
    */
-  async checkServerStatus(options: ServerStatusOptions, appId: string): Promise<ServerStatusResult> {
+  async checkServerStatus(appId: string): Promise<ServerStatusResult> {
     try {
-
       // Check if app exists
       const app = this.appRepo.findById(appId);
       if (!app) {
@@ -88,39 +58,44 @@ export class ServerManagementTool {
         };
       }
 
-      // Get app status using the repository
-      const appStatus = await this.appRepo.getAppStatus(appId);
-      
-      if (!appStatus) {
+      // Use dev supervisor to check process status if socket is available
+      if (app.socketPath && existsSync(app.socketPath)) {
+        try {
+          const devSupervisor = new DevSupervisorClient(app.socketPath);
+          
+          // Try to execute a simple status command to see if dev server process is responsive
+          const result = await devSupervisor.exec({
+            command: 'ps aux | grep -E "(npm run dev|next dev|vite)" | grep -v grep || echo "NO_DEV_PROCESS"',
+            working_dir: app.path,
+            timeout: 5,
+            capture_output: true
+          });
+
+          const isRunning = result.exit_code === 0 && !result.stdout.includes('NO_DEV_PROCESS');
+          
+          return {
+            success: true,
+            appId,
+            status: isRunning ? 'running' : 'stopped',
+            message: isRunning ? 'Dev server process detected' : 'No dev server process found',
+          };
+        } catch (error) {
+          return {
+            success: true,
+            appId,
+            status: 'error',
+            message: 'Cannot communicate with dev supervisor',
+            error: error instanceof Error ? error.message : 'Unknown supervisor error',
+          };
+        }
+      } else {
         return {
           success: true,
           appId,
           status: 'stopped',
-          message: 'Server is not running',
+          message: 'Dev supervisor not available for this app',
         };
       }
-
-      // Check if server is in running servers list for additional details
-      const runningServers = await this.appRepo.getRunningServers();
-      const serverInfo = runningServers.find(server => server.appId === appId);
-
-      const result: ServerStatusResult = {
-        success: true,
-        appId,
-        status: appStatus.status === 'running' ? 'running' : 'stopped',
-        message: appStatus.message || 'Status retrieved successfully',
-      };
-
-      if (serverInfo) {
-        result.details = {
-          port: serverInfo.port,
-          url: serverInfo.url,
-          isV3: Boolean(serverInfo.isV3),
-          ...(serverInfo.backendPort !== undefined && { backendPort: serverInfo.backendPort }),
-        };
-      }
-
-      return result;
     } catch (error) {
       return {
         success: false,
@@ -132,7 +107,7 @@ export class ServerManagementTool {
   }
 
   /**
-   * Restart the development server for a specific app
+   * Restart the development server for a specific app via dev supervisor
    */
   async restartServer(options: RestartServerOptions, appId: string): Promise<RestartServerResult> {
     try {
@@ -151,7 +126,7 @@ export class ServerManagementTool {
 
       console.log(`🔄 ServerManagementTool: Restarting server for app ${appId}${reason ? ` (Reason: ${reason})` : ''}`);
 
-      // Use the existing restart server functionality
+      // Use AppRepository's restartServer which delegates to dev supervisor
       const restarted = await this.appRepo.restartServer(appId);
 
       if (restarted) {
@@ -180,130 +155,6 @@ export class ServerManagementTool {
         appId,
         message: 'Failed to restart server',
         error: errorMessage,
-      };
-    }
-  }
-
-
-
-  /**
-   * Stop the development server for a specific app
-   */
-  async stopServer(options: StopServerOptions, appId: string): Promise<StopServerResult> {
-    try {
-      const { reason } = options;
-
-      // Check if app exists
-      const app = this.appRepo.findById(appId);
-      if (!app) {
-        return {
-          success: false,
-          appId,
-          message: 'Failed to stop server',
-          error: `App with ID ${appId} not found`,
-        };
-      }
-
-      console.log(`🛑 ServerManagementTool: Stopping server for app ${appId}${reason ? ` (Reason: ${reason})` : ''}`);
-
-      // Use the existing stop server functionality
-      const stopped = await this.appRepo.stopServer(appId);
-
-      if (stopped) {
-        const message = `Server stopped successfully for app ${appId}`;
-        console.log(`✅ ${message}`);
-        return {
-          success: true,
-          appId,
-          message,
-        };
-      } else {
-        const message = `Server was not running for app ${appId}`;
-        console.log(`ℹ️ ${message}`);
-        return {
-          success: true,
-          appId,
-          message,
-        };
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error(`❌ ServerManagementTool: Error stopping server for app ${appId}:`, error);
-      return {
-        success: false,
-        appId,
-        message: 'Failed to stop server',
-        error: errorMessage,
-      };
-    }
-  }
-
-  /**
-   * Check if backend server is running for an app (convenience method)
-   */
-  async isServerRunning(appId: string): Promise<boolean> {
-    try {
-      const status = await this.checkServerStatus({}, appId);
-      return status.success && status.status === 'running';
-    } catch (error) {
-      console.error(`Error checking if server is running for app ${appId}:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Ensure server is running for an app (start if not running)
-   */
-  async ensureServerRunning(appId: string, reason?: string): Promise<RestartServerResult> {
-    try {
-      const isRunning = await this.isServerRunning(appId);
-      
-      if (isRunning) {
-        return {
-          success: true,
-          appId,
-          message: `Server is already running for app ${appId}`,
-        };
-      }
-
-      // Server is not running, restart it
-      return await this.restartServer({ 
-        reason: reason || 'Ensuring server is running' 
-      }, appId);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      return {
-        success: false,
-        appId,
-        message: 'Failed to ensure server is running',
-        error: errorMessage,
-      };
-    }
-  }
-
-  /**
-   * Get health status for a specific app server
-   */
-  async getServerHealth(appId: string): Promise<ServerStatusResult> {
-    try {
-      const status = await this.checkServerStatus({}, appId);
-      
-      if (!status.success || status.status !== 'running') {
-        return status;
-      }
-
-      // If we have server details, we can provide more health information
-      if (status.details?.url) {
-        status.message = `Server is healthy and accessible at ${status.details.url}`;
-      }
-
-      return status;
-    } catch (error) {
-      return {
-        success: false,
-        appId,
-        status: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
       };
     }
   }

@@ -16,6 +16,7 @@ export interface App {
   name: string;
   path: string;
   port: number;
+  socketPath?: string; // Path to dev-supervisor socket for this app
   initialPrompt?: string;
   templateVersion?: string; // v1, v2, v3, etc.
   status: 'creating' | 'created' | 'error';
@@ -151,6 +152,7 @@ function createAppsTable(db: Database): void {
       name TEXT NOT NULL,
       path TEXT NOT NULL,
       port INTEGER NOT NULL DEFAULT 5000,
+      socket_path TEXT,
       initial_prompt TEXT,
       template_version TEXT,
       status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'created', 'error')),
@@ -360,6 +362,13 @@ function applyMigrations(db: Database): void {
   // Add initial_build_complete column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN initial_build_complete BOOLEAN DEFAULT FALSE`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+  
+  // Add socket_path column if it doesn't exist (for existing databases)
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN socket_path TEXT`);
   } catch (err) {
     // Column might already exist, that's fine
   }

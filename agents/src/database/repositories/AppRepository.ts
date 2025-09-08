@@ -1,51 +1,25 @@
-import { nanoid } from 'nanoid';
-import { mkdirSync, rmSync, existsSync } from 'fs';
-import { spawn } from 'child_process';
+import { existsSync, rmSync } from 'fs';
 import path from 'path';
 import { getDatabase } from '../connection.js';
 import { GitUtils } from '../../utils/git.js';
-import type { App, CreateAppRequest, UpdateAppRequest } from '../schema.js';
-import { getNameSuggestionService } from '../../services/name-suggestion.js';
-import { Logger, log } from '../../logging/index.js';
+import type { App, UpdateAppRequest } from '../schema.js';
+import { DevSupervisorClient } from '../../services/DevSupervisorClient.js';
+import { Logger } from '../../logging/index.js';
 import { getErrorMessage } from '../../utils/error.js';
-import {
-  appRepositoryEvents,
-  appCreationEvents,
-  appNameEvents,
-  appDirectoryEvents,
-  appSetupEvents,
-  appServerEvents,
-  appLifecycleEvents,
-  appCleanupEvents
-} from '../../logging/events/index.js';
+import { appCleanupEvents } from '../../logging/events/index.js';
 
 export class AppRepository {
   private db = getDatabase();
   private gitUtils = new GitUtils();
   private logger = Logger.create({ service: 'app-repository' });
 
-  // Dev functionality has been moved to app service - these are now stubs
-  private initialized = true;
-  private portManager = { getNextAvailablePort: () => Promise.resolve(3000) };
-  private processService = {
-    isPortOccupied: () => Promise.resolve(false),
-    startDevServer: () => Promise.resolve(),
-    stopServer: () => Promise.resolve(true),
-    stopAllServers: () => Promise.resolve(0),
-    isServerRunning: () => false,
-    removeProcessRecord: () => {},
-    getProcessInfoForPort: () => Promise.resolve(null),
-    forceCleanupApp: () => Promise.resolve(true),
-    cleanup: () => Promise.resolve(),
-    forceCleanupOrphans: () => Promise.resolve(0),
-    getAppStatus: () => Promise.resolve({ status: 'created', message: 'App created' })
-  };
   private deploymentAdapter: any = null;
 
   // Helper function for Docker mode detection (stub)
   private isDockerMode(): boolean {
     return process.env.DOC_APPS === 'true';
   }
+
 
   /**
    * Initialize the repository (dev functionality moved to app service)
@@ -58,468 +32,9 @@ export class AppRepository {
     });
   }
 
-  /**
-   * Create a new app using siteId as identifier with predefined customer path
-   */
-  async create(data: CreateAppRequest): Promise<App> {
-    await this.initialize();
-    
-    if (!data.siteId) {
-      throw new Error('Site ID is required for app creation');
-    }
-    
-    const id = data.siteId;
-    const now = new Date().toISOString();
-    
-    // Create a logger for this specific app creation
-    const appLogger = this.logger.child({ appId: id, appName: data.name });
-    
-    const customerDataDir = process.env.APPS_BASE_DIR || '/tmp/apps';
-    let appPath = '';
-    if (process.env.NOMAD_TASK_NAME) {
-      appPath = customerDataDir;
-    } else {
-      appPath = path.join(customerDataDir, id);
-    }
-
-    let appName = data.name.trim();
-    let nameSuggested = false;
-    
-    if (data.initialPrompt) {
-      try {
-        const nameSuggestionService = getNameSuggestionService();
-        const suggestedName = await nameSuggestionService.suggestName(data.initialPrompt);
-        
-        if (suggestedName) {
-          appNameEvents.suggestSuccess(this.logger, {
-            appId: id,
-            originalName: data.name,
-            suggestedName,
-            hasPrompt: true
-          });
-          appName = suggestedName;
-          nameSuggested = true;
-        } else {
-          appNameEvents.suggestSuccess(this.logger, {
-            appId: id,
-            originalName: data.name,
-            hasPrompt: true
-          });
-        }
-      } catch (nameError) {
-        appNameEvents.suggestFailure(this.logger, nameError as Error, {
-          appId: id,
-          originalName: data.name
-        });
-      }
-    }
-    
-    // Assign an available port for the frontend
-    const port = await this.portManager.getNextAvailablePort();
-    
-    // Double-check the port is actually free
-    const isPortFree = !(await this.processService.isPortOccupied(port));
-    if (!isPortFree) {
-      throw new Error(`Port ${port} is already in use`);
-    }
-    
-    try {
-      // Save app to database (no directory creation or template copying)
-      this.db.exec('BEGIN TRANSACTION');
-      
-      try {
-        const stmt = this.db.prepare(`
-          INSERT INTO apps (id, name, path, port, initial_prompt, template_version, status, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        
-        // Use 'v3' as default template version since template is already present
-        const templateVersion = 'v3';
-        stmt.run(id, appName, appPath, port, data.initialPrompt || null, templateVersion, 'creating', now, now);
-        
-        // Verify the app record was inserted successfully
-        const verifyStmt = this.db.prepare('SELECT id FROM apps WHERE id = ?');
-        const appExists = verifyStmt.get(id);
-        if (!appExists) {
-          throw new Error(`Failed to insert app record for ${id}`);
-        }
-        
-        // Commit the transaction
-        this.db.exec('COMMIT');
-        
-        appLogger.info('App created successfully', {
-          appId: id,
-          name: appName,
-          path: appPath,
-          port,
-          templateVersion,
-          skipDirectoryCreation: true,
-          skipTemplateCopy: true
-        });
-        
-      } catch (dbError) {
-        this.db.exec('ROLLBACK');
-        throw dbError;
-      }
-
-      // Log app creation events
-      appCreationEvents.begin(appLogger, {
-        appId: id,
-        name: appName,
-        templateVersion: 'v3',
-        baseDir: customerDataDir,
-        port,
-        ...(data.initialPrompt && { initialPrompt: data.initialPrompt })
-      });
-
-      // Skip async setup since template is already present
-      // No need to run npm install etc.
-      
-      // Initialize Git repository after template copy
-      await this.initializeGitRepository(id, appPath, appName);
-      
-      // Update status to 'created' since we're skipping async setup
-      this.updateStatus(id, 'created');
-      appLogger.info('App status updated to created (no async setup required)', {
-        appId: id,
-        name: appName
-      });
-      
-      // Get the updated app AFTER status change
-      const app = this.findById(id)!;
-      
-      appCreationEvents.success(appLogger, {
-        appId: id,
-        name: appName,
-        templateVersion: 'v3',
-        baseDir: customerDataDir,
-        port,
-        duration: 0,
-        ...(data.initialPrompt && { initialPrompt: data.initialPrompt })
-      });
-      
-      // Extend the app object with AI name generation info
-      const result: App & { aiGeneratedName?: string; nameSuggested: boolean; originalName: string } = {
-        ...app,
-        nameSuggested,
-        originalName: data.name
-      };
-      
-      if (nameSuggested && appName) {
-        result.aiGeneratedName = appName;
-      }
-      
-      return result;
-      
-    } catch (error) {
-      appCreationEvents.failure(appLogger, error as Error, {
-        appId: id,
-        name: appName,
-        templateVersion: 'v3',
-        baseDir: customerDataDir,
-        port
-      });
-      
-      // Clean up database entry if app creation fails
-      try {
-        // Check if app was actually inserted into database before trying to delete
-        const existingApp = this.findById(id);
-        if (existingApp) {
-          const cleanupStmt = this.db.prepare('DELETE FROM apps WHERE id = ?');
-          cleanupStmt.run(id);
-          appLogger.info('Database cleanup completed after app creation failure');
-        }
-      } catch (cleanupError) {
-        log.error(appLogger, 'app.database.cleanup.failed', cleanupError);
-      }
-      
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to create app: ${errorMessage}`);
-    }
-  }
-
-  /**
-   * Run app setup asynchronously after database insert
-   */
-  private async runAppSetupAsync(id: string, appPath: string, port: number, appName: string): Promise<void> {
-    const setupLogger = this.logger.child({ appId: id, appName, port });
-    
-    try {
-      appSetupEvents.initBegin(setupLogger, {
-        appId: id
-      });
-      
-      // Run project setup (installs dependencies and configures registry)
-      await this.runProjectSetup(id, appPath);
-
-      // Initialize Git repository after template copy
-      await this.initializeGitRepository(id, appPath, appName);
-
-      // Wait a moment to ensure all setup is complete
-      appSetupEvents.initProgress(setupLogger, {
-        appId: id,
-        operation: 'setup' as const,
-        startTime: new Date().toISOString(),
-        duration: 0
-      });
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Start the development servers using the adapter
-      try {
-        if (this.deploymentAdapter && this.isDockerMode()) {
-          await this.deploymentAdapter.startApp(id);
-        } else {
-          appServerEvents.startBegin(setupLogger, {
-            appId: id,
-            port
-          });
-          await this.processService.startDevServer(id, appPath, port);
-          appServerEvents.startSuccess(setupLogger, {
-            appId: id,
-            processId: 0,
-            port,
-            protocol: 'http' as const,
-            startTime: new Date().toISOString(),
-            duration: 0
-          });
-        }
-      } catch (devServerError) {
-        appServerEvents.startFailure(setupLogger, devServerError as Error, {
-          appId: id,
-          port
-        });
-        // Don't fail app creation if dev servers fail to start
-      }
-      
-      // Update status to 'created' on success
-      this.updateStatus(id, 'created');
-      appSetupEvents.initSuccess(setupLogger, {
-        appId: id,
-        operation: 'setup' as const,
-        startTime: new Date().toISOString(),
-        duration: Date.now() - performance.now()
-      });
-      appLifecycleEvents.ready(setupLogger, {
-        appId: id,
-        newStatus: 'created',
-        duration: 0,
-        startTime: new Date().toISOString()
-      });
-      
-    } catch (error) {
-      // Update status to 'error' (error already logged in runProjectSetup with details)
-      try {
-        this.updateStatus(id, 'error');
-      } catch (updateError) {
-        // In test environments, database might not be available for async operations
-        // Log the error but don't throw to prevent unhandled rejections
-        this.logger.warn('app.status.update.async_failed', {
-          appId: id,
-          targetStatus: 'error',
-          error: getErrorMessage(updateError)
-        });
-      }
-    }
-  }
 
 
-  /**
-   * Run project setup script (configures registry and installs dependencies)
-   */
-  private async runProjectSetup(appId: string, appPath: string): Promise<void> {
-    try {
-      // Check if package.json exists
-      const packageJsonPath = path.join(appPath, 'package.json');
-      if (!existsSync(packageJsonPath)) {
-        this.logger.warn('app.setup.no_package_json', {
-          appId,
-          path: packageJsonPath
-        });
-        return;
-      }
 
-      // Check if setup script exists
-      const setupScriptPath = path.join(appPath, 'setup-project.sh');
-      if (existsSync(setupScriptPath)) {
-        appSetupEvents.initBegin(this.logger, {
-          appId
-        });
-        
-        // Run the setup script
-        const setupProcess = spawn('bash', [setupScriptPath], {
-          cwd: appPath,
-          stdio: 'pipe'
-        });
-
-        // Capture output for logging
-        let stdout = '';
-        let stderr = '';
-
-        setupProcess.stdout?.on('data', (data) => {
-          stdout += data.toString();
-        });
-
-        setupProcess.stderr?.on('data', (data) => {
-          stderr += data.toString();
-        });
-
-        // Wait for setup to complete
-        await new Promise<void>((resolve, reject) => {
-          setupProcess.on('close', (code) => {
-            if (code === 0) {
-              appSetupEvents.initSuccess(this.logger, {
-                appId,
-                operation: 'setup',
-                startTime: new Date().toISOString(),
-                duration: 0
-              });
-              resolve();
-            } else {
-              const error = new Error(`Project setup failed with code ${code}`);
-              appSetupEvents.initFailure(this.logger, error, {
-                appId,
-                operation: 'setup',
-                exitCode: code ?? undefined,
-                stdout: stdout.trim(),
-                stderr: stderr.trim(),
-                command: 'bash setup-project.sh'
-              });
-              reject(new Error(`Project setup failed with code ${code}`));
-            }
-          });
-
-          setupProcess.on('error', (error) => {
-            appSetupEvents.initFailure(this.logger, error, {
-              appId,
-              operation: 'setup',
-              stdout: stdout.trim(),
-              stderr: stderr.trim(),
-              command: 'bash setup-project.sh'
-            });
-            reject(error);
-          });
-        });
-
-      } else {
-        // Fallback to manual dependency installation
-        this.logger.info('app.setup.fallback_manual', { appId, path: appPath });
-        await this.installDependenciesManual(appId, appPath);
-      }
-
-    } catch (error) {
-      throw new Error(`Failed to run project setup: ${getErrorMessage(error)}`);
-    }
-  }
-
-  /**
-   * Manual dependency installation (fallback when setup script is not available)
-   */
-  private async installDependenciesManual(appId: string, appPath: string): Promise<void> {
-    try {
-      // Check if pnpm is available, fallback to npm (handled by ProcessService)
-      const packageManager = 'pnpm'; // ProcessService will detect this
-      
-      appSetupEvents.initProgress(this.logger, {
-        appId,
-        operation: 'install',
-        startTime: new Date().toISOString(),
-        duration: 0
-      });
-
-      // Configure registry first
-      const configArgs = packageManager === 'pnpm' 
-        ? ['config', 'set', 'registry', 'https://registry.npmjs.org/', '--location', 'project']
-        : ['config', 'set', 'registry', 'https://registry.npmjs.org/', '--location', 'project'];
-
-      const configProcess = spawn(packageManager, configArgs, {
-        cwd: appPath,
-        stdio: 'pipe'
-      });
-      
-      await new Promise<void>((resolve, _reject) => {
-        configProcess.on('close', (code) => {
-          if (code === 0) {
-            this.logger.debug('app.setup.registry_configured', {
-              appId,
-              packageManager
-            });
-            resolve();
-          } else {
-            this.logger.warn('app.setup.registry_failed', {
-              appId,
-              packageManager
-            });
-            resolve(); // Don't fail on registry config
-          }
-        });
-
-        configProcess.on('error', (error) => {
-          this.logger.warn('app.setup.registry_error', {
-            appId,
-            packageManager,
-            error: error.message
-          });
-          resolve(); // Don't fail on registry config
-        });
-      });
-
-      // Run package manager install with explicit registry
-      const installArgs = packageManager === 'pnpm'
-        ? ['install', '--registry', 'https://registry.npmjs.org/']
-        : ['install', '--registry', 'https://registry.npmjs.org/'];
-
-      const installProcess = spawn(packageManager, installArgs, {
-        cwd: appPath,
-        stdio: 'pipe'
-      });
-
-      // Capture output for logging (not used but kept for potential future logging)
-      installProcess.stdout?.on('data', (_data) => {
-        // stdout logging could be added here
-      });
-
-      installProcess.stderr?.on('data', (_data) => {
-        // stderr logging could be added here
-      });
-
-      // Wait for install to complete
-      await new Promise<void>((resolve, reject) => {
-        installProcess.on('close', (code) => {
-          if (code === 0) {
-            appSetupEvents.initSuccess(this.logger, {
-              appId,
-              operation: 'install',
-              startTime: new Date().toISOString(),
-              duration: 0
-            });
-            resolve();
-          } else {
-            const installError = new Error(`${packageManager} install failed with code ${code}`);
-            appSetupEvents.initFailure(this.logger, installError, {
-              appId,
-              operation: 'install'
-            });
-            reject(new Error(`${packageManager} install failed with code ${code}`));
-          }
-        });
-
-        installProcess.on('error', (error) => {
-          appSetupEvents.initFailure(this.logger, error, {
-            appId,
-            operation: 'install'
-          });
-          reject(error);
-        });
-      });
-
-    } catch (error) {
-      appSetupEvents.initFailure(this.logger, new Error(`Failed to install dependencies: ${error}`), {
-        appId,
-        operation: 'install'
-      });
-      throw new Error(`Failed to install dependencies: ${error}`);
-    }
-  }
 
   /**
    * Initialize Git repository for a new app
@@ -597,7 +112,7 @@ export class AppRepository {
    */
   findById(id: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, initial_prompt, status, created_at, updated_at
+      SELECT id, name, path, port, socket_path, initial_prompt, template_version, status, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE id = ?
     `);
@@ -610,7 +125,9 @@ export class AppRepository {
       name: row.name,
       path: row.path,
       port: row.port,
+      socketPath: row.socket_path,
       initialPrompt: row.initial_prompt,
+      templateVersion: row.template_version,
       status: row.status,
       initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
@@ -623,7 +140,7 @@ export class AppRepository {
    */
   findAll(limit = 50, offset = 0): App[] {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, initial_prompt, status, created_at, updated_at
+      SELECT id, name, path, port, socket_path, initial_prompt, template_version, status, initial_build_complete, created_at, updated_at
       FROM apps
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -636,7 +153,9 @@ export class AppRepository {
       name: row.name,
       path: row.path,
       port: row.port,
+      socketPath: row.socket_path,
       initialPrompt: row.initial_prompt,
+      templateVersion: row.template_version,
       status: row.status,
       initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
@@ -758,8 +277,7 @@ export class AppRepository {
     const app = this.findById(id);
     if (!app) return false;
 
-    // Stop the development server if running
-    await this.stopServer(id);
+    // Server stopping is now handled by deployment adapters
 
     // Remove deployment artifacts (containers, images, etc.)
     if (this.deploymentAdapter) {
@@ -835,125 +353,14 @@ export class AppRepository {
   /**
    * Get running development servers
    */
-  async getRunningServers(): Promise<Array<{ appId: string; port: number; url: string; isV3?: boolean; backendPort?: number }>> {
-    // Ensure this repository is initialized
-    await this.initialize();
 
-    // If in Docker mode, use the adapter
-    if (this.deploymentAdapter && this.isDockerMode()) {
-      try {
-        const dockerServers = await this.deploymentAdapter.getRunningServers();
-        return dockerServers.map(server => {
-          const isV3 = this.isV3TemplateById(server.appId);
-          const result: { appId: string; port: number; url: string; isV3?: boolean; backendPort?: number } = {
-            appId: server.appId,
-            port: server.port,
-            url: server.url,
-          };
-          
-          if (isV3) {
-            result.isV3 = true;
-            result.backendPort = 3000;
-          }
-          
-          return result;
-        });
-      } catch (error) {
-        this.logger.error('app.server.get_running.adapter_failed', {
-          adapterType: 'docker',
-          error: getErrorMessage(error)
-        });
-        return [];
-      }
-    }
 
-    // Local mode - use existing logic
-    const runningApps: Array<{ appId: string; port: number; url: string; isV3?: boolean; backendPort?: number }> = [];
-    
-    // Use database records as the source of truth
-    const stmt = this.db.prepare('SELECT * FROM running_processes WHERE status = ?');
-    const runningRecords = stmt.all('running') as any[];
-    
-    for (const record of runningRecords) {
-      const app = this.findById(record.app_id);
-      if (app) {
-        const isV3 = this.isV3Template(app.path);
-        const backendPort = isV3 ? (record.port === 5173 ? 3000 : record.port + 1000) : undefined;
-        
-        runningApps.push({
-          appId: record.app_id,
-          port: record.port,
-          url: `http://localhost:${record.port}`,
-          isV3,
-          backendPort,
-        });
-      }
-    }
-    
-    return runningApps;
-  }
-
-  /**
-   * Stop development server for an app (public method)
-   */
-  async stopServer(appId: string): Promise<boolean> {
-    // Ensure this repository is initialized
-    await this.initialize();
-    
-    // Use adapter if in Docker mode
-    if (this.deploymentAdapter && this.isDockerMode()) {
-      try {
-        this.logger.info('app.server.stop.docker.begin', {
-          appId,
-          adapterType: 'docker'
-        });
-        return await this.deploymentAdapter.stopApp(appId);
-      } catch (error) {
-        this.logger.error('app.server.stop.docker.failed', {
-          appId,
-          adapterType: 'docker',
-          error: getErrorMessage(error)
-        });
-        return false;
-      }
-    }
-
-    // Local process management
-    return await this.processService.stopServer(appId);
-  }
-
-  /**
-   * Stop all running development servers
-   */
-  async stopAllServers(): Promise<number> {
-    // Ensure this repository is initialized
-    await this.initialize();
-
-    // If in Docker mode, use the adapter
-    if (this.deploymentAdapter && this.isDockerMode()) {
-      try {
-        return await this.deploymentAdapter.stopAllServers();
-      } catch (error) {
-        this.logger.error('app.server.stop_all.adapter_failed', {
-          adapterType: 'docker',
-          error: getErrorMessage(error)
-        });
-        return 0;
-      }
-    }
-
-    // Local mode - use existing logic
-    return await this.processService.stopAllServers();
-  }
 
 
   /**
    * Restart development server for an app
    */
   async restartServer(appId: string): Promise<boolean> {
-    // Ensure this repository is initialized
-    await this.initialize();
-    
     const app = this.findById(appId);
     if (!app) {
       return false;
@@ -981,94 +388,42 @@ export class AppRepository {
       }
     }
 
-    // Local process management - Stop the current server if running
-    const wasRunning = await this.stopServer(appId);
-
-    if (wasRunning) {
-      // Wait longer for the process to fully terminate and port to be released
-      this.logger.info('app.server.restart.wait_terminate', {
+    // Use dev supervisor for restart in local mode
+    if (app.socketPath && existsSync(app.socketPath)) {
+      try {
+        const devSupervisor = new DevSupervisorClient(app.socketPath);
+        
+        this.logger.info('app.server.restart.devsupervisor.begin', {
         appId,
-        waitDuration: 3000
-      });
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Double-check that the port is actually free
-      const isPortFree = !(await this.processService.isPortOccupied(app.port));
-      if (!isPortFree) {
-        this.logger.warn('app.server.restart.port_still_occupied', {
-          appId,
-          port: app.port
+          socketPath: app.socketPath
         });
-        
-        // Get debug info about what's using the port
-        const portInfo = await this.processService.getProcessInfoForPort(app.port);
-        if (portInfo) {
-          this.logger.debug('app.server.restart.port_info', {
-            appId,
-            port: app.port,
-            portInfo
-          });
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Final check
-        const finalPortCheck = !(await this.processService.isPortOccupied(app.port));
-        if (!finalPortCheck) {
-          this.logger.warn('app.server.restart.force_cleanup', {
-            appId,
-            port: app.port
-          });
-          await this.processService.forceCleanupApp(appId);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // One more port check after force cleanup
-          const finalCheckAfterCleanup = !(await this.processService.isPortOccupied(app.port));
-          if (!finalCheckAfterCleanup) {
-            this.logger.error('app.server.restart.port_cleanup_failed', {
-              appId,
-              port: app.port
-            });
-            
-            // Get final debug info
-            const finalPortInfo = await this.processService.getProcessInfoForPort(app.port);
-            if (finalPortInfo) {
-              this.logger.debug('app.server.restart.final_port_info', {
-                appId,
-                port: app.port,
-                portInfo: finalPortInfo
-              });
-            }
-            
-            throw new Error(`Port ${app.port} is still occupied after force cleanup`);
-          }
-        }
-      }
-      
-      // Also verify the database record was updated
-      if (this.processService.isServerRunning(appId)) {
-        this.logger.warn('app.server.restart.database_cleanup', {
-          appId
-        });
-        this.processService.removeProcessRecord(appId);
-      }
-    }
 
-    // Start the server again using the adapter (for local mode)
-    try {
-      if (this.deploymentAdapter) {
-        await this.deploymentAdapter.startApp(appId);
+        // Dev supervisor handles the restart logic internally
+        const result = await devSupervisor.exec({
+          command: 'npm run dev', // or appropriate restart command
+          working_dir: app.path,
+          timeout: 30,
+          capture_output: true
+        });
+
+        this.logger.info('app.server.restart.success', {
+            appId,
+          exitCode: result.exit_code
+        });
+        
+        return result.exit_code === 0;
+      } catch (error) {
+        this.logger.error('app.server.restart.devsupervisor.failed', {
+            appId,
+          error: getErrorMessage(error)
+        });
+        return false;
+      }
       } else {
-        await this.processService.startDevServer(appId, app.path, app.port);
-      }
-      this.logger.info('app.server.restart.success', {
-        appId
-      });
-      return true;
-    } catch (error) {
-      this.logger.error('app.server.restart.failed', {
+      this.logger.warn('app.server.restart.no_supervisor', {
         appId,
-        error: getErrorMessage(error)
+        socketPath: app.socketPath,
+        socketExists: app.socketPath ? existsSync(app.socketPath) : false
       });
       return false;
     }
@@ -1084,59 +439,6 @@ export class AppRepository {
   }
 
   /**
-   * Cleanup all running processes gracefully
-   */
-  async cleanup(): Promise<void> {
-    const runningServers = await this.getRunningServers();
-    this.logger.info('app.cleanup.begin', {
-      serverCount: runningServers.length
-    });
-    
-    // Delegate to ProcessService
-    await this.processService.cleanup();
-  }
-
-  /**
-   * Force cleanup of all orphaned processes by scanning the database
-   */
-  async forceCleanupOrphans(): Promise<number> {
-    // Ensure this repository is initialized
-    await this.initialize();
-
-    // If in Docker mode, use the adapter
-    if (this.deploymentAdapter && this.isDockerMode()) {
-      try {
-        this.logger.info('app.cleanup.orphans.docker.begin', {
-          adapterType: 'docker'
-        });
-        const result = await this.deploymentAdapter.cleanupOrphans();
-        this.logger.info('app.cleanup.orphans.docker.success', {
-          adapterType: 'docker',
-          message: result.message,
-          cleaned: result.cleaned
-        });
-        return result.cleaned;
-      } catch (error) {
-        this.logger.error('app.cleanup.orphans.docker.failed', {
-          adapterType: 'docker',
-          error: getErrorMessage(error)
-        });
-        return 0;
-      }
-    }
-
-    // Local mode - delegate to ProcessService
-    return await this.processService.forceCleanupOrphans();
-  }
-
-  /**
-   * Force cleanup processes for a specific app
-   */
-  async forceCleanupApp(appId: string): Promise<boolean> {
-    return await this.processService.forceCleanupApp(appId);
-  }
-
-  /**
    * Adapter-specific methods (Docker container operations)
    * These methods delegate to the deployment adapter when available
    */
@@ -1148,8 +450,8 @@ export class AppRepository {
     if (this.deploymentAdapter && this.isDockerMode()) {
       return this.deploymentAdapter.getAppStatus(appId);
     }
-    // Fallback to local process status
-    return this.processService.getAppStatus(appId);
+    // Fallback to basic status (local process management removed)
+    return { status: 'created', message: 'App exists in database' };
   }
 
   async getAppLogs(appId: string): Promise<string[]> {
@@ -1178,10 +480,10 @@ export class AppRepository {
   }
 
   getAdapterInfo() {
-    const adapterType = isDockerMode() ? 'Docker' : 'Local';
+    const adapterType = this.isDockerMode() ? 'Docker' : 'Local';
     return {
       type: adapterType,
-      isInitialized: this.initialized,
+      isInitialized: true, // Always initialized now
       capabilities: this.deploymentAdapter?.getCapabilities() || null,
       environmentVariable: process.env.DOC_APPS || 'unset (defaults to Local)'
     };

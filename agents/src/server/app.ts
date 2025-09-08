@@ -162,11 +162,7 @@ async function shutdown() {
   console.log('🛑 Shutting down gracefully...');
   
   try {
-    // Cleanup AppRepository first (stop dev servers)
-    const appRepo = new AppRepository();
-    await appRepo.cleanup();
-    
-    // Then cleanup agent registry
+    // Cleanup agent registry (app cleanup now handled by main app service)
     const registry = AgentRegistry.getInstance();
     await registry.cleanup();
     
