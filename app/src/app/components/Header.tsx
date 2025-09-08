@@ -1,7 +1,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { UserMenu } from '@/components/auth'
-import { HeaderProps } from './types'
+import { HeaderProps } from '@/components/layout/types'
 
 export default function Header({ actions, className = "" }: HeaderProps) {
   return (

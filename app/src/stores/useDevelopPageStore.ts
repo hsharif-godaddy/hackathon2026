@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import { appService } from '@/services/AppService'
+import { appService, type App } from '@/services/AppService'
+import { type Site, useSiteStore } from '@/stores/useSiteStore'
+import { useMessagesStore } from '@/stores/useMessagesStore'
 
 interface GitCommit {
   hash: string
@@ -9,6 +11,9 @@ interface GitCommit {
   author: string
   date: string
 }
+
+// Loading phases for proper sequencing
+type LoadingPhase = 'idle' | 'loading-app' | 'loading-site' | 'loading-conversations' | 'ready'
 
 interface DevelopPageStore {
   // UI states
@@ -30,6 +35,14 @@ interface DevelopPageStore {
   commitHistory: GitCommit[]
   isLoadingCommits: boolean
   
+  // Page loading orchestration
+  loadingPhase: LoadingPhase
+  currentAppId: string | null
+  app: App | null
+  site: Site | null
+  loadingError: string | null
+  autoSendTriggered: boolean
+  
   // UI setters
   setViewMode: (mode: 'preview' | 'code') => void
   setPreviewViewMode: (mode: 'desktop' | 'mobile') => void
@@ -39,6 +52,11 @@ interface DevelopPageStore {
   setHasUnsavedChanges: (hasChanges: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
   setSelectedCommit: (commit: GitCommit | null) => void
+  
+  // Page loading orchestration
+  initializePage: (appId: string) => Promise<void>
+  evaluateInitialActions: () => Promise<void>
+  resetForNewApp: (appId: string) => void
   
   // Coordinated actions (call domain stores + manage UI state)
   restartApp: (appId: string, appStoreRestartApp: (appId: string) => Promise<void>) => Promise<void>
@@ -70,6 +88,14 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     commitHistory: [],
     isLoadingCommits: false,
     
+    // Page loading orchestration state
+    loadingPhase: 'idle',
+    currentAppId: null,
+    app: null,
+    site: null,
+    loadingError: null,
+    autoSendTriggered: false,
+    
     // UI setters
     setViewMode: (mode) => set((state) => { state.viewMode = mode }),
     setPreviewViewMode: (mode) => set((state) => { state.previewViewMode = mode }),
@@ -79,6 +105,130 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
     setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),
     setSelectedCommit: (commit) => set((state) => { state.selectedCommit = commit }),
+    
+    // Page loading orchestration
+    resetForNewApp: (appId: string) => {
+      console.log('🔄 Resetting develop page store for new app:', appId)
+      set((state) => {
+        state.currentAppId = appId
+        state.loadingPhase = 'idle'
+        state.app = null
+        state.site = null
+        state.loadingError = null
+        state.autoSendTriggered = false
+        state.selectedCommit = null
+        state.commitHistory = []
+        state.hasUnsavedChanges = false
+      })
+    },
+
+    initializePage: async (appId: string) => {
+      const state = get()
+      
+      // Prevent duplicate initialization
+      if (state.currentAppId === appId && state.loadingPhase !== 'idle') {
+        console.log('🛑 Page already initializing/initialized for:', appId)
+        return
+      }
+
+      console.log('🚀 Starting page initialization for:', appId)
+      get().resetForNewApp(appId)
+
+      try {
+        // Phase 1: Load app data
+        set((state) => { state.loadingPhase = 'loading-app' })
+        console.log('📱 Loading app data...')
+        
+        const [appData, configData] = await Promise.all([
+          appService.getApp(appId),
+          appService.getConfig(appId)
+        ])
+        
+        set((state) => { 
+          state.app = appData.app
+        })
+        console.log('✅ App data loaded:', appData.app.name)
+
+        // Phase 2: Load site data
+        set((state) => { state.loadingPhase = 'loading-site' })
+        console.log('🌐 Loading site data...')
+        
+        const siteStore = useSiteStore.getState()
+        const site = await siteStore.fetchSite(appId)
+        
+        set((state) => { 
+          state.site = site
+        })
+        console.log('✅ Site data loaded:', site?.name || 'unknown')
+
+        // Phase 3: Load conversations with proper context
+        set((state) => { state.loadingPhase = 'loading-conversations' })
+        console.log('💬 Loading conversations...')
+        
+        const messagesStore = useMessagesStore.getState()
+        await messagesStore.initializeConversations(appId, {
+          appData: appData.app ? { initialBuildComplete: appData.app.initialBuildComplete } : undefined,
+          siteData: site ? { initial_prompt: site.initial_prompt, status: site.status } : undefined
+        })
+        console.log('✅ Conversations loaded')
+
+        // Phase 4: Evaluate initial actions (auto-send, etc.)
+        set((state) => { state.loadingPhase = 'ready' })
+        await get().evaluateInitialActions()
+        
+        console.log('✅ Page initialization complete for:', appId)
+
+      } catch (error) {
+        console.error('❌ Page initialization failed:', error)
+        set((state) => {
+          state.loadingPhase = 'idle'
+          state.loadingError = error instanceof Error ? error.message : String(error)
+        })
+        throw error
+      }
+    },
+
+    evaluateInitialActions: async () => {
+      const state = get()
+      const { app, site, autoSendTriggered } = state
+      
+      console.log('🔍 Evaluating initial actions:', {
+        hasApp: !!app,
+        hasSite: !!site,
+        hasInitialPrompt: !!site?.initial_prompt,
+        siteStatus: site?.status,
+        initialBuildComplete: app?.initialBuildComplete,
+        autoSendTriggered
+      })
+
+      // Only auto-send for incomplete builds with no existing conversations
+      const messagesStore = useMessagesStore.getState()
+      const shouldAutoSend = 
+        site?.initial_prompt &&
+        site.status === 'running' &&
+        app &&
+        !app.initialBuildComplete &&
+        messagesStore.conversations.length === 0 &&
+        !autoSendTriggered
+
+      if (shouldAutoSend) {
+        const promptPreview = site.initial_prompt?.trim() 
+          ? site.initial_prompt.substring(0, 50) + (site.initial_prompt.length > 50 ? '...' : '')
+          : '[empty prompt]'
+        console.log('🚀 Auto-sending initial prompt:', promptPreview)
+        set((state) => { state.autoSendTriggered = true })
+        
+        try {
+          await messagesStore.handleSendMessage(site.initial_prompt)
+          console.log('✅ Initial prompt auto-sent successfully')
+        } catch (error) {
+          console.error('❌ Failed to auto-send initial prompt:', error)
+          set((state) => { state.autoSendTriggered = false })
+        }
+      } else {
+        console.log('✅ No auto-send needed - conditions not met')
+      }
+    },
     
     // Coordinated actions
     restartApp: async (appId: string, appStoreRestartApp: (appId: string) => Promise<void>) => {

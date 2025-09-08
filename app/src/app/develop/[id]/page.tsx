@@ -11,13 +11,13 @@ import {
   cleanup as cleanupMessageService
 } from '@/app/develop/components/messageService'
 import { ProtectedRoute } from '@/components/auth'
-import { appService, App } from '@/services/AppService'
+import { appService } from '@/services/AppService'
 import { useMessagesStore, cleanupMessagesStore } from '@/stores/useMessagesStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitHistory } from '@/hooks/useGitHistory'
-import { useAppStore, AppStatus } from '@/stores/useAppStore'
+import { useAppStore } from '@/stores/useAppStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
-import { useSite } from '@/stores/useSiteStore'
+// Site data is now handled by the orchestrated loading
 
 function DevelopPageContent() {
   const params = useParams()
@@ -30,9 +30,6 @@ function DevelopPageContent() {
   
   // Server polling store - unified server status management
   const { startPollingForServer, stopPollingForServer, getServerState, cleanup: cleanupServerPolling } = useServerPollingStore()
-  
-  // Site store - for site data and metadata
-  const { site, isLoading: siteLoading, fetchSite } = useSite(appId)
   
   // Messages store - for conversations and messages
   const {
@@ -63,7 +60,13 @@ function DevelopPageContent() {
     toggleVersionHistory,
     restartApp: restartAppFromStore,
     setChatPaneWidth,
-    setIsSelectMode
+    setIsSelectMode,
+    // New orchestrated loading
+    loadingPhase,
+    app,
+    site,
+    loadingError,
+    initializePage
   } = useDevelopPageStore()
   
   // Git history hook - handles loading with smart retry logic
@@ -74,190 +77,25 @@ function DevelopPageContent() {
   } = useGitHistory(appId, false) // Don't auto-load, we'll trigger it manually
   
   // Local state (only what's not in stores)
-  const [app, setApp] = useState<App | null>(null)
   const [showUsageCost, setShowUsageCost] = useState(false)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
-  const [isInitialAppCreation, setIsInitialAppCreation] = useState(false)
-  
-  // App loading state machine
-  const [loadingState, setLoadingState] = useState<'idle' | 'loading-app' | 'loading-conversations' | 'ready'>('idle')
 
-  const initialMessageProcessed = useRef(false)
-  const appCheckProcessed = useRef(false)
-  const autoSendTriggered = useRef(false) // Prevent multiple auto-sends
   const headerRef = useRef<HeaderRef>(null)
-  const previousAppIdRef = useRef<string | null>(null)
-  const initializationStarted = useRef<string | null>(null)
 
-  // Fetch site data when appId changes
+  // Site data is now handled by the orchestrated loading
+
+  // Main initialization - orchestrated through store
   useEffect(() => {
-    if (appId && !site && !siteLoading) {
-      console.log('🌐 Fetching site data for appId:', appId)
-      fetchSite()
+    if (appId) {
+      console.log('🚀 Initializing page for appId:', appId)
+      initializePage(appId).catch(error => {
+        console.error('❌ Page initialization failed:', error)
+      })
     }
-  }, [appId, site, siteLoading, fetchSite])
+  }, [appId, initializePage])
 
-  // Consolidated App Initialization - handles cleanup, app loading, and conversations
-  useEffect(() => {
-    const initializeApp = async () => {
-      // Prevent double initialization in React Strict Mode
-      if (initializationStarted.current === appId) {
-        console.log('🛑 Initialization already in progress for appId:', appId, '- skipping duplicate')
-        return
-      }
-      initializationStarted.current = appId
-      
-      // 1. Always ensure clean state before initializing new app
-      const currentAppInStore = useMessagesStore.getState().currentAppId
-      if (currentAppInStore && currentAppInStore !== appId) {
-        console.log('🔄 Store has different app ID:', currentAppInStore, '-> cleaning up before loading', appId)
-        
-        // Get app data first to preserve initial prompt during cleanup
-        const appData = await appService.getApp(appId)
-        const hasInitialPrompt = appData.app?.initialPrompt
-        
-        if (hasInitialPrompt) {
-          console.log('🔒 Preserving initial prompt during cleanup:', appData.app.initialPrompt)
-          // Clean up but preserve the initial prompt
-          const { cleanup } = useMessagesStore.getState()
-          cleanup()
-          cleanupServerPolling()
-          
-          // Set the initial prompt immediately after cleanup
-          if (appData.app.initialPrompt) {
-            useMessagesStore.getState().setInputValue(appData.app.initialPrompt)
-          }
-        } else {
-          cleanupMessagesStore()
-          cleanupServerPolling()
-        }
-        
-        // Clear local state
-        setApp(null)
-        setIsInitialAppCreation(false)
-        setLoadingState('idle')
-        
-        // Reset flags
-        initialMessageProcessed.current = false
-        autoSendTriggered.current = false
-        appCheckProcessed.current = false
-      } else if (previousAppIdRef.current && previousAppIdRef.current !== appId) {
-        console.log('🔄 App ID changed from', previousAppIdRef.current, 'to', appId, '- cleaning up previous app state')
-        cleanupMessagesStore()
-        cleanupServerPolling()
-        
-        // Clear local state
-        setApp(null)
-        setIsInitialAppCreation(false)
-        setLoadingState('idle')
-        
-        // Reset flags
-        initialMessageProcessed.current = false
-        autoSendTriggered.current = false
-        appCheckProcessed.current = false
-        initializationStarted.current = null // Reset for new app
-      } else if (previousAppIdRef.current === null) {
-        console.log('🏁 Initial app load for appId:', appId, '- checking for stale store data')
-      }
-      
-      previousAppIdRef.current = appId
-      
-      if (!appId) return
-
-      try {
-        // 2. Ensure messages store has currentAppId set early for auto-send functionality
-        console.log('🔗 Ensuring messages store currentAppId is set:', appId)
-        const messagesState = useMessagesStore.getState()
-        if (!messagesState.currentAppId || messagesState.currentAppId !== appId) {
-          // Set currentAppId directly in the store
-          useMessagesStore.setState(state => ({ 
-            ...state, 
-            currentAppId: appId 
-          }))
-          console.log('✅ Messages store currentAppId set:', appId)
-        }
-
-        // 3. Load app data and refresh apps store
-        setLoadingState('loading-app')
-        console.log('📱 Loading app data:', appId)
-        
-        const [appData, configData] = await Promise.all([
-          appService.getApp(appId),
-          appService.getConfig(appId),
-          loadApps() // Load all apps into the store for PreviewPane
-        ])
-        
-        setApp(appData.app)
-        setShowUsageCost(configData.config.showUsageCost)
-        
-        // Server tracking is now handled by useServerPollingStore
-        
-        // Check if this is initial app creation
-        const isNewApp = appData.app.status === AppStatus.CREATED && !!appData.app.initialPrompt
-        setIsInitialAppCreation(isNewApp)
-        
-        // 4. Ensure app is running (one-time check)
-        if (!appCheckProcessed.current) {
-          appCheckProcessed.current = true
-          await ensureAppIsRunningFromStore(appId, appStoreEnsureAppIsRunning)
-        }
-        
-        // 5. Give server time to settle on final port (avoid race condition with Vite port selection)
-        if (isNewApp) {
-          console.log('⏳ New app detected - waiting for server to settle on final port...')
-          await new Promise(resolve => setTimeout(resolve, 3000)) // Wait 3 seconds for Vite to settle
-        }
-        
-        // 6. Load conversations (required) and commit history (optional)
-        setLoadingState('loading-conversations')
-        console.log('💬 Loading conversations and history')
-        
-        // CRITICAL: Load conversations AFTER we're sure no cleanup will happen
-        // Add a small delay to ensure all cleanup is complete
-        await new Promise(resolve => setTimeout(resolve, 100))
-        await initializeConversations(appId)
-        
-        // Load commit history after a delay to ensure app is ready
-        setTimeout(() => {
-          refreshGitHistory() // This handles retries and proper timing internally
-        }, 6000) // Wait 6 seconds to ensure app is fully ready
-        
-        setLoadingState('ready')
-        console.log('✅ App initialization complete')
-        
-      } catch (error) {
-        console.error('❌ App initialization failed:', error)
-        setLoadingState('idle')
-      } finally {
-        initializationStarted.current = null // Reset flag when done
-      }
-    }
-    
-    initializeApp()
-  }, [appId])
-
-  // Handle initial prompt setup - site-based only
-  useEffect(() => {
-    console.log('🔍 Initial prompt check:', {
-      loadingState,
-      hasSiteInitialPrompt: !!site?.initial_prompt,
-      siteStatus: site?.status,
-      initialMessageProcessed: initialMessageProcessed.current,
-      conversationsLength: conversations.length,
-      currentInputValue: inputValue?.substring(0, 30) + (inputValue?.length > 30 ? '...' : '')
-    })
-    
-    // Set initial prompt from site data
-    if (loadingState === 'ready' && 
-        site?.initial_prompt && 
-        site.status === 'running' && 
-        !initialMessageProcessed.current && 
-        conversations.length === 0) {
-      console.log('📝 Setting initial prompt from site:', site.initial_prompt)
-      setInputValue(site.initial_prompt)
-      initialMessageProcessed.current = true
-    }
-  }, [loadingState, site?.initial_prompt, site?.status, conversations.length, inputValue])
+  // Initial prompt handling is now managed in the MessagesStore during initializeConversations
+  // This prevents circular dependencies and ensures proper state management
 
   // MESSAGE HANDLER - Uses store for message handling
   const handleSendMessage = useCallback(async (messageContent?: string) => {
@@ -267,40 +105,10 @@ function DevelopPageContent() {
     headerRef.current?.refreshTokenUsage()
     handlePreviewRefresh()
     
-    // Mark initial app creation as complete
-    if (isInitialAppCreation) {
-      setIsInitialAppCreation(false)
-    }
-  }, [isInitialAppCreation])
+    // Logic simplified - UI updates handled by store orchestration
+  }, [])
 
-  // Auto-send initial prompt - simple site-based logic
-  useEffect(() => {
-    const shouldAutoSend = 
-      site?.initial_prompt && 
-      site.status === 'running' &&
-      conversations.length === 0 &&
-      !autoSendTriggered.current &&
-      !isLoading;
-    
-    if (shouldAutoSend) {
-      console.log('🚀 Auto-sending initial prompt:', site.initial_prompt?.substring(0, 50) + '...')
-      autoSendTriggered.current = true
-      
-      const timer = setTimeout(async () => {
-        try {
-          await sendMessageFromStore(site.initial_prompt)
-          console.log('✅ Auto-send completed')
-          headerRef.current?.refreshTokenUsage()
-          handlePreviewRefresh()
-        } catch (error) {
-          console.error('❌ Auto-send failed:', error)
-          autoSendTriggered.current = false
-        }
-      }, 500)
-      
-      return () => clearTimeout(timer)
-    }
-  }, [site?.initial_prompt, site?.status, conversations.length, isLoading])
+  // Auto-send is now handled by the orchestrated loading in useDevelopPageStore
 
   // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
@@ -447,13 +255,12 @@ function DevelopPageContent() {
 
   // Handle URL message parameter - simplified logic
   useEffect(() => {
-    if (loadingState !== 'ready') return
+    if (loadingPhase !== 'ready') return
     
     const message = searchParams.get('message')
-    if (message && !initialMessageProcessed.current && conversations.length === 0) {
+    if (message && conversations.length === 0) {
       const decodedMessage = decodeURIComponent(message)
       setInputValue(decodedMessage)
-      initialMessageProcessed.current = true
       
       // Auto-send and clear URL
       setTimeout(() => {
@@ -463,7 +270,7 @@ function DevelopPageContent() {
         router.replace(url.pathname + url.search, { scroll: false })
       }, 500)
     }
-  }, [loadingState, searchParams, conversations.length, router])
+  }, [loadingPhase, searchParams, conversations.length, router, setInputValue, handleSendMessage])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
@@ -480,9 +287,8 @@ function DevelopPageContent() {
       
       // Refresh app data
       try {
-        const data = await appService.getApp(appId)
-        setApp(data.app)
-        console.log('🔄 App data refreshed after restart')
+        // App data is now managed by the store
+        console.log('🔄 App restart completed')
       } catch (refreshError) {
         console.error('❌ Failed to refresh app data:', refreshError)
       }
@@ -570,11 +376,7 @@ function DevelopPageContent() {
                 selectedCommit={selectedCommit || undefined}
                 onRetry={() => {
                   // Refresh app data when retrying
-                  if (appId) {
-                    appService.getApp(appId)
-                      .then(data => setApp(data.app))
-                      .catch(console.error)
-                  }
+                  // App data refreshing is now handled by the store
                 }}
               />
               

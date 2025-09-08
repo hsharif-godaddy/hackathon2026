@@ -2,6 +2,10 @@ import { GitUtils, GitStatus as GitUtilsStatus } from '../utils/git.js';
 import { logger } from '../logging/index.js';
 import { toolGitEvents } from '../logging/events/index.js';
 import { spawn } from 'child_process';
+import { AppRepository } from '../database/repositories/AppRepository.js';
+
+// Constants for business logic clarity
+const MAX_COMMITS_FOR_INITIAL_BUILD = 2; // Allow for initial + first real commit
 
 export interface GitToolOptions {
   /** The git operation to perform */
@@ -92,6 +96,32 @@ export interface GitToolResult {
  */
 export class GitTool {
   private gitUtils = new GitUtils();
+  
+  /**
+   * Extract app ID from app path
+   * App paths are typically in format: /tmp/apps/{appId} or {customerDataDir}/{appId}
+   */
+  private extractAppIdFromPath(appPath: string): string | null {
+    try {
+      // Handle both development and production paths
+      // Development: /tmp/apps/{appId}
+      // Production: /customer-data/{appId} or similar
+      const pathParts = appPath.split('/').filter(part => part.length > 0);
+      
+      // The app ID is typically the last part of the path
+      const potentialAppId = pathParts[pathParts.length - 1];
+      
+      // Basic validation - app IDs are typically UUIDs or similar identifiers
+      if (potentialAppId && potentialAppId.length > 5) {
+        return potentialAppId;
+      }
+      
+      return null;
+    } catch (error) {
+      logger.warn('Failed to extract app ID from path', { appPath, error });
+      return null;
+    }
+  }
 
   /**
    * Execute a Git operation
@@ -287,6 +317,49 @@ export class GitTool {
       }
 
       const result = await this.gitUtils.commit(appPath, message);
+
+      // If commit was successful, check if this marks the initial build completion
+      if (result.success) {
+        const appId = this.extractAppIdFromPath(appPath);
+        if (appId) {
+          try {
+            // Check if the app exists and if initial build is not yet marked complete
+            const appRepository = new AppRepository();
+            const app = appRepository.findById(appId);
+            if (app && !app.initialBuildComplete) {
+              // Check if this might be the first real commit (not just initial setup)
+              // Look for commits that aren't just "Initial commit" or template setup
+              try {
+                const commits = await this.gitUtils.getCommitHistory(appPath, MAX_COMMITS_FOR_INITIAL_BUILD);
+                const commitCount = commits.length;
+                const isFirstRealCommit = commitCount <= MAX_COMMITS_FOR_INITIAL_BUILD;
+                
+                if (isFirstRealCommit) {
+                  appRepository.markInitialBuildComplete(appId);
+                  logger.info('Initial build marked as complete after first commit', {
+                    appId,
+                    commitMessage: message,
+                    commitCount
+                  });
+                }
+              } catch (gitError) {
+                // If we can't get git history, assume it's a first commit
+                logger.warn('Could not get git history, assuming first commit', {
+                  appId,
+                  error: gitError instanceof Error ? gitError.message : String(gitError)
+                });
+                appRepository.markInitialBuildComplete(appId);
+              }
+            }
+          } catch (error) {
+            // Don't fail the commit if we can't update the initial build flag
+            logger.warn('Failed to mark initial build complete', {
+              appId,
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+      }
 
       const toolResult: GitToolResult = {
         success: result.success,

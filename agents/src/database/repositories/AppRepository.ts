@@ -612,6 +612,7 @@ export class AppRepository {
       port: row.port,
       initialPrompt: row.initial_prompt,
       status: row.status,
+      initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
@@ -637,6 +638,7 @@ export class AppRepository {
       port: row.port,
       initialPrompt: row.initial_prompt,
       status: row.status,
+      initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     }));
@@ -702,6 +704,43 @@ export class AppRepository {
       this.logger.warn('app.status.update.failed', {
         appId: id,
         targetStatus: status,
+        error: getErrorMessage(error)
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Mark the initial build as complete (called when first git commit happens)
+   */
+  markInitialBuildComplete(id: string): App | null {
+    try {
+      const existing = this.findById(id);
+      if (!existing) return null;
+
+      // Only mark as complete if it's not already marked
+      if (existing.initialBuildComplete) {
+        return existing;
+      }
+
+      const stmt = this.db.prepare(`
+        UPDATE apps 
+        SET initial_build_complete = TRUE, updated_at = ?
+        WHERE id = ?
+      `);
+      
+      stmt.run(new Date().toISOString(), id);
+      
+      this.logger.info('app.initial.build.complete', {
+        appId: id,
+        appName: existing.name,
+        message: 'Initial build marked as complete'
+      });
+      
+      return this.findById(id)!;
+    } catch (error) {
+      this.logger.warn('app.initial.build.complete.failed', {
+        appId: id,
         error: getErrorMessage(error)
       });
       return null;

@@ -46,6 +46,9 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
     if (site.status === 'running' && (site.preview_url || site.agent_url)) {
       // Prefer preview_url (actual Docker container) over agent_url (API endpoint)
       const containerUrl = site.preview_url || site.agent_url
+      if (!containerUrl) {
+        return NextResponse.json({ error: 'No container URL available' }, { status: 404 })
+      }
       const url = new URL(containerUrl)
       const port = parseInt(url.port) || (site.preview_url ? 5000 : 4000)
       

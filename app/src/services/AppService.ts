@@ -10,6 +10,7 @@ export interface App {
   port: number
   initialPrompt?: string
   status: AppStatusType
+  initialBuildComplete?: boolean
   createdAt: string
   updatedAt: string
 }

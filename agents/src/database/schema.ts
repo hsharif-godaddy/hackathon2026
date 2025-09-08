@@ -19,6 +19,7 @@ export interface App {
   initialPrompt?: string;
   templateVersion?: string; // v1, v2, v3, etc.
   status: 'creating' | 'created' | 'error';
+  initialBuildComplete?: boolean; // True when first git commit has been made
   createdAt: Date;
   updatedAt: Date;
   // Extended properties for AI name generation
@@ -153,6 +154,7 @@ function createAppsTable(db: Database): void {
       initial_prompt TEXT,
       template_version TEXT,
       status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'created', 'error')),
+      initial_build_complete BOOLEAN DEFAULT FALSE,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
@@ -351,6 +353,13 @@ function applyMigrations(db: Database): void {
   // Add status column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'created', 'error'))`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+  
+  // Add initial_build_complete column if it doesn't exist (for existing databases)
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN initial_build_complete BOOLEAN DEFAULT FALSE`);
   } catch (err) {
     // Column might already exist, that's fine
   }

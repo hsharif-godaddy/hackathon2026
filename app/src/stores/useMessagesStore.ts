@@ -13,6 +13,21 @@ interface Conversation {
   updatedAt: string
 }
 
+// Initialization options interfaces for better type safety
+interface AppInitData {
+  initialBuildComplete?: boolean
+}
+
+interface SiteInitData {
+  initial_prompt?: string
+  status?: string
+}
+
+interface ConversationInitOptions {
+  appData?: AppInitData
+  siteData?: SiteInitData
+}
+
 interface MessagesStore {
   // Current context
   currentAppId: string | null
@@ -41,7 +56,7 @@ interface MessagesStore {
   setAiEditContext: (context: AiEditContext | null) => void
   
   // Core message operations
-  initializeConversations: (appId: string) => Promise<void>
+  initializeConversations: (appId: string, options?: ConversationInitOptions) => Promise<void>
   handleSendMessage: (messageContent?: string) => Promise<void>
   cleanup: () => void
 }
@@ -67,7 +82,8 @@ export const useMessagesStore = create<MessagesStore>()(
     setAiEditContext: (context) => set((state) => { state.aiEditContext = context }),
     
     // Initialize conversations for an app
-    initializeConversations: async (appId: string) => {
+    initializeConversations: async (appId: string, options?: ConversationInitOptions) => {
+      const { appData, siteData } = options || {}
       console.log('🔧 initializeConversations called with appId:', appId)
       set((state) => {
         console.log('🔧 Setting currentAppId in store:', appId)
@@ -83,6 +99,14 @@ export const useMessagesStore = create<MessagesStore>()(
         
         const conversationList = await loadConversations(appId)
         console.log('📋 Loaded conversations:', conversationList)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📋 Conversations details:', {
+            conversationList,
+            length: conversationList?.length,
+            isArray: Array.isArray(conversationList),
+            type: typeof conversationList
+          })
+        }
         
         set((state) => {
           state.conversations = conversationList || []
@@ -111,6 +135,29 @@ export const useMessagesStore = create<MessagesStore>()(
           }
         } else {
           console.log('📝 No existing conversations for app:', appId, '- starting fresh')
+          console.log('🔍 Initial prompt evaluation:', {
+            hasInitialPrompt: !!siteData?.initial_prompt,
+            siteStatus: siteData?.status,
+            hasAppData: !!appData,
+            initialBuildComplete: appData?.initialBuildComplete,
+            shouldSetPrompt: siteData?.initial_prompt && 
+                            siteData?.status === 'running' &&
+                            appData && 
+                            !appData.initialBuildComplete
+          })
+          
+          // Handle initial prompt for new/incomplete builds
+          if (siteData?.initial_prompt && 
+              siteData?.status === 'running' &&
+              appData && 
+              !appData.initialBuildComplete) {
+            console.log('📝 Setting initial prompt for incomplete build:', siteData.initial_prompt)
+            set((state) => {
+              state.inputValue = siteData.initial_prompt!
+            })
+          } else {
+            console.log('✅ NOT setting initial prompt (build complete or other conditions not met)')
+          }
         }
         
         console.log('✅ Conversations loaded successfully')
