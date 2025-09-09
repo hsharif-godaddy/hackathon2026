@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType } from '@godaddy/gasket-auth'
 import { appFetch } from '@/lib/gasket-config'
-import { appService } from '@/services/AppService'
 import { authConfigs, getLoginUrl, isAuthDisabled } from '@/lib/gasket-config'
 import { useIntegratedAuthState } from '@/lib/mock-auth-integration'
 import { isFeatureEnabled } from '@/lib/features'
@@ -14,6 +13,9 @@ import ExamplesSection from './components/ExamplesSection'
 import BuiltWithSection from './components/BuiltWithSection'
 import Footer from './components/Footer'
 import { Example, BuiltWithItem } from './components/types'
+import Box from '@ux/box'
+import Button from '@ux/button'
+import Spinner from '@ux/spinner'
 
 function HomeContent() {
   const [promptText, setPromptText] = useState("")
@@ -193,27 +195,33 @@ function HomeContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
+    <div className="min-h-screen">
       <Header 
         actions={
-          <button
+          <Button 
             onClick={handleStartBuilding}
+            data-partial={ !isLoading ? "componentAiro" : "componentBrand" }
             disabled={!promptText.trim() || isLoading}
-            className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+            design='primary'
+            className="group cursor-pointer transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                <span>Creating...</span>
-              </>
-            ) : (
-              <span>Get Started</span>
-            )}
-          </button>
+            <div className="flex items-center space-x-1">
+              {isLoading ? (
+                <>
+                  <Spinner size='sm' />
+                  <span>Creating...</span>
+                </>
+              ) : (
+                <>
+                  <span>Get Started</span>
+                </>
+              )}
+            </div>
+          </Button>
         }
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
+      <Box className="mx-auto px-4 sm:px-6 lg:px-8 pt-48 pb-36 bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
         <HeroSection
           promptText={promptText}
           setPromptText={setPromptText}
@@ -227,7 +235,7 @@ function HomeContent() {
           examples={examples}
           onExampleClick={handleExampleClick}
         />
-      </main>
+      </Box>
 
       <BuiltWithSection items={builtWithItems} />
 

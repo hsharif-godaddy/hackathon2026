@@ -1,9 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import {
   SparklesIcon,
   CodeBracketIcon,
@@ -45,7 +43,6 @@ function AppsPageContent() {
   // Use the centralized server store for server status
   const {
     getServerInfo,
-    getServerUrl,
     isServerReady,
     startPeriodicBackendSync
   } = useServerStore()

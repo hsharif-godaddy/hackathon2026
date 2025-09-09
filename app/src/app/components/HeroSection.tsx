@@ -1,4 +1,9 @@
-import { ArrowRightIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import Box from '@ux/box'
+import Button from '@ux/button'
+import Spinner from '@ux/spinner'
+import { text } from '@ux/text'
+import ArrowRightIcon from '@ux/icon/arrow-right'
 import { HeroSectionProps } from './types'
 
 export default function HeroSection({
@@ -10,17 +15,23 @@ export default function HeroSection({
   setError
 }: HeroSectionProps) {
   return (
-    <div className="text-center gd-fonts">
-      <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6 mt-12">
+    <Box className="text-center flex flex-col gap-4">
+      <text.h1 
+        as='heading'
+        size={ 3 }
+      >
         What would you like to{' '}
-        <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+        <text.span as='heading' size={ 4 } className='ai-text-gradient -rotate-2'>
           build today?
-        </span>
-      </h1>
-      <p className="text-xl text-gray-600 mb-16 max-w-3xl mx-auto">
-        Describe your idea and watch our AI team of experts bring it to life. 
-        From concept to production, we handle everything.
-      </p>
+        </text.span>
+      </text.h1>
+
+      <text.p
+        size={ 2 }
+        className='max-w-3xl mx-auto'
+      >
+        Describe your idea and watch our AI team of experts bring it to life. From concept to production, we handle everything.
+      </text.p>
 
       {/* Error Display */}
       {error && (
@@ -42,8 +53,8 @@ export default function HeroSection({
       )}
 
       {/* Main CTA Input */}
-      <div className="max-w-2xl mx-auto mb-16">
-        <div className="relative">
+      <div className="w-full max-w-2xl mx-auto my-16">
+        <div className="relative textarea-blur-bg">
           <textarea
             value={promptText}
             onChange={(e) => {
@@ -53,28 +64,32 @@ export default function HeroSection({
             }}
             rows={5}
             disabled={isLoading}
-            className="w-full p-5 text-lg text-gray-900 font-medium border-2 border-gray-200 rounded-2xl focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-200 transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+            className="relative z-10 w-full p-5 text-lg font-medium border-2 rounded transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed border-none outline-none bg-intents-ux-box-backgroundColor text-intents-ux-box-foregroundColor"
             placeholder="Describe the application you'd like to build..."
           />
-          <button 
+          <Button 
             onClick={onStartBuilding}
+            data-partial={ !isLoading ? "componentAiro" : "componentBrand" }
             disabled={!promptText.trim() || isLoading}
-            className="group cursor-pointer absolute right-4 bottom-5 mb-0.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            design='primary'
+            className="group cursor-pointer absolute right-3 bottom-5 mb-0.5 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed z-10"
           >
-            {isLoading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                <span>Building...</span>
-              </>
-            ) : (
-              <>
-                <span>Start Building</span>
-                <ArrowRightIcon className="w-4 h-4 transition-all group-hover:translate-x-1 group-disabled:translate-x-0" />
-              </>
-            )}
-          </button>
+            <div className="flex items-center space-x-1">
+              {isLoading ? (
+                <>
+                  <span>Building...</span>
+                  <Spinner size='sm' />
+                </>
+              ) : (
+                <>
+                  <span>Start Building</span>
+                  <ArrowRightIcon className="w-4 h-4 transition-all group-hover:translate-x-1 group-disabled:translate-x-0" />
+                </>
+              )}
+            </div>
+          </Button>
         </div>
       </div>
-    </div>
+    </Box>
   )
 }

@@ -1,17 +1,6 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import AuthProvider from "@/components/providers/AuthProvider";
-import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import "./globals.scss";
 
 export const metadata: Metadata = {
   title: "Airo App Builder",
@@ -48,9 +37,7 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="//img6.wsimg.com/"/>
         <link rel="preconnect" href="//img6.wsimg.com/"/>
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className="antialiased">
         <AuthProvider>
           {children}
         </AuthProvider>

@@ -6,6 +6,9 @@ import { SparklesIcon } from '@heroicons/react/24/outline';
 import { getLoginUrl, isAuthDisabled, authConfigs } from '@/lib/gasket-config';
 import { isFeatureEnabled } from '@/lib/features';
 import { useMockAuth } from '@/hooks/useMockAuth';
+import Box from '@ux/box';
+import Button from '@ux/button';
+import { text } from '@ux/text';
 import { MockLoginDialog } from './MockLogin';
 
 interface ProtectedRouteProps {
@@ -47,34 +50,30 @@ export default function ProtectedRoute({
       <>
         <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center">
           <div className="text-center max-w-md mx-auto px-6">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-red-600 text-2xl">🔒</span>
-            </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Required</h2>
-            <p className="text-gray-600 mb-6">
+            <text.h2 as="heading" size={ -1 } className="mb-2">Access Required</text.h2>
+            <p className="text-gray-600 mb-12">
               {unauthorizedMessage}
             </p>
             
             {/* Show mock login if feature is enabled */}
             {isFeatureEnabled.mockLogin() ? (
-              <div className="space-y-3">
-                <button
+              <Box gap="md">
+                <Button
+                  design='primary'
+                  text='🚀 Mock Sign In (Dev Mode)'
                   onClick={() => setShowMockLogin(true)}
-                  className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-3 rounded-lg hover:from-yellow-600 hover:to-orange-600 transition-all font-medium"
-                >
-                  🚀 Mock Sign In (Dev Mode)
-                </button>
+                />
                 <p className="text-xs text-gray-500">
                   Development mode - choose a test user to simulate the login experience
                 </p>
-              </div>
+              </Box>
             ) : (
-              <button
+              <Button
                 onClick={() => window.location.href = getLoginUrl(window.location.href)}
+                design='primary'
+                text='Sign In to Continue'
                 className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all"
-              >
-                Sign In to Continue
-              </button>
+              />
             )}
           </div>
         </div>

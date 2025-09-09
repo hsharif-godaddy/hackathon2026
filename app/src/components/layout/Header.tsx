@@ -2,6 +2,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { UserMenu } from '@/components/auth'
 import { HeaderProps } from './types'
+import SiblingSet from '@ux/sibling-set'
 
 export default function Header({ actions, className = "" }: HeaderProps) {
   return (
@@ -15,10 +16,10 @@ export default function Header({ actions, className = "" }: HeaderProps) {
               </div>
             </Link>
           </div>
-          <div className="flex items-center space-x-4">
+          <SiblingSet gap='sm'>
             {actions && actions}
             <UserMenu />
-          </div>
+          </SiblingSet>
         </div>
       </div>
     </header>

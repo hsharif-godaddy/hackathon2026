@@ -1,6 +1,8 @@
 'use client'
 
 import { PaperAirplaneIcon, PencilIcon } from '@heroicons/react/24/outline'
+import Box from '@ux/box'
+import Button from '@ux/button'
 
 interface ChatInputProps {
   inputValue: string
@@ -22,10 +24,10 @@ export default function ChatInput({
   onToggleSelectMode
 }: ChatInputProps) {
   return (
-    <div className="p-4 bg-white border-t border-gray-200">
+    <div className="p-4 border-t">
       {/* Cursor-style Chat Input */}
       <div className="relative">
-        <div className="flex items-stretch space-x-2 p-3 border border-gray-300 rounded-lg bg-white shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+        <div className="flex items-stretch space-x-2 p-3 border rounded-lg bg-white shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
           <div className="flex-1">
             <textarea
               value={inputValue}
@@ -34,34 +36,31 @@ export default function ChatInput({
               placeholder={isDisabled ? "Processing... please wait" : "Ask Airo to modify code, add features, or explain implementation..."}
               rows={3}
               disabled={isDisabled}
-              className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-sm ${isDisabled ? ' placeholder-gray-400' : 'placeholder-gray-500'} chat-input-text`}
+              className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-sm chat-input-text`}
             />
           </div>
           
-          <div className="flex flex-col space-y-2">
-          {/* Element Selector Button */}
-          <button
-            onClick={onToggleSelectMode}
-            disabled={isDisabled}
-            className={`border p-2 rounded-md transition-all duration-200 ${
-              isSelectMode
-                ? 'border-blue-100 bg-blue-100 text-blue-600 hover:bg-blue-200'
-                : 'border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-200'
-            } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-            title={isSelectMode ? 'Select mode active' : 'Enable element selector'}
-          >
-            <PencilIcon className="w-4 h-4" />
-          </button>
-          
-          {/* Send Button */}
-          <button
-            onClick={onSendMessage}
-            disabled={!inputValue.trim() || isDisabled}
-            className="p-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
-          >
-            <PaperAirplaneIcon className="w-4 h-4" />
-          </button>
-          </div>
+          <Box className="flex flex-col space-y-2" gap="sm">
+            {/* Element Selector Button */}
+            <Button
+              onClick={onToggleSelectMode}
+              disabled={isDisabled}
+              title={isSelectMode ? 'Select mode active' : 'Enable element selector'}
+              design="control"
+              icon={<PencilIcon className="w-4 h-4" />}
+              size="sm"
+            />
+            
+            {/* Send Button */}
+            <Button
+              onClick={onSendMessage}
+              disabled={!inputValue.trim() || isDisabled}
+              design="primary"
+              icon={<PaperAirplaneIcon className="w-4 h-4" />}
+              size="sm"
+              data-partial="componentAiro"
+            />
+          </Box>
         </div>
       </div>
     </div>

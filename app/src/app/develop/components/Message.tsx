@@ -43,7 +43,7 @@ function getMessageClasses(message: MessageType): string {
   
   // User messages
   if (message.sender === 'user') {
-    return `${baseClasses} bg-purple-600 text-white`
+    return `${baseClasses} bg-ai-light text-intents-ux-boxHighContrast-foregroundColor`
   }
   
   // Handoff messages
@@ -57,7 +57,7 @@ function getMessageClasses(message: MessageType): string {
   }
   
   // Default agent messages
-  return `${baseClasses} bg-gray-100 text-gray-900 p-0!`
+  return `${baseClasses} bg-intents-ux-boxLowContrast-backgroundColor p-0!`
 }
 
 // Helper function to render message content based on type and sender

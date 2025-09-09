@@ -2,14 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import Image from 'next/image'
 import { 
   CodeBracketIcon, 
   PlusIcon, 
   PlayIcon,
   EyeIcon,
-  StopIcon,
   TrashIcon,
   ClockIcon
 } from '@heroicons/react/24/outline'
@@ -18,6 +15,11 @@ import { ProtectedRoute } from '@/components/auth'
 import Header from '@/components/layout/Header'
 import { Site } from '@/lib/database/prisma-site-service'
 import { DevelopmentAdminSection } from '@/components/development'
+import Box from '@ux/box'
+import Button from '@ux/button'
+import Spinner from '@ux/spinner'
+import Tag from '@ux/tag'
+import SiblingSet from '@ux/sibling-set'
 
 interface AlertState {
   siteId: string | null
@@ -68,37 +70,20 @@ function SitesPageContent() {
     })
   }
 
-  const getStatusColor = (status: Site['status']) => {
+  const getStatusLabel = (status: Site['status']) => {
     switch (status) {
       case 'running':
-        return 'text-green-600 bg-green-50'
+        return <Tag emphasis="success">Running</Tag>
       case 'creating':
       case 'created':
-        return 'text-yellow-600 bg-yellow-50'
+        return <Tag emphasis="warning">Creating</Tag>
       case 'failed':
       case 'error':
-        return 'text-red-600 bg-red-50'
+        return <Tag emphasis="critical">Failed</Tag>
       case 'stopped':
-        return 'text-gray-600 bg-gray-50'
+        return <Tag emphasis="info">Stopped</Tag>
       default:
-        return 'text-gray-600 bg-gray-50'
-    }
-  }
-
-  const getStatusIcon = (status: Site['status']) => {
-    switch (status) {
-      case 'running':
-        return <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-      case 'creating':
-      case 'created':
-        return <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
-      case 'failed':
-      case 'error':
-        return <div className="w-2 h-2 bg-red-500 rounded-full" />
-      case 'stopped':
-        return <div className="w-2 h-2 bg-gray-500 rounded-full" />
-      default:
-        return <div className="w-2 h-2 bg-gray-500 rounded-full" />
+        return <Tag emphasis="neutral">Unknown</Tag>
     }
   }
 
@@ -190,49 +175,45 @@ function SitesPageContent() {
     onConfirm: () => void
     onCancel: () => void
   }) => (
-    <div className="absolute inset-0 bg-white bg-opacity-95 rounded-lg flex flex-col items-center justify-center p-4 z-10">
+    <div className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-4 z-10">
       <p className="text-sm text-gray-700 mb-4 text-center">{message}</p>
-      <div className="flex space-x-2">
-        <button
+      <SiblingSet gap="md">
+        <Button
           onClick={onConfirm}
           disabled={actionLoading === siteId}
           className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {actionLoading === siteId ? 'Deleting...' : 'Delete'}
-        </button>
-        <button
+          text={actionLoading === siteId ? 'Deleting...' : 'Delete'}
+          design="critical"
+        />
+        <Button
           onClick={onCancel}
-          className="bg-gray-200 text-gray-800 px-4 py-2 rounded text-sm hover:bg-gray-300"
-        >
-          Cancel
-        </button>
-      </div>
+          text="Cancel"
+          design="secondary"
+        />
+      </SiblingSet>
     </div>
   )
 
-
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading your sites...</p>
-        </div>
-      </div>
+      <Box className="min-h-screen flex items-center justify-center" data-partial="accentAiro">
+        <Spinner size="lg" />
+        <p className="mt-4 text-gray-600">Loading your sites...</p>
+      </Box>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
+    <div className="min-h-screen">
       <Header 
         actions={
-          <button
+          <Button
             onClick={handleCreateNew}
-            className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2"
-          >
-            <PlusIcon className="w-4 h-4" />
-            <span>New Site</span>
-          </button>
+            data-partial="componentAiro"
+            design="primary"
+            icon={<PlusIcon className="w-4 h-4" />}
+            text="New Site"
+          />
         }
       />
 
@@ -250,12 +231,12 @@ function SitesPageContent() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
         <div className="mb-8">
-          <p className="text-gray-600">
+          <Box orientation="horizontal" gap="md">
             Manage your AI-powered websites and applications
-            <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+            <Tag emphasis="info">
               {sites.length} {sites.length === 1 ? 'site' : 'sites'} total
-            </span>
-          </p>
+            </Tag>
+          </Box>
         </div>
 
         {error && (
@@ -275,13 +256,13 @@ function SitesPageContent() {
             <CodeBracketIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
             <h2 className="text-xl font-semibold text-gray-900 mb-2">No Sites Yet</h2>
             <p className="text-gray-600 mb-6">Create your first AI-powered website</p>
-            <button
+            <Button
               onClick={handleCreateNew}
               className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2 mx-auto"
-            >
-              <PlusIcon className="w-5 h-5" />
-              <span>Create Your First Site</span>
-            </button>
+              icon={<PlusIcon className="w-5 h-5" />}
+              design="primary"
+              text="Create Your First Site"
+            />
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -301,14 +282,18 @@ function SitesPageContent() {
                 )}
                 
                 <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg flex items-center justify-center">
-                    <CodeBracketIcon className="w-6 h-6 text-purple-600" />
-                  </div>
+                  <Box 
+                    className="w-12 h-12 p-1 flex items-center justify-center"
+                    rounding="reduced"
+                    data-partial="gradientAiro"
+                    style={{
+                      background: "var(--ux-cao06b)",
+                    }}
+                  >
+                    <CodeBracketIcon className="w-7 h-7 text-ai" />
+                  </Box>
                   <div className="flex items-center space-x-2">
-                    <div className={`flex items-center space-x-1 text-xs px-2 py-1 rounded-full ${getStatusColor(site.status)}`}>
-                      {getStatusIcon(site.status)}
-                      <span className="capitalize">{site.status}</span>
-                    </div>
+                    {getStatusLabel(site.status)}
                   </div>
                 </div>
                 
@@ -332,35 +317,34 @@ function SitesPageContent() {
                 <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-100">
                   <div className="flex space-x-2">
                     {site.preview_url && site.status === 'running' && (
-                      <a
+                      <Button
                         href={site.preview_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 space-x-1"
-                      >
-                        <EyeIcon className="w-3 h-3" />
-                        <span>View Site</span>
-                      </a>
+                        icon={<EyeIcon className="w-3 h-3" />}
+                        size="sm"
+                        design="tertiary"
+                        text="View Site"
+                        external
+                      />
                     )}
                     
                     {site.status === 'running' && (
-                      <button
+                      <Button
                         onClick={() => router.push(`/develop/${site.id}?siteId=${site.id}`)}
                         className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100 space-x-1"
-                      >
-                        <PlayIcon className="w-3 h-3" />
-                        <span>Edit Site</span>
-                      </button>
+                        icon={<PlayIcon className="w-3 h-3" />}
+                        size="sm"
+                        design="tertiary"
+                        text="Edit Site"
+                      />
                     )}
                   </div>
                   
-                  <button
+                  <Button
                     onClick={() => showDeleteAlert(site.id, site.title || 'Untitled Site')}
-                    className="inline-flex items-center px-2 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-md hover:bg-red-100"
-                    title="Delete Site"
-                  >
-                    <TrashIcon className="w-3 h-3" />
-                  </button>
+                    icon={<TrashIcon className="w-2 h-2" />}
+                    size="sm"
+                    design="inline"
+                  />
                 </div>
               </div>
             ))}

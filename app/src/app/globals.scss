@@ -1,0 +1,137 @@
+@use "tailwindcss";
+
+/* -> Hotload intents variables until better solution is found */
+@use "./uxcore-intents.css" as uxcore-intents;
+@use "@ux/intents/lib/index" as intents;
+
+/* -> Import styles for UXCore components */
+@use "@ux/button/styles" as button;
+@use "@ux/disrupt/styles" as disrupt;
+@use "@ux/flyout/styles" as flyout;
+@use "@ux/menu/styles" as menu;
+@use "@ux/sibling-set/styles" as sibling-set;
+@use "@ux/spinner/styles" as spinner;
+@use "@ux/tag/styles" as tag;
+
+/* -> Import styles for UXCore icons */
+@import "@ux/icon/arrow-right/index.css";
+@import "@ux/icon/edit/index.css";
+@import "@ux/icon/wand/index.css";
+
+@plugin "@ux/tailwind-intents/plugin";
+
+@theme inline {
+  --color-ai: #613EA3;
+  --color-ai-light: #744BC4;
+  --color-ai-dark: #462A72;
+  --color-border: var(--ux-97h3vl, #d4dbe0);
+  --color-ring-ai: #613EA3;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    font-family: gdsherpa, "gdsherpaVF4 fallback", Helvetica, Arial, sans-serif;
+    background-color: var(--ux-cao06b, white);
+    color: var(--ux-1leynsm, black);
+  }
+}
+
+/* AI text gradient */
+.ai-text-gradient {
+  background: linear-gradient(135deg, #E9E4F2 0%, #D3C1F7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  display: inline-block;
+  padding: 0.1em 0;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+
+  &-light {
+    background: linear-gradient(135deg, #E9E4F2 0%, #D3C1F7 100%);
+  }
+}
+
+/* Circular white blur background */
+.textarea-blur-bg {
+  position: relative;
+}
+
+.textarea-blur-bg::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200%;
+  height: 150%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.1) 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 0;
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+/* Force dark text color for chat input */
+.chat-input-text {
+  color: #000000 !important;
+}
+
+/* Markdown content styles */
+.markdown-content {
+  line-height: 1.6;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  margin-top: 0.75em;
+  margin-bottom: 0.25em;
+}
+
+.markdown-content h1:first-child,
+.markdown-content h2:first-child,
+.markdown-content h3:first-child,
+.markdown-content h4:first-child,
+.markdown-content h5:first-child,
+.markdown-content h6:first-child {
+  margin-top: 0;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content pre {
+  overflow-x: auto;
+}
+
+.markdown-content code {
+  word-break: break-word;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin-left: 0;
+  padding-left: 1rem;
+}
+
+.markdown-content blockquote {
+  margin: 1em 0;
+}
+
+.markdown-content table {
+  margin: 1em 0;
+}
+
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+}

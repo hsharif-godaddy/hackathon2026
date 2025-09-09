@@ -16,6 +16,11 @@ import { UserMenu } from '@/components/auth'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { isFeatureEnabled } from '@/lib/features'
+import Box from '@ux/box'
+import Button from '@ux/button'
+import SiblingSet from '@ux/sibling-set'
+import Tag from '@ux/tag'
+import { text } from '@ux/text'
 
 interface HeaderProps {
   app: { name?: string; port?: number } | null // App data from page state
@@ -63,120 +68,112 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
   const serverState = getServerState(appId)
   const actualPort = serverState?.port
   const serverUrl = serverState?.url
-  const isServerRunning = serverState?.status === 'running' && serverState?.isReady
   
   return (
-    <header className="border-b border-gray-200 bg-white">
+    <header className="border-b">
       <div className="mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-12">
           <div className="flex items-center space-x-4">
             <Link href="/" className="flex items-center space-x-3">
-              <div className="flex items-center justify-center">
-                <Image src="/logo.svg" alt="Airo Logo" width={128} height={48} />
-              </div>
+              <Image src="/logo.svg" alt="Airo Logo" width={128} height={48} />
             </Link>
-            <div className="h-6 w-px bg-gray-300" />
+            <div className="h-6 w-px bg-intents-ux-boxLowContrast-borderColor" />
             <div className="flex items-center space-x-2">
-              <span className="text-gray-900 font-medium">
-                {app ? app.name : `App ${appId}`}
-              </span>
+              <text.strong 
+                size={ -1 }
+                text={ app ? app.name : `App ${appId}` }
+              />
               {isCheckingApp && (
-                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                <Tag emphasis="info" size="sm">
                   Checking App Status...
-                </span>
+                </Tag>
               )}
               {isStartingApp && !isCheckingApp && (
-                <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                <Tag emphasis="warning" size="sm">
                   Starting App...
-                </span>
+                </Tag>
               )}
               {isRestarting && !isCheckingApp && !isStartingApp && (
-                <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                <Tag emphasis="warning" size="sm">
                   Restarting App...
-                </span>
+                </Tag>
               )}
             </div>
           </div>
           <div className="flex items-center space-x-4">
             {/* View Mode Toggle Buttons */}
-            <div className="flex items-center space-x-2">
-              <button 
+            <SiblingSet gap="sm">
+              <Button 
                 onClick={() => handleViewModeChange('preview', hasUnsavedChanges)}
-                className={`px-2 py-1 text-xs rounded-md transition-colors ${
-                  viewMode === 'preview' 
-                    ? 'bg-blue-100 text-blue-700' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                Preview
-              </button>
+                size="sm"
+                design="control"
+                active={viewMode === 'preview'}
+                text="Preview"
+              />
               {/* Code Editor Button - Feature Flag Controlled */}
               {isFeatureEnabled.codeEditor() && (
-                <button 
+                <Button 
                   onClick={() => handleViewModeChange('code', hasUnsavedChanges)}
-                  className={`flex items-center px-2 py-1 text-xs rounded-md transition-colors ${
-                    viewMode === 'code' 
-                      ? 'bg-purple-100 text-purple-700' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  size="sm"
+                  design="control"
+                  active={viewMode === 'code'}
                 >
                   Code
                   {hasUnsavedChanges && viewMode === 'code' && (
-                    <div className="w-2 h-2 bg-orange-500 rounded-full ml-1" title="Unsaved changes" />
+                    <Tag emphasis="warning" size="sm">
+                      Unsaved changes
+                    </Tag>
                   )}
-                </button>
+                </Button>
               )}
-            </div>
+            </SiblingSet>
 
             {/* Preview controls when in preview mode */}
             {viewMode === 'preview' && (
               <div className="flex items-center space-x-3">
                 {/* View Mode Toggles */}
-                <div className="flex items-center space-x-1 border border-gray-200 rounded-md p-0.5">
-                  <button
-                    onClick={() => setPreviewViewMode('desktop')}
-                    className={`p-1 rounded transition-colors ${
-                      previewViewMode === 'desktop'
-                        ? 'bg-blue-100 text-blue-600'
-                        : 'hover:bg-gray-100 text-gray-600'
-                    }`}
-                    title="Desktop view"
-                  >
-                    <ComputerDesktopIcon className="w-3 h-3" />
-                  </button>
-                  <button
-                    onClick={() => setPreviewViewMode('mobile')}
-                    className={`p-1 rounded transition-colors ${
-                      previewViewMode === 'mobile'
-                        ? 'bg-blue-100 text-blue-600'
-                        : 'hover:bg-gray-100 text-gray-600'
-                    }`}
-                    title="Mobile view"
-                  >
-                    <DevicePhoneMobileIcon className="w-3 h-3" />
-                  </button>
-                </div>
+                <Box orientation="horizontal" gap="sm" className="border border-gray-200 rounded-md p-1">
+                    <Button
+                      onClick={() => setPreviewViewMode('desktop')}
+                      size="sm"
+                      design="control"
+                      active={previewViewMode === 'desktop'}
+                      className="p-1!"
+                    >
+                      <ComputerDesktopIcon className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      onClick={() => setPreviewViewMode('mobile')}
+                      size="sm"
+                      design="control"
+                      active={previewViewMode === 'mobile'}
+                      className="p-1!"
+                    >
+                      <DevicePhoneMobileIcon className="w-3 h-3" />
+                    </Button>
+                </Box>
                 
                 {/* App Control Buttons */}
                 <div className="flex items-center space-x-1">
-                  <button
+                  <Button
                     onClick={onPreviewRefresh}
-                    className="p-1 hover:bg-gray-100 rounded transition-colors"
                     title="Reload preview (refresh page content)"
-                  >
-                    <ArrowPathIcon className="w-3 h-3 text-gray-600" />
-                  </button>
+                    icon={<ArrowPathIcon className="w-4! h-4! text-gray-600" />}
+                    size="sm"
+                    design="stateless"
+                  />
                   
-                  <button 
+                  <Button 
                     onClick={onRestartServer}
                     disabled={isRestarting}
                     className="p-1 hover:bg-orange-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Restart server (rebuild and restart development server)"
-                  >
-                    <ArrowPathIcon className={`w-3 h-3 ${isRestarting ? 'animate-spin text-orange-600' : 'text-orange-600'}`} />
-                  </button>
+                    icon={<ArrowPathIcon className={`w-4! h-4! text-intents-ux-feedbackHighContrastCritical-feedbackColor ${isRestarting && 'animate-spin'}`} />}
+                    size="sm"
+                    design="stateless"
+                  />
                   
-                  <button 
+                  <Button 
                     onClick={() => {
                       if (serverUrl) {
                         window.open(serverUrl, '_blank')
@@ -185,11 +182,11 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                       }
                     }}
                     disabled={!actualPort || isCheckingApp || isRestarting || isStartingApp}
-                    className="p-1 hover:bg-green-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Open app in new tab"
-                  >
-                    <ArrowTopRightOnSquareIcon className="w-3 h-3 text-green-600" />
-                  </button>
+                    icon={<ArrowTopRightOnSquareIcon className="w-4! h-4! text-intents-ux-feedbackHighContrastSuccess-feedbackColor" />}
+                    size="sm"
+                    design="stateless"
+                  />
                 </div>
               </div>
             )}
@@ -197,14 +194,16 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
             {appId && (
               <TokenUsage ref={tokenUsageRef} appId={appId} enabled={showUsageCost} />
             )}
-            <Link
-              href="/sites"
-              className="inline-flex items-center px-3 py-2 text-gray-600 hover:text-gray-900 transition-colors text-sm font-medium"
-            >
-              <Squares2X2Icon className="w-4 h-4 mr-2" />
-              My Apps
-            </Link>
-            <UserMenu />
+            <SiblingSet gap="sm">
+              <Button
+                href="/sites"
+                design="primary"
+                icon={<Squares2X2Icon className="w-4 h-4 mr-2" />}
+                data-partial="componentAiro"
+                text="My Apps"
+              />
+              <UserMenu />
+            </SiblingSet>
           </div>
         </div>
       </div>
