@@ -14,7 +14,7 @@ import { ProtectedRoute } from '@/components/auth'
 import { appService } from '@/services/AppService'
 import { useMessagesStore, cleanupMessagesStore } from '@/stores/useMessagesStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useGitHistory } from '@/hooks/useGitHistory'
+import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 // Site data is now handled by the orchestrated loading
@@ -69,12 +69,16 @@ function DevelopPageContent() {
     initializePage
   } = useDevelopPageStore()
   
-  // Git history hook - handles loading with smart retry logic
+  // Git history store - handles loading with smart retry logic
   const {
-    commits: commitHistory,
-    isLoading: isLoadingCommits,
-    refresh: refreshGitHistory
-  } = useGitHistory(appId, false) // Don't auto-load, we'll trigger it manually
+    getCommits,
+    isLoading: isLoadingCommitsForApp,
+    loadGitHistory,
+    refreshGitHistory
+  } = useGitHistoryStore()
+  
+  const commitHistory = getCommits(appId)
+  const isLoadingCommits = isLoadingCommitsForApp(appId)
   
   // Local state (only what's not in stores)
   const [showUsageCost, setShowUsageCost] = useState(false)
@@ -115,6 +119,7 @@ function DevelopPageContent() {
     return () => {
       cleanupMessageService(appId) // Clean up specific app connection
       cleanupServerPolling() // Clean up server polling
+      cleanupGitHistoryStore(appId) // Clean up git history for this app
       // Clear any pending style update timeout
       if (batchTimeoutRef.current) {
         clearTimeout(batchTimeoutRef.current)
@@ -272,6 +277,14 @@ function DevelopPageContent() {
     }
   }, [loadingPhase, searchParams, conversations.length, router, setInputValue, handleSendMessage])
 
+  // Load git history when page is ready
+  useEffect(() => {
+    if (loadingPhase === 'ready' && appId) {
+      console.log('🔄 Page ready, loading git history for app:', appId)
+      loadGitHistory(appId)
+    }
+  }, [loadingPhase, appId, loadGitHistory])
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
       e.preventDefault()
@@ -349,14 +362,20 @@ function DevelopPageContent() {
             onKeyPress={handleKeyPress}
             onToggleSelectMode={toggleSelectMode}
             onToggleExpandedPlan={toggleExpandedPlan}
-            onToggleVersionHistory={() => toggleVersionHistory(appId)}
+            onToggleVersionHistory={() => {
+              toggleVersionHistory(appId)
+              // Load git history when opening version history panel
+              if (!isVersionHistoryOpen) {
+                loadGitHistory(appId, false) // Don't force reload, use smart caching
+              }
+            }}
             isVersionHistoryOpen={isVersionHistoryOpen}
             hasSelectedCommit={selectedCommit !== null}
             appId={appId}
             selectedCommit={selectedCommit}
             commits={commitHistory}
             isLoadingCommits={isLoadingCommits}
-            onRefreshCommits={refreshGitHistory}
+            onRefreshCommits={() => refreshGitHistory(appId)}
             onSelectCommit={async (commit) => {
               await selectCommitFromStore(appId, commit)
               handlePreviewRefresh()
