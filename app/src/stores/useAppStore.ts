@@ -219,15 +219,32 @@ export const useAppStore = create<AppStore>()(
       }
     },
     
-    // Restart app
+    // Restart app with retry logic
     restartApp: async (appId: string) => {
-      try {
-        await appService.restartApp(appId)
-        console.log('✅ App restarted successfully')
-      } catch (error) {
-        console.error('❌ Failed to restart app:', error)
-        throw error
+      const maxRetries = 2
+      let lastError: Error | null = null
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log('🔄 Restart attempt for app:', { attempt, maxRetries, appId })
+          await appService.restartApp(appId)
+          console.log('✅ App restarted successfully')
+          return
+        } catch (error) {
+          lastError = error as Error
+          console.error('❌ Restart attempt failed:', { attempt, maxRetries, error })
+          
+          if (attempt < maxRetries) {
+            // Wait before retry, with exponential backoff
+            const waitTime = attempt * 2000 // 2s, 4s
+            console.log('⏳ Waiting before retry:', { waitTime })
+            await new Promise(resolve => setTimeout(resolve, waitTime))
+          }
+        }
       }
+      
+      console.error('❌ All restart attempts failed for app:', { appId })
+      throw lastError || new Error('Restart failed after multiple attempts')
     },
     
     // Sync actual ports from running servers

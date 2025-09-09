@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import { enableMapSet } from 'immer'
 import { appFetch } from '@/lib/gasket-config'
+
+// Enable Immer MapSet plugin for Map support
+enableMapSet()
 
 export interface ServerState {
   appId: string

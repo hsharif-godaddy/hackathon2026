@@ -37,6 +37,113 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
   const [iframeKey, setIframeKey] = useState(0)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   
+  // Mobile device sizes with relative proportions for outline shapes
+  const mobileDevices = [
+    { 
+      name: 'iPhone SE', 
+      width: 375, 
+      height: 667,
+      aspectRatio: 375/667, // ~0.56
+      hasNotch: false
+    },
+    { 
+      name: 'iPhone 14', 
+      width: 390, 
+      height: 844,
+      aspectRatio: 390/844, // ~0.46
+      hasNotch: true
+    },
+    { 
+      name: 'iPhone 14 Pro', 
+      width: 393, 
+      height: 852,
+      aspectRatio: 393/852, // ~0.46
+      hasNotch: true
+    },
+    { 
+      name: 'iPhone 14 Pro Max', 
+      width: 430, 
+      height: 932,
+      aspectRatio: 430/932, // ~0.46
+      hasNotch: true
+    },
+    { 
+      name: 'Samsung Galaxy S23', 
+      width: 360, 
+      height: 780,
+      aspectRatio: 360/780, // ~0.46
+      hasNotch: false
+    },
+  ]
+  
+  const [selectedDevice, setSelectedDevice] = useState(mobileDevices[2]) // Default to iPhone 14 Pro
+  
+  // Device outline component
+  const DeviceOutline = ({ device, isSelected, onClick }: { 
+    device: typeof mobileDevices[0], 
+    isSelected: boolean, 
+    onClick: () => void 
+  }) => {
+    const outlineHeight = 40 // Fixed height for all outlines
+    const outlineWidth = outlineHeight * device.aspectRatio
+    
+    return (
+      <button
+        onClick={onClick}
+        className={`relative flex flex-col items-center p-2 rounded-lg transition-all ${
+          isSelected 
+            ? 'bg-gray-200 shadow-sm' 
+            : 'hover:bg-gray-100'
+        }`}
+        title={`${device.name} (${device.width}×${device.height})`}
+      >
+        {/* Device outline */}
+        <div 
+          className={`border-2 rounded-md relative ${
+            isSelected 
+              ? 'border-gray-600' 
+              : 'border-gray-300'
+          }`}
+          style={{ 
+            width: outlineWidth, 
+            height: outlineHeight 
+          }}
+        >
+          {/* Notch for modern iPhones */}
+          {device.hasNotch && (
+            <div 
+              className={`absolute top-0 left-1/2 transform -translate-x-1/2 rounded-b-sm ${
+                isSelected ? 'bg-gray-600' : 'bg-gray-300'
+              }`}
+              style={{ 
+                width: outlineWidth * 0.3, 
+                height: 2 
+              }}
+            />
+          )}
+          {/* Home button for older devices */}
+          {!device.hasNotch && (
+            <div 
+              className={`absolute bottom-1 left-1/2 transform -translate-x-1/2 rounded-full ${
+                isSelected ? 'bg-gray-600' : 'bg-gray-300'
+              }`}
+              style={{ 
+                width: 3, 
+                height: 3 
+              }}
+            />
+          )}
+        </div>
+        {/* Device label */}
+        <span className={`text-xs mt-1 ${
+          isSelected ? 'text-gray-700 font-medium' : 'text-gray-500'
+        }`}>
+          {device.name.split(' ').pop()}
+        </span>
+      </button>
+    )
+  }
+  
   // Start polling when component mounts
   useEffect(() => {
     if (!appId) return
@@ -87,9 +194,9 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
     setIframeError(false)
   }
   
-  // Get iframe dimensions based on view mode
+  // Get iframe dimensions based on view mode and selected device
   const iframeDimensions = viewMode === 'mobile' 
-    ? { width: '375px', height: '667px' }  // iPhone dimensions
+    ? { width: `${selectedDevice.width}px`, height: `${selectedDevice.height}px` }
     : { width: '100%', height: '100%' }
   
   // Loading state while polling
@@ -167,19 +274,68 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
           </div>
         )}
         
-        <div className="flex-1 bg-white">
-          <iframe
-            key={iframeKey}
-            ref={iframeRef}
-            id="preview-iframe"
-            src={previewUrl}
-            style={iframeDimensions}
-            className={`border-0 ${viewMode === 'mobile' ? 'mx-auto' : ''}`}
-            onError={handleIframeError}
-            onLoad={handleIframeLoad}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
-            title={`Preview for ${appId}`}
-          />
+        <div className="flex-1 bg-gray-50 flex items-center justify-center py-2">
+          {viewMode === 'mobile' ? (
+            // Mobile view with device selector on the right
+            <div className="flex items-center justify-center space-x-8 mx-2">
+              {/* Mobile Preview */}
+              <div className="flex flex-col items-center">
+                <div 
+                  className="shadow-2xl border-4 border-gray-800 bg-white overflow-hidden"
+                  style={{ 
+                    width: selectedDevice.width, 
+                    height: selectedDevice.height,
+                    borderRadius: Math.min(selectedDevice.width * 0.08, 32) // 8% of width, max 32px
+                  }}
+                >
+                  <iframe
+                    key={iframeKey}
+                    ref={iframeRef}
+                    id="preview-iframe"
+                    src={previewUrl}
+                    className="w-full h-full border-0"
+                    onError={handleIframeError}
+                    onLoad={handleIframeLoad}
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+                    title={`Preview for ${appId}`}
+                  />
+                </div>
+                {/* Current device info */}
+                <div className="mt-3 text-center">
+                  <span className="text-xs text-gray-400">
+                    {selectedDevice.name} ({selectedDevice.width}×{selectedDevice.height})
+                  </span>
+                </div>
+              </div>
+              
+              {/* Vertical Device Selector */}
+              <div className="flex flex-col space-y-2 bg-gray-100 rounded-lg p-2">
+                {mobileDevices.map(device => (
+                  <DeviceOutline
+                    key={device.name}
+                    device={device}
+                    isSelected={selectedDevice.name === device.name}
+                    onClick={() => setSelectedDevice(device)}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            // Desktop view - use available space with margin
+            <div className="w-full h-full mx-2 my-2 rounded-lg shadow-lg border border-gray-200 bg-white overflow-hidden">
+              <iframe
+                key={iframeKey}
+                ref={iframeRef}
+                id="preview-iframe"
+                src={previewUrl}
+                className="w-full h-full border-0"
+                onError={handleIframeError}
+                onLoad={handleIframeLoad}
+                sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+                title={`Preview for ${appId}`}
+              />
+            </div>
+          )}
         </div>
       </div>
     )

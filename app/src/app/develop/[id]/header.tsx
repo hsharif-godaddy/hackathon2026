@@ -14,7 +14,7 @@ import {
 import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
 import { UserMenu } from '@/components/auth'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useServerStore } from '@/stores/useServerStore'
+import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { isFeatureEnabled } from '@/lib/features'
 
 interface HeaderProps {
@@ -58,16 +58,12 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
   } = useDevelopPageStore()
   
   // Get real-time server status
-  const {
-    getServerInfo,
-    getServerUrl,
-    isServerReady
-  } = useServerStore()
+  const { getServerState } = useServerPollingStore()
   
-  const serverInfo = getServerInfo(appId)
-  const serverUrl = getServerUrl(appId)
-  const actualPort = serverInfo?.actualPort
-  const isServerRunning = isServerReady(appId)
+  const serverState = getServerState(appId)
+  const actualPort = serverState?.port
+  const serverUrl = serverState?.url
+  const isServerRunning = serverState?.status === 'running' && serverState?.isReady
   
   return (
     <header className="border-b border-gray-200 bg-white">
@@ -132,8 +128,8 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
               )}
             </div>
 
-            {/* Preview controls when in preview mode and server is ready */}
-            {viewMode === 'preview' && isServerRunning && actualPort && (
+            {/* Preview controls when in preview mode */}
+            {viewMode === 'preview' && (
               <div className="flex items-center space-x-3">
                 {/* View Mode Toggles */}
                 <div className="flex items-center space-x-1 border border-gray-200 rounded-md p-0.5">
@@ -173,7 +169,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                   
                   <button 
                     onClick={onRestartServer}
-                    disabled={!isServerRunning || isRestarting}
+                    disabled={isRestarting}
                     className="p-1 hover:bg-orange-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Restart server (rebuild and restart development server)"
                   >
@@ -184,9 +180,11 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                     onClick={() => {
                       if (serverUrl) {
                         window.open(serverUrl, '_blank')
+                      } else if (actualPort) {
+                        window.open(`http://localhost:${actualPort}`, '_blank')
                       }
                     }}
-                    disabled={!isServerRunning || isCheckingApp || isRestarting || isStartingApp}
+                    disabled={!actualPort || isCheckingApp || isRestarting || isStartingApp}
                     className="p-1 hover:bg-green-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Open app in new tab"
                   >

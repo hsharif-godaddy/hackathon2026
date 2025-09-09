@@ -282,19 +282,27 @@ function DevelopPageContent() {
   const handleRestartServer = async () => {
     if (!appId) return
     
+    console.log('🔄 Starting server restart process...')
+    
     try {
       await restartAppFromStore(appId, appStoreRestartApp)
+      console.log('✅ App restart completed successfully')
       
-      // Refresh app data
-      try {
-        // App data is now managed by the store
-        console.log('🔄 App restart completed')
-      } catch (refreshError) {
-        console.error('❌ Failed to refresh app data:', refreshError)
-      }
+      // Refresh the preview after successful restart
+      setTimeout(() => {
+        handlePreviewRefresh()
+      }, 1000)
+      
     } catch (error) {
       console.error('❌ Error restarting server:', error)
-      alert('Failed to restart server')
+      
+      // More user-friendly error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      if (errorMessage.includes('404')) {
+        alert('App not found or not ready for restart. Please try again in a moment.')
+      } else {
+        alert(`Failed to restart server: ${errorMessage}`)
+      }
     }
   }
 
