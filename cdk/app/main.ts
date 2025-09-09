@@ -3,6 +3,7 @@ import { App } from "aws-cdk-lib";
 import {AiroBuilderStack} from "../lib/application-stack";
 import { AiroBuilderHostedZoneStack } from "../lib/hostedzone-stack";
 import { MySQLStack } from "../lib/mysql-stack";
+import { MySQLV2Stack } from "../lib/mysql-v2-stack";
 
 // Main function to execute the CDK app
 async function main() {
@@ -13,6 +14,9 @@ async function main() {
 
   // Create MySQL stack using existing VPC
   //new MySQLStack(app, 'MySQLStack', { env: env,});
+
+  // Create MySQL V2 stack using existing VPC, for env based databases
+  new MySQLV2Stack(app, 'MySQLV2Stack', { env: env });
 
   new AiroBuilderStack(app, 'AiroBuilderStack', { env: env });
 

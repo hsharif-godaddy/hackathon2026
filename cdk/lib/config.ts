@@ -4,6 +4,8 @@ interface Config {
   envName: string;
   route53BaseDomain: string;
   v2CellAccount: string;
+  databases: string[];
+  vpnIps: any;
 }
 
 const devConfig: Config = {
@@ -11,7 +13,17 @@ const devConfig: Config = {
   region: 'us-west-2',
   envName: 'dev',
   route53BaseDomain: 'airo-builder.dp.aws.gdcld.net',
-  v2CellAccount: '418549769352'
+  v2CellAccount: '418549769352',
+  databases: ['pre-dev', 'dev', 'test'],
+  vpnIps: {
+    "165.1.180.132/31": "Prisma External (India West)",
+    "160.153.26.244/30": "Prisma NAT",
+    "166.62.16.233/32": "Prisma NAT",
+    "160.153.26.233/32": "Prisma NAT",
+    "166.62.16.244/30": "Prisma NAT",
+    "132.148.54.234/32": "Prisma NAT",
+    "132.148.54.244/30": "Prisma NAT"
+  }
 };
 
 let config: Config;

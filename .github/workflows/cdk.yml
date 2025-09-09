@@ -18,6 +18,7 @@ on:
           - '--all'
           - 'AiroBuilderHostedZoneStack'
           - 'AiroBuilderStack'
+          - 'MySQLV2Stack'
         default: '--all'
       DEFAULT_ACTION:
         description: 'Default action to take'
