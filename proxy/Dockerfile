@@ -2,8 +2,9 @@ FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:22-alpine
 
 USER root
 
-# Install openssl for generating certificates
-RUN apk add --no-cache openssl
+# Install pnpm and necessary packages
+RUN apk add --no-cache openssl && \
+    npm install -g pnpm
 
 # Set working directory
 WORKDIR /app
@@ -16,13 +17,21 @@ RUN mkdir -p /app/ssl && \
     -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
 
 # Copy package files
-COPY --chown=node:node package.json ./
+COPY --chown=node:node package.json pnpm-lock.yaml* ./
 
-# Install dependencies
-RUN npm install --only=production
+# Install all dependencies (including dev dependencies for building)
+RUN pnpm install --frozen-lockfile
 
-# Copy application code
-COPY --chown=node:node server.js ./
+# Copy source code and configuration
+COPY --chown=node:node src/ ./src/
+COPY --chown=node:node tsconfig.json ./
+COPY --chown=node:node setup-certs.sh ./
+
+# Build TypeScript
+RUN pnpm run build
+
+# Make setup script executable
+RUN chmod +x setup-certs.sh
 
 # Change ownership of the app directory  
 RUN chown -R node:node /app
@@ -33,5 +42,5 @@ EXPOSE 8888
 # Switch to non-root user
 USER node
 
-# Start the application
-CMD ["npm", "start"]
+# Start the application with certificate setup
+CMD ["sh", "-c", "./setup-certs.sh && pnpm start"]
