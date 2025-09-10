@@ -13,7 +13,7 @@ import {
 import { appFetch } from '@/lib/gasket-config'
 import { ProtectedRoute } from '@/components/auth'
 import Header from '@/components/layout/Header'
-import { Site } from '@/lib/database/prisma-site-service'
+import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { DevelopmentAdminSection } from '@/components/development'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -28,7 +28,7 @@ interface AlertState {
 }
 
 function SitesPageContent() {
-  const [sites, setSites] = useState<Site[]>([])
+  const [sites, setSites] = useState<SiteInfo[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -70,7 +70,7 @@ function SitesPageContent() {
     })
   }
 
-  const getStatusLabel = (status: Site['status']) => {
+  const getStatusLabel = (status: SiteInfo['status']) => {
     switch (status) {
       case 'running':
         return <Tag emphasis="success">Running</Tag>
@@ -136,7 +136,7 @@ function SitesPageContent() {
       
       // Update site statuses to stopped
       setSites(sites.map(site => 
-        site.status === 'running' ? { ...site, status: 'stopped' as Site['status'] } : site
+        site.status === 'running' ? { ...site, status: 'stopped' as SiteInfo['status'] } : site
       ))
     } catch (error) {
       console.error('Error stopping all sites:', error)
@@ -299,7 +299,7 @@ function SitesPageContent() {
                 
                 <div className="flex-1">
                   <h3 className="font-semibold text-gray-900 mb-1">
-                    {site.title || 'Untitled Site'}
+                    {site.name || 'Untitled Site'}
                   </h3>
                   {site.initial_prompt && (
                     <p className="text-sm text-gray-600 mb-2 line-clamp-2">
@@ -340,7 +340,7 @@ function SitesPageContent() {
                   </div>
                   
                   <Button
-                    onClick={() => showDeleteAlert(site.id, site.title || 'Untitled Site')}
+                    onClick={() => showDeleteAlert(site.id, site.name || 'Untitled Site')}
                     icon={<TrashIcon className="w-2 h-2" />}
                     size="sm"
                     design="inline"
