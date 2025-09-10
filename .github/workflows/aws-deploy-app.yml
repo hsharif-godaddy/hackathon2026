@@ -1,7 +1,20 @@
 name: AWS Deploy App
 on:
+  # Manual deployment with environment choice
   workflow_dispatch:
+    inputs:
+      DEPLOY_TO_ENV:
+        description: 'Environment to deploy the artifact'
+        required: true
+        default: 'pre-dev'
+        type: choice
+        options:
+          - 'pre-dev'
+          - 'dev-private-ecs'
+          - 'test'
+          - 'NA'
 
+run-name: "[Env: ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
 
 permissions:
   id-token: write # required for artifactory token login
@@ -33,7 +46,7 @@ jobs:
           JF_URL: ${{ vars.JF_URL }} # Stored at the org level so you don't have to worry about it
         with:
           oidc-provider-name: github
-  
+
       - name: Setup Artifactory Creds
         env:
           OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }} # Use the token as you'd normally use a token or password
@@ -43,7 +56,7 @@ jobs:
           echo "always-auth=true" > app/.npmrc
           echo "progress=false" >> app/.npmrc
           echo registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> app/.npmrc
-          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${OIDC_TOKEN}" >> app/.npmrc          
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${OIDC_TOKEN}" >> app/.npmrc
 
       # Sets up authentication with Amazon ECR in the chosen region. Note that the URL can be obtained from GoDaddy's Golden Containers Registry at `https://gcr.katana.int.gdcorp.tools/`.
       - name: Golden Container Registry Login
@@ -54,11 +67,6 @@ jobs:
       - name: Build Container
         env:
           NODE_ENV: production
-          NEXT_PUBLIC_SSO_LOGIN_URL: https://sso.test-godaddy.com/login
-          NEXT_PUBLIC_SSO_LOGOUT_URL: https://sso.test-godaddy.com/logout
-          NEXT_PUBLIC_LOGIN_REDIRECT_URL: https://airo-builder.test-godaddy.com/
-          NEXT_PUBLIC_LOGOUT_REDIRECT_URL: https://airo-builder.test-godaddy.com/
-          NEXT_PUBLIC_AUTH_IN_DEV: false
         run: |
           docker build --platform linux/amd64 -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} app/
 
@@ -78,12 +86,12 @@ jobs:
               "healthcheckPath": "/api/health"
             }
 
-      # Promote the published artifact to the `dev` environment with the katana-promote-artifact GitHub Action
-      - name: Promote to dev Environment
+      # Promote the published artifact to the selected environment with the katana-promote-artifact GitHub Action
+      - name: Promote to ${{ inputs.DEPLOY_TO_ENV }} Environment
+        if: ${{ inputs.DEPLOY_TO_ENV != 'NA' }}
         uses: gdcorp-actions/katana-promote-artifact@v1
         with:
           namespace: ${{ steps.katana-app.outputs.namespace }}
           app: ${{ steps.katana-app.outputs.app }}
-          environment: dev-private-ecs
+          environment: ${{ inputs.DEPLOY_TO_ENV }}
           artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
-

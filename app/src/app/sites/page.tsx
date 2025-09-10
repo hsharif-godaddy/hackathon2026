@@ -234,7 +234,7 @@ function SitesPageContent() {
           <Box orientation="horizontal" gap="md">
             Manage your AI-powered websites and applications
             <Tag emphasis="info">
-              {sites.length} {sites.length === 1 ? 'site' : 'sites'} total
+              {`${sites.length} ${sites.length === 1 ? 'site' : 'sites'} total`}
             </Tag>
           </Box>
         </div>

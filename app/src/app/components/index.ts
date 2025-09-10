@@ -1,4 +1,3 @@
-export { default as Header } from './Header'
 export { default as HeroSection } from './HeroSection'
 export { default as ExamplesSection } from './ExamplesSection'
 export { default as BuiltWithSection } from './BuiltWithSection'
