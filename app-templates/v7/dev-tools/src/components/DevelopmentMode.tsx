@@ -162,6 +162,13 @@ export default function DevelopmentMode() {
 
     window.addEventListener('message', handleMessage)
     console.log('Visual context: Script loaded and ready')
+    
+    // Notify parent that iframe is ready for state restoration
+    if (window.parent !== window) {
+      safePostMessage(window.parent, {
+        type: 'IFRAME_READY'
+      })
+    }
 
     return () => {
       if (sectionsObserver) {

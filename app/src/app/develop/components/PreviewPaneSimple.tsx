@@ -1,12 +1,17 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { 
   ExclamationTriangleIcon, 
   ArrowPathIcon,
   ClockIcon
 } from '@heroicons/react/24/outline'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { postMessageToIframe } from '@/utils/postMessage'
+
+// Timing constants for iframe lifecycle management
+const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
+const STATE_RESTORE_FALLBACK_MS = 3000 // Fallback timeout if iframe doesn't send ready signal
 
 interface PreviewPaneProps {
   appId: string
@@ -36,6 +41,13 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
   const [iframeError, setIframeError] = useState(false)
   const [iframeKey, setIframeKey] = useState(0)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  
+  // State preservation for iframe navigation and scroll position
+  const [pendingStateRestore, setPendingStateRestore] = useState<{
+    url?: string
+    scrollPosition?: { x: number; y: number }
+  } | null>(null)
+  const [isWaitingForIframeReady, setIsWaitingForIframeReady] = useState(false)
   
   // Mobile device sizes with relative proportions for outline shapes
   const mobileDevices = [
@@ -157,22 +169,122 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
     }
   }, [appId, startPollingForServer, stopPollingForServer])
   
-  // Listen for file save events to auto-refresh preview
+  // Handle iframe load and restore scroll position if pending
+  const handleIframeLoad = useCallback(() => {
+    setIframeError(false)
+    
+    // Check if we have scroll position to restore and URL matches
+    if (pendingStateRestore?.scrollPosition && iframeRef.current) {
+      // Check if the current iframe URL matches the saved URL
+      try {
+        const currentUrl = new URL(iframeRef.current.src)
+        const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url) : null
+        
+        // Only restore if URLs match (same pathname and search params)
+        if (savedUrl && currentUrl.pathname === savedUrl.pathname && currentUrl.search === savedUrl.search) {
+          // Set waiting state and start fallback timer
+          setIsWaitingForIframeReady(true)
+          
+          // Fallback timeout in case iframe doesn't send ready signal
+          const fallbackTimer = setTimeout(() => {
+            if (isWaitingForIframeReady) {
+              console.warn('Iframe ready timeout, attempting state restoration anyway')
+              attemptStateRestoration()
+            }
+          }, STATE_RESTORE_FALLBACK_MS)
+          
+          // Clear timer when component unmounts or state changes
+          return () => clearTimeout(fallbackTimer)
+        } else {
+          console.log('URL mismatch, clearing pending state restoration')
+          setPendingStateRestore(null)
+        }
+      } catch (error) {
+        console.warn('Failed to parse URLs for state restoration:', error)
+        setPendingStateRestore(null)
+      }
+    }
+  }, [appId, pendingStateRestore, isWaitingForIframeReady])
+
+  // Attempt to restore iframe state (scroll position, etc.)
+  const attemptStateRestoration = useCallback(() => {
+    if (!pendingStateRestore?.scrollPosition || !iframeRef.current) return
+    
+    // Double-check URL match before restoration
+    try {
+      const currentUrl = new URL(iframeRef.current.src)
+      const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url) : null
+      
+      if (!savedUrl || currentUrl.pathname !== savedUrl.pathname || currentUrl.search !== savedUrl.search) {
+        console.log('URL mismatch during restoration, aborting')
+        setPendingStateRestore(null)
+        setIsWaitingForIframeReady(false)
+        return
+      }
+    } catch (error) {
+      console.warn('Failed to validate URLs during restoration:', error)
+      setPendingStateRestore(null)
+      setIsWaitingForIframeReady(false)
+      return
+    }
+    
+    try {
+      // Try to access iframe content and restore scroll position
+      const contentWindow = iframeRef.current.contentWindow
+      
+      if (contentWindow && pendingStateRestore.scrollPosition) {
+        contentWindow.scrollTo(
+          pendingStateRestore.scrollPosition.x,
+          pendingStateRestore.scrollPosition.y
+        )
+      }
+    } catch (error) {
+      // If direct access fails (cross-origin), try postMessage as fallback
+      try {
+        const restoreMessage = {
+          type: 'RESTORE_STATE_AFTER_REFRESH',
+          url: pendingStateRestore.url,
+          scrollPosition: pendingStateRestore.scrollPosition
+        }
+        postMessageToIframe(iframeRef.current, restoreMessage)
+      } catch (postMessageError) {
+        console.error('Failed to restore state:', postMessageError)
+      }
+    }
+    
+    // Clear pending state and waiting flag
+    setPendingStateRestore(null)
+    setIsWaitingForIframeReady(false)
+  }, [pendingStateRestore])
+
+  // Listen for file save events and preview refresh requests to auto-refresh preview
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'file-saved' && serverState?.isReady) {
+      // Handle iframe ready signal for immediate state restoration
+      if (event.data.type === 'IFRAME_READY' && isWaitingForIframeReady) {
+        console.log('Iframe ready signal received, restoring state immediately')
+        attemptStateRestoration()
+        return
+      }
+      
+      if ((event.data.type === 'file-saved' || event.data.type === 'preview-refresh') && serverState?.isReady) {
+        // Store state to restore if provided
+        if (event.data.preserveState) {
+          setPendingStateRestore(event.data.preserveState)
+        }
+        
         // Debounce refreshes to avoid too many reloads
         setTimeout(() => {
           if (iframeRef.current) {
             iframeRef.current.src = iframeRef.current.src
           }
-        }, 500)
+        }, REFRESH_DEBOUNCE_MS)
       }
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [serverState?.isReady])
+  }, [serverState?.isReady, isWaitingForIframeReady, attemptStateRestoration])
   
   const handleManualRetry = () => {
     console.log(`🔄 Manual retry for ${appId}`)
@@ -187,11 +299,6 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
   const handleIframeError = () => {
     console.log(`❌ Iframe error for ${appId}`)
     setIframeError(true)
-  }
-  
-  const handleIframeLoad = () => {
-    console.log(`✅ Iframe loaded successfully for ${appId}`)
-    setIframeError(false)
   }
   
   // Get iframe dimensions based on view mode and selected device

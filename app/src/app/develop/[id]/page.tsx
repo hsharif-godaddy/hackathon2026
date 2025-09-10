@@ -17,6 +17,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { postMessageToIframe } from '@/utils/postMessage'
 // Site data is now handled by the orchestrated loading
 
 function DevelopPageContent() {
@@ -83,6 +84,13 @@ function DevelopPageContent() {
   // Local state (only what's not in stores)
   const [showUsageCost, setShowUsageCost] = useState(false)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
+  
+  // Store last known iframe state for restoration
+  const lastIframeState = useRef<{
+    url?: string
+    scrollPosition?: { x: number; y: number }
+  }>({})
+
 
   const headerRef = useRef<HeaderRef>(null)
 
@@ -107,7 +115,7 @@ function DevelopPageContent() {
     
     // Additional side effects after message sent
     headerRef.current?.refreshTokenUsage()
-    handlePreviewRefresh()
+    // Note: Preview refresh is now handled on message completion, not immediately
     
     // Logic simplified - UI updates handled by store orchestration
   }, [])
@@ -234,8 +242,29 @@ function DevelopPageContent() {
           console.log('AI edit requested for element:', event.data.data)
           break
         case 'SCROLL_POSITION_UPDATE':
-          // Handle real-time scroll position updates from iframe
-          console.log('Scroll position updated in iframe:', event.data)
+          // Handle real-time scroll position updates from iframe and store for restoration
+          const newScrollPos = {
+            x: event.data.scrollX || 0,
+            y: event.data.scrollY || 0
+          }
+          lastIframeState.current.scrollPosition = newScrollPos
+          break
+        case 'VISUAL_CONTEXT_RESPONSE':
+          // Handle visual context response which includes scroll position
+          if (event.data.context && event.data.context.scroll_position) {
+            lastIframeState.current.scrollPosition = event.data.context.scroll_position
+            lastIframeState.current.url = event.data.context.page
+          }
+          break
+        case 'URL_CHANGE':
+          // Handle URL changes in iframe (navigation)
+          lastIframeState.current.url = event.data.url
+          break
+        case 'MESSAGE_COMPLETE':
+          // Handle message completion - refresh preview with state preservation
+          setTimeout(() => {
+            handlePreviewRefresh()
+          }, 500) // Small delay to ensure any file changes are processed
           break
       }
     }
@@ -324,9 +353,25 @@ function DevelopPageContent() {
   }, [setChatPaneWidth])
 
   const handlePreviewRefresh = () => {
+    // First request current visual context to capture scroll position
     const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
-    if (iframe) {
-      iframe.src = iframe.src
+    if (iframe && iframe.contentWindow) {
+      try {
+        postMessageToIframe(iframe, { type: 'REQUEST_VISUAL_CONTEXT' })
+      } catch (error) {
+        console.error('Cannot request visual context:', error)
+      }
+      
+      // Wait a bit for the response, then refresh with whatever state we have
+      setTimeout(() => {
+        window.postMessage({ 
+          type: 'preview-refresh',
+          preserveState: lastIframeState.current 
+        }, window.location.origin)
+      }, 100) // Short delay to allow visual context response
+    } else {
+      // No iframe available, just refresh
+      window.postMessage({ type: 'preview-refresh' }, window.location.origin)
     }
   }
 

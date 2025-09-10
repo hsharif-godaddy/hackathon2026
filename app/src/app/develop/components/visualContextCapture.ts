@@ -21,27 +21,7 @@ function isValidOrigin(origin: string): boolean {
          origin === window.location.origin
 }
 
-/**
- * Gets the target origin for postMessage to the iframe
- * 
- * @returns The target origin to use for postMessage
- */
-function getIframeTargetOrigin(): string {
-  const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
-  
-  if (!iframe?.src) {
-    // Fallback to same origin if iframe src is not available
-    return window.location.origin
-  }
-  
-  try {
-    const iframeUrl = new URL(iframe.src)
-    return iframeUrl.origin
-  } catch {
-    // If URL parsing fails, use same origin
-    return window.location.origin
-  }
-}
+import { postMessageToIframe } from '@/utils/postMessage'
 
 export interface VisualContext {
   page: string
@@ -87,10 +67,9 @@ export async function captureVisualContext(): Promise<VisualContext | null> {
       window.addEventListener('message', handleMessage)
     })
 
-    const targetOrigin = getIframeTargetOrigin()
-    iframe.contentWindow.postMessage({
+    postMessageToIframe(iframe, {
       type: 'REQUEST_VISUAL_CONTEXT'
-    }, targetOrigin)
+    })
 
     return await contextPromise
 

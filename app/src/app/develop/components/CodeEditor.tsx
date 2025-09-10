@@ -259,7 +259,7 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
           pathToSave.endsWith('.ts') || pathToSave.endsWith('.js') ||
           pathToSave.endsWith('.css') || pathToSave.endsWith('.scss')) {
         // Notify parent component about file changes
-        window.postMessage({ type: 'file-saved', path: pathToSave }, '*')
+        window.postMessage({ type: 'file-saved', path: pathToSave }, window.location.origin)
       }
 
       console.log(`Saved ${pathToSave}`)

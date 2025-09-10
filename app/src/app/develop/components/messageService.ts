@@ -512,11 +512,9 @@ function handleWebSocketMessage(
       }
       
       // Trigger preview refresh when message completes
-      if (onMessageComplete) {
-        setTimeout(() => {
-          onMessageComplete()
-        }, 500) // Small delay to ensure file changes are processed
-      }
+      setTimeout(() => {
+        window.postMessage({ type: 'MESSAGE_COMPLETE' }, window.location.origin)
+      }, 500) // Small delay to ensure file changes are processed
       break
       
     case 'error':

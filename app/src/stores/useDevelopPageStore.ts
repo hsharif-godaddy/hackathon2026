@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import { postMessageToIframe } from '@/utils/postMessage'
 import { appService, type App } from '@/services/AppService'
 import { type Site, useSiteStore } from '@/stores/useSiteStore'
 import { useMessagesStore } from '@/stores/useMessagesStore'
@@ -353,11 +354,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       
       // Send message to preview iframe to toggle select mode
       const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
-      if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage({
+      if (iframe) {
+        postMessageToIframe(iframe, {
           type: 'TOGGLE_SELECT_MODE',
           data: { isSelectMode: newSelectMode }
-        }, '*')
+        })
       }
     },
     

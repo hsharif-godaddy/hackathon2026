@@ -112,7 +112,43 @@ export default function DevelopmentMode() {
           return
         }
 
-        if (event.data && event.data.type === 'REQUEST_VISUAL_CONTEXT') {
+        if (event.data && event.data.type === 'RESTORE_SCROLL_POSITION') {
+          if (event.data.scrollPosition) {
+            try {
+              window.scrollTo(event.data.scrollPosition.x, event.data.scrollPosition.y)
+            } catch (error) {
+              console.error('Failed to restore scroll position:', error)
+            }
+          }
+        } else if (event.data && event.data.type === 'RESTORE_STATE_AFTER_REFRESH') {
+          // Restore URL/navigation first
+          if (event.data.url) {
+            const currentPath = window.location.pathname + window.location.search
+            if (currentPath !== event.data.url) {
+              try {
+                // Use history API to navigate without full page reload
+                window.history.pushState(null, '', event.data.url)
+                
+                // Dispatch a popstate event to notify React Router of the navigation
+                const popStateEvent = new PopStateEvent('popstate', { state: null })
+                window.dispatchEvent(popStateEvent)
+              } catch (error) {
+                console.error('Failed to restore URL:', error)
+              }
+            }
+          }
+          
+          // Then restore scroll position after a delay to ensure page has updated
+          if (event.data.scrollPosition) {
+            setTimeout(() => {
+              try {
+                window.scrollTo(event.data.scrollPosition.x, event.data.scrollPosition.y)
+              } catch (error) {
+                console.error('Failed to restore scroll position:', error)
+              }
+            }, 100)
+          }
+        } else if (event.data && event.data.type === 'REQUEST_VISUAL_CONTEXT') {
           console.log('Visual context: Request received, script ready:', isScriptReady)
           
           const context = {
@@ -162,6 +198,13 @@ export default function DevelopmentMode() {
 
     window.addEventListener('message', handleMessage)
     console.log('Visual context: Script loaded and ready')
+    
+    // Notify parent that iframe is ready for state restoration
+    if (window.parent !== window) {
+      safePostMessage(window.parent, {
+        type: 'IFRAME_READY'
+      })
+    }
 
     return () => {
       if (sectionsObserver) {
