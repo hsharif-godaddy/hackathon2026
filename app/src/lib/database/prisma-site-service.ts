@@ -34,7 +34,7 @@ export interface Site {
   preview_url: string | null;
   ceph_mount_id: string | null;
   ceph_dir_number: string | null;
-  status: SiteStatus;
+  status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
   created_at: Date;
   updated_at: Date;
 }
@@ -53,6 +53,9 @@ export class PrismaSiteService {
     const siteId = uuidv4();
     const title = request.title || this.generateTitle(request.initial_prompt);
 
+    const cephAssignment = await this.getNextCephAssignment();
+
+
     const site = await this.client.sites.create({
       data: {
         id: siteId,
@@ -60,7 +63,9 @@ export class PrismaSiteService {
         title,
         initial_prompt: request.initial_prompt,
         domain: request.domain,
-        status: SiteStatus.stopped, // Default to stopped instead of pending
+        ceph_mount_id: cephAssignment.cephMountId,
+        ceph_dir_number: cephAssignment.cephDirNumber,
+        status: SiteStatus.init, // Default status for new sites
       },
     });
 
@@ -132,6 +137,30 @@ export class PrismaSiteService {
   }
 
   /**
+   * Get next available Ceph storage assignment
+   * this is temp code until we have a proper Ceph storage assignment system
+   * we will want to store the mounts per cell in the database and have a proper round robin system
+   */
+  private async getNextCephAssignment(): Promise<{ cephMountId: string; cephDirNumber: string }> {
+    // Available Ceph mounts (hardcoded for now, could be configurable)
+    const cephMounts = [
+      'ac214cd3-b745-47a2-921c-61b4419679fe',
+      'a2a8a675-dcb4-40ec-a719-27854cc0956c'
+    ];
+
+    // Randomly select a mount
+    const selectedMount = cephMounts[Math.floor(Math.random() * cephMounts.length)];
+
+    // Randomly select a directory number from 00 to 99
+    const randomDirNumber = Math.floor(Math.random() * 100);
+
+    return {
+      cephMountId: selectedMount,
+      cephDirNumber: randomDirNumber.toString().padStart(2, '0')
+    };
+  }
+
+  /**
    * Generate a title from the initial prompt
    */
   private generateTitle(prompt: string): string {
@@ -141,10 +170,10 @@ export class PrismaSiteService {
 
     // Take first 50 characters and clean it up
     let title = prompt.trim().substring(0, 50);
-    
+
     // Remove newlines and extra spaces
     title = title.replace(/\s+/g, ' ').trim();
-    
+
     // Add ellipsis if truncated
     if (prompt.length > 50) {
       title += '...';

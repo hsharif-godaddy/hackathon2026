@@ -33,7 +33,7 @@ function HomeContent() {
     use12HourExpiration: authConfigs.user.use12HourExpiration,
     // Remove alt to allow proper token refresh, handle redirects in our logic instead
   })
-  
+
   // Use integrated auth state that considers mock auth
   const authState = useIntegratedAuthState(originalAuthState)
 
@@ -68,7 +68,7 @@ function HomeContent() {
       category: "Health & Fitness"
     },
     {
-      id: "2", 
+      id: "2",
       title: "TastyWheels Food Truck",
       description: "Interactive food truck website featuring live location tracking, digital menu with ordering system, and customer reviews.",
       thumbnailPath: "/placeholder-foodtruck.jpg",
@@ -78,7 +78,7 @@ function HomeContent() {
       id: "3",
       title: "Creative Canvas Portfolio",
       description: "Stunning portfolio site for a graphic designer with image galleries, client testimonials, and project case studies.",
-      thumbnailPath: "/placeholder-portfolio.jpg", 
+      thumbnailPath: "/placeholder-portfolio.jpg",
       category: "Portfolio"
     },
     {
@@ -103,7 +103,7 @@ function HomeContent() {
       category: "E-commerce"
     }
   ]
-  
+
   // Check for URL parameter and prefill prompt text
   useEffect(() => {
     const initialPromptParam = searchParams.get('initialPrompt')
@@ -112,7 +112,7 @@ function HomeContent() {
       setPromptText(decodeURIComponent(initialPromptParam))
     }
   }, [searchParams, promptText])
-  
+
   // Detect and handle back navigation to reset the redirect state
   useEffect(() => {
     // Reset the redirect state when returning to this page
@@ -122,26 +122,30 @@ function HomeContent() {
   // Use useCallback to ensure the function reference stays stable
   const handleStartBuilding = useCallback(async () => {
     if (!promptText.trim() || isRedirecting || isLoading) return
-    
+
     // Clear any previous errors and set loading state
     setError(null)
     setIsLoading(true)
     setIsRedirecting(true)
-    
+
     try {
       // Step 1: Quick auth check - only redirect to login if needed
-      if (!isAuthDisabled() && !authState.valid) {
+      // Ensure consistent timing for async and sync auth checks
+      const authDisabled = await isAuthDisabled();
+      const isValid = authState.valid;
+
+      if (!authDisabled && !isValid) {
         console.log('🔐 User not authenticated, redirecting to login')
         if (isFeatureEnabled.mockLogin()) {
           throw new Error('Please sign in using the mock authentication system')
         }
-        window.location.href = getLoginUrl(window.location.href)
+        window.location.href = await getLoginUrl(window.location.href)
         return
       }
 
       // Step 2: Super fast create - only create database record, no deployment
       console.log('🚀 Quick creating site record...')
-      
+
       const createSiteResponse = await appFetch('/api/sites/quick-create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -149,23 +153,23 @@ function HomeContent() {
           initialPrompt: promptText.trim()
         })
       })
-      
+
       if (!createSiteResponse.ok) {
         const errorData = await createSiteResponse.json().catch(() => ({}))
         throw new Error(errorData.error || 'Failed to create site')
       }
-      
+
       const siteData = await createSiteResponse.json()
       console.log('✅ Site record created instantly:', siteData.id)
-      
+
       // Immediately redirect to /create/{siteId} - deployment will happen there
       router.push(`/create/${siteData.id}`)
     } catch (error) {
       console.error('❌ Error in start building flow:', error)
-      
+
       // Set user-friendly error message
       let errorMessage = 'Something went wrong. Please try again.'
-      
+
       if (error instanceof Error) {
         if (error.message.includes('Failed to create site')) {
           errorMessage = 'Failed to create your development environment. Please try again or contact support.'
@@ -181,9 +185,9 @@ function HomeContent() {
           errorMessage = error.message
         }
       }
-      
+
       setError(errorMessage)
-      
+
       // Reset flags on error
       setIsLoading(false)
       setIsRedirecting(false)
@@ -196,9 +200,9 @@ function HomeContent() {
 
   return (
     <div className="min-h-screen">
-      <Header 
+      <Header
         actions={
-          <Button 
+          <Button
             onClick={handleStartBuilding}
             data-partial={ !isLoading ? "componentAiro" : "componentBrand" }
             disabled={!promptText.trim() || isLoading}

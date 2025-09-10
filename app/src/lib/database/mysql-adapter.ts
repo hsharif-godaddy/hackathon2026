@@ -39,16 +39,16 @@ export class MySQLAdapter implements DatabaseAdapter {
   async run(sql: string, params: unknown[] = []): Promise<DatabaseResult> {
     try {
       const connection = await this.getConnection();
-      
+
       // Convert SQLite SQL syntax to MySQL syntax
       const mysqlSql = this.convertSQLiteToMySQL(sql);
-      
+
       const [result] = await connection.execute(mysqlSql, params);
-      
+
       if (Array.isArray(result)) {
         return { changes: 0 };
       }
-      
+
       const mysqlResult = result as mysql.ResultSetHeader;
       return {
         changes: mysqlResult.affectedRows || 0,
@@ -68,12 +68,12 @@ export class MySQLAdapter implements DatabaseAdapter {
   async get<T = DatabaseRow>(sql: string, params: unknown[] = []): Promise<T | undefined> {
     try {
       const connection = await this.getConnection();
-      
+
       // Convert SQLite SQL syntax to MySQL syntax
       const mysqlSql = this.convertSQLiteToMySQL(sql);
-      
+
       const [rows] = await connection.execute(mysqlSql, params);
-      
+
       if (Array.isArray(rows) && rows.length > 0) {
         return rows[0] as T;
       }
@@ -87,12 +87,12 @@ export class MySQLAdapter implements DatabaseAdapter {
   async all<T = DatabaseRow>(sql: string, params: unknown[] = []): Promise<T[]> {
     try {
       const connection = await this.getConnection();
-      
+
       // Convert SQLite SQL syntax to MySQL syntax
       const mysqlSql = this.convertSQLiteToMySQL(sql);
-      
+
       const [rows] = await connection.execute(mysqlSql, params);
-      
+
       return (Array.isArray(rows) ? rows : []) as T[];
     } catch (error) {
       console.error('MySQL Error getting all rows:', sql, params, error);
@@ -103,10 +103,10 @@ export class MySQLAdapter implements DatabaseAdapter {
   async exec(sql: string): Promise<void> {
     try {
       const connection = await this.getConnection();
-      
+
       // Split multiple statements and execute them one by one
       const statements = sql.split(';').filter(stmt => stmt.trim().length > 0);
-      
+
       for (const statement of statements) {
         const mysqlSql = this.convertSQLiteToMySQL(statement.trim());
         if (mysqlSql) {
@@ -173,47 +173,47 @@ export class MySQLAdapter implements DatabaseAdapter {
       // Replace TEXT with VARCHAR(255) for smaller text fields, TEXT for larger ones
       .replace(/VARCHAR\(\d+\)/gi, match => match) // Keep existing VARCHAR definitions
       .replace(/\bTEXT\b/gi, 'TEXT')
-      
-      // Replace DATETIME DEFAULT CURRENT_TIMESTAMP 
+
+      // Replace DATETIME DEFAULT CURRENT_TIMESTAMP
       .replace(/DATETIME DEFAULT CURRENT_TIMESTAMP/gi, 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP')
-      
+
       // // Replace INTEGER with INT
       // .replace(/\bINTEGER\b/gi, 'INT')
-      
+
       // Replace CAST(...AS INTEGER) with CAST(...AS SIGNED) for MySQL
       .replace(/CAST\s*\([^)]+\s+AS\s+INTEGER\)/gi, (match) => {
         return match.replace(/INTEGER/gi, 'SIGNED');
       })
-      
+
       // Replace DECIMAL format (MySQL uses same format)
       .replace(/DECIMAL\((\d+),(\d+)\)/gi, 'DECIMAL($1,$2)')
-      
+
       // Handle CHECK constraints (MySQL 8.0+ supports them, but we'll remove for compatibility)
       .replace(/CHECK\s*\([^)]+\)/gi, '')
-      
+
       // Replace AUTOINCREMENT with AUTO_INCREMENT
       .replace(/\bAUTOINCREMENT\b/gi, 'AUTO_INCREMENT')
-      
+
       // Replace IF NOT EXISTS for CREATE TABLE
       .replace(/CREATE TABLE IF NOT EXISTS/gi, 'CREATE TABLE IF NOT EXISTS')
-      
+
       // Replace IF NOT EXISTS for CREATE INDEX (not supported in MySQL < 8.0.23)
-      .replace(/CREATE INDEX IF NOT EXISTS\s+(\w+)\s+ON\s+(\w+)\s*\(([^)]+)\)/gi, 
+      .replace(/CREATE INDEX IF NOT EXISTS\s+(\w+)\s+ON\s+(\w+)\s*\(([^)]+)\)/gi,
         'CREATE INDEX $1 ON $2($3)')
-      
+
       // Replace triggers (MySQL has different syntax, we'll handle this separately)
       .replace(/CREATE TRIGGER IF NOT EXISTS[\s\S]*?END;/gi, '')
-      
+
       // Replace INSERT OR IGNORE with INSERT IGNORE
       .replace(/INSERT OR IGNORE/gi, 'INSERT IGNORE')
-      
+
       // Replace sqlite_master with information_schema equivalent
       .replace(/sqlite_master/gi, 'information_schema.tables')
-      .replace(/SELECT sql FROM information_schema\.tables WHERE type='table'/gi, 
+      .replace(/SELECT sql FROM information_schema\.tables WHERE type='table'/gi,
                "SELECT TABLE_NAME FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE()")
-      
+
       // Handle FOREIGN KEY syntax (MySQL might need adjustments)
-      .replace(/FOREIGN KEY \([^)]+\) REFERENCES ([^(]+)\(([^)]+)\) ON DELETE CASCADE/gi, 
+      .replace(/FOREIGN KEY \(([^)]+)\) REFERENCES ([^(]+)\(([^)]+)\) ON DELETE CASCADE/gi,
                'FOREIGN KEY ($1) REFERENCES $2($3) ON DELETE CASCADE');
 
     return mysqlSql;

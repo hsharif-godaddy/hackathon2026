@@ -2,7 +2,7 @@ import { appFetch } from '@/lib/gasket-config';
 
 export interface SiteStatus {
   siteId: string;
-  status: 'pending' | 'queued' | 'running' | 'failed' | 'stopped';
+  status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped';
   agent_url: string | null;
   backend_url: string | null;
   preview_url: string | null;
@@ -50,7 +50,7 @@ export class SitePollingService {
 
           // Get site data from database to get URLs
           const siteResponse = await appFetch(`/api/sites/${siteId}`);
-          
+
           if (!siteResponse.ok) {
             if (siteResponse.status === 404) {
               return reject(new Error('Site not found'));
@@ -59,10 +59,10 @@ export class SitePollingService {
           }
 
           const site = await siteResponse.json();
-          
+
           if (!site.agent_url) {
             console.log('🔄 Agent URL not available yet:', { agent_url: site.agent_url });
-            
+
             // Continue polling if agent URL not set yet
             if (attempts < this.maxAttempts) {
               setTimeout(poll, this.pollInterval);
@@ -73,10 +73,10 @@ export class SitePollingService {
           }
 
           // Check health of all services
-          const agentHealthy = site.agent_url ? 
+          const agentHealthy = site.agent_url ?
             await this.checkUrlHealth(`${site.agent_url}/health`, 'Agent') : false;
 
-          const frontendHealthy = site.preview_url ? 
+          const frontendHealthy = site.preview_url ?
             await this.checkUrlHealth(`${site.preview_url}`, 'Frontend') : false;
 
           // All services must be healthy to proceed
@@ -99,7 +99,7 @@ export class SitePollingService {
             ready: siteStatus.ready,
             message: siteStatus.message
           });
-          
+
           // Notify caller of status update
           if (onStatusUpdate) {
             onStatusUpdate(siteStatus, attempts);
@@ -108,11 +108,11 @@ export class SitePollingService {
           // Check if agent is ready
           if (siteStatus.ready) {
             console.log('✅ All services are healthy! Creating app...', siteId);
-            
+
             try {
               // Check if app already exists to avoid duplicates
               const appExists = await this.checkAppExists(siteId, site.agent_url);
-              
+
               if (appExists) {
                 console.log('✅ App already exists for site:', siteId);
                 await this.updateSiteStatus(siteId, 'running');
@@ -125,7 +125,7 @@ export class SitePollingService {
 
               // Create app via agent API
               const createAppResult = await this.createAppViaAgent(siteId, initialPrompt, site.agent_url);
-              
+
               if (createAppResult.success) {
                 // Update site status to running
                 await this.updateSiteStatus(siteId, 'running');
@@ -152,7 +152,7 @@ export class SitePollingService {
 
         } catch (error) {
           console.error('❌ Error polling services health:', error);
-          
+
           if (attempts >= this.maxAttempts) {
             await this.updateSiteStatus(siteId, 'failed');
             reject(error);
@@ -177,7 +177,7 @@ export class SitePollingService {
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-      
+
       // Use appropriate headers for different service types
       const headers: Record<string, string> = {
         'User-Agent': 'airo-health-checker'
@@ -189,25 +189,25 @@ export class SitePollingService {
       } else {
         headers['Accept'] = 'application/json';
       }
-      
+
       const response = await fetch(url, {
         method: 'GET',
         mode: 'cors',
         signal: controller.signal,
         headers
       });
-      
+
       clearTimeout(timeoutId);
-      
+
       const isHealthy = response.ok;
       console.log(`${isHealthy ? '✅' : '❌'} ${serviceName} health check:`, {
         url,
         status: response.status,
         healthy: isHealthy
       });
-      
+
       return isHealthy;
-      
+
     } catch (error) {
       console.log(`❌ ${serviceName} health check failed:`, {
         url,
@@ -259,12 +259,12 @@ export class SitePollingService {
         .slice(0, 4)
         .map(word => word.replace(/[^\w]/g, ''))
         .filter(word => word.length > 0);
-      
+
       if (words.length > 0) {
         return words.join(' ');
       }
     }
-    
+
     // Fallback to a generic name with site ID
     return siteId ? `App ${siteId.slice(0, 8)}` : 'New App';
   }
@@ -273,8 +273,8 @@ export class SitePollingService {
    * Create app via agent API
    */
   private async createAppViaAgent(
-    siteId: string, 
-    initialPrompt: string, 
+    siteId: string,
+    initialPrompt: string,
     agentUrl: string
   ): Promise<CreateAppResult> {
     try {
@@ -347,13 +347,13 @@ export class SitePollingService {
   async checkSiteStatus(siteId: string): Promise<SiteStatus> {
     // Get site data from database
     const siteResponse = await appFetch(`/api/sites/${siteId}`);
-    
+
     if (!siteResponse.ok) {
       throw new Error(`HTTP ${siteResponse.status}: ${siteResponse.statusText}`);
     }
 
     const site = await siteResponse.json();
-    
+
     if (!site.agent_url) {
       return {
         siteId: site.id,
@@ -367,17 +367,54 @@ export class SitePollingService {
     }
 
     // Check health of all services
-    const agentHealthy = site.agent_url ? 
+    const agentHealthy = site.agent_url ?
       await this.checkUrlHealth(`${site.agent_url}/health`, 'Agent') : false;
 
-    const frontendHealthy = site.preview_url ? 
+    const frontendHealthy = site.preview_url ?
       await this.checkUrlHealth(`${site.preview_url}`, 'Frontend') : false;
 
     const allServicesReady = agentHealthy && frontendHealthy;
 
+    // Auto-update status from "created" to "running" if services are ready
+    if (site.status === 'created' && allServicesReady && site.agent_url && site.preview_url) {
+      console.log('🎉 Both services are healthy! Updating status to running:', {
+        siteId: site.id,
+        agentUrl: site.agent_url,
+        previewUrl: site.preview_url,
+        agentHealthy,
+        frontendHealthy
+      });
+
+      // Register app with agent service before updating status
+      try {
+        console.log('📝 Registering app with agent service:', siteId);
+        const registerResponse = await appFetch(`${site.agent_url}/apps/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            siteId: site.id,
+            name: site.title || `App ${site.id}`,
+            initialPrompt: site.initial_prompt
+          })
+        });
+
+        if (registerResponse.ok) {
+          const registerData = await registerResponse.json();
+          console.log('✅ App registered successfully:', registerData.message);
+        } else {
+          console.warn('⚠️ App registration failed, but continuing:', registerResponse.status);
+        }
+      } catch (error) {
+        console.warn('⚠️ App registration error, but continuing:', error);
+      }
+
+      await this.updateSiteStatus(siteId, 'running');
+      site.status = 'running'; // Update local object for return
+    }
+
     return {
       siteId: site.id,
-      status: site.status, // Keep existing status from database
+      status: site.status, // Will now be 'running' if updated above
       agent_url: site.agent_url,
       backend_url: site.backend_url,
       preview_url: site.preview_url,

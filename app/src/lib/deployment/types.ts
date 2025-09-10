@@ -27,7 +27,7 @@ export interface DeploymentResult {
     [key: string]: any; // Allow additional adapter-specific fields
   };
   error?: string;
-  status: 'pending' | 'queued' | 'running' | 'failed' | 'stopped';
+  status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
 }
 
 export interface DeploymentAdapter {
@@ -40,7 +40,7 @@ export interface DeploymentAdapter {
    * Check deployment status
    */
   getStatus(siteId: string): Promise<{
-    status: 'pending' | 'queued' | 'running' | 'failed' | 'stopped';
+    status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
     message?: string;
   }>;
 

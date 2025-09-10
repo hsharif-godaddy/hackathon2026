@@ -21,19 +21,19 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       mode: 'docker',
       agentsServiceUrl: process.env.AGENTS_SERVICE_URL || 'http://localhost:4000'
     });
-    
+
     this.agentsServiceUrl = this.environment.agentsServiceUrl!;
     this.baseAppsDir = process.env.LOCAL_APPS_DIR || '/tmp/apps';
     this.templateDir = process.env.APP_TEMPLATE_DIR || path.join(process.cwd(), '..', 'app-templates', 'v8');
-    
+
     // Create in-memory database for dev environment
     const dbPath = process.env.DEV_DB_PATH || '/tmp/dev-env.db';
     const db = new Database(dbPath);
-    
+
     // Initialize dev environment manager with Docker adapter
     this.devEnvironmentManager = new DevEnvironmentManager(db);
-    
-    this.log('info', 'Docker deployment adapter initialized', { 
+
+    this.log('info', 'Docker deployment adapter initialized', {
       agentsServiceUrl: this.agentsServiceUrl,
       baseAppsDir: this.baseAppsDir,
       templateDir: this.templateDir
@@ -42,7 +42,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
 
   async deploy(config: DeploymentConfig): Promise<DeploymentResult> {
     const { siteId, accountId, prompt, title } = config;
-    
+
     try {
       this.log('info', 'Starting Docker deployment', { siteId, accountId });
 
@@ -57,7 +57,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
         initialPrompt: prompt,
         templateVersion: 'v8'
       });
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to create dev app');
       }
@@ -74,7 +74,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
 
       // Step 6: Get app status to get actual URLs
       const appStatus = await this.devEnvironmentManager.getDevAppStatus(siteId);
-      
+
       // Generate URLs based on app status and result
       const backendUrl = (appStatus && 'metadata' in appStatus && appStatus.metadata?.url) || `http://localhost:${result.port}`;
       const urls = {
@@ -104,14 +104,14 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       };
 
     } catch (error) {
-      this.log('error', 'Docker deployment failed', { 
-        siteId, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      this.log('error', 'Docker deployment failed', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
 
       // Cleanup on failure
       await this.cleanup(siteId);
-      
+
       return {
         success: false,
         siteId,
@@ -145,9 +145,9 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       };
 
     } catch (error) {
-      this.log('error', 'Docker deployment destruction failed', { 
-        siteId, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      this.log('error', 'Docker deployment destruction failed', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
 
       return {
@@ -165,16 +165,16 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   private async cleanup(siteId: string): Promise<void> {
     try {
       await this.devEnvironmentManager.initialize();
-      
+
       // Stop and remove app
       await this.devEnvironmentManager.stopDevServer(siteId).catch(() => {}); // Ignore errors
       await this.devEnvironmentManager.deleteDevApp(siteId).catch(() => {}); // Ignore errors
-      
+
       this.log('info', 'Docker deployment cleanup completed', { siteId });
     } catch (error) {
-      this.log('warn', 'Docker deployment cleanup failed', { 
-        siteId, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      this.log('warn', 'Docker deployment cleanup failed', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   }
@@ -183,27 +183,27 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   /**
    * Get deployment status (required by base class)
    */
-  async getStatus(siteId: string): Promise<{ status: 'pending' | 'queued' | 'running' | 'failed' | 'stopped'; message?: string; }> {
+  async getStatus(siteId: string): Promise<{ status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error'; message?: string; }> {
     try {
       await this.devEnvironmentManager.initialize();
       const appStatus = await this.devEnvironmentManager.getDevAppStatus(siteId);
-      
-      let status: 'pending' | 'queued' | 'running' | 'failed' | 'stopped';
+
+      let status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
       switch (appStatus.status) {
         case 'running':
           status = 'running';
           break;
         case 'creating':
-          status = 'pending';
+          status = 'creating';
           break;
         case 'error':
-          status = 'failed';
+          status = 'error';
           break;
         case 'stopped':
         default:
           status = 'stopped';
       }
-      
+
       return {
         status,
         message: appStatus.message
@@ -223,7 +223,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
     try {
       await this.devEnvironmentManager.initialize();
       const appStatus = await this.devEnvironmentManager.getDevAppStatus(siteId);
-      
+
       return {
         appPath: (appStatus && 'metadata' in appStatus && appStatus.metadata?.appPath) || 'unknown',
         port: (appStatus && 'metadata' in appStatus && appStatus.metadata?.port) || 3000,
@@ -258,7 +258,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string): Promise<void> {
     try {
       this.log('info', 'Registering app with agents service', { siteId, name });
-      
+
       const response = await fetch(`${this.agentsServiceUrl}/apps/register`, {
         method: 'POST',
         headers: {
@@ -279,9 +279,9 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       }
 
       const result = await response.json();
-      this.log('info', 'App registered with agents service', { 
-        siteId, 
-        success: result.success 
+      this.log('info', 'App registered with agents service', {
+        siteId,
+        success: result.success
       });
 
     } catch (error) {

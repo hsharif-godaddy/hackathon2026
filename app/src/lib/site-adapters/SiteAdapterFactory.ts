@@ -4,7 +4,7 @@ import type { ISiteAdapter } from './interfaces/ISiteAdapter';
 
 /**
  * Site Adapter Factory
- * 
+ *
  * Determines which site adapter to use based on environment
  */
 export class SiteAdapterFactory {
@@ -16,12 +16,12 @@ export class SiteAdapterFactory {
   static getInstance(): ISiteAdapter {
     if (!this._instance) {
       const isProduction = this.isProductionMode();
-      
+
       // DOUBLE SAFETY CHECK: Additional validation before creating dev adapter
       if (!isProduction) {
         this.validateDevEnvironment();
       }
-      
+
       if (isProduction) {
         console.log('🏭 Using ProdSiteAdapter for production environment');
         this._instance = new ProdSiteAdapter();
@@ -75,7 +75,7 @@ export class SiteAdapterFactory {
         `Found indicators: ${foundProductionIndicators.join(', ')}. ` +
         'This could indicate misconfigured environment variables.'
       );
-      
+
       console.error('🚨 SITE ADAPTER FACTORY SAFETY VIOLATION:', {
         error: error.message,
         productionIndicators,

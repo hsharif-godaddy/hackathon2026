@@ -53,7 +53,7 @@ router.get('/', (req: Request, res: Response) => {
  */
 router.get('/servers', async (req: Request, res: Response) => {
   // Running servers are now managed by the main app service
-  return res.status(501).json({ 
+  return res.status(501).json({
     error: 'Server listing has been moved to the main app service',
     message: 'Use the main app API for server management operations'
   });
@@ -67,7 +67,7 @@ router.get('/config', async (req: Request, res: Response) => {
     const config = {
       showUsageCost: process.env.SHOW_USAGE_COST === 'true'
     };
-    
+
     return res.json({ config });
   } catch (error) {
     console.error('Error getting app config:', error);
@@ -106,13 +106,13 @@ router.get('/:id/status', (req: Request, res: Response) => {
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
     }
-    
+
     const app = appRepo.findById(id);
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    return res.json({ 
+    return res.json({
       id: app.id,
       status: app.status,
       name: app.name,
@@ -148,7 +148,7 @@ router.post('/create', async (req: Request, res: Response) => {
     };
 
     // App creation is now handled by the main app service
-    return res.status(501).json({ 
+    return res.status(501).json({
       error: 'App creation has been moved to the main app service',
       message: 'Use the main app API for app creation operations'
     });
@@ -175,10 +175,10 @@ router.post('/register', async (req: Request, res: Response) => {
     const existingApp = appRepo.findById(siteId);
     if (existingApp) {
       console.log(`ℹ️ App ${siteId} already registered`);
-      return res.json({ 
-        success: true, 
+      return res.json({
+        success: true,
         message: 'App already registered',
-        app: existingApp 
+        app: existingApp
       });
     }
 
@@ -187,12 +187,12 @@ router.post('/register', async (req: Request, res: Response) => {
     const finalAppPath = appPath || (process.env.APPS_BASE_DIR ? `${process.env.APPS_BASE_DIR}/${siteId}` : `/tmp/apps/${siteId}`);
     const finalPort = port || 3000;
     const socketPath = `/tmp/dev-supervisor-${siteId}/dev-supervisor.sock`;
-    
+
     const stmt = appRepo['db'].prepare(`
       INSERT INTO apps (id, name, path, port, socket_path, initial_prompt, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    
+
     stmt.run(
       siteId,
       name || `App ${siteId}`,
@@ -209,13 +209,14 @@ router.post('/register', async (req: Request, res: Response) => {
     if (!app) {
       throw new Error('Failed to create app record');
     }
+    await appRepo.initGitRepo(siteId);
 
     console.log(`✅ Registered app ${siteId} in agents service`);
-    
-    return res.status(201).json({ 
-      success: true, 
+
+    return res.status(201).json({
+      success: true,
       message: 'App registered successfully',
-      app 
+      app
     });
 
   } catch (error) {
@@ -240,7 +241,7 @@ router.post('/', async (req: Request, res: Response) => {
     data.name = data.name.trim();
 
     // App creation is now handled by the main app service
-    return res.status(501).json({ 
+    return res.status(501).json({
       error: 'App creation has been moved to the main app service',
       message: 'Use the main app API for app creation operations'
     });
@@ -313,9 +314,9 @@ router.post('/:id/stop', async (req: Request, res: Response) => {
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
     }
-    
+
     // Server stopping is now handled by deployment adapters or main app service
-    return res.status(501).json({ 
+    return res.status(501).json({
       error: 'Server stop operations have been moved to deployment adapters',
       message: 'Direct server control is no longer available through agents API'
     });
@@ -348,7 +349,7 @@ router.post('/:id/ensure-running', async (req: Request, res: Response) => {
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
-    
+
     console.log(`🔍 Checking app ${id} status...`);
 
     // Get current app status
@@ -356,8 +357,8 @@ router.post('/:id/ensure-running', async (req: Request, res: Response) => {
     console.log(`📊 App ${id} current status:`, currentStatus?.status);
 
     // Just return the current status - no building or starting
-    return res.json({ 
-      success: true, 
+    return res.json({
+      success: true,
       status: currentStatus?.status || 'unknown',
       message: currentStatus?.message || 'Status checked successfully',
       app: {
@@ -378,7 +379,7 @@ router.post('/:id/ensure-running', async (req: Request, res: Response) => {
  */
 router.post('/stop-all', async (req: Request, res: Response) => {
   // Server stopping is now handled by deployment adapters or main app service
-  return res.status(501).json({ 
+  return res.status(501).json({
     error: 'Bulk server operations have been moved to deployment adapters',
     message: 'Use the main app service or deployment adapter APIs for bulk operations'
   });
@@ -393,12 +394,12 @@ router.post('/:id/restart', async (req: Request, res: Response) => {
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
     }
-    
+
     // Use the server management tool for consistent restart behavior
     const serverTool = new ServerManagementTool();
     const restartResult = await serverTool.restartServer({ reason: 'Manual restart via API' }, id);
     const restarted = restartResult.success;
-    
+
     if (!restarted) {
       return res.status(404).json({ error: 'App not found or failed to restart' });
     }
@@ -415,7 +416,7 @@ router.post('/:id/restart', async (req: Request, res: Response) => {
  */
 router.post('/cleanup-orphans', async (req: Request, res: Response) => {
   // Process cleanup is now handled by deployment adapters
-  return res.status(501).json({ 
+  return res.status(501).json({
     error: 'Process cleanup operations have been moved to deployment adapters',
     message: 'Use the deployment adapter APIs for process management'
   });
@@ -430,9 +431,9 @@ router.post('/:id/force-cleanup', async (req: Request, res: Response) => {
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
     }
-    
+
     // App-specific cleanup is now handled by deployment adapters
-    return res.status(501).json({ 
+    return res.status(501).json({
       error: 'App cleanup operations have been moved to deployment adapters',
       message: 'Use the deployment adapter APIs for app-specific cleanup'
     });
@@ -494,7 +495,7 @@ router.get('/:id/files/read', async (req: Request, res: Response) => {
     }
 
     const result = await readFileTool.readFile({ path: filePath as string }, app.path);
-    
+
     if (!result.success) {
       return res.status(404).json({ error: result.error });
     }
@@ -695,7 +696,7 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
     if (!selector || !property || value === undefined) {
       console.log('❌ Validation failed: Selector, property, and value are required', {
         selector: !!selector,
-        property: !!property, 
+        property: !!property,
         value: value !== undefined
       });
       return res.status(400).json({ error: 'Selector, property, and value are required' });
@@ -718,13 +719,13 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
     console.log('Style edit request received:', {
       id,
       selector: selector || 'MISSING',
-      property: property || 'MISSING', 
+      property: property || 'MISSING',
       value: value !== undefined ? value : 'UNDEFINED',
       hasElementInfo: !!elementInfo,
       hasDevContext: !!(elementInfo && elementInfo.devContext),
       devContext: elementInfo?.devContext
     });
-    
+
     console.log(`Style edit: ${id} | ${elementInfo.devContext.fileName}:${elementInfo.devContext.lineNumber} | ${newClassName.trim() || 'inline-styles'}`);
 
     // Use AST-based style editor to make the actual file changes
@@ -837,7 +838,7 @@ router.get('/:id/usage/stats', async (req: Request, res: Response) => {
     }
 
     const stats = tokenUsageRepo.getUsageByPeriod(
-      id, 
+      id,
       period as 'day' | 'week' | 'month',
       parseInt(limit as string)
     );
@@ -915,21 +916,21 @@ router.post('/suggest-name', async (req: Request, res: Response) => {
     });
 
     const suggestedName = response.choices[0]?.message?.content?.trim();
-    
+
     if (!suggestedName) {
       throw new Error('Failed to generate name suggestion');
     }
 
     console.log('✅ Generated name suggestion:', suggestedName);
 
-    return res.json({ 
+    return res.json({
       name: suggestedName,
       suggestedName: suggestedName,
       prompt: prompt.trim()
     });
   } catch (error) {
     console.error('Error generating name suggestion:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Failed to generate name suggestion',
       details: error instanceof Error ? error.message : 'Unknown error'
     });

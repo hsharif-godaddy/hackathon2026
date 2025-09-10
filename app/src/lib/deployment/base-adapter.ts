@@ -12,7 +12,7 @@ export abstract class BaseDeploymentAdapter implements DeploymentAdapter {
   }
 
   abstract deploy(config: DeploymentConfig): Promise<DeploymentResult>;
-  abstract getStatus(siteId: string): Promise<{ status: 'pending' | 'queued' | 'running' | 'failed' | 'stopped'; message?: string; }>;
+  abstract getStatus(siteId: string): Promise<{ status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error'; message?: string; }>;
   abstract destroy(siteId: string): Promise<{ success: boolean; error?: string; }>;
   abstract getMetadata(siteId: string): Promise<{ cephMountId?: string; cephDirNumber?: string; [key: string]: any; }>;
 
@@ -31,14 +31,14 @@ export abstract class BaseDeploymentAdapter implements DeploymentAdapter {
           backend: `http://localhost:3001`, // Will be assigned dynamically
           preview: `http://localhost:3000`  // Will be assigned dynamically
         };
-        
+
       case 'docker':
         return {
           agent: `http://localhost:4000/api/apps/${siteId}`,
-          backend: `http://localhost:3001`, // Will be assigned dynamically  
+          backend: `http://localhost:3001`, // Will be assigned dynamically
           preview: `http://localhost:3000`  // Will be assigned dynamically
         };
-        
+
       case 'production':
         const domain = this.environment.domain || 'ab.sxb1.test-secureserver.net';
         return {
@@ -46,7 +46,7 @@ export abstract class BaseDeploymentAdapter implements DeploymentAdapter {
           backend: `https://backend-${siteId}.${domain}`,
           preview: `https://preview-${siteId}.${domain}`
         };
-        
+
       default:
         throw new Error(`Unknown deployment mode: ${this.environment.mode}`);
     }
@@ -58,7 +58,7 @@ export abstract class BaseDeploymentAdapter implements DeploymentAdapter {
   protected log(level: 'info' | 'warn' | 'error', message: string, data?: any) {
     const prefix = `[${this.environment.mode.toUpperCase()}]`;
     const logData = data ? ` ${JSON.stringify(data)}` : '';
-    
+
     switch (level) {
       case 'info':
         console.log(`✅ ${prefix} ${message}${logData}`);

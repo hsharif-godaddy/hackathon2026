@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
-import { 
-  withCustomerAuth, 
+import {
+  withCustomerAuth,
   customerHasAccount,
   createCustomerAuthError,
-  type CustomerAuthContext 
+  type CustomerAuthContext
 } from '@/lib/customer-auth';
 
 // POST /api/sites/[id]/deploy - Trigger deployment for an existing site
@@ -31,7 +31,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Get site adapter and check site exists and ownership
     const siteAdapter = SiteAdapterFactory.getInstance();
     const site = await siteAdapter.getSiteById(siteId);
-    
+
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
@@ -50,7 +50,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         site
       });
     }
-    
+
     if (site.status === 'creating') {
       console.log('⏳ Site deployment already in progress, skipping duplicate');
       return NextResponse.json({
@@ -60,8 +60,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       });
     }
 
-    // Allow deployment for 'stopped', 'failed' statuses  
-    if (!['stopped', 'failed'].includes(site.status)) {
+    // Allow deployment for 'init', 'stopped', 'failed' statuses
+    if (!['init', 'stopped', 'failed'].includes(site.status)) {
       console.log(`❌ Site status '${site.status}' does not allow deployment`);
       return NextResponse.json({
         success: false,
@@ -69,13 +69,20 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       }, { status: 400 });
     }
 
-    // Update site status to indicate deployment is starting
-    await siteAdapter.updateSite(siteId, { status: 'creating' });
-
     // Start deployment asynchronously in the background
     // We don't await this so the API responds immediately
     console.log('🚀 Starting background deployment task for site:', siteId);
     deployInBackground(siteId, site.account_id || user.accountId!, user.accountId!);
+
+    // Update site status to indicate deployment is starting
+    await siteAdapter.updateSite(siteId, { status: 'creating' });
+
+    // Log different messages based on site status
+    if (site.status === 'init') {
+      console.log('🎬 Initializing deployment for new site:', siteId);
+    } else {
+      console.log('🔄 Re-deploying site:', siteId);
+    }
 
     return NextResponse.json({
       success: true,
@@ -102,9 +109,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 async function deployInBackground(siteId: string, siteAccountId: string, userAccountId: string) {
   try {
     console.log('📦 Starting background deployment for site:', siteId);
-    
+
     const siteAdapter = SiteAdapterFactory.getInstance();
-    
+
     // Get the site to get the initial prompt
     const site = await siteAdapter.getSiteById(siteId);
     if (!site) {
@@ -115,13 +122,13 @@ async function deployInBackground(siteId: string, siteAccountId: string, userAcc
     // since we're bypassing the normal createSite flow
     const { getDeploymentAdapter } = await import('@/lib/deployment');
     const deploymentAdapter = getDeploymentAdapter();
-    
+
     // Get the initial prompt - it should be in the site record
     // We'll need to get it from the database since the site was created with createSiteSimple
     const { PrismaSiteService } = await import('@/lib/database/prisma-site-service');
     const siteService = new PrismaSiteService();
     const siteData = await siteService.getSiteById(siteId);
-    
+
     if (!siteData?.initial_prompt) {
       throw new Error('No initial prompt found for site');
     }
@@ -152,11 +159,14 @@ async function deployInBackground(siteId: string, siteAccountId: string, userAcc
         case 'stopped':
           siteStatus = 'stopped';
           break;
+        case 'created':
+          siteStatus = 'created';
+          break;
         case 'failed':
           siteStatus = 'failed';
           break;
-        case 'pending':
-        case 'queued':
+        case 'creating':
+        case 'created':
           siteStatus = 'creating';
           break;
         default:
@@ -170,7 +180,7 @@ async function deployInBackground(siteId: string, siteAccountId: string, userAcc
         backend_url: deploymentResult.urls?.backend,
         preview_url: deploymentResult.urls?.preview
       };
-      
+
       console.log('📦 Updating site with deployment results:', updateData);
       await siteAdapter.updateSite(siteId, updateData);
 
@@ -196,7 +206,7 @@ async function deployInBackground(siteId: string, siteAccountId: string, userAcc
       siteAccountId,
       userAccountId
     });
-    
+
     // Update site status to failed on error
     try {
       const siteAdapter = SiteAdapterFactory.getInstance();

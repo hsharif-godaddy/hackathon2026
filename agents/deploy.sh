@@ -5,11 +5,13 @@
 
 set -e  # Exit on any error
 
+ENVIRONMENT_NAME=${ENVIRONMENT_NAME:-development}
+
 # Configuration
 REGION="eu-central-1"
 ACCOUNT_ID="418549769352"
 ECR_REPOSITORY="airo-builder/agents"
-IMAGE_TAG="latest"
+IMAGE_TAG=${ENVIRONMENT_NAME}
 ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPOSITORY}"
 
 echo "🚀 Starting deployment of Airo AI Agents..."

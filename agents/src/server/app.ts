@@ -73,37 +73,37 @@ app.use(errorHandler);
 async function initialize() {
   try {
     console.log('🚀 Starting @airo/agents server...');
-    
+
     // Initialize database
     console.log('🗄️  Initializing database...');
     getDatabase();
     console.log('✅ Database initialized');
-    
+
     // Initialize AppRepository and recover processes
     console.log('📱 Initializing AppRepository...');
     const appRepo = new AppRepository();
     await appRepo.initialize();
     console.log('✅ AppRepository initialized');
-    
+
     // Initialize agent registry
     const registry = AgentRegistry.getInstance();
-    
+
     // Register agents
     console.log('📝 Registering agents...');
     registry.register(ExampleAgent);
     registry.register(DevelopAgent);
     registry.register(ColorSchemeAgent);
-    
+
     // Initialize all agents
     await registry.initializeAll();
-    
+
     console.log('✅ Agent registry initialized');
-    
+
     // Setup WebSocket server
     console.log('🔌 Setting up WebSocket server...');
     const wss = createWebSocketServer(server);
     console.log('✅ WebSocket server initialized');
-    
+
     // Start server
     server.listen(port, () => {
       console.log(`🌐 Server running on http://localhost:${port}`);
@@ -148,7 +148,7 @@ async function initialize() {
       console.log(`  SHOW_USAGE_COST: ${process.env.SHOW_USAGE_COST || 'false'} (UI display of token costs)`);
       console.log(`  📊 Backend tracking: Always enabled (regardless of UI setting)`);
     });
-    
+
   } catch (error) {
     console.error('❌ Failed to initialize application:', error);
     process.exit(1);
@@ -160,12 +160,12 @@ async function initialize() {
  */
 async function shutdown() {
   console.log('🛑 Shutting down gracefully...');
-  
+
   try {
     // Cleanup agent registry (app cleanup now handled by main app service)
     const registry = AgentRegistry.getInstance();
     await registry.cleanup();
-    
+
     console.log('✅ Cleanup completed');
     process.exit(0);
   } catch (error) {

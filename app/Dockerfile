@@ -25,9 +25,6 @@ RUN npm install -g pnpm
 
 WORKDIR /app
 
-# Set the artifactory token environment variable for substitution
-ENV ARTIFACTORY_NPM_TOKEN=${ARTIFACTORY_NPM_TOKEN}
-
 # Copy .npmrc for private registry authentication
 COPY .npmrc ./
 
@@ -41,6 +38,11 @@ RUN pnpm install --frozen-lockfile && rm -f .npmrc
 
 # Copy application code (separate layer for better caching)
 COPY . .
+
+# Generate Prisma client for Alpine Linux platform (required for build)
+ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+ENV PRISMA_CLIENT_ENGINE_TYPE=binary
+RUN npx prisma generate --schema=./prisma/schema.prisma
 
 
 # Verify TailwindCSS can load properly
@@ -85,10 +87,18 @@ COPY --from=builder --chown=node:node /app/server.js ./
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next ./.next
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/src/generated ./src/generated
+COPY --from=builder --chown=node:node /app/prisma ./prisma
+COPY --from=builder --chown=node:node /app/scripts ./scripts
 COPY --from=builder --chown=node:node /app/certs ./certs
 
 # Install only production dependencies (no dev dependencies, no auth needed for public packages)
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts
+
+# Ensure Prisma client is properly configured for Alpine Linux runtime
+ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
+ENV PRISMA_CLIENT_ENGINE_TYPE=binary
+RUN npx prisma generate --schema=./prisma/schema.prisma
 
 # Create data directory with proper permissions
 RUN mkdir -p /app/data && chown -R node:node /app/data
@@ -112,5 +122,5 @@ ENV SSL_KEY_PATH=/app/certs/key.pem
 
 USER node
 
-# Start the Next.js application with HTTPS
-CMD ["node", "server.js"]
+# Start the Next.js application with HTTPS (with database URL setup)
+CMD ["node", "scripts/setup-database-url.js", "node", "server.js"]

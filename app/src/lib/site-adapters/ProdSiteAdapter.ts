@@ -4,7 +4,7 @@ import type { ISiteAdapter, SiteInfo, CreateSiteRequest, ServerInfo, SiteLimitCh
 
 /**
  * Production Site Adapter
- * 
+ *
  * Manages sites using production services (Nomad, SQS, database)
  * Wraps the existing SiteService to match the adapter interface
  */
@@ -25,8 +25,8 @@ export class ProdSiteAdapter implements ISiteAdapter {
       throw new Error('Initial prompt is required');
     }
 
-    console.log('🚀 Creating new production site:', { 
-      accountId: request.accountId, 
+    console.log('🚀 Creating new production site:', {
+      accountId: request.accountId,
       prompt: prompt.substring(0, 50) + '...'
     });
 
@@ -89,7 +89,7 @@ export class ProdSiteAdapter implements ISiteAdapter {
 
   async getSiteById(siteId: string): Promise<SiteInfo | null> {
     const site = await this.siteService.getSiteById(siteId);
-    
+
     if (!site) {
       return null;
     }
@@ -100,13 +100,15 @@ export class ProdSiteAdapter implements ISiteAdapter {
   async updateSite(siteId: string, updates: Partial<SiteInfo>): Promise<SiteInfo | null> {
     // Map SiteInfo updates to the format expected by SiteService
     const updateData: any = {};
-    
+
     if (updates.name) updateData.name = updates.name;
     if (updates.status) updateData.status = updates.status;
     if (updates.agent_url) updateData.agent_url = updates.agent_url;
+    if (updates.backend_url !== undefined) updateData.backend_url = updates.backend_url;
+    if (updates.preview_url !== undefined) updateData.preview_url = updates.preview_url;
 
     const updatedSite = await this.siteService.updateSite(siteId, updateData);
-    
+
     if (!updatedSite) {
       return null;
     }
@@ -125,12 +127,12 @@ export class ProdSiteAdapter implements ISiteAdapter {
 
   async destroySite(siteId: string): Promise<boolean> {
     console.log('🛑 Destroying production site:', { siteId });
-    
+
     try {
       // Use deployment adapter to handle infrastructure cleanup
       const deploymentAdapter = getDeploymentAdapter();
       const destroyResult = await deploymentAdapter.destroy(siteId);
-      
+
       if (!destroyResult.success) {
         console.warn('⚠️ Failed to destroy production deployment, proceeding with site deletion:', destroyResult.error);
       } else {
@@ -139,7 +141,7 @@ export class ProdSiteAdapter implements ISiteAdapter {
 
       // Delete site record
       const deleted = await this.siteService.deleteSite(siteId);
-      
+
       if (!deleted) {
         console.error('❌ Failed to delete production site record');
         return false;
@@ -179,10 +181,13 @@ export class ProdSiteAdapter implements ISiteAdapter {
   private mapToSiteInfo(site: any): SiteInfo {
     return {
       id: site.id,
-      name: site.name,
+      name: site.title, // Map database 'title' field to API 'name' field
       status: site.status,
       agent_url: site.agent_url,
+      backend_url: site.backend_url,
+      preview_url: site.preview_url,
       account_id: site.account_id,
+      initial_prompt: site.initial_prompt,
       created_at: site.created_at,
       updated_at: site.updated_at
     };

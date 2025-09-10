@@ -4,11 +4,12 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
 enum SiteStatus {
+  init
   creating
   created
   running
@@ -47,7 +48,7 @@ model sites {
   id              String     @id
   account_id      String
   title           String?
-  initial_prompt  String?
+  initial_prompt  String?    @db.Text
   domain          String?
   agent_url       String?
   backend_url     String?

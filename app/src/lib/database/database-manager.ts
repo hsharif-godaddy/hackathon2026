@@ -19,12 +19,12 @@ class DatabaseManager {
 
   private constructor() {
     // More precise production check including MySQL credentials
-    this.isProduction = process.env.NODE_ENV === 'production' && 
-                       !!process.env.MYSQL_DB_USERNAME && 
-                       !!process.env.MYSQL_DB_PASSWORD;
-    
+    this.isProduction = ['test', 'development', 'production'].includes(process.env.ENVIRONMENT_NAME || '') &&
+    !!process.env.MYSQL_DB_USERNAME && !!process.env.MYSQL_DB_PASSWORD &&
+    !!process.env.MYSQL_DB_PATH && !!process.env.MYSQL_DB_PORT && !!process.env.MYSQL_DB_NAME;
+
     // Configuration logged at startup - no need to log here
-    
+
     this.adapter = this.createAdapter();
     // Don't initialize schema in constructor - do it lazily on first use
   }
@@ -37,7 +37,7 @@ class DatabaseManager {
       }
       return global.__databaseManager;
     }
-    
+
     // Use standard singleton in production
     if (!DatabaseManager.instance) {
       DatabaseManager.instance = new DatabaseManager();
@@ -62,7 +62,7 @@ class DatabaseManager {
       }
 
       console.log('🔌 Connecting to MySQL RDS in production mode:', config.host);
-      
+
       // Dynamic import - only load MySQL adapter in production
       const { MySQLAdapter } = require('./mysql-adapter');
       return new MySQLAdapter(config);
@@ -74,7 +74,7 @@ class DatabaseManager {
       };
 
       // SQLite connection - configuration logged at startup
-      
+
       // Dynamic import - only load SQLite adapter in development
       const { SQLiteAdapter } = require('./sqlite-adapter');
       return new SQLiteAdapter(config);
@@ -121,7 +121,20 @@ class DatabaseManager {
 
   private async initializeMySQLSchema(): Promise<void> {
     console.log('🔧 Initializing MySQL schema in production...');
-    
+
+    // Check if tables already exist (e.g., from Prisma migrations)
+    try {
+      const result = await this.adapter.get<{count: number}>(
+        "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'accounts'"
+      );
+      if (result && result.count > 0) {
+        console.log('✅ Database tables already exist (likely from Prisma), skipping custom initialization');
+        return;
+      }
+    } catch (error) {
+      console.log('⚠️ Could not check existing tables, proceeding with initialization:', error);
+    }
+
     // MySQL-specific schema initialization
     const plansTableSQL = `
       CREATE TABLE IF NOT EXISTS plans (
@@ -158,7 +171,7 @@ class DatabaseManager {
         preview_url TEXT,
         ceph_mount_id TEXT,
         ceph_dir_number TEXT,
-        status ENUM('pending', 'queued', 'running', 'failed', 'stopped') DEFAULT 'pending',
+        status ENUM('init', 'creating', 'created', 'running', 'stopped', 'error', 'failed') DEFAULT 'init',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
@@ -177,26 +190,39 @@ class DatabaseManager {
 
     console.log('📋 Creating plans table...');
     await this.adapter.exec(plansTableSQL);
-    
+
     console.log('👤 Creating accounts table...');
     await this.adapter.exec(accountsTableSQL);
-    
+
     console.log('🌐 Creating sites table...');
     await this.adapter.exec(sitesTableSQL);
-    
+
     console.log('📊 Creating indexes...');
     await this.adapter.exec(sitesIndexSQL);
     await this.adapter.exec(sitesCephIndexSQL);
-    
+
     console.log('🗂️ Inserting default plans...');
     await this.adapter.exec(defaultPlansSQL);
-    
+
     console.log('✅ MySQL schema initialization completed successfully');
   }
 
   private async initializeSQLiteSchema(): Promise<void> {
     console.log('🔧 Initializing SQLite schema in development...');
-    
+
+    // Check if tables already exist (e.g., from Prisma migrations)
+    try {
+      const result = await this.adapter.get<{count: number}>(
+        "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='accounts'"
+      );
+      if (result && result.count > 0) {
+        console.log('✅ Database tables already exist (likely from Prisma), skipping custom initialization');
+        return;
+      }
+    } catch (error) {
+      console.log('⚠️ Could not check existing tables, proceeding with initialization:', error);
+    }
+
     // Keep the original SQLite schema initialization logic
     const plansTableSQL = `
       CREATE TABLE IF NOT EXISTS plans (
@@ -280,25 +306,25 @@ class DatabaseManager {
 
     console.log('📋 Creating plans table...');
     await this.adapter.exec(plansTableSQL);
-    
+
     console.log('👤 Creating accounts table...');
     await this.adapter.exec(accountsTableSQL);
-    
+
     console.log('🌐 Creating sites table...');
     await this.adapter.exec(sitesTableSQL);
-    
+
     console.log('⚡ Creating triggers...');
     await this.adapter.exec(accountsTriggerSQL);
     await this.adapter.exec(plansTriggerSQL);
     await this.adapter.exec(sitesTriggerSQL);
-    
+
     console.log('📊 Creating indexes...');
     await this.adapter.exec(sitesIndexSQL);
     await this.adapter.exec(sitesCephIndexSQL);
-    
+
     console.log('🗂️ Inserting default plans...');
     await this.adapter.exec(defaultPlansSQL);
-    
+
     console.log('✅ SQLite schema initialization completed successfully');
   }
 
@@ -355,7 +381,7 @@ class DatabaseManager {
     // SQLite: Run existing migrations for development
     try {
       const tableInfo = this.adapter.pragma?.('table_info(sites)') || [];
-      
+
       if (tableInfo.length === 0) {
         console.log('🔍 Fresh database - schema will be created by CREATE TABLE IF NOT EXISTS');
         return;

@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType } from '@godaddy/gasket-auth';
-import { getLoginUrl, getLogoutUrl, isAuthDisabled, authConfigs } from '@/lib/gasket-config';
+import { authConfigs } from '@/lib/gasket-config';
+import { useGasketConfig } from '@/hooks/useGasketConfig';
 import { isFeatureEnabled } from '@/lib/features';
 import { useMockAuth } from '@/hooks/useMockAuth';
 import Button from '@ux/button';
@@ -12,10 +13,10 @@ import { MockLoginDialog } from './MockLogin';
 
 export default function UserMenu() {
   const [showMockLogin, setShowMockLogin] = useState(false);
-  
   const isMockLoginEnabled = isFeatureEnabled.mockLogin();
   const mockAuth = useMockAuth();
-  
+  const { config: gasketConfig, isLoading: configLoading } = useGasketConfig();
+
   // Get auth state to check if user is actually signed in
   const authState = useAuthState({
     realm: authConfigs.user.realm as AuthRealmType,
@@ -36,8 +37,8 @@ export default function UserMenu() {
   };
 
   // Determine if user is authenticated (either mock or real)
-  const isAuthenticated = isMockLoginEnabled 
-    ? mockAuth.isAuthenticated 
+  const isAuthenticated = isMockLoginEnabled
+    ? mockAuth.isAuthenticated
     : authState.valid;
 
   // Handle sign out
@@ -45,7 +46,10 @@ export default function UserMenu() {
     if (isMockLoginEnabled) {
       await mockAuth.logout();
     } else {
-      window.location.href = getLogoutUrl();
+      const url = new URL(gasketConfig.sso.logoutUrl);
+      url.searchParams.set('app', 'airo-builder');
+      url.searchParams.set('redirect', gasketConfig.redirects.logoutRedirectUrl);
+      window.location.href = url.toString();
     }
   };
 
@@ -54,12 +58,24 @@ export default function UserMenu() {
     if (isMockLoginEnabled) {
       setShowMockLogin(true);
     } else {
-      window.location.href = getLoginUrl();
+      const url = new URL(gasketConfig.sso.loginUrl);
+      url.searchParams.set('app', 'airo-builder');
+      url.searchParams.set('redirect', gasketConfig.redirects.loginRedirectUrl);
+      window.location.href = url.toString();
     }
   };
 
+  // Show loading state while config is loading
+  if (configLoading) {
+    return (
+      <div className="flex items-center space-x-3">
+        <div className="animate-pulse w-20 h-8 bg-gray-200 rounded"></div>
+      </div>
+    );
+  }
+
   // If auth is disabled, show dev mode indicator
-  if (!isAuthDisabled()) {
+  if (gasketConfig.auth.disableInDev) {
     return (
       <Button
         text='Auth Disabled'
@@ -80,9 +96,9 @@ export default function UserMenu() {
           design='primary'
         />
         {isMockLoginEnabled && (
-          <MockLoginDialog 
-            isOpen={showMockLogin} 
-            onClose={() => setShowMockLogin(false)} 
+          <MockLoginDialog
+            isOpen={showMockLogin}
+            onClose={() => setShowMockLogin(false)}
           />
         )}
       </>
@@ -95,7 +111,7 @@ export default function UserMenu() {
       closeOnSelect
       id="default-menu"
     >
-       <MenuButton
+      <MenuButton
         buttonAs="select"
         design="primary"
         text="Menu"

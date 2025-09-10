@@ -1,6 +1,6 @@
 /**
  * Dynamic API Configuration Service
- * 
+ *
  * Provides site-specific API configuration by fetching agent URLs from the sites database
  * Fallbacks to static configuration when no site context is available
  */
@@ -9,7 +9,7 @@ import { apiConfig as staticApiConfig } from './api'
 
 export interface DynamicApiConfig {
   baseUrl: string
-  wsUrl: string  
+  wsUrl: string
   agentUrl: string
   isStatic: boolean
   siteId?: string
@@ -39,10 +39,10 @@ export class DynamicApiConfigService {
       // Handle both client-side and server-side calls
       const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:3000'
       const response = await fetch(`${baseUrl}/api/sites/${siteId}`)
-      
+
       if (response.ok) {
         const site = await response.json()
-        
+
         if (site?.agent_url && site.status === 'running') {
           // Site has agent URL and is running, use dynamic configuration
           // WebSocket needs base URL without the /apps/{id} suffix
@@ -54,31 +54,31 @@ export class DynamicApiConfigService {
             isStatic: false,
             siteId
           }
-          
+
           // Cache the result
           this.configCache.set(siteId, {
             config,
             lastFetched: Date.now()
           })
-          
+
           console.log('🌐 Using dynamic API config for site:', {
             siteId,
             agentUrl: site.agent_url,
             wsUrl: config.wsUrl
           })
-          
+
           return config
         } else {
           // Site exists but agent URL is not ready yet
           const status = site?.status || 'unknown'
           const hasAgentUrl = !!site?.agent_url
-          
+
           console.log(`⏳ Site ${siteId} not ready:`, {
             status,
             hasAgentUrl,
             agentUrl: site?.agent_url
           })
-          
+
           throw new Error(`Site ${siteId} agent is not ready yet. Status: ${status}, Has agent URL: ${hasAgentUrl}. Please wait for deployment to complete.`)
         }
       } else {
@@ -118,43 +118,43 @@ export class DynamicApiConfigService {
    */
   async waitForAgentUrl(siteId: string, maxAttempts = 60, interval = 5000): Promise<DynamicApiConfig | null> {
     let attempts = 0
-    
+
     return new Promise((resolve) => {
       const poll = async () => {
         attempts++
-        
+
         try {
           // Use API route to check site status
           // Handle both client-side and server-side calls
           const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:3000'
           const response = await fetch(`${baseUrl}/api/sites/${siteId}`)
-          
+
           if (response.ok) {
             const site = await response.json()
-            
+
             if (site?.agent_url && site.status === 'running') {
               const config = await this.getConfigForSite(siteId)
               console.log('✅ Agent URL became available for site:', siteId)
               resolve(config)
               return
             }
-            
+
             if (site?.status === 'failed') {
               console.log('❌ Site deployment failed, stopping poll:', siteId)
               resolve(null)
               return
             }
           }
-          
+
           if (attempts >= maxAttempts) {
             console.log('⏰ Polling timeout for agent URL:', siteId)
             resolve(null)
             return
           }
-          
+
           console.log(`🔄 Waiting for agent URL (${attempts}/${maxAttempts}):`, siteId)
           setTimeout(poll, interval)
-          
+
         } catch (error) {
           console.error('❌ Error polling for agent URL:', error)
           if (attempts >= maxAttempts) {
@@ -164,7 +164,7 @@ export class DynamicApiConfigService {
           }
         }
       }
-      
+
       poll()
     })
   }
@@ -207,9 +207,16 @@ export const dynamicApiConfigService = new DynamicApiConfigService()
  */
 export async function buildDynamicApiUrl(endpoint: string, siteId: string): Promise<string> {
   const config = await dynamicApiConfigService.getConfigForSite(siteId)
-  
+
   const cleanEndpoint = endpoint.replace(/^\//, '')
-  return `${config.baseUrl}/${cleanEndpoint}`
+
+  // Agent service endpoints need /apps/{siteId}/ prefix
+  if (cleanEndpoint) {
+    return `${config.baseUrl}/apps/${siteId}/${cleanEndpoint}`
+  } else {
+    // Empty endpoint means we want the app details endpoint
+    return `${config.baseUrl}/apps/${siteId}`
+  }
 }
 
 /**
@@ -217,7 +224,7 @@ export async function buildDynamicApiUrl(endpoint: string, siteId: string): Prom
  */
 export async function buildDynamicWsUrl(endpoint: string, siteId: string): Promise<string> {
   const config = await dynamicApiConfigService.getConfigForSite(siteId)
-  
+
   const cleanEndpoint = endpoint.replace(/^\//, '')
   return `${config.wsUrl}/${cleanEndpoint}`
 }
@@ -227,7 +234,7 @@ export async function buildDynamicWsUrl(endpoint: string, siteId: string): Promi
  */
 export async function buildDynamicAgentUrl(endpoint: string, siteId: string): Promise<string> {
   const config = await dynamicApiConfigService.getConfigForSite(siteId)
-  
+
   const cleanEndpoint = endpoint.replace(/^\//, '')
   return `${config.agentUrl}/${cleanEndpoint}`
 }

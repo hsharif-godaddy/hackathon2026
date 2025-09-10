@@ -12,13 +12,13 @@ export interface DatabaseAdapter {
   run(sql: string, params?: unknown[]): DatabaseResult | Promise<DatabaseResult>;
   get<T = DatabaseRow>(sql: string, params?: unknown[]): T | undefined | Promise<T | undefined>;
   all<T = DatabaseRow>(sql: string, params?: unknown[]): T[] | Promise<T[]>;
-  
+
   // Connection management
   close(): void | Promise<void>;
-  
+
   // Schema management
   exec(sql: string): void | Promise<void>;
-  
+
   // Database-specific utilities
   pragma?(query: string): unknown[];
   prepare?(sql: string): DatabaseStatement;
@@ -32,10 +32,10 @@ export interface DatabaseStatement {
 
 export interface DatabaseConfig {
   type: 'sqlite' | 'mysql';
-  
+
   // SQLite specific
   path?: string;
-  
+
   // MySQL specific
   host?: string;
   port?: number;
@@ -74,7 +74,7 @@ export interface Site {
   preview_url: string | null;
   ceph_mount_id: string | null;
   ceph_dir_number: string | null;
-  status: 'pending' | 'queued' | 'running' | 'failed' | 'stopped';
+  status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
   created_at: string;
   updated_at: string;
 }

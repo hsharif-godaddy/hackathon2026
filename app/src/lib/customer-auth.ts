@@ -76,7 +76,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     }
 
     // Skip JWT validation if auth is disabled in development
-    if (isAuthDisabled()) {
+    if (await isAuthDisabled()) {
       console.log('🔧 Customer Auth bypassed - development mode');
       
       // Ensure dev account exists in database

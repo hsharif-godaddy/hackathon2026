@@ -5,7 +5,7 @@ import { appFetch } from '@/lib/gasket-config'
 export interface Site {
   id: string
   name: string
-  status: 'creating' | 'created' | 'running' | 'stopped' | 'error' | 'failed'
+  status: 'init' | 'creating' | 'created' | 'running' | 'stopped' | 'error' | 'failed'
   agent_url?: string
   backend_url?: string
   preview_url?: string
@@ -20,7 +20,7 @@ interface SiteStore {
   sites: Record<string, Site> // Keyed by site ID for efficient lookups
   loading: Record<string, boolean> // Loading state per site
   error: string | null
-  
+
   // Actions
   fetchSite: (siteId: string) => Promise<Site | null>
   updateSite: (siteId: string, updates: Partial<Site>) => void
@@ -35,17 +35,17 @@ export const useSiteStore = create<SiteStore>()(
     sites: {},
     loading: {},
     error: null,
-    
+
     // Fetch site data from API
     fetchSite: async (siteId: string) => {
       const { sites, loading } = get()
-      
+
       // Return cached site if we have it and it's not stale
       const existingSite = sites[siteId]
       if (existingSite && !loading[siteId]) {
         return existingSite
       }
-      
+
       // Prevent duplicate requests
       if (loading[siteId]) {
         // Wait for existing request to complete
@@ -61,43 +61,43 @@ export const useSiteStore = create<SiteStore>()(
           checkForSite()
         })
       }
-      
+
       set((state) => {
         state.loading[siteId] = true
         state.error = null
       })
-      
+
       try {
         console.log('🌐 Fetching site data for:', siteId)
-        
+
         const response = await appFetch(`/api/sites/${siteId}`)
-        
+
         if (!response.ok) {
           throw new Error(`Failed to fetch site: ${response.status} ${response.statusText}`)
         }
-        
+
         const siteData = await response.json()
         console.log('✅ Site data fetched:', siteData.name)
-        
+
         set((state) => {
           state.sites[siteId] = siteData
           state.loading[siteId] = false
         })
-        
+
         return siteData
-        
+
       } catch (error) {
         console.error('❌ Failed to fetch site:', error)
-        
+
         set((state) => {
           state.loading[siteId] = false
           state.error = error instanceof Error ? error.message : 'Failed to fetch site'
         })
-        
+
         return null
       }
     },
-    
+
     // Update site data (optimistic updates)
     updateSite: (siteId: string, updates: Partial<Site>) => {
       set((state) => {
@@ -106,19 +106,19 @@ export const useSiteStore = create<SiteStore>()(
         }
       })
     },
-    
+
     // Get site from cache
     getSite: (siteId: string) => {
       return get().sites[siteId] || null
     },
-    
+
     // Clear error state
     clearError: () => {
       set((state) => {
         state.error = null
       })
     },
-    
+
     // Cleanup store state
     cleanup: () => {
       set((state) => {
@@ -133,17 +133,17 @@ export const useSiteStore = create<SiteStore>()(
 // Helper hook to get site data with automatic fetching
 export const useSite = (siteId: string | null) => {
   const { sites, loading, error, fetchSite } = useSiteStore()
-  
+
   const site = siteId ? sites[siteId] : null
   const isLoading = siteId ? loading[siteId] : false
-  
+
   // Auto-fetch site data when siteId changes
   const fetchSiteData = async () => {
     if (siteId && !site && !isLoading) {
       await fetchSite(siteId)
     }
   }
-  
+
   return {
     site,
     isLoading,

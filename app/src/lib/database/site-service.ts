@@ -12,7 +12,7 @@ export interface Site {
   preview_url?: string;
   ceph_mount_id?: string;
   ceph_dir_number?: string;
-  status: 'pending' | 'queued' | 'running' | 'failed' | 'stopped';
+  status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
   created_at: string;
   updated_at: string;
 }
@@ -32,7 +32,7 @@ export interface UpdateSiteRequest {
   initial_prompt?: string;
   ceph_mount_id?: string;
   ceph_dir_number?: string;
-  status?: 'pending' | 'queued' | 'running' | 'failed' | 'stopped';
+  status?: 'init' | 'creating' | 'created' | 'running' | 'stopped' | 'error' | 'failed';
   domain?: string;
 }
 
@@ -48,19 +48,19 @@ export class SiteService {
    */
   async createSite(data: CreateSiteRequest): Promise<Site> {
     const id = uuidv4();
-    
+
     // Assign Ceph storage
     console.log('🗄️ Assigning Ceph storage...');
     const cephAssignment = await this.getNextCephAssignment();
     console.log(`📂 Assigned Ceph: ${cephAssignment.cephMountId}/${cephAssignment.cephDirNumber}`);
-    
+
     // SAFETY: Provide temporary title as fallback for databases with NOT NULL constraint
     const safeTitle = data.title || 'Untitled Project';
-    
+
     await this.db.run(
-      `INSERT INTO sites (id, account_id, title, initial_prompt, domain, ceph_mount_id, ceph_dir_number, status) 
+      `INSERT INTO sites (id, account_id, title, initial_prompt, domain, ceph_mount_id, ceph_dir_number, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, data.account_id, safeTitle, data.initial_prompt || null, data.domain || null, cephAssignment.cephMountId, cephAssignment.cephDirNumber, 'pending']
+      [id, data.account_id, safeTitle, data.initial_prompt || null, data.domain || null, cephAssignment.cephMountId, cephAssignment.cephDirNumber, 'init']
     );
 
     const site = await this.getSiteById(id);
@@ -72,14 +72,14 @@ export class SiteService {
    */
   async createSiteSimple(data: CreateSiteRequest): Promise<Site> {
     const id = uuidv4();
-    
+
     console.log('🔧 Creating simple site record (development mode)');
-    
+
     // SAFETY: Provide temporary title as fallback for databases with NOT NULL constraint
     const safeTitle = data.title || 'Untitled Project';
-    
+
     await this.db.run(
-      `INSERT INTO sites (id, account_id, title, initial_prompt, domain, status) 
+      `INSERT INTO sites (id, account_id, title, initial_prompt, domain, status)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [id, data.account_id, safeTitle, data.initial_prompt || null, data.domain || null, 'stopped']
     );
@@ -177,7 +177,7 @@ export class SiteService {
     }
 
     updateValues.push(id);
-    
+
     await this.db.run(
       `UPDATE sites SET ${updateFields.join(', ')} WHERE id = ?`,
       updateValues
@@ -202,7 +202,7 @@ export class SiteService {
   async checkSiteLimit(accountId: string): Promise<{ canCreate: boolean; currentCount: number; limit: number }> {
     // In development mode, bypass site limits
     const isDev = process.env.NODE_ENV === 'development';
-    
+
     if (isDev) {
       const currentCount = await this.getSiteCountByAccountId(accountId);
       return {
@@ -218,9 +218,9 @@ export class SiteService {
       plan_id: string;
       site_limit: number;
     }>(
-      `SELECT a.id, a.plan_id, p.site_limit 
-       FROM accounts a 
-       JOIN plans p ON a.plan_id = p.id 
+      `SELECT a.id, a.plan_id, p.site_limit
+       FROM accounts a
+       JOIN plans p ON a.plan_id = p.id
        WHERE a.id = ?`,
       [accountId]
     );
@@ -252,7 +252,7 @@ export class SiteService {
   async deleteAllSites(): Promise<number> {
     // In development mode, allow mass deletion
     const isDev = process.env.NODE_ENV === 'development';
-    
+
     if (!isDev) {
       console.warn('⚠️ deleteAllSites() is only allowed in development mode');
       return 0;
@@ -261,7 +261,7 @@ export class SiteService {
     console.log('🗑️ [DEV MODE] Deleting all sites from database...');
     const result = await this.db.run('DELETE FROM sites');
     console.log(`✅ [DEV MODE] Deleted ${result.changes} sites`);
-    
+
     return result.changes;
   }
 
@@ -277,17 +277,17 @@ export class SiteService {
 
     // Find the last assigned directory for each mount
     const mountAssignments: { [key: string]: number } = {};
-    
+
     for (const mountId of cephMounts) {
       const result = await this.db.get<{ ceph_dir_number: string }>(
-        `SELECT ceph_dir_number 
-         FROM sites 
+        `SELECT ceph_dir_number
+         FROM sites
          WHERE ceph_mount_id = ? AND ceph_dir_number IS NOT NULL
-         ORDER BY CAST(ceph_dir_number AS INTEGER) DESC 
+         ORDER BY CAST(ceph_dir_number AS INTEGER) DESC
          LIMIT 1`,
         [mountId]
       );
-      
+
       mountAssignments[mountId] = result ? parseInt(result.ceph_dir_number) : -1;
     }
 

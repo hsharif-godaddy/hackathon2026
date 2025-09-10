@@ -13,9 +13,9 @@ export function logStartupConfiguration() {
   console.log('================================================');
 
   // Database Configuration
-  const isProduction = process.env.NODE_ENV === 'production' && 
-                      !!process.env.MYSQL_DB_USERNAME && 
-                      !!process.env.MYSQL_DB_PASSWORD;
+  const isProduction = ['test', 'development', 'production'].includes(process.env.ENVIRONMENT_NAME || '') &&
+  !!process.env.MYSQL_DB_USERNAME && !!process.env.MYSQL_DB_PASSWORD &&
+  !!process.env.MYSQL_DB_PATH && !!process.env.MYSQL_DB_PORT && !!process.env.MYSQL_DB_NAME;
 
   console.log('🔧 Database Configuration:');
   console.log(`   Environment: ${process.env.NODE_ENV}`);
@@ -49,13 +49,13 @@ export function logStartupConfiguration() {
 
   // Deployment Configuration
   const localEnvMode = process.env.LOCAL_ENVIRONMENT_MODE?.toLowerCase() || 'auto';
-  const deploymentMode = process.env.DEPLOYMENT_MODE || 
+  const deploymentMode = process.env.DEPLOYMENT_MODE ||
     (process.env.NODE_ENV === 'production' ? 'production' : 'development');
 
   console.log('🚀 Deployment Configuration:');
   console.log(`   Mode: ${deploymentMode}`);
   console.log(`   Local Environment Mode: ${localEnvMode}`);
-  
+
   if (deploymentMode === 'development') {
     console.log(`   Agents Service URL: ${process.env.AGENTS_SERVICE_URL || 'http://localhost:4000'}`);
     console.log(`   Apps Directory: ${process.env.LOCAL_APPS_DIR || '/tmp/apps'}`);
@@ -63,7 +63,7 @@ export function logStartupConfiguration() {
   }
 
   // Authentication Configuration
-  const mockLoginEnabled = process.env.NEXT_PUBLIC_MOCK_LOGIN === 'true' || 
+  const mockLoginEnabled = process.env.NEXT_PUBLIC_MOCK_LOGIN === 'true' ||
                            process.env.NODE_ENV === 'development';
   const authDisabled = process.env.DISABLE_AUTH === 'true';
 

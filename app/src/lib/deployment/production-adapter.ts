@@ -17,30 +17,33 @@ export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
       mode: 'production',
       domain: process.env.PRODUCTION_DOMAIN || 'ab.sxb1.test-secureserver.net'
     });
-    
+
     this.siteService = new SiteService();
     this.log('info', 'Production deployment adapter initialized');
   }
 
   async deploy(config: DeploymentConfig): Promise<DeploymentResult> {
     const { siteId, accountId, prompt } = config;
-    
+
     try {
       this.log('info', 'Starting production deployment', { siteId, accountId });
 
       // Get Ceph storage assignment (this should already be done during site creation)
       const metadata = await this.getMetadata(siteId);
-      
+
       if (!metadata.cephMountId || !metadata.cephDirNumber) {
         throw new Error('Ceph storage not assigned for production deployment');
       }
 
       // Generate Nomad job configuration
       const jobName = generateJobName(siteId);
+      const environmentName = process.env.ENVIRONMENT_NAME || 'development';
+      const agentImage = `418549769352.dkr.ecr.eu-central-1.amazonaws.com/airo-builder/agents:${environmentName}`;
       const jobSpecWrapper = generateNomadJobSpec({
         jobName,
         cephMountId: metadata.cephMountId,
-        cephDirNumber: metadata.cephDirNumber
+        cephDirNumber: metadata.cephDirNumber,
+        agentImage
       });
 
       this.log('info', 'Generated Nomad job spec', { jobName });
@@ -59,7 +62,7 @@ export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
 
       // Generate production URLs
       const urls = this.generateUrls(siteId);
-      
+
       this.log('info', 'Production deployment queued successfully', {
         siteId,
         jobName,
@@ -77,15 +80,15 @@ export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
           cephDirNumber: metadata.cephDirNumber,
           messageId: sqsResult.messageId
         },
-        status: 'queued'
+        status: 'created'
       };
 
     } catch (error) {
-      this.log('error', 'Production deployment failed', { 
-        siteId, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      this.log('error', 'Production deployment failed', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
-      
+
       return {
         success: false,
         siteId,
@@ -95,16 +98,16 @@ export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
     }
   }
 
-  async getStatus(siteId: string): Promise<{ status: 'pending' | 'queued' | 'running' | 'failed' | 'stopped'; message?: string; }> {
+  async getStatus(siteId: string): Promise<{ status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error'; message?: string; }> {
     // In production, we rely on external queue workers to update site status
     // This would typically check Nomad job status or database records
     const site = await this.siteService.getSiteById(siteId);
-    
+
     if (!site) {
       return { status: 'failed', message: 'Site not found' };
     }
 
-    return { 
+    return {
       status: site.status,
       message: `Production deployment status: ${site.status}`
     };
@@ -129,28 +132,28 @@ export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
       });
 
       if (!stopResult.success) {
-        this.log('warn', 'Failed to queue job deletion, but continuing', { 
-          siteId, 
-          error: stopResult.error 
+        this.log('warn', 'Failed to queue job deletion, but continuing', {
+          siteId,
+          error: stopResult.error
         });
       } else {
-        this.log('info', 'Job deletion queued via SQS', { 
-          siteId, 
-          messageId: stopResult.messageId 
+        this.log('info', 'Job deletion queued via SQS', {
+          siteId,
+          messageId: stopResult.messageId
         });
       }
 
       return { success: true };
 
     } catch (error) {
-      this.log('error', 'Production deployment destruction failed', { 
-        siteId, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      this.log('error', 'Production deployment destruction failed', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
-      
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown destruction error' 
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown destruction error'
       };
     }
   }
@@ -158,7 +161,7 @@ export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
   async getMetadata(siteId: string): Promise<{ cephMountId?: string; cephDirNumber?: string; [key: string]: any; }> {
     // In production, Ceph storage should already be assigned during site creation
     const site = await this.siteService.getSiteById(siteId);
-    
+
     if (!site) {
       throw new Error('Site not found for metadata retrieval');
     }

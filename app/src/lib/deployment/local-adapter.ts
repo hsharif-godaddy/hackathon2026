@@ -21,12 +21,12 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
       mode: 'local',
       agentsServiceUrl: process.env.AGENTS_SERVICE_URL || 'http://localhost:4000'
     });
-    
+
     this.agentsServiceUrl = this.environment.agentsServiceUrl!;
     this.baseAppsDir = process.env.LOCAL_APPS_DIR || '/tmp/apps';
     this.templateDir = process.env.APP_TEMPLATE_DIR || path.join(process.cwd(), '..', 'app-templates', 'v8');
-    
-    this.log('info', 'Local deployment adapter initialized', { 
+
+    this.log('info', 'Local deployment adapter initialized', {
       agentsServiceUrl: this.agentsServiceUrl,
       baseAppsDir: this.baseAppsDir,
       templateDir: this.templateDir
@@ -35,7 +35,7 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
 
   async deploy(config: DeploymentConfig): Promise<DeploymentResult> {
     const { siteId, accountId, prompt, title } = config;
-    
+
     try {
       this.log('info', 'Starting local deployment', { siteId, accountId });
 
@@ -85,14 +85,14 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
       };
 
     } catch (error) {
-      this.log('error', 'Local deployment failed', { 
-        siteId, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      this.log('error', 'Local deployment failed', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
 
       // Cleanup on failure
       await this.cleanup(siteId);
-      
+
       return {
         success: false,
         siteId,
@@ -102,23 +102,23 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
     }
   }
 
-  async getStatus(siteId: string): Promise<{ status: 'pending' | 'queued' | 'running' | 'failed' | 'stopped'; message?: string; }> {
+  async getStatus(siteId: string): Promise<{ status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error'; message?: string; }> {
     try {
       // Check if process is running
       const process = this.runningProcesses.get(siteId);
-      
+
       if (!process) {
         // Check if app directory exists
         const appPath = path.join(this.baseAppsDir, siteId);
         if (existsSync(appPath)) {
-          return { 
-            status: 'stopped', 
-            message: 'App exists but development server is not running' 
+          return {
+            status: 'stopped',
+            message: 'App exists but development server is not running'
           };
         } else {
-          return { 
-            status: 'failed', 
-            message: 'App not found' 
+          return {
+            status: 'failed',
+            message: 'App not found'
           };
         }
       }
@@ -126,26 +126,26 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
       // Process exists, check if it's still alive
       if (process.killed || process.exitCode !== null) {
         this.runningProcesses.delete(siteId);
-        return { 
-          status: 'stopped', 
-          message: 'Development server process has stopped' 
+        return {
+          status: 'stopped',
+          message: 'Development server process has stopped'
         };
       }
 
-      return { 
+      return {
         status: 'running',
         message: `Development server running (PID: ${process.pid})`
       };
 
     } catch (error) {
-      this.log('error', 'Status check failed', { 
-        siteId, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      this.log('error', 'Status check failed', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
-      
-      return { 
-        status: 'failed', 
-        message: `Status check error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+
+      return {
+        status: 'failed',
+        message: `Status check error: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
   }
@@ -161,14 +161,14 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
       return { success: true };
 
     } catch (error) {
-      this.log('error', 'Local deployment destruction failed', { 
-        siteId, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      this.log('error', 'Local deployment destruction failed', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
-      
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Local destruction failed' 
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Local destruction failed'
       };
     }
   }
@@ -187,12 +187,12 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
    */
   private async createAppDirectory(siteId: string, appPath: string): Promise<void> {
     this.log('info', 'Creating app directory', { siteId, appPath });
-    
+
     if (existsSync(appPath)) {
       this.log('warn', 'App directory already exists, removing', { siteId, appPath });
       rmSync(appPath, { recursive: true, force: true });
     }
-    
+
     mkdirSync(appPath, { recursive: true });
     this.log('info', 'App directory created', { siteId, appPath });
   }
@@ -202,24 +202,24 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
    */
   private async copyTemplate(siteId: string, appPath: string): Promise<void> {
     this.log('info', 'Copying template', { siteId, templateDir: this.templateDir, appPath });
-    
+
     if (!existsSync(this.templateDir)) {
       throw new Error(`Template directory not found: ${this.templateDir}`);
     }
-    
+
     // Copy template files
-    cpSync(this.templateDir, appPath, { 
+    cpSync(this.templateDir, appPath, {
       recursive: true,
       filter: (src) => {
         // Skip node_modules and other generated directories
         const relativePath = path.relative(this.templateDir, src);
-        return !relativePath.includes('node_modules') && 
+        return !relativePath.includes('node_modules') &&
                !relativePath.includes('.git') &&
                !relativePath.includes('dist') &&
                !relativePath.includes('.next');
       }
     });
-    
+
     this.log('info', 'Template copied successfully', { siteId, appPath });
   }
 
@@ -253,7 +253,7 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
    */
   private async installDependencies(siteId: string, appPath: string): Promise<void> {
     this.log('info', 'Installing dependencies', { siteId, appPath });
-    
+
     return new Promise((resolve, reject) => {
       const process = spawn('npm', ['install'], {
         cwd: appPath,
@@ -276,11 +276,11 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
           this.log('info', 'Dependencies installed successfully', { siteId });
           resolve();
         } else {
-          this.log('error', 'Failed to install dependencies', { 
-            siteId, 
-            code, 
+          this.log('error', 'Failed to install dependencies', {
+            siteId,
+            code,
             output: output.slice(-500), // Last 500 chars
-            error: errorOutput.slice(-500) 
+            error: errorOutput.slice(-500)
           });
           reject(new Error(`npm install failed with code ${code}: ${errorOutput}`));
         }
@@ -298,12 +298,12 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
    */
   private async startDevServer(siteId: string, appPath: string, port: number): Promise<void> {
     this.log('info', 'Starting development server', { siteId, appPath, port });
-    
+
     const devProcess = spawn('npm', ['run', 'dev'], {
       cwd: appPath,
       stdio: 'pipe',
-      env: { 
-        ...process.env, 
+      env: {
+        ...process.env,
         PORT: port.toString(),
         NODE_ENV: 'development'
       }
@@ -339,7 +339,7 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
 
     // Wait a bit for server to start
     await new Promise(resolve => setTimeout(resolve, 3000));
-    
+
     // Verify server is responding
     const serverStarted = await this.waitForServer(port, 30000); // 30 second timeout
     if (!serverStarted) {
@@ -354,7 +354,7 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
    */
   private async waitForServer(port: number, timeout: number = 30000): Promise<boolean> {
     const startTime = Date.now();
-    
+
     while (Date.now() - startTime < timeout) {
       try {
         const response = await fetch(`http://localhost:${port}`, {
@@ -366,10 +366,10 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
       } catch (error) {
         // Server not ready yet, continue waiting
       }
-      
+
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    
+
     return false;
   }
 
@@ -378,14 +378,14 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
    */
   private async cleanup(siteId: string): Promise<void> {
     this.log('info', 'Cleaning up app resources', { siteId });
-    
+
     // Stop process if running
     const process = this.runningProcesses.get(siteId);
     if (process) {
       process.kill('SIGTERM');
       this.runningProcesses.delete(siteId);
     }
-    
+
     // Remove directory
     const appPath = path.join(this.baseAppsDir, siteId);
     if (existsSync(appPath)) {
@@ -403,17 +403,17 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
         method: 'GET',
         signal: AbortSignal.timeout(5000) // 5 second timeout
       });
-      
+
       const isHealthy = response.ok;
-      this.log(isHealthy ? 'info' : 'warn', 'Agents service health check', { 
+      this.log(isHealthy ? 'info' : 'warn', 'Agents service health check', {
         available: isHealthy,
-        status: response.status 
+        status: response.status
       });
-      
+
       return isHealthy;
     } catch (error) {
-      this.log('warn', 'Agents service health check failed', { 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      this.log('warn', 'Agents service health check failed', {
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
       return false;
     }
@@ -425,7 +425,7 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
   private async createAgentApp(siteId: string, name: string, initialPrompt: string, appPath: string): Promise<void> {
     try {
       this.log('info', 'Creating app record in agents service', { siteId, name });
-      
+
       const response = await fetch(`${this.agentsServiceUrl}/apps/create`, {
         method: 'POST',
         headers: {
@@ -445,10 +445,10 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
       }
 
       const result = await response.json();
-      this.log('info', 'App record created in agents service', { 
-        siteId, 
+      this.log('info', 'App record created in agents service', {
+        siteId,
         agentAppId: result.app?.id,
-        success: result.success 
+        success: result.success
       });
 
     } catch (error) {

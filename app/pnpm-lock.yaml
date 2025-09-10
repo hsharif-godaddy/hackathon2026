@@ -202,7 +202,7 @@ packages:
     engines: {node: '>=10'}
 
   '@aws-crypto/sha256-browser@5.2.0':
-    resolution: {integrity: sha512-AXfN/lGotSQwu6HNcEsIASo7kWXZ5HYWvfOmSNKDsEqC4OashTp8alTmaz+F7TC2L083SFv5RdB+qU3Vs1kZqw==}
+    resolution: {integrity: sha512-AXfN/lGotSQwu6HNcEsIASo7kWXZ5HYWvfOmSNKDsEqC4OashTp8alTmaz+F7TC2L083SFv5RdB+qU3Vs1kZqw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@aws-crypto/sha256-browser/-/aws-crypto-sha256-browser-5.2.0.tgz}
 
   '@aws-crypto/sha256-js@5.2.0':
     resolution: {integrity: sha512-FFQQyu7edu4ufvIZ+OadFpHHOt+eSTBaYaki44c+akjg7qZg9oOQeLlk77F6tSYqjDAFClrHJk9tMf0HdVyOvA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@aws-crypto/sha256-js/-/aws-crypto-sha256-js-5.2.0.tgz}

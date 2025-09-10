@@ -8,7 +8,7 @@ import { SiteStatus } from '@/generated/prisma';
 
 /**
  * Development Site Adapter
- * 
+ *
  * Manages sites using local development environment (processes/Docker)
  * Maps dev apps to the site interface for consistent API behavior
  */
@@ -51,8 +51,8 @@ export class DevSiteAdapter implements ISiteAdapter {
       throw new Error('Initial prompt is required');
     }
 
-    console.log('🔧 Creating new development site:', { 
-      accountId, 
+    console.log('🔧 Creating new development site:', {
+      accountId,
       prompt: prompt.substring(0, 50) + '...'
     });
 
@@ -75,7 +75,7 @@ export class DevSiteAdapter implements ISiteAdapter {
       if (deploymentResult.success) {
         // Map deployment status to SiteStatus enum
         const siteStatus = this.mapDeploymentStatusToSiteStatus(deploymentResult.status);
-        
+
         // Update site with deployment results
         const updatedSite = await this.siteService.updateSite(site.id, {
           status: siteStatus,
@@ -113,7 +113,7 @@ export class DevSiteAdapter implements ISiteAdapter {
 
   async getSiteById(siteId: string): Promise<SiteInfo | null> {
     const site = await this.siteService.getSiteById(siteId);
-    
+
     if (!site) {
       return null;
     }
@@ -124,7 +124,7 @@ export class DevSiteAdapter implements ISiteAdapter {
   async updateSite(siteId: string, updates: Partial<SiteInfo>): Promise<SiteInfo | null> {
     // Map SiteInfo updates to the format expected by SiteService
     const updateData: any = {};
-    
+
     if (updates.name) updateData.title = updates.name; // Map API 'name' field to database 'title' field
     if (updates.status) updateData.status = updates.status;
     if (updates.agent_url) updateData.agent_url = updates.agent_url;
@@ -132,7 +132,7 @@ export class DevSiteAdapter implements ISiteAdapter {
     if (updates.preview_url !== undefined) updateData.preview_url = updates.preview_url;
 
     const updatedSite = await this.siteService.updateSite(siteId, updateData);
-    
+
     if (!updatedSite) {
       return null;
     }
@@ -151,12 +151,12 @@ export class DevSiteAdapter implements ISiteAdapter {
 
   async destroySite(siteId: string): Promise<boolean> {
     console.log('🛑 Destroying development site:', { siteId });
-    
+
     try {
       // Use deployment adapter to handle infrastructure cleanup
       const deploymentAdapter = getDeploymentAdapter();
       const destroyResult = await deploymentAdapter.destroy(siteId);
-      
+
       if (!destroyResult.success) {
         console.warn('⚠️ Failed to destroy development deployment, proceeding with site deletion:', destroyResult.error);
       } else {
@@ -165,7 +165,7 @@ export class DevSiteAdapter implements ISiteAdapter {
 
       // Delete site record
       const deleted = await this.siteService.deleteSite(siteId);
-      
+
       if (!deleted) {
         console.error('❌ Failed to delete development site record');
         return false;
@@ -184,7 +184,7 @@ export class DevSiteAdapter implements ISiteAdapter {
       // Get actual running development servers from the dev environment manager
       const devEnvManager = await this.getDevEnvManager();
       const devServers = await devEnvManager.getRunningDevServers();
-      
+
       // Map dev servers to ServerInfo interface - these are the actual dev server URLs
       return devServers.map(server => ({
         appId: server.appId,
@@ -225,7 +225,7 @@ export class DevSiteAdapter implements ISiteAdapter {
    * SAFETY CHECK: Validate that this adapter is only used in development environments
    */
   private validateDevelopmentEnvironment(): void {
-    const isProduction = 
+    const isProduction =
       process.env.NODE_ENV === 'production' ||
       !!process.env.MYSQL_DB_USERNAME ||        // MySQL indicates production
       !!process.env.AWS_REGION_NOMAD ||         // AWS/Nomad indicates production
@@ -237,7 +237,7 @@ export class DevSiteAdapter implements ISiteAdapter {
         'This adapter is designed for development only and lacks production-grade security, ' +
         'error handling, and data persistence guarantees.'
       );
-      
+
       // Log the error for monitoring systems
       console.error('🚨 CRITICAL SECURITY VIOLATION:', {
         error: error.message,
@@ -282,8 +282,8 @@ export class DevSiteAdapter implements ISiteAdapter {
         return SiteStatus.stopped;
       case 'failed':
         return SiteStatus.failed;
-      case 'pending':
-      case 'queued':
+      case 'creating':
+      case 'created':
         return SiteStatus.creating;
       default:
         return SiteStatus.stopped;

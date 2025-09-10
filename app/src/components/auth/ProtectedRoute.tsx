@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { AuthRealmType, AuthRequired } from '@godaddy/gasket-auth';
 import { SparklesIcon } from '@heroicons/react/24/outline';
-import { getLoginUrl, isAuthDisabled, authConfigs } from '@/lib/gasket-config';
+import { authConfigs } from '@/lib/gasket-config';
+import { useGasketConfig } from '@/hooks/useGasketConfig';
 import { isFeatureEnabled } from '@/lib/features';
 import { useMockAuth } from '@/hooks/useMockAuth';
 import Box from '@ux/box';
@@ -21,8 +22,8 @@ interface ProtectedRouteProps {
   unauthorizedMessage?: string;
 }
 
-export default function ProtectedRoute({ 
-  children, 
+export default function ProtectedRoute({
+  children,
   realm = 'idp',
   groups = [],
   risk = 'low',
@@ -30,7 +31,12 @@ export default function ProtectedRoute({
   loadingMessage = 'Checking Authentication',
   unauthorizedMessage = 'You need to be signed in to access this area of Airo App Builder.'
 }: ProtectedRouteProps) {
-  
+
+  // Always call hooks at the top level - never conditionally
+  const isMockLoginEnabled = isFeatureEnabled.mockLogin();
+  const mockAuth = useMockAuth();
+  const { config: gasketConfig, isLoading: configLoading } = useGasketConfig();
+
   const LoadingComponent = () => (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center">
       <div className="text-center">
@@ -54,7 +60,7 @@ export default function ProtectedRoute({
             <p className="text-gray-600 mb-12">
               {unauthorizedMessage}
             </p>
-            
+
             {/* Show mock login if feature is enabled */}
             {isFeatureEnabled.mockLogin() ? (
               <Box gap="md">
@@ -69,7 +75,12 @@ export default function ProtectedRoute({
               </Box>
             ) : (
               <Button
-                onClick={() => window.location.href = getLoginUrl(window.location.href)}
+                onClick={() => {
+                  const url = new URL(gasketConfig.sso.loginUrl);
+                  url.searchParams.set('app', 'airo-builder');
+                  url.searchParams.set('redirect', window.location.href);
+                  window.location.href = url.toString();
+                }}
                 design='primary'
                 text='Sign In to Continue'
                 className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all"
@@ -77,40 +88,41 @@ export default function ProtectedRoute({
             )}
           </div>
         </div>
-        
+
         {/* Mock Login Dialog */}
         {isFeatureEnabled.mockLogin() && (
-          <MockLoginDialog 
-            isOpen={showMockLogin} 
+          <MockLoginDialog
+            isOpen={showMockLogin}
             onClose={() => setShowMockLogin(false)}
             title="Protected Route Access"
-            message="This page requires authentication. Choose a test user to simulate the login experience." 
+            message="This page requires authentication. Choose a test user to simulate the login experience."
           />
         )}
       </>
     );
   };
 
-  // Always call hooks at the top level - never conditionally
-  const isMockLoginEnabled = isFeatureEnabled.mockLogin();
-  const mockAuth = useMockAuth(); // Always call this hook
+  // Show loading state while config is loading
+  if (configLoading) {
+    return <LoadingComponent />;
+  }
 
   // Check mock authentication first
   if (isMockLoginEnabled) {
     if (mockAuth.isLoading) {
       return <LoadingComponent />;
     }
-    
+
     if (!mockAuth.isAuthenticated) {
       return <UnauthorizedComponent />;
     }
-    
+
     // User is authenticated with mock login
     return <div>{children}</div>;
   }
 
   // Skip authentication if disabled in dev
-  if (isAuthDisabled()) {
+  if (gasketConfig.auth.disableInDev) {
     return <div>{children}</div>;
   }
 

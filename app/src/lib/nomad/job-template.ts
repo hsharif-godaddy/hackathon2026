@@ -131,7 +131,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
                   type: 'bind',
                   readonly: false,
                   source: "/data/.aws/",
-                  target: "/secrets/.aws/"
+                  target: "/data/.aws/"
                 }
               ]
             },
@@ -149,8 +149,8 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               OPENAI_BASE_URL: process.env.OPENAI_BASE_URL || 'https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net',
               OPENAI_MODEL: process.env.OPENAI_MODEL || 'claude-sonnet-4',
               ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS_FOR_AGENTS || '',
-              AWS_SHARED_CREDENTIALS_FILE: "/secrets/.aws/credential_process",
-              SSM_CREDENTIALS_FILE: "/secrets/.aws/credentials",
+              AWS_SHARED_CREDENTIALS_FILE: "/data/.aws/credential_process",
+              SSM_CREDENTIALS_FILE: "/data/.aws/credentials",
               AWS_PROFILE: "bedrock"
             },
             Resources: {
@@ -175,7 +175,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               ports: ['http8000', 'http8001'],
               force_pull: true,
               entrypoint: ["/bin/sh", "-c"],
-              command: `mkdir -p \${NOMAD_ALLOC_DIR}/customer-app && chmod 755 \${NOMAD_ALLOC_DIR}/customer-app && chown -R agent:agent \${NOMAD_ALLOC_DIR}/customer-app && echo '✅ Directories created' && /bin/sh /management-scripts/nomad_setup_and_serve.sh`,
+              command: `mkdir -p \${CUSTOMER_APP_DIR} && chmod 755 \${CUSTOMER_APP_DIR} && chown -R agent:agent \${CUSTOMER_APP_DIR} && echo '✅ Directories created' && /bin/sh /management-scripts/nomad_setup_and_serve.sh`,
               security_opt: [
                 'label=type:ares_container.process'
               ],
@@ -206,7 +206,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               VITE_API_URL: `https://${backendDomain}/api`,
               FRONTEND_DOMAIN: frontendDomain,
               RUNNING_IN_DOCKER: 'true',
-              CUSTOMER_APP_DIR: "${NOMAD_ALLOC_DIR}/customer-app",
+              CUSTOMER_APP_DIR: `\${NOMAD_ALLOC_DIR}/customer-app/${siteId}`,
               GIT_REPO_DIR: `/ceph-storage/${siteId}/git-repo`,
               BASE_APP_DIR: "/app",
               ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS_FOR_AGENTS || ''
@@ -366,7 +366,7 @@ export function extractAllocationInfo(jobStatus: { Allocations?: Array<{
   let agentUrl: string | undefined;
   let backendUrl: string | undefined;
   let previewUrl: string | undefined;
-  
+
   if (status === 'running' && siteId) {
     // Use new domain format for agents, backend, and preview
     agentUrl = `https://agent-${siteId}.ab.sxb1.test-secureserver.net`;

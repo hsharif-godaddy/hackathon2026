@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       NODE_ENV: process.env.NODE_ENV,
       NEXT_PUBLIC_USE_MOCK_LOGIN: process.env.NEXT_PUBLIC_USE_MOCK_LOGIN,
       mockLoginEnabled: isFeatureEnabled.mockLogin(),
-      authDisabled: isAuthDisabled()
+      authDisabled: await isAuthDisabled()
     });
 
     // Handle mock authentication
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Skip JWT validation if auth is disabled in development
-    if (isAuthDisabled()) {
+    if (await isAuthDisabled()) {
       console.log('🔧 Auth validation bypassed - development mode (NEXT_PUBLIC_AUTH_IN_DEV=true)');
       return NextResponse.json({
         valid: true,
