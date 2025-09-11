@@ -127,6 +127,13 @@ export default function UserMenu() {
               My Sites
             </Link>
           </MenuItem>
+          {isFeatureEnabled.galleryPage() && (
+            <MenuItem onSelect={() => {}}>
+              <Link href="/gallery">
+                Gallery
+              </Link>
+            </MenuItem>
+          )}
           <MenuItem onSelect={handleSignOut}>
             Sign Out
           </MenuItem>
