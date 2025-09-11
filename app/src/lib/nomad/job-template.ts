@@ -4,28 +4,31 @@
  */
 
 export interface NomadJobConfig {
+  accountId: string;
+  siteId: string;
   jobName: string;
   cephMountId: string;
   cephDirNumber: string;
   agentImage?: string;
+  appImage?: string;
 }
 
 export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: string; [key: string]: unknown } } {
   const {
+    accountId,
+    siteId,
     jobName,
     cephMountId,
     cephDirNumber,
-    agentImage = '418549769352.dkr.ecr.eu-central-1.amazonaws.com/airo-builder/agents:latest'
+    agentImage = '418549769352.dkr.ecr.eu-central-1.amazonaws.com/airo-builder/agents:latest',
+    appImage = '418549769352.dkr.ecr.eu-central-1.amazonaws.com/airo-builder/apps:latest'
   } = config;
 
-  // Extract site ID from jobName (format: site-{siteId})
-  const siteId = jobName.replace('site-', '');
   const agentsDomain = `agent-${siteId}.ab.sxb1.test-secureserver.net`;
   const backendDomain = `backend-${siteId}.ab.sxb1.test-secureserver.net`;
   const frontendDomain = `preview-${siteId}.ab.sxb1.test-secureserver.net`;
   const agentsServiceName = `${siteId}-agents`;
   const frontendServiceName = `${siteId}-dev-frontend`;
-  const backendServiceName = `${siteId}-dev-backend`;
 
   return {
     Job: {
@@ -86,6 +89,34 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
         },
         Tasks: [
           {
+            Name: 'pre-start',
+            Driver: 'docker',
+            User: 'root',
+            lifecycle: {
+              hook: 'prestart',
+              sidecar: false
+            },
+            Config: {
+              image: '764525110978.dkr.ecr.us-west-2.amazonaws.com/alpine:latest',
+              auth_soft_fail: true,
+              command: "/bin/sh",
+              args: ["-c", `mkdir -p /ceph-storage/${accountId}`],
+              mounts: [
+                {
+                  type: 'bind',
+                  readonly: false,
+                  source: `/mnt/ceph/${cephMountId}/${cephDirNumber}`,
+                  target: '/ceph-storage'
+                }
+              ]
+            },
+            Resources: {
+              CPU: 10,
+              MemoryMB: 10,
+              MemoryMaxMB: 1024
+            }
+          },
+          {
             Name: 'airo-agents',
             Driver: 'docker',
             User: 'root',
@@ -118,18 +149,12 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
                 {
                   type: 'bind',
                   readonly: false,
-                  source: 'tmp',
-                  target: '/tmp'
-                },
-                {
-                  type: 'bind',
-                  readonly: false,
-                  source: `/mnt/ceph/${cephMountId}/${cephDirNumber}`,
+                  source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${accountId}`,
                   target: '/ceph-storage'
                 },
                 {
                   type: 'bind',
-                  readonly: false,
+                  readonly: true,
                   source: "/data/.aws/",
                   target: "/data/.aws/"
                 }
@@ -144,7 +169,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               PORT: '80',
               DB_PATH: `/ceph-storage/${siteId}/app/apps.db`,
               APPS_BASE_DIR: "${NOMAD_ALLOC_DIR}/customer-app",
-              APP_TEMPLATE_DIR: '/app/app-templates/v3',
+              APP_TEMPLATE_DIR: '/app/app-templates/v8',
               GIT_REPO_DIR: `/ceph-storage/${siteId}/git-repo`,
               OPENAI_BASE_URL: process.env.OPENAI_BASE_URL || 'https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net',
               OPENAI_MODEL: process.env.OPENAI_MODEL || 'claude-sonnet-4',
@@ -170,11 +195,11 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
             Driver: 'docker',
             User: 'agent',
             Config: {
-              image: '418549769352.dkr.ecr.eu-central-1.amazonaws.com/airo-builder/apps:latest',
+              image: appImage,
               auth_soft_fail: true,
               ports: ['http8000', 'http8001'],
               force_pull: true,
-              entrypoint: ["/bin/sh", "-c"],
+              entrypoint: ["/usr/local/bin/dev-supervisor"],
               command: `mkdir -p \${CUSTOMER_APP_DIR} && chmod 755 \${CUSTOMER_APP_DIR} && chown -R agent:agent \${CUSTOMER_APP_DIR} && echo '✅ Directories created' && /bin/sh /management-scripts/nomad_setup_and_serve.sh`,
               security_opt: [
                 'label=type:ares_container.process'
@@ -192,7 +217,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
                 {
                   type: 'bind',
                   readonly: false,
-                  source: `/mnt/ceph/${cephMountId}/${cephDirNumber}`,
+                  source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${accountId}`,
                   target: '/ceph-storage'
                 }
               ]
@@ -201,12 +226,12 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               SITE_ID: siteId,
               JOB_NAME: jobName,
               NODE_ENV: 'development',
-              PREFERRED_FRONTEND_PORT: '8000',
-              PREFERRED_BACKEND_PORT: '8001',
-              VITE_API_URL: `https://${backendDomain}/api`,
+              PORT: '8000',
+              VITE_API_URL: `https://${frontendDomain}/api`,
               FRONTEND_DOMAIN: frontendDomain,
               RUNNING_IN_DOCKER: 'true',
               CUSTOMER_APP_DIR: `\${NOMAD_ALLOC_DIR}/customer-app/${siteId}`,
+              DEV_SUPERVISOR_SOCKET_PATH: `\${NOMAD_ALLOC_DIR}/tmp/${siteId}-dev-supervisor.sock`,
               GIT_REPO_DIR: `/ceph-storage/${siteId}/git-repo`,
               BASE_APP_DIR: "/app",
               ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS_FOR_AGENTS || ''
@@ -248,31 +273,6 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               `traefik.http.routers.${agentsServiceName}Agents.ruleSyntax=v3`,
               `traefik.http.routers.${agentsServiceName}Agents.rule=Host(\`${agentsDomain}\`)`,
               `traefik.http.services.${agentsServiceName}Http.loadbalancer.server.port=80`
-            ]
-          },
-          {
-            Name: backendServiceName,
-            TaskName: 'airo-dev-application',
-            PortLabel: 'http8001',
-            AddressMode: 'alloc',
-            Provider: 'nomad',
-            Namespace: 'sites',
-            Tags: [
-              `${backendServiceName}`,
-              `traefik.enable=true`,
-              `traefik.http.routers.${backendServiceName}Http.entrypoints=tcp`,
-              `traefik.http.routers.${backendServiceName}Http.tls=true`,
-              `traefik.http.services.${backendServiceName}Http.loadbalancer.server.port=8001`,
-              `traefik.http.routers.${backendServiceName}Http.ruleSyntax=v3`,
-              `traefik.http.routers.${backendServiceName}Http.rule=Host(\`${backendDomain}\`)`
-            ],
-            CanaryTags: [
-              `${backendServiceName}`,
-              `traefik.http.routers.${backendServiceName}Http.entrypoints=tcp`,
-              `traefik.http.routers.${backendServiceName}Http.tls=true`,
-              `traefik.http.services.${backendServiceName}Http.loadbalancer.server.port=8001`,
-              `traefik.http.routers.${backendServiceName}Http.ruleSyntax=v3`,
-              `traefik.http.routers.${backendServiceName}Http.rule=Host(\`${backendDomain}\`)`
             ]
           },
           {

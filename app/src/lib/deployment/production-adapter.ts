@@ -39,11 +39,15 @@ export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
       const jobName = generateJobName(siteId);
       const environmentName = process.env.ENVIRONMENT_NAME || 'development';
       const agentImage = `418549769352.dkr.ecr.eu-central-1.amazonaws.com/airo-builder/agents:${environmentName}`;
+      const appImage = `418549769352.dkr.ecr.eu-central-1.amazonaws.com/airo-builder/apps:${environmentName}`;
       const jobSpecWrapper = generateNomadJobSpec({
+        accountId,
+        siteId,
         jobName,
         cephMountId: metadata.cephMountId,
         cephDirNumber: metadata.cephDirNumber,
-        agentImage
+        agentImage,
+        appImage
       });
 
       this.log('info', 'Generated Nomad job spec', { jobName });

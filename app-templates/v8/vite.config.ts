@@ -4,6 +4,17 @@ import path from "path";
 import sourceMapperPlugin from "./source-mapper/src/index";
 import { devToolsPlugin } from "./dev-tools/src/vite-plugin";
 
+let allowedHosts: string[] = [];
+if (process.env.FRONTEND_DOMAIN) {
+	allowedHosts.push(process.env.FRONTEND_DOMAIN, `http://${process.env.FRONTEND_DOMAIN}`, `https://${process.env.FRONTEND_DOMAIN}`);
+}
+if (process.env.ALLOWED_ORIGINS) {
+	allowedHosts.push(...process.env.ALLOWED_ORIGINS.split(','));
+}
+if (allowedHosts.length === 0) {
+	allowedHosts.push('*');
+}
+
 // Simple API plugin that serves our API routes
 function apiPlugin(): Plugin {
 	return {
@@ -67,6 +78,13 @@ export default defineConfig(({ mode }) => ({
 	server: {
 		host: "0.0.0.0",
 		port: parseInt(process.env.PORT || "5173"),
+		allowedHosts,
+		cors: {
+			origin: allowedHosts,
+			credentials: true,
+			methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+			allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'User-Agent']
+		}
 	},
 
 	build: {

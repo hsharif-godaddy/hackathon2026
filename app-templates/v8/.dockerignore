@@ -1,0 +1,2 @@
+# Docker ignore for V8 App Template
+node_modules

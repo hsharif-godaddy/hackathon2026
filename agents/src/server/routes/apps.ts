@@ -186,7 +186,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const now = new Date().toISOString();
     const finalAppPath = appPath || (process.env.APPS_BASE_DIR ? `${process.env.APPS_BASE_DIR}/${siteId}` : `/tmp/apps/${siteId}`);
     const finalPort = port || 3000;
-    const socketPath = `/tmp/dev-supervisor-${siteId}/dev-supervisor.sock`;
+    const socketPath = process.env.NOMAD_ALLOC_DIR ? `${process.env.NOMAD_ALLOC_DIR}/tmp/${siteId}-dev-supervisor.sock` : `/tmp/dev-supervisor-${siteId}/dev-supervisor.sock`;
 
     const stmt = appRepo['db'].prepare(`
       INSERT INTO apps (id, name, path, port, socket_path, initial_prompt, status, created_at, updated_at)
