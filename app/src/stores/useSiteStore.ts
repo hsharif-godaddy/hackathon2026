@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { appFetch } from '@/lib/gasket-config'
+import { logger } from '@/lib/request-context'
 
 export interface Site {
   id: string
@@ -68,7 +69,7 @@ export const useSiteStore = create<SiteStore>()(
       })
 
       try {
-        console.log('🌐 Fetching site data for:', siteId)
+        logger.debug('site-store.fetch.start', { message: 'Fetching site data', siteId })
 
         const response = await appFetch(`/api/sites/${siteId}`)
 
@@ -77,7 +78,7 @@ export const useSiteStore = create<SiteStore>()(
         }
 
         const siteData = await response.json()
-        console.log('✅ Site data fetched:', siteData.name)
+        logger.info('site-store.fetch.success', { message: 'Site data fetched', siteName: siteData.name })
 
         set((state) => {
           state.sites[siteId] = siteData

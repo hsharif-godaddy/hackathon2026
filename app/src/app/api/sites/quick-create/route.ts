@@ -6,6 +6,7 @@ import {
   createCustomerAuthError,
   type CustomerAuthContext 
 } from '@/lib/customer-auth';
+import { logger } from '@/lib/request-context';
 
 // POST /api/sites/quick-create - Fast site creation (database record only)
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
@@ -31,7 +32,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Use authenticated user's account ID
     const account_id = user.accountId!;
 
-    console.log('🚀 Quick creating site record for account:', account_id);
+    logger.info('sites.quick-create.start', { message: 'Quick creating site record', account_id });
 
     // Create ONLY the database record - no deployment
     const siteService = new PrismaSiteService();
@@ -40,7 +41,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       initial_prompt: projectPrompt.trim()
     });
 
-    console.log('✅ Site record created quickly:', site.id);
+    logger.info('sites.quick-create.success', { message: 'Site record created quickly', siteId: site.id });
 
     return NextResponse.json({
       id: site.id,
@@ -52,7 +53,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }, { status: 201 });
 
   } catch (error) {
-    console.error('❌ Quick site creation failed:', error);
+    logger.error('sites.quick-create.error', { message: 'Quick site creation failed', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
     return NextResponse.json(
       {
         error: 'Failed to create site record',

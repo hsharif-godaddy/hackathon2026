@@ -4,6 +4,7 @@
  */
 
 const { GdAuth } = require('gd-auth');
+import { logger } from '@/lib/request-context';
 
 export class GdAuthService {
   private gdAuth: any;
@@ -15,11 +16,18 @@ export class GdAuthService {
       const ssoUrl = process.env.NEXT_PUBLIC_SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
       this.ssoHost = new URL(ssoUrl).hostname;
     } catch (error) {
-      console.warn(`🔐 [GdAuth] Invalid SSO URL format: ${process.env.NEXT_PUBLIC_SSO_LOGIN_URL}, using fallback`);
+      logger.warn('gd-auth.init.sso-url-error', {
+        message: 'Invalid SSO URL format, using fallback',
+        providedUrl: process.env.NEXT_PUBLIC_SSO_LOGIN_URL,
+        fallbackHost: 'sso.test-godaddy.com'
+      });
       this.ssoHost = 'sso.test-godaddy.com';
     }
 
-    console.log(`🔐 [GdAuth] Using SSO host: ${this.ssoHost}`);
+    logger.info('gd-auth.init.sso-host', {
+      message: 'Using SSO host',
+      ssoHost: this.ssoHost
+    });
 
     // Custom fetchKey with CA certificate for proper SSL validation
     const customFetchKey = (useragent: string, host: string, kid: string) => {
@@ -32,8 +40,11 @@ export class GdAuthService {
       // Use committed SSO CA certificate
       try {
         const certPath = path.join(process.cwd(), 'certs', 'sso.crt');
-        console.log(`🔐 [GdAuth] Attempting to load CA certificate from: ${certPath}`);
-        console.log(`🔐 [GdAuth] Working directory: ${process.cwd()}`);
+        logger.debug('gd-auth.cert.loading', {
+          message: 'Attempting to load CA certificate',
+          certPath,
+          workingDirectory: process.cwd()
+        });
 
         // Check if file exists before reading
         if (!fs.existsSync(certPath)) {
@@ -41,15 +52,20 @@ export class GdAuthService {
         }
 
         const certContent = fs.readFileSync(certPath, 'utf8');
-        console.log(`🔐 [GdAuth] Certificate loaded successfully (${certContent.length} chars)`);
+        logger.info('gd-auth.cert.loaded', {
+          message: 'Certificate loaded successfully',
+          certPath,
+          contentLength: certContent.length
+        });
 
         httpsOptions = {
           ca: certContent
         };
-        console.log(`🔐 [GdAuth] Using CA certificate: ${certPath}`);
       } catch (error) {
-        console.error(`❌ [GdAuth] Failed to load CA certificate: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        console.error(`❌ [GdAuth] This will cause SSL verification to fail`);
+        logger.error('gd-auth.cert.failed', {
+          message: 'Failed to load CA certificate - SSL verification may fail',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error'
+        });
         // Fallback: continue without CA cert (will use system CA store)
       }
 
@@ -71,15 +87,14 @@ export class GdAuthService {
    */
   async authenticate(token: string): Promise<{ valid: boolean; payload?: any; reason?: string }> {
     try {
-      console.log('🔐 [GdAuth] Authenticating token...');
+      logger.info('gd-auth.authenticate.start', 'Authenticating token');
 
       // Use gd-auth for authentication - it handles heartbeat automatically
       const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 0);
 
-      console.log('✅ [GdAuth] Authentication successful');
-      console.log('📋 [GdAuth] JWT payload:', {
-        shopperId: jwt.shopperId,
-        cid: jwt.cid,
+      logger.info('gd-auth.authenticate.success', {
+        message: 'Authentication successful',
+        customerId: jwt.cid,
         exp: jwt.exp,
         iat: jwt.iat
       });
@@ -96,20 +111,18 @@ export class GdAuthService {
         }
       };
     } catch (error: any) {
-      console.log('❌ [GdAuth] Authentication failed:', error.message);
-      console.log('❌ [GdAuth] Full error object:', JSON.stringify(error, null, 2));
+      const errorData: any = {
+        message: error.message
+      };
+      
+      if (error.ssoCode) errorData.ssoCode = error.ssoCode;
+      if (error.code) errorData.code = error.code;
+      if (error.status) errorData.status = error.status;
 
-      if (error.ssoCode) {
-        console.log('🔍 [GdAuth] SSO error code:', error.ssoCode);
-      }
-
-      if (error.code) {
-        console.log('🔍 [GdAuth] Error code:', error.code);
-      }
-
-      if (error.status) {
-        console.log('🔍 [GdAuth] HTTP status:', error.status);
-      }
+      logger.error('gd-auth.authenticate.error', {
+        message: 'Authentication failed',
+        ...errorData
+      });
 
       return {
         valid: false,

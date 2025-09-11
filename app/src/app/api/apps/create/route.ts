@@ -7,6 +7,7 @@ import {
   createCustomerAuthError,
   type CustomerAuthContext 
 } from '@/lib/customer-auth';
+import { logger } from '@/lib/request-context';
 
 interface CreateAppRequest {
   name: string;
@@ -54,7 +55,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Generate a unique site ID
     const siteId = uuidv4();
 
-    console.log('🚀 Creating app via site adapter:', { siteId, name: name.trim() });
+    logger.info('apps.create.start', { message: 'Creating app via site adapter', siteId, name: name.trim() });
 
     let finalAppName = name.trim();
     let nameSuggested = false;
@@ -63,10 +64,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     // TODO: Add AI name suggestion service here if needed
     if (initialPrompt && initialPrompt.trim()) {
-      console.log('📝 Initial prompt provided, could enhance with AI name suggestion:', {
-        siteId,
-        promptLength: initialPrompt.length
-      });
+      logger.debug('apps.create.initial-prompt', { message: 'Initial prompt provided', siteId, promptLength: initialPrompt.length });
     }
 
     // Create the site using the appropriate adapter with authenticated user's account
@@ -77,12 +75,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       accountId: user.accountId // Use authenticated user's account
     });
 
-    console.log('✅ Site created via adapter:', {
-      siteId: site.id,
-      name: site.name,
-      status: site.status,
-      agentUrl: site.agent_url
-    });
+    logger.info('apps.create.success', { message: 'Site created via adapter', siteId: site.id, name: site.name, status: site.status, agentUrl: site.agent_url });
 
     const response: CreateAppResponse = {
       success: true,

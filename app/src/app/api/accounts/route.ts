@@ -7,6 +7,7 @@ import {
   createCustomerAuthError,
   type CustomerAuthContext 
 } from '@/lib/customer-auth';
+import { logger } from '@/lib/request-context';
 
 // GET /api/accounts?shopper_id=xxx - Get authenticated customer's own account only
 export const GET = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
@@ -81,10 +82,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Create new account using authenticated user's information
     const newAccount = await accountAdapter.createAccount(user.shopperId, user.customerId);
 
-    console.log('✅ New account created for authenticated customer:', {
-      shopperId: user.shopperId,
-      accountId: newAccount.id
-    });
+    logger.info('accounts.create.success', { message: 'New account created for authenticated customer', accountId: newAccount.id });
 
     return NextResponse.json({
       success: true,
@@ -151,10 +149,7 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
     // Get updated account
     const updatedAccount = await accountAdapter.getAccountByShopperId(shopperId);
 
-    console.log('✅ Account updated by authenticated customer:', {
-      shopperId: user.shopperId,
-      newStatus: status
-    });
+    logger.info('accounts.update.success', { message: 'Account updated by authenticated customer', newStatus: status });
 
     return NextResponse.json({
       success: true,

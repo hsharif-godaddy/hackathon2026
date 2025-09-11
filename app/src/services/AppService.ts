@@ -3,6 +3,7 @@ import { buildApiUrl } from '@/config/api'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { type AppStatusType } from '@/stores/useAppStore'
 import { type ServerStatusType } from '@/stores/useServerStore'
+import { logger } from '@/lib/request-context'
 
 export interface App {
   id: string
@@ -112,7 +113,7 @@ export class AppService {
     try {
       return await response.json()
     } catch (parseError) {
-      console.warn('Failed to parse JSON response, using default value:', parseError)
+      logger.warn('app.config.parse-error', { message: 'Failed to parse JSON response, using default value', parseError: parseError instanceof Error ? parseError.message : 'Unknown error' });
       return defaultValue
     }
   }

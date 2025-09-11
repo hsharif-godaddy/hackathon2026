@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/request-context';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 import {
@@ -26,7 +27,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       );
     }
 
-    console.log('🚀 Starting deployment for site:', siteId);
+    logger.info('deploy.start', { message: 'Starting deployment for site', siteId });
 
     // Get site adapter and check site exists and ownership
     const siteAdapter = SiteAdapterFactory.getInstance();
@@ -43,7 +44,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     // Check if already deployed or deployment is in progress
     if (site.status === 'running') {
-      console.log('✅ Site is already running, skipping deployment');
+      logger.info('deploy.skip.running', { message: 'Site is already running, skipping deployment', siteId });
       return NextResponse.json({
         success: true,
         message: 'Site is already deployed and running',
@@ -52,7 +53,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }
 
     if (site.status === 'creating') {
-      console.log('⏳ Site deployment already in progress, skipping duplicate');
+      logger.info('deploy.skip.in-progress', { message: 'Site deployment already in progress, skipping duplicate', siteId });
       return NextResponse.json({
         success: true,
         message: 'Site deployment is already in progress',
@@ -62,7 +63,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     // Allow deployment for 'init', 'stopped', 'failed' statuses
     if (!['init', 'stopped', 'failed'].includes(site.status)) {
-      console.log(`❌ Site status '${site.status}' does not allow deployment`);
+      logger.warn('deploy.skip.invalid-status', { message: 'Site status does not allow deployment', siteId, status: site.status });
       return NextResponse.json({
         success: false,
         message: `Site status '${site.status}' does not allow deployment`
@@ -71,7 +72,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     // Start deployment asynchronously in the background
     // We don't await this so the API responds immediately
-    console.log('🚀 Starting background deployment task for site:', siteId);
+    logger.info('deploy.background.start', { message: 'Starting background deployment task', siteId });
     deployInBackground(siteId, site.account_id || user.accountId!, user.accountId!);
 
     // Update site status to indicate deployment is starting
@@ -79,9 +80,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     // Log different messages based on site status
     if (site.status === 'init') {
-      console.log('🎬 Initializing deployment for new site:', siteId);
+      logger.info('deploy.background.init', { message: 'Initializing deployment for new site', siteId });
     } else {
-      console.log('🔄 Re-deploying site:', siteId);
+      logger.info('deploy.background.redeploy', { message: 'Re-deploying site', siteId });
     }
 
     return NextResponse.json({
@@ -94,7 +95,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     });
 
   } catch (error) {
-    console.error('❌ Failed to start deployment:', error);
+    // Extract siteId from params in catch block since it's not in scope
+    const siteId = (await params).id;
+    logger.error('deploy.start.error', { message: 'Failed to start deployment', siteId: siteId, errorMessage: error instanceof Error ? error.message : 'Unknown error' });
     return NextResponse.json(
       {
         error: 'Failed to start deployment',
@@ -108,7 +111,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 // Background deployment function
 async function deployInBackground(siteId: string, siteAccountId: string, userAccountId: string) {
   try {
-    console.log('📦 Starting background deployment for site:', siteId);
+    logger.info('deploy.background.start-task', { message: 'Starting background deployment task', siteId });
 
     const siteAdapter = SiteAdapterFactory.getInstance();
 
@@ -133,7 +136,8 @@ async function deployInBackground(siteId: string, siteAccountId: string, userAcc
       throw new Error('No initial prompt found for site');
     }
 
-    console.log('📦 Calling deploymentAdapter.deploy with:', {
+    logger.info('deploy.adapter.call', {
+      message: 'Calling deploymentAdapter.deploy',
       siteId,
       accountId: siteAccountId,
       prompt: siteData.initial_prompt ? 'Present' : 'Missing',
@@ -147,7 +151,14 @@ async function deployInBackground(siteId: string, siteAccountId: string, userAcc
       title: siteData.title
     });
 
-    console.log('📦 Deployment result:', deploymentResult);
+    logger.info('deploy.adapter.result', { 
+      message: 'Deployment result', 
+      siteId, 
+      success: deploymentResult.success,
+      status: deploymentResult.status,
+      hasUrls: !!deploymentResult.urls,
+      error: deploymentResult.error || 'None'
+    });
 
     if (deploymentResult.success) {
       // Map deployment status to valid SiteInfo status
@@ -181,13 +192,22 @@ async function deployInBackground(siteId: string, siteAccountId: string, userAcc
         preview_url: deploymentResult.urls?.preview
       };
 
-      console.log('📦 Updating site with deployment results:', updateData);
+      logger.info('deploy.update.site', { 
+        message: 'Updating site with deployment results', 
+        siteId, 
+        status: updateData.status,
+        hasAgentUrl: !!updateData.agent_url,
+        hasBackendUrl: !!updateData.backend_url,
+        hasPreviewUrl: !!updateData.preview_url
+      });
       await siteAdapter.updateSite(siteId, updateData);
 
-      console.log('✅ Background deployment completed successfully:', {
+      logger.info('deploy.complete.success', {
+        message: 'Background deployment completed successfully',
         siteId,
         status: deploymentResult.status,
-        urls: deploymentResult.urls
+        previewUrl: deploymentResult.urls?.preview,
+        hasUrls: !!deploymentResult.urls
       });
     } else {
       // Deployment failed - update site status
@@ -195,13 +215,13 @@ async function deployInBackground(siteId: string, siteAccountId: string, userAcc
         status: 'failed'
       });
 
-      console.error('❌ Background deployment failed:', deploymentResult.error);
+      logger.error('deploy.complete.failed', { message: 'Background deployment failed', siteId, errorMessage: deploymentResult.error });
     }
   } catch (error) {
-    console.error('❌ Background deployment error:', error);
-    console.error('❌ Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
+    logger.error('deploy.background.error', {
+      message: 'Background deployment error',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      errorType: error instanceof Error ? error.constructor.name : 'Unknown',
       siteId,
       siteAccountId,
       userAccountId
@@ -213,9 +233,9 @@ async function deployInBackground(siteId: string, siteAccountId: string, userAcc
       await siteAdapter.updateSite(siteId, {
         status: 'failed'
       });
-      console.log('✅ Updated site status to failed after deployment error');
+      logger.info('deploy.error.status-update', { message: 'Updated site status to failed after deployment error', siteId });
     } catch (updateError) {
-      console.error('❌ Failed to update site status after deployment error:', updateError);
+      logger.error('deploy.error.status-update-failed', { message: 'Failed to update site status after deployment error', siteId, errorMessage: updateError instanceof Error ? updateError.message : 'Unknown error' });
     }
   }
 }

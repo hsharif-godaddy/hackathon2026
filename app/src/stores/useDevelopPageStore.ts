@@ -4,6 +4,7 @@ import { postMessageToIframe } from '@/utils/postMessage'
 import { appService, type App } from '@/services/AppService'
 import { type Site, useSiteStore } from '@/stores/useSiteStore'
 import { useMessagesStore } from '@/stores/useMessagesStore'
+import { logger } from '@/lib/request-context'
 
 interface GitCommit {
   hash: string
@@ -109,7 +110,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     
     // Page loading orchestration
     resetForNewApp: (appId: string) => {
-      console.log('🔄 Resetting develop page store for new app:', appId)
+      logger.debug('develop-store.reset', { message: 'Resetting develop page store for new app', appId })
       set((state) => {
         state.currentAppId = appId
         state.loadingPhase = 'idle'
@@ -128,17 +129,17 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       
       // Prevent duplicate initialization
       if (state.currentAppId === appId && state.loadingPhase !== 'idle') {
-        console.log('🛑 Page already initializing/initialized for:', appId)
+        logger.debug('develop-store.skip-init', { message: 'Page already initializing/initialized', appId })
         return
       }
 
-      console.log('🚀 Starting page initialization for:', appId)
+      logger.info('develop-store.init.start', { message: 'Starting page initialization', appId })
       get().resetForNewApp(appId)
 
       try {
         // Phase 1: Load app data
         set((state) => { state.loadingPhase = 'loading-app' })
-        console.log('📱 Loading app data...')
+        logger.debug('develop-store.init.loading-app', { message: 'Loading app data' })
         
         const [appData, configData] = await Promise.all([
           appService.getApp(appId),
@@ -148,11 +149,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         set((state) => { 
           state.app = appData.app
         })
-        console.log('✅ App data loaded:', appData.app.name)
+        logger.info('develop-store.init.app-loaded', { message: 'App data loaded', appName: appData.app.name })
 
         // Phase 2: Load site data
         set((state) => { state.loadingPhase = 'loading-site' })
-        console.log('🌐 Loading site data...')
+        logger.debug('develop-store.init.loading-site', { message: 'Loading site data' })
         
         const siteStore = useSiteStore.getState()
         const site = await siteStore.fetchSite(appId)
@@ -160,24 +161,24 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         set((state) => { 
           state.site = site
         })
-        console.log('✅ Site data loaded:', site?.name || 'unknown')
+        logger.info('develop-store.init.site-loaded', { message: 'Site data loaded', siteName: site?.name || 'unknown' })
 
         // Phase 3: Load conversations with proper context
         set((state) => { state.loadingPhase = 'loading-conversations' })
-        console.log('💬 Loading conversations...')
+        logger.debug('develop-store.init.loading-conversations', { message: 'Loading conversations' })
         
         const messagesStore = useMessagesStore.getState()
         await messagesStore.initializeConversations(appId, {
           appData: appData.app ? { initialBuildComplete: appData.app.initialBuildComplete } : undefined,
           siteData: site ? { initial_prompt: site.initial_prompt, status: site.status } : undefined
         })
-        console.log('✅ Conversations loaded')
+        logger.info('develop-store.init.conversations-loaded', { message: 'Conversations loaded' })
 
         // Phase 4: Evaluate initial actions (auto-send, etc.)
         set((state) => { state.loadingPhase = 'ready' })
         await get().evaluateInitialActions()
         
-        console.log('✅ Page initialization complete for:', appId)
+        logger.info('develop-store.init.complete', { message: 'Page initialization complete', appId })
 
       } catch (error) {
         console.error('❌ Page initialization failed:', error)
@@ -193,7 +194,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       const state = get()
       const { app, site, autoSendTriggered } = state
       
-      console.log('🔍 Evaluating initial actions:', {
+      logger.debug('develop-store.auto-send.evaluate', {
+        message: 'Evaluating initial actions',
         hasApp: !!app,
         hasSite: !!site,
         hasInitialPrompt: !!site?.initial_prompt,
@@ -216,7 +218,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         const promptPreview = site.initial_prompt?.trim() 
           ? site.initial_prompt.substring(0, 50) + (site.initial_prompt.length > 50 ? '...' : '')
           : '[empty prompt]'
-        console.log('🚀 Auto-sending initial prompt:', promptPreview)
+        logger.info('develop-store.auto-send.start', { message: 'Auto-sending initial prompt', promptPreview })
         set((state) => { state.autoSendTriggered = true })
         
         try {

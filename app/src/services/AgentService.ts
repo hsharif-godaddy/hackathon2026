@@ -1,4 +1,5 @@
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { logger } from '@/lib/request-context'
 
 export interface Conversation {
   id: string
@@ -43,19 +44,30 @@ export class AgentService {
     }
     
     const data = await response.json()
-    console.log('🔍 AgentService.getConversations - raw response:', data)
-    console.log('🔍 AgentService.getConversations - data.conversations:', data.conversations)
-    console.log('🔍 AgentService.getConversations - data type:', typeof data, Array.isArray(data))
+    logger.debug('agent.conversations.response', {
+      message: 'Raw response from agent service',
+      dataType: typeof data,
+      isArray: Array.isArray(data),
+      hasConversations: !!data.conversations,
+      conversationsCount: Array.isArray(data.conversations) ? data.conversations.length : 0
+    });
     
     // Try both possible response structures
     if (Array.isArray(data)) {
-      console.log('✅ Response is direct array, returning data')
+      logger.debug('agent.conversations.direct-array', { message: 'Response is direct array, returning data' });
       return data
     } else if (data.conversations && Array.isArray(data.conversations)) {
-      console.log('✅ Response has conversations property, returning data.conversations')
+      logger.debug('agent.conversations.property', { message: 'Response has conversations property, returning data.conversations' });
       return data.conversations
     } else {
-      console.log('⚠️ Unexpected response structure, returning empty array')
+      logger.warn('agent.conversations.unexpected-structure', { 
+        message: 'Unexpected response structure, returning empty array',
+        dataType: typeof data,
+        hasConversations: !!data.conversations,
+        isArray: Array.isArray(data)
+      }, { 
+        data: { responseData: data } 
+      });
       return []
     }
   }

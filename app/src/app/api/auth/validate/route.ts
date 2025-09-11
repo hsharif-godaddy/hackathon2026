@@ -3,11 +3,13 @@ import { gdAuthService } from '@/lib/gd-auth-service';
 import { isAuthDisabled } from '@/lib/gasket-config';
 import { isFeatureEnabled } from '@/lib/features';
 import { MOCK_USER } from '@/lib/mock-auth';
+import { logger } from '@/lib/request-context';
 import { ensureTestUserExists } from '@/lib/database/seed-test-user';
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('🔍 Auth validation called - checking feature flags:', {
+    logger.debug('auth.validate.check', {
+      message: 'Auth validation called - checking feature flags',
       NODE_ENV: process.env.NODE_ENV,
       NEXT_PUBLIC_USE_MOCK_LOGIN: process.env.NEXT_PUBLIC_USE_MOCK_LOGIN,
       mockLoginEnabled: isFeatureEnabled.mockLogin(),
@@ -16,16 +18,16 @@ export async function GET(request: NextRequest) {
 
     // Handle mock authentication
     if (isFeatureEnabled.mockLogin()) {
-      console.log('🚀 Mock auth validation - feature enabled');
+      logger.info('auth.validate.mock.enabled', { message: 'Mock auth validation - feature enabled' });
       
       try {
         // Ensure test user account exists in database
         await ensureTestUserExists();
-        console.log('✅ Test user ensured in database');
+        logger.info('auth.validate.mock.user-ensured', { message: 'Test user ensured in database' });
         
         // In mock mode, we check for a header or assume user is authenticated
         // The client-side should have already validated the user is logged in
-        console.log('🚀 Mock auth validation - using test user');
+        logger.info('auth.validate.mock.using-test-user', { message: 'Mock auth validation - using test user' });
         return NextResponse.json({
           valid: true,
           payload: {
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
     
     // Skip JWT validation if auth is disabled in development
     if (await isAuthDisabled()) {
-      console.log('🔧 Auth validation bypassed - development mode (NEXT_PUBLIC_AUTH_IN_DEV=true)');
+      logger.info('auth.validate.dev.bypassed', { message: 'Auth validation bypassed - development mode' });
       return NextResponse.json({
         valid: true,
         payload: {
@@ -75,7 +77,11 @@ export async function GET(request: NextRequest) {
     const result = await gdAuthService.authenticate(token);
 
     // Log validation result
-    console.log(result.valid ? '✅ [VALIDATE] Token is VALID' : '❌ [VALIDATE] Token is INVALID:', result.reason);
+    if (result.valid) {
+      logger.info('auth.validate.token.valid', { message: 'Token is VALID' });
+    } else {
+      logger.warn('auth.validate.token.invalid', { message: 'Token is INVALID', reason: result.reason });
+    }
 
     return NextResponse.json({
       valid: result.valid,

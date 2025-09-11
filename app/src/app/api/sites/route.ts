@@ -6,6 +6,7 @@ import {
   createCustomerAuthError,
   type CustomerAuthContext 
 } from '@/lib/customer-auth';
+import { logger } from '@/lib/request-context';
 
 // GET /api/sites - Get sites using site adapter
 async function handleGetSites(request: NextRequest, accountId?: string) {
@@ -46,7 +47,7 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
 
     return await handleGetSites(request, user.accountId);
   } catch (error) {
-    console.error('Error fetching sites:', error);
+    logger.error('sites.fetch.error', { message: 'Error fetching sites', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
     return NextResponse.json(
       { error: 'Failed to fetch sites' },
       { status: 500 }
@@ -101,7 +102,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
       return NextResponse.json(site, { status: 201 });
     } catch (error) {
-      console.error('❌ Site creation failed:', error);
+      logger.error('sites.create.error', { message: 'Site creation failed', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
       return NextResponse.json(
         {
           error: 'Site creation failed',
@@ -111,7 +112,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       );
     }
   } catch (error) {
-    console.error('Error creating site:', error);
+    logger.error('sites.create.error', { message: 'Error creating site', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
     return NextResponse.json(
       { error: 'Failed to create site' },
       { status: 500 }
@@ -158,15 +159,15 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
       return NextResponse.json({ error: 'Failed to delete site' }, { status: 500 });
     }
 
-    console.log('✅ Site deleted by authenticated customer:', {
+    logger.info('sites.delete.success', {
+      message: 'Site deleted by authenticated customer',
       siteId,
-      accountId: user.accountId,
-      shopperId: user.shopperId
+      accountId: user.accountId
     });
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error deleting site:', error);
+    logger.error('sites.delete.error', { message: 'Error deleting site', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
     return NextResponse.json(
       { error: 'Failed to delete site' },
       { status: 500 }

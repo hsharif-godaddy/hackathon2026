@@ -9,6 +9,8 @@ import { AccountService } from '@/lib/database/account-service';
 import { isAuthDisabled } from '@/lib/gasket-config';
 import { isFeatureEnabled } from '@/lib/features';
 import { MOCK_USER } from '@/lib/mock-auth';
+import { RequestContextService, type RequestContext, logger } from '@/lib/request-context';
+import { randomUUID } from 'crypto';
 
 const accountService = new AccountService();
 
@@ -49,14 +51,14 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       
       // The account should already exist (created by ensureTestUserExists)
       if (!mockAccount) {
-        console.log('🔧 Creating mock account for customer auth...');
+        logger.info('auth.mock.account.create', { message: 'Creating mock account for customer auth', mockShopperId, mockCustomerId });
         try {
           mockAccount = await accountService.createAccount(mockShopperId, mockCustomerId);
-          console.log(`✅ Mock account created: ${mockAccount.id}`);
+          logger.info('auth.mock.account.success', { message: 'Mock account created', accountId: mockAccount.id });
         } catch (error: any) {
           if (error.message.includes('UNIQUE constraint failed')) {
             mockAccount = await accountService.findByCustomerId(mockCustomerId);
-            console.log(`✅ Mock account found: ${mockAccount?.id}`);
+            logger.info('auth.mock.account.found', { message: 'Mock account found', accountId: mockAccount?.id });
           } else {
             throw error;
           }
@@ -77,7 +79,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
 
     // Skip JWT validation if auth is disabled in development
     if (await isAuthDisabled()) {
-      console.log('🔧 Customer Auth bypassed - development mode');
+      logger.info('auth.dev.bypass', 'Customer auth bypassed - development mode');
       
       // Ensure dev account exists in database
       const devShopperId = 'dev-user';
@@ -86,15 +88,15 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       
       // Create dev account if it doesn't exist
       if (!devAccount) {
-        console.log('🔧 Creating dev account for testing...');
+        logger.info('auth.dev.account.create', { message: 'Creating dev account for testing', devShopperId, devCustomerId });
         try {
           devAccount = await accountService.createAccount(devShopperId, devCustomerId);
-          console.log(`✅ Dev account created: ${devAccount.id}`);
+          logger.info('auth.dev.account.success', { message: 'Dev account created', accountId: devAccount.id });
         } catch (error: any) {
           // Account might already exist, try to find it
           if (error.message.includes('UNIQUE constraint failed')) {
             devAccount = await accountService.findByCustomerId(devCustomerId);
-            console.log(`✅ Dev account found: ${devAccount?.id}`);
+            logger.info('auth.dev.account.found', { message: 'Dev account found', accountId: devAccount?.id });
           } else {
             throw error;
           }
@@ -124,10 +126,10 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     }
 
     // Use gd-auth for authentication (includes automatic heartbeat)
-    console.log('🔐 Customer auth: Using gd-auth for validation...');
+    logger.info('auth.gdauth.validate.start', 'Using gd-auth for validation');
     const result = await gdAuthService.authenticate(token);
     if (!result.valid || !result.payload) {
-      console.log('❌ Customer auth: gd-auth validation failed:', result.reason);
+      logger.error('auth.gdauth.validate.failed', { message: 'gd-auth validation failed', reason: result.reason });
       return {
         isAuthenticated: false,
         user: null,
@@ -135,7 +137,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       };
     }
 
-    console.log('✅ Customer auth: gd-auth validation successful');
+    logger.info('auth.gdauth.validate.success', 'gd-auth validation successful');
 
     // Extract customer information from JWT payload
     const shopperId = result.payload.shopperId as string;
@@ -185,7 +187,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     };
 
   } catch (error) {
-    console.error('Customer authentication error:', error);
+    logger.error('auth.error', { message: 'Customer authentication error', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
     return {
       isAuthenticated: false,
       user: null,
@@ -215,7 +217,16 @@ export function withCustomerAuth<T extends unknown[]>(
       );
     }
 
-    return handler(request, authContext, ...args);
+    // Set up request context for the entire request lifecycle
+    const requestContext: RequestContext = {
+      customerId: authContext.user.customerId,
+      requestId: randomUUID()
+    };
+
+    // Run the handler within the request context
+    return RequestContextService.run(requestContext, () => {
+      return handler(request, authContext, ...args);
+    });
   };
 }
 

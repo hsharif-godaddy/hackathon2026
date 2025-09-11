@@ -7,6 +7,7 @@ import { appFetch } from '@/lib/gasket-config'
 import { authConfigs, getLoginUrl, isAuthDisabled } from '@/lib/gasket-config'
 import { useIntegratedAuthState } from '@/lib/mock-auth-integration'
 import { isFeatureEnabled } from '@/lib/features'
+import { logger } from '@/lib/request-context'
 import Header from '@/components/layout/Header'
 import HeroSection from './components/HeroSection'
 import ExamplesSection from './components/ExamplesSection'
@@ -135,7 +136,7 @@ function HomeContent() {
       const isValid = authState.valid;
 
       if (!authDisabled && !isValid) {
-        console.log('🔐 User not authenticated, redirecting to login')
+        logger.info('page.auth.redirect', 'User not authenticated, redirecting to login')
         if (isFeatureEnabled.mockLogin()) {
           throw new Error('Please sign in using the mock authentication system')
         }
@@ -144,7 +145,7 @@ function HomeContent() {
       }
 
       // Step 2: Super fast create - only create database record, no deployment
-      console.log('🚀 Quick creating site record...')
+      logger.info('page.site.quick-create.start', 'Quick creating site record')
 
       const createSiteResponse = await appFetch('/api/sites/quick-create', {
         method: 'POST',
@@ -160,7 +161,7 @@ function HomeContent() {
       }
 
       const siteData = await createSiteResponse.json()
-      console.log('✅ Site record created instantly:', siteData.id)
+      logger.info('page.site.quick-create.success', { message: 'Site record created instantly', siteId: siteData.id })
 
       // Immediately redirect to /create/{siteId} - deployment will happen there
       router.push(`/create/${siteData.id}`)

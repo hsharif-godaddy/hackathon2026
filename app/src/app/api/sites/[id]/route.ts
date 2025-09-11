@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
+import { logger } from '@/lib/request-context';
 import { 
   withCustomerAuth, 
   customerHasAccount,
@@ -90,10 +91,10 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
       return NextResponse.json({ error: 'Failed to delete site' }, { status: 500 });
     }
 
-    console.log('✅ Site deleted by authenticated customer:', {
+    logger.info('sites.delete.success', {
+      message: 'Site deleted by authenticated customer',
       siteId,
-      accountId: user.accountId,
-      shopperId: user.shopperId
+      accountId: user.accountId
     });
 
     return NextResponse.json({ 
@@ -144,10 +145,10 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
-    console.log('✅ Site updated by authenticated customer:', {
+    logger.info('sites.update.success', {
+      message: 'Site updated by authenticated customer',
       siteId,
-      accountId: user.accountId,
-      shopperId: user.shopperId
+      accountId: user.accountId
     });
 
     return NextResponse.json(updatedSite);
