@@ -48,7 +48,7 @@ export class DynamicApiConfigService {
           // WebSocket needs base URL without the /apps/{id} suffix
           const baseAgentUrl = site.agent_url.replace(`/apps/${siteId}`, '')
           const config: DynamicApiConfig = {
-            baseUrl: site.agent_url,
+            baseUrl: baseAgentUrl,
             wsUrl: this.transformToWebSocketUrl(baseAgentUrl),
             agentUrl: site.agent_url,
             isStatic: false,
