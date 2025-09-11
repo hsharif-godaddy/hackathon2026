@@ -46,10 +46,9 @@ export class DynamicApiConfigService {
         if (site?.agent_url && site.status === 'running') {
           // Site has agent URL and is running, use dynamic configuration
           // WebSocket needs base URL without the /apps/{id} suffix
-          const baseAgentUrl = site.agent_url.replace(`/apps/${siteId}`, '')
           const config: DynamicApiConfig = {
-            baseUrl: baseAgentUrl,
-            wsUrl: this.transformToWebSocketUrl(baseAgentUrl),
+            baseUrl: site.agent_url,
+            wsUrl: this.transformToWebSocketUrl(site.agent_url),
             agentUrl: site.agent_url,
             isStatic: false,
             siteId

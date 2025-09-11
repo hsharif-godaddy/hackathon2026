@@ -60,7 +60,7 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
 
       // Generate URLs
       const urls = {
-        agent: `${this.agentsServiceUrl}/apps/${siteId}`, // For AI interactions
+        agent: `${this.agentsServiceUrl}`, // For AI interactions
         backend: `http://localhost:${port}`,
         preview: `http://localhost:${port}`
       };

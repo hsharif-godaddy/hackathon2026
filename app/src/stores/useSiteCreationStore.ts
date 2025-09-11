@@ -286,7 +286,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         }
 
         console.log('🔍 Original agent URL:', agentUrl)
-        const endpointUrl = `${agentUrl}/ensure-running`
+        const endpointUrl = `${agentUrl}/apps/${siteId}/ensure-running`
         console.log('🔍 Constructed endpoint URL:', endpointUrl)
 
         const response = await fetch(endpointUrl, {
@@ -337,7 +337,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
         // Call the agent to get a name suggestion
         console.log('🏷️ Calling suggest-name endpoint...')
-        const agentResponse = await fetch(`${agentUrl.replace(`/apps/${siteId}`, '')}/apps/suggest-name`, {
+        const agentResponse = await fetch(`${agentUrl}/apps/suggest-name`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

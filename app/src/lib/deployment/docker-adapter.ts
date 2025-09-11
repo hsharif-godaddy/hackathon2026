@@ -78,7 +78,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       // Generate URLs based on app status and result
       const backendUrl = (appStatus && 'metadata' in appStatus && appStatus.metadata?.url) || `http://localhost:${result.port}`;
       const urls = {
-        agent: `${this.agentsServiceUrl}/apps/${siteId}`, // For AI interactions
+        agent: `${this.agentsServiceUrl}`, // For AI interactions
         backend: backendUrl,
         preview: backendUrl
       };
