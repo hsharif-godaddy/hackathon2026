@@ -8,6 +8,7 @@ import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { TokenUsageRepository } from '../../database/index.js';
 import { ServerManagementTool } from '../../tools/server-management-tool.js';
+import { getNameSuggestionService } from '../../services/name-suggestion.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -891,31 +892,9 @@ router.post('/suggest-name', async (req: Request, res: Response) => {
 
     console.log('🏷️ Generating name suggestion for prompt:', prompt.substring(0, 100) + '...');
 
-    // Use a simple OpenAI call to generate a name suggestion
-    // This is a lightweight call that doesn't require the full agent system
-    const openai = await import('openai');
-    const client = new openai.OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      baseURL: process.env.OPENAI_BASE_URL || undefined,
-    });
-
-    const response = await client.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a creative name generator for web applications. Generate a concise, memorable, and relevant name (2-4 words max) based on the user\'s project description. Return only the name, nothing else.'
-        },
-        {
-          role: 'user',
-          content: `Generate a name for this project: ${prompt.trim()}`
-        }
-      ],
-      max_tokens: 50,
-      temperature: 0.7
-    });
-
-    const suggestedName = response.choices[0]?.message?.content?.trim();
+    // Use the dedicated name suggestion service
+    const nameSuggestionService = getNameSuggestionService();
+    const suggestedName = await nameSuggestionService.suggestName(prompt.trim());
 
     if (!suggestedName) {
       throw new Error('Failed to generate name suggestion');
