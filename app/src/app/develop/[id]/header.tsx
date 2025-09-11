@@ -4,13 +4,6 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRef, useImperativeHandle, forwardRef } from 'react'
 import { useParams } from 'next/navigation'
-import {
-  ArrowPathIcon,
-  Squares2X2Icon,
-  ComputerDesktopIcon,
-  DevicePhoneMobileIcon,
-  ArrowTopRightOnSquareIcon,
-} from '@heroicons/react/24/outline'
 import TokenUsage, { TokenUsageRef } from '@/app/develop/components/TokenUsage'
 import { UserMenu } from '@/components/auth'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -18,9 +11,12 @@ import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { isFeatureEnabled } from '@/lib/features'
 import Box from '@ux/box'
 import Button from '@ux/button'
-import SiblingSet from '@ux/sibling-set'
 import Tag from '@ux/tag'
 import { text } from '@ux/text'
+import ComputerDesktopIcon from '@ux/icon/desktop'
+import DevicePhoneMobileIcon from '@ux/icon/mobile-phone'
+import ArrowTopRightOnSquareIcon from '@ux/icon/window-new'
+import RefreshIcon from '@ux/icon/refresh'
 
 interface HeaderProps {
   app: { name?: string; port?: number } | null // App data from page state
@@ -102,7 +98,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
           </div>
           <div className="flex items-center space-x-4">
             {/* View Mode Toggle Buttons */}
-            <SiblingSet gap="sm">
+            <Box orientation="horizontal" gap="sm">
               <Button 
                 onClick={() => handleViewModeChange('preview', hasUnsavedChanges)}
                 size="sm"
@@ -126,7 +122,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                   )}
                 </Button>
               )}
-            </SiblingSet>
+            </Box>
 
             {/* Preview controls when in preview mode */}
             {viewMode === 'preview' && (
@@ -158,7 +154,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                   <Button
                     onClick={onPreviewRefresh}
                     title="Reload preview (refresh page content)"
-                    icon={<ArrowPathIcon className="w-4! h-4! text-gray-600" />}
+                    icon={<RefreshIcon className="w-4! h-4! text-gray-600" />}
                     size="sm"
                     design="stateless"
                   />
@@ -168,7 +164,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                     disabled={isRestarting}
                     className="p-1 hover:bg-orange-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Restart server (rebuild and restart development server)"
-                    icon={<ArrowPathIcon className={`w-4! h-4! text-intents-ux-feedbackHighContrastCritical-feedbackColor ${isRestarting && 'animate-spin'}`} />}
+                    icon={<RefreshIcon className={`w-4! h-4! text-intents-ux-feedbackHighContrastCritical-feedbackColor ${isRestarting && 'animate-reverse-spin'}`} />}
                     size="sm"
                     design="stateless"
                   />
@@ -194,16 +190,15 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
             {appId && (
               <TokenUsage ref={tokenUsageRef} appId={appId} enabled={showUsageCost} />
             )}
-            <SiblingSet gap="sm">
+            <Box orientation="horizontal" gap="sm">
               <Button
                 href="/sites"
                 design="primary"
-                icon={<Squares2X2Icon className="w-4 h-4 mr-2" />}
                 data-partial="componentAiro"
-                text="My Apps"
+                text="My Sites"
               />
               <UserMenu />
-            </SiblingSet>
+            </Box>
           </div>
         </div>
       </div>

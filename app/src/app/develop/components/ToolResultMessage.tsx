@@ -83,8 +83,8 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
   }
 
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
-      <div className="flex items-center space-x-2 px-3 py-2 bg-gray-100 border-b border-gray-200">
+    <div className="bg-gray-50 border rounded-lg overflow-hidden">
+      <div className="flex items-center space-x-2 px-3 py-2 border-b">
         {getToolIcon(toolName)}
         <span className="text-sm font-medium text-gray-700">
           {getToolDisplayName(toolName)}
@@ -105,7 +105,7 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
                           <img
                             src={imageData.url}
                             alt={imageData.alt}
-                            className="w-full h-auto max-h-48 object-cover rounded-lg shadow-sm border border-gray-200"
+                            className="w-full h-auto max-h-48 object-cover rounded-lg shadow-sm border"
                             onError={(e) => {
                               const target = e.target as HTMLImageElement
                               target.style.display = 'none'

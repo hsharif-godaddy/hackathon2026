@@ -391,7 +391,7 @@ function AppsPageContent() {
             </div>
           </div>
           
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Apps (Legacy)</h1>
+          <h1 className="text-3xl font-bold mb-2">My Sites (Legacy)</h1>
           <p className="text-gray-600">
             Manage your AI-built applications
             {(() => {
@@ -417,7 +417,7 @@ function AppsPageContent() {
             <div className="w-64 h-64 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <span className="text-red-600 text-2xl">⚠️</span>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Error Loading Apps</h2>
+            <h2 className="text-xl font-semibold mb-2">Error Loading Apps</h2>
             <p className="text-gray-600 mb-4">{error}</p>
             <button
               onClick={() => window.location.reload()}

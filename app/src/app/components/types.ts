@@ -20,6 +20,10 @@ export interface HeroSectionProps {
   setError: (error: string | null) => void
 }
 
+export interface HeroSectionRef {
+  typeText: (text: string) => void
+}
+
 export interface ExamplesSectionProps {
   examples: Example[]
   onExampleClick: (prompt: string) => void

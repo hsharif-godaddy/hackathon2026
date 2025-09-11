@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import AuthProvider from "@/components/providers/AuthProvider";
-import "./globals.scss";
+import "@/styles/globals.scss";
 
 export const metadata: Metadata = {
   title: "Airo App Builder",

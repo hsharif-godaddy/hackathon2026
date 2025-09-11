@@ -22,9 +22,6 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
   const hasLegacyContent = Boolean(message.content && !message.isThinking && !hasSegments)
   const isComplete = message.is_complete
 
-  // Check if message has any meaningful content to display
-  const hasMeaningfulContent = hasSegments || hasLegacyContent || hasLegacyTools || message.isThinking
-
   // Track content changes to reset thinking indicator timer
   useEffect(() => {
     // Don't show thinking indicator if message is complete (with response timing), in initial thinking state, or is an old message
@@ -74,20 +71,19 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
     hasSegments,
   ])
 
-  // Don't render anything if the message has no meaningful content to display
-  if (!hasMeaningfulContent && !showThinkingIndicator) {
-    return null
+  const thinkingIndicator = () => {
+    return (
+      <div className="text-sm leading-relaxed break-words flex items-center space-x-2 mb-2">
+        <span className="text-gray-600 animate-pulse">Thinking...</span>
+      </div>
+    )
   }
   
   return (
     <div>
-      <div className="bg-gray-100 text-gray-900 p-3 rounded-lg">
+      <div className="p-2">
         {/* Initial thinking indicator - show at top only when no content yet */}
-        {/* {message.isThinking && !hasSegments && !hasLegacyContent && (
-          <div className="text-sm leading-relaxed break-words flex items-center space-x-2 mb-2">
-            <span className="text-gray-600">Thinking...</span>
-          </div>
-        )} */}
+        {message.isThinking && !hasSegments && !hasLegacyContent && thinkingIndicator()}
 
         <div className="space-y-2">
           {/* New segmented approach - render interleaved content and tools */}
@@ -147,32 +143,21 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
           )}
         </div>
 
-        {/* Thinking indicators at the bottom after content
-        {message.isThinking && (hasSegments || hasLegacyContent) && (
-          <div className="text-sm leading-relaxed break-words flex items-center space-x-2 mt-2">
-            <span className="text-gray-600">Thinking...</span>
-          </div>
-        )} */}
-
-        {!message.isThinking && !isComplete && showThinkingIndicator && (
-          <div className="flex items-center space-x-2 mt-2 opacity-60">
-            <span className="text-xs text-gray-500 animate-pulse">thinking...</span>
-          </div>
-        )}
+        {!message.isThinking && !isComplete && showThinkingIndicator && thinkingIndicator()}
       </div>
 
       {/* Completion drawer - outside the main message bubble */}
       {isComplete && message.response_duration_ms && (
-        <div className="border-t border-gray-200 px-3 py-1 mt-2">
+        <div className="px-2">
           <div 
             className="flex items-center justify-between cursor-pointer py-1 hover:opacity-70"
             onClick={() => setIsCompletionExpanded(!isCompletionExpanded)}
           >
             <div className="flex items-center space-x-2">
-              <span className="text-xs text-gray-500 font-medium">
+              <span className="text-xs font-medium">
                 {message.error ? 'Task failed' : 'Task completed'}
               </span>
-              <span className="text-xs text-gray-400">
+              <span className="text-xs">
                 {message.response_duration_ms < 1000 
                   ? `${message.response_duration_ms}ms`
                   : `${(message.response_duration_ms / 1000).toFixed(1)}s`
@@ -180,19 +165,19 @@ export default function IntegratedResponse({ message }: IntegratedResponseProps)
               </span>
             </div>
             {isCompletionExpanded ? (
-              <ChevronDownIcon className="w-3 h-3 text-gray-400" />
+              <ChevronDownIcon className="w-3 h-3" />
             ) : (
-              <ChevronRightIcon className="w-3 h-3 text-gray-400" />
+              <ChevronRightIcon className="w-3 h-3" />
             )}
           </div>
           
           {/* Expanded completion details */}
           {isCompletionExpanded && (
-            <div className="ml-4 mt-2 space-y-1 text-xs text-gray-500">
+            <div className="mt-2 space-y-1 text-xs leading-tight">
               <div>Started: {new Date(message.response_start_time || 0).toLocaleTimeString()}</div>
               <div>Finished: {new Date(message.response_end_time || 0).toLocaleTimeString()}</div>
               {message.error && (
-                <div className="text-red-600 font-mono bg-red-50 p-2 rounded mt-2">
+                <div className="bg-intents-ux-feedbackCritical-feedbackColor font-mono p-2 mt-2">
                   {message.error}
                 </div>
               )}

@@ -48,7 +48,7 @@ function getMessageClasses(message: MessageType): string {
   
   // Handoff messages
   if (message.handoff) {
-    return `${baseClasses} bg-gradient-to-r from-green-50 to-indigo-50 border border-indigo-200`
+    return `${baseClasses} border border-indigo-200`
   }
 
   // Weird empty thinking messages
@@ -57,7 +57,7 @@ function getMessageClasses(message: MessageType): string {
   }
   
   // Default agent messages
-  return `${baseClasses} bg-intents-ux-boxLowContrast-backgroundColor p-0!`
+  return `${baseClasses} p-0!`
 }
 
 // Helper function to render message content based on type and sender
@@ -115,9 +115,9 @@ function renderMessageContent(message: MessageType) {
       return (
         <div className="text-sm leading-normal break-words flex items-center space-x-2">
           <div className="flex space-x-1">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <div className="w-2 h-2 bg-ai-light rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-ai rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+            <div className="w-2 h-2 bg-ai-dark rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
           </div>
           <span className="text-gray-600">AI Developer is thinking...</span>
         </div>
@@ -155,10 +155,10 @@ export default function Message({ message }: MessageProps) {
               {renderMessageContent(message)}
             </div>
             {message.handoff && (
-              <div className="mt-2 pt-2 border-t border-indigo-200">
+              <div className="mt-2 pt-2 border-t">
                 <Link
                   href={message.handoff.url}
-                  className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-medium rounded-lg hover:shadow-lg transition-all duration-200"
+                  className="inline-flex items-center px-3 py-2 text-xs font-medium rounded-lg hover:shadow-lg transition-all duration-200"
                 >
                   <SparklesIcon className="w-3 h-3 mr-1" />
                   {message.handoff.action} with {message.handoff.to}

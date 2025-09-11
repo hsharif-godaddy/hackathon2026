@@ -140,9 +140,9 @@ export default function ChatPane({
       {isProcessing && (
         <div className="mx-4 mb-2 rounded-md p-2 flex items-center justify-center">
           <div className="flex space-x-1 mr-2">
-            <div className="w-3 h-3 bg-gray-400 rounded-full animate-pulse"></div>
-            <div className="w-3 h-3 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-            <div className="w-3 h-3 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+            <div className="w-3 h-3 bg-ai-light rounded-full animate-pulse"></div>
+            <div className="w-3 h-3 bg-ai rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+            <div className="w-3 h-3 bg-ai-dark rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
           </div>
         </div>
       )}

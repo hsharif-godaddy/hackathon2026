@@ -91,7 +91,7 @@ export default function UserMenu() {
       <>
         <Button
           onClick={handleSignIn}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+          className="px-4 py-2 rounded-lg transition-colors font-medium"
           text='Sign In'
           design='primary'
         />
@@ -110,17 +110,21 @@ export default function UserMenu() {
     <Menu
       closeOnSelect
       id="default-menu"
+      className="z-50"
     >
       <MenuButton
         buttonAs="select"
         design="primary"
         text="Menu"
       />
-      <MenuList stretch>
+      <MenuList 
+        stretch 
+        placement="bottom-end"
+      >
         <MenuGroup label={getUserEmail()}>
           <MenuItem onSelect={() => {}}>
             <Link href="/sites">
-              My Apps
+              My Sites
             </Link>
           </MenuItem>
           <MenuItem onSelect={handleSignOut}>

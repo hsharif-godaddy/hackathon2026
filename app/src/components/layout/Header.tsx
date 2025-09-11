@@ -2,7 +2,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { UserMenu } from '@/components/auth'
 import { HeaderProps } from './types'
-import SiblingSet from '@ux/sibling-set'
+import Box from '@ux/box'
 
 export default function Header({ actions, className = "" }: HeaderProps) {
   return (
@@ -16,10 +16,10 @@ export default function Header({ actions, className = "" }: HeaderProps) {
               </div>
             </Link>
           </div>
-          <SiblingSet gap='sm'>
+          <Box orientation="horizontal" gap="md">
             {actions && actions}
             <UserMenu />
-          </SiblingSet>
+          </Box>
         </div>
       </div>
     </header>

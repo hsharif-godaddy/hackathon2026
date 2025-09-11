@@ -1,0 +1,427 @@
+@use "tailwindcss";
+
+@use "@ux/intents/lib/index" as intents;
+
+@import "./godaddy.scss";
+@import "./uxcore-intents.css";
+@import "./uxcore-icons.css";
+@import "./uxcore-components.css";
+
+@plugin "@ux/tailwind-intents/plugin";
+
+@theme inline {
+  --color-ai: #613EA3;
+  --color-ai-light: #744BC4;
+  --color-ai-dark: #462A72;
+  --color-border: var(--ux-97h3vl, #d4dbe0);
+  --color-ring-ai: #613EA3;
+}
+
+@layer base {
+  :root {
+    --ref-orb-w: 1000;
+    --ref-orb-h: 694
+  }
+
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    font-family: gdsherpa, "gdsherpaVF4 fallback", Helvetica, Arial, sans-serif;
+    background-color: var(--ux-cao06b, white);
+    color: var(--ux-1leynsm, black);
+  }
+
+  /* AI text gradient */
+  .ai-text-gradient {
+    background: linear-gradient(90deg, #5d35bf 0%, #ba7efd 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline-block;
+    padding: 0.1em 0;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+
+    &-light {
+      background: linear-gradient(135deg, #E9E4F2 0%, #D3C1F7 100%);
+    }
+  }
+}
+
+@layer utilities {
+  @keyframes reverse-spin {
+    from {
+      transform: rotate(360deg);
+    }
+    to {
+      transform: rotate(0deg);
+    }
+  }
+
+  .animate-reverse-spin {
+    animation: reverse-spin 1s linear infinite;
+  }
+}
+
+/* Circular white blur background */
+.textarea-blur-bg {
+  position: relative;
+}
+
+.textarea-blur-bg::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200%;
+  height: 150%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.1) 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 0;
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+/* Force dark text color for chat input */
+.chat-input-text {
+  color: #000000 !important;
+}
+
+/* GoDaddy Airo-style gradient backgrounds */
+@layer utilities {
+  .bg-airo-gradient {
+    background: linear-gradient(135deg, #7C3AED 0%, #EC4899 100%);
+  }
+  
+  .bg-airo-gradient-soft {
+    background: linear-gradient(135deg, #E9E4F2 0%, #D3C1F7 100%);
+  }
+  
+  .bg-airo-gradient-enhanced {
+    background: linear-gradient(
+      135deg, 
+      #6366F1 0%,     /* Indigo */
+      #8B5CF6 25%,    /* Violet */
+      #A855F7 50%,    /* Purple */
+      #EC4899 75%,    /* Pink */
+      #F472B6 100%    /* Light pink */
+    );
+  }
+  
+  .bg-airo-gradient-animated {
+    background: linear-gradient(
+      -45deg,
+      #6366F1,
+      #8B5CF6,
+      #A855F7,
+      #EC4899
+    );
+    background-size: 400% 400%;
+    animation: gradientShift 15s ease infinite;
+  }
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Markdown content styles */
+.markdown-content {
+  line-height: 1.6;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  margin-top: 0.75em;
+  margin-bottom: 0.25em;
+}
+
+.markdown-content h1:first-child,
+.markdown-content h2:first-child,
+.markdown-content h3:first-child,
+.markdown-content h4:first-child,
+.markdown-content h5:first-child,
+.markdown-content h6:first-child {
+  margin-top: 0;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content pre {
+  overflow-x: auto;
+}
+
+.markdown-content code {
+  word-break: break-word;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin-left: 0;
+  padding-left: 1rem;
+}
+
+.markdown-content blockquote {
+  margin: 1em 0;
+}
+
+.markdown-content table {
+  margin: 1em 0;
+}
+
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+
+
+/*
+
+body {
+  background-color: var(--gd-color-white, #fff) !important;
+  height: 100vh
+}
+
+body #dc-dynamic-container-chiclet {
+  display: none !important
+}
+
+#main-spa-loader {
+  visibility: hidden
+}
+
+#main-spa-loader.spa-spinner-visible {
+  visibility: visible
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100%
+}
+
+#airo-sentinel-root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0px 40px 0 40px;
+  height: 100%;
+  overflow: hidden;
+  align-items: center;
+  width: 100%;
+  max-width: 1440px;
+  margin: auto
+}
+
+@media screen and (max-width: 768px) {
+  #airo-sentinel-root {
+    padding: 0px
+  }
+}
+
+#airo-sentinel-root .mfe-fade-init,
+#airo-sentinel-header-container .mfe-fade-init {
+  opacity: 0;
+  scrollbar-width: none
+}
+
+#airo-sentinel-root .mfe-mounted,
+#airo-sentinel-header-container .mfe-mounted {
+  opacity: 1
+}
+
+#airo-sentinel-root .mfe-fade-in,
+#airo-sentinel-header-container .mfe-fade-in {
+  opacity: 0;
+  animation: mfefadeIn .5s forwards
+}
+
+#airo-sentinel-root .mfe-fade-out,
+#airo-sentinel-header-container .mfe-fade-out {
+  opacity: 1;
+  animation: mfefadeOut .5s forwards
+}
+
+#airo-sentinel-app {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding-top: 20px;
+  padding-bottom: 156px;
+  height: calc(100vh - 120px)
+}
+
+#airo-sentinel-app.control-bar-disabled {
+  height: calc(100vh - 98px);
+  padding-bottom: 0px
+}
+
+@media(max-width: 768px) {
+  #airo-sentinel-app {
+    padding-bottom: 156px;
+    padding-right: 20px;
+    padding-left: 20px
+  }
+
+  #airo-sentinel-app.control-bar-disabled {
+    padding-bottom: 0px
+  }
+}
+
+#airo-sentinel-app-container {
+  display: flex;
+  flex-direction: row;
+  flex-grow: 1;
+  justify-content: space-evenly;
+  max-width: 1440px;
+  width: 100%;
+  padding-top: 20px
+}
+
+#airo-sentinel-app-container .airo-sentinel-app {
+  width: 100%;
+  flex-grow: 1;
+  transition: width .3s ease-out
+}
+
+#airo-sentinel-app-container .airo-sentinel-side-panel {
+  height: calc(100vh - 157px);
+  z-index: 1;
+  overflow-y: scroll;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0px 0px 8px 0px rgba(0, 0, 0, .2);
+  width: 0%;
+  transition: width .3s ease-out;
+  opacity: 0
+}
+
+#airo-sentinel-app-container.view-panel .airo-sentinel-app {
+  width: 60%;
+  flex-grow: 0
+}
+
+@media(max-width: 768px) {
+  #airo-sentinel-app-container.view-panel .airo-sentinel-app {
+    width: 0%;
+    padding-right: 0px;
+    padding-left: 0px
+  }
+}
+
+#airo-sentinel-app-container.view-panel .airo-sentinel-side-panel {
+  width: 40%;
+  opacity: 1;
+  margin: 20px 0 0px 24px
+}
+
+@media(max-width: 768px) {
+  #airo-sentinel-app-container.view-panel .airo-sentinel-side-panel {
+    width: 100%;
+    box-shadow: none;
+    border-radius: 0px;
+    margin: 0;
+    height: calc(100vh - 217px)
+  }
+}
+
+#airo-sentinel-app-container.view-agent .airo-sentinel-app {
+  width: 30%;
+  flex-grow: 0
+}
+
+@media(max-width: 1024px)and (min-width: 769px) {
+  #airo-sentinel-app-container.view-agent .airo-sentinel-app {
+    width: 40%
+  }
+}
+
+@media(max-width: 768px) {
+  #airo-sentinel-app-container.view-agent .airo-sentinel-app {
+    width: 0%;
+    padding-right: 0px;
+    padding-left: 0px
+  }
+}
+
+#airo-sentinel-app-container.view-agent .airo-sentinel-side-panel {
+  width: 70%;
+  opacity: 1;
+  margin: 20px 0 0px 24px
+}
+
+@media(max-width: 1024px)and (min-width: 769px) {
+  #airo-sentinel-app-container.view-agent .airo-sentinel-side-panel {
+    width: 60%
+  }
+}
+
+@media(max-width: 768px) {
+  #airo-sentinel-app-container.view-agent .airo-sentinel-side-panel {
+    width: 100%;
+    box-shadow: none;
+    border-radius: 0px;
+    margin: 0;
+    height: calc(100vh - 217px)
+  }
+}
+
+#airo-sentinel-app-container.view-agent-full .airo-sentinel-app {
+  width: 0%;
+  flex-grow: 0;
+  opacity: 1;
+  animation: mfefadeOut .5s forwards;
+  padding-right: 0px;
+  padding-left: 0px
+}
+
+#airo-sentinel-app-container.view-agent-full .airo-sentinel-side-panel {
+  width: 100%;
+  opacity: 1
+}
+
+@keyframes mfefadeIn {
+  from {
+    opacity: 0
+  }
+
+  to {
+    opacity: 1
+  }
+}
+
+@keyframes mfefadeOut {
+  from {
+    opacity: 1
+  }
+
+  to {
+    opacity: 0
+  }
+}
+
+:root {
+  --ref-orb-w: 1000;
+  --ref-orb-h: 694
+}
+
+#airo-sentinel-header-container {
+  padding: 40px 40px 0 40px
+}
+
+
+
+
+
+*/

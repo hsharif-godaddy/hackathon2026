@@ -12,7 +12,7 @@ import {
 } from '@/app/develop/components/messageService'
 import { ProtectedRoute } from '@/components/auth'
 import { appService } from '@/services/AppService'
-import { useMessagesStore, cleanupMessagesStore } from '@/stores/useMessagesStore'
+import { useMessagesStore } from '@/stores/useMessagesStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useAppStore } from '@/stores/useAppStore'
@@ -27,19 +27,17 @@ function DevelopPageContent() {
   const appId = params.id as string
   
   // App store - for app lifecycle operations
-  const { ensureAppIsRunning: appStoreEnsureAppIsRunning, restartApp: appStoreRestartApp, loadApps } = useAppStore()
+  const { restartApp: appStoreRestartApp } = useAppStore()
   
   // Server polling store - unified server status management
-  const { startPollingForServer, stopPollingForServer, getServerState, cleanup: cleanupServerPolling } = useServerPollingStore()
+  const { startPollingForServer, stopPollingForServer, cleanup: cleanupServerPolling } = useServerPollingStore()
   
   // Messages store - for conversations and messages
   const {
     conversations,
-    inputValue,
     isLoading,
     setInputValue,
     setAiEditContext,
-    initializeConversations,
     handleSendMessage: sendMessageFromStore
   } = useMessagesStore()
   
@@ -54,7 +52,6 @@ function DevelopPageContent() {
     isVersionHistoryOpen,
     selectedCommit,
     setHasUnsavedChanges,
-    ensureAppIsRunning: ensureAppIsRunningFromStore,
     selectCommit: selectCommitFromStore,
     toggleSelectMode,
     toggleExpandedPlan,
@@ -66,7 +63,6 @@ function DevelopPageContent() {
     loadingPhase,
     app,
     site,
-    loadingError,
     initializePage
   } = useDevelopPageStore()
   

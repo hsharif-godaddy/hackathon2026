@@ -19,7 +19,6 @@ import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
 import Tag from '@ux/tag'
-import SiblingSet from '@ux/sibling-set'
 
 interface AlertState {
   siteId: string | null
@@ -177,7 +176,7 @@ function SitesPageContent() {
   }) => (
     <div className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-4 z-10">
       <p className="text-sm text-gray-700 mb-4 text-center">{message}</p>
-      <SiblingSet gap="md">
+      <Box orientation="horizontal" gap="md">
         <Button
           onClick={onConfirm}
           disabled={actionLoading === siteId}
@@ -190,7 +189,7 @@ function SitesPageContent() {
           text="Cancel"
           design="secondary"
         />
-      </SiblingSet>
+      </Box>
     </div>
   )
 
@@ -198,7 +197,7 @@ function SitesPageContent() {
     return (
       <Box className="min-h-screen flex items-center justify-center" data-partial="accentAiro">
         <Spinner size="lg" />
-        <p className="mt-4 text-gray-600">Loading your sites...</p>
+        <p className="mt-4">Loading your sites...</p>
       </Box>
     )
   }

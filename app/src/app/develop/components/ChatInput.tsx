@@ -1,8 +1,9 @@
 'use client'
 
-import { PaperAirplaneIcon, PencilIcon } from '@heroicons/react/24/outline'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import PencilIcon from '@ux/icon/edit'
+import WandIcon from '@ux/icon/wand'
 
 interface ChatInputProps {
   inputValue: string
@@ -56,7 +57,7 @@ export default function ChatInput({
               onClick={onSendMessage}
               disabled={!inputValue.trim() || isDisabled}
               design="primary"
-              icon={<PaperAirplaneIcon className="w-4 h-4" />}
+              icon={<WandIcon className="w-4 h-4" />}
               size="sm"
               data-partial="componentAiro"
             />

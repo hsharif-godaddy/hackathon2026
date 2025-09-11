@@ -1,9 +1,10 @@
 'use client'
 
-import { CodeBracketIcon, ClockIcon } from '@heroicons/react/24/outline'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import text from '@ux/text'
+import CodeBracketIcon from '@ux/icon/code'
+import HistoryIcon from '@ux/icon/history'
 
 interface ChatHeaderProps {
   onToggleVersionHistory: () => void
@@ -13,7 +14,7 @@ interface ChatHeaderProps {
 
 export default function ChatHeader({ onToggleVersionHistory, isVersionHistoryOpen, hasSelectedCommit }: ChatHeaderProps) {
   return (
-    <div className="border-b border-gray-200 px-4 py-3 bg-white">
+    <div className="border-b px-4 py-3">
       <Box 
         orientation="horizontal" 
         blockAlignChildren="spaceBetween" 
@@ -43,14 +44,10 @@ export default function ChatHeader({ onToggleVersionHistory, isVersionHistoryOpe
         </Box>
         <Button 
           onClick={onToggleVersionHistory}
-          className={`ml-auto ${
-            isVersionHistoryOpen || hasSelectedCommit
-              ? 'bg-amber-100 text-amber-700' 
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
           title="Version History"
           design="control"
-          icon={<ClockIcon className="w-4 h-4" />}
+          active={isVersionHistoryOpen || hasSelectedCommit}
+          icon={<HistoryIcon className="w-4 h-4" />}
           size="sm"
         />
       </Box>

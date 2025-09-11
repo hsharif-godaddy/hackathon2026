@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, Suspense } from 'react'
+import { useState, useCallback, useEffect, Suspense, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType } from '@godaddy/gasket-auth'
 import { appFetch } from '@/lib/gasket-config'
@@ -13,7 +13,7 @@ import HeroSection from './components/HeroSection'
 import ExamplesSection from './components/ExamplesSection'
 import BuiltWithSection from './components/BuiltWithSection'
 import Footer from './components/Footer'
-import { Example, BuiltWithItem } from './components/types'
+import { Example, BuiltWithItem, HeroSectionRef } from './components/types'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
@@ -24,6 +24,7 @@ function HomeContent() {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const heroSectionRef = useRef<HeroSectionRef>(null)
 
   // Get auth state - allow gasket to handle refresh but control redirects
   const originalAuthState = useAuthState({
@@ -196,12 +197,26 @@ function HomeContent() {
   }, [promptText, router, isRedirecting, isLoading, authState])
 
   const handleExampleClick = (examplePrompt: string) => {
-    setPromptText(examplePrompt)
+    if (heroSectionRef.current) {
+      heroSectionRef.current.typeText(examplePrompt)
+    } else {
+      // Fallback if ref is not available
+      setPromptText(examplePrompt)
+    }
   }
 
   return (
     <div className="min-h-screen">
-      <Header
+      <div id="airo-sentinel-background">
+        <div className="orbs-group">
+          <div className="orb orb1"></div>
+          <div className="orb orb2"></div>
+          <div className="orb orb3"></div>
+          <div className="orb orb4"></div>
+        </div>
+      </div>
+      
+      <Header 
         actions={
           <Button
             onClick={handleStartBuilding}
@@ -224,10 +239,16 @@ function HomeContent() {
             </div>
           </Button>
         }
+        className="absolute top-0 left-0 w-full border-0!"
       />
 
-      <Box className="mx-auto px-4 sm:px-6 lg:px-8 pt-48 pb-36 bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
+      <Box 
+        className="mx-auto px-4 sm:px-6 lg:px-8 pt-24 min-h-screen"
+        inlineAlignChildren='center'
+        blockAlignChildren='center'
+      >
         <HeroSection
+          ref={heroSectionRef}
           promptText={promptText}
           setPromptText={setPromptText}
           onStartBuilding={handleStartBuilding}

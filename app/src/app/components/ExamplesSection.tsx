@@ -3,7 +3,7 @@ import { ExamplesSectionProps } from './types'
 
 export default function ExamplesSection({ examples, onExampleClick }: ExamplesSectionProps) {
   return (
-    <div className="text-center mb-8 mt-4">
+    <div className="text-center mb-8 mt-1">
       <p className="mb-4">Or try one of these popular examples:</p>
       <div className="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
         {examples.map((example) => (
