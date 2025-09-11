@@ -1,19 +1,42 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server';
+import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
+import {
+  withCustomerAuth,
+  customerHasAccount,
+  createCustomerAuthError,
+  type CustomerAuthContext
+} from '@/lib/customer-auth';
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: siteId } = await params
-
+export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }) => {
   try {
-    // Get site data to find agent URL
-    const siteResponse = await fetch(`http://localhost:3000/api/sites/${siteId}`)
-    if (!siteResponse.ok) {
-      throw new Error(`Failed to fetch site data: ${siteResponse.status}`)
+    const { user } = authContext;
+    const { id: siteId } = await params;
+
+    // Customer must have an account to use git operations
+    if (!customerHasAccount(user)) {
+      return createCustomerAuthError('You must have an account to use git operations', 403);
+    }
+
+    if (!siteId) {
+      return NextResponse.json(
+        { error: 'Site ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get site adapter and check site exists and ownership
+    const siteAdapter = SiteAdapterFactory.getInstance();
+    const site = await siteAdapter.getSiteById(siteId);
+
+    if (!site) {
+      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
+
+    // Customer can only access sites from their own account
+    if (siteAdapter.requiresAuth() && site.account_id !== user.accountId) {
+      return createCustomerAuthError('You can only access your own sites', 403);
     }
     
-    const site = await siteResponse.json()
     if (!site?.agent_url) {
       throw new Error('Site does not have agent URL')
     }
@@ -33,32 +56,26 @@ export async function POST(
 
     if (!response.ok) {
       console.error(`Agent git/return failed: ${response.status} ${response.statusText}`)
-      return new Response(
-        JSON.stringify({ 
+      return NextResponse.json(
+        { 
           error: 'Failed to return to latest commit',
           status: response.status 
-        }),
-        { 
-          status: response.status,
-          headers: { 'Content-Type': 'application/json' }
-        }
+        },
+        { status: response.status }
       )
     }
 
     const data = await response.json()
-    return Response.json(data)
+    return NextResponse.json(data)
 
   } catch (error) {
     console.error('Error in git/return route:', error)
-    return new Response(
-      JSON.stringify({ 
+    return NextResponse.json(
+      { 
         error: 'Internal server error', 
         message: error instanceof Error ? error.message : 'Unknown error' 
-      }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      },
+      { status: 500 }
     )
   }
-}
+});
