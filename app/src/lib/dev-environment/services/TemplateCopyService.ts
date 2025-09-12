@@ -141,12 +141,51 @@ export class TemplateCopyService {
   }
 
   /**
+   * Force remove directory with permission fixing
+   */
+  private forceRemoveDirectory(dirPath: string): void {
+    const { execSync } = require('child_process');
+    
+    try {
+      // Use system commands for more robust removal
+      // This handles Git objects and other stubborn files better
+      if (process.platform === 'win32') {
+        // Windows: Use rmdir /s /q and handle readonly files
+        execSync(`rmdir /s /q "${dirPath}"`, { stdio: 'ignore' });
+      } else {
+        // Unix/Linux: Use chmod to fix permissions, then rm
+        execSync(`chmod -R 755 "${dirPath}" 2>/dev/null || true`, { stdio: 'ignore' });
+        execSync(`rm -rf "${dirPath}"`, { stdio: 'ignore' });
+      }
+      
+      console.log(`🧹 Force cleanup succeeded for: ${dirPath}`);
+    } catch (error: any) {
+      console.error(`❌ System-level cleanup failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Ensure app directory exists
    */
   private ensureAppDirectory(appPath: string): void {
     if (existsSync(appPath)) {
       console.log(`📁 App directory already exists, removing: ${appPath}`);
-      rmSync(appPath, { recursive: true, force: true });
+      
+      try {
+        // First attempt: standard removal
+        rmSync(appPath, { recursive: true, force: true });
+      } catch (error: any) {
+        console.warn(`⚠️ Standard cleanup failed, trying force cleanup: ${error.message}`);
+        
+        try {
+          // Second attempt: Try to fix permissions first, then remove
+          this.forceRemoveDirectory(appPath);
+        } catch (forceError: any) {
+          console.error(`❌ Force cleanup also failed: ${forceError.message}`);
+          throw new Error(`Cannot remove existing app directory: ${appPath}. ${forceError.message}`);
+        }
+      }
     }
     
     // Create parent directories if needed

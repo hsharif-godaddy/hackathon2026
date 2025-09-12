@@ -86,9 +86,11 @@ export class DevAccountAdapter implements IAccountAdapter {
    * SAFETY CHECK: Validate that this adapter is only used in development environments
    */
   private validateDevelopmentEnvironment(): void {
+    const hasDatabaseUrl = process.env.DATABASE_URL?.startsWith('mysql://');
     const isProduction = 
       process.env.NODE_ENV === 'production' ||
-      !!process.env.MYSQL_DB_USERNAME ||        // MySQL indicates production
+      hasDatabaseUrl ||                         // MySQL DATABASE_URL indicates production  
+      !!process.env.MYSQL_DB_USERNAME ||        // MySQL env vars indicate production
       !!process.env.AWS_REGION_NOMAD ||         // AWS/Nomad indicates production
       !!process.env.PRODUCTION_DOMAIN;         // Production domain set
 
@@ -105,6 +107,7 @@ export class DevAccountAdapter implements IAccountAdapter {
         adapter: 'DevAccountAdapter',
         environment: {
           NODE_ENV: process.env.NODE_ENV,
+          hasMySQLUrl: hasDatabaseUrl,
           hasMySQL: !!process.env.MYSQL_DB_USERNAME,
           hasAWS: !!process.env.AWS_REGION_NOMAD,
           hasProdDomain: !!process.env.PRODUCTION_DOMAIN

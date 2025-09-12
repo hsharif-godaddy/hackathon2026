@@ -43,10 +43,14 @@ export class AccountAdapterFactory {
    * Detect if we're in production mode based on environment
    */
   private static isProductionMode(): boolean {
-    // Use similar logic to SiteAdapterFactory/DeploymentAdapterFactory
+    // Check for MySQL via DATABASE_URL or individual env vars (matches DatabaseManager logic)
+    const hasDatabaseUrl = process.env.DATABASE_URL?.startsWith('mysql://');
+    const hasIndividualMysqlVars = !!process.env.MYSQL_DB_USERNAME;
+    
     return process.env.NODE_ENV === 'production' ||
-           !!process.env.MYSQL_DB_USERNAME ||        // MySQL indicates production
-           !!process.env.AWS_REGION_NOMAD ||         // AWS/Nomad indicates production
+           hasDatabaseUrl ||                         // DATABASE_URL with MySQL indicates production
+           hasIndividualMysqlVars ||                // Individual MySQL vars indicate production
+           !!process.env.AWS_REGION_NOMAD ||        // AWS/Nomad indicates production
            !!process.env.PRODUCTION_DOMAIN;         // Production domain set
   }
 
@@ -57,6 +61,7 @@ export class AccountAdapterFactory {
     // Check for any production indicators that might have been missed
     const productionIndicators = {
       hasProductionEnv: process.env.NODE_ENV === 'production',
+      hasMySQLUrl: process.env.DATABASE_URL?.startsWith('mysql://'),
       hasMySQL: !!process.env.MYSQL_DB_USERNAME,
       hasAWS: !!process.env.AWS_REGION_NOMAD,
       hasProdDomain: !!process.env.PRODUCTION_DOMAIN,

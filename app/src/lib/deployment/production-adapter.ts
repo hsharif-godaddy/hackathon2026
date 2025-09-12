@@ -5,12 +5,12 @@
 
 import { BaseDeploymentAdapter } from './base-adapter';
 import { DeploymentConfig, DeploymentResult } from './types';
-import { SiteService } from '@/lib/database/site-service';
+import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 import { generateNomadJobSpec, generateJobName } from '@/lib/nomad/job-template';
 import { sqsNomadService } from '@/lib/aws/sqs-nomad';
 
 export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
-  private siteService: SiteService;
+  private siteService: PrismaSiteService;
 
   constructor() {
     super({
@@ -18,7 +18,7 @@ export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
       domain: process.env.PRODUCTION_DOMAIN || 'ab.sxb1.test-secureserver.net'
     });
 
-    this.siteService = new SiteService();
+    this.siteService = new PrismaSiteService();
     this.log('info', 'Production deployment adapter initialized');
   }
 

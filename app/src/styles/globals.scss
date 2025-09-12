@@ -2,10 +2,10 @@
 
 @use "@ux/intents/lib/index" as intents;
 
-@import "./godaddy.scss";
-@import "./uxcore-intents.css";
-@import "./uxcore-icons.css";
-@import "./uxcore-components.css";
+@use "./godaddy.scss";
+@use "./uxcore-intents.css";
+@use "./uxcore-icons.css";
+@use "./uxcore-components.css";
 
 @plugin "@ux/tailwind-intents/plugin";
 

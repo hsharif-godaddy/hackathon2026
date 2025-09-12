@@ -658,6 +658,19 @@ export class DockerContainerManager {
 		// For Docker mode, we'll store container info in the running_processes table
 		// with additional metadata
 		try {
+			// Ensure dev app record exists before adding process record
+			const existingApp = this.devDb.findDevAppById(containerInfo.appId);
+			if (!existingApp) {
+				// Create dev app record if it doesn't exist
+				this.devDb.createDevApp({
+					appId: containerInfo.appId,
+					port: containerInfo.port,
+					appPath: `/tmp/apps/${containerInfo.appId}`, // Standard app path
+					templateVersion: 'v8', // Default to latest template version
+					status: 'running'
+				});
+			}
+
 			this.devDb.addProcessRecord(
 				containerInfo.appId,
 				0, // Docker containers don't have traditional PIDs

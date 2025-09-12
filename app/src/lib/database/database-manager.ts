@@ -18,11 +18,19 @@ class DatabaseManager {
   private schemaInitializing: Promise<void> | null = null;
 
   private constructor() {
-    // More precise production check including MySQL credentials
-    this.hasMySqlCredentials = !!process.env.MYSQL_DB_USERNAME && !!process.env.MYSQL_DB_PASSWORD &&
-    !!process.env.MYSQL_DB_PATH && !!process.env.MYSQL_DB_PORT && !!process.env.MYSQL_DB_NAME;
+    // Check for MySQL via DATABASE_URL or individual MySQL env vars
+    const hasDatabaseUrl = process.env.DATABASE_URL?.startsWith('mysql://');
+    const hasIndividualMysqlVars = !!process.env.MYSQL_DB_USERNAME && !!process.env.MYSQL_DB_PASSWORD &&
+      !!process.env.MYSQL_DB_PATH && !!process.env.MYSQL_DB_PORT && !!process.env.MYSQL_DB_NAME;
+    
+    this.hasMySqlCredentials = hasDatabaseUrl || hasIndividualMysqlVars;
 
-    // Configuration logged at startup - no need to log here
+    console.log('🔍 DatabaseManager initialization:', {
+      hasDatabaseUrl,
+      hasIndividualMysqlVars,
+      willUseMysql: this.hasMySqlCredentials,
+      databaseUrl: process.env.DATABASE_URL ? 'set' : 'unset'
+    });
 
     this.adapter = this.createAdapter();
     // Don't initialize schema in constructor - do it lazily on first use
@@ -46,21 +54,37 @@ class DatabaseManager {
 
   private createAdapter(): DatabaseAdapter {
     if (this.hasMySqlCredentials) {
-      // Production: Use MySQL RDS - Only load MySQL adapter
-      const config: DatabaseConfig = {
-        type: 'mysql',
-        host: process.env.MYSQL_DB_PATH || 'placeholder-rds-host.region.rds.amazonaws.com',
-        port: parseInt(process.env.MYSQL_DB_PORT || '3306'),
-        user: process.env.MYSQL_DB_USERNAME,
-        password: process.env.MYSQL_DB_PASSWORD,
-        database: process.env.MYSQL_DB_NAME || 'airo_builder'
-      };
-
-      if (!config.user || !config.password) {
-        throw new Error('MYSQL_DB_USERNAME and MYSQL_DB_PASSWORD must be set for MySQL in production');
+      // Parse MySQL configuration from DATABASE_URL or individual env vars
+      let config: DatabaseConfig;
+      
+      if (process.env.DATABASE_URL?.startsWith('mysql://')) {
+        // Parse DATABASE_URL format: mysql://user:password@host:port/database
+        const url = new URL(process.env.DATABASE_URL);
+        config = {
+          type: 'mysql',
+          host: url.hostname,
+          port: parseInt(url.port) || 3306,
+          user: url.username,
+          password: url.password,
+          database: url.pathname.slice(1) // Remove leading slash
+        };
+        console.log('🔌 Connecting to MySQL via DATABASE_URL:', `${config.host}:${config.port}/${config.database}`);
+      } else {
+        // Use individual MySQL env vars (legacy)
+        config = {
+          type: 'mysql',
+          host: process.env.MYSQL_DB_PATH || 'placeholder-rds-host.region.rds.amazonaws.com',
+          port: parseInt(process.env.MYSQL_DB_PORT || '3306'),
+          user: process.env.MYSQL_DB_USERNAME,
+          password: process.env.MYSQL_DB_PASSWORD,
+          database: process.env.MYSQL_DB_NAME || 'airo_builder'
+        };
+        console.log('🔌 Connecting to MySQL via individual env vars:', config.host);
       }
 
-      console.log('🔌 Connecting to MySQL RDS in production mode:', config.host);
+      if (!config.user || !config.password) {
+        throw new Error('MySQL user and password must be provided via DATABASE_URL or MYSQL_DB_* env vars');
+      }
 
       // Dynamic import - only load MySQL adapter in production
       const { MySQLAdapter } = require('./mysql-adapter');

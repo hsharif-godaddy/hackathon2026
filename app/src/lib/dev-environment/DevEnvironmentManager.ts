@@ -83,15 +83,46 @@ export class DevEnvironmentManager {
     try {
       console.log(`🚀 Creating dev app: ${name} (${siteId})`);
 
-      // 1. Allocate a port
-      const port = await this.portManager.getNextAvailablePort();
-      console.log(`📡 Allocated port ${port} for app ${siteId}`);
+      // 1. Check if app already exists - if so, return early
+      let existingApp = this.devDb.findDevAppById(siteId);
+      
+      if (existingApp && (existingApp.status === 'created' || existingApp.status === 'running')) {
+        console.log(`✅ App ${siteId} already exists with status: ${existingApp.status}, skipping creation`);
+        
+        // Generate URLs for existing app
+        const urls = {
+          frontend: `http://localhost:${existingApp.port}`,
+          ...(templateVersion === 'v3' && { backend: `http://localhost:${existingApp.port + 1000}` })
+        };
 
-      // 2. Determine app path
+        return {
+          success: true,
+          appId: siteId,
+          appPath: existingApp.appPath,
+          port: existingApp.port,
+          urls,
+          templateVersion: existingApp.templateVersion
+        };
+      }
+
+      // 2. App doesn't exist or is in error state - create/recreate it
+      let port: number;
+      
+      if (existingApp) {
+        // Reuse existing port for error recovery
+        port = existingApp.port;
+        console.log(`📡 Reusing port ${port} for app ${siteId} (status: ${existingApp.status})`);
+      } else {
+        // Allocate new port for new app
+        port = await this.portManager.getNextAvailablePort();
+        console.log(`📡 Allocated new port ${port} for app ${siteId}`);
+      }
+
+      // 3. Determine app path
       const baseAppsDir = process.env.LOCAL_APPS_DIR || '/tmp/apps';
       const appPath = `${baseAppsDir}/${siteId}`;
 
-      // 3. Create dev app record
+      // 4. Create or update dev app record
       const devApp = this.devDb.createDevApp({
         appId: siteId,
         port,
@@ -102,13 +133,16 @@ export class DevEnvironmentManager {
 
       console.log(`💾 Created dev app record for ${siteId}`);
 
-      // 4. Set up the app using the template copy service
+      // 5. Set up template (only runs for new/error apps now)
+      console.log(`🔧 Setting up template for app ${siteId}`);
+      
+      // Set up the app using the template copy service
       await this.setupAppFromTemplate(siteId, appPath, name, templateVersion);
 
-      // 5. Initialize Git repository
+      // Initialize Git repository
       await this.initializeGitRepository(siteId, appPath, name);
 
-      // 6. Update status to created
+      // Update status to created
       this.devDb.updateDevAppStatus(siteId, 'created');
 
       // 7. Generate URLs
@@ -283,6 +317,49 @@ export class DevEnvironmentManager {
   }
 
   /**
+   * Update .gitignore to exclude dev-supervisor binary and build artifacts
+   */
+  private async updateGitignoreForDevSupervisor(appPath: string): Promise<void> {
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    const gitignorePath = path.join(appPath, '.gitignore');
+    
+    // Entries to add to .gitignore for dev-supervisor
+    const devSupervisorIgnores = [
+      '',
+      '# Dev supervisor binary and artifacts (added by Airo AI Builder)',
+      'dev-supervisor/',
+      'dev-supervisor/dev-supervisor',
+      'dev-supervisor/*.exe',
+      'dev-supervisor/dist/',
+      'dev-supervisor/target/',
+      ''
+    ].join('\n');
+    
+    try {
+      // Check if .gitignore exists
+      if (fs.existsSync(gitignorePath)) {
+        // Read existing content
+        const existingContent = fs.readFileSync(gitignorePath, 'utf-8');
+        
+        // Only add if not already present
+        if (!existingContent.includes('dev-supervisor/')) {
+          fs.appendFileSync(gitignorePath, devSupervisorIgnores);
+          console.log(`📝 Updated .gitignore to exclude dev-supervisor for app at ${appPath}`);
+        }
+      } else {
+        // Create .gitignore with dev-supervisor rules
+        fs.writeFileSync(gitignorePath, devSupervisorIgnores);
+        console.log(`📝 Created .gitignore with dev-supervisor exclusions for app at ${appPath}`);
+      }
+    } catch (error) {
+      console.warn(`⚠️ Failed to update .gitignore:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Initialize Git repository for the app
    */
   private async initializeGitRepository(appId: string, appPath: string, appName: string): Promise<void> {
@@ -301,6 +378,13 @@ export class DevEnvironmentManager {
         await this.gitUtils.configureUser(appPath, 'Airo AI Builder', 'ai@airo.dev');
       } catch (configError) {
         console.warn(`Git config failed for ${appId}:`, configError);
+      }
+
+      // Update .gitignore to exclude dev-supervisor binary
+      try {
+        await this.updateGitignoreForDevSupervisor(appPath);
+      } catch (gitignoreError) {
+        console.warn(`Failed to update .gitignore for ${appId}:`, gitignoreError);
       }
 
       // Create initial commit

@@ -5,14 +5,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { gdAuthService } from '@/lib/gd-auth-service';
-import { AccountService } from '@/lib/database/account-service';
+import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
 import { isAuthDisabled } from '@/lib/gasket-config';
 import { isFeatureEnabled } from '@/lib/features';
 import { MOCK_USER } from '@/lib/mock-auth';
 import { RequestContextService, type RequestContext, logger } from '@/lib/request-context';
 import { randomUUID } from 'crypto';
 
-const accountService = new AccountService();
+// Use account adapter factory to get the appropriate service for the environment
+function getAccountService() {
+  return AccountAdapterFactory.getInstance();
+}
 
 export interface CustomerUser {
   shopperId: string;
@@ -47,17 +50,17 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       // Use mock user credentials
       const mockShopperId = MOCK_USER.id;
       const mockCustomerId = MOCK_USER.id;
-      let mockAccount = await accountService.findByShopperId(mockShopperId);
+      let mockAccount = await getAccountService().getAccountByShopperId(mockShopperId);
       
       // The account should already exist (created by ensureTestUserExists)
       if (!mockAccount) {
         logger.info('auth.mock.account.create', { message: 'Creating mock account for customer auth', mockShopperId, mockCustomerId });
         try {
-          mockAccount = await accountService.createAccount(mockShopperId, mockCustomerId);
+          mockAccount = await getAccountService().createAccount(mockShopperId, mockCustomerId);
           logger.info('auth.mock.account.success', { message: 'Mock account created', accountId: mockAccount.id });
         } catch (error: any) {
           if (error.message.includes('UNIQUE constraint failed')) {
-            mockAccount = await accountService.findByCustomerId(mockCustomerId);
+            mockAccount = await getAccountService().getAccountByShopperId(mockCustomerId);
             logger.info('auth.mock.account.found', { message: 'Mock account found', accountId: mockAccount?.id });
           } else {
             throw error;
@@ -84,18 +87,18 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       // Ensure dev account exists in database
       const devShopperId = 'dev-user';
       const devCustomerId = 'dev-customer-123';
-      let devAccount = await accountService.findByShopperId(devShopperId);
+      let devAccount = await getAccountService().getAccountByShopperId(devShopperId);
       
       // Create dev account if it doesn't exist
       if (!devAccount) {
         logger.info('auth.dev.account.create', { message: 'Creating dev account for testing', devShopperId, devCustomerId });
         try {
-          devAccount = await accountService.createAccount(devShopperId, devCustomerId);
+          devAccount = await getAccountService().createAccount(devShopperId, devCustomerId);
           logger.info('auth.dev.account.success', { message: 'Dev account created', accountId: devAccount.id });
         } catch (error: any) {
           // Account might already exist, try to find it
           if (error.message.includes('UNIQUE constraint failed')) {
-            devAccount = await accountService.findByCustomerId(devCustomerId);
+            devAccount = await getAccountService().getAccountByShopperId(devCustomerId);
             logger.info('auth.dev.account.found', { message: 'Dev account found', accountId: devAccount?.id });
           } else {
             throw error;
@@ -152,20 +155,20 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     }
 
     // Get or create account for the authenticated shopper
-    let account = await accountService.findByShopperId(shopperId);
+    let account = await getAccountService().getAccountByShopperId(shopperId);
     
     // If not found by shopperId, try by customerId
     if (!account || !account.id) {
-      account = await accountService.findByCustomerId(customerId);
+      account = await getAccountService().getAccountByShopperId(customerId);
     }
     
     if (!account || !account.id) {
       try {
-        account = await accountService.createAccount(shopperId, customerId);
+        account = await getAccountService().createAccount(shopperId, customerId);
       } catch (error: any) {
         // If creation fails due to duplicate customer_id, find the existing account
         if (error.message.includes('UNIQUE constraint failed: accounts.customer_id')) {
-          account = await accountService.findByCustomerId(customerId);
+          account = await getAccountService().getAccountByShopperId(customerId);
         }
         if (!account || !account.id) {
           throw error;

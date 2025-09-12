@@ -1,4 +1,4 @@
-import { AccountService } from '@/lib/database/account-service';
+import { PrismaAccountService } from '@/lib/database/prisma-account-service';
 import type { IAccountAdapter, AccountInfo, PlanInfo } from './interfaces/IAccountAdapter';
 
 /**
@@ -8,10 +8,10 @@ import type { IAccountAdapter, AccountInfo, PlanInfo } from './interfaces/IAccou
  * Wraps the existing AccountService to match the adapter interface
  */
 export class ProdAccountAdapter implements IAccountAdapter {
-  private accountService: AccountService;
+  private accountService: PrismaAccountService;
 
   constructor() {
-    this.accountService = new AccountService();
+    this.accountService = new PrismaAccountService();
   }
 
   async getAccountByShopperId(shopperId: string): Promise<AccountInfo | null> {
@@ -70,8 +70,8 @@ export class ProdAccountAdapter implements IAccountAdapter {
       plan_name: account.plan_name,
       plan_site_limit: account.plan_site_limit,
       plan_price: account.plan_price,
-      created_at: account.created_at,
-      updated_at: account.updated_at
+      created_at: account.created_at instanceof Date ? account.created_at.toISOString() : account.created_at,
+      updated_at: account.updated_at instanceof Date ? account.updated_at.toISOString() : account.updated_at
     };
   }
 
@@ -82,8 +82,8 @@ export class ProdAccountAdapter implements IAccountAdapter {
       site_limit: plan.site_limit,
       price: plan.price,
       description: plan.description,
-      created_at: plan.created_at,
-      updated_at: plan.updated_at
+      created_at: plan.created_at instanceof Date ? plan.created_at.toISOString() : plan.created_at,
+      updated_at: plan.updated_at instanceof Date ? plan.updated_at.toISOString() : plan.updated_at
     };
   }
 }

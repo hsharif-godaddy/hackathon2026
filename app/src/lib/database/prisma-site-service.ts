@@ -47,6 +47,13 @@ export class PrismaSiteService {
   }
 
   /**
+   * Create a new site (full creation with Ceph assignment)
+   */
+  async createSite(request: CreateSiteRequest): Promise<Site> {
+    return this.createSiteSimple(request); // Same implementation for now
+  }
+
+  /**
    * Create a new site with minimal data (for quick creation)
    */
   async createSiteSimple(request: CreateSiteRequest): Promise<Site> {
@@ -201,6 +208,31 @@ export class PrismaSiteService {
       created_at: prismaSite.created_at,
       updated_at: prismaSite.updated_at,
     };
+  }
+
+  /**
+   * Check if account can create more sites (site limit check)
+   */
+  async checkSiteLimit(accountId: string): Promise<{ canCreate: boolean; currentCount: number; limit: number }> {
+    const currentCount = await this.getSiteCountByAccountId(accountId);
+    
+    // For now, return high limits - can be enhanced with plan-based limits later
+    const limit = 999; // Default limit
+    
+    return {
+      canCreate: currentCount < limit,
+      currentCount,
+      limit
+    };
+  }
+
+  /**
+   * Get count of sites for an account
+   */
+  async getSiteCountByAccountId(accountId: string): Promise<number> {
+    return await this.client.sites.count({
+      where: { account_id: accountId },
+    });
   }
 
   /**

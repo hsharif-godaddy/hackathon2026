@@ -9,6 +9,21 @@ import {
   type CustomerAuthContext
 } from '@/lib/customer-auth';
 
+// In-memory deployment lock to prevent concurrent deployments
+const deploymentLocks = new Set<string>();
+
+function acquireDeploymentLock(siteId: string): boolean {
+  if (deploymentLocks.has(siteId)) {
+    return false; // Lock already held
+  }
+  deploymentLocks.add(siteId);
+  return true; // Lock acquired
+}
+
+function releaseDeploymentLock(siteId: string): void {
+  deploymentLocks.delete(siteId);
+}
+
 // POST /api/sites/[id]/deploy - Trigger deployment for an existing site
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }) => {
   try {
@@ -27,6 +42,22 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       );
     }
 
+    // Check if deployment is already in progress for this site
+    if (!acquireDeploymentLock(siteId)) {
+      logger.warn('deploy.concurrent.blocked', { 
+        message: 'Deployment already in progress for site, blocking concurrent request', 
+        siteId 
+      });
+      return NextResponse.json(
+        { 
+          error: 'Deployment already in progress', 
+          message: 'Please wait for the current deployment to complete before starting a new one',
+          siteId 
+        },
+        { status: 409 } // 409 Conflict
+      );
+    }
+
     logger.info('deploy.start', { message: 'Starting deployment for site', siteId });
 
     // Get site adapter and check site exists and ownership
@@ -34,16 +65,19 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     const site = await siteAdapter.getSiteById(siteId);
 
     if (!site) {
+      releaseDeploymentLock(siteId); // Release lock before early return
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
     // Customer can only deploy sites from their own account
     if (siteAdapter.requiresAuth() && site.account_id !== user.accountId) {
+      releaseDeploymentLock(siteId); // Release lock before early return
       return createCustomerAuthError('You can only deploy your own sites', 403);
     }
 
     // Check if already deployed or deployment is in progress
     if (site.status === 'running') {
+      releaseDeploymentLock(siteId); // Release lock before early return
       logger.info('deploy.skip.running', { message: 'Site is already running, skipping deployment', siteId });
       return NextResponse.json({
         success: true,
@@ -53,6 +87,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }
 
     if (site.status === 'creating') {
+      releaseDeploymentLock(siteId); // Release lock before early return
       logger.info('deploy.skip.in-progress', { message: 'Site deployment already in progress, skipping duplicate', siteId });
       return NextResponse.json({
         success: true,
@@ -63,6 +98,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     // Allow deployment for 'init', 'stopped', 'failed' statuses
     if (!['init', 'stopped', 'failed'].includes(site.status)) {
+      releaseDeploymentLock(siteId); // Release lock before early return
       logger.warn('deploy.skip.invalid-status', { message: 'Site status does not allow deployment', siteId, status: site.status });
       return NextResponse.json({
         success: false,
@@ -237,5 +273,9 @@ async function deployInBackground(siteId: string, siteAccountId: string, userAcc
     } catch (updateError) {
       logger.error('deploy.error.status-update-failed', { message: 'Failed to update site status after deployment error', siteId, errorMessage: updateError instanceof Error ? updateError.message : 'Unknown error' });
     }
+  } finally {
+    // Always release the deployment lock when background task completes
+    releaseDeploymentLock(siteId);
+    logger.info('deploy.lock.released', { message: 'Deployment lock released', siteId });
   }
 }

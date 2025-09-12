@@ -1,4 +1,4 @@
-import { SiteService } from '@/lib/database/site-service';
+import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 import { getDeploymentAdapter } from '@/lib/deployment';
 import type { ISiteAdapter, SiteInfo, CreateSiteRequest, ServerInfo, SiteLimitCheck } from './interfaces/ISiteAdapter';
 
@@ -9,10 +9,10 @@ import type { ISiteAdapter, SiteInfo, CreateSiteRequest, ServerInfo, SiteLimitCh
  * Wraps the existing SiteService to match the adapter interface
  */
 export class ProdSiteAdapter implements ISiteAdapter {
-  private siteService: SiteService;
+  private siteService: PrismaSiteService;
 
   constructor() {
-    this.siteService = new SiteService();
+    this.siteService = new PrismaSiteService();
   }
 
   async createSite(request: CreateSiteRequest): Promise<SiteInfo> {
