@@ -2,28 +2,38 @@
 
 This directory contains setup utilities to help you configure and install the Airo App Builder development environment.
 
-## Quick Start
+## 🚀 Quick Start
 
-### 1. Basic Dependencies Check
-
+### Option 1: Complete Setup (Recommended)
+Run from the project root:
 ```bash
-# Check Node.js 22 and pnpm
-./check-deps.sh
+./setup.sh
 ```
 
-### 2. Advanced Setup
-
-```bash
-# Run the interactive TypeScript setup app
-./run-setup.sh
-```
-
-Or manually:
-
+### Option 2: Selective Configuration
+For individual component setup or reconfiguration:
 ```bash
 cd setup
 pnpm install
 pnpm start
+```
+
+Choose "Selective Configuration" to:
+- 🔍 Check Docker Dependencies
+- 📱 Configure App Environment (.env) 
+- 🤖 Configure Agents Environment (.env)
+- 🖼️ Configure Getty Images Proxy
+- 🗄️ Check MySQL Container Status
+- 🐳 Start MySQL Container
+- 🔍 Check Current Configuration Status
+
+### Option 3: Individual Scripts
+```bash
+# Check Node.js 22 and pnpm only
+./check-deps.sh
+
+# Run the full interactive setup
+./run-setup.sh
 ```
 
 ## What the Setup Does
@@ -33,10 +43,12 @@ pnpm start
 - ✅ Checks for pnpm package manager
 - 📋 Provides Ubuntu installation instructions for missing deps
 
-### Advanced Setup (`run-setup.sh`)
+### Advanced Setup (`run-setup.sh` or `./setup.sh`)
 - 🐳 **Docker Dependencies**: Checks Docker, Docker Compose, and daemon status
 - 📝 **Environment Configuration**: Generates `.env` files with proper MySQL configuration
-- 🤖 **AI Model Setup**: Configures either AWS Bedrock or GoCode as AI provider
+- 🤖 **AI Model Setup**: Configures AWS Bedrock, GoCode, or OpenAI as AI provider
+- 🖼️ **Getty Images**: Sets up AWS proxy with Secrets Manager token integration
+- 🔐 **AWS SSO**: Automatic credential setup for development services
 - 🗄️ **MySQL Integration**: Sets up connection to MySQL container
 - 🚀 **Container Management**: Optionally starts the MySQL container
 
@@ -69,6 +81,25 @@ The setup generates a complete `.env` file for the main application including:
 - Custom API endpoint configuration
 - Prompts for: Base URL, API Key
 
+### OpenAI
+- Uses OpenAI's API endpoints
+- Prompts for: API Key
+- Supports GPT-4 and other OpenAI models
+
+## Getty Images Configuration
+
+The setup can automatically configure Getty Images integration:
+
+### AWS Proxy Mode (Recommended)
+- Uses Getty proxy running in AWS development account
+- Automatically fetches token from AWS Secrets Manager
+- Sets up AWS SSO credentials if needed
+- URL: `https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net`
+
+### Manual Configuration
+- Prompts for manual token entry if AWS setup fails
+- Supports legacy SSO JWT tokens
+
 ## Next Steps After Setup
 
 1. **Install Project Dependencies**:
@@ -93,7 +124,33 @@ The setup generates a complete `.env` file for the main application including:
 
 ## Troubleshooting
 
+### Use the Status Check
+First, run the configuration status check:
+```bash
+cd setup && pnpm start
+# Choose "Selective Configuration" → "Check Current Configuration Status"
+```
+
+### Common Issues
+
 - **Docker not running**: `sudo systemctl start docker`
 - **Permission denied**: Add user to docker group: `sudo usermod -aG docker $USER`
 - **Port conflicts**: Check if ports 3000, 4000, or 3306 are already in use
-- **MySQL connection issues**: Ensure container is running: `docker compose up app-mysql -d`
+- **MySQL connection issues**: Use setup utility or manually: `docker compose up app-mysql -d`
+- **Getty Images not working**: Reconfigure via setup utility: "Configure Getty Images Proxy"
+- **AWS credentials expired**: Run setup utility to refresh SSO login
+
+### Reconfiguration
+
+To modify any component after initial setup:
+```bash
+cd setup && pnpm start
+# Choose "Selective Configuration"
+```
+
+This allows you to:
+- Update AI provider settings
+- Reconfigure Getty Images
+- Fix MySQL connection issues
+- Check system status
+- Start/stop containers
