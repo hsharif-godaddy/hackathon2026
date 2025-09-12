@@ -116,40 +116,6 @@ export const TOOL_FUNCTIONS = {
       required: ['prompt'],
     },
   },
-  getty_image: {
-    name: 'getty_image',
-    description: 'Search for professional stock images using Getty Images API and return high-quality image URLs. Use this when you need professional-grade images.',
-    parameters: {
-      type: 'object',
-      properties: {
-        phrase: {
-          type: 'string',
-          description: 'Search phrase for finding images (e.g., "gym", "office meeting", "mountain landscape")',
-        },
-        page: {
-          type: 'number',
-          description: 'Page number for results pagination',
-          default: 1,
-        },
-        pageSize: {
-          type: 'number',
-          description: 'Number of results per page',
-          default: 50,
-        },
-        graphicalStyles: {
-          type: 'string',
-          description: 'Type of imagery to search for (e.g., photography, illustration)',
-          default: 'photography',
-        },
-        sortOrder: {
-          type: 'string',
-          description: 'Sort order for results: "best_match", "most_popular", or "newest"',
-          default: 'best_match',
-        },
-      },
-      required: ['phrase'],
-    },
-  },
   image_generate: {
     name: 'image_generate',
     description: 'Generate an image using AI based on a detailed text prompt and save it to the app\'s public directory.',
@@ -988,81 +954,6 @@ async function executeReadFile(
   }
   response += `\n${result.content}`;
   
-  return response;
-}
-
-/**
- * Execute the Getty image search tool
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function executeGettyImage(
-  options: { phrase: string; page?: number; pageSize?: number; graphicalStyles?: string; sortOrder?: string },
-  context: AgentExecutionContext
-): Promise<string> {
-  const { phrase, page, pageSize, graphicalStyles, sortOrder } = options;
-
-  if (!phrase || typeof phrase !== 'string' || phrase.trim().length === 0) {
-    throw new Error('A valid search phrase is required');
-  }
-
-  // Get appId from context metadata
-  const appId = context.metadata?.appId as string;
-  if (!appId) {
-    throw new Error('App ID is required for Getty image search and is not available in context');
-  }
-
-  // Track tool execution separately
-  await trackToolExecution('getty_image', context, phrase.length);
-
-  const gettyOptions: GettyImageOptions = {
-    phrase
-  };
-
-  if (page !== undefined) gettyOptions.page = page;
-  if (pageSize !== undefined) gettyOptions.pageSize = pageSize;
-  if (graphicalStyles !== undefined) gettyOptions.graphicalStyles = graphicalStyles;
-  if (sortOrder !== undefined) gettyOptions.sortOrder = sortOrder;
-
-  const result = await findGettyImage(gettyOptions);
-
-  if (!result.success || !result.images || result.images.length === 0) {
-    throw new Error(result.error || 'No images found matching your search criteria');
-  }
-
-  // Get the first image from the results
-  const image = result.images[0];
-
-  if (!image) {
-    throw new Error('No image data found in Getty response');
-  }
-
-  // Get the best quality URL available
-  const imageUrl = image.urls.highRes || image.urls.standard || image.urls.preview || image.urls.thumbnail;
-
-  if (!imageUrl) {
-    throw new Error('No suitable image URL found in Getty response');
-  }
-
-  // Format the dimensions if available
-  let dimensionsText = '';
-  if (image.dimensions && image.dimensions.width && image.dimensions.height) {
-    dimensionsText = ` (${image.dimensions.width}x${image.dimensions.height})`;
-  }
-
-  // Create a markdown response with image info
-  let response = `![${phrase}](${imageUrl})\n\n`;
-  response += `Getty Image ID: ${image.id}${dimensionsText}\n`;
-
-  // Include thumbnail URL if available
-  if (image.urls.thumbnail) {
-    response += `Thumbnail URL: ${image.urls.thumbnail}\n`;
-  }
-
-  // Include total results count if available
-  if (result.totalResults) {
-    response += `Found ${result.totalResults} total images matching your search.`;
-  }
-
   return response;
 }
 
