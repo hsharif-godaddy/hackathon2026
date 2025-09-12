@@ -65,10 +65,17 @@ export class GettyImageTool {
     // Get Getty Images API configuration
     this.apiUrl = process.env.GETTY_API_URL || 'https://getty-images-proxy.api.test-godaddy.com/v1/search';
     this.appKey = process.env.GETTY_APP_KEY || 'airo-app-builder';
-    this.ssoJwt = process.env.SSO_JWT || '';
+
+    if (process.env.GETTY_TOKEN) {
+      this.ssoJwt = 'Bearer ' + process.env.GETTY_TOKEN;
+    } else if (process.env.SSO_JWT) {
+      this.ssoJwt = 'sso-jwt ' + process.env.SSO_JWT;
+    } else {
+      this.ssoJwt = '';
+    }
     
     if (!this.ssoJwt) {
-      console.warn('⚠️ SSO JWT token not set. Getty Images API calls will fail.');
+      console.warn('⚠️ Neither GETTY_TOKEN nor SSO_JWT is set. Getty Images API calls will fail.');
     }
   }
 
@@ -113,7 +120,7 @@ export class GettyImageTool {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `sso-jwt ${this.ssoJwt}`,
+          'Authorization': this.ssoJwt,
           'x-app-key': this.appKey,
           'Accept': 'application/json'
         }

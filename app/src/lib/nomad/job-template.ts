@@ -176,7 +176,10 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS_FOR_AGENTS || '',
               AWS_SHARED_CREDENTIALS_FILE: "/data/.aws/credential_process",
               SSM_CREDENTIALS_FILE: "/data/.aws/credentials",
-              AWS_PROFILE: "bedrock"
+              AWS_PROFILE: "bedrock",
+              GETTY_API_URL: process.env.GETTY_API_URL || 'https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net/img/search',
+              GETTY_APP_KEY: process.env.GETTY_APP_KEY || 'airo-app-builder',
+              GETTY_TOKEN: process.env.GETTY_TOKEN || ''
             },
             Resources: {
               CPU: 32,
