@@ -62,8 +62,29 @@ services:
     networks:
       - airo-network
 
+  # MySQL database for app local development
+  app-mysql:
+    image: mysql:8.0
+    container_name: airo-app-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=airo_app
+      - MYSQL_USER=airo
+      - MYSQL_PASSWORD=airopassword
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./setup/mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - airo-network
+    restart: unless-stopped
+
 # SQLite databases are stored in mounted volumes, no external database service needed
 
 networks:
   airo-network:
     driver: bridge
+
+volumes:
+  mysql-data:
