@@ -3,24 +3,25 @@ import { Conversation } from '@/services/AgentService'
 import { agentService } from '@/services/AgentService'
 import { captureVisualContext } from './visualContextCapture'
 import { appFetch } from '@/lib/gasket-config'
+import { buildDynamicAgentUrl } from '@/config/dynamic-api'
 
 /**
  * Message Service using WebSocket for real-time bidirectional communication
- * 
+ *
  * This implementation provides:
  * - Real-time bidirectional communication with WebSocket
  * - Automatic connection management with reconnection logic
  * - Built-in error handling and connection state management
  * - Proper cleanup to prevent memory leaks
  * - Throttled UI updates for smooth streaming
- * 
+ *
  * Benefits over SSE:
  * - Better browser compatibility and fewer browser-specific issues
  * - Lower latency and overhead
  * - Better error handling and connection state awareness
  * - Simplified connection management
  * - Works reliably across different network environments
- * 
+ *
  * WebSocket connection states:
  * - CONNECTING (0): The connection is not yet open
  * - OPEN (1): The connection is open and ready to communicate
@@ -133,15 +134,17 @@ async function ensureLatestCommit(appId: string): Promise<boolean> {
   try {
     // Only attempt to return to HEAD if we have an app ID
     if (!appId) return true
-    
+
     console.log('Ensuring app is on latest commit before sending message')
-    
-    const response = await appFetch(`/api/apps/${appId}/git/return`, {
+
+    const url = await buildDynamicAgentUrl(`apps/${appId}/git/return`, appId)
+
+    const response = await appFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ branch: 'main' })
     })
-    
+
     if (response.ok) {
       const result = await response.json()
       console.log('✅ Successfully returned to latest commit:', result.message)
@@ -202,7 +205,7 @@ export const handleSendMessage = async ({
   // Throttling for smooth updates without overwhelming React
   const lastUpdateTimeRef = { current: 0 }
   const updateThrottleMs = 16 // ~60fps
-  
+
   // Track accumulated content
   let agentMessageContent = ''
 
@@ -210,14 +213,14 @@ export const handleSendMessage = async ({
     // CRITICAL: Always ensure we're on the latest commit before making changes
     // This prevents making changes on a detached HEAD state
     await ensureLatestCommit(appId)
-    
+
     // Close any existing WebSocket connection for this app
     const existingWs = webSocketConnections.get(appId)
     if (existingWs) {
       existingWs.close()
       webSocketConnections.delete(appId)
     }
-    
+
     // Always use develop agent
     const agentId = 'develop'
 
@@ -230,11 +233,11 @@ export const handleSendMessage = async ({
       try {
         const data = JSON.parse(event.data)
         agentMessageContent = handleWebSocketMessage(
-          data, 
-          agentMessage, 
-          agentMessageContent, 
-          setMessages, 
-          lastUpdateTimeRef, 
+          data,
+          agentMessage,
+          agentMessageContent,
+          setMessages,
+          lastUpdateTimeRef,
           updateThrottleMs,
           setIsLoading,
           setConversationId,
@@ -258,7 +261,7 @@ export const handleSendMessage = async ({
     try {
       console.log('Attempting to capture visual context...')
       visualContext = await captureVisualContext()
-      
+
       if (visualContext?.active_section === 'unknown') {
         console.log('Visual context captured with fallback data (preview still loading or not accessible)')
       } else {
@@ -267,10 +270,10 @@ export const handleSendMessage = async ({
     } catch (error) {
       console.warn('Failed to capture visual context, proceeding without it:', error)
     }
-    
-    // Send the chat message  
+
+    // Send the chat message
     console.log('📤 Sending message for app:', appId, 'with conversationId:', conversationId)
-    
+
     const chatMessage = {
       type: 'chat',
       message: content,
@@ -302,9 +305,9 @@ export const handleSendMessage = async ({
 }
 
 function handleWebSocketMessage(
-  data: {type: string; conversationId?: string; status?: string; message?: string; content?: string; tool_name?: string; tool_call_id?: string; tool_args?: unknown; start_time?: number; tool_result?: unknown; error?: string; end_time?: number; duration_ms?: number}, 
-  agentMessage: Message, 
-  agentMessageContent: string, 
+  data: {type: string; conversationId?: string; status?: string; message?: string; content?: string; tool_name?: string; tool_call_id?: string; tool_args?: unknown; start_time?: number; tool_result?: unknown; error?: string; end_time?: number; duration_ms?: number},
+  agentMessage: Message,
+  agentMessageContent: string,
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
   lastUpdateTimeRef: { current: number },
   updateThrottleMs: number,
@@ -321,7 +324,7 @@ function handleWebSocketMessage(
         setConversationId(data.conversationId)
       }
       break
-      
+
     case 'status':
       console.log('WebSocket Status:', data.status, data.message)
       // Add status message to the message list
@@ -336,11 +339,11 @@ function handleWebSocketMessage(
       }
       setMessages(prev => [...prev, statusMessage])
       break
-      
+
     case 'content':
       if (data.content) {
         agentMessageContent += data.content
-        
+
         // Throttle updates to ~60fps for smooth streaming without overwhelming React
         const now = Date.now()
         const timeSinceLastUpdate = now - lastUpdateTimeRef.current
@@ -350,7 +353,7 @@ function handleWebSocketMessage(
           setMessages(prev => {
             const updatedMessages = [...prev]
             const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
-            
+
             if (thinkingAgentIndex >= 0) {
               updatedMessages[thinkingAgentIndex] = {
                 ...updatedMessages[thinkingAgentIndex],
@@ -360,25 +363,25 @@ function handleWebSocketMessage(
                 segments: updateStreamingContent(updatedMessages[thinkingAgentIndex].segments || [], agentMessageContent)
               }
             }
-            
+
             return updatedMessages
           })
         }
       }
       break
-      
+
     case 'tool_start':
       console.log('Tool Start:', data.tool_name)
-      
+
       // When a tool starts, we need to:
       // 1. Finalize the current content segment with whatever content we have so far
       // 2. Add the tool call as a new segment
       // 3. Reset agentMessageContent to start accumulating new content after the tool
-      
+
       setMessages(prev => {
         const updatedMessages = [...prev]
         const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
-        
+
         if (thinkingAgentIndex >= 0) {
           const msg = updatedMessages[thinkingAgentIndex]
           updatedMessages[thinkingAgentIndex] = {
@@ -396,7 +399,7 @@ function handleWebSocketMessage(
             ],
             // Add to segments for the new rendering approach
             segments: (data.tool_call_id && data.tool_name) ? finalizeContentAndAddTool(
-              msg.segments || [], 
+              msg.segments || [],
               agentMessageContent,
               {
                 id: data.tool_call_id,
@@ -408,21 +411,21 @@ function handleWebSocketMessage(
             ) : msg.segments || []
           }
         }
-        
+
         return updatedMessages
       })
-      
+
       // Reset content to start accumulating post-tool content
       agentMessageContent = agentMessageContent // Keep accumulating for now, but mark where tool happened
       break
-      
+
     case 'tool_complete':
       console.log('Tool Complete:', data.tool_name, data.status)
       // Update the specific tool call in both legacy and segments structures
       setMessages(prev => {
         const updatedMessages = [...prev]
         const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
-        
+
         if (thinkingAgentIndex >= 0) {
           const msg = updatedMessages[thinkingAgentIndex]
           updatedMessages[thinkingAgentIndex] = {
@@ -458,11 +461,11 @@ function handleWebSocketMessage(
             )
           }
         }
-        
+
         return updatedMessages
       })
       break
-      
+
     case 'tool_result':
       console.log('Tool Result (legacy):', data.tool_name, data.tool_result)
       // Keep for backward compatibility - this shouldn't be used with new tool_start/tool_complete flow
@@ -477,18 +480,18 @@ function handleWebSocketMessage(
       }
       setMessages(prev => [...prev, toolResultMessage])
       break
-      
+
     case 'tool_error':
       console.error('Tool Error:', data.tool_name, data.error)
       break
-      
+
     case 'complete':
       console.log('WebSocket Complete:', data)
       // Mark the main agent message as complete with final content and duration
       setMessages(prev => {
         const updatedMessages = [...prev]
         const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
-        
+
         if (thinkingAgentIndex >= 0) {
           updatedMessages[thinkingAgentIndex] = {
             ...updatedMessages[thinkingAgentIndex],
@@ -500,30 +503,30 @@ function handleWebSocketMessage(
             response_duration_ms: data.duration_ms
           }
         }
-        
+
         return updatedMessages
       })
-      
+
       setIsLoading(false)
-      
+
       // Refresh token usage after completion
       if (onTokenUsageUpdate) {
         onTokenUsageUpdate()
       }
-      
+
       // Trigger preview refresh when message completes
       setTimeout(() => {
         window.postMessage({ type: 'MESSAGE_COMPLETE' }, window.location.origin)
       }, 500) // Small delay to ensure file changes are processed
       break
-      
+
     case 'error':
       console.error('WebSocket Error:', data.error)
       // Update the main agent message with error state
       setMessages(prev => {
         const updatedMessages = [...prev]
         const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
-        
+
         if (thinkingAgentIndex >= 0) {
           updatedMessages[thinkingAgentIndex] = {
             ...updatedMessages[thinkingAgentIndex],
@@ -536,17 +539,17 @@ function handleWebSocketMessage(
             response_duration_ms: data.duration_ms
           }
         }
-        
+
         return updatedMessages
       })
-      
+
       setIsLoading(false)
       break
-      
+
     default:
       console.log('Unknown WebSocket event type:', data.type, data)
   }
-  
+
   return agentMessageContent
 }
 
@@ -570,7 +573,7 @@ function handleWebSocketError(
   setMessages(prev => {
     const updatedMessages = [...prev]
     const thinkingAgentIndex = findThinkingAgentMessageIndex(updatedMessages)
-    
+
     if (thinkingAgentIndex >= 0) {
       updatedMessages[thinkingAgentIndex] = {
         ...updatedMessages[thinkingAgentIndex],
@@ -580,7 +583,7 @@ function handleWebSocketError(
         error: 'WebSocket connection error'
       }
     }
-    
+
     return updatedMessages
   })
 }
@@ -590,7 +593,7 @@ function handleWebSocketError(
  */
 function finalizeContentAndAddTool(segments: MessageSegment[], currentContent: string, toolCall: ToolCall): MessageSegment[] {
   const newSegments = [...segments]
-  
+
   // Calculate how much content has already been captured in segments
   let capturedContentLength = 0
   for (const segment of segments) {
@@ -598,10 +601,10 @@ function finalizeContentAndAddTool(segments: MessageSegment[], currentContent: s
       capturedContentLength += segment.content.length
     }
   }
-  
+
   // Get the new content that hasn't been captured yet
   const newContent = currentContent.slice(capturedContentLength)
-  
+
   // Add new content segment if there's new content
   if (newContent.length > 0) {
     newSegments.push({
@@ -611,7 +614,7 @@ function finalizeContentAndAddTool(segments: MessageSegment[], currentContent: s
       timestamp: new Date()
     })
   }
-  
+
   // Add the tool call segment
   newSegments.push({
     id: `tool-${toolCall.id}`,
@@ -619,7 +622,7 @@ function finalizeContentAndAddTool(segments: MessageSegment[], currentContent: s
     tool_call: toolCall,
     timestamp: new Date()
   })
-  
+
   return newSegments
 }
 
@@ -628,7 +631,7 @@ function finalizeContentAndAddTool(segments: MessageSegment[], currentContent: s
  */
 function updateStreamingContent(segments: MessageSegment[], currentContent: string): MessageSegment[] {
   const newSegments = [...segments]
-  
+
   // Calculate how much content has been captured in completed segments (before tool calls)
   let capturedContentLength = 0
   for (const segment of segments) {
@@ -636,14 +639,14 @@ function updateStreamingContent(segments: MessageSegment[], currentContent: stri
       capturedContentLength += segment.content.length
     }
   }
-  
+
   // Get the new content that should be in the current streaming segment
   const newContent = currentContent.slice(capturedContentLength)
-  
+
   if (newContent.length > 0) {
     // Find the last segment
     const lastSegment = newSegments[newSegments.length - 1]
-    
+
     if (lastSegment && lastSegment.type === 'content') {
       // Update the existing content segment
       lastSegment.content = newContent
@@ -657,7 +660,7 @@ function updateStreamingContent(segments: MessageSegment[], currentContent: stri
       })
     }
   }
-  
+
   return newSegments
 }
 
@@ -682,7 +685,7 @@ export const loadConversation = async (appId: string, conversationId: string) =>
   try {
     const data = await agentService.getConversation(appId, conversationId)
     console.log('loadConversation - loaded conversation data:', data)
-    
+
     // Convert database messages to UI message format
     type DatabaseMessage = {id: string; sender: string; content: string; createdAt: string; messageType?: string; toolCalls?: ToolCall[]; segments?: MessageSegment[]; metadata?: Record<string, unknown>};
     const messages: Message[] = (data.messages as DatabaseMessage[]).map((msg: DatabaseMessage) => ({
@@ -695,9 +698,9 @@ export const loadConversation = async (appId: string, conversationId: string) =>
       segments: msg.segments,
       ...(msg.metadata || {})
     }))
-    
+
     console.log('loadConversation - converted messages:', messages?.length || 0, messages)
-    
+
     return {
       conversation: data,
       messages

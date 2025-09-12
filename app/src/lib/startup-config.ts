@@ -13,14 +13,13 @@ export function logStartupConfiguration() {
   console.log('================================================');
 
   // Database Configuration
-  const isProduction = ['test', 'development', 'production'].includes(process.env.ENVIRONMENT_NAME || '') &&
-  !!process.env.MYSQL_DB_USERNAME && !!process.env.MYSQL_DB_PASSWORD &&
+  const hasMySqlCredentials = !!process.env.MYSQL_DB_USERNAME && !!process.env.MYSQL_DB_PASSWORD &&
   !!process.env.MYSQL_DB_PATH && !!process.env.MYSQL_DB_PORT && !!process.env.MYSQL_DB_NAME;
 
   console.log('🔧 Database Configuration:');
   console.log(`   Environment: ${process.env.NODE_ENV}`);
-  console.log(`   Database Type: ${isProduction ? 'MySQL (Production)' : 'SQLite (Development)'}`);
-  if (isProduction) {
+  console.log(`   Database Type: ${hasMySqlCredentials ? 'MySQL (Production)' : 'SQLite (Development)'}`);
+  if (hasMySqlCredentials) {
     console.log(`   MySQL Host: ${process.env.MYSQL_DB_PATH || 'default'}`);
     console.log(`   MySQL Port: ${process.env.MYSQL_DB_PORT || '3306'}`);
     console.log(`   MySQL Database: ${process.env.MYSQL_DB_NAME || 'airo_builder'}`);

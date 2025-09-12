@@ -13,14 +13,13 @@ declare global {
 class DatabaseManager {
   private static instance: DatabaseManager;
   private adapter: DatabaseAdapter;
-  private isProduction: boolean;
+  private hasMySqlCredentials: boolean;
   private schemaInitialized: boolean = false;
   private schemaInitializing: Promise<void> | null = null;
 
   private constructor() {
     // More precise production check including MySQL credentials
-    this.isProduction = ['test', 'development', 'production'].includes(process.env.ENVIRONMENT_NAME || '') &&
-    !!process.env.MYSQL_DB_USERNAME && !!process.env.MYSQL_DB_PASSWORD &&
+    this.hasMySqlCredentials = !!process.env.MYSQL_DB_USERNAME && !!process.env.MYSQL_DB_PASSWORD &&
     !!process.env.MYSQL_DB_PATH && !!process.env.MYSQL_DB_PORT && !!process.env.MYSQL_DB_NAME;
 
     // Configuration logged at startup - no need to log here
@@ -46,7 +45,7 @@ class DatabaseManager {
   }
 
   private createAdapter(): DatabaseAdapter {
-    if (this.isProduction) {
+    if (this.hasMySqlCredentials) {
       // Production: Use MySQL RDS - Only load MySQL adapter
       const config: DatabaseConfig = {
         type: 'mysql',
@@ -106,7 +105,7 @@ class DatabaseManager {
   private async initializeSchema(): Promise<void> {
     try {
       // Use the same logic as adapter creation to determine which schema to use
-      if (this.isProduction) {
+      if (this.hasMySqlCredentials) {
         await this.initializeMySQLSchema();
       } else {
         await this.initializeSQLiteSchema();
@@ -372,7 +371,7 @@ class DatabaseManager {
    * This method is environment-aware and only runs SQLite-specific migrations in development
    */
   private async runMigrations(): Promise<void> {
-    if (this.isProduction) {
+    if (this.hasMySqlCredentials) {
       // MySQL: No legacy migrations needed for new production databases
       console.log('🔍 MySQL production database - no legacy migrations needed');
       return;

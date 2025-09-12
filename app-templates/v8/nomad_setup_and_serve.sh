@@ -3,6 +3,15 @@
 # fail immediately if anything fails
 set -e
 
+APP_DIR_READY="$CUSTOMER_APP_DIR"/.is_ready
+
+while [ ! -f "$APP_DIR_READY" ]; do
+    echo "Waiting for $APP_DIR_READY to appear..."
+    sleep 2 # Wait for 2 seconds before checking again
+done
+echo "Completed: $APP_DIR_READY exists, proceeding with setup..."
+
+
 if [ -d "$GIT_REPO_DIR/.git" ]; then
     echo "Started: Git repo exists on $GIT_REPO_DIR/.git"
     echo "Copying $GIT_REPO_DIR to $CUSTOMER_APP_DIR"

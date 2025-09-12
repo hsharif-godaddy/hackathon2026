@@ -5,13 +5,13 @@
 
 set -e  # Exit on any error
 
-ENVIRONMENT_NAME=${ENVIRONMENT_NAME:-development}
+NOMAD_SPEC_IMAGE_VERSION=${NOMAD_SPEC_IMAGE_VERSION:-pre-dev-v1.0.0}
 
 # Configuration
 REGION="eu-central-1"
 ACCOUNT_ID="418549769352"
 ECR_REPOSITORY="airo-builder/apps"
-IMAGE_TAG=${ENVIRONMENT_NAME}
+IMAGE_TAG=${NOMAD_SPEC_IMAGE_VERSION}
 ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPOSITORY}"
 
 echo "🚀 Starting deployment of Airo V8 Apps..."

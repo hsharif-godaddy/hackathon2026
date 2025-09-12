@@ -99,8 +99,10 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
             Config: {
               image: '764525110978.dkr.ecr.us-west-2.amazonaws.com/alpine:latest',
               auth_soft_fail: true,
-              command: "/bin/sh",
-              args: ["-c", `mkdir -p /ceph-storage/${accountId}`],
+              entrypoint: ["/bin/sh", "-c"],
+              command: `mkdir -p /ceph-storage/${accountId}/${siteId}/git-repo
+              chmod 755 /ceph-storage/${accountId}/${siteId}/git-repo
+              echo '✅ Directories created'`,
               mounts: [
                 {
                   type: 'bind',
@@ -126,10 +128,13 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               ports: ['http'],
               force_pull: true,
               entrypoint: ["/bin/sh", "-c"],
-              command: `mkdir -p /ceph-storage/${siteId}/app /ceph-storage/${siteId}/git-repo
-              chmod 755 /ceph-storage/${siteId}/app /ceph-storage/${siteId}/git-repo
-              echo '✅ Directories created'
-              git config --global --add safe.directory \${APPS_BASE_DIR}
+              command: `mkdir -p \${NOMAD_ALLOC_DIR}/customer-app/${siteId}
+              chmod 755 \${NOMAD_ALLOC_DIR}/customer-app/${siteId}
+              touch \${NOMAD_ALLOC_DIR}/customer-app/${siteId}/.is_ready
+              chown -R agent:agent \${NOMAD_ALLOC_DIR}/customer-app/${siteId}
+              ls -latr \${NOMAD_ALLOC_DIR}/customer-app/
+              echo '✅ Directories created and set permissions'
+              git config --global --add safe.directory \${APPS_BASE_DIR}/${siteId}
               mkdir -p /root/.aws
               echo '[profile bedrock]\nrole_arn=arn:aws:iam::694282668781:role/airobuilde-custom-dev-airo-builder-bedrock-access\nsource_profile=default\nregion=us-west-2' > /root/.aws/config
               exec env AWS_PROFILE=bedrock node dist/server/app.js`,
@@ -202,8 +207,6 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               auth_soft_fail: true,
               ports: ['http8000', 'http8001'],
               force_pull: true,
-              entrypoint: ["/usr/local/bin/dev-supervisor"],
-              command: `mkdir -p \${CUSTOMER_APP_DIR} && chmod 755 \${CUSTOMER_APP_DIR} && chown -R agent:agent \${CUSTOMER_APP_DIR} && echo '✅ Directories created' && /bin/sh /management-scripts/nomad_setup_and_serve.sh`,
               security_opt: [
                 'label=type:ares_container.process'
               ],
@@ -212,15 +215,18 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
                   'net.ipv6.conf.all.disable_ipv6': '1'
                 }
               ],
+              work_dir: '/app',
               healthchecks: {
                 disable: false
               },
-              volumes: [],
+              volumes: [
+                `..\${NOMAD_ALLOC_DIR}/customer-app/${siteId}:/app`
+              ],
               mounts: [
                 {
                   type: 'bind',
                   readonly: false,
-                  source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${accountId}`,
+                  source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${accountId}/${siteId}`,
                   target: '/ceph-storage'
                 }
               ]
@@ -233,10 +239,10 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               VITE_API_URL: `https://${frontendDomain}/api`,
               FRONTEND_DOMAIN: frontendDomain,
               RUNNING_IN_DOCKER: 'true',
-              CUSTOMER_APP_DIR: `\${NOMAD_ALLOC_DIR}/customer-app/${siteId}`,
+              CUSTOMER_APP_DIR: '/app',
               DEV_SUPERVISOR_SOCKET_PATH: `\${NOMAD_ALLOC_DIR}/tmp/${siteId}-dev-supervisor.sock`,
-              GIT_REPO_DIR: `/ceph-storage/${siteId}/git-repo`,
-              BASE_APP_DIR: "/app",
+              GIT_REPO_DIR: `/ceph-storage/git-repo`,
+              BASE_APP_DIR: '/app-template',
               ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS_FOR_AGENTS || ''
             },
             Resources: {

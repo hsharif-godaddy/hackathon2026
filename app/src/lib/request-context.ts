@@ -28,11 +28,11 @@ export interface LogEvent {
   level: LogLevel;
   event: string;
   message: string;
-  
+
   // Request context
   customerId?: string;
   requestId?: string;
-  
+
   // Optional data
   data?: Record<string, any>;
   error?: Error;
@@ -56,7 +56,7 @@ export interface LogOptions {
  * Request context interface for storing user information
  */
 export interface RequestContext {
-  customerId: string;     // GoDaddy customer identifier  
+  customerId: string;     // GoDaddy customer identifier
   requestId?: string;     // Unique request tracking ID
 }
 
@@ -116,11 +116,11 @@ export class RequestContextService {
   static getLogContext(): string {
     const context = asyncLocalStorage?.getStore();
     if (!context) return '';
-    
+
     const parts: string[] = [];
     if (context.customerId) parts.push(`customerId:${context.customerId}`);
     if (context.requestId) parts.push(`reqId:${context.requestId}`);
-    
+
     return parts.length > 0 ? `[${parts.join(' ')}]` : '';
   }
 }
@@ -138,14 +138,14 @@ export class ContextLogger {
    */
   private static getDefaultLogLevel(): LogLevel {
     const nodeEnv = process.env.NODE_ENV;
-    const environmentName = process.env.ENVIRONMENT_NAME;
-    
+    const environmentName = process.env.ENVIRONMENT_NAME || '';
+
     // Check if either environment variable indicates development
     // Consider "dev-*" environments as development for proper logging format
-    const isDevelopment = nodeEnv === 'development' || 
-                         environmentName === 'development' ||
-                         environmentName?.startsWith('dev-');
-    
+    const isDevelopment = nodeEnv === 'development' ||
+                          ['development', 'pre-development'].includes(environmentName) ||
+                          environmentName?.startsWith('dev-');
+
     return isDevelopment ? 'debug' : 'info';
   }
 
@@ -174,15 +174,15 @@ export class ContextLogger {
    */
   private formatMessage(event: string, data?: any): string {
     if (!data) return event;
-    
+
     if (typeof data === 'string') {
       return `${event}: ${data}`;
     }
-    
+
     if (data.message) {
       return `${event}: ${data.message}`;
     }
-    
+
     return event;
   }
 
@@ -191,13 +191,13 @@ export class ContextLogger {
    */
   private createLogEvent(level: LogLevel, event: string, data?: any, options?: LogOptions): LogEvent {
     const context = RequestContextService.getContext();
-    
+
     const logEvent: LogEvent = {
       timestamp: new Date().toISOString(),
       level,
       event,
       message: this.formatMessage(event, data),
-      
+
       // Include request context if available
       ...(context ? {
         customerId: context.customerId,
@@ -233,14 +233,14 @@ export class ContextLogger {
    */
   private output(logEvent: LogEvent): void {
     const { level, event, message, customerId, requestId, data, error } = logEvent;
-    
+
     // Create context prefix
     const contextParts: string[] = [];
     if (customerId) contextParts.push(`customerId:${customerId}`);
     if (requestId) contextParts.push(`reqId:${requestId}`);
-    
+
     const contextPrefix = contextParts.length > 0 ? `[${contextParts.join(' ')}]` : '';
-    
+
     // Always use structured JSON output (production format)
     // This ensures consistent, machine-parseable logs for FluentBit and log aggregation
     console.log(JSON.stringify(logEvent));

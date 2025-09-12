@@ -1,6 +1,6 @@
 import { appFetch } from '@/lib/gasket-config'
 import { buildApiUrl } from '@/config/api'
-import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { buildDynamicAgentUrl, buildDynamicApiUrl } from '@/config/dynamic-api'
 import { type AppStatusType } from '@/stores/useAppStore'
 import { type ServerStatusType } from '@/stores/useServerStore'
 import { logger } from '@/lib/request-context'
@@ -90,7 +90,7 @@ export interface ServerInfo {
 
 export class AppService {
   private static instance: AppService
-  
+
   public static getInstance(): AppService {
     if (!AppService.instance) {
       AppService.instance = new AppService()
@@ -104,12 +104,12 @@ export class AppService {
   private async safeJsonParse(response: Response, defaultValue: unknown = null): Promise<unknown> {
     const contentLength = response.headers.get('content-length')
     const contentType = response.headers.get('content-type')
-    
+
     // If there's no content or it's not JSON, return default value
     if (contentLength === '0' || !contentType?.includes('application/json')) {
       return defaultValue
     }
-    
+
     try {
       return await response.json()
     } catch (parseError) {
@@ -124,11 +124,11 @@ export class AppService {
   async getApp(appId: string): Promise<{ app: App }> {
     const apiUrl = await buildDynamicApiUrl(``, appId)
     const response = await appFetch(apiUrl)
-    
+
     if (!response.ok) {
       throw new Error(`Failed to fetch app: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -147,13 +147,13 @@ export class AppService {
     } else {
       url = buildApiUrl('apps/config')
     }
-    
+
     const response = await appFetch(url)
-    
+
     if (!response.ok) {
       throw new Error(`Failed to fetch config: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -165,11 +165,11 @@ export class AppService {
     const response = await appFetch(apiUrl, {
       method: 'POST'
     })
-    
+
     if (!response.ok) {
       throw new Error(`Failed to ensure app is running: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -181,11 +181,11 @@ export class AppService {
     const response = await appFetch(apiUrl, {
       method: 'POST'
     })
-    
+
     if (!response.ok) {
       throw new Error(`Failed to restart server: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -195,11 +195,11 @@ export class AppService {
   async getGitHistory(appId: string): Promise<{ commits: GitCommit[] }> {
     const apiUrl = await buildDynamicApiUrl(`git/history`, appId)
     const response = await appFetch(apiUrl)
-    
+
     if (!response.ok) {
       throw new Error(`Failed to load commit history: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -207,13 +207,13 @@ export class AppService {
    * Checkout a specific git commit
    */
   async checkoutCommit(appId: string, commitHash: string): Promise<void> {
-    const apiUrl = await buildDynamicApiUrl(`git/checkout`, appId)
+    const apiUrl = await buildDynamicAgentUrl(`apps/${appId}/git/checkout`, appId)
     const response = await appFetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ commitHash })
     })
-    
+
     if (!response.ok) {
       throw new Error(`Failed to checkout commit: ${response.status}`)
     }
@@ -223,13 +223,13 @@ export class AppService {
    * Return to main branch (latest version)
    */
   async returnToMainBranch(appId: string): Promise<void> {
-    const apiUrl = await buildDynamicApiUrl(`git/return`, appId)
+    const apiUrl = await buildDynamicAgentUrl(`apps/${appId}/git/return`, appId)
     const response = await appFetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ branch: 'main' })
     })
-    
+
     if (!response.ok) {
       throw new Error(`Failed to return to latest version: ${response.status}`)
     }
@@ -254,11 +254,11 @@ export class AppService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody)
     })
-    
+
     if (!response.ok) {
       throw new Error(`Failed to send style update to API: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -279,11 +279,11 @@ export class AppService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody)
     })
-    
+
     if (!response.ok) {
       throw new Error(`Failed to send text update to API: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -305,11 +305,11 @@ export class AppService {
     // appId is the same as siteId in our system
     const apiUrl = await buildDynamicApiUrl(`status`, appId)
     const response = await appFetch(apiUrl)
-    
+
     if (!response.ok) {
       throw new Error(`Failed to get app status: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -319,11 +319,11 @@ export class AppService {
   async getTokenUsage(appId: string): Promise<{ usage: TokenUsage }> {
     const apiUrl = await buildDynamicApiUrl(`usage`, appId)
     const response = await appFetch(apiUrl)
-    
+
     if (!response.ok) {
       throw new Error(`Failed to fetch usage data: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -333,11 +333,11 @@ export class AppService {
   async getFiles(appId: string, maxDepth: number = 5): Promise<{ entries: Array<{name: string; isDirectory: boolean; path: string; depth: number}> }> {
     const apiUrl = await buildDynamicApiUrl(`files?maxDepth=${maxDepth}`, appId)
     const response = await appFetch(apiUrl)
-    
+
     if (!response.ok) {
       throw new Error(`Failed to load files: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -347,11 +347,11 @@ export class AppService {
   async readFile(appId: string, filePath: string): Promise<{ content: string }> {
     const apiUrl = await buildDynamicApiUrl(`files/read?path=${encodeURIComponent(filePath)}`, appId)
     const response = await appFetch(apiUrl)
-    
+
     if (!response.ok) {
       throw new Error(`Failed to load file content: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -366,11 +366,11 @@ export class AppService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody)
     })
-    
+
     if (!response.ok) {
       throw new Error(`Failed to save file: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -379,11 +379,11 @@ export class AppService {
    */
   async getAllApps(): Promise<{ apps: App[] }> {
     const response = await appFetch(buildApiUrl('apps'))
-    
+
     if (!response.ok) {
       throw new Error(`Failed to fetch apps: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -393,11 +393,11 @@ export class AppService {
   async getServers(): Promise<{ servers: ServerInfo[] }> {
     // Call local API route instead of external service
     const response = await appFetch('/api/servers')
-    
+
     if (!response.ok) {
       throw new Error(`Failed to fetch servers: ${response.status}`)
     }
-    
+
     return response.json()
   }
 
@@ -409,11 +409,11 @@ export class AppService {
     const response = await appFetch(apiUrl, {
       method: 'POST'
     })
-    
+
     if (!response.ok) {
       throw new Error(`Failed to stop app: ${response.status}`)
     }
-    
+
     return (await this.safeJsonParse(response, { success: true, message: 'App stopped successfully' })) as { success: boolean; message?: string }
   }
 
@@ -425,7 +425,7 @@ export class AppService {
     const response = await appFetch(apiUrl, {
       method: 'DELETE'
     })
-    
+
     if (!response.ok) {
       let errorMessage = `Failed to delete app: ${response.status}`
       try {
@@ -436,7 +436,7 @@ export class AppService {
       }
       throw new Error(errorMessage)
     }
-    
+
     return (await this.safeJsonParse(response, { success: true, message: 'App deleted successfully' })) as { success: boolean; message?: string }
   }
 
@@ -447,11 +447,11 @@ export class AppService {
     const response = await appFetch(buildApiUrl('apps/stop-all'), {
       method: 'POST'
     })
-    
+
     if (!response.ok) {
       throw new Error(`Failed to stop all apps: ${response.status}`)
     }
-    
+
     return (await this.safeJsonParse(response, { success: true, message: 'All apps stopped successfully' })) as { success: boolean; message?: string }
   }
 
@@ -462,11 +462,11 @@ export class AppService {
     const response = await appFetch(buildApiUrl('apps/cleanup-orphans'), {
       method: 'POST'
     })
-    
+
     if (!response.ok) {
       throw new Error(`Failed to cleanup orphaned apps: ${response.status}`)
     }
-    
+
     return (await this.safeJsonParse(response, { success: true, message: 'Cleanup completed successfully' })) as { success: boolean; message?: string }
   }
 }

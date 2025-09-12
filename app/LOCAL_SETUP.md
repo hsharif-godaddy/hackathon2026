@@ -14,6 +14,7 @@ AWS_ACCOUNT_ID=418549769352
 NODE_ENV=development
 ALLOWED_ORIGINS_FOR_AGENTS=https://airo-builder.dev-godaddy.com,http://airo-builder.dev-godaddy.com,airo-builder.dev-godaddy.com,https://airo-builder.test-godaddy.com,http://airo-builder.test-godaddy.com,airo-builder.test-godaddy.com
 ENVIRONMENT_NAME=development
+NOMAD_SPEC_IMAGE_VERSION=local-dev-v1.0.0
 # Add the following the connect to MYSQL
 MYSQL_DB_PATH=""
 MYSQL_DB_USERNAME=
@@ -57,6 +58,6 @@ The AWS auth expires every couple of hours, if you see site creation failures, k
 ### (Optional) 5. If there are change in the v3 template or the agent, they need to be published to ECR before creating a new site to test them again
 
 1. `cd agents` or `cd app-templates/v3`
-2. `export ENVIRONMENT_NAME=development`
+2. `export NOMAD_SPEC_IMAGE_VERSION=pre-dev-v1.0.0`
 3. Authenticate to `GD-AWS-USA-GD-PioneerC1-Dev-Private (418549769352)` - `PowerUser` using the okta processor.
 4. Execute the `deploy.sh` (ie., `./deploy.sh`)
