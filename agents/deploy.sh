@@ -72,7 +72,7 @@ echo "Platform: linux/amd64"
 echo "Context: $(pwd)"
 echo "Using NPM auth token as build argument (secure - not stored in image)"
 
-docker buildx build --platform linux/amd64 --build-arg NPM_AUTH_TOKEN="$NPM_AUTH_TOKEN" -t airo-agents:${IMAGE_TAG} .
+docker buildx build --platform linux/amd64 --build-arg ARTIFACTORY_NPM_TOKEN="$NPM_AUTH_TOKEN" -t airo-agents:${IMAGE_TAG} .
 
 echo "✅ Successfully built Docker image: airo-agents:${IMAGE_TAG}"
 

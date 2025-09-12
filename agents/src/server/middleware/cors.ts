@@ -6,7 +6,7 @@ const corsOptions: CorsOptions = {
     ? process.env.ALLOWED_ORIGINS?.split(',') || []
     : true, // Allow all origins in development
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'User-Agent'],
   credentials: true,
   maxAge: 86400, // 24 hours
 };

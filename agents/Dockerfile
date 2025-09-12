@@ -2,6 +2,8 @@ ARG UPSTREAM_VERSION=22
 
 FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:${UPSTREAM_VERSION}-alpine
 
+ARG ARTIFACTORY_NPM_TOKEN
+
 USER root
 
 # Install python and build tools
