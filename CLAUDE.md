@@ -18,6 +18,17 @@ Airo App Builder is an AI-powered application development platform that combines
 ## Key Commands
 
 ### Development Setup
+
+**Quick Setup (Recommended):**
+```bash
+# Run the automated setup utility
+./setup.sh
+
+# Or for selective configuration
+cd setup && pnpm start
+```
+
+**Manual Setup:**
 ```bash
 # Install dependencies for all components
 cd agents && pnpm install
@@ -30,6 +41,8 @@ cd app && pnpm run dev       # Main Next.js app (port 3000)
 ```
 
 **IMPORTANT** Agent needs to run on port 4000 and App on port 3000, if something else is already running on one of this port, kill it
+
+**For complete setup instructions, see [GETTING_STARTED.md](./GETTING_STARTED.md)**
 
 ## Architecture Overview
 

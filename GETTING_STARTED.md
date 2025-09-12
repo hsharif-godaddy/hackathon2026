@@ -1,66 +1,122 @@
 # 🚀 Getting Started - Airo App Builder
 
-Quick setup guide to run the AI builder locally in under 5 minutes.
+Complete setup guide to run the AI builder locally in under 5 minutes.
 
 ## Prerequisites
-- Node.js 18+ 
-- OpenAI API Key
+- Node.js 22+ (recommended) or Node.js 18+ 
+- pnpm (recommended) or npm
+- Docker (for local database)
+- AI Provider API Key (OpenAI, AWS Bedrock, or GoCode)
 
-## Setup
+## 🛠️ Automated Setup (Recommended)
+
+### Option 1: Full Setup
+Run the complete setup utility:
+```bash
+./setup.sh
+```
+
+This will:
+1. ✅ Verify Node.js 22+ and pnpm installation
+2. ✅ Check Docker environment and start MySQL container
+3. ✅ Configure AI provider (AWS Bedrock, GoCode, or OpenAI)
+4. ✅ Set up authentication (Mock login or SSO)
+5. ✅ Configure Getty Images proxy with AWS Secrets Manager
+6. ✅ Generate all required `.env` files
+
+### Option 2: Selective Configuration
+For individual component setup or reconfiguration:
+```bash
+cd setup && pnpm start
+```
+
+Choose from the menu:
+- 🔍 Check Docker Dependencies
+- 📱 Configure App Environment (.env)
+- 🤖 Configure Agents Environment (.env)  
+- 🖼️ Configure Getty Images Proxy
+- 🗄️ Check MySQL Container Status
+- 🐳 Start MySQL Container
+- 🔍 Check Current Configuration Status
+
+## 📋 Manual Setup (Alternative)
+
+If you prefer manual configuration:
 
 ### 1. Install Dependencies
 
 ```bash
+# Using pnpm (recommended)
+cd agents && pnpm install
+cd ../app && pnpm install
+cd ../app-templates/v8 && pnpm install && cd ../..
+
+# Or using npm
 npm run install-all
-```
-
-Or, step by step :
-```bash
-# Install agents backend
-cd agents
-npm install
-
-# Install main app
-cd ../app
-npm install
-
-# Install app template dependencies (REQUIRED for creating new apps)
-cd ../app-templates/v3
-npm install
-cd ../..
 ```
 
 ### 2. Configure Environment
 Create `agents/.env`:
 ```bash
-OPENAI_API_KEY=your_openai_api_key_here
-PORT=4000
-APPS_BASE_DIR=/tmp/apps
-APP_TEMPLATE_DIR=../app-templates/v3
+# AI Provider (choose one)
+OPENAI_API_KEY=your_api_key_here
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4
+
+# Getty Images (optional)
+GETTY_API_URL=https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net/img/search
+GETTY_TOKEN=your_token_here
+IMAGE_SEARCH_DRIVER=getty
+
+# App Configuration
+APP_TEMPLATE_DIR=app-templates/v8
+SHOW_USAGE_COST=true
+
+# MySQL Configuration (for app databases)
+MYSQL_ROOT_HOST=localhost
+MYSQL_ROOT_PORT=3306
+MYSQL_ROOT_USER=root
+MYSQL_ROOT_PASS=
+```
+
+Create `app/.env`:
+```bash
+NODE_ENV=development
+PORT=3000
+
+# Database (MySQL via Docker)
+DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app
+
+# AI Provider (match agents config)
+AI_PROVIDER=openai
+OPENAI_API_KEY=your_api_key_here
+
+# Authentication
+NEXT_PUBLIC_USE_MOCK_LOGIN=true
 ```
 
 ### 3. Start Services
-**Terminal 1 - Agents Backend:**
-#### For Local Mode
+**Start MySQL Container (if not using setup utility):**
 ```bash
-cd agents
-# set DOC_APPS=false in agents/.env
-npm run dev
-
-# Should show: "Initializing AppRepository with Local deployment..."
+docker compose up app-mysql -d
 ```
 
-#### For Docker Mode
+**Terminal 1 - Agents Backend (port 4000):**
 ```bash
 cd agents
-# DOC_APPS is unset (defaults to true)
-npm run dev
+pnpm run dev
 ```
 
-**Terminal 2 - Main App:**
+**Terminal 2 - Main App (port 3000):**
+```bash  
+cd app
+pnpm run dev
+```
+
+**Terminal 3 - Database Migrations (first time only):**
 ```bash
 cd app
-npm run dev
+pnpm dlx prisma migrate dev
 ```
 
 ## Access
@@ -94,7 +150,42 @@ curl -X POST http://localhost:4000/agent/example-agent/chat \
 3. Try generating a simple app
 4. Check the API documentation at http://localhost:4000
 
+## 🔧 Setup Utilities
+
+### Reconfigure Components
+Use the selective configuration tool to modify specific settings:
+```bash
+cd setup && pnpm start
+# Choose "Selective Configuration"
+```
+
+### Check System Status
+Get an overview of your current configuration:
+```bash  
+cd setup && pnpm start
+# Choose "Selective Configuration" → "Check Current Configuration Status"
+```
+
+### Getty Images Setup
+If Getty Images isn't working, reconfigure it:
+```bash
+cd setup && pnpm start
+# Choose "Selective Configuration" → "Configure Getty Images Proxy"
+```
+
+This will:
+- Set up AWS SSO credentials if needed
+- Fetch the Getty token from AWS Secrets Manager
+- Update your `agents/.env` with the correct configuration
+
 ## Troubleshooting
+
+### Configuration Issues
+**Recommended**: Use the setup utility to diagnose and fix configuration problems:
+```bash
+cd setup && pnpm start
+# Choose "Selective Configuration" → "Check Current Configuration Status"
+```
 
 ### "Starting Development Server" gets stuck or fails
 
@@ -102,17 +193,40 @@ curl -X POST http://localhost:4000/agent/example-agent/chat \
 **Cause**: App template dependencies are not installed  
 **Solution**: Install template dependencies:
 ```bash
-cd app-templates/v3
-npm install
+cd app-templates/v8 && pnpm install
 ```
 
 ### Template directory errors
 
 **Issue**: "Template directory not found" warnings  
 **Cause**: The `APP_TEMPLATE_DIR` environment variable points to wrong location  
-**Solution**: Ensure your `agents/.env` has:
+**Solution**: Use the setup utility or ensure your `agents/.env` has:
 ```bash
-APP_TEMPLATE_DIR=../app-templates/v3
+APP_TEMPLATE_DIR=app-templates/v8
+```
+
+### Getty Images not working
+
+**Issue**: Getty Images search returns errors or no results  
+**Cause**: Missing or expired AWS credentials, incorrect token  
+**Solution**: Use the setup utility:
+```bash  
+cd setup && pnpm start
+# Choose "Selective Configuration" → "Configure Getty Images Proxy"
+```
+
+### Database connection errors
+
+**Issue**: MySQL connection failures  
+**Cause**: MySQL container not running or wrong credentials  
+**Solution**: Use the setup utility or manually start container:
+```bash
+# Via setup utility
+cd setup && pnpm start
+# Choose "Start MySQL Container"
+
+# Manual alternative  
+docker compose up app-mysql -d
 ```
 
 ### Port conflicts
@@ -125,4 +239,7 @@ lsof -ti:5001 | xargs kill -9
 
 ---
 
-Need help? Check the full [README.md](./README.md) or [documentation](./docs/).
+Need help? 
+- 🛠️ Use the setup utility: `./setup.sh` or `cd setup && pnpm start`  
+- 📖 Check the full [README.md](./README.md) 
+- 📚 Browse [documentation](./docs/)

@@ -12,6 +12,34 @@ Create an AI App builder that is flexible enough to build any website or app you
 
 Instead of just building demos, Airo AI Builder focuses on creating **real, production-ready applications** with a comprehensive suite of AI agents that handle every aspect of the development lifecycle.
 
+## 🛠️ Quick Start
+
+**Get started in under 5 minutes:**
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd airo-ai-builder
+
+# Run the setup utility
+./setup.sh
+```
+
+The setup utility will guide you through:
+- **Environment Configuration** - AI providers (AWS Bedrock/GoCode), authentication, database
+- **Getty Images Setup** - Professional stock photos with AWS Secrets Manager integration  
+- **Docker Environment** - MySQL container and dependency verification
+- **AWS SSO Integration** - Automatic credential setup for development services
+
+For selective configuration or reconfiguration:
+```bash
+cd setup && pnpm start
+```
+
+Choose "Selective Configuration" to configure individual components or check system status.
+
+**[📖 Detailed Setup Guide →](./GETTING_STARTED.md)**
+
 ## 🚀 Key Features
 
 ### AI Agent Suite
