@@ -18,6 +18,7 @@
   "dependencies": {
     "@aws-sdk/client-sqs": "3.679.0",
     "@aws-sdk/client-sts": "3.679.0",
+    "@fullstory/browser": "^2.0.6",
     "@gasket/data": "^7.5.3",
     "@gasket/fetch": "^7.3.8",
     "@godaddy/gasket-auth": "^3.3.15",

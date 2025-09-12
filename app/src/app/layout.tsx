@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import AuthProvider from "@/components/providers/AuthProvider";
+import FullStoryProvider from "@/components/providers/FullStoryProvider";
 import "@/styles/globals.scss";
 
 export const metadata: Metadata = {
@@ -36,11 +37,14 @@ export default function RootLayout({
         <meta name="theme-color" content="#111"/>
         <link rel="dns-prefetch" href="//img6.wsimg.com/"/>
         <link rel="preconnect" href="//img6.wsimg.com/"/>
+        
       </head>
       <body className="antialiased">
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <FullStoryProvider>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </FullStoryProvider>
       </body>
     </html>
   );
