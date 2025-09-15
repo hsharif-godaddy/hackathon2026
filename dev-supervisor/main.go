@@ -190,12 +190,9 @@ func (s *Server) startServer(socketPath string, shutdownTimeout time.Duration) e
 		return err
 	}
 
-	// Set socket permissions
+	// Set socket permissions (non-fatal if it fails)
 	if err := os.Chmod(socketPath, 0666); err != nil {
-		if closeErr := listener.Close(); closeErr != nil {
-			slog.Warn("failed to close listener during error handling", "error", closeErr)
-		}
-		return err
+		slog.Warn("failed to set socket permissions, continuing anyway", "socket_path", socketPath, "error", err)
 	}
 
 	slog.Info("dev-supervisor starting", "socket_path", socketPath, "pid", os.Getpid())
