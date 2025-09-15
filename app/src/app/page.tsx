@@ -202,7 +202,7 @@ function HomeContent() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="w-full overflow-hidden">
       <div id="airo-sentinel-background">
         <div className="orbs-group">
           <div className="orb orb1"></div>
