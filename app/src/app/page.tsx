@@ -2,10 +2,8 @@
 
 import { useState, useCallback, useEffect, Suspense, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType } from '@godaddy/gasket-auth'
 import { appFetch } from '@/lib/gasket-config'
-import { authConfigs, getLoginUrl, isAuthDisabled } from '@/lib/gasket-config'
-import { useIntegratedAuthState } from '@/lib/mock-auth-integration'
+import { useAuth } from '@/hooks/useAuth'
 import { isFeatureEnabled } from '@/lib/features'
 import { logger } from '@/lib/request-context'
 import Header from '@/components/layout/Header'
@@ -16,7 +14,6 @@ import Footer from './components/Footer'
 import { Example, BuiltWithItem, HeroSectionRef } from './components/types'
 import Box from '@ux/box'
 import Button from '@ux/button'
-import Spinner from '@ux/spinner'
 
 function HomeContent() {
   const [promptText, setPromptText] = useState("")
@@ -26,18 +23,8 @@ function HomeContent() {
   const searchParams = useSearchParams()
   const heroSectionRef = useRef<HeroSectionRef>(null)
 
-  // Get auth state - allow gasket to handle refresh but control redirects
-  const originalAuthState = useAuthState({
-    realm: authConfigs.user.realm as AuthRealmType,
-    risk: authConfigs.user.risk as AuthRiskType,
-    type: authConfigs.user.type as AuthIdpType[],
-    allowHeartbeat: authConfigs.user.allowHeartbeat,
-    use12HourExpiration: authConfigs.user.use12HourExpiration,
-    // Remove alt to allow proper token refresh, handle redirects in our logic instead
-  })
-
-  // Use integrated auth state that considers mock auth
-  const authState = useIntegratedAuthState(originalAuthState)
+  // Use reusable auth hook
+  const { isAuthenticated, isAuthDisabled, gasketConfig } = useAuth()
 
   // Track if user is redirecting to prevent multiple calls
   const [isRedirecting, setIsRedirecting] = useState(false)
@@ -64,45 +51,51 @@ function HomeContent() {
   const builtWithItems: BuiltWithItem[] = [
     {
       id: "1",
-      title: "FitFlow Studio",
-      description: "Modern fitness studio website with online class booking, member portal, and trainer profiles. Built with React and integrated payment processing.",
-      thumbnailPath: "/placeholder-fitness.jpg",
-      category: "Health & Fitness"
+      title: "Web Agency Website",
+      description: "Comprehensive business directory with search filters, business profiles, reviews, and submission forms for new listings.",
+      thumbnailPath: "/images/craft-code.png",
+      category: "Business",
+      prompt: "Website about a web agency specialized in creating beautiful handcrafted websites. Dark theme with vibrant color accent. Keep it low on images, rely on one impactful image and then use icons. Never use emojis"
     },
     {
       id: "2",
-      title: "TastyWheels Food Truck",
+      title: "Ancient Mariners",
       description: "Interactive food truck website featuring live location tracking, digital menu with ordering system, and customer reviews.",
-      thumbnailPath: "/placeholder-foodtruck.jpg",
-      category: "Food & Dining"
+      thumbnailPath: "/images/ancient-mariners.png",
+      category: "Education",
+      prompt: "Minimalistic site about whales. Use marine colors, make it short but worth reading."
     },
     {
       id: "3",
       title: "Creative Canvas Portfolio",
       description: "Stunning portfolio site for a graphic designer with image galleries, client testimonials, and project case studies.",
-      thumbnailPath: "/placeholder-portfolio.jpg",
-      category: "Portfolio"
+      thumbnailPath: "/images/creative-portfolio.png",
+      category: "Portfolio",
+      prompt: "Stunning portfolio site for a graphic designer with image galleries, client testimonials, and project case studies."
     },
     {
       id: "4",
-      title: "LocalBiz Directory",
-      description: "Comprehensive business directory with search filters, business profiles, reviews, and submission forms for new listings.",
-      thumbnailPath: "/placeholder-directory.jpg",
-      category: "Business"
+      title: "FitFlow Studio",
+      description: "Modern fitness studio dashboard with online class booking, member portal, and trainer profiles.",
+      thumbnailPath: "/images/fit-studio.png",
+      category: "Health & Fitness",
+      prompt: "Modern fitness studio dashboard with online class booking, member portal, and trainer profiles."
     },
     {
       id: "5",
-      title: "EventSpace Manager",
+      title: "Pepito Nachos",
       description: "Event venue booking platform with calendar integration, space galleries, pricing calculator, and vendor coordination.",
-      thumbnailPath: "/placeholder-events.jpg",
-      category: "Events"
+      thumbnailPath: "/images/pepito-nachos.png",
+      category: "Food",
+      prompt: "I need a website for my local Food Truck : Pepito Nachos, focused on offering mexican street food. We use avocado-styled colors with the food truck being all black."
     },
     {
       id: "6",
       title: "EcoShop Marketplace",
-      description: "Sustainable products e-commerce site with eco-friendly badges, carbon footprint tracking, and subscription boxes.",
-      thumbnailPath: "/placeholder-ecommerce.jpg",
-      category: "E-commerce"
+      description: "Sustainable products e-commerce site with eco-friendly badges, carbon footprint tracking, and subscription boxes. Focus should be on displaying products.",
+      thumbnailPath: "/images/eco-mart.png",
+      category: "E-commerce",
+      prompt: "Sustainable products e-commerce site with eco-friendly badges, carbon footprint tracking, and subscription boxes. Focus should be on displaying products."
     }
   ]
 
@@ -133,15 +126,18 @@ function HomeContent() {
     try {
       // Step 1: Quick auth check - only redirect to login if needed
       // Ensure consistent timing for async and sync auth checks
-      const authDisabled = await isAuthDisabled();
-      const isValid = authState.valid;
-
-      if (!authDisabled && !isValid) {
+      if (!isAuthDisabled && !isAuthenticated) {
         logger.info('page.auth.redirect', 'User not authenticated, redirecting to login')
-        if (isFeatureEnabled.mockLogin()) {
+        const isMockLoginEnabled = isFeatureEnabled.mockLogin();
+        if (isMockLoginEnabled) {
           throw new Error('Please sign in using the mock authentication system')
         }
-        window.location.href = await getLoginUrl(window.location.href)
+        if (gasketConfig) {
+          const url = new URL(gasketConfig.sso.loginUrl);
+          url.searchParams.set('app', 'airo-builder');
+          url.searchParams.set('redirect', gasketConfig.redirects.loginRedirectUrl);
+          window.location.href = url.toString();
+        }
         return
       }
 
@@ -194,7 +190,7 @@ function HomeContent() {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [promptText, router, isRedirecting, isLoading, authState])
+  }, [promptText, router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, gasketConfig])
 
   const handleExampleClick = (examplePrompt: string) => {
     if (heroSectionRef.current) {
@@ -218,26 +214,15 @@ function HomeContent() {
       
       <Header 
         actions={
-          <Button
-            onClick={handleStartBuilding}
-            data-partial={ !isLoading ? "componentAiro" : "componentBrand" }
-            disabled={!promptText.trim() || isLoading}
-            design='primary'
-            className="group cursor-pointer transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <div className="flex items-center space-x-1">
-              {isLoading ? (
-                <>
-                  <Spinner size='sm' />
-                  <span>Creating...</span>
-                </>
-              ) : (
-                <>
-                  <span>Get Started</span>
-                </>
-              )}
-            </div>
-          </Button>
+          isAuthenticated ? (
+            <Button
+              onClick={handleStartBuilding}
+              data-partial="componentAiro"
+              design='primary'
+              text='My Sites'
+              href='/sites'
+            />
+          ) : undefined
         }
         className="absolute top-0 left-0 w-full border-0!"
       />
@@ -263,7 +248,10 @@ function HomeContent() {
         />
       </Box>
 
-      <BuiltWithSection items={builtWithItems} />
+      <BuiltWithSection 
+        items={builtWithItems} 
+        onExampleClick={handleExampleClick}
+      />
 
       <Footer />
     </div>

@@ -9,6 +9,7 @@ export interface BuiltWithItem {
   description: string
   thumbnailPath: string
   category: string
+  prompt?: string
 }
 
 export interface HeroSectionProps {
@@ -31,4 +32,5 @@ export interface ExamplesSectionProps {
 
 export interface BuiltWithSectionProps {
   items: BuiltWithItem[]
+  onExampleClick?: (prompt: string) => void
 }

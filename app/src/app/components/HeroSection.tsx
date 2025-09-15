@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from 'react'
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -18,16 +18,50 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   const [isTyping, setIsTyping] = useState(false)
   const [displayText, setDisplayText] = useState(promptText)
   const animationQueueRef = useRef<string[]>([])
+  const lastErrorClearRef = useRef<string>('')
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Detect Safari browser
+  const isSafari = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    return /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+  }, [])
 
   useEffect(() => {
     setDisplayText(promptText)
   }, [promptText])
+
+  // Debounced prompt text update for better performance
+  const debouncedSetPromptText = useCallback((value: string) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      setPromptText(value)
+    }, 50) // 50ms debounce
+  }, [setPromptText])
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, [])
 
   const typeText = useCallback(async (targetText: string) => {
     if (isLoading) return
     
     // Prevent animation if text is already the same
     if (displayText === targetText) return
+
+    // Skip animation on Safari for better performance
+    if (isSafari) {
+      setDisplayText(targetText)
+      setPromptText(targetText)
+      return
+    }
 
     const typingSpeed = 2
     
@@ -47,13 +81,16 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       if (animationQueueRef.current[0] !== targetText) return // Animation was interrupted
       const newText = targetText.slice(0, i)
       setDisplayText(newText)
-      setPromptText(newText)
+      // Only update parent state at the end to reduce re-renders
+      if (i === targetText.length) {
+        setPromptText(newText)
+      }
       await new Promise(resolve => setTimeout(resolve, typingSpeed))
     }
     
     setIsTyping(false)
     animationQueueRef.current = []
-  }, [isLoading, displayText, setPromptText])
+  }, [isLoading, displayText, setPromptText, isSafari])
 
   useImperativeHandle(ref, () => ({
     typeText
@@ -95,7 +132,6 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         <Box 
           className="relative rounded-xl!"
           elevation="float"
-
         >
           <textarea
             value={displayText}
@@ -103,13 +139,16 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               if (isTyping) return // Prevent user input during typing animation
               const newValue = e.target.value
               setDisplayText(newValue)
-              setPromptText(newValue)
-              // Clear error when user starts typing
-              if (error) setError(null)
+              debouncedSetPromptText(newValue)
+              // Clear error when user starts typing (avoid unnecessary calls)
+              if (error && lastErrorClearRef.current !== newValue) {
+                lastErrorClearRef.current = newValue
+                setError(null)
+              }
             }}
             rows={5}
             disabled={isLoading}
-            className="relative z-10 w-full p-5 text-md font-medium rounded-lg transition-all resize-none border-0 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            className="relative z-10 w-full p-5 text-md font-medium rounded-lg resize-none border-0 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             placeholder={isTyping ? "" : "Describe the application you'd like to build..."}
           />
           <Button 

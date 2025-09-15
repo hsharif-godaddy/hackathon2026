@@ -3,7 +3,7 @@ import { BuiltWithSectionProps } from './types'
 import Button from '@ux/button'
 import Tag from '@ux/tag';
 
-export default function BuiltWithSection({ items }: BuiltWithSectionProps) {
+export default function BuiltWithSection({ items, onExampleClick }: BuiltWithSectionProps) {
   const scrollToTop = () => {
     // Scroll to top of page
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -16,6 +16,14 @@ export default function BuiltWithSection({ items }: BuiltWithSectionProps) {
       }
     }, 500)
   }
+
+  const handleTryThis = (prompt: string) => {
+    if (onExampleClick) {
+      onExampleClick(prompt)
+    }
+    scrollToTop()
+  }
+
   return (
     <section className="py-20 bg-intents-ux-boxLowContrast-backgroundColor">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -33,11 +41,23 @@ export default function BuiltWithSection({ items }: BuiltWithSectionProps) {
           {items.map((item) => (
             <div
               key={item.id}
-              className="group bg-intents-ux-box-backgroundColor rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border"
+              className="group flex flex-col bg-intents-ux-box-backgroundColor rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border"
             >
-              {/* Thumbnail Placeholder */}
+              {/* Thumbnail */}
               <div className="aspect-video bg-intents-ux-boxLowContrastOverlay-backgroundColor flex items-center justify-center relative overflow-hidden">
-                <div className="w-full h-full flex items-center justify-center">
+                <img 
+                  src={item.thumbnailPath} 
+                  alt={item.title}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    // Fallback to placeholder if image fails to load
+                    e.currentTarget.style.display = 'none';
+                    const placeholder = e.currentTarget.nextElementSibling as HTMLElement;
+                    if (placeholder) placeholder.style.display = 'flex';
+                  }}
+                />
+                {/* Fallback placeholder */}
+                <div className="w-full h-full flex items-center justify-center" style={{display: 'none'}}>
                   <div className="text-center">
                     <div className="w-16 h-16 bg-intents-ux-box-backgroundColor rounded-lg mx-auto mb-2 flex items-center justify-center">
                       <SparklesIcon className="w-8 h-8" />
@@ -45,21 +65,31 @@ export default function BuiltWithSection({ items }: BuiltWithSectionProps) {
                     <p className="text-sm">Thumbnail Placeholder</p>
                   </div>
                 </div>
-                {/* Overlay for future image */}
-                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                {/* Overlay for hover effect */}
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-10 bg-black transition-opacity" />
               </div>
 
               {/* Content */}
-              <div className="p-6">
+              <div className="p-6 flex flex-col flex-1">
                 <div className="flex items-center justify-between mb-2">
                   <Tag emphasis="info">{item.category}</Tag>
                 </div>
                 <h3 className="text-xl font-semibold mb-2 group-hover:text-purple-600 transition-colors">
                   {item.title}
                 </h3>
-                <p className="text-sm leading-relaxed">
-                  {item.description}
+                <p className="text-sm leading-relaxed mb-4">
+                  {item?.prompt ?? item.description}
                 </p>
+                {item.prompt && (
+                  <Button
+                    data-partial="componentAiro"
+                    design="primary"
+                    text="Try this"
+                    size="md"
+                    onClick={() => handleTryThis(item.prompt!)}
+                    className="w-full mt-auto!"
+                  />
+                )}
               </div>
             </div>
           ))}

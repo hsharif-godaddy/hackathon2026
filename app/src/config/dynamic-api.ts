@@ -5,8 +5,6 @@
  * Fallbacks to static configuration when no site context is available
  */
 
-import { apiConfig as staticApiConfig } from './api'
-
 export interface DynamicApiConfig {
   baseUrl: string
   wsUrl: string
