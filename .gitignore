@@ -8,3 +8,12 @@ dist/
 build/
 *.tsbuildinfo
 
+# Playwright Test Artifacts
+test-results/
+playwright-report/
+*.png
+*.webm
+*.mp4
+app/test-results/
+app/playwright-report/
+

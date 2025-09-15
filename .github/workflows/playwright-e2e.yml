@@ -1,0 +1,184 @@
+name: E2E Tests
+
+on:
+  # Allow manual triggering only
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test against'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+        - test
+        - dev
+
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Get test credentials from Secrets Manager
+      id: get-credentials
+      run: |
+        set -e
+        
+        # Get the secret value
+        echo "Retrieving test credentials from Secrets Manager..."
+        CREDENTIALS=$(aws secretsmanager get-secret-value --secret-id "/test/airo-app-builder-user" --query 'SecretString' --output text --region us-west-2)
+        
+        # Extract credentials from key-value pair format
+        echo "Extracting credentials from key-value pair format..."
+        USERNAME=$(echo $CREDENTIALS | jq -r 'keys[0]')  # Get the first key (email)
+        PASSWORD=$(echo $CREDENTIALS | jq -r '.[]')      # Get the first value (password)
+        echo "Extracted username: ${USERNAME}"
+        
+        # Validate credentials are not null or empty
+        if [ "$USERNAME" = "null" ] || [ "$PASSWORD" = "null" ] || [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
+          echo "❌ Failed to extract valid credentials. USERNAME='$USERNAME', PASSWORD='$PASSWORD'"
+          echo "Raw credentials structure:"
+          echo $CREDENTIALS | jq . || echo "Not valid JSON"
+          exit 1
+        fi
+        
+        # Set as masked output variables
+        echo "::add-mask::$USERNAME"
+        echo "::add-mask::$PASSWORD"
+        echo "username=$USERNAME" >> $GITHUB_OUTPUT
+        echo "password=$PASSWORD" >> $GITHUB_OUTPUT
+        echo "✅ Test credentials retrieved successfully"
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        # Check if package-lock.json exists and is in sync
+        if [ -f package-lock.json ]; then
+          echo "Found package-lock.json, attempting npm ci..."
+          if ! npm ci; then
+            echo "npm ci failed, falling back to npm install..."
+            npm install
+          fi
+        else
+          echo "No package-lock.json found, running npm install..."
+          npm install
+        fi
+
+    - name: Install Playwright Browsers
+      run: |
+        # Check if Chromium is already installed
+        if npx playwright list | grep -q "chromium.*installed"; then
+          echo "✅ Chromium already installed, skipping download"
+        else
+          echo "📥 Installing Chromium browser..."
+          npx playwright install chromium
+          echo "✅ Chromium browser installed successfully"
+        fi
+        echo "ℹ️ Skipping system dependencies installation (assuming self-hosted runner has required deps)"
+
+    - name: Run Playwright tests
+      run: npx playwright test
+      env:
+        CI: true
+        TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}
+        TEST_PASSWORD: ${{ steps.get-credentials.outputs.password }}
+        PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.environment == 'dev' && 'https://airo-builder.dev-godaddy.com' || 'https://airo-builder.test-godaddy.com' }}
+
+    - name: Upload Playwright Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: playwright-report
+        path: playwright-report/
+        retention-days: 30
+
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: test-results/
+        retention-days: 30
+
+    - name: Upload Screenshots and Videos
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: playwright-artifacts
+        path: |
+          test-results/
+          playwright-report/
+        retention-days: 7
+
+    - name: Comment PR with test results
+      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request' && always()
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          // Try to read test results
+          let testStatus = '❓ Unknown';
+          let testSummary = 'Test results not available';
+          
+          try {
+            // Check if test passed or failed based on job outcome
+            if (process.env.JOB_STATUS === 'success') {
+              testStatus = '✅ Passed';
+              testSummary = 'All Playwright E2E tests passed successfully!';
+            } else if (process.env.JOB_STATUS === 'failure') {
+              testStatus = '❌ Failed';
+              testSummary = 'Some Playwright E2E tests failed. Check the artifacts for details.';
+            }
+          } catch (error) {
+            console.log('Could not determine test status:', error);
+          }
+          
+          const comment = `## 🎭 Playwright E2E Test Results
+          
+          **Status:** ${testStatus}
+          
+          ${testSummary}
+          
+          ### 📊 Test Details
+          - **Environment:** ${{ github.event.inputs.environment }} 
+          - **User Journey Test:** Complete end-to-end user flow with Hello World site creation
+          - **WebSocket Integration:** Tests real-time completion detection
+          - **Browser:** Chromium (Desktop Chrome)
+          - **Timeout:** 7 minutes per test
+          
+          ### 📁 Artifacts
+          ${process.env.JOB_STATUS === 'failure' ? '- Screenshots and videos available in artifacts' : ''}
+          ${process.env.JOB_STATUS !== 'success' ? '- Detailed test report available in artifacts' : ''}
+          
+          <details>
+          <summary>🔧 Test Configuration</summary>
+          
+          - **Test Directory:** \`./tests/smoke\`
+          - **Base URL:** \`${{ github.event.inputs.environment == 'dev' && 'https://airo-builder.dev-godaddy.com' || 'https://airo-builder.test-godaddy.com' }}\`
+          - **Retries:** 2 on CI
+          - **Workers:** 1 (serial execution)
+          - **Reporter:** GitHub Actions
+          </details>
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+      env:
+        JOB_STATUS: ${{ job.status }}
