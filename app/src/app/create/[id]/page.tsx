@@ -74,7 +74,7 @@ export default function CreateAppStatus() {
 
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <div id="airo-sentinel-background">
+      <div className="airo-sentinel-background">
         <div className="orbs-group">
           <div className="orb orb1"></div>
           <div className="orb orb2"></div>
@@ -122,8 +122,8 @@ export default function CreateAppStatus() {
 
         { phase === 'complete' && (
           <>
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-green-600 text-2xl">✅</span>
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+              <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">App Created Successfully!</h1>
             <p className="text-gray-600 mb-4">
@@ -135,7 +135,7 @@ export default function CreateAppStatus() {
         
         { phase === 'updating-name' && (
           <>
-            <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Finalizing Your App</h1>
@@ -149,7 +149,7 @@ export default function CreateAppStatus() {
         
         { phase === 'verifying-agent' && (
           <>
-            <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Almost Ready!</h1>
