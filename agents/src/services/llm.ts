@@ -288,7 +288,9 @@ export class LLMService {
         // Mapping of supported Anthropic models to Bedrock model identifiers
         const anthropicModelMap: Record<string, string> = {
           'claude-sonnet-4-20250514': 'us.anthropic.claude-sonnet-4-20250514-v1:0',
-          'claude-3-5-haiku-20241022': 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
+          'claude-3-5-haiku-20241022': 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+          'claude-3-7-sonnet-20250219': 'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+          'nova-pro-v1': 'us.amazon.nova-pro-v1:0',
           // Add more supported models as needed
         };
 
@@ -377,6 +379,12 @@ export class LLMService {
         temperature: request.temperature ?? 0.5,
         maxOutputTokens: request.maxTokens ?? 16000,
         ...(aiSdkTools ? { tools: aiSdkTools } : {}),
+        // Enable cache points for Bedrock
+        ...(this.provider === 'bedrock' ? {
+          providerOptions: {
+            bedrock: { cachePoint: { type: 'default' } },
+          },
+        } : {}),
       });
 
       // Convert AI SDK tool calls back to OpenAI format
@@ -540,6 +548,12 @@ export class LLMService {
         temperature: request.temperature ?? 0.7,
         maxOutputTokens: request.maxTokens ?? 2000,
         ...(aiSdkTools ? { tools: aiSdkTools } : {}),
+        // Enable cache points for Bedrock
+        ...(this.provider === 'bedrock' ? {
+          providerOptions: {
+            bedrock: { cachePoint: { type: 'default' } },
+          },
+        } : {}),
       });
 
       let fullContent = '';
