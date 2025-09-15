@@ -102,7 +102,7 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
     return (
       <button
         onClick={onClick}
-        className={`relative flex flex-col items-center p-2 rounded-lg transition-all ${
+        className={`relative flex flex-col items-center p-2 rounded-lg ${
           isSelected 
             ? 'bg-gray-200 shadow-sm' 
             : 'hover:bg-gray-100'
@@ -301,11 +301,6 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
     setIframeError(true)
   }
   
-  // Get iframe dimensions based on view mode and selected device
-  const iframeDimensions = viewMode === 'mobile' 
-    ? { width: `${selectedDevice.width}px`, height: `${selectedDevice.height}px` }
-    : { width: '100%', height: '100%' }
-  
   // Loading state while polling
   if (!serverState || (isPollingServer(appId) && !serverState.isReady)) {
     return (
@@ -381,41 +376,49 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
           </div>
         )}
         
-        <div className="flex-1 bg-gray-50 flex items-center justify-center py-2">
-          {viewMode === 'mobile' ? (
-            // Mobile view with device selector on the right
-            <div className="flex items-center justify-center space-x-8 mx-2">
-              {/* Mobile Preview */}
-              <div className="flex flex-col items-center">
-                <div 
-                  className="shadow-2xl border-4 border-gray-800 bg-white overflow-hidden"
-                  style={{ 
-                    width: selectedDevice.width, 
-                    height: selectedDevice.height,
-                    borderRadius: Math.min(selectedDevice.width * 0.08, 32) // 8% of width, max 32px
-                  }}
-                >
-                  <iframe
-                    key={iframeKey}
-                    ref={iframeRef}
-                    id="preview-iframe"
-                    src={previewUrl}
-                    className="w-full h-full border-0"
-                    onError={handleIframeError}
-                    onLoad={handleIframeLoad}
-                    sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
-                    title={`Preview for ${appId}`}
-                  />
-                </div>
-                {/* Current device info */}
+        <div className="flex-1 bg-gray-50 flex items-center justify-center py-2 relative">
+          {/* Single iframe container that adapts to view mode */}
+          <div className={`flex items-center justify-center ${viewMode === 'mobile' ? 'space-x-8' : 'w-full h-full'} mx-2`}>
+            {/* Main iframe container */}
+            <div className={`flex flex-col items-center ${viewMode === 'desktop' ? 'w-full h-full' : ''}`}>
+              <div 
+                className={`bg-white overflow-hidden ${
+                  viewMode === 'mobile' 
+                    ? 'shadow-2xl border-4 border-gray-800' 
+                    : 'shadow-lg border border-gray-200 rounded-lg flex-1 w-full h-full'
+                }`}
+                style={viewMode === 'mobile' ? { 
+                  width: selectedDevice.width, 
+                  height: selectedDevice.height,
+                  borderRadius: Math.min(selectedDevice.width * 0.08, 32)
+                } : {}}
+              >
+                {/* Single iframe that persists between view changes */}
+                <iframe
+                  key={iframeKey}
+                  ref={iframeRef}
+                  id="preview-iframe"
+                  src={previewUrl}
+                  className="w-full h-full border-0"
+                  onError={handleIframeError}
+                  onLoad={handleIframeLoad}
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+                  title={`Preview for ${appId}`}
+                />
+              </div>
+              
+              {/* Device info - only show in mobile mode */}
+              {viewMode === 'mobile' && (
                 <div className="mt-3 text-center">
                   <span className="text-xs text-gray-400">
                     {selectedDevice.name} ({selectedDevice.width}×{selectedDevice.height})
                   </span>
                 </div>
-              </div>
-              
-              {/* Vertical Device Selector */}
+              )}
+            </div>
+            
+            {/* Device selector - only show in mobile mode */}
+            {viewMode === 'mobile' && (
               <div className="flex flex-col space-y-2 bg-gray-100 rounded-lg p-2">
                 {mobileDevices.map(device => (
                   <DeviceOutline
@@ -426,23 +429,8 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
                   />
                 ))}
               </div>
-            </div>
-          ) : (
-            // Desktop view - use available space with margin
-            <div className="w-full h-full mx-2 my-2 rounded-lg shadow-lg border border-gray-200 bg-white overflow-hidden">
-              <iframe
-                key={iframeKey}
-                ref={iframeRef}
-                id="preview-iframe"
-                src={previewUrl}
-                className="w-full h-full border-0"
-                onError={handleIframeError}
-                onLoad={handleIframeLoad}
-                sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
-                title={`Preview for ${appId}`}
-              />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     )
