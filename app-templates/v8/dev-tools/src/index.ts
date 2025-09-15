@@ -7,6 +7,9 @@ export { useDevelopmentMode } from './hooks/useDevelopmentMode'
 // Vite plugin for auto-injection
 export { devToolsPlugin } from './vite-plugin'
 
+// FullStory injector for development tracking
+export { injectFullStory } from './fullstory-injector'
+
 // Development mode injector - only works in development
 export function injectDevelopmentMode() {
   // Only inject in development environment

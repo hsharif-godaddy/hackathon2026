@@ -15,7 +15,10 @@ export default function FullStoryProvider({
       recordCrossDomainIFrames: true
     })
 
-    console.log('FullStory initialized with official SDK')
+    // Add global unmask class to body for dashboard selector
+    document.body.classList.add('fs-unmask-airo-app-builder')
+
+    console.log('🔍 FullStory initialized - main app + iframe capture ready')
   }, [])
 
   return <>{children}</>
