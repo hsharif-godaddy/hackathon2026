@@ -11,6 +11,7 @@ import HeroSection from './components/HeroSection'
 import ExamplesSection from './components/ExamplesSection'
 import BuiltWithSection from './components/BuiltWithSection'
 import Footer from './components/Footer'
+import { MockLoginDialog } from '@/components/auth/MockLogin'
 import { Example, BuiltWithItem, HeroSectionRef } from './components/types'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -19,12 +20,13 @@ function HomeContent() {
   const [promptText, setPromptText] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showMockLogin, setShowMockLogin] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const heroSectionRef = useRef<HeroSectionRef>(null)
 
   // Use reusable auth hook
-  const { isAuthenticated, isAuthDisabled, gasketConfig } = useAuth()
+  const { isAuthenticated, isAuthDisabled, gasketConfig } = useAuth(() => setShowMockLogin(true))
 
   // Track if user is redirecting to prevent multiple calls
   const [isRedirecting, setIsRedirecting] = useState(false)
@@ -225,6 +227,7 @@ function HomeContent() {
           ) : undefined
         }
         className="absolute top-0 left-0 w-full border-0!"
+        onShowMockLogin={() => setShowMockLogin(true)}
       />
 
       <Box 
@@ -240,12 +243,15 @@ function HomeContent() {
           isLoading={isLoading}
           error={error}
           setError={setError}
+          onShowMockLogin={() => setShowMockLogin(true)}
         />
-
-        <ExamplesSection
-          examples={examples}
-          onExampleClick={handleExampleClick}
-        />
+      
+        { isAuthenticated && (
+          <ExamplesSection
+            examples={examples}
+            onExampleClick={handleExampleClick}
+          />
+        )}
       </Box>
 
       <BuiltWithSection 
@@ -254,6 +260,14 @@ function HomeContent() {
       />
 
       <Footer />
+
+      {/* Mock Login Modal - available throughout the entire page */}
+      {isFeatureEnabled.mockLogin() && (
+        <MockLoginDialog
+          isOpen={showMockLogin}
+          onClose={() => setShowMockLogin(false)}
+        />
+      )}
     </div>
   )
 }

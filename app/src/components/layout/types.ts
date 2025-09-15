@@ -5,4 +5,6 @@ export interface HeaderProps {
   actions?: React.ReactNode
   // Optional className for custom styling
   className?: string
+  // Optional callback for showing mock login modal
+  onShowMockLogin?: () => void
 }

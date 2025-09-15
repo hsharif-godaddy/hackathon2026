@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react'
+import { useAuth } from '@/hooks/useAuth';
 import Alert from '@ux/alert'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -13,13 +14,19 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   onStartBuilding,
   isLoading,
   error,
-  setError
+  setError,
+  onShowMockLogin
 }, ref) => {
   const [isTyping, setIsTyping] = useState(false)
   const [displayText, setDisplayText] = useState(promptText)
   const animationQueueRef = useRef<string[]>([])
   const lastErrorClearRef = useRef<string>('')
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const { 
+    isAuthenticated,
+    handleSignIn
+  } = useAuth(onShowMockLogin);
   
   // Detect Safari browser
   const isSafari = useMemo(() => {
@@ -127,52 +134,62 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         </div>
       )}
 
-      {/* Main CTA Input */}
       <div className="w-full max-w-2xl mx-auto my-16">
-        <Box 
-          className="relative rounded-xl!"
-          elevation="float"
-        >
-          <textarea
-            value={displayText}
-            onChange={(e) => {
-              if (isTyping) return // Prevent user input during typing animation
-              const newValue = e.target.value
-              setDisplayText(newValue)
-              debouncedSetPromptText(newValue)
-              // Clear error when user starts typing (avoid unnecessary calls)
-              if (error && lastErrorClearRef.current !== newValue) {
-                lastErrorClearRef.current = newValue
-                setError(null)
-              }
-            }}
-            rows={5}
-            disabled={isLoading}
-            className="relative z-10 w-full p-5 text-md font-medium rounded-lg resize-none border-0 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-            placeholder={isTyping ? "" : "Describe the application you'd like to build..."}
-          />
+        {/* Display Login button for unauthenticated users */}
+        { !isAuthenticated && (
           <Button 
-            onClick={onStartBuilding}
-            data-partial={ !isLoading ? "componentAiro" : "componentBrand" }
-            disabled={!promptText.trim() || isLoading || isTyping}
+            onClick={() => handleSignIn(window.location.href)}
             design='primary'
-            className="group cursor-pointer absolute right-4 bottom-4 mb-0.5 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed z-10"
+            text='Sign In to Continue'
+          />
+        )}
+        {/* Display Textarea for authenticated users */}
+        { isAuthenticated && (
+          <Box 
+            className="relative rounded-xl!"
+            elevation="float"
           >
-            <div className="flex items-center space-x-1">
-              {isLoading ? (
-                <>
-                  <span>Building...</span>
-                  <Spinner size='sm' />
-                </>
-              ) : (
-                <>
-                  <span>Start Building</span>
-                  <SendIcon className="w-4 h-4" />
-                </>
-              )}
-            </div>
-          </Button>
-        </Box>
+            <textarea
+              value={displayText}
+              onChange={(e) => {
+                if (isTyping) return // Prevent user input during typing animation
+                const newValue = e.target.value
+                setDisplayText(newValue)
+                debouncedSetPromptText(newValue)
+                // Clear error when user starts typing (avoid unnecessary calls)
+                if (error && lastErrorClearRef.current !== newValue) {
+                  lastErrorClearRef.current = newValue
+                  setError(null)
+                }
+              }}
+              rows={5}
+              disabled={isLoading}
+              className="relative z-10 w-full p-5 text-md font-medium rounded-lg resize-none border-0 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              placeholder={isTyping ? "" : "Describe the application you'd like to build..."}
+            />
+            <Button 
+              onClick={onStartBuilding}
+              data-partial={ !isLoading ? "componentAiro" : "componentBrand" }
+              disabled={!promptText.trim() || isLoading || isTyping}
+              design='primary'
+              className="group cursor-pointer absolute right-4 bottom-4 mb-0.5 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed z-10"
+            >
+              <div className="flex items-center space-x-1">
+                {isLoading ? (
+                  <>
+                    <span>Building...</span>
+                    <Spinner size='sm' />
+                  </>
+                ) : (
+                  <>
+                    <span>Start Building</span>
+                    <SendIcon className="w-4 h-4" />
+                  </>
+                )}
+              </div>
+            </Button>
+          </Box>
+        )}
       </div>
     </Box>
   )

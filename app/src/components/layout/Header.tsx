@@ -4,7 +4,7 @@ import { UserMenu } from '@/components/auth'
 import { HeaderProps } from './types'
 import Box from '@ux/box'
 
-export default function Header({ actions, className = "" }: HeaderProps) {
+export default function Header({ actions, className = "", onShowMockLogin }: HeaderProps) {
   return (
     <header className={`border-b border-gray-100 bg-white/80 backdrop-blur-sm ${className}`}>
       <div className="mx-auto px-4 sm:px-6 lg:px-8">
@@ -18,7 +18,7 @@ export default function Header({ actions, className = "" }: HeaderProps) {
           </div>
           <Box orientation="horizontal" gap="md">
             {actions && actions}
-            <UserMenu />
+            <UserMenu onShowMockLogin={onShowMockLogin} />
           </Box>
         </div>
       </div>

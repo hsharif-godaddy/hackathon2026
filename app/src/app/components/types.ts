@@ -19,6 +19,7 @@ export interface HeroSectionProps {
   isLoading: boolean
   error: string | null
   setError: (error: string | null) => void
+  onShowMockLogin?: () => void
 }
 
 export interface HeroSectionRef {

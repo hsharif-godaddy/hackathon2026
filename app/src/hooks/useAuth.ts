@@ -4,7 +4,7 @@ import { useGasketConfig } from '@/hooks/useGasketConfig';
 import { isFeatureEnabled } from '@/lib/features';
 import { useMockAuth } from '@/hooks/useMockAuth';
 
-export function useAuth() {
+export function useAuth(onShowMockLogin?: () => void) {
   const isMockLoginEnabled = isFeatureEnabled.mockLogin();
   const mockAuth = useMockAuth();
   const { config: gasketConfig, isLoading: configLoading } = useGasketConfig();
@@ -32,6 +32,37 @@ export function useAuth() {
     return 'user@example.com';
   };
 
+  // Handle sign out
+  const handleSignOut = async () => {
+    if (isMockLoginEnabled) {
+      await mockAuth.logout();
+    } else {
+      const url = new URL(gasketConfig.sso.logoutUrl);
+      url.searchParams.set('app', 'airo-builder');
+      url.searchParams.set('redirect', gasketConfig.redirects.logoutRedirectUrl);
+      window.location.href = url.toString();
+    }
+  };
+
+  // Handle sign in
+  const handleSignIn = (redirectUrl?: string) => {
+    if (isMockLoginEnabled) {
+      // If callback is provided, use it to show the modal
+      if (onShowMockLogin) {
+        onShowMockLogin();
+        return { showModal: false };
+      }
+      // Fallback for components that handle their own modal
+      return { showModal: true };
+    } else {
+      const url = new URL(gasketConfig.sso.loginUrl);
+      url.searchParams.set('app', 'airo-builder');
+      url.searchParams.set('redirect', redirectUrl || gasketConfig.redirects.loginRedirectUrl);
+      window.location.href = url.toString();
+      return { showModal: false };
+    }
+  };
+
   return {
     isAuthenticated,
     isLoading: configLoading,
@@ -39,6 +70,8 @@ export function useAuth() {
     authState,
     mockAuth,
     getUserEmail,
-    gasketConfig
+    gasketConfig,
+    handleSignOut,
+    handleSignIn
   };
 }
