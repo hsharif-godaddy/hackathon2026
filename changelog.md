@@ -5,6 +5,7 @@
 ### Public Facing Changes
 
 - Homepage updates:
+
   - Examples with screenshots and "Try this" buttons.
   - Require login before writing a prompt. (This is a temporary measure, to make sure people don't lose work.)
   - Ask the develop agent to view error logs after making changes
@@ -20,3 +21,5 @@
 - Improved mock-auth in development environment.
 - Update more logging to be structured
 - Fix duplication of visual context information in the system prompt (its also a message) should fix prompt caching
+- Created a new ai-lib wrapper around AI-SDK with a clean websocket implementation
+- Created an internal-only ai-playground app, for testing websocket/ui interactions and prototyping new features.

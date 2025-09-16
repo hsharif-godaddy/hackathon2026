@@ -1,0 +1,337 @@
+/**
+ * Embeddings utility for consistent API across different providers
+ * Handles provider-specific implementations while maintaining a unified interface
+ */
+
+import type { EmbeddingOptions, EmbeddingsResult } from '../core/types.js'
+
+export interface EmbeddingModel {
+  provider: 'bedrock' | 'openai' | 'anthropic' | 'custom'
+  modelId: string
+  instance?: any // The actual model instance from AI SDK
+}
+
+/**
+ * Generate embeddings using the appropriate provider implementation
+ */
+export async function generateEmbeddings(
+  values: string | string[],
+  model: EmbeddingModel | any, // Support both our interface and raw AI SDK models
+  options: EmbeddingOptions = {}
+): Promise<EmbeddingsResult> {
+  const textsArray = Array.isArray(values) ? values : [values]
+  
+  // Detect model type and handle accordingly
+  const modelInfo = analyzeModel(model)
+  
+  switch (modelInfo.provider) {
+    case 'bedrock':
+      return await generateBedrockEmbeddings(textsArray, modelInfo, options)
+    case 'openai':
+      return await generateOpenAIEmbeddings(textsArray, modelInfo, options)
+    default:
+      // Try to use AI SDK directly for other providers
+      return await generateGenericEmbeddings(textsArray, model, options)
+  }
+}
+
+/**
+ * Analyze a model to determine its provider and capabilities
+ */
+function analyzeModel(model: any): EmbeddingModel {
+  // If it's already our EmbeddingModel interface
+  if (model && typeof model === 'object' && 'provider' in model) {
+    // But check if it's the AI SDK model with provider field, not our interface
+    if (model.provider === 'amazon-bedrock' && model.constructor?.name?.includes('Bedrock')) {
+      return {
+        provider: 'bedrock',
+        modelId: model.modelId || 'unknown',
+        instance: model
+      }
+    }
+    return model as EmbeddingModel
+  }
+  
+  // Try to detect provider from model properties
+  if (model && typeof model === 'object') {
+    // Check for Bedrock model (more comprehensive detection)
+    if (model.modelId?.includes('amazon.titan-embed') || 
+        model.modelId?.includes('cohere.embed') ||
+        model.modelId?.includes('titan-embed') ||
+        model.constructor?.name?.includes('Bedrock') ||
+        model.constructor?.name?.includes('BedrockEmbedding') ||
+        // Check if it came from our bedrock provider
+        model.provider === 'amazon-bedrock' ||
+        // Check for AI SDK Bedrock embedding model
+        (model.specificationVersion && model.provider === 'amazon-bedrock') ||
+        (model.specificationVersion && model.modelName?.includes('Titan'))) {
+      return {
+        provider: 'bedrock',
+        modelId: model.modelId || model.modelName || 'unknown',
+        instance: model
+      }
+    }
+    
+    // Check for OpenAI model
+    if (model.modelId?.includes('text-embedding') ||
+        model.constructor?.name?.includes('OpenAI')) {
+      return {
+        provider: 'openai',
+        modelId: model.modelId || 'text-embedding-ada-002',
+        instance: model
+      }
+    }
+    
+    // Additional bedrock detection for AI SDK models
+    if (model._settings && model._settings.modelId) {
+      if (model._settings.modelId.includes('amazon.titan-embed') ||
+          model._settings.modelId.includes('cohere.embed')) {
+        return {
+          provider: 'bedrock',
+          modelId: model._settings.modelId,
+          instance: model
+        }
+      }
+    }
+  }
+  
+  // If it's a string, try to detect from string
+  if (typeof model === 'string') {
+    if (model.includes('amazon.titan-embed') || model.includes('cohere.embed')) {
+      return {
+        provider: 'bedrock',
+        modelId: model,
+        instance: null
+      }
+    }
+    
+    if (model.includes('text-embedding')) {
+      return {
+        provider: 'openai',
+        modelId: model,
+        instance: null
+      }
+    }
+  }
+  
+  // Fallback to custom
+  return {
+    provider: 'custom',
+    modelId: typeof model === 'string' ? model : 'unknown',
+    instance: model
+  }
+}
+
+/**
+ * Generate embeddings using AWS Bedrock (direct API calls)
+ */
+async function generateBedrockEmbeddings(
+  texts: string[],
+  modelInfo: EmbeddingModel,
+  options: EmbeddingOptions
+): Promise<EmbeddingsResult> {
+  try {
+    // Import AWS SDK components
+    const { BedrockRuntimeClient, InvokeModelCommand } = await import('@aws-sdk/client-bedrock-runtime')
+    const { fromNodeProviderChain } = await import('@aws-sdk/credential-providers')
+    
+    // Create Bedrock client
+    const credentialOptions: any = {}
+    if (process.env.AWS_PROFILE) {
+      credentialOptions.profile = process.env.AWS_PROFILE
+    }
+    const credentials = fromNodeProviderChain(credentialOptions)
+    
+    const client = new BedrockRuntimeClient({
+      region: process.env.AWS_REGION || 'us-west-2',
+      credentials
+    })
+    
+    const embeddings: number[][] = []
+    let totalTokens = 0
+    
+    // Process each text individually (Bedrock embedding API limitation)
+    for (const text of texts) {
+      const requestBody = JSON.stringify({
+        inputText: text
+        // Note: amazon.titan-embed-text-v1 doesn't support dimensions parameter
+        // Only include dimensions for models that support it
+      })
+      
+      const command = new InvokeModelCommand({
+        modelId: modelInfo.modelId,
+        contentType: 'application/json',
+        accept: 'application/json',
+        body: requestBody
+      })
+      
+      const response = await client.send(command)
+      const responseBody = JSON.parse(new TextDecoder().decode(response.body))
+      
+      if (responseBody.embedding) {
+        embeddings.push(responseBody.embedding)
+        // Estimate token usage (rough approximation)
+        totalTokens += Math.ceil(text.length / 4)
+      } else {
+        throw new Error(`No embedding returned for text: ${text.substring(0, 50)}...`)
+      }
+    }
+    
+    // Transform to our standard format
+    const transformedEmbeddings = embeddings.map(embedding => ({
+      embedding,
+      dimensions: embedding.length
+    }))
+    
+    return {
+      embeddings: transformedEmbeddings,
+      usage: {
+        inputTokens: totalTokens,
+        outputTokens: 0,
+        totalTokens: totalTokens
+      },
+      metadata: {
+        model: modelInfo.modelId,
+        provider: 'bedrock',
+        ...options.metadata
+      }
+    }
+  } catch (error) {
+    console.error('Bedrock embeddings error:', error)
+    throw new Error(`Failed to generate Bedrock embeddings: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/**
+ * Generate embeddings using OpenAI (via AI SDK)
+ */
+async function generateOpenAIEmbeddings(
+  texts: string[],
+  modelInfo: EmbeddingModel,
+  options: EmbeddingOptions
+): Promise<EmbeddingsResult> {
+  try {
+    const { embedMany } = await import('ai')
+    
+    const embedOptions: any = {
+      model: modelInfo.instance,
+      values: texts
+    }
+    
+    if (options.dimensions) {
+      embedOptions.dimensions = options.dimensions
+    }
+    
+    const result = await embedMany(embedOptions)
+    
+    // Transform AI SDK result to our format
+    const transformedEmbeddings = result.embeddings.map((embeddingResult: any) => ({
+      embedding: embeddingResult.embedding,
+      dimensions: embeddingResult.embedding.length
+    }))
+    
+    return {
+      embeddings: transformedEmbeddings,
+      usage: result.usage ? {
+        inputTokens: result.usage.tokens || 0,
+        outputTokens: 0,
+        totalTokens: result.usage.tokens || 0
+      } : undefined,
+      metadata: {
+        model: modelInfo.modelId,
+        provider: 'openai',
+        ...options.metadata
+      }
+    }
+  } catch (error) {
+    console.error('OpenAI embeddings error:', error)
+    throw new Error(`Failed to generate OpenAI embeddings: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/**
+ * Generate embeddings using AI SDK directly (fallback for other providers)
+ */
+async function generateGenericEmbeddings(
+  texts: string[],
+  model: any,
+  options: EmbeddingOptions
+): Promise<EmbeddingsResult> {
+  try {
+    const { embedMany } = await import('ai')
+    
+    const embedOptions: any = {
+      model,
+      values: texts
+    }
+    
+    if (options.dimensions) {
+      embedOptions.dimensions = options.dimensions
+    }
+    
+    const result = await embedMany(embedOptions)
+    
+    // Transform AI SDK result to our format
+    const transformedEmbeddings = result.embeddings.map((embeddingResult: any) => ({
+      embedding: embeddingResult.embedding,
+      dimensions: embeddingResult.embedding.length
+    }))
+    
+    return {
+      embeddings: transformedEmbeddings,
+      usage: result.usage ? {
+        inputTokens: result.usage.tokens || 0,
+        outputTokens: 0,
+        totalTokens: result.usage.tokens || 0
+      } : undefined,
+      metadata: {
+        model: typeof model === 'string' ? model : 'unknown',
+        provider: 'generic',
+        ...options.metadata
+      }
+    }
+  } catch (error) {
+    console.error('Generic embeddings error:', error)
+    throw new Error(`Failed to generate embeddings: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/**
+ * Cosine similarity utility (useful for embedding comparisons)
+ */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) {
+    throw new Error('Vectors must have the same length')
+  }
+  
+  const dotProduct = a.reduce((sum, ai, i) => sum + ai * (b[i] ?? 0), 0)
+  const magnitudeA = Math.sqrt(a.reduce((sum, ai) => sum + ai * ai, 0))
+  const magnitudeB = Math.sqrt(b.reduce((sum, bi) => sum + bi * bi, 0))
+  
+  if (magnitudeA === 0 || magnitudeB === 0) {
+    return 0
+  }
+  
+  return dotProduct / (magnitudeA * magnitudeB)
+}
+
+/**
+ * Find most similar texts using cosine similarity
+ */
+export function findMostSimilar(
+  queryEmbedding: number[],
+  embeddings: number[][],
+  texts: string[],
+  topK: number = 5
+): Array<{ text: string, similarity: number, index: number }> {
+  const similarities = embeddings.map((embedding, index) => ({
+    text: texts[index] || '',
+    similarity: cosineSimilarity(queryEmbedding, embedding),
+    index
+  }))
+  
+  return similarities
+    .filter(item => item.text.length > 0)
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, topK)
+}

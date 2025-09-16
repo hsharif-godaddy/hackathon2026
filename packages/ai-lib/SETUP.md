@@ -1,0 +1,107 @@
+# 🚀 Quick Setup Guide
+
+Get started with the AI Library in 3 easy steps!
+
+## Step 1: Install Dependencies
+
+```bash
+# Install the library (OpenAI support included!)
+npm install @airo/ai-lib
+
+# For other providers, install as needed:
+npm install @ai-sdk/anthropic     # For Anthropic/Claude models
+npm install @ai-sdk/amazon-bedrock # For AWS Bedrock
+```
+
+## Step 2: Configure Environment
+
+```bash
+# Copy the example environment file
+cp env.example .env
+
+# Edit .env and add your API keys
+```
+
+### Environment Variables
+
+**For OpenAI:**
+```env
+DEFAULT_PROVIDER=openai
+OPENAI_API_KEY=your_openai_api_key_here
+DEFAULT_MODEL=gpt-4o-mini
+```
+
+**For Anthropic:**
+```env
+DEFAULT_PROVIDER=anthropic
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+DEFAULT_MODEL=claude-3-5-sonnet-20241022
+```
+
+**For AWS Bedrock:**
+```env
+DEFAULT_PROVIDER=bedrock
+AWS_REGION=us-west-2
+AWS_ACCESS_KEY_ID=your_aws_access_key_here
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key_here
+DEFAULT_MODEL=us.anthropic.claude-3-5-sonnet-20241022-v1:0
+```
+
+## Step 3: Run Examples
+
+```bash
+# Test basic functionality (no API calls)
+npm run example:basic
+
+# Run full example with AI generation
+npm run example:setup
+
+# Check setup status
+npm run setup
+```
+
+## Quick Start Code
+
+```typescript
+import { AgentFactory, tools, openAIModels } from '@airo/ai-lib'
+
+// Create agents (OpenAI support built-in!)
+const agentFactory = new AgentFactory()
+const agents = agentFactory.defineAgents({
+  assistant: {
+    name: 'Assistant',
+    systemPrompt: 'You are a helpful AI assistant.',
+    model: openAIModels.gpt4oMini(), // Auto-configured from .env
+    tools: [tools.webSearch()]
+  }
+})
+
+// Use anywhere
+const assistant = agents.get('assistant')
+const response = await assistant.generate('Hello!')
+console.log(response.content)
+```
+
+## Troubleshooting
+
+### "Cannot resolve module" Error
+For non-OpenAI providers, install the required package:
+```bash
+npm install @ai-sdk/anthropic     # For Claude models
+npm install @ai-sdk/amazon-bedrock # For Bedrock models
+```
+(OpenAI is already included!)
+
+### "API key" Error
+1. Check your `.env` file exists
+2. Verify the API key is correct
+3. Make sure you're using the right environment variable name
+
+### Environment Not Loading
+The library automatically loads `.env` from the package root. If you're running from a different directory, make sure the `.env` file is in the right location.
+
+## Need Help?
+
+- Check the `examples/` directory for more detailed examples
+- Read the main `README.md` for full API documentation
+- Look at `env.example` for all available configuration options

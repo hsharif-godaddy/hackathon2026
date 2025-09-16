@@ -1,0 +1,26 @@
+{
+  "project": "AI Document Analyzer",
+  "version": "2.1.0",
+  "features": [
+    {
+      "name": "File Processing",
+      "status": "complete",
+      "priority": "high"
+    },
+    {
+      "name": "AI Analysis",
+      "status": "in-progress",
+      "priority": "high"
+    },
+    {
+      "name": "Web Interface",
+      "status": "planned",
+      "priority": "medium"
+    }
+  ],
+  "metrics": {
+    "filesProcessed": 1247,
+    "averageProcessingTime": "2.3s",
+    "accuracy": 0.985
+  }
+}

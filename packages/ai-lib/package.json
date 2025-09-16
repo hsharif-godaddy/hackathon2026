@@ -1,0 +1,103 @@
+{
+  "name": "@airo/ai-lib",
+  "version": "0.1.0",
+  "description": "Lightweight AI SDK wrapper for building reusable agents with AI SDK 5",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "typecheck:examples": "tsc --noEmit --project tsconfig.examples.json",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write src",
+    "format:check": "prettier --check src",
+    "example:openai": "npx tsx examples/openai-basic.ts",
+    "example:bedrock": "npx tsx examples/bedrock-basic.ts",
+    "example:caching": "npx tsx examples/prompt-caching.ts",
+    "example:agentic": "npx tsx examples/agentic-runner.ts",
+    "example:streaming": "npx tsx examples/streaming-agentic.ts",
+    "example:websocket": "npx tsx examples/websocket-server.ts",
+    "example:bedrock-embeddings": "npx tsx examples/bedrock-embeddings.ts",
+    "example:embeddings-working": "npx tsx examples/bedrock-embeddings-working.ts",
+    "example:bedrock-images": "npx tsx examples/bedrock-image-generation.ts",
+    "example:check-models": "npx tsx examples/check-bedrock-models.ts",
+    "example:test-models": "npx tsx examples/test-image-models.ts",
+    "example:file-processing": "npx tsx examples/file-input-processing.ts",
+    "example:setup": "npx tsx examples/easy-setup.ts",
+    "setup": "echo 'Copy env.example to .env and fill in your API keys, then run npm run example:setup'"
+  },
+  "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^3.0.21",
+    "@ai-sdk/openai": "^2.0.30",
+    "@aws-sdk/client-bedrock-runtime": "^3.890.0",
+    "@aws-sdk/credential-providers": "^3.888.0",
+    "ai": "^5.0.44",
+    "dotenv": "^16.4.7",
+    "socket.io": "^4.8.1",
+    "zod": "^3.25.76"
+  },
+  "peerDependencies": {
+    "@ai-sdk/anthropic": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@ai-sdk/anthropic": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
+    "express": "^4.18.2",
+    "prettier": "^3.1.0",
+    "typescript": "^5.3.0",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "ai",
+    "ai-sdk",
+    "agents",
+    "llm",
+    "typescript",
+    "openai",
+    "anthropic",
+    "claude",
+    "gpt",
+    "websocket",
+    "socket.io",
+    "streaming",
+    "real-time"
+  ],
+  "author": "Airo AI Builder",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
