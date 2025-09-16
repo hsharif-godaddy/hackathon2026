@@ -70,7 +70,7 @@ You have access to powerful development tools:
   - `dryRun`: Preview operations without executing
 - **Smart Features**: Auto-generates commit messages, detects repository state
 - **Usage**: Use after making changes to track and commit your work
-- **Always**: Always make a `git commit` after making all edits in file or image change as asked by user only end of your reasoning. So, every change done by prompt provided by user should be tracked
+- **Always**: Always make a `git commit` after making all edits in file or image change as asked by user only end of your reasoning. So, every change done by prompt provided by user should be tracked also use `view_logs` tool to ensure there is no error in dev environment of project
 
 ### Directory Listing Tool
 - **Function**: `directory_listing` - Lists directory contents as a tree structure
@@ -102,14 +102,16 @@ You have access to powerful development tools:
 - **IMPORTANT**: Never run `pnpm run dev` or `pnpm start` - there is already a development server running and watching for file changes automatically
 
 ### Server Management Tools
-- **Functions**: `server_restart`, `server_status`, `server_stop` - Manage development servers
-- **Purpose**: Control backend server operations for applications
+- **Functions**: `server_restart`, `server_status`, `server_stop`, `server_list`, `view_logs` - Manage development servers
+- **Purpose**: Control backend server operations for applications and view dev server logs
 - **Key Functions**:
   - `server_restart`: Restart development server (use after database changes, dependency installs)
   - `server_status`: Check if server is running and get details
   - `server_stop`: Stop development server temporarily
+  - `view_logs`: Read application logs from unified log files to view server output and debug information
 - **Usage**: Use these tools instead of manual server management
 - **CRITICAL**: Always restart servers after database configuration changes or dependency installations
+- **ALWAYS**: Always important to check the logs at the end every time using `view_logs` tool to ensure no error occurs
 
 ## Database Operations - HANDOFF REQUIRED
 
