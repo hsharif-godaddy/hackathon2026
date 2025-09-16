@@ -2,7 +2,6 @@ interface Config {
   account: string;
   region: string;
   envName: string;
-  route53BaseDomain: string;
   v2CellAccount: string;
   databases: string[];
   vpnIps: any;
@@ -15,7 +14,6 @@ const devConfig: Config = {
   account: '694282668781',
   region: 'us-west-2',
   envName: 'dev',
-  route53BaseDomain: 'airo-builder.dp.aws.gdcld.net',
   v2CellAccount: '418549769352',
   databases: ['pre-dev', 'dev', 'test'],
   backupRetentionDays: 7,
@@ -40,7 +38,6 @@ const testConfig: Config = {
   account: '269423819739',
   region: 'us-west-2',
   envName: 'test',
-  route53BaseDomain: 'airo-builder.test.aws.gdcld.net',
   v2CellAccount: '418549769352',
   databases: ['test'],
   backupRetentionDays: 15,
@@ -57,7 +54,6 @@ const prodConfig: Config = {
   account: 'NOT_DEFINED', // FIXME : Update with actual prod account when available
   region: 'us-west-2',
   envName: 'prod',
-  route53BaseDomain: 'airo-builder.aws.gdcld.net',
   v2CellAccount: 'NOT_DEFINED',
   databases: ['prod'],
   backupRetentionDays: 30,
