@@ -1,3 +1,4 @@
+import { logger } from './request-context';
 // Gasket configuration for Airo App Builder authentication
 
 // Extend globalThis type for auth logging flag and config cache
@@ -73,7 +74,7 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
     }
     return await response.json();
   } catch (error) {
-    console.warn('Failed to load runtime config, using static config:', error);
+    logger.warn('Failed to load runtime config, using static config:', error);
     return staticGasketConfig;
   }
 }
@@ -165,10 +166,10 @@ export async function isAuthDisabled(): Promise<boolean> {
   const gasketConfig = await getGasketConfig();
   const disabled = gasketConfig.auth.disableInDev;
   if (disabled && typeof globalThis !== 'undefined' && !globalThis.__authDisabledLogged) {
-    console.log('🔧 Authentication disabled in development (NEXT_PUBLIC_AUTH_IN_DEV=true)');
-    console.log('   - All protected routes are accessible');
-    console.log('   - JWT validation returns mock success');
-    console.log('   - No SSO calls will be made');
+    logger.info('🔧 Authentication disabled in development (NEXT_PUBLIC_AUTH_IN_DEV=true)');
+    logger.info('   - All protected routes are accessible');
+    logger.info('   - JWT validation returns mock success');
+    logger.info('   - No SSO calls will be made');
     globalThis.__authDisabledLogged = true;
   }
   return disabled;

@@ -1,4 +1,5 @@
 import { DatabaseAdapter, DatabaseConfig, DatabaseResult, DatabaseRow } from './types';
+import { logger } from '../request-context';
 import path from 'path';
 
 /**
@@ -25,11 +26,13 @@ class DatabaseManager {
     
     this.hasMySqlCredentials = hasDatabaseUrl || hasIndividualMysqlVars;
 
-    console.log('🔍 DatabaseManager initialization:', {
-      hasDatabaseUrl,
-      hasIndividualMysqlVars,
-      willUseMysql: this.hasMySqlCredentials,
-      databaseUrl: process.env.DATABASE_URL ? 'set' : 'unset'
+    logger.info('db_manager_init', '🔍 DatabaseManager initialization', {
+      data: {
+        hasDatabaseUrl,
+        hasIndividualMysqlVars,
+        willUseMysql: this.hasMySqlCredentials,
+        databaseUrl: process.env.DATABASE_URL ? 'set' : 'unset'
+      }
     });
 
     this.adapter = this.createAdapter();
@@ -68,7 +71,7 @@ class DatabaseManager {
           password: url.password,
           database: url.pathname.slice(1) // Remove leading slash
         };
-        console.log('🔌 Connecting to MySQL via DATABASE_URL:', `${config.host}:${config.port}/${config.database}`);
+        logger.info('db_mysql_connection', `🔌 Connecting to MySQL via DATABASE_URL: ${config.host}:${config.port}/${config.database}`);
       } else {
         // Use individual MySQL env vars (legacy)
         config = {
@@ -79,7 +82,7 @@ class DatabaseManager {
           password: process.env.MYSQL_DB_PASSWORD,
           database: process.env.MYSQL_DB_NAME || 'airo_builder'
         };
-        console.log('🔌 Connecting to MySQL via individual env vars:', config.host);
+        logger.info('db_mysql_connection', `🔌 Connecting to MySQL via individual env vars: ${config.host}`);
       }
 
       if (!config.user || !config.password) {
@@ -113,17 +116,17 @@ class DatabaseManager {
     }
 
     if (this.schemaInitializing) {
-      console.log('🔄 Schema initialization already in progress, waiting...');
+      logger.info('db_schema_init', '🔄 Schema initialization already in progress, waiting...');
       await this.schemaInitializing;
       return;
     }
 
-    console.log('🚀 Starting database schema initialization...');
+    logger.info('db_schema_init', '🚀 Starting database schema initialization...');
     this.schemaInitializing = this.initializeSchema();
     await this.schemaInitializing;
     this.schemaInitialized = true;
     this.schemaInitializing = null;
-    console.log('✅ Database schema initialization completed');
+    logger.info('db_schema_init', '✅ Database schema initialization completed');
   }
 
   private async initializeSchema(): Promise<void> {
@@ -135,15 +138,15 @@ class DatabaseManager {
         await this.initializeSQLiteSchema();
       }
 
-      console.log('✅ Database schema initialized successfully');
+      logger.info('db_schema_init', '✅ Database schema initialized successfully');
     } catch (error) {
-      console.error('❌ Error initializing database schema:', error);
+      logger.error('db_schema_init', '❌ Error initializing database schema', { error: error as Error });
       throw error;
     }
   }
 
   private async initializeMySQLSchema(): Promise<void> {
-    console.log('🔧 Initializing MySQL schema in production...');
+    logger.info('db_mysql_schema', '🔧 Initializing MySQL schema in production...');
 
     // Check if tables already exist (e.g., from Prisma migrations)
     try {
@@ -151,11 +154,11 @@ class DatabaseManager {
         "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'accounts'"
       );
       if (result && result.count > 0) {
-        console.log('✅ Database tables already exist (likely from Prisma), skipping custom initialization');
+        logger.info('db_mysql_schema', '✅ Database tables already exist (likely from Prisma), skipping custom initialization');
         return;
       }
     } catch (error) {
-      console.log('⚠️ Could not check existing tables, proceeding with initialization:', error);
+      logger.warn('db_mysql_schema', '⚠️ Could not check existing tables, proceeding with initialization', { error: error as Error });
     }
 
     // MySQL-specific schema initialization
@@ -211,27 +214,27 @@ class DatabaseManager {
       ('550e8400-e29b-41d4-a716-446655440003', 'Pro', 100, 50.00);
     `;
 
-    console.log('📋 Creating plans table...');
+    logger.info('db_mysql_schema', '📋 Creating plans table...');
     await this.adapter.exec(plansTableSQL);
 
-    console.log('👤 Creating accounts table...');
+    logger.info('db_mysql_schema', '👤 Creating accounts table...');
     await this.adapter.exec(accountsTableSQL);
 
-    console.log('🌐 Creating sites table...');
+    logger.info('db_mysql_schema', '🌐 Creating sites table...');
     await this.adapter.exec(sitesTableSQL);
 
-    console.log('📊 Creating indexes...');
+    logger.info('db_mysql_schema', '📊 Creating indexes...');
     await this.adapter.exec(sitesIndexSQL);
     await this.adapter.exec(sitesCephIndexSQL);
 
-    console.log('🗂️ Inserting default plans...');
+    logger.info('db_mysql_schema', '🗂️ Inserting default plans...');
     await this.adapter.exec(defaultPlansSQL);
 
-    console.log('✅ MySQL schema initialization completed successfully');
+    logger.info('db_mysql_schema', '✅ MySQL schema initialization completed successfully');
   }
 
   private async initializeSQLiteSchema(): Promise<void> {
-    console.log('🔧 Initializing SQLite schema in development...');
+    logger.info('db_sqlite_schema', '🔧 Initializing SQLite schema in development...');
 
     // Check if tables already exist (e.g., from Prisma migrations)
     try {
@@ -239,11 +242,11 @@ class DatabaseManager {
         "SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='accounts'"
       );
       if (result && result.count > 0) {
-        console.log('✅ Database tables already exist (likely from Prisma), skipping custom initialization');
+        logger.info('db_sqlite_schema', '✅ Database tables already exist (likely from Prisma), skipping custom initialization');
         return;
       }
     } catch (error) {
-      console.log('⚠️ Could not check existing tables, proceeding with initialization:', error);
+      logger.warn('db_sqlite_schema', '⚠️ Could not check existing tables, proceeding with initialization', { error: error as Error });
     }
 
     // Keep the original SQLite schema initialization logic
@@ -327,28 +330,28 @@ class DatabaseManager {
       ('550e8400-e29b-41d4-a716-446655440003', 'Pro', 100, 50.00);
     `;
 
-    console.log('📋 Creating plans table...');
+    logger.info('db_sqlite_schema', '📋 Creating plans table...');
     await this.adapter.exec(plansTableSQL);
 
-    console.log('👤 Creating accounts table...');
+    logger.info('db_sqlite_schema', '👤 Creating accounts table...');
     await this.adapter.exec(accountsTableSQL);
 
-    console.log('🌐 Creating sites table...');
+    logger.info('db_sqlite_schema', '🌐 Creating sites table...');
     await this.adapter.exec(sitesTableSQL);
 
-    console.log('⚡ Creating triggers...');
+    logger.info('db_sqlite_schema', '⚡ Creating triggers...');
     await this.adapter.exec(accountsTriggerSQL);
     await this.adapter.exec(plansTriggerSQL);
     await this.adapter.exec(sitesTriggerSQL);
 
-    console.log('📊 Creating indexes...');
+    logger.info('db_sqlite_schema', '📊 Creating indexes...');
     await this.adapter.exec(sitesIndexSQL);
     await this.adapter.exec(sitesCephIndexSQL);
 
-    console.log('🗂️ Inserting default plans...');
+    logger.info('db_sqlite_schema', '🗂️ Inserting default plans...');
     await this.adapter.exec(defaultPlansSQL);
 
-    console.log('✅ SQLite schema initialization completed successfully');
+    logger.info('db_sqlite_schema', '✅ SQLite schema initialization completed successfully');
   }
 
   // Helper methods that handle both sync and async responses
@@ -397,7 +400,7 @@ class DatabaseManager {
   private async runMigrations(): Promise<void> {
     if (this.hasMySqlCredentials) {
       // MySQL: No legacy migrations needed for new production databases
-      console.log('🔍 MySQL production database - no legacy migrations needed');
+      logger.info('db_migration', '🔍 MySQL production database - no legacy migrations needed');
       return;
     }
 
@@ -406,11 +409,11 @@ class DatabaseManager {
       const tableInfo = this.adapter.pragma?.('table_info(sites)') || [];
 
       if (tableInfo.length === 0) {
-        console.log('🔍 Fresh database - schema will be created by CREATE TABLE IF NOT EXISTS');
+        logger.info('db_migration', '🔍 Fresh database - schema will be created by CREATE TABLE IF NOT EXISTS');
         return;
       }
 
-      console.log('🔍 Existing database detected - checking for required migrations...');
+      logger.info('db_migration', '🔍 Existing database detected - checking for required migrations...');
       const columns = tableInfo.map((col: any) => col.name);
       let migrationsRun = 0;
 
@@ -425,25 +428,25 @@ class DatabaseManager {
 
       // Migration: Status constraint migration is now handled by Prisma
       // This old migration logic is deprecated and replaced by Prisma migrations
-      console.log('🔄 Legacy status constraint migration skipped - now handled by Prisma');
+      logger.info('db_migration', '🔄 Legacy status constraint migration skipped - now handled by Prisma');
 
       for (const col of requiredColumns) {
         if (!columns.includes(col.name)) {
-          console.log(`🔄 Adding missing column: ${col.name}`);
+          logger.info('db_migration', `🔄 Adding missing column: ${col.name}`);
           await this.adapter.exec(`ALTER TABLE sites ADD COLUMN ${col.name} ${col.type};`);
           migrationsRun++;
         }
       }
 
       if (migrationsRun > 0) {
-        console.log(`✅ Database migration completed successfully (${migrationsRun} operations)`);
+        logger.info('db_migration', `✅ Database migration completed successfully (${migrationsRun} operations)`);
       } else {
-        console.log('✅ Database is up to date - no migrations needed');
+        logger.info('db_migration', '✅ Database is up to date - no migrations needed');
       }
 
     } catch (error) {
-      console.error('❌ Database migration failed:', error);
-      console.log('🔄 Attempting to continue with existing schema...');
+      logger.error('db_migration', '❌ Database migration failed', { error: error as Error });
+      logger.info('db_migration', '🔄 Attempting to continue with existing schema...');
     }
   }
 }

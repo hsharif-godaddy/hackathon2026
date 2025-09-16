@@ -48,7 +48,7 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
     });
     
   } catch (error) {
-    console.error('Error fetching account:', error);
+    logger.error('Error fetching account:', error);
     return NextResponse.json(
       { 
         success: false, 
@@ -91,7 +91,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }, { status: 201 });
 
   } catch (error) {
-    console.error('Error creating account:', error);
+    logger.error('Error creating account:', error);
     return NextResponse.json(
       { 
         success: false, 
@@ -158,7 +158,7 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
     });
 
   } catch (error) {
-    console.error('Error updating account:', error);
+    logger.error('Error updating account:', error);
     return NextResponse.json(
       { 
         success: false, 

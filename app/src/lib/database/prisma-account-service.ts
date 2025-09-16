@@ -5,6 +5,7 @@
 
 import { PrismaClient, AccountStatus } from '@/generated/prisma';
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from '../request-context';
 
 // Singleton Prisma client
 let prisma: PrismaClient;
@@ -53,7 +54,7 @@ export class PrismaAccountService {
       
       return account ? this.mapAccountFromPrisma(account) : null;
     } catch (error) {
-      console.error('Error finding account by shopper_id:', error);
+      logger.error('prisma_account_service', 'Error finding account by shopper_id', { error: error as Error });
       throw error;
     }
   }
@@ -69,7 +70,7 @@ export class PrismaAccountService {
       
       return account ? this.mapAccountFromPrisma(account) : null;
     } catch (error) {
-      console.error('Error finding account by customer_id:', error);
+      logger.error('prisma_account_service', 'Error finding account by customer_id', { error: error as Error });
       throw error;
     }
   }
@@ -108,7 +109,7 @@ export class PrismaAccountService {
 
       return this.mapAccountFromPrisma(account);
     } catch (error) {
-      console.error('Error creating account:', error);
+      logger.error('prisma_account_service', 'Error creating account', { error: error as Error });
       throw error;
     }
   }
@@ -124,7 +125,7 @@ export class PrismaAccountService {
       });
       return !!result;
     } catch (error) {
-      console.error('Error updating account status:', error);
+      logger.error('prisma_account_service', 'Error updating account status', { error: error as Error });
       return false;
     }
   }
@@ -144,7 +145,7 @@ export class PrismaAccountService {
 
       return account;
     } catch (error) {
-      console.error('Error getting or creating account:', error);
+      logger.error('prisma_account_service', 'Error getting or creating account', { error: error as Error });
       throw error;
     }
   }
@@ -160,7 +161,7 @@ export class PrismaAccountService {
       
       return accounts.map(account => this.mapAccountFromPrisma(account));
     } catch (error) {
-      console.error('Error getting all accounts:', error);
+      logger.error('prisma_account_service', 'Error getting all accounts', { error: error as Error });
       throw error;
     }
   }
@@ -200,7 +201,7 @@ export class PrismaAccountService {
       
       return mappedAccount;
     } catch (error) {
-      console.error('Error getting account with plan:', error);
+      logger.error('prisma_account_service', 'Error getting account with plan', { error: error as Error });
       return null;
     }
   }
@@ -221,10 +222,10 @@ export class PrismaAccountService {
         },
       });
 
-      console.log(`✅ Created new plan: ${name} (${id})`);
+      logger.info('prisma_account_service', `✅ Created new plan: ${name} (${id})`);
       return this.mapPlanFromPrisma(plan);
     } catch (error) {
-      console.error('Error creating plan:', error);
+      logger.error('prisma_account_service', 'Error creating plan', { error: error as Error });
       throw error;
     }
   }
@@ -240,7 +241,7 @@ export class PrismaAccountService {
       
       return plans.map(plan => this.mapPlanFromPrisma(plan));
     } catch (error) {
-      console.error('Error getting all plans:', error);
+      logger.error('prisma_account_service', 'Error getting all plans', { error: error as Error });
       throw error;
     }
   }

@@ -1,3 +1,4 @@
+import { logger } from '../../request-context';
 import { spawn } from 'child_process';
 import net from 'net';
 import { DevDatabase } from '../database/DevDatabase';
@@ -27,14 +28,14 @@ export class LocalAppService implements IAppAdapter {
   async initialize(): Promise<void> {
     if (this.initialized) return;
     
-    console.log('🔄 Initializing Local Process Deployment Service...');
+    logger.info('🔄 Initializing Local Process Deployment Service...');
     
     try {
       await this.recoverOrphanedProcesses();
       this.initialized = true;
-      console.log('✅ Local Process Deployment Service initialization completed');
+      logger.info('✅ Local Process Deployment Service initialization completed');
     } catch (error) {
-      console.error('❌ Local Process Deployment Service initialization failed:', error);
+      logger.error('❌ Local Process Deployment Service initialization failed:', error);
       throw new ProcessError(`Local service initialization failed: ${(error as Error).message}`);
     }
   }
@@ -61,14 +62,14 @@ export class LocalAppService implements IAppAdapter {
       
       // Check if already running
       if (this.runningProcesses.has(appId)) {
-        console.log(`📱 App ${appId} is already running`);
+        logger.info(`📱 App ${appId} is already running`);
         return true;
       }
       
       await this.startDevServer(appId, devApp.appPath, devApp.port, devApp.templateVersion);
       return true;
     } catch (error) {
-      console.error(`❌ Failed to start app ${appId}:`, error);
+      logger.error(`❌ Failed to start app ${appId}:`, error);
       throw new ProcessError(`Failed to start app: ${(error as Error).message}`, appId);
     }
   }
@@ -77,7 +78,7 @@ export class LocalAppService implements IAppAdapter {
     try {
       return await this.stopDevServer(appId);
     } catch (error) {
-      console.error(`❌ Failed to stop app ${appId}:`, error);
+      logger.error(`❌ Failed to stop app ${appId}:`, error);
       throw new ProcessError(`Failed to stop app: ${(error as Error).message}`, appId);
     }
   }
@@ -99,7 +100,7 @@ export class LocalAppService implements IAppAdapter {
       await this.startDevServer(appId, devApp.appPath, devApp.port, devApp.templateVersion);
       return true;
     } catch (error) {
-      console.error(`❌ Failed to restart app ${appId}:`, error);
+      logger.error(`❌ Failed to restart app ${appId}:`, error);
       throw new ProcessError(`Failed to restart app: ${(error as Error).message}`, appId);
     }
   }
@@ -134,22 +135,22 @@ export class LocalAppService implements IAppAdapter {
   async stopAllServers(): Promise<number> {
     let stoppedCount = 0;
     
-    console.log(`💻 Stopping ${this.runningProcesses.size} local process(es)...`);
+    logger.info(`💻 Stopping ${this.runningProcesses.size} local process(es)...`);
     
     for (const [appId, process] of this.runningProcesses) {
       try {
         process.process.kill('SIGTERM');
         // Update database record to mark as stopped
         this.devDb.removeProcessRecord(appId);
-        console.log(`✅ Stopped development server for app ${appId}`);
+        logger.info(`✅ Stopped development server for app ${appId}`);
         stoppedCount++;
       } catch (error) {
-        console.warn(`⚠️ Failed to stop dev server for app ${appId}:`, error);
+        logger.warn(`⚠️ Failed to stop dev server for app ${appId}:`, error);
       }
     }
     
     this.runningProcesses.clear();
-    console.log(`✅ Stopped ${stoppedCount} local process(es)`);
+    logger.info(`✅ Stopped ${stoppedCount} local process(es)`);
     return stoppedCount;
   }
 
@@ -185,7 +186,7 @@ export class LocalAppService implements IAppAdapter {
         };
       }
     } catch (error) {
-      console.error(`❌ Failed to get app status for ${appId}:`, error);
+      logger.error(`❌ Failed to get app status for ${appId}:`, error);
       return {
         status: 'error',
         message: (error as Error).message
@@ -208,7 +209,7 @@ export class LocalAppService implements IAppAdapter {
           this.runningProcesses.delete(record.appId);
           this.devDb.removeProcessRecord(record.appId);
           cleanedCount++;
-          console.log(`🧹 Cleaned up orphaned process for app ${record.appId} (PID: ${record.pid})`);
+          logger.info(`🧹 Cleaned up orphaned process for app ${record.appId} (PID: ${record.pid})`);
         }
       }
       
@@ -217,23 +218,23 @@ export class LocalAppService implements IAppAdapter {
         cleaned: cleanedCount
       };
     } catch (error) {
-      console.error('❌ Failed to cleanup orphans:', error);
+      logger.error('❌ Failed to cleanup orphans:', error);
       throw new ProcessError(`Cleanup failed: ${(error as Error).message}`);
     }
   }
 
   async removeApp(appId: string): Promise<boolean> {
     try {
-      console.log(`💻 Removing local app artifacts for app ${appId}...`);
+      logger.info(`💻 Removing local app artifacts for app ${appId}...`);
       
       // Stop any running processes
       const processInfo = this.runningProcesses.get(appId);
       if (processInfo) {
         try {
           processInfo.process.kill('SIGTERM');
-          console.log(`✅ Stopped local process for app ${appId}`);
+          logger.info(`✅ Stopped local process for app ${appId}`);
         } catch (error) {
-          console.log(`ℹ️ Process for app ${appId} was already stopped`);
+          logger.info(`ℹ️ Process for app ${appId} was already stopped`);
         }
         this.runningProcesses.delete(appId);
       }
@@ -241,10 +242,10 @@ export class LocalAppService implements IAppAdapter {
       // Remove from database
       this.devDb.removeProcessRecord(appId);
       
-      console.log(`✅ Local artifacts removed for app ${appId}`);
+      logger.info(`✅ Local artifacts removed for app ${appId}`);
       return true;
     } catch (error) {
-      console.error(`❌ Failed to remove local artifacts for app ${appId}:`, error);
+      logger.error(`❌ Failed to remove local artifacts for app ${appId}:`, error);
       throw new ProcessError(`Failed to remove local artifacts: ${(error as Error).message}`, appId);
     }
   }
@@ -255,20 +256,20 @@ export class LocalAppService implements IAppAdapter {
 
   async cleanup(): Promise<void> {
     try {
-      console.log('🧹 Stopping all local development servers...');
+      logger.info('🧹 Stopping all local development servers...');
       
       const stopPromises = Array.from(this.runningProcesses.keys()).map(appId => 
         this.stopDevServer(appId).catch(err => 
-          console.error(`Failed to stop server for app ${appId}:`, err)
+          logger.error(`Failed to stop server for app ${appId}:`, err)
         )
       );
       
       await Promise.all(stopPromises);
       this.runningProcesses.clear();
       
-      console.log('✅ Local Process Deployment Service cleanup completed');
+      logger.info('✅ Local Process Deployment Service cleanup completed');
     } catch (error) {
-      console.error('❌ Local Process Deployment Service cleanup failed:', error);
+      logger.error('❌ Local Process Deployment Service cleanup failed:', error);
     }
   }
 
@@ -277,11 +278,11 @@ export class LocalAppService implements IAppAdapter {
    */
 
   private async recoverOrphanedProcesses(): Promise<void> {
-    console.log('🔍 Recovering orphaned processes...');
+    logger.info('🔍 Recovering orphaned processes...');
     
     try {
       const runningRecords = this.devDb.getRunningProcesses();
-      console.log(`🔍 Found ${runningRecords.length} potentially running process(es) in database`);
+      logger.info(`🔍 Found ${runningRecords.length} potentially running process(es) in database`);
     
       for (const record of runningRecords) {
         const isAlive = await this.isProcessAlive(record.pid);
@@ -293,15 +294,15 @@ export class LocalAppService implements IAppAdapter {
             port: record.port,
             startedAt: record.startedAt
           });
-          console.log(`✅ Recovered running process for app ${record.appId} (PID: ${record.pid})`);
+          logger.info(`✅ Recovered running process for app ${record.appId} (PID: ${record.pid})`);
         } else {
           // Process is dead, clean up
           this.devDb.removeProcessRecord(record.appId);
-          console.log(`🧹 Cleaned up dead process record for app ${record.appId} (PID: ${record.pid})`);
+          logger.info(`🧹 Cleaned up dead process record for app ${record.appId} (PID: ${record.pid})`);
         }
       }
     } catch (error) {
-      console.error('🚨 Error in recoverOrphanedProcesses:', error);
+      logger.error('🚨 Error in recoverOrphanedProcesses:', error);
       throw error;
     }
   }
@@ -347,7 +348,7 @@ export class LocalAppService implements IAppAdapter {
   }
 
   private async startDevServer(appId: string, appPath: string, port: number, templateVersion: string = 'v1'): Promise<void> {
-    console.log(`🚀 Starting development server for app ${appId} on port ${port}...`);
+    logger.info(`🚀 Starting development server for app ${appId} on port ${port}...`);
     
     // Check if port is already in use
     const isPortFree = await this.isPortAvailable(port);
@@ -383,13 +384,13 @@ export class LocalAppService implements IAppAdapter {
     
     // Handle process events
     child.on('exit', (code) => {
-      console.log(`📱 Dev server for app ${appId} exited with code ${code}`);
+      logger.info(`📱 Dev server for app ${appId} exited with code ${code}`);
       this.runningProcesses.delete(appId);
       this.devDb.removeProcessRecord(appId);
     });
     
     child.on('error', (error) => {
-      console.error(`❌ Error starting dev server for app ${appId}:`, error);
+      logger.error(`❌ Error starting dev server for app ${appId}:`, error);
       this.runningProcesses.delete(appId);
       this.devDb.removeProcessRecord(appId);
     });
@@ -397,14 +398,14 @@ export class LocalAppService implements IAppAdapter {
     // Log output and detect actual running port
     child.stdout?.on('data', (data) => {
       const output = data.toString().trim();
-      console.log(`[${appId}] ${output}`);
+      logger.info(`[${appId}] ${output}`);
       
       // Parse actual port from Vite output
       const vitePortMatch = output.match(/Local:\s+http:\/\/localhost:(\d+)/);
       if (vitePortMatch) {
         const actualPort = parseInt(vitePortMatch[1]);
         if (actualPort !== port) {
-          console.log(`🔄 Port changed for app ${appId}: ${port} → ${actualPort}`);
+          logger.info(`🔄 Port changed for app ${appId}: ${port} → ${actualPort}`);
           // Update the process info with actual port
           const processInfo = this.runningProcesses.get(appId);
           if (processInfo) {
@@ -415,22 +416,22 @@ export class LocalAppService implements IAppAdapter {
     });
     
     child.stderr?.on('data', (data) => {
-      console.error(`[${appId}] ${data.toString().trim()}`);
+      logger.error(`[${appId}] ${data.toString().trim()}`);
     });
     
-    console.log(`✅ Development server started for app ${appId} (PID: ${child.pid})`);
+    logger.info(`✅ Development server started for app ${appId} (PID: ${child.pid})`);
   }
 
   private async stopDevServer(appId: string): Promise<boolean> {
     const processInfo = this.runningProcesses.get(appId);
     
     if (!processInfo) {
-      console.log(`📱 No running process found for app ${appId}`);
+      logger.info(`📱 No running process found for app ${appId}`);
       return true; // Already stopped
     }
     
     try {
-      console.log(`🛑 Stopping development server for app ${appId} (PID: ${processInfo.pid})`);
+      logger.info(`🛑 Stopping development server for app ${appId} (PID: ${processInfo.pid})`);
       
       // Kill the process
       if (processInfo.process) {
@@ -445,7 +446,7 @@ export class LocalAppService implements IAppAdapter {
       // Force kill if still running
       const isAlive = await this.isProcessAlive(processInfo.pid);
       if (isAlive) {
-        console.log(`🔫 Force killing process for app ${appId}`);
+        logger.info(`🔫 Force killing process for app ${appId}`);
         if (processInfo.process) {
           processInfo.process.kill('SIGKILL');
         } else {
@@ -457,10 +458,10 @@ export class LocalAppService implements IAppAdapter {
       this.runningProcesses.delete(appId);
       this.devDb.removeProcessRecord(appId);
       
-      console.log(`✅ Development server stopped for app ${appId}`);
+      logger.info(`✅ Development server stopped for app ${appId}`);
       return true;
     } catch (error) {
-      console.error(`❌ Error stopping dev server for app ${appId}:`, error);
+      logger.error(`❌ Error stopping dev server for app ${appId}:`, error);
       return false;
     }
   }

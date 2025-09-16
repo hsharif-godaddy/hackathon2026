@@ -1,3 +1,4 @@
+import { logger } from '../request-context';
 /**
  * Database seeding utility for test user
  * Creates a test account that works with the existing auth system
@@ -21,27 +22,27 @@ export async function ensureTestUserExists(): Promise<void> {
     let account = await accountService.findByShopperId(testShopperId);
     
     if (!account) {
-      console.log('🌱 Seeding test user account...');
+      logger.info('🌱 Seeding test user account...');
       try {
         account = await accountService.createAccount(testShopperId, testCustomerId);
-        console.log(`✅ Test user account created: ${account.id} (shopper: ${testShopperId})`);
+        logger.info(`✅ Test user account created: ${account.id} (shopper: ${testShopperId})`);
       } catch (error: any) {
         // Account might already exist due to race condition
         if (error.message.includes('UNIQUE constraint failed')) {
           account = await accountService.findByCustomerId(testCustomerId);
           if (account) {
-            console.log(`✅ Test user account found: ${account.id}`);
+            logger.info(`✅ Test user account found: ${account.id}`);
           }
         } else {
-          console.error('❌ Failed to create test user account:', error);
+          logger.error('❌ Failed to create test user account:', error);
           throw error;
         }
       }
     } else {
-      console.log(`✅ Test user account exists: ${account.id}`);
+      logger.info(`✅ Test user account exists: ${account.id}`);
     }
   } catch (error) {
-    console.error('❌ Error ensuring test user exists:', error);
+    logger.error('❌ Error ensuring test user exists:', error);
     throw error;
   }
 }

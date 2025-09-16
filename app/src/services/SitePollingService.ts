@@ -1,4 +1,5 @@
 import { appFetch } from '@/lib/gasket-config';
+import { logger } from '@/lib/request-context';
 
 export interface SiteStatus {
   siteId: string;
@@ -46,7 +47,7 @@ export class SitePollingService {
       const poll = async () => {
         try {
           attempts++;
-          console.log(`🔄 Polling services health (${attempts}/${this.maxAttempts}):`, siteId);
+          logger.info(`🔄 Polling services health (${attempts}/${this.maxAttempts}):`, siteId);
 
           // Get site data from database to get URLs
           const siteResponse = await appFetch(`/api/sites/${siteId}`);
@@ -61,7 +62,7 @@ export class SitePollingService {
           const site = await siteResponse.json();
 
           if (!site.agent_url) {
-            console.log('🔄 Agent URL not available yet:', { agent_url: site.agent_url });
+            logger.info('🔄 Agent URL not available yet:', { agent_url: site.agent_url });
 
             // Continue polling if agent URL not set yet
             if (attempts < this.maxAttempts) {
@@ -92,7 +93,7 @@ export class SitePollingService {
             message: `Agent: ${agentHealthy ? '✅' : '❌'}, Frontend: ${frontendHealthy ? '✅' : '❌'}`
           };
 
-          console.log('🐛 DEBUG: All services health check:', {
+          logger.info('🐛 DEBUG: All services health check:', {
             siteId,
             agentHealthy,
             frontendHealthy,
@@ -107,14 +108,14 @@ export class SitePollingService {
 
           // Check if agent is ready
           if (siteStatus.ready) {
-            console.log('✅ All services are healthy! Creating app...', siteId);
+            logger.info('✅ All services are healthy! Creating app...', siteId);
 
             try {
               // Check if app already exists to avoid duplicates
               const appExists = await this.checkAppExists(siteId, site.agent_url);
 
               if (appExists) {
-                console.log('✅ App already exists for site:', siteId);
+                logger.info('✅ App already exists for site:', siteId);
                 await this.updateSiteStatus(siteId, 'running');
                 resolve({
                   success: true,
@@ -134,7 +135,7 @@ export class SitePollingService {
                 reject(new Error(createAppResult.error || 'Failed to create app'));
               }
             } catch (createError) {
-              console.error('❌ Failed to create app:', createError);
+              logger.error('❌ Failed to create app:', createError);
               await this.updateSiteStatus(siteId, 'failed');
               reject(createError);
             }
@@ -145,13 +146,13 @@ export class SitePollingService {
           if (attempts < this.maxAttempts) {
             setTimeout(poll, this.pollInterval);
           } else {
-            console.log('⏰ Services health polling timed out:', siteId);
+            logger.info('⏰ Services health polling timed out:', siteId);
             await this.updateSiteStatus(siteId, 'failed');
             reject(new Error('Services health polling timed out'));
           }
 
         } catch (error) {
-          console.error('❌ Error polling services health:', error);
+          logger.error('❌ Error polling services health:', error);
 
           if (attempts >= this.maxAttempts) {
             await this.updateSiteStatus(siteId, 'failed');
@@ -173,7 +174,7 @@ export class SitePollingService {
    */
   private async checkUrlHealth(url: string, serviceName: string): Promise<boolean> {
     try {
-      console.log(`🔍 Checking ${serviceName} health:`, url);
+      logger.info(`🔍 Checking ${serviceName} health:`, url);
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
@@ -200,7 +201,7 @@ export class SitePollingService {
       clearTimeout(timeoutId);
 
       const isHealthy = response.ok;
-      console.log(`${isHealthy ? '✅' : '❌'} ${serviceName} health check:`, {
+      logger.info(`${isHealthy ? '✅' : '❌'} ${serviceName} health check:`, {
         url,
         status: response.status,
         healthy: isHealthy
@@ -209,7 +210,7 @@ export class SitePollingService {
       return isHealthy;
 
     } catch (error) {
-      console.log(`❌ ${serviceName} health check failed:`, {
+      logger.info(`❌ ${serviceName} health check failed:`, {
         url,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -222,7 +223,7 @@ export class SitePollingService {
    */
   private async checkAppExists(siteId: string, agentUrl: string): Promise<boolean> {
     try {
-      console.log('🔍 Checking if app already exists for site:', siteId);
+      logger.info('🔍 Checking if app already exists for site:', siteId);
 
       const response = await fetch(`${agentUrl}/apps/${siteId}`, {
         method: 'GET',
@@ -233,17 +234,17 @@ export class SitePollingService {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ App exists:', data);
+        logger.info('✅ App exists:', data);
         return true;
       } else if (response.status === 404) {
-        console.log('ℹ️ App does not exist yet for site:', siteId);
+        logger.info('ℹ️ App does not exist yet for site:', siteId);
         return false;
       } else {
-        console.warn('⚠️ Unexpected response when checking app existence:', response.status);
+        logger.warn('⚠️ Unexpected response when checking app existence:', response.status);
         return false; // Assume doesn't exist if we can't determine
       }
     } catch (error) {
-      console.warn('⚠️ Error checking if app exists:', error);
+      logger.warn('⚠️ Error checking if app exists:', error);
       return false; // Assume doesn't exist if we can't check
     }
   }
@@ -278,7 +279,7 @@ export class SitePollingService {
     agentUrl: string
   ): Promise<CreateAppResult> {
     try {
-      console.log('🤖 Creating app via local API:', { siteId });
+      logger.info('🤖 Creating app via local API:', { siteId });
 
       // Call our local app creation API instead of agents service
       const response = await appFetch('/api/apps/create', {
@@ -299,7 +300,7 @@ export class SitePollingService {
       }
 
       const data = await response.json();
-      console.log('✅ App created via local API:', data);
+      logger.info('✅ App created via local API:', data);
 
       return {
         success: true,
@@ -310,7 +311,7 @@ export class SitePollingService {
       };
 
     } catch (error) {
-      console.error('❌ Failed to create app via agent:', error);
+      logger.error('❌ Failed to create app via agent:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -332,12 +333,12 @@ export class SitePollingService {
       });
 
       if (!response.ok) {
-        console.warn('⚠️ Failed to update site status:', response.statusText);
+        logger.warn('⚠️ Failed to update site status:', response.statusText);
       } else {
-        console.log(`✅ Site status updated to: ${status}`);
+        logger.info(`✅ Site status updated to: ${status}`);
       }
     } catch (error) {
-      console.warn('⚠️ Error updating site status:', error);
+      logger.warn('⚠️ Error updating site status:', error);
     }
   }
 
@@ -377,7 +378,7 @@ export class SitePollingService {
 
     // Auto-update status from "created" to "running" if services are ready
     if (site.status === 'created' && allServicesReady && site.agent_url && site.preview_url) {
-      console.log('🎉 Both services are healthy! Updating status to running:', {
+      logger.info('🎉 Both services are healthy! Updating status to running:', {
         siteId: site.id,
         agentUrl: site.agent_url,
         previewUrl: site.preview_url,
@@ -387,7 +388,7 @@ export class SitePollingService {
 
       // Register app with agent service before updating status
       try {
-        console.log('📝 Registering app with agent service:', siteId);
+        logger.info('📝 Registering app with agent service:', siteId);
         const registerResponse = await appFetch(`${site.agent_url}/apps/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -400,12 +401,12 @@ export class SitePollingService {
 
         if (registerResponse.ok) {
           const registerData = await registerResponse.json();
-          console.log('✅ App registered successfully:', registerData.message);
+          logger.info('✅ App registered successfully:', registerData.message);
         } else {
-          console.warn('⚠️ App registration failed, but continuing:', registerResponse.status);
+          logger.warn('⚠️ App registration failed, but continuing:', registerResponse.status);
         }
       } catch (error) {
-        console.warn('⚠️ App registration error, but continuing:', error);
+        logger.warn('⚠️ App registration error, but continuing:', error);
       }
 
       await this.updateSiteStatus(siteId, 'running');

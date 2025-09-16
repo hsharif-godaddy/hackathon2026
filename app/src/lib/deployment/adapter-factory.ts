@@ -1,3 +1,4 @@
+import { logger } from '../request-context';
 /**
  * Deployment adapter factory with environment detection
  * Automatically selects the appropriate deployment strategy based on environment
@@ -36,7 +37,7 @@ export class DeploymentAdapterFactory {
     // Explicit override via environment variable
     const modeOverride = process.env.DEPLOYMENT_MODE as DeploymentMode;
     if (modeOverride && ['local', 'docker', 'production'].includes(modeOverride)) {
-      console.log(`🔧 Using explicit deployment mode: ${modeOverride}`);
+      logger.info(`🔧 Using explicit deployment mode: ${modeOverride}`);
       return modeOverride;
     }
 
@@ -48,7 +49,7 @@ export class DeploymentAdapterFactory {
       !!process.env.PRODUCTION_DOMAIN;         // Production domain set
 
     if (isProduction) {
-      console.log('🏭 Detected production environment - using Nomad + SQS + Ceph');
+      logger.info('🏭 Detected production environment - using Nomad + SQS + Ceph');
       return 'production';
     }
 
@@ -61,27 +62,27 @@ export class DeploymentAdapterFactory {
       
       switch (localMode) {
         case 'docker':
-          console.log('🐳 Development mode with explicit Docker containers');
+          logger.info('🐳 Development mode with explicit Docker containers');
           return 'docker';
         case 'process':
-          console.log('🔧 Development mode with explicit local processes');
+          logger.info('🔧 Development mode with explicit local processes');
           return 'local';
         case 'auto':
         default:
           // Auto-detect based on Docker availability
           try {
             require('child_process').execSync('docker info', { stdio: 'ignore', timeout: 5000 });
-            console.log('🐳 Development mode with Docker containers (auto-detected)');
+            logger.info('🐳 Development mode with Docker containers (auto-detected)');
             return 'docker';
           } catch {
-            console.log('🔧 Development mode with local processes (Docker not available)');
+            logger.info('🔧 Development mode with local processes (Docker not available)');
             return 'local';
           }
       }
     }
 
     // Default fallback
-    console.log('⚠️ Could not detect deployment mode, defaulting to local');
+    logger.info('⚠️ Could not detect deployment mode, defaulting to local');
     return 'local';
   }
 
@@ -146,7 +147,7 @@ export function getDeploymentAdapter(): DeploymentAdapter {
 export function getDeploymentEnvironmentInfo() {
   const capabilities = DeploymentAdapterFactory.getEnvironmentCapabilities();
   
-  console.log('🔍 Deployment Environment Info:', {
+  logger.info('🔍 Deployment Environment Info:', {
     mode: capabilities.mode,
     nodeEnv: process.env.NODE_ENV,
     localEnvironmentMode: process.env.LOCAL_ENVIRONMENT_MODE || 'auto (default)',

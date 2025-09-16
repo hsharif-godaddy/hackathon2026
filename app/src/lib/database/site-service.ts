@@ -1,5 +1,6 @@
 import DatabaseManager from './connection';
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from '../request-context';
 
 export interface Site {
   id: string;
@@ -50,9 +51,9 @@ export class SiteService {
     const id = uuidv4();
 
     // Assign Ceph storage
-    console.log('🗄️ Assigning Ceph storage...');
+    logger.info('🗄️ Assigning Ceph storage...');
     const cephAssignment = await this.getNextCephAssignment();
-    console.log(`📂 Assigned Ceph: ${cephAssignment.cephMountId}/${cephAssignment.cephDirNumber}`);
+    logger.info(`📂 Assigned Ceph: ${cephAssignment.cephMountId}/${cephAssignment.cephDirNumber}`);
 
     // SAFETY: Provide temporary title as fallback for databases with NOT NULL constraint
     const safeTitle = data.title || 'Untitled Project';
@@ -73,7 +74,7 @@ export class SiteService {
   async createSiteSimple(data: CreateSiteRequest): Promise<Site> {
     const id = uuidv4();
 
-    console.log('🔧 Creating simple site record (development mode)');
+    logger.info('🔧 Creating simple site record (development mode)');
 
     // SAFETY: Provide temporary title as fallback for databases with NOT NULL constraint
     const safeTitle = data.title || 'Untitled Project';
@@ -254,13 +255,13 @@ export class SiteService {
     const isDev = process.env.NODE_ENV === 'development';
 
     if (!isDev) {
-      console.warn('⚠️ deleteAllSites() is only allowed in development mode');
+      logger.warn('⚠️ deleteAllSites() is only allowed in development mode');
       return 0;
     }
 
-    console.log('🗑️ [DEV MODE] Deleting all sites from database...');
+    logger.info('🗑️ [DEV MODE] Deleting all sites from database...');
     const result = await this.db.run('DELETE FROM sites');
-    console.log(`✅ [DEV MODE] Deleted ${result.changes} sites`);
+    logger.info(`✅ [DEV MODE] Deleted ${result.changes} sites`);
 
     return result.changes;
   }

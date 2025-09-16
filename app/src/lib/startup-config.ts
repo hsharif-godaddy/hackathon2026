@@ -9,6 +9,7 @@ export function logStartupConfiguration() {
   if (hasInitialized) return;
   hasInitialized = true;
 
+  // Use console.log for startup config to avoid logger initialization issues
   console.log('🚀 Airo App Builder - Service Configuration');
   console.log('================================================');
 

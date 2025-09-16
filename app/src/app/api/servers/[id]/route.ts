@@ -1,3 +1,4 @@
+import { logger } from '@/lib/request-context';
 import { NextRequest, NextResponse } from 'next/server'
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory'
 import { 
@@ -74,7 +75,7 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
       })
     }
   } catch (error) {
-    console.error('Failed to get server details:', error)
+    logger.error('Failed to get server details:', error)
     return NextResponse.json(
       { error: 'Failed to fetch server details', message: (error as Error).message },
       { status: 500 }

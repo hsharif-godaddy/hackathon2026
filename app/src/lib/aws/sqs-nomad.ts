@@ -5,6 +5,7 @@
 
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
+import { logger } from '../request-context';
 
 export class SQSNomadService {
   private region: string;
@@ -35,9 +36,9 @@ export class SQSNomadService {
   }> {
     const stsClient = new STSClient({ region: this.region });
     
-    console.log('🔐 Assuming cross-account SQS role...');
-    console.log(`   From: ECS task in account 694282668781`);
-    console.log(`   To: ${this.targetRoleArn}`);
+    logger.info('🔐 Assuming cross-account SQS role...');
+    logger.info(`   From: ECS task in account 694282668781`);
+    logger.info(`   To: ${this.targetRoleArn}`);
     
     try {
       const command = new AssumeRoleCommand({
@@ -52,8 +53,8 @@ export class SQSNomadService {
         throw new Error('No credentials returned from STS AssumeRole');
       }
 
-      console.log('✅ Cross-account role assumed successfully');
-      console.log(`   Session expires: ${response.Credentials.Expiration}`);
+      logger.info('✅ Cross-account role assumed successfully');
+      logger.info(`   Session expires: ${response.Credentials.Expiration}`);
 
       return {
         accessKeyId: response.Credentials.AccessKeyId!,
@@ -61,7 +62,7 @@ export class SQSNomadService {
         sessionToken: response.Credentials.SessionToken!,
       };
     } catch (error) {
-      console.error('❌ Failed to assume cross-account role:', error);
+      logger.error('❌ Failed to assume cross-account role:', error);
       throw new Error(`Cross-account role assumption failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -128,7 +129,7 @@ export class SQSNomadService {
       const sqsClient = await this.getSQSClientWithCrossAccountRole();
       const result = await sqsClient.send(command);
       
-      console.log('✅ Nomad job creation queued successfully:', {
+      logger.info('✅ Nomad job creation queued successfully:', {
         messageId: result.MessageId,
         siteId: params.siteId,
         jobId: params.jobId,
@@ -141,7 +142,7 @@ export class SQSNomadService {
       };
 
     } catch (error) {
-      console.error('❌ Failed to queue Nomad job:', error);
+      logger.error('❌ Failed to queue Nomad job:', error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -196,7 +197,7 @@ export class SQSNomadService {
       const sqsClient = await this.getSQSClientWithCrossAccountRole();
       const result = await sqsClient.send(command);
       
-      console.log('✅ Nomad job deletion queued successfully:', {
+      logger.info('✅ Nomad job deletion queued successfully:', {
         messageId: result.MessageId,
         siteId: params.siteId,
         jobId: params.jobId
@@ -205,7 +206,7 @@ export class SQSNomadService {
       return { success: true, messageId: result.MessageId };
 
     } catch (error) {
-      console.error('❌ Failed to queue Nomad job deletion:', error);
+      logger.error('❌ Failed to queue Nomad job deletion:', error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 

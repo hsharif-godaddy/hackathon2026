@@ -1,3 +1,4 @@
+import { logger } from '../request-context';
 import { v4 as uuidv4 } from 'uuid';
 import DatabaseManager from './connection';
 
@@ -39,7 +40,7 @@ export class AccountService {
       
       return account || null;
     } catch (error) {
-      console.error('Error finding account by shopper_id:', error);
+      logger.error('Error finding account by shopper_id:', error);
       throw error;
     }
   }
@@ -55,7 +56,7 @@ export class AccountService {
       );
       return account || null;
     } catch (error) {
-      console.error('Error finding account by customer_id:', error);
+      logger.error('Error finding account by customer_id:', error);
       throw error;
     }
   }
@@ -100,7 +101,7 @@ export class AccountService {
 
       return newAccount;
     } catch (error) {
-      console.error('Error creating account:', error);
+      logger.error('Error creating account:', error);
       throw error;
     }
   }
@@ -116,7 +117,7 @@ export class AccountService {
       );
       return result.changes > 0;
     } catch (error) {
-      console.error('Error updating account status:', error);
+      logger.error('Error updating account status:', error);
       throw error;
     }
   }
@@ -136,7 +137,7 @@ export class AccountService {
 
       return account;
     } catch (error) {
-      console.error('Error getting or creating account:', error);
+      logger.error('Error getting or creating account:', error);
       throw error;
     }
   }
@@ -148,7 +149,7 @@ export class AccountService {
     try {
       return await this.db.all<Account>('SELECT * FROM accounts ORDER BY created_at DESC');
     } catch (error) {
-      console.error('Error getting all accounts:', error);
+      logger.error('Error getting all accounts:', error);
       throw error;
     }
   }
@@ -176,7 +177,7 @@ export class AccountService {
       );
       return accountWithPlan || null;
     } catch (error) {
-      console.error('Error getting account with plan:', error);
+      logger.error('Error getting account with plan:', error);
       throw error;
     }
   }
@@ -203,10 +204,10 @@ export class AccountService {
         throw new Error('Failed to create plan');
       }
 
-      console.log(`✅ Created new plan: ${name} (${id})`);
+      logger.info(`✅ Created new plan: ${name} (${id})`);
       return newPlan;
     } catch (error) {
-      console.error('Error creating plan:', error);
+      logger.error('Error creating plan:', error);
       throw error;
     }
   }
@@ -218,7 +219,7 @@ export class AccountService {
     try {
       return await this.db.all<Plan>('SELECT * FROM plans ORDER BY price ASC');
     } catch (error) {
-      console.error('Error getting all plans:', error);
+      logger.error('Error getting all plans:', error);
       throw error;
     }
   }

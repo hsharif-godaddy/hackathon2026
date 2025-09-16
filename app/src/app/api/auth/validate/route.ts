@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
           reason: 'Mock authentication - development mode'
         }, { status: 200 });
       } catch (error) {
-        console.error('❌ Mock auth validation error:', error);
+        logger.error('❌ Mock auth validation error:', error);
         return NextResponse.json(
           { 
             valid: false, 

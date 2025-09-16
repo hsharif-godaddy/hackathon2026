@@ -1,3 +1,4 @@
+import { logger } from '../../request-context';
 /**
  * TemplateCopyService handles all template-related operations
  * including template resolution, copying, and validation.
@@ -50,7 +51,7 @@ export class TemplateCopyService {
       // Resolve template path
       const { templatePath, templateVersion } = this.resolveTemplatePath(templateDir);
 
-      console.log(`📋 Copying template ${templateVersion} for app ${appId}`);
+      logger.info(`📋 Copying template ${templateVersion} for app ${appId}`);
 
       // Validate template exists
       if (!existsSync(templatePath)) {
@@ -60,7 +61,7 @@ export class TemplateCopyService {
         throw error;
       }
 
-      console.log(`📂 Starting template copy: ${templatePath} → ${appPath}`);
+      logger.info(`📂 Starting template copy: ${templatePath} → ${appPath}`);
 
       try {
         // Create app directory if it doesn't exist
@@ -75,7 +76,7 @@ export class TemplateCopyService {
         // Validate the copied template
         this.validateCopiedTemplate(appPath, templateVersion);
 
-        console.log(`✅ Template copied successfully for app ${appId}`);
+        logger.info(`✅ Template copied successfully for app ${appId}`);
 
         return {
           templateVersion,
@@ -84,7 +85,7 @@ export class TemplateCopyService {
         };
 
       } catch (copyError) {
-        console.error(`❌ Template copy failed for app ${appId}:`, copyError);
+        logger.error(`❌ Template copy failed for app ${appId}:`, copyError);
 
         // Clean up failed copy
         await this.cleanupFailedCopy(appId, appPath);
@@ -158,9 +159,9 @@ export class TemplateCopyService {
         execSync(`rm -rf "${dirPath}"`, { stdio: 'ignore' });
       }
       
-      console.log(`🧹 Force cleanup succeeded for: ${dirPath}`);
+      logger.info(`🧹 Force cleanup succeeded for: ${dirPath}`);
     } catch (error: any) {
-      console.error(`❌ System-level cleanup failed: ${error.message}`);
+      logger.error(`❌ System-level cleanup failed: ${error.message}`);
       throw error;
     }
   }
@@ -170,19 +171,19 @@ export class TemplateCopyService {
    */
   private ensureAppDirectory(appPath: string): void {
     if (existsSync(appPath)) {
-      console.log(`📁 App directory already exists, removing: ${appPath}`);
+      logger.info(`📁 App directory already exists, removing: ${appPath}`);
       
       try {
         // First attempt: standard removal
         rmSync(appPath, { recursive: true, force: true });
       } catch (error: any) {
-        console.warn(`⚠️ Standard cleanup failed, trying force cleanup: ${error.message}`);
+        logger.warn(`⚠️ Standard cleanup failed, trying force cleanup: ${error.message}`);
         
         try {
           // Second attempt: Try to fix permissions first, then remove
           this.forceRemoveDirectory(appPath);
         } catch (forceError: any) {
-          console.error(`❌ Force cleanup also failed: ${forceError.message}`);
+          logger.error(`❌ Force cleanup also failed: ${forceError.message}`);
           throw new Error(`Cannot remove existing app directory: ${appPath}. ${forceError.message}`);
         }
       }
@@ -191,7 +192,7 @@ export class TemplateCopyService {
     // Create parent directories if needed
     const parentDir = path.dirname(appPath);
     if (!existsSync(parentDir)) {
-      console.log(`📁 Creating parent directory: ${parentDir}`);
+      logger.info(`📁 Creating parent directory: ${parentDir}`);
     }
   }
 
@@ -284,10 +285,10 @@ export class TemplateCopyService {
     try {
       if (existsSync(appPath)) {
         rmSync(appPath, { recursive: true, force: true });
-        console.log(`🧹 Cleaned up failed copy for app ${appId}: ${appPath}`);
+        logger.info(`🧹 Cleaned up failed copy for app ${appId}: ${appPath}`);
       }
     } catch (cleanupError) {
-      console.error(`❌ Cleanup failed for app ${appId}:`, cleanupError);
+      logger.error(`❌ Cleanup failed for app ${appId}:`, cleanupError);
       // Don't rethrow cleanup errors - log and continue
     }
   }
@@ -350,7 +351,7 @@ export class TemplateCopyService {
       const devSupervisorSourcePath = path.join(projectRoot, 'dev-supervisor');
       
       if (!existsSync(devSupervisorSourcePath)) {
-        console.log(`⚠️ dev-supervisor source directory not found for app ${appId}, Docker build may fail`);
+        logger.info(`⚠️ dev-supervisor source directory not found for app ${appId}, Docker build may fail`);
         return;
       }
 
@@ -373,10 +374,10 @@ export class TemplateCopyService {
         }
       });
 
-      console.log(`📦 Copied dev-supervisor source code for app ${appId}`);
+      logger.info(`📦 Copied dev-supervisor source code for app ${appId}`);
 
     } catch (error) {
-      console.warn(`⚠️ Failed to copy dev-supervisor source code for app ${appId}:`, error);
+      logger.warn(`⚠️ Failed to copy dev-supervisor source code for app ${appId}:`, error);
     }
   }
 }

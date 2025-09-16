@@ -1,3 +1,4 @@
+import { logger } from '@/lib/request-context';
 import { NextRequest, NextResponse } from 'next/server';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 import {
@@ -55,7 +56,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     })
 
     if (!response.ok) {
-      console.error(`Agent git/return failed: ${response.status} ${response.statusText}`)
+      logger.error(`Agent git/return failed: ${response.status} ${response.statusText}`)
       return NextResponse.json(
         { 
           error: 'Failed to return to latest commit',
@@ -69,7 +70,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     return NextResponse.json(data)
 
   } catch (error) {
-    console.error('Error in git/return route:', error)
+    logger.error('Error in git/return route:', error)
     return NextResponse.json(
       { 
         error: 'Internal server error', 

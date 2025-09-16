@@ -1,3 +1,4 @@
+import { logger } from '../../../request-context';
 /**
  * Common types and enums used across all adapters
  */
@@ -77,7 +78,7 @@ export class AdapterConfigResolver {
         if (!this.isDockerAvailable()) {
           throw new Error('Docker mode explicitly requested but Docker is not available');
         }
-        console.log('🟢 Using explicit docker mode');
+        logger.info('🟢 Using explicit docker mode');
         return {
           type: 'docker',
           enabled: true,
@@ -90,7 +91,7 @@ export class AdapterConfigResolver {
 
       case 'process':
         // Force process mode
-        console.log('🟡 Using explicit process mode');
+        logger.info('🟡 Using explicit process mode');
         return {
           type: 'process',
           enabled: true,
@@ -104,7 +105,7 @@ export class AdapterConfigResolver {
       default:
         // Auto detection - docker if available, else process
         if (this.isDockerAvailable()) {
-          console.log('🟢 Auto mode: Docker is available, using docker mode');
+          logger.info('🟢 Auto mode: Docker is available, using docker mode');
           return {
             type: 'docker',
             enabled: true,
@@ -115,7 +116,7 @@ export class AdapterConfigResolver {
             }
           };
         } else {
-          console.log('🔴 Auto mode: Docker not available, using process mode');
+          logger.info('🔴 Auto mode: Docker not available, using process mode');
           return {
             type: 'process',
             enabled: true,

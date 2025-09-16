@@ -1,3 +1,4 @@
+import { logger } from '../request-context';
 import type { Database } from 'better-sqlite3';
 import { DevDatabase, type DevAppInfo } from './database/DevDatabase';
 import { PortManager } from './utils/port-manager';
@@ -58,7 +59,7 @@ export class DevEnvironmentManager {
     const adapterType = getAdapterType();
     // Only log adapter initialization in development to reduce noise
     if (process.env.NODE_ENV === 'development') {
-      console.log(`🔧 Initializing ${adapterType} adapter for dev environment`);
+      logger.info(`🔧 Initializing ${adapterType} adapter for dev environment`);
     }
 
     this.adapter = await createAppAdapter(this.devDb);
@@ -67,7 +68,7 @@ export class DevEnvironmentManager {
     this.initialized = true;
     // Only log in development to reduce noise
     if (process.env.NODE_ENV === 'development') {
-      console.log('✅ DevEnvironmentManager initialized');
+      logger.info('✅ DevEnvironmentManager initialized');
     }
   }
 
@@ -81,13 +82,13 @@ export class DevEnvironmentManager {
     const { siteId, name, initialPrompt, templateVersion = 'v8' } = request;
 
     try {
-      console.log(`🚀 Creating dev app: ${name} (${siteId})`);
+      logger.info(`🚀 Creating dev app: ${name} (${siteId})`);
 
       // 1. Check if app already exists - if so, return early
       let existingApp = this.devDb.findDevAppById(siteId);
       
       if (existingApp && (existingApp.status === 'created' || existingApp.status === 'running')) {
-        console.log(`✅ App ${siteId} already exists with status: ${existingApp.status}, skipping creation`);
+        logger.info(`✅ App ${siteId} already exists with status: ${existingApp.status}, skipping creation`);
         
         // Generate URLs for existing app
         const urls = {
@@ -111,11 +112,11 @@ export class DevEnvironmentManager {
       if (existingApp) {
         // Reuse existing port for error recovery
         port = existingApp.port;
-        console.log(`📡 Reusing port ${port} for app ${siteId} (status: ${existingApp.status})`);
+        logger.info(`📡 Reusing port ${port} for app ${siteId} (status: ${existingApp.status})`);
       } else {
         // Allocate new port for new app
         port = await this.portManager.getNextAvailablePort();
-        console.log(`📡 Allocated new port ${port} for app ${siteId}`);
+        logger.info(`📡 Allocated new port ${port} for app ${siteId}`);
       }
 
       // 3. Determine app path
@@ -131,10 +132,10 @@ export class DevEnvironmentManager {
         status: 'creating'
       });
 
-      console.log(`💾 Created dev app record for ${siteId}`);
+      logger.info(`💾 Created dev app record for ${siteId}`);
 
       // 5. Set up template (only runs for new/error apps now)
-      console.log(`🔧 Setting up template for app ${siteId}`);
+      logger.info(`🔧 Setting up template for app ${siteId}`);
       
       // Set up the app using the template copy service
       await this.setupAppFromTemplate(siteId, appPath, name, templateVersion);
@@ -151,7 +152,7 @@ export class DevEnvironmentManager {
         ...(templateVersion === 'v3' && { backend: `http://localhost:${port + 1000}` })
       };
 
-      console.log(`✅ Dev app ${siteId} created successfully`);
+      logger.info(`✅ Dev app ${siteId} created successfully`);
 
       return {
         success: true,
@@ -163,13 +164,13 @@ export class DevEnvironmentManager {
       };
 
     } catch (error) {
-      console.error(`❌ Failed to create dev app ${siteId}:`, error);
+      logger.error(`❌ Failed to create dev app ${siteId}:`, error);
 
       // Cleanup on failure
       try {
         await this.cleanupDevApp(siteId);
       } catch (cleanupError) {
-        console.error(`Failed to cleanup after error:`, cleanupError);
+        logger.error(`Failed to cleanup after error:`, cleanupError);
       }
 
       return {
@@ -187,7 +188,7 @@ export class DevEnvironmentManager {
     await this.initialize();
 
     if (!this.adapter) {
-      console.error('No adapter available to start dev server');
+      logger.error('No adapter available to start dev server');
       return false;
     }
 
@@ -198,7 +199,7 @@ export class DevEnvironmentManager {
       }
       return success;
     } catch (error) {
-      console.error(`Failed to start dev server for ${appId}:`, error);
+      logger.error(`Failed to start dev server for ${appId}:`, error);
       return false;
     }
   }
@@ -210,7 +211,7 @@ export class DevEnvironmentManager {
     await this.initialize();
 
     if (!this.adapter) {
-      console.error('No adapter available to stop dev server');
+      logger.error('No adapter available to stop dev server');
       return false;
     }
 
@@ -221,7 +222,7 @@ export class DevEnvironmentManager {
       }
       return success;
     } catch (error) {
-      console.error(`Failed to stop dev server for ${appId}:`, error);
+      logger.error(`Failed to stop dev server for ${appId}:`, error);
       return false;
     }
   }
@@ -261,7 +262,7 @@ export class DevEnvironmentManager {
     try {
       return await this.adapter.getRunningServers();
     } catch (error) {
-      console.error('Failed to get running servers:', error);
+      logger.error('Failed to get running servers:', error);
       return [];
     }
   }
@@ -282,11 +283,11 @@ export class DevEnvironmentManager {
       // Remove from dev database
       this.devDb.deleteDevApp(appId);
 
-      console.log(`🗑️ Dev app ${appId} deleted successfully`);
+      logger.info(`🗑️ Dev app ${appId} deleted successfully`);
       return true;
 
     } catch (error) {
-      console.error(`Failed to delete dev app ${appId}:`, error);
+      logger.error(`Failed to delete dev app ${appId}:`, error);
       return false;
     }
   }
@@ -295,7 +296,7 @@ export class DevEnvironmentManager {
    * Set up app from template using TemplateCopyService
    */
   private async setupAppFromTemplate(appId: string, appPath: string, appName: string, templateVersion: string): Promise<void> {
-    console.log(`📋 Setting up app ${appId} from template ${templateVersion} at ${appPath}`);
+    logger.info(`📋 Setting up app ${appId} from template ${templateVersion} at ${appPath}`);
     
     try {
       const result = await this.templateService.copyTemplate({
@@ -306,12 +307,12 @@ export class DevEnvironmentManager {
       });
 
       if (result.success) {
-        console.log(`✅ Template setup completed for app ${appId}`);
+        logger.info(`✅ Template setup completed for app ${appId}`);
       } else {
         throw new Error('Template copy failed');
       }
     } catch (error) {
-      console.error(`❌ Template setup failed for app ${appId}:`, error);
+      logger.error(`❌ Template setup failed for app ${appId}:`, error);
       throw error;
     }
   }
@@ -346,15 +347,15 @@ export class DevEnvironmentManager {
         // Only add if not already present
         if (!existingContent.includes('dev-supervisor/')) {
           fs.appendFileSync(gitignorePath, devSupervisorIgnores);
-          console.log(`📝 Updated .gitignore to exclude dev-supervisor for app at ${appPath}`);
+          logger.info(`📝 Updated .gitignore to exclude dev-supervisor for app at ${appPath}`);
         }
       } else {
         // Create .gitignore with dev-supervisor rules
         fs.writeFileSync(gitignorePath, devSupervisorIgnores);
-        console.log(`📝 Created .gitignore with dev-supervisor exclusions for app at ${appPath}`);
+        logger.info(`📝 Created .gitignore with dev-supervisor exclusions for app at ${appPath}`);
       }
     } catch (error) {
-      console.warn(`⚠️ Failed to update .gitignore:`, error);
+      logger.warn(`⚠️ Failed to update .gitignore:`, error);
       throw error;
     }
   }
@@ -364,12 +365,12 @@ export class DevEnvironmentManager {
    */
   private async initializeGitRepository(appId: string, appPath: string, appName: string): Promise<void> {
     try {
-      console.log(`🔧 Initializing Git repository for ${appId}`);
+      logger.info(`🔧 Initializing Git repository for ${appId}`);
 
       // Initialize the Git repository
       const initResult = await this.gitUtils.initRepository(appPath);
       if (!initResult.success) {
-        console.warn(`Git init failed for ${appId}:`, initResult.stderr);
+        logger.warn(`Git init failed for ${appId}:`, initResult.stderr);
         return;
       }
 
@@ -377,14 +378,14 @@ export class DevEnvironmentManager {
       try {
         await this.gitUtils.configureUser(appPath, 'Airo AI Builder', 'ai@airo.dev');
       } catch (configError) {
-        console.warn(`Git config failed for ${appId}:`, configError);
+        logger.warn(`Git config failed for ${appId}:`, configError);
       }
 
       // Update .gitignore to exclude dev-supervisor binary
       try {
         await this.updateGitignoreForDevSupervisor(appPath);
       } catch (gitignoreError) {
-        console.warn(`Failed to update .gitignore for ${appId}:`, gitignoreError);
+        logger.warn(`Failed to update .gitignore for ${appId}:`, gitignoreError);
       }
 
       // Create initial commit
@@ -395,16 +396,16 @@ export class DevEnvironmentManager {
         );
 
         if (commitResult.success) {
-          console.log(`✅ Initial commit created for ${appId}`);
+          logger.info(`✅ Initial commit created for ${appId}`);
         } else {
-          console.warn(`Initial commit failed for ${appId}:`, commitResult.stderr);
+          logger.warn(`Initial commit failed for ${appId}:`, commitResult.stderr);
         }
       } catch (commitError) {
-        console.warn(`Git commit failed for ${appId}:`, commitError);
+        logger.warn(`Git commit failed for ${appId}:`, commitError);
       }
 
     } catch (error) {
-      console.warn(`Git setup failed for ${appId}:`, error);
+      logger.warn(`Git setup failed for ${appId}:`, error);
     }
   }
 
@@ -412,7 +413,7 @@ export class DevEnvironmentManager {
    * Clean up a dev app (used on creation failure)
    */
   private async cleanupDevApp(appId: string): Promise<void> {
-    console.log(`🧹 Cleaning up dev app ${appId}`);
+    logger.info(`🧹 Cleaning up dev app ${appId}`);
 
     // Stop and remove via adapter
     if (this.adapter) {
@@ -420,7 +421,7 @@ export class DevEnvironmentManager {
         await this.adapter.stopApp(appId);
         await this.adapter.removeApp(appId);
       } catch (error) {
-        console.warn(`Adapter cleanup failed for ${appId}:`, error);
+        logger.warn(`Adapter cleanup failed for ${appId}:`, error);
       }
     }
 
@@ -428,7 +429,7 @@ export class DevEnvironmentManager {
     try {
       this.devDb.deleteDevApp(appId);
     } catch (error) {
-      console.warn(`Database cleanup failed for ${appId}:`, error);
+      logger.warn(`Database cleanup failed for ${appId}:`, error);
     }
   }
 

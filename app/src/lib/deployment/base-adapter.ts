@@ -3,6 +3,7 @@
  */
 
 import { DeploymentAdapter, DeploymentConfig, DeploymentResult, DeploymentEnvironment } from './types';
+import { logger } from '../request-context';
 
 export abstract class BaseDeploymentAdapter implements DeploymentAdapter {
   protected environment: DeploymentEnvironment;
@@ -56,18 +57,18 @@ export abstract class BaseDeploymentAdapter implements DeploymentAdapter {
    * Log deployment operations with context
    */
   protected log(level: 'info' | 'warn' | 'error', message: string, data?: any) {
-    const prefix = `[${this.environment.mode.toUpperCase()}]`;
-    const logData = data ? ` ${JSON.stringify(data)}` : '';
-
+    const eventName = `deployment_${level}`;
+    const formattedMessage = `[${this.environment.mode.toUpperCase()}] ${message}`;
+    
     switch (level) {
       case 'info':
-        console.log(`✅ ${prefix} ${message}${logData}`);
+        logger.info(eventName, formattedMessage, { data });
         break;
       case 'warn':
-        console.warn(`⚠️ ${prefix} ${message}${logData}`);
+        logger.warn(eventName, formattedMessage, { data });
         break;
       case 'error':
-        console.error(`❌ ${prefix} ${message}${logData}`);
+        logger.error(eventName, formattedMessage, { data });
         break;
     }
   }

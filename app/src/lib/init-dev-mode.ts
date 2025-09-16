@@ -1,3 +1,4 @@
+import { logger } from './request-context';
 /**
  * Development mode initialization
  * Sets up test data and configurations needed for local development
@@ -24,7 +25,7 @@ export async function initDevMode(): Promise<void> {
       return;
     }
 
-    console.log('🔧 Initializing development mode...');
+    logger.info('🔧 Initializing development mode...');
 
     // Initialize test user if mock login is enabled
     if (isFeatureEnabled.mockLogin()) {
@@ -32,9 +33,9 @@ export async function initDevMode(): Promise<void> {
     }
 
     initialized = true;
-    console.log('✅ Development mode initialized');
+    logger.info('✅ Development mode initialized');
   } catch (error) {
-    console.error('❌ Failed to initialize development mode:', error);
+    logger.error('❌ Failed to initialize development mode:', error);
     // Don't throw - let the app continue even if dev setup fails
   }
 }

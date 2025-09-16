@@ -1,5 +1,6 @@
 import { DockerContainerManager } from '../services/docker-container-manager';
 import { DevDatabase } from '../database/DevDatabase';
+import { logger } from '../../request-context';
 import type { 
   IAppAdapter, 
   ServerInfo, 
@@ -27,14 +28,14 @@ export class DockerAppService implements IAppAdapter {
   async initialize(): Promise<void> {
     if (this.initialized) return;
     
-    console.log('🔄 Initializing Docker Container Deployment Service...');
+    logger.info('docker_app_service', '🔄 Initializing Docker Container Deployment Service...');
     
     try {
       await this.containerManager.initialize();
       this.initialized = true;
-      console.log('✅ Docker Container Deployment Service initialization completed');
+      logger.info('docker_app_service', '✅ Docker Container Deployment Service initialization completed');
     } catch (error) {
-      console.error('❌ Docker Container Deployment Service initialization failed:', error);
+      logger.error('docker_app_service', '❌ Docker Container Deployment Service initialization failed', { data: { error: error as Error } });
       throw new ContainerError(`Docker service initialization failed: ${(error as Error).message}`);
     }
   }
@@ -62,7 +63,7 @@ export class DockerAppService implements IAppAdapter {
       // Check if container already exists
       const existingContainer = await this.containerManager.getContainerStatus(appId);
       if (existingContainer && existingContainer.status === 'running') {
-        console.log(`🐳 Container for app ${appId} is already running`);
+        logger.info('docker_app_service', `🐳 Container for app ${appId} is already running`);
         return true;
       }
       
@@ -73,10 +74,10 @@ export class DockerAppService implements IAppAdapter {
         devApp.port
       );
       
-      console.log(`✅ Container started for app ${appId}: ${containerInfo.containerId}`);
+      logger.info('docker_app_service', `✅ Container started for app ${appId}: ${containerInfo.containerId}`);
       return true;
     } catch (error) {
-      console.error(`❌ Failed to start container for app ${appId}:`, error);
+      logger.error('docker_app_service', `❌ Failed to start container for app ${appId}`, { data: { appId }, error: error as Error });
       throw new ContainerError(`Failed to start app: ${(error as Error).message}`, appId);
     }
   }
@@ -85,7 +86,7 @@ export class DockerAppService implements IAppAdapter {
     try {
       return await this.containerManager.stopContainer(appId);
     } catch (error) {
-      console.error(`❌ Failed to stop container for app ${appId}:`, error);
+      logger.error('docker_app_service', `❌ Failed to stop container for app ${appId}`, { data: { appId }, error: error as Error });
       throw new ContainerError(`Failed to stop app: ${(error as Error).message}`, appId);
     }
   }
@@ -94,7 +95,7 @@ export class DockerAppService implements IAppAdapter {
     try {
       return await this.containerManager.restartContainer(appId);
     } catch (error) {
-      console.error(`❌ Failed to restart container for app ${appId}:`, error);
+      logger.error('docker_app_service', `❌ Failed to restart container for app ${appId}`, { data: { appId }, error: error as Error });
       throw new ContainerError(`Failed to restart app: ${(error as Error).message}`, appId);
     }
   }
@@ -120,14 +121,14 @@ export class DockerAppService implements IAppAdapter {
   }
 
   async stopAllServers(): Promise<number> {
-    console.log('🐳 Stopping all Docker containers...');
+    logger.info('docker_app_service', '🐳 Stopping all Docker containers...');
     
     try {
       const stoppedCount = await this.containerManager.stopAllServers();
-      console.log(`✅ Stopped ${stoppedCount} Docker container(s)`);
+      logger.info('docker_app_service', `✅ Stopped ${stoppedCount} Docker container(s)`);
       return stoppedCount;
     } catch (error) {
-      console.error('❌ Failed to stop all containers:', error);
+      logger.error('❌ Failed to stop all containers:', error);
       throw new ContainerError(`Failed to stop all servers: ${(error as Error).message}`);
     }
   }
@@ -174,7 +175,7 @@ export class DockerAppService implements IAppAdapter {
         }
       };
     } catch (error) {
-      console.error(`❌ Failed to get container status for app ${appId}:`, error);
+      logger.error(`❌ Failed to get container status for app ${appId}:`, error);
       return {
         status: 'error',
         message: (error as Error).message
@@ -187,14 +188,14 @@ export class DockerAppService implements IAppAdapter {
       const logs = await this.containerManager.getAppContainerLogs(appId, 100);
       return logs.split('\n').filter(line => line.trim());
     } catch (error) {
-      console.error(`❌ Failed to get container logs for app ${appId}:`, error);
+      logger.error(`❌ Failed to get container logs for app ${appId}:`, error);
       throw new ContainerError(`Failed to get app logs: ${(error as Error).message}`, appId);
     }
   }
 
   async cleanupOrphans(): Promise<{ message: string; cleaned: number }> {
     try {
-      console.log('🧹 Cleaning up orphaned Docker containers...');
+      logger.info('🧹 Cleaning up orphaned Docker containers...');
       const cleaned = await this.containerManager.forceCleanupOrphans();
       
       return {
@@ -202,27 +203,27 @@ export class DockerAppService implements IAppAdapter {
         cleaned
       };
     } catch (error) {
-      console.error('❌ Failed to cleanup orphaned containers:', error);
+      logger.error('❌ Failed to cleanup orphaned containers:', error);
       throw new ContainerError(`Cleanup failed: ${(error as Error).message}`);
     }
   }
 
   async removeApp(appId: string): Promise<boolean> {
     try {
-      console.log(`🐳 Removing Docker artifacts for app ${appId}...`);
+      logger.info(`🐳 Removing Docker artifacts for app ${appId}...`);
       
       // Stop and remove container
       const removed = await this.containerManager.removeContainer(appId);
       
       if (removed) {
-        console.log(`✅ Docker artifacts removed for app ${appId}`);
+        logger.info(`✅ Docker artifacts removed for app ${appId}`);
       } else {
-        console.log(`ℹ️ No Docker artifacts found for app ${appId}`);
+        logger.info(`ℹ️ No Docker artifacts found for app ${appId}`);
       }
       
       return removed;
     } catch (error) {
-      console.error(`❌ Failed to remove Docker artifacts for app ${appId}:`, error);
+      logger.error(`❌ Failed to remove Docker artifacts for app ${appId}:`, error);
       throw new ContainerError(`Failed to remove Docker artifacts: ${(error as Error).message}`, appId);
     }
   }
@@ -238,7 +239,7 @@ export class DockerAppService implements IAppAdapter {
         throw new ContainerError(`Dev app not found: ${appId}`, appId);
       }
 
-      console.log(`🏗️ Rebuilding container for app ${appId}...`);
+      logger.info(`🏗️ Rebuilding container for app ${appId}...`);
 
       const containerInfo = await this.containerManager.rebuildAndStartContainer(
         appId,
@@ -247,14 +248,14 @@ export class DockerAppService implements IAppAdapter {
       );
 
       if (containerInfo) {
-        console.log(`✅ Container rebuilt for app ${appId}: ${containerInfo.containerId}`);
+        logger.info(`✅ Container rebuilt for app ${appId}: ${containerInfo.containerId}`);
         return true;
       } else {
-        console.warn(`⚠️ Container rebuild skipped for app ${appId} (possibly already in progress)`);
+        logger.warn(`⚠️ Container rebuild skipped for app ${appId} (possibly already in progress)`);
         return false;
       }
     } catch (error) {
-      console.error(`❌ Failed to rebuild container for app ${appId}:`, error);
+      logger.error(`❌ Failed to rebuild container for app ${appId}:`, error);
       throw new ContainerError(`Failed to rebuild app: ${(error as Error).message}`, appId);
     }
   }
@@ -265,13 +266,13 @@ export class DockerAppService implements IAppAdapter {
 
   async cleanup(): Promise<void> {
     try {
-      console.log('🧹 Stopping all Docker containers...');
+      logger.info('🧹 Stopping all Docker containers...');
       
       const stoppedCount = await this.containerManager.stopAllServers();
       
-      console.log(`✅ Docker Container Deployment Service cleanup completed: ${stoppedCount} containers stopped`);
+      logger.info(`✅ Docker Container Deployment Service cleanup completed: ${stoppedCount} containers stopped`);
     } catch (error) {
-      console.error('❌ Docker Container Deployment Service cleanup failed:', error);
+      logger.error('❌ Docker Container Deployment Service cleanup failed:', error);
     }
   }
 

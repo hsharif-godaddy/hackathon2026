@@ -1,3 +1,4 @@
+import { logger } from '../request-context';
 import { DevSiteAdapter } from './DevSiteAdapter';
 import { ProdSiteAdapter } from './ProdSiteAdapter';
 import type { ISiteAdapter } from './interfaces/ISiteAdapter';
@@ -23,10 +24,10 @@ export class SiteAdapterFactory {
       }
 
       if (isProduction) {
-        console.log('🏭 Using ProdSiteAdapter for production environment');
+        logger.info('🏭 Using ProdSiteAdapter for production environment');
         this._instance = new ProdSiteAdapter();
       } else {
-        console.log('🔧 Using DevSiteAdapter for development environment');
+        logger.info('🔧 Using DevSiteAdapter for development environment');
         this._instance = new DevSiteAdapter();
       }
     }
@@ -76,7 +77,7 @@ export class SiteAdapterFactory {
         'This could indicate misconfigured environment variables.'
       );
 
-      console.error('🚨 SITE ADAPTER FACTORY SAFETY VIOLATION:', {
+      logger.error('🚨 SITE ADAPTER FACTORY SAFETY VIOLATION:', {
         error: error.message,
         productionIndicators,
         environment: {
@@ -88,7 +89,7 @@ export class SiteAdapterFactory {
       throw error;
     }
 
-    console.log('✅ SiteAdapterFactory: Dev environment validation passed');
+    logger.info('✅ SiteAdapterFactory: Dev environment validation passed');
   }
 
   /**

@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import { DatabaseAdapter, DatabaseResult, DatabaseRow, DatabaseStatement, DatabaseConfig } from './types';
+import { logger } from '../request-context';
 
 export class MySQLAdapter implements DatabaseAdapter {
   private connection: mysql.Connection | null = null;
@@ -27,9 +28,9 @@ export class MySQLAdapter implements DatabaseAdapter {
           dateStrings: true, // Return dates as strings to match SQLite behavior
           timezone: '+00:00' // Use proper timezone format for MySQL
         });
-        console.log('Connected to MySQL database:', this.config.host);
+        logger.info('Connected to MySQL database:', this.config.host);
       } catch (err) {
-        console.error('Error connecting to MySQL database:', err);
+        logger.error('Error connecting to MySQL database:', err);
         throw err;
       }
     }
@@ -57,10 +58,10 @@ export class MySQLAdapter implements DatabaseAdapter {
     } catch (error: any) {
       // Ignore "Duplicate key name" errors for CREATE INDEX operations
       if (error.code === 'ER_DUP_KEYNAME' && sql.toLowerCase().includes('create index')) {
-        console.log(`Index already exists, skipping: ${sql}`);
+        logger.info(`Index already exists, skipping: ${sql}`);
         return { changes: 0 };
       }
-      console.error('MySQL Error running SQL:', sql, params, error);
+      logger.error('mysql_adapter', 'MySQL Error running SQL', { error: error as Error, data: { sql, params } });
       throw error;
     }
   }
@@ -79,7 +80,7 @@ export class MySQLAdapter implements DatabaseAdapter {
       }
       return undefined;
     } catch (error) {
-      console.error('MySQL Error getting row:', sql, params, error);
+      logger.error('mysql_adapter', 'MySQL Error getting row', { error: error as Error, data: { sql, params } });
       throw error;
     }
   }
@@ -95,7 +96,7 @@ export class MySQLAdapter implements DatabaseAdapter {
 
       return (Array.isArray(rows) ? rows : []) as T[];
     } catch (error) {
-      console.error('MySQL Error getting all rows:', sql, params, error);
+      logger.error('mysql_adapter', 'MySQL Error getting all rows', { error: error as Error, data: { sql, params } });
       throw error;
     }
   }
@@ -115,7 +116,7 @@ export class MySQLAdapter implements DatabaseAdapter {
           } catch (error: any) {
             // Ignore "Duplicate key name" errors for CREATE INDEX operations
             if (error.code === 'ER_DUP_KEYNAME' && mysqlSql.toLowerCase().includes('create index')) {
-              console.log(`Index already exists, skipping: ${mysqlSql}`);
+              logger.info(`Index already exists, skipping: ${mysqlSql}`);
               continue;
             }
             throw error;
@@ -123,7 +124,7 @@ export class MySQLAdapter implements DatabaseAdapter {
         }
       }
     } catch (error) {
-      console.error('MySQL Error executing SQL:', sql, error);
+      logger.error('mysql_adapter', 'MySQL Error executing SQL', { error: error as Error, data: { sql } });
       throw error;
     }
   }
@@ -133,17 +134,17 @@ export class MySQLAdapter implements DatabaseAdapter {
       if (this.connection) {
         await this.connection.end();
         this.connection = null;
-        console.log('MySQL database connection closed');
+        logger.info('MySQL database connection closed');
       }
     } catch (error) {
-      console.error('Error closing MySQL database:', error);
+      logger.error('Error closing MySQL database:', error);
       throw error;
     }
   }
 
   // MySQL doesn't have PRAGMA, this is a no-op for compatibility
   pragma(query: string): unknown[] {
-    console.warn('PRAGMA queries are not supported in MySQL, returning empty array');
+    logger.warn('PRAGMA queries are not supported in MySQL, returning empty array');
     return [];
   }
 

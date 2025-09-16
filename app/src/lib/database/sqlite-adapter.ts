@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { DatabaseAdapter, DatabaseResult, DatabaseRow, DatabaseStatement, DatabaseConfig } from './types';
+import { logger } from '../request-context';
 
 export class SQLiteAdapter implements DatabaseAdapter {
   private db: Database.Database;
@@ -23,7 +24,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       this.db = new Database(dbPath);
       // Database connection - configuration logged at startup
     } catch (err) {
-      console.error('Error opening SQLite database:', err);
+      logger.error('Error opening SQLite database:', err);
       throw err;
     }
   }
@@ -37,7 +38,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
         lastInsertRowid: result.lastInsertRowid
       };
     } catch (error) {
-      console.error('SQLite Error running SQL:', sql, params, error);
+      logger.error('sqlite_adapter', 'SQLite Error running SQL', { error: error as Error, data: { sql, params } });
       throw error;
     }
   }
@@ -47,7 +48,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       const stmt = this.db.prepare(sql);
       return stmt.get(...params) as T | undefined;
     } catch (error) {
-      console.error('SQLite Error getting row:', sql, params, error);
+      logger.error('sqlite_adapter', 'SQLite Error getting row', { error: error as Error, data: { sql, params } });
       throw error;
     }
   }
@@ -57,7 +58,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       const stmt = this.db.prepare(sql);
       return stmt.all(...params) as T[];
     } catch (error) {
-      console.error('SQLite Error getting all rows:', sql, params, error);
+      logger.error('sqlite_adapter', 'SQLite Error getting all rows', { error: error as Error, data: { sql, params } });
       throw error;
     }
   }
@@ -66,7 +67,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
     try {
       this.db.exec(sql);
     } catch (error) {
-      console.error('SQLite Error executing SQL:', sql, error);
+      logger.error('sqlite_adapter', 'SQLite Error executing SQL', { error: error as Error, data: { sql } });
       throw error;
     }
   }
@@ -74,9 +75,9 @@ export class SQLiteAdapter implements DatabaseAdapter {
   close(): void {
     try {
       this.db.close();
-      console.log('SQLite database connection closed');
+      logger.info('SQLite database connection closed');
     } catch (error) {
-      console.error('Error closing SQLite database:', error);
+      logger.error('Error closing SQLite database:', error);
       throw error;
     }
   }
@@ -85,7 +86,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
     try {
       return this.db.pragma(query) as unknown[];
     } catch (error) {
-      console.error('SQLite Error executing pragma:', query, error);
+      logger.error('sqlite_adapter', 'SQLite Error executing pragma', { error: error as Error, data: { query } });
       throw error;
     }
   }

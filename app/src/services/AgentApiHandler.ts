@@ -1,6 +1,7 @@
 import { appFetch } from '@/lib/gasket-config'
 import { buildApiUrl } from '@/config/api'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { logger } from '@/lib/request-context'
 
 /**
  * Centralized Agent API Handler
@@ -105,7 +106,7 @@ export class AgentApiHandler {
     try {
       return await response.json()
     } catch (parseError) {
-      console.warn('Failed to parse JSON response, using default value:', parseError)
+      logger.warn('agent_api_handler', 'Failed to parse JSON response, using default value', { error: parseError as Error })
       return defaultValue
     }
   }

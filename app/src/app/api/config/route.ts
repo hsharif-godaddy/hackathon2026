@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { logger } from '@/lib/request-context';
 
 // Server-side configuration that can access actual environment variables
 const getServerConfig = () => {
@@ -31,7 +32,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error('Error fetching server config:', error);
+    logger.error('api_config', 'Error fetching server config', { error: error as Error });
     return NextResponse.json(
       { error: 'Failed to fetch configuration' },
       { status: 500 }

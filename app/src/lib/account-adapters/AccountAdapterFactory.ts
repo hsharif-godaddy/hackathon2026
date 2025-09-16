@@ -1,3 +1,4 @@
+import { logger } from '../request-context';
 import { ProdAccountAdapter } from './ProdAccountAdapter';
 import { DevAccountAdapter } from './DevAccountAdapter';
 import type { IAccountAdapter } from './interfaces/IAccountAdapter';
@@ -27,7 +28,7 @@ export class AccountAdapterFactory {
         ? new ProdAccountAdapter() 
         : new DevAccountAdapter();
         
-      console.log(`🏭 Using ${isProduction ? 'Production' : 'Development'} Account Adapter`);
+      logger.info(`🏭 Using ${isProduction ? 'Production' : 'Development'} Account Adapter`);
     }
     return AccountAdapterFactory.instance;
   }
@@ -80,7 +81,7 @@ export class AccountAdapterFactory {
         'Using dev account adapter in production would bypass billing and authentication!'
       );
       
-      console.error('🚨 ACCOUNT ADAPTER FACTORY SAFETY VIOLATION:', {
+      logger.error('🚨 ACCOUNT ADAPTER FACTORY SAFETY VIOLATION:', {
         error: error.message,
         productionIndicators,
         environment: {
@@ -92,6 +93,6 @@ export class AccountAdapterFactory {
       throw error;
     }
 
-    console.log('✅ AccountAdapterFactory: Dev environment validation passed');
+    logger.info('✅ AccountAdapterFactory: Dev environment validation passed');
   }
 }

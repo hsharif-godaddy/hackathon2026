@@ -1,3 +1,4 @@
+import { logger } from '../../request-context';
 import { createServer } from 'net';
 import { DevDatabase } from '../database/DevDatabase';
 
@@ -32,10 +33,10 @@ export class PortManager {
           // This helps catch race conditions where another process allocated this port
           const freshUsedPorts = this.devDb.getAllocatedPorts();
           if (!freshUsedPorts.includes(port)) {
-            console.log(`✅ Port ${port} allocated successfully (attempt ${attempt + 1})`);
+            logger.info(`✅ Port ${port} allocated successfully (attempt ${attempt + 1})`);
             return port;
           } else {
-            console.log(`⚠️ Port ${port} was allocated by another process, retrying...`);
+            logger.info(`⚠️ Port ${port} was allocated by another process, retrying...`);
             break; // Break inner loop to retry with fresh port list
           }
         }
@@ -65,8 +66,8 @@ export class PortManager {
       
       // If lsof returns any output, the port is in use
       if (stdout.trim()) {
-        console.log(`🚫 Port ${port} is occupied by existing process:`);
-        console.log(stdout.trim());
+        logger.info(`🚫 Port ${port} is occupied by existing process:`);
+        logger.info(stdout.trim());
         return false;
       }
       
@@ -76,13 +77,13 @@ export class PortManager {
         
         server.listen(port, () => {
           server.close(() => {
-            console.log(`✅ Port ${port} is available`);
+            logger.info(`✅ Port ${port} is available`);
             resolve(true);
           });
         });
         
         server.on('error', () => {
-          console.log(`❌ Port ${port} failed bind test`);
+          logger.info(`❌ Port ${port} failed bind test`);
           resolve(false);
         });
       });
@@ -94,13 +95,13 @@ export class PortManager {
         
         server.listen(port, () => {
           server.close(() => {
-            console.log(`✅ Port ${port} is available (lsof fallback)`);
+            logger.info(`✅ Port ${port} is available (lsof fallback)`);
             resolve(true);
           });
         });
         
         server.on('error', () => {
-          console.log(`❌ Port ${port} failed bind test (lsof fallback)`);
+          logger.info(`❌ Port ${port} failed bind test (lsof fallback)`);
           resolve(false);
         });
       });

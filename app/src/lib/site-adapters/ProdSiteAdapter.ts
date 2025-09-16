@@ -1,3 +1,4 @@
+import { logger } from '../request-context';
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 import { getDeploymentAdapter } from '@/lib/deployment';
 import type { ISiteAdapter, SiteInfo, CreateSiteRequest, ServerInfo, SiteLimitCheck } from './interfaces/ISiteAdapter';
@@ -25,7 +26,7 @@ export class ProdSiteAdapter implements ISiteAdapter {
       throw new Error('Initial prompt is required');
     }
 
-    console.log('🚀 Creating new production site:', {
+    logger.info('🚀 Creating new production site:', {
       accountId: request.accountId,
       prompt: prompt.substring(0, 50) + '...'
     });
@@ -60,7 +61,7 @@ export class ProdSiteAdapter implements ISiteAdapter {
           })
         });
 
-        console.log('✅ Production site created and deployed successfully:', {
+        logger.info('✅ Production site created and deployed successfully:', {
           siteId: site.id,
           status: deploymentResult.status,
           urls: deploymentResult.urls
@@ -73,7 +74,7 @@ export class ProdSiteAdapter implements ISiteAdapter {
           status: 'failed'
         });
 
-        console.error('❌ Production deployment failed:', deploymentResult.error);
+        logger.error('❌ Production deployment failed:', deploymentResult.error);
         throw new Error(`Deployment failed: ${deploymentResult.error}`);
       }
     } catch (deployError) {
@@ -82,7 +83,7 @@ export class ProdSiteAdapter implements ISiteAdapter {
         status: 'failed'
       });
 
-      console.error('❌ Production site deployment error:', deployError);
+      logger.error('❌ Production site deployment error:', deployError);
       throw new Error(`Deployment failed: ${deployError instanceof Error ? deployError.message : 'Unknown error'}`);
     }
   }
@@ -126,7 +127,7 @@ export class ProdSiteAdapter implements ISiteAdapter {
   }
 
   async destroySite(siteId: string): Promise<boolean> {
-    console.log('🛑 Destroying production site:', { siteId });
+    logger.info('🛑 Destroying production site:', { siteId });
 
     try {
       // Use deployment adapter to handle infrastructure cleanup
@@ -134,23 +135,23 @@ export class ProdSiteAdapter implements ISiteAdapter {
       const destroyResult = await deploymentAdapter.destroy(siteId);
 
       if (!destroyResult.success) {
-        console.warn('⚠️ Failed to destroy production deployment, proceeding with site deletion:', destroyResult.error);
+        logger.warn('⚠️ Failed to destroy production deployment, proceeding with site deletion:', destroyResult.error);
       } else {
-        console.log('✅ Production site deployment destroyed successfully');
+        logger.info('✅ Production site deployment destroyed successfully');
       }
 
       // Delete site record
       const deleted = await this.siteService.deleteSite(siteId);
 
       if (!deleted) {
-        console.error('❌ Failed to delete production site record');
+        logger.error('❌ Failed to delete production site record');
         return false;
       }
 
-      console.log('✅ Production site completely destroyed:', { siteId });
+      logger.info('✅ Production site completely destroyed:', { siteId });
       return true;
     } catch (error) {
-      console.error('❌ Error destroying production site:', error);
+      logger.error('❌ Error destroying production site:', error);
       return false;
     }
   }

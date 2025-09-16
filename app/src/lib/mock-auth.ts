@@ -1,3 +1,4 @@
+import { logger } from './request-context';
 /**
  * Mock authentication system for local development
  * Provides a realistic login flow without requiring actual SSO
@@ -90,7 +91,7 @@ class MockAuthManager {
       localStorage.setItem('mockAuth_user', JSON.stringify(MOCK_USER))
     }
     
-    console.log('🔧 Mock login successful:', MOCK_USER.name, `(${MOCK_USER.email})`)
+    logger.info('mock_auth', `🔧 Mock login successful: ${MOCK_USER.name} (${MOCK_USER.email})`)
   }
   
   // Simulate logout process
@@ -111,7 +112,7 @@ class MockAuthManager {
       localStorage.removeItem('mockAuth_user')
     }
     
-    console.log('🔧 Mock logout successful')
+    logger.info('🔧 Mock logout successful')
   }
   
   // Quick login (same as regular login now)

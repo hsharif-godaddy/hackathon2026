@@ -1,3 +1,4 @@
+import { logger } from '../request-context';
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 import { getDeploymentAdapter } from '@/lib/deployment';
 import { DevEnvironmentManager } from '@/lib/dev-environment/DevEnvironmentManager';
@@ -51,7 +52,7 @@ export class DevSiteAdapter implements ISiteAdapter {
       throw new Error('Initial prompt is required');
     }
 
-    console.log('🔧 Creating new development site:', {
+    logger.info('🔧 Creating new development site:', {
       accountId,
       prompt: prompt.substring(0, 50) + '...'
     });
@@ -84,7 +85,7 @@ export class DevSiteAdapter implements ISiteAdapter {
           preview_url: deploymentResult.urls?.preview
         });
 
-        console.log('✅ Development site created and deployed successfully:', {
+        logger.info('✅ Development site created and deployed successfully:', {
           siteId: site.id,
           status: deploymentResult.status,
           urls: deploymentResult.urls
@@ -97,7 +98,7 @@ export class DevSiteAdapter implements ISiteAdapter {
           status: SiteStatus.failed
         });
 
-        console.error('❌ Development deployment failed:', deploymentResult.error);
+        logger.error('❌ Development deployment failed:', deploymentResult.error);
         throw new Error(`Deployment failed: ${deploymentResult.error}`);
       }
     } catch (deployError) {
@@ -106,7 +107,7 @@ export class DevSiteAdapter implements ISiteAdapter {
         status: SiteStatus.failed
       });
 
-      console.error('❌ Development site deployment error:', deployError);
+      logger.error('❌ Development site deployment error:', deployError);
       throw new Error(`Deployment failed: ${deployError instanceof Error ? deployError.message : 'Unknown error'}`);
     }
   }
@@ -150,7 +151,7 @@ export class DevSiteAdapter implements ISiteAdapter {
   }
 
   async destroySite(siteId: string): Promise<boolean> {
-    console.log('🛑 Destroying development site:', { siteId });
+    logger.info('🛑 Destroying development site:', { siteId });
 
     try {
       // Use deployment adapter to handle infrastructure cleanup
@@ -158,23 +159,23 @@ export class DevSiteAdapter implements ISiteAdapter {
       const destroyResult = await deploymentAdapter.destroy(siteId);
 
       if (!destroyResult.success) {
-        console.warn('⚠️ Failed to destroy development deployment, proceeding with site deletion:', destroyResult.error);
+        logger.warn('⚠️ Failed to destroy development deployment, proceeding with site deletion:', destroyResult.error);
       } else {
-        console.log('✅ Development site deployment destroyed successfully');
+        logger.info('✅ Development site deployment destroyed successfully');
       }
 
       // Delete site record
       const deleted = await this.siteService.deleteSite(siteId);
 
       if (!deleted) {
-        console.error('❌ Failed to delete development site record');
+        logger.error('❌ Failed to delete development site record');
         return false;
       }
 
-      console.log('✅ Development site completely destroyed:', { siteId });
+      logger.info('✅ Development site completely destroyed:', { siteId });
       return true;
     } catch (error) {
-      console.error('❌ Error destroying development site:', error);
+      logger.error('❌ Error destroying development site:', error);
       return false;
     }
   }
@@ -239,7 +240,7 @@ export class DevSiteAdapter implements ISiteAdapter {
       );
 
       // Log the error for monitoring systems
-      console.error('🚨 CRITICAL SECURITY VIOLATION:', {
+      logger.error('🚨 CRITICAL SECURITY VIOLATION:', {
         error: error.message,
         adapter: 'DevSiteAdapter',
         environment: {
@@ -255,7 +256,7 @@ export class DevSiteAdapter implements ISiteAdapter {
       throw error;
     }
 
-    console.log('✅ DevSiteAdapter: Environment validation passed - running in development mode');
+    logger.info('✅ DevSiteAdapter: Environment validation passed - running in development mode');
   }
 
   private mapToSiteInfo(site: any): SiteInfo {

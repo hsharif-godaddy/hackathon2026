@@ -295,6 +295,39 @@ export class ContextLogger {
 }
 
 /**
- * Global logger instance
+ * Global logger instance (lazy-loaded to avoid initialization issues)
  */
-export const logger = ContextLogger.getInstance();
+let _logger: ContextLogger | null = null;
+
+export const logger = {
+  get instance(): ContextLogger {
+    if (!_logger) {
+      _logger = ContextLogger.getInstance();
+    }
+    return _logger;
+  },
+  
+  debug(event: string, data?: any, options?: LogOptions): void {
+    this.instance.debug(event, data, options);
+  },
+  
+  info(event: string, data?: any, options?: LogOptions): void {
+    this.instance.info(event, data, options);
+  },
+  
+  warn(event: string, data?: any, options?: LogOptions): void {
+    this.instance.warn(event, data, options);
+  },
+  
+  error(event: string, data?: any, options?: LogOptions): void {
+    this.instance.error(event, data, options);
+  },
+  
+  fatal(event: string, data?: any, options?: LogOptions): void {
+    this.instance.fatal(event, data, options);
+  },
+  
+  log(level: LogLevel, event: string, data?: any, options?: LogOptions): void {
+    this.instance.log(level, event, data, options);
+  }
+};

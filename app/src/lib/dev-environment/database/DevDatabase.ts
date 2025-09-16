@@ -1,3 +1,4 @@
+import { logger } from '../../request-context';
 import type { Database } from 'better-sqlite3';
 
 export interface DevAppInfo {
@@ -93,7 +94,7 @@ export class DevDatabase {
     // Check if app already exists to prevent duplicate creation
     const existing = this.findDevAppById(devApp.appId);
     if (existing) {
-      console.log(`⚠️ Dev app ${devApp.appId} already exists, returning existing record`);
+      logger.info(`⚠️ Dev app ${devApp.appId} already exists, returning existing record`);
       return existing;
     }
     
@@ -119,10 +120,10 @@ export class DevDatabase {
     } catch (error) {
       // If we get a UNIQUE constraint error, check if the app was created by another process
       if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
-        console.log(`⚠️ UNIQUE constraint failed for app ${devApp.appId}, checking if it exists now`);
+        logger.info(`⚠️ UNIQUE constraint failed for app ${devApp.appId}, checking if it exists now`);
         const existingAfterError = this.findDevAppById(devApp.appId);
         if (existingAfterError) {
-          console.log(`✅ App ${devApp.appId} was created by another process, returning existing record`);
+          logger.info(`✅ App ${devApp.appId} was created by another process, returning existing record`);
           return existingAfterError;
         }
       }

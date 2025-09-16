@@ -1,3 +1,4 @@
+import { logger } from '../request-context';
 import type { IAccountAdapter, AccountInfo, PlanInfo } from './interfaces/IAccountAdapter';
 
 /**
@@ -55,13 +56,13 @@ export class DevAccountAdapter implements IAccountAdapter {
 
   async createAccount(shopperId: string, customerId: string): Promise<AccountInfo> {
     // In development, account creation always succeeds
-    console.log('🔧 Creating mock account for development:', { shopperId, customerId });
+    logger.info('🔧 Creating mock account for development:', { shopperId, customerId });
     return this.createMockAccount(shopperId, customerId);
   }
 
   async updateAccountStatus(shopperId: string, status: string): Promise<boolean> {
     // In development, account updates always succeed
-    console.log('🔧 Updating mock account status for development:', { shopperId, status });
+    logger.info('🔧 Updating mock account status for development:', { shopperId, status });
     return true;
   }
 
@@ -102,7 +103,7 @@ export class DevAccountAdapter implements IAccountAdapter {
       );
       
       // Log the error for monitoring systems
-      console.error('🚨 CRITICAL SECURITY VIOLATION:', {
+      logger.error('🚨 CRITICAL SECURITY VIOLATION:', {
         error: error.message,
         adapter: 'DevAccountAdapter',
         environment: {
@@ -119,7 +120,7 @@ export class DevAccountAdapter implements IAccountAdapter {
       throw error;
     }
 
-    console.log('✅ DevAccountAdapter: Environment validation passed - running in development mode');
+    logger.info('✅ DevAccountAdapter: Environment validation passed - running in development mode');
   }
 
   private createMockAccount(shopperId: string, customerId?: string): AccountInfo {
