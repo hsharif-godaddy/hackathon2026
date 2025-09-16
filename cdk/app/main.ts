@@ -1,7 +1,6 @@
 import config from "../lib/config";
 import { App } from "aws-cdk-lib";
 import {AiroBuilderStack} from "../lib/application-stack";
-import { AiroBuilderHostedZoneStack } from "../lib/hostedzone-stack";
 import { MySQLStack } from "../lib/mysql-stack";
 import { MySQLV2Stack } from "../lib/mysql-v2-stack";
 
@@ -19,8 +18,6 @@ async function main() {
   new MySQLV2Stack(app, 'MySQLV2Stack', { env: env });
 
   new AiroBuilderStack(app, 'AiroBuilderStack', { env: env });
-
-  new AiroBuilderHostedZoneStack(app, 'AiroBuilderHostedZoneStack', { env: env });
 
   app.synth();
 }
