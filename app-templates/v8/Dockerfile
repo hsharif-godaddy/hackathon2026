@@ -1,4 +1,7 @@
 ARG UPSTREAM_VERSION=22
+ARG DEV_SUPERVISOR_IMAGE="dev-supervisor:latest"
+
+FROM ${DEV_SUPERVISOR_IMAGE} AS dev-supervisor
 
 FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:${UPSTREAM_VERSION}-alpine
 
@@ -11,24 +14,26 @@ RUN apk add --no-cache python3 py3-setuptools make g++ curl git ca-certificates 
 RUN npm install -g pnpm
 
 # create the group and user
-RUN addgroup -S agent && adduser -S -G agent agent
-
-RUN mkdir -p /management-scripts && chown -R agent:agent /management-scripts
+# hardcoded the GID of the agent group to 790, UID of the agent user to 790 for now
+RUN addgroup -S -g 790 agent
+RUN adduser -S -G agent -u 790 agent
 
 # Copy dev-supervisor binary from pre-built image
-COPY --chown=agent:agent --from=dev-supervisor:latest /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
+COPY --chown=agent:agent --from=dev-supervisor /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
 
 # copy all except nomad_setup_and_serve.sh to /app-template
 COPY --chown=agent:agent . /app-template
 
-RUN rm -rf /app-template/*.sh
+RUN rm -f /app-template/*.sh
+
+# create the management-scripts directory and set ownership
+RUN mkdir -p /management-scripts
+RUN chown agent:agent /management-scripts
 
 # copy nomad_setup_and_serve.sh to /management-scripts
 COPY --chown=agent:agent nomad_setup_and_serve.sh /management-scripts/nomad_setup_and_serve.sh
 
 RUN chmod +x /management-scripts/nomad_setup_and_serve.sh
-
-RUN chown -R agent:agent /management-scripts/nomad_setup_and_serve.sh
 
 WORKDIR /app-template
 

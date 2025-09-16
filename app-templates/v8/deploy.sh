@@ -7,6 +7,7 @@ set -e  # Exit on any error
 
 NOMAD_SPEC_IMAGE_VERSION=${NOMAD_SPEC_IMAGE_VERSION:-pre-dev-v1.0.0}
 
+DEV_SUPERVISOR_IMAGE="${DEV_SUPERVISOR_IMAGE:-dev-supervisor:latest}"
 # Configuration
 REGION="eu-central-1"
 ACCOUNT_ID="418549769352"
@@ -17,6 +18,7 @@ ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPOSITORY}"
 echo "🚀 Starting deployment of Airo V8 Apps..."
 echo "📦 Repository: ${ECR_URI}"
 echo "🏷️  Tag: ${IMAGE_TAG}"
+echo "🔍 Dev Supervisor Image: ${DEV_SUPERVISOR_IMAGE}"
 
 # Step 1: Assume the deploy role
 echo ""
@@ -50,7 +52,7 @@ echo "🏗️  Building Docker image..."
 echo "Platform: linux/amd64"
 echo "Context: $(pwd)"
 
-docker buildx build --platform linux/amd64 -t airo-apps:${IMAGE_TAG} .
+docker buildx build --platform linux/amd64 --build-arg DEV_SUPERVISOR_IMAGE="$DEV_SUPERVISOR_IMAGE" -t airo-apps:${IMAGE_TAG} .
 
 echo "✅ Successfully built Docker image: airo-apps:${IMAGE_TAG}"
 

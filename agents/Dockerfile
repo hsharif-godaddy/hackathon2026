@@ -13,9 +13,23 @@ RUN apk add --no-cache python3 py3-setuptools make g++ git
 RUN npm install -g pnpm
 
 # create the group and user
-RUN addgroup -S agent && adduser -S -G agent agent
+# hardcoded the GID of the agent group to 790, UID of the agent user to 790 for now
+RUN addgroup -S -g 790 agent
+RUN adduser -S -G agent -u 790 agent
 
 COPY --chown=agent:agent . /app
+
+RUN rm -f /app/management-scripts/*.sh
+
+# create the management-scripts directory and set ownership
+RUN mkdir -p /management-scripts
+RUN chown agent:agent /management-scripts
+
+# copy management-scripts/ to /management-scripts
+COPY --chown=agent:agent management-scripts/* /management-scripts/
+
+RUN chmod +x /management-scripts/*.sh
+
 WORKDIR /app
 
 ENV ARTIFACTORY_NPM_TOKEN=${ARTIFACTORY_NPM_TOKEN}
@@ -45,11 +59,11 @@ RUN mkdir -p /app/data
 # Make sure the agent user owns the app directory
 RUN chown -R agent:agent /app
 
-# Switch to the agent user so we are not running as root
 USER agent
 
 # Expose the port that the agents server runs on
 ENV NODE_ENV=production
 
 # Start the application
-CMD ["node", "dist/server/app.js"]
+ENTRYPOINT ["/management-scripts/nomad_setup_and_serve.sh"]
+CMD ["node", "/app/dist/server/app.js"]

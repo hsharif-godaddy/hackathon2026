@@ -37,9 +37,10 @@ export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
 
       // Generate Nomad job configuration
       const jobName = generateJobName(siteId);
+      const imageRegistry = process.env.NOMAD_IMAGE_REGISTRY || '418549769352.dkr.ecr.eu-central-1.amazonaws.com';
       const environmentName = process.env.NOMAD_SPEC_IMAGE_VERSION || 'development';
-      const agentImage = `418549769352.dkr.ecr.eu-central-1.amazonaws.com/airo-builder/agents:${environmentName}`;
-      const appImage = `418549769352.dkr.ecr.eu-central-1.amazonaws.com/airo-builder/apps:${environmentName}`;
+      const agentImage = `${imageRegistry}/airo-builder/agents:${environmentName}`;
+      const appImage = `${imageRegistry}/airo-builder/apps:${environmentName}`;
       const jobSpecWrapper = generateNomadJobSpec({
         accountId,
         siteId,

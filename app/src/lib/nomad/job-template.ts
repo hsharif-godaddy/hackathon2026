@@ -25,10 +25,10 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
   } = config;
 
   const agentsDomain = `agent-${siteId}.ab.sxb1.test-secureserver.net`;
-  const backendDomain = `backend-${siteId}.ab.sxb1.test-secureserver.net`;
   const frontendDomain = `preview-${siteId}.ab.sxb1.test-secureserver.net`;
   const agentsServiceName = `${siteId}-agents`;
   const frontendServiceName = `${siteId}-dev-frontend`;
+  const customerAppDir = `\${NOMAD_ALLOC_DIR}/customer-app/${siteId}`;
 
   return {
     Job: {
@@ -67,11 +67,6 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               Label: 'http8000',
               To: 8000,
               HostNetwork: 'default'
-            },
-            {
-              Label: 'http8001',
-              To: 8001,
-              HostNetwork: 'default'
             }
           ]
         }],
@@ -97,12 +92,10 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               sidecar: false
             },
             Config: {
-              image: '764525110978.dkr.ecr.us-west-2.amazonaws.com/alpine:latest',
+              image: agentImage,
               auth_soft_fail: true,
-              entrypoint: ["/bin/sh", "-c"],
-              command: `mkdir -p /ceph-storage/${accountId}/${siteId}/git-repo
-              chmod 755 /ceph-storage/${accountId}/${siteId}/git-repo
-              echo '✅ Directories created'`,
+              entrypoint: ["/management-scripts/nomad_init.sh"],
+              command: "echo '✅ Initialization complete'",
               mounts: [
                 {
                   type: 'bind',
@@ -111,6 +104,10 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
                   target: '/ceph-storage'
                 }
               ]
+            },
+            Env: {
+              CUSTOMER_APP_DIR: customerAppDir,
+              CEPH_STORAGE_DIR: `/ceph-storage/${accountId}/${siteId}`
             },
             Resources: {
               CPU: 10,
@@ -121,23 +118,13 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
           {
             Name: 'airo-agents',
             Driver: 'docker',
-            User: 'root',
+            User: 'agent',
             Config: {
               image: agentImage,
               auth_soft_fail: true,
+              entrypoint: ["/management-scripts/nomad_setup_and_serve.sh"],
+              command: "env AWS_PROFILE=${BEDROCK_AWS_PROFILE} node dist/server/app.js",
               ports: ['http'],
-              force_pull: true,
-              entrypoint: ["/bin/sh", "-c"],
-              command: `mkdir -p \${NOMAD_ALLOC_DIR}/customer-app/${siteId}
-              chmod 755 \${NOMAD_ALLOC_DIR}/customer-app/${siteId}
-              touch \${NOMAD_ALLOC_DIR}/customer-app/${siteId}/.is_ready
-              chown -R agent:agent \${NOMAD_ALLOC_DIR}/customer-app/${siteId}
-              ls -latr \${NOMAD_ALLOC_DIR}/customer-app/
-              echo '✅ Directories created and set permissions'
-              git config --global --add safe.directory \${APPS_BASE_DIR}/${siteId}
-              mkdir -p /root/.aws
-              echo '[profile bedrock]\nrole_arn=arn:aws:iam::694282668781:role/airobuilde-custom-dev-airo-builder-bedrock-access\nsource_profile=default\nregion=us-west-2' > /root/.aws/config
-              exec env AWS_PROFILE=bedrock node dist/server/app.js`,
               security_opt: [
                 'label=type:ares_container.process'
               ],
@@ -159,6 +146,12 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
                 },
                 {
                   type: 'bind',
+                  readonly: false,
+                  source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${accountId}/${siteId}/git-repo`,
+                  target: `${customerAppDir}/.git`
+                },
+                {
+                  type: 'bind',
                   readonly: true,
                   source: "/data/.aws/",
                   target: "/data/.aws/"
@@ -173,6 +166,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               NODE_ENV: 'development',
               PORT: '80',
               DB_PATH: `/ceph-storage/${siteId}/app/apps.db`,
+              CUSTOMER_APP_DIR: customerAppDir,
               APPS_BASE_DIR: "${NOMAD_ALLOC_DIR}/customer-app",
               APP_TEMPLATE_DIR: '/app/app-templates/v8',
               GIT_REPO_DIR: `/ceph-storage/${siteId}/git-repo`,
@@ -181,7 +175,9 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS_FOR_AGENTS || '',
               AWS_SHARED_CREDENTIALS_FILE: "/data/.aws/credential_process",
               SSM_CREDENTIALS_FILE: "/data/.aws/credentials",
-              AWS_PROFILE: "bedrock",
+              BEDROCK_AWS_PROFILE: "bedrock",
+              BEDROCK_AWS_ROLE_ARN: process.env.BEDROCK_AWS_ROLE_ARN || 'arn:aws:iam::694282668781:role/airobuilde-custom-dev-airo-builder-bedrock-access',
+              BEDROCK_AWS_REGION: process.env.BEDROCK_AWS_REGION || 'us-west-2',
               GETTY_API_URL: process.env.GETTY_API_URL || 'https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net/img/search',
               GETTY_APP_KEY: process.env.GETTY_APP_KEY || 'airo-app-builder',
               GETTY_TOKEN: process.env.GETTY_TOKEN || ''
@@ -205,8 +201,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
             Config: {
               image: appImage,
               auth_soft_fail: true,
-              ports: ['http8000', 'http8001'],
-              force_pull: true,
+              ports: ['http8000'],
               security_opt: [
                 'label=type:ares_container.process'
               ],
@@ -226,8 +221,8 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
                 {
                   type: 'bind',
                   readonly: false,
-                  source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${accountId}/${siteId}`,
-                  target: '/ceph-storage'
+                  source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${accountId}/${siteId}/git-repo`,
+                  target: '/app/.git'
                 }
               ]
             },
@@ -241,7 +236,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               RUNNING_IN_DOCKER: 'true',
               CUSTOMER_APP_DIR: '/app',
               DEV_SUPERVISOR_SOCKET_PATH: `\${NOMAD_ALLOC_DIR}/tmp/${siteId}-dev-supervisor.sock`,
-              GIT_REPO_DIR: `/ceph-storage/git-repo`,
+              GIT_REPO_DIR: '/app/.git',
               BASE_APP_DIR: '/app-template',
               ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS_FOR_AGENTS || ''
             },
