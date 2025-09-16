@@ -61,28 +61,6 @@ export class DevelopAgent extends BaseAgent {
     context?: AgentExecutionContext
   ): string {
     let customizedPrompt = basePrompt;
-
-    // Add current timestamp for time-aware responses
-    if (context?.timestamp) {
-      customizedPrompt += `\n\nCurrent timestamp: ${context.timestamp.toISOString()}`;
-    }
-
-    // Add session context
-    if (context?.userId) {
-      customizedPrompt += `\nDeveloper session ID: ${context.userId}`;
-    }
-
-    if (context?.threadId) {
-      customizedPrompt += `\nProject thread ID: ${context.threadId}`;
-    }
-
-    // Add visual context guidance if available
-    const visualContextSection = this.generateVisualContextSection(
-      context,
-      `Use this context to make targeted, precise changes to the right parts of their application.`
-    );
-    customizedPrompt += visualContextSection;
-
     // Add development-specific context
     customizedPrompt += `\n\n## AI Edit Context
 When a user selects a specific element in their application for editing, you will receive a separate message containing the element details and source code location. Use this information to make precise, targeted edits.
