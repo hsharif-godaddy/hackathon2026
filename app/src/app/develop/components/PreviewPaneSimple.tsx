@@ -7,7 +7,10 @@ import {
   ClockIcon
 } from '@heroicons/react/24/outline'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
+import { useDevelopPageStore, OptionsSheetTab } from '@/stores/useDevelopPageStore'
 import { postMessageToIframe } from '@/utils/postMessage'
+import Button from '@ux/button'
 
 // Timing constants for iframe lifecycle management
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
@@ -34,8 +37,16 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
     isPollingServer
   } = useServerPollingStore()
   
+  const { getCommits } = useGitHistoryStore()
+  const { setOpenOptionsSheet } = useDevelopPageStore()
+  
   const serverState = getServerState(appId)
   const previewUrl = serverState?.isReady ? serverState.url : null
+  
+  // Get commits to determine if selected commit is the latest
+  const commits = getCommits(appId)
+  const latestCommit = commits.length > 0 ? commits[0] : null
+  const isViewingHistoricalCommit = selectedCommit && latestCommit && selectedCommit.hash !== latestCommit.hash
   
   // Iframe state
   const [iframeError, setIframeError] = useState(false)
@@ -365,13 +376,19 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
   if (previewUrl && serverState?.isReady) {
     return (
       <div className="h-full flex flex-col">
-        {selectedCommit && (
-          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2">
-            <div className="flex items-center text-sm text-amber-800">
-              <span className="font-mono bg-amber-200 px-2 py-1 rounded text-xs mr-2">
-                {selectedCommit.shortHash}
+        {isViewingHistoricalCommit && (
+          <div className="bg-intents-ux-feedbackHighContrastWarning-feedbackColor border-b border-amber-200 px-4 py-2">
+            <div className="flex items-center items-space-between w-full">
+              <span className="font-mono px-2 text-sm py-1 rounded mr-2">
+                This is a preview of a previous version of the app.
               </span>
-              <span className="truncate">{selectedCommit.message}</span>
+              <Button 
+                size="sm"
+                className="ml-auto!"
+                design="control"
+                text="View History"
+                onClick={() => setOpenOptionsSheet(OptionsSheetTab.HISTORY)}
+              />
             </div>
           </div>
         )}

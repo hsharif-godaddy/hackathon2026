@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import Message from './Message'
 import { Message as MessageType } from './types'
 
@@ -10,18 +10,28 @@ interface MessageListProps {
 
 export default function MessageList({ messages }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const prevMessagesLength = useRef(messages.length)
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const scrollToBottom = (smooth = true) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' })
   }
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    const messagesChanged = messages.length !== prevMessagesLength.current
+    
+    if (isInitialLoad) {
+      scrollToBottom(false)
+      setIsInitialLoad(false)
+    } else if (messagesChanged) {
+      scrollToBottom(true)
+    }
+    
+    prevMessagesLength.current = messages.length
+  }, [messages, isInitialLoad])
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      {/* DevBot Header - now scrollable */}
       {messages.map((message, index) => (
         <Message key={message.id || `message-${index}`} message={message} />
       ))}

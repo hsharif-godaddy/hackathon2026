@@ -14,6 +14,11 @@ interface GitCommit {
   date: string
 }
 
+// Options sheet tab types
+export enum OptionsSheetTab {
+  HISTORY = 'history'
+}
+
 // Loading phases for proper sequencing
 type LoadingPhase = 'idle' | 'loading-app' | 'loading-site' | 'loading-conversations' | 'ready'
 
@@ -37,6 +42,9 @@ interface DevelopPageStore {
   commitHistory: GitCommit[]
   isLoadingCommits: boolean
   
+  // Options sheet UI
+  openOptionsSheet: OptionsSheetTab | null
+  
   // Page loading orchestration
   loadingPhase: LoadingPhase
   currentAppId: string | null
@@ -54,6 +62,7 @@ interface DevelopPageStore {
   setHasUnsavedChanges: (hasChanges: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
   setSelectedCommit: (commit: GitCommit | null) => void
+  setOpenOptionsSheet: (sheet: OptionsSheetTab | null) => void
   
   // Page loading orchestration
   initializePage: (appId: string) => Promise<void>
@@ -89,6 +98,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     selectedCommit: null,
     commitHistory: [],
     isLoadingCommits: false,
+    openOptionsSheet: null,
     
     // Page loading orchestration state
     loadingPhase: 'idle',
@@ -107,6 +117,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
     setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),
     setSelectedCommit: (commit) => set((state) => { state.selectedCommit = commit }),
+    setOpenOptionsSheet: (sheet) => set((state) => { state.openOptionsSheet = sheet }),
     
     // Page loading orchestration
     resetForNewApp: (appId: string) => {
@@ -121,6 +132,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.selectedCommit = null
         state.commitHistory = []
         state.hasUnsavedChanges = false
+        state.openOptionsSheet = null
       })
     },
 

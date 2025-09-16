@@ -9,6 +9,11 @@
   - Require login before writing a prompt. (This is a temporary measure, to make sure people don't lose work.)
   - Ask the develop agent to view error logs after making changes
 
+- App develop page updates:
+  - Adding Tabs (Chat and Options)
+  - Adding Sheet component to display available options (currently only Version History)
+  - Updating preview banner when viewving an previous commit, adding CTA to open Version History
+
 ### Internal Changes
 
 - Added new setup.sh script for setting up local development environment.

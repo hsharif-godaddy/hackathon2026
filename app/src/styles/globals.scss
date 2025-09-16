@@ -13,14 +13,105 @@
   --color-ai: #613EA3;
   --color-ai-light: #744BC4;
   --color-ai-dark: #462A72;
-  --color-border: var(--ux-97h3vl, #d4dbe0);
   --color-ring-ai: #613EA3;
+  
+  /* Shadcn color mappings */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  
 }
 
 @layer base {
   :root {
+    /* GoDaddy Airo Theme */
     --ref-orb-w: 1000;
     --ref-orb-h: 694
+  
+    /* Shadcn Light Theme */
+    --radius: 0.65rem;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.141 0.005 285.823);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.141 0.005 285.823);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.141 0.005 285.823);
+    --primary: oklch(0.606 0.25 292.717);
+    --primary-foreground: oklch(0.969 0.016 293.756);
+    --secondary: oklch(0.967 0.001 286.375);
+    --secondary-foreground: oklch(0.21 0.006 285.885);
+    --muted: oklch(0.967 0.001 286.375);
+    --muted-foreground: oklch(0.552 0.016 285.938);
+    --accent: oklch(0.967 0.001 286.375);
+    --accent-foreground: oklch(0.21 0.006 285.885);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.92 0.004 286.32);
+    --input: oklch(0.92 0.004 286.32);
+    --ring: oklch(0.606 0.25 292.717);
+    --chart-1: oklch(0.646 0.222 41.116);
+    --chart-2: oklch(0.6 0.118 184.704);
+    --chart-3: oklch(0.398 0.07 227.392);
+    --chart-4: oklch(0.828 0.189 84.429);
+    --chart-5: oklch(0.769 0.188 70.08);
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.141 0.005 285.823);
+    --sidebar-primary: oklch(0.606 0.25 292.717);
+    --sidebar-primary-foreground: oklch(0.969 0.016 293.756);
+    --sidebar-accent: oklch(0.967 0.001 286.375);
+    --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
+    --sidebar-border: oklch(0.92 0.004 286.32);
+    --sidebar-ring: oklch(0.606 0.25 292.717);
+  }
+  
+  /* Shadcn Dark Theme */
+  .dark {
+    --background: oklch(0.141 0.005 285.823);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.21 0.006 285.885);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.21 0.006 285.885);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.541 0.281 293.009);
+    --primary-foreground: oklch(0.969 0.016 293.756);
+    --secondary: oklch(0.274 0.006 286.033);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.274 0.006 286.033);
+    --muted-foreground: oklch(0.705 0.015 286.067);
+    --accent: oklch(0.274 0.006 286.033);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.541 0.281 293.009);
+    --chart-1: oklch(0.488 0.243 264.376);
+    --chart-2: oklch(0.696 0.17 162.48);
+    --chart-3: oklch(0.769 0.188 70.08);
+    --chart-4: oklch(0.627 0.265 303.9);
+    --chart-5: oklch(0.645 0.246 16.439);
+    --sidebar: oklch(0.21 0.006 285.885);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.541 0.281 293.009);
+    --sidebar-primary-foreground: oklch(0.969 0.016 293.756);
+    --sidebar-accent: oklch(0.274 0.006 286.033);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.541 0.281 293.009);
   }
 
   * {
@@ -51,6 +142,229 @@
 }
 
 @layer utilities {
+  /* Shadcn animations */
+  .animate-in {
+    animation-fill-mode: both;
+  }
+  
+  .animate-out {
+    animation-fill-mode: both;
+  }
+  
+  .duration-150 {
+    animation-duration: 150ms;
+  }
+  
+  .duration-300 {
+    animation-duration: 300ms;
+  }
+  
+  .duration-500 {
+    animation-duration: 500ms;
+  }
+  
+  .fade-in-0 {
+    animation-name: fade-in;
+    animation-duration: 0ms;
+  }
+  
+  .fade-out-0 {
+    animation-name: fade-out;
+    animation-duration: 0ms;
+  }
+  
+  .slide-in-from-top {
+    animation-name: slide-in-from-top;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+  }
+  
+  .slide-in-from-right {
+    animation-name: slide-in-from-right;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+  }
+  
+  .slide-in-from-bottom {
+    animation-name: slide-in-from-bottom;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+  }
+  
+  .slide-in-from-left {
+    animation-name: slide-in-from-left;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+  }
+  
+  .slide-out-to-top {
+    animation-name: slide-out-to-top;
+    animation-timing-function: ease-in;
+    animation-fill-mode: both;
+  }
+  
+  .slide-out-to-right {
+    animation-name: slide-out-to-right;
+    animation-timing-function: ease-in;
+    animation-fill-mode: both;
+  }
+  
+  .slide-out-to-bottom {
+    animation-name: slide-out-to-bottom;
+    animation-timing-function: ease-in;
+    animation-fill-mode: both;
+  }
+  
+  .slide-out-to-left {
+    animation-name: slide-out-to-left;
+    animation-timing-function: ease-in;
+    animation-fill-mode: both;
+  }
+
+  /* Data attribute selectors for Radix components */
+  [data-state="open"].animate-in,
+  .data-\[state\=open\]\:animate-in[data-state="open"] {
+    animation-fill-mode: both;
+  }
+  
+  [data-state="closed"].animate-out,
+  .data-\[state\=closed\]\:animate-out[data-state="closed"] {
+    animation-fill-mode: both;
+  }
+  
+  [data-state="open"].duration-300,
+  .data-\[state\=open\]\:duration-300[data-state="open"] {
+    animation-duration: 300ms;
+  }
+  
+  [data-state="closed"].duration-300,
+  .data-\[state\=closed\]\:duration-300[data-state="closed"] {
+    animation-duration: 300ms;
+  }
+  
+  [data-state="open"].slide-in-from-right,
+  .data-\[state\=open\]\:slide-in-from-right[data-state="open"] {
+    animation-name: slide-in-from-right;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+  }
+  
+  [data-state="closed"].slide-out-to-right,
+  .data-\[state\=closed\]\:slide-out-to-right[data-state="closed"] {
+    animation-name: slide-out-to-right;
+    animation-timing-function: ease-in;
+    animation-fill-mode: both;
+  }
+  
+  [data-state="open"].fade-in-0,
+  .data-\[state\=open\]\:fade-in-0[data-state="open"] {
+    animation-name: fade-in;
+    animation-duration: 0ms;
+  }
+  
+  [data-state="closed"].fade-out-0,
+  .data-\[state\=closed\]\:fade-out-0[data-state="closed"] {
+    animation-name: fade-out;
+    animation-duration: 0ms;
+  }
+  
+  [data-state="open"].slide-in-from-left,
+  .data-\[state\=open\]\:slide-in-from-left[data-state="open"] {
+    animation-name: slide-in-from-left;
+    animation-timing-function: ease-out;
+    animation-fill-mode: both;
+  }
+  
+  [data-state="closed"].slide-out-to-left,
+  .data-\[state\=closed\]\:slide-out-to-left[data-state="closed"] {
+    animation-name: slide-out-to-left;
+    animation-timing-function: ease-in;
+    animation-fill-mode: both;
+  }
+
+  /* Keyframes */
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  @keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+  
+  @keyframes slide-in-from-top {
+    from { transform: translateY(-100%); }
+    to { transform: translateY(0); }
+  }
+  
+  @keyframes slide-in-from-right {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  
+  @keyframes slide-in-from-bottom {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  
+  @keyframes slide-in-from-left {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+  
+  @keyframes slide-out-to-top {
+    from { transform: translateY(0); }
+    to { transform: translateY(-100%); }
+  }
+  
+  @keyframes slide-out-to-right {
+    from { transform: translateX(0); }
+    to { transform: translateX(100%); }
+  }
+  
+  @keyframes slide-out-to-bottom {
+    from { transform: translateY(0); }
+    to { transform: translateY(100%); }
+  }
+  
+  @keyframes slide-out-to-left {
+    from { transform: translateX(0); }
+    to { transform: translateX(-100%); }
+  }
+
+  /* GoDaddy Airo-style gradient backgrounds */
+  .bg-airo-gradient {
+    background: linear-gradient(135deg, #7C3AED 0%, #EC4899 100%);
+  }
+  
+  .bg-airo-gradient-soft {
+    background: linear-gradient(135deg, #E9E4F2 0%, #D3C1F7 100%);
+  }
+  
+  .bg-airo-gradient-enhanced {
+    background: linear-gradient(
+      135deg, 
+      #6366F1 0%,     /* Indigo */
+      #8B5CF6 25%,    /* Violet */
+      #A855F7 50%,    /* Purple */
+      #EC4899 75%,    /* Pink */
+      #F472B6 100%    /* Light pink */
+    );
+  }
+  
+  .bg-airo-gradient-animated {
+    background: linear-gradient(
+      -45deg,
+      #6366F1,
+      #8B5CF6,
+      #A855F7,
+      #EC4899
+    );
+    background-size: 400% 400%;
+    animation: gradientShift 15s ease infinite;
+  }
+  
   @keyframes reverse-spin {
     from {
       transform: rotate(360deg);
@@ -88,40 +402,6 @@
 /* Force dark text color for chat input */
 .chat-input-text {
   color: #000000 !important;
-}
-
-/* GoDaddy Airo-style gradient backgrounds */
-@layer utilities {
-  .bg-airo-gradient {
-    background: linear-gradient(135deg, #7C3AED 0%, #EC4899 100%);
-  }
-  
-  .bg-airo-gradient-soft {
-    background: linear-gradient(135deg, #E9E4F2 0%, #D3C1F7 100%);
-  }
-  
-  .bg-airo-gradient-enhanced {
-    background: linear-gradient(
-      135deg, 
-      #6366F1 0%,     /* Indigo */
-      #8B5CF6 25%,    /* Violet */
-      #A855F7 50%,    /* Purple */
-      #EC4899 75%,    /* Pink */
-      #F472B6 100%    /* Light pink */
-    );
-  }
-  
-  .bg-airo-gradient-animated {
-    background: linear-gradient(
-      -45deg,
-      #6366F1,
-      #8B5CF6,
-      #A855F7,
-      #EC4899
-    );
-    background-size: 400% 400%;
-    animation: gradientShift 15s ease infinite;
-  }
 }
 
 @keyframes gradientShift {

@@ -49,17 +49,13 @@ function DevelopPageContent() {
     expandedPlan,
     chatPaneWidth,
     hasUnsavedChanges,
-    isVersionHistoryOpen,
     selectedCommit,
     setHasUnsavedChanges,
-    selectCommit: selectCommitFromStore,
     toggleSelectMode,
     toggleExpandedPlan,
-    toggleVersionHistory,
     restartApp: restartAppFromStore,
     setChatPaneWidth,
     setIsSelectMode,
-    // New orchestrated loading
     loadingPhase,
     app,
     site,
@@ -68,15 +64,9 @@ function DevelopPageContent() {
   
   // Git history store - handles loading with smart retry logic
   const {
-    getCommits,
-    isLoading: isLoadingCommitsForApp,
     loadGitHistory,
-    refreshGitHistory
   } = useGitHistoryStore()
-  
-  const commitHistory = getCommits(appId)
-  const isLoadingCommits = isLoadingCommitsForApp(appId)
-  
+
   // Local state (only what's not in stores)
   const [showUsageCost, setShowUsageCost] = useState(false)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
@@ -87,10 +77,7 @@ function DevelopPageContent() {
     scrollPosition?: { x: number; y: number }
   }>({})
 
-
   const headerRef = useRef<HeaderRef>(null)
-
-  // Site data is now handled by the orchestrated loading
 
   // Main initialization - orchestrated through store
   useEffect(() => {
@@ -102,29 +89,19 @@ function DevelopPageContent() {
     }
   }, [appId, initializePage])
 
-  // Initial prompt handling is now managed in the MessagesStore during initializeConversations
-  // This prevents circular dependencies and ensures proper state management
 
   // MESSAGE HANDLER - Uses store for message handling
   const handleSendMessage = useCallback(async (messageContent?: string) => {
     await sendMessageFromStore(messageContent)
-    
-    // Additional side effects after message sent
     headerRef.current?.refreshTokenUsage()
-    // Note: Preview refresh is now handled on message completion, not immediately
-    
-    // Logic simplified - UI updates handled by store orchestration
-  }, [])
-
-  // Auto-send is now handled by the orchestrated loading in useDevelopPageStore
+  }, [sendMessageFromStore])
 
   // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
     return () => {
-      cleanupMessageService(appId) // Clean up specific app connection
-      cleanupServerPolling() // Clean up server polling
-      cleanupGitHistoryStore(appId) // Clean up git history for this app
-      // Clear any pending style update timeout
+      cleanupMessageService(appId)
+      cleanupServerPolling()
+      cleanupGitHistoryStore(appId)
       if (batchTimeoutRef.current) {
         clearTimeout(batchTimeoutRef.current)
       }
@@ -389,7 +366,7 @@ function DevelopPageContent() {
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Chat Panel */}
         <div 
-          className="bg-white flex flex-col border-r border-gray-200 flex-shrink-0"
+          className="flex flex-col border-r flex-shrink-0"
           style={{ 
             width: `${chatPaneWidth}px`,
             minWidth: `${chatPaneWidth}px`,
@@ -403,24 +380,7 @@ function DevelopPageContent() {
             onKeyPress={handleKeyPress}
             onToggleSelectMode={toggleSelectMode}
             onToggleExpandedPlan={toggleExpandedPlan}
-            onToggleVersionHistory={() => {
-              toggleVersionHistory(appId)
-              // Load git history when opening version history panel
-              if (!isVersionHistoryOpen) {
-                loadGitHistory(appId, false) // Don't force reload, use smart caching
-              }
-            }}
-            isVersionHistoryOpen={isVersionHistoryOpen}
-            hasSelectedCommit={selectedCommit !== null}
             appId={appId}
-            selectedCommit={selectedCommit}
-            commits={commitHistory}
-            isLoadingCommits={isLoadingCommits}
-            onRefreshCommits={() => refreshGitHistory(appId)}
-            onSelectCommit={async (commit) => {
-              await selectCommitFromStore(appId, commit)
-              handlePreviewRefresh()
-            }}
           />
         </div>
 
@@ -457,8 +417,6 @@ function DevelopPageContent() {
                 onUnsavedChanges={setHasUnsavedChanges}
               />
             </div>
-
-            {/* Version History Panel removed - now integrated in ChatPane */}
           </div>
         </div>
       </div>

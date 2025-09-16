@@ -1,11 +1,9 @@
 'use client'
 
 import { useRef } from 'react'
-import MessageList from './MessageList'
 import PlanTracker from './PlanTracker'
 import ChatInput from './ChatInput'
-import ChatHeader from './ChatHeader'
-import VersionHistory from './VersionHistory'
+import ChatTabs from './ChatTabs'
 import { useMessageProcessing } from './useMessageProcessing'
 import { useMessagesStore } from '@/stores/useMessagesStore'
 
@@ -15,33 +13,7 @@ interface ChatPaneProps {
   onKeyPress: (e: React.KeyboardEvent) => void
   onToggleSelectMode: () => void
   onToggleExpandedPlan: () => void
-  onToggleVersionHistory?: () => void
-  isVersionHistoryOpen?: boolean
-  hasSelectedCommit?: boolean
   appId?: string
-  selectedCommit?: {
-    hash: string
-    shortHash: string
-    message: string
-    author: string
-    date: string
-  } | null
-  commits?: Array<{
-    hash: string
-    shortHash: string
-    message: string
-    author: string
-    date: string
-  }>
-  isLoadingCommits?: boolean
-  onRefreshCommits?: () => void
-  onSelectCommit?: (commit: {
-    hash: string
-    shortHash: string
-    message: string
-    author: string
-    date: string
-  } | null) => void
 }
 
 export default function ChatPane({
@@ -50,15 +22,7 @@ export default function ChatPane({
   onKeyPress,
   onToggleSelectMode,
   onToggleExpandedPlan,
-  onToggleVersionHistory = () => {},
-  isVersionHistoryOpen = false,
-  hasSelectedCommit = false,
-  appId = '',
-  selectedCommit = null,
-  commits = [],
-  isLoadingCommits = false,
-  onRefreshCommits = () => {},
-  onSelectCommit = () => {}
+  appId = ''
 }: ChatPaneProps) {
   // Get state from messages store
   const {
@@ -106,37 +70,17 @@ export default function ChatPane({
   }
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <ChatHeader 
-        onToggleVersionHistory={onToggleVersionHistory}
-        isVersionHistoryOpen={isVersionHistoryOpen}
-        hasSelectedCommit={hasSelectedCommit}
-      />
       <PlanTracker 
         developmentPlan={developmentPlan}
         expandedPlan={expandedPlan}
         onToggleExpandedPlan={onToggleExpandedPlan}
       />
       
-      {/* Toggle between MessageList and VersionHistory */}
-      {isVersionHistoryOpen ? (
-        <div className="flex-1 overflow-auto">
-          <VersionHistory
-            appId={appId}
-            isOpen={true}
-            onClose={onToggleVersionHistory}
-            onSelectCommit={onSelectCommit}
-            selectedCommit={selectedCommit}
-            commits={commits}
-            isLoading={isLoadingCommits}
-            onRefresh={onRefreshCommits}
-          />
-        </div>
-      ) : (
-        <MessageList messages={messages} />
-      )}
+      <ChatTabs
+        messages={messages}
+        appId={appId}
+      />
       
-      {/* AI Edit Context Display - Simple selector above input */}
-      {/* Chat Status Indicator - only shows during processing */}
       {isProcessing && (
         <div className="mx-4 mb-2 rounded-md p-2 flex items-center justify-center">
           <div className="flex space-x-1 mr-2">
@@ -148,18 +92,18 @@ export default function ChatPane({
       )}
       
       {safeAiEditContext && (
-        <div className="mx-4 mb-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
+        <div className="mx-4 mb-2 px-3 py-2 border rounded-md">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm">✨</span>
-              <span className="text-sm font-medium text-blue-900">Selected Element</span>
-              <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+              <span className="text-sm font-medium">Selected Element</span>
+              <span className="text-xs px-2 py-0.5 rounded">
                 {safeAiEditContext.elementInfo.tagName}
               </span>
             </div>
             <button
               onClick={() => setAiEditContext(null)}
-              className="text-blue-400 hover:text-blue-600 text-sm"
+              className="text-sm"
               title="Clear selection"
             >
               ×
