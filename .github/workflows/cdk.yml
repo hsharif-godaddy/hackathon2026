@@ -9,6 +9,8 @@ on:
         type: choice
         options:
           - 'dev'
+          - 'test'
+          - 'prod'
         default: 'dev'
       STACK_NAME:
         description: 'Stack to deploy'
@@ -70,6 +72,8 @@ jobs:
           echo "STACK_NAME=${{ inputs.STACK_NAME || github.event.inputs.STACK_NAME || '--all' }}" >> $GITHUB_ENV
           case "${{ inputs.ENV_NAME || github.event.inputs.ENV_NAME || 'dev' }}" in
           'dev') ACCOUNT_ID='694282668781' ;;
+          'test') ACCOUNT_ID='269423819739' ;;
+          'prod') ACCOUNT_ID='NOT_DEFINED' ;;
           esac
           echo "CDK_AWS_ACCOUNT_ID=${ACCOUNT_ID}" >> $GITHUB_ENV
           echo "DEFAULT_ACTION=${{ inputs.DEFAULT_ACTION || github.event.inputs.DEFAULT_ACTION || 'diff' }}" >> $GITHUB_ENV

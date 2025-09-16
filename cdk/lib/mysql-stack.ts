@@ -71,9 +71,9 @@ export class MySQLStack extends GDStack {
         parameterGroup: instanceParameterGroup,
       }),
       serverlessV2MinCapacity: 0.5,
-      serverlessV2MaxCapacity: 16,
+      serverlessV2MaxCapacity: config.serverlessV2MaxCapacity,
       backup: {
-        retention: cdk.Duration.days(7),
+        retention: cdk.Duration.days(config.backupRetentionDays),
         preferredWindow: '03:00-04:00',
       },
       clusterIdentifier: `${config.envName}-mysql-cluster`,

@@ -13,20 +13,25 @@ export class AiroBuilderStack extends GDStack {
       roleName: `${config.envName}-airo-builder-bedrock-access`,
       description: 'Role providing AWS Bedrock access for Airo Builder',
       assumedBy: new iam.CompositePrincipal(
-        // Allow other roles in the same account to assume this role
-        new iam.AccountRootPrincipal(),
-        // Allow V2 Cell AWS account to assume this role
-          new iam.AccountPrincipal(config.v2CellAccount),
-        // Allow specific service principals if needed
-        new iam.ServicePrincipal('lambda.amazonaws.com'),
-        new iam.ServicePrincipal('ecs-tasks.amazonaws.com')
+        // Create ArnPrincipal for each ARN in the config
+        ...config.bedrockAssumeRoleArns.map(arn => new iam.ArnPrincipal(arn)),
+        // Add current account ops role
+        new iam.ArnPrincipal(`arn:aws:iam::${cdk.Aws.ACCOUNT_ID}:role/GD-AWS-USA-GD-AiroBuilde-Ops`)
       ),
-      managedPolicies: [
-        // Use AWS managed policy for Bedrock access
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonBedrockLimitedAccess')
-      ],
-
-      // Apply permissions boundary to restrict Bedrock access according to organizational security policies.
+      inlinePolicies: {
+        BedrockAccess: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                'bedrock:InvokeModel',
+                'bedrock:InvokeModelWithResponseStream',
+              ],
+              resources: [ "*" ]
+            })
+          ]
+        })
+      },
       permissionsBoundary: iam.ManagedPolicy.fromManagedPolicyName(
         this,
         'BedrockPermissionBoundary',
