@@ -18,11 +18,18 @@ export function injectFullStory() {
   // Mark as injected
   ;(window as any).__FULLSTORY_INJECTED__ = true
 
-  // FullStory initialization script
+  // FullStory initialization script with iframe support
   ;(window as any)['_fs_host'] = 'fullstory.com'
   ;(window as any)['_fs_script'] = 'edge.fullstory.com/s/fs.js'
   ;(window as any)['_fs_org'] = 'YKBRC'
   ;(window as any)['_fs_namespace'] = 'FS'
+  
+  // CRITICAL: Enable iframe mode if we're in an iframe
+  // This must be set BEFORE FullStory initializes
+  if (window !== window.top) {
+    ;(window as any)['_fs_run_in_iframe'] = true
+    console.log('🔍 FullStory iframe mode enabled - setting _fs_run_in_iframe = true')
+  }
   
   ;(function(m: any, n: any, e: any, t: any, l: any, o: any, g: any, y: any) {
     if (e in m) {
@@ -53,24 +60,26 @@ export function injectFullStory() {
     g.identifyAccount = function(i: any, v: any) { o = 'account'; v = v || {}; v.acctId = i; g(o, v) }
     g.clearUserCookie = function() {}
     g.setVars = function(n: any, p: any) { g('setVars', [n, p]) }
-  })(window, document, (window as any)['_fs_namespace'], 'script', 'user')
+  })(window, document, (window as any)['_fs_namespace'], 'script', 'user', null, null, null)
 
-  // Initialize FullStory with same timing as dev tools
+  // Simple FullStory initialization - minimal approach
   const initializeFS = () => {
     if (typeof window !== 'undefined' && (window as any).FS && (window as any).FS.init) {
+      // Initialize FullStory with essential iframe support
       ;(window as any).FS.init({ 
         orgId: 'YKBRC',
-        recordCrossDomainIFrames: true 
+        recordCrossDomainIFrames: true
       })
-      document.body.classList.add('fs-unmask-airo-app-builder')
-      console.log('🔍 FullStory initialized in DEV preview iframe')
+      
+      const mode = window !== window.top ? 'iframe' : 'standalone'
+      console.log(`🔍 FullStory initialized in ${mode} mode with fs-unmask-airo-app-builder class`)
     } else {
-      // Retry after short delay, like dev tools
+      // Retry after short delay
       setTimeout(initializeFS, 100)
     }
   }
 
-  // Wait for DOM ready, like dev tools
+  // Initialize when ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeFS)
   } else {

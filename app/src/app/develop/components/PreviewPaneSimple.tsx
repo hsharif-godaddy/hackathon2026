@@ -402,7 +402,7 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
                   className="w-full h-full border-0"
                   onError={handleIframeError}
                   onLoad={handleIframeLoad}
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"
                   title={`Preview for ${appId}`}
                 />
               </div>

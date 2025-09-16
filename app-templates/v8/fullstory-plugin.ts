@@ -28,7 +28,7 @@ export function fullStoryPlugin(): Plugin {
           const fullStoryInjection = `
 // Auto-inject FullStory in development (EXACT same pattern as dev tools)
 if (import.meta.env.MODE === 'development') {
-  import('./dev-tools/src/fullstory-injector').then(({ injectFullStory }) => {
+  import('../dev-tools/src/fullstory-injector').then(({ injectFullStory }) => {
     injectFullStory();
   });
 }`
