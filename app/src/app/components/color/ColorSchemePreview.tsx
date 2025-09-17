@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { ColorSchemePreviewProps } from './types';
 import { ClipboardIcon, CheckIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/lib/shadcn/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/lib/shadcn/card';
 
 export default function ColorSchemePreview({ 
   palette 

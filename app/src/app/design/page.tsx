@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { ColorSchemeDrawer, ColorPalette } from '../components/color';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/lib/shadcn/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/lib/shadcn/card';
 
 export default function DesignPage() {
   const [isColorDrawerOpen, setIsColorDrawerOpen] = useState(false);

@@ -6,7 +6,7 @@ import { ColorPalette, ColorPaletteOption, ProjectAnswers } from './types';
 import ProjectQuestionnaire from './ProjectQuestionnaire';
 import ColorPaletteGrid from './ColorPaletteGrid';
 import ColorSchemePreview from './ColorSchemePreview';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/lib/shadcn/button';
 
 interface ColorSchemeDrawerProps {
   isOpen: boolean;
