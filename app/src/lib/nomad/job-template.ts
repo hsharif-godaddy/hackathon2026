@@ -46,7 +46,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
         }
       ],
       TaskGroups: [{
-        Name: 'app-onegroup',
+        Name: 'airo-onegroup',
         Count: 1,
         Constraints: [
           {
@@ -64,8 +64,8 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               HostNetwork: 'default'
             },
             {
-              Label: 'http8000',
-              To: 8000,
+              Label: 'http20000',
+              To: 20000,
               HostNetwork: 'default'
             }
           ]
@@ -94,6 +94,9 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
             Config: {
               image: agentImage,
               auth_soft_fail: true,
+              security_opt: [
+                'label=type:airo_agent_container.process'
+              ],
               entrypoint: ["/management-scripts/nomad_init.sh"],
               command: "echo '✅ Initialization complete'",
               mounts: [
@@ -126,7 +129,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               command: "env AWS_PROFILE=${BEDROCK_AWS_PROFILE} node dist/server/app.js",
               ports: ['http'],
               security_opt: [
-                'label=type:ares_container.process'
+                'label=type:airo_agent_container.process'
               ],
               sysctl: [
                 {
@@ -201,9 +204,9 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
             Config: {
               image: appImage,
               auth_soft_fail: true,
-              ports: ['http8000'],
+              ports: ['http20000'],
               security_opt: [
-                'label=type:ares_container.process'
+                'label=type:airo_app_container.process'
               ],
               sysctl: [
                 {
@@ -230,7 +233,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               SITE_ID: siteId,
               JOB_NAME: jobName,
               NODE_ENV: 'development',
-              PORT: '8000',
+              PORT: '20000',
               VITE_API_URL: `https://${frontendDomain}/api`,
               FRONTEND_DOMAIN: frontendDomain,
               RUNNING_IN_DOCKER: 'true',
@@ -282,7 +285,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
           {
             Name: frontendServiceName,
             TaskName: 'airo-dev-application',
-            PortLabel: 'http8000',
+            PortLabel: 'http20000',
             AddressMode: 'alloc',
             Provider: 'nomad',
             Namespace: 'sites',
@@ -291,7 +294,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               `traefik.enable=true`,
               `traefik.http.routers.${frontendServiceName}Http.entrypoints=tcp`,
               `traefik.http.routers.${frontendServiceName}Http.tls=true`,
-              `traefik.http.services.${frontendServiceName}Http.loadbalancer.server.port=8000`,
+              `traefik.http.services.${frontendServiceName}Http.loadbalancer.server.port=20000`,
               `traefik.http.routers.${frontendServiceName}Http.ruleSyntax=v3`,
               `traefik.http.routers.${frontendServiceName}Http.rule=Host(\`${frontendDomain}\`)`
             ],
@@ -299,7 +302,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               `${frontendServiceName}`,
               `traefik.http.routers.${frontendServiceName}Http.entrypoints=tcp`,
               `traefik.http.routers.${frontendServiceName}Http.tls=true`,
-              `traefik.http.services.${frontendServiceName}Http.loadbalancer.server.port=8000`,
+              `traefik.http.services.${frontendServiceName}Http.loadbalancer.server.port=20000`,
               `traefik.http.routers.${frontendServiceName}Http.ruleSyntax=v3`,
               `traefik.http.routers.${frontendServiceName}Http.rule=Host(\`${frontendDomain}\`)`
             ]
