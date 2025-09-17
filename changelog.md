@@ -4,6 +4,8 @@
 
 ### Public Facing Changes
 
+- Added Daily Limit of default value $10 for usage
+
 - Homepage updates:
 
   - Examples with screenshots and "Try this" buttons.
@@ -23,3 +25,4 @@
 - Fix duplication of visual context information in the system prompt (its also a message) should fix prompt caching
 - Created a new ai-lib wrapper around AI-SDK with a clean websocket implementation
 - Created an internal-only ai-playground app, for testing websocket/ui interactions and prototyping new features.
+- Added feature class for managing ENV centrally in agents directory

@@ -96,6 +96,8 @@ export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
   model?: string | undefined;
   cost?: number | undefined; // Optional cost calculation
   conversationId?: string | undefined;
@@ -229,6 +231,8 @@ function createTokenUsageTable(db: Database): void {
       prompt_tokens INTEGER NOT NULL DEFAULT 0,
       completion_tokens INTEGER NOT NULL DEFAULT 0,
       total_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_tokens INTEGER NOT NULL DEFAULT 0,
       model TEXT,
       cost REAL DEFAULT 0,
       conversation_id TEXT,
@@ -324,6 +328,14 @@ function createTriggers(db: Database): void {
  * This handles adding new columns to existing tables without breaking existing data
  */
 function applyMigrations(db: Database): void {
+  // Add cache token fields to token_usage table if they don't exist
+  try {
+    db.exec(`ALTER TABLE token_usage ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0`);
+    db.exec(`ALTER TABLE token_usage ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0`);
+  } catch (err) {
+    // Columns might already exist, that's fine
+  }
+
   // Add path column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN path TEXT`);

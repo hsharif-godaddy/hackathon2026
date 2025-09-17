@@ -18,6 +18,8 @@ export class TokenUsageRepository {
       conversationId?: string | undefined;
       description?: string | undefined;
       cost?: number | undefined;
+      cacheReadTokens?: number | undefined;
+      cacheWriteTokens?: number | undefined;
     } = {}
   ): Promise<TokenUsage> {
     const id = nanoid(12);
@@ -33,8 +35,8 @@ export class TokenUsageRepository {
     const stmt = this.db.prepare(`
       INSERT INTO token_usage (
         id, app_id, operation, prompt_tokens, completion_tokens, total_tokens,
-        model, cost, conversation_id, description, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        cache_read_tokens, cache_write_tokens, model, cost, conversation_id, description, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -44,6 +46,8 @@ export class TokenUsageRepository {
       promptTokens,
       completionTokens,
       totalTokens,
+      options.cacheReadTokens || 0,
+      options.cacheWriteTokens || 0,
       options.model || null,
       cost || 0,
       options.conversationId || null,
@@ -58,6 +62,8 @@ export class TokenUsageRepository {
       promptTokens,
       completionTokens,
       totalTokens,
+      cacheReadTokens: options.cacheReadTokens || 0,
+      cacheWriteTokens: options.cacheWriteTokens || 0,
       model: options.model || undefined,
       cost: cost || undefined,
       conversationId: options.conversationId || undefined,
@@ -155,6 +161,8 @@ export class TokenUsageRepository {
       promptTokens: row.prompt_tokens,
       completionTokens: row.completion_tokens,
       totalTokens: row.total_tokens,
+      cacheReadTokens: row.cache_read_tokens,
+      cacheWriteTokens: row.cache_write_tokens,
       model: row.model,
       cost: row.cost,
       conversationId: row.conversation_id,

@@ -3,10 +3,10 @@ import { IncomingMessage } from 'http';
 import { v4 as uuidv4 } from 'uuid';
 import { nanoid } from 'nanoid';
 import { AgentRegistry } from '../../registry/index.js';
-import { getLLMService } from '../../services/index.js';
+import { getLLMService, getAgentConfig } from '../../services/index.js';
 import { globalTracer } from '../../utils/index.js';
 import { applyInputGuardrails, applyOutputGuardrails, GuardrailTripwireError } from '../../utils/openai-guardrails.js';
-import { AppRepository } from '../../database/index.js';
+import { AppRepository, getDatabase } from '../../database/index.js';
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
 import { getToolDefinitions, executeToolFunction } from '../../tools/index.js';
 import { ConversationContextManager } from '../../services/ConversationContextManager.js';
@@ -195,6 +195,78 @@ function sendContextMetadata(context: WebSocketContext, message: string, additio
   });
 }
 
+/**
+ * Check if the app has exceeded price usage limits for today
+ * @param appId Application ID to check
+ * @returns Object with isLimitReached flag and optionally current usage statistics
+ */
+async function checkPriceUsageLimit(appId: string): Promise<{ isLimitReached: boolean; usage?: { cost: number; limit: number } }> {
+  try {
+    // Get price limit from centralized features configuration
+    const priceLimit = getAgentConfig.dailyPriceLimit();
+
+    // Query for today's usage with UTC time
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      SELECT 
+        SUM(prompt_tokens) as input_tokens, 
+        SUM(completion_tokens) as output_tokens,
+        SUM(cache_read_tokens) as cache_read_tokens,
+        SUM(cache_write_tokens) as cache_write_tokens
+      FROM token_usage 
+      WHERE app_id = ?
+        AND strftime('%Y-%m-%d', created_at, 'utc') = strftime('%Y-%m-%d', 'now', 'utc')
+    `);
+
+    const result = stmt.get(appId) as { 
+      input_tokens: number; 
+      output_tokens: number; 
+      cache_read_tokens: number; 
+      cache_write_tokens: number; 
+    } | null;
+    
+    const inputTokensToday = result?.input_tokens || 0;
+    const outputTokensToday = result?.output_tokens || 0;
+    const cacheReadTokensToday = result?.cache_read_tokens || 0;
+    const cacheWriteTokensToday = result?.cache_write_tokens || 0;
+
+    // Calculate cost based on pricing: 
+    const inputCost = (inputTokensToday / 1000) * 0.003;
+    const outputCost = (outputTokensToday / 1000) * 0.015;
+    const cacheReadCost = (cacheReadTokensToday / 1000) * 0.0003;
+    const cacheWriteCost = (cacheWriteTokensToday / 1000) * 0.00375;
+    const totalCostToday = inputCost + outputCost + cacheReadCost + cacheWriteCost;
+
+    const isLimitReached = totalCostToday >= priceLimit;
+
+    if (isLimitReached) {
+      logger.warn('price.limit.exceeded', {
+        appId,
+        totalCostToday: totalCostToday.toFixed(4),
+        inputCost: inputCost.toFixed(4),
+        outputCost: outputCost.toFixed(4),
+        cacheReadCost: cacheReadCost.toFixed(4),
+        cacheWriteCost: cacheWriteCost.toFixed(4),
+        limit: priceLimit
+      });
+    }
+
+    return {
+      isLimitReached,
+      usage: {
+        cost: totalCostToday,
+        limit: priceLimit
+      }
+    };
+  } catch (error) {
+    logger.error('price.limit.check.failed', {
+      appId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+
+    return { isLimitReached: false };
+  }
+}
 
 /**
  * Create WebSocket server and handle connections
@@ -406,6 +478,35 @@ async function handleChatMessage(wsContext: WebSocketContext, chatRequest: WSCha
       ...(chatRequest.userId && { userId: chatRequest.userId }),
       messageLength: chatRequest.message.length
     });
+
+    // Check price usage limit if we have an appId
+    if (chatRequest.appId) {
+      const priceLimitCheck = await checkPriceUsageLimit(chatRequest.appId);
+  
+      if (priceLimitCheck.isLimitReached) {
+        const endTime = Date.now();
+        const payload: WSCompletionPayload = {
+          threadId: chatRequest.threadId || uuidv4(),
+          timestamp: new Date().toISOString(),
+          start_time: startTime,
+          end_time: endTime,
+          duration_ms: endTime - startTime,
+          is_complete: true
+        };
+  
+        // Send the complete message with price limit message
+        sendContent(wsContext.ws, 'Daily limit has been reached for this application. Please try again tomorrow or contact support to increase your limit.',
+    true);
+        sendWSMessage(wsContext.ws, 'complete', {
+          ...payload,
+          limit_reached: true,
+          usage: priceLimitCheck.usage
+        });
+  
+        return;
+      }
+    }
+  
     
     // CRITICAL: Ensure we're on the latest commit before processing any chat messages
     // This prevents making changes on a detached HEAD state
