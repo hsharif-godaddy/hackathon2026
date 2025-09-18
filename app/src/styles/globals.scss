@@ -1,7 +1,5 @@
 @use "tailwindcss";
 
-@use "@ux/intents/lib/index" as intents;
-
 @use "./godaddy.scss";
 @use "./uxcore-intents.css";
 @use "./uxcore-icons.css";
@@ -35,14 +33,13 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  
 }
 
 @layer base {
   :root {
     /* GoDaddy Airo Theme */
     --ref-orb-w: 1000;
-    --ref-orb-h: 694
+    --ref-orb-h: 694;
   
     /* Shadcn Light Theme */
     --radius: 0.65rem;
@@ -331,38 +328,6 @@
   @keyframes slide-out-to-left {
     from { transform: translateX(0); }
     to { transform: translateX(-100%); }
-  }
-
-  /* GoDaddy Airo-style gradient backgrounds */
-  .bg-airo-gradient {
-    background: linear-gradient(135deg, #7C3AED 0%, #EC4899 100%);
-  }
-  
-  .bg-airo-gradient-soft {
-    background: linear-gradient(135deg, #E9E4F2 0%, #D3C1F7 100%);
-  }
-  
-  .bg-airo-gradient-enhanced {
-    background: linear-gradient(
-      135deg, 
-      #6366F1 0%,     /* Indigo */
-      #8B5CF6 25%,    /* Violet */
-      #A855F7 50%,    /* Purple */
-      #EC4899 75%,    /* Pink */
-      #F472B6 100%    /* Light pink */
-    );
-  }
-  
-  .bg-airo-gradient-animated {
-    background: linear-gradient(
-      -45deg,
-      #6366F1,
-      #8B5CF6,
-      #A855F7,
-      #EC4899
-    );
-    background-size: 400% 400%;
-    animation: gradientShift 15s ease infinite;
   }
   
   @keyframes reverse-spin {

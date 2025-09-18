@@ -86,6 +86,7 @@ COPY --from=builder --chown=node:node /app/next.config.compiled.js ./next.config
 COPY --from=builder --chown=node:node /app/server.js ./
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next ./.next
+COPY --from=builder --chown=node:node /app/.dist ./.dist
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/src/generated ./src/generated
 COPY --from=builder --chown=node:node /app/prisma ./prisma
@@ -103,22 +104,10 @@ RUN npx prisma generate --schema=./prisma/schema.prisma
 # Create data directory with proper permissions
 RUN mkdir -p /app/data && chown -R node:node /app/data
 
-# Create certs directory for SSL certificates
-RUN mkdir -p /app/certs && chown -R node:node /app/certs
-
-# Generate self-signed SSL certificate
-RUN openssl req -x509 -newkey rsa:4096 -keyout /app/certs/key.pem -out /app/certs/cert.pem -days 365 -nodes \
-    -subj "/C=US/ST=State/L=City/O=Organization/OU=OrgUnit/CN=localhost"
-
-# Set proper permissions for certificates
-RUN chown -R node:node /app/ && chmod 600 /app/certs/key.pem && chmod 644 /app/certs/cert.pem
-
-EXPOSE 3443
+EXPOSE 8443
 
 ENV NODE_ENV=production
-ENV HTTPS_PORT=3443
-ENV SSL_CERT_PATH=/app/certs/cert.pem
-ENV SSL_KEY_PATH=/app/certs/key.pem
+ENV HTTPS_PORT=8443
 
 USER node
 

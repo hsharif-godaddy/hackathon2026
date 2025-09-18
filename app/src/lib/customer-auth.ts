@@ -46,12 +46,12 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     // Handle mock authentication first
     if (isFeatureEnabled.mockLogin()) {
       // Customer auth logging disabled - too noisy in development
-      
+
       // Use mock user credentials
       const mockShopperId = MOCK_USER.id;
       const mockCustomerId = MOCK_USER.id;
       let mockAccount = await getAccountService().getAccountByShopperId(mockShopperId);
-      
+
       // The account should already exist (created by ensureTestUserExists)
       if (!mockAccount) {
         logger.info('auth.mock.account.create', { message: 'Creating mock account for customer auth', mockShopperId, mockCustomerId });
@@ -67,7 +67,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
           }
         }
       }
-      
+
       return {
         isAuthenticated: true,
         user: {
@@ -83,12 +83,12 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     // Skip JWT validation if auth is disabled in development
     if (await isAuthDisabled()) {
       logger.info('auth.dev.bypass', 'Customer auth bypassed - development mode');
-      
+
       // Ensure dev account exists in database
       const devShopperId = 'dev-user';
       const devCustomerId = 'dev-customer-123';
       let devAccount = await getAccountService().getAccountByShopperId(devShopperId);
-      
+
       // Create dev account if it doesn't exist
       if (!devAccount) {
         logger.info('auth.dev.account.create', { message: 'Creating dev account for testing', devShopperId, devCustomerId });
@@ -105,7 +105,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
           }
         }
       }
-      
+
       return {
         isAuthenticated: true,
         user: {
@@ -156,12 +156,12 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
 
     // Get or create account for the authenticated shopper
     let account = await getAccountService().getAccountByShopperId(shopperId);
-    
+
     // If not found by shopperId, try by customerId
     if (!account || !account.id) {
       account = await getAccountService().getAccountByShopperId(customerId);
     }
-    
+
     if (!account || !account.id) {
       try {
         account = await getAccountService().createAccount(shopperId, customerId);
@@ -208,12 +208,12 @@ export function withCustomerAuth<T extends unknown[]>(
 ) {
   return async (request: NextRequest, ...args: T): Promise<NextResponse> => {
     const authContext = await authenticateCustomer(request);
-    
+
     if (!authContext.isAuthenticated) {
       return NextResponse.json(
-        { 
-          error: 'Unauthorized', 
-          message: authContext.error,
+        {
+          error: 'Unauthorized',
+          message: (authContext as UnauthenticatedCustomerContext).error,
           requiresAuth: true
         },
         { status: 401 }
