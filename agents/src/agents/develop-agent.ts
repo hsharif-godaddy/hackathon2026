@@ -1,6 +1,5 @@
 import { 
   createExperimentalAgentFactory, 
-  getModel,
   type ExperimentalAgentConfig,
   type BeforeToolExecutionHook,
   type AfterToolExecutionHook,
@@ -9,6 +8,7 @@ import {
   when,
   conditions
 } from '@airo/ai-lib'
+import { getAgentModel } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -123,7 +123,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
   return {
       name: 'AI Developer',
     system: systemPrompt,
-    model: await getModel('claude-sonnet-4'),
+    model: await getAgentModel('full'), // Use full model for complex development tasks
     tools: {
       // Core development tools
       directoryListing: allAILibTools.directoryListing,

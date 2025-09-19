@@ -8,6 +8,7 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 import type { LanguageModel } from 'ai'
+import { createAnthropic } from '@ai-sdk/anthropic'
 
 const claude4 = 'global.anthropic.claude-sonnet-4-20250514-v1:0'
 const claude35 = 'us.anthropic.claude-3-5-sonnet-20240620-v1:0'
@@ -77,6 +78,10 @@ export interface ProviderConfig {
   awsSessionToken?: string
   /** AWS profile override */
   awsProfile?: string
+  /** Anthropic API key override */
+  anthropicApiKey?: string
+  /** Anthropic base URL override (for proxy) */
+  anthropicBaseUrl?: string
 }
 
 /**
@@ -112,28 +117,51 @@ function hasAWSCredentials(config?: ProviderConfig): boolean {
 }
 
 /**
- * Check if a Claude model should be routed through OpenAI proxy
+ * Check if Anthropic credentials are available
  */
-function shouldUseClaudeProxy(modelName: string, config?: ProviderConfig): boolean {
+function hasAnthropicCredentials(config?: ProviderConfig): boolean {
+  return !!(config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY)
+}
+
+/**
+ * Check if a Claude model should be routed through a proxy
+ * Returns the proxy type to use: 'openai' | 'anthropic' | null
+ */
+function getClaudeProxyType(modelName: string, config?: ProviderConfig): 'openai' | 'anthropic' | null {
   // Check if model is in our Claude proxy list
   const isClaudeProxyModel = modelName in CLAUDE_PROXY_MODELS
   if (!isClaudeProxyModel) {
-    return false
+    return null
   }
   
-  // Check if AWS credentials are NOT available
+  // If AWS is available, use Bedrock directly (no proxy needed)
   const hasAWS = hasAWSCredentials(config)
   if (hasAWS) {
-    return false
+    return null
   }
   
-  // Check if OpenAI base URL is set (proxy available)
+  // Check available proxy options
+  const hasAnthropicCreds = hasAnthropicCredentials(config)
   const hasOpenAIProxy = !!(config?.openaiBaseUrl || process.env.OPENAI_BASE_URL)
-  if (!hasOpenAIProxy) {
-    return false
+  
+  // Prefer Anthropic direct access if available
+  if (hasAnthropicCreds) {
+    return 'anthropic'
   }
   
-  return true
+  // Fall back to OpenAI proxy if available
+  if (hasOpenAIProxy) {
+    return 'openai'
+  }
+  
+  return null
+}
+
+/**
+ * Check if a Claude model should be routed through OpenAI proxy (backward compatibility)
+ */
+function shouldUseClaudeProxy(modelName: string, config?: ProviderConfig): boolean {
+  return getClaudeProxyType(modelName, config) === 'openai'
 }
 
 /**
@@ -164,10 +192,11 @@ function validateBedrockConfig(config?: ProviderConfig): void {
 /**
  * Determine provider type from model name, considering proxy routing
  */
-function getProviderType(modelName: string, config?: ProviderConfig): 'openai' | 'bedrock' {
-  // Check if this Claude model should be routed through OpenAI proxy
-  if (shouldUseClaudeProxy(modelName, config)) {
-    return 'openai'
+function getProviderType(modelName: string, config?: ProviderConfig): 'openai' | 'bedrock' | 'anthropic' {
+  // Check if this Claude model should be routed through a proxy
+  const proxyType = getClaudeProxyType(modelName, config)
+  if (proxyType) {
+    return proxyType
   }
   
   const fullModelName = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
@@ -339,6 +368,26 @@ export async function getModel(
       // Create Bedrock provider
       const provider = await createBedrockProvider(config)
       return provider(fullModelName)
+    } else if (providerType === 'anthropic') {
+      // Validate Anthropic configuration
+      validateAnthropicConfig(config)
+      
+      // Determine the model name to use
+      let modelNameToUse: string
+      
+      // Check if this is a Claude model that we're routing to Anthropic
+      if (modelName in CLAUDE_PROXY_MODELS) {
+        // Use Claude proxy model name for Anthropic API
+        modelNameToUse = CLAUDE_PROXY_MODELS[modelName as keyof typeof CLAUDE_PROXY_MODELS]
+        console.log(`🔄 Using Anthropic API for Claude model '${modelName}' as '${modelNameToUse}'`)
+      } else {
+        // Use regular model mapping
+        modelNameToUse = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
+      }
+      
+      // Create Anthropic provider
+      const provider = createAnthropicProvider(config)
+      return provider(modelNameToUse)
       
     } else {
       throw new Error(`Unsupported provider type: ${providerType}`)
@@ -380,6 +429,8 @@ export function validateModelEnvironment(modelName: string, config?: ProviderCon
       validateOpenAIConfig(config)
     } else if (providerType === 'bedrock') {
       validateBedrockConfig(config)
+    } else if (providerType === 'anthropic') {
+      validateAnthropicConfig(config)
     }
     return true
   } catch {
@@ -388,17 +439,52 @@ export function validateModelEnvironment(modelName: string, config?: ProviderCon
 }
 
 /**
+ * Validate Anthropic configuration
+ */
+function validateAnthropicConfig(config?: ProviderConfig): void {
+  const apiKey = config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    throw new Error('Anthropic API key is required. Set ANTHROPIC_API_KEY environment variable or pass anthropicApiKey in config.')
+  }
+}
+
+/**
+ * Create Anthropic provider with configuration
+ */
+function createAnthropicProvider(config?: ProviderConfig) {
+  const anthropicConfig: any = {
+    apiKey: config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || ''
+  }
+  
+  // Add base URL if provided (for proxy support)
+  const baseURL = config?.anthropicBaseUrl || process.env.ANTHROPIC_BASE_URL
+  if (baseURL) {
+    anthropicConfig.baseURL = baseURL
+  }
+  
+  return createAnthropic(anthropicConfig)
+}
+
+
+/**
  * Get model information
  */
 export function getModelInfo(modelName: string, config?: ProviderConfig) {
   const providerType = getProviderType(modelName, config)
+  const proxyType = getClaudeProxyType(modelName, config)
   
   let fullModelName: string
   let usingProxy = false
+  let proxyReason = ''
   
-  if (shouldUseClaudeProxy(modelName, config)) {
+  if (proxyType) {
     fullModelName = CLAUDE_PROXY_MODELS[modelName as keyof typeof CLAUDE_PROXY_MODELS]
     usingProxy = true
+    if (proxyType === 'openai') {
+      proxyReason = 'AWS and Anthropic not available, using OpenAI proxy'
+    } else if (proxyType === 'anthropic') {
+      proxyReason = 'AWS not available, using Anthropic API directly'
+    }
   } else {
     fullModelName = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
   }
@@ -409,6 +495,6 @@ export function getModelInfo(modelName: string, config?: ProviderConfig) {
     provider: providerType,
     isSupported: isModelSupported(modelName),
     usingProxy,
-    ...(usingProxy && { proxyReason: 'AWS credentials not available, using OpenAI proxy' })
+    ...(usingProxy && { proxyReason })
   }
 }

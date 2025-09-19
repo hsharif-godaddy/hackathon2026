@@ -366,7 +366,6 @@ async function main() {
 
   if (!process.env.AWS_ACCESS_KEY_ID && !process.env.AWS_PROFILE) {
     console.error('❌ AWS credentials not found.')
-    process.exit(1)
   }
 
   try {

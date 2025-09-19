@@ -1,10 +1,10 @@
 import { 
   createExperimentalAgentFactory, 
-  getModel,
   type ExperimentalAgentConfig,
   createPromptBuilder,
   pb
 } from '@airo/ai-lib'
+import { getAgentModel } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getPromptPath } from '../utils/prompt-utils.js'
 
@@ -34,7 +34,7 @@ export async function createColorSchemeAgent(): Promise<ExperimentalAgentConfig>
   return {
     name: 'Color Scheme Designer',
     system: systemPrompt,
-    model: await getModel('claude-sonnet-4'),
+    model: await getAgentModel('fast'), // Use fast model for color scheme generation
     tools: {
       appPlan: allAILibTools.appPlan,
       fileEdit: allAILibTools.fileEdit,

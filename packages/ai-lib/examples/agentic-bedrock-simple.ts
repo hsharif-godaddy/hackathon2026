@@ -110,8 +110,8 @@ async function main() {
   console.log('🚀 Simple Agentic Bedrock Example\n')
 
   if (!process.env.AWS_ACCESS_KEY_ID && !process.env.AWS_PROFILE) {
-    console.error('❌ AWS credentials not found.')
-    process.exit(1)
+    console.warn('❌ AWS credentials not found.')
+    console.warn('Will use gocode proxy for Claude')
   }
 
   try {

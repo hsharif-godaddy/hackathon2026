@@ -1,12 +1,12 @@
 import { 
   createExperimentalAgentFactory, 
-  getModel,
   type ExperimentalAgentConfig,
   type BeforeToolExecutionHook,
   type AfterToolExecutionHook,
   createPromptBuilder,
   pb
 } from '@airo/ai-lib'
+import { getAgentModel } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getPromptPath } from '../utils/prompt-utils.js'
 
@@ -82,7 +82,7 @@ export async function createDatabaseAgent(options?: { appPath?: string }): Promi
   return {
     name: 'Database Manager',
     system: systemPrompt,
-    model: await getModel('claude-sonnet-4'),
+    model: await getAgentModel('full'), // Use full model for complex database operations
     tools: {
       mysqlOperation: allAILibTools.mysqlOperation,
       serverRestart: allAILibTools.serverRestart,

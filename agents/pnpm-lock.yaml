@@ -14,12 +14,15 @@ importers:
       '@ai-sdk/amazon-bedrock':
         specifier: ^3.0.21
         version: 3.0.22(zod@3.25.76)
+      '@ai-sdk/anthropic':
+        specifier: ^2.0.17
+        version: 2.0.17(zod@3.25.76)
       '@ai-sdk/openai':
         specifier: ^2.0.30
         version: 2.0.32(zod@3.25.76)
       '@airo/ai-lib':
         specifier: file:../packages/ai-lib
-        version: file:../packages/ai-lib
+        version: file:../packages/ai-lib(@ai-sdk/anthropic@2.0.17(zod@3.25.76))
       '@aws-sdk/credential-providers':
         specifier: ^3.888.0
         version: 3.892.0
@@ -3391,7 +3394,7 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
-  '@airo/ai-lib@file:../packages/ai-lib':
+  '@airo/ai-lib@file:../packages/ai-lib(@ai-sdk/anthropic@2.0.17(zod@3.25.76))':
     dependencies:
       '@ai-sdk/amazon-bedrock': 3.0.22(zod@3.25.76)
       '@ai-sdk/openai': 2.0.32(zod@3.25.76)
@@ -3403,6 +3406,8 @@ snapshots:
       socket.io: 4.8.1
       ws: 8.18.3
       zod: 3.25.76
+    optionalDependencies:
+      '@ai-sdk/anthropic': 2.0.17(zod@3.25.76)
     transitivePeerDependencies:
       - aws-crt
       - bufferutil
