@@ -28,6 +28,11 @@ export interface AgentConfig {
   name: string
   /** System prompt for the agent (used with default message builder) */
   systemPrompt?: string
+  /** Initial context messages to include in every conversation */
+  initialContextMessages?: Array<{
+    role: 'user' | 'assistant' | 'system'
+    content: string
+  }>
   /** Message builder for constructing messages */
   messageBuilder?: MessageBuilder
   /** Model to use (can be string ID or LanguageModel instance) */
@@ -58,6 +63,11 @@ export interface AgentConfig {
 export interface AgentContext {
   /** Conversation history messages */
   messages?: Array<{
+    role: 'user' | 'assistant' | 'system'
+    content: string
+  }>
+  /** Initial context messages to include before conversation history */
+  initialContextMessages?: Array<{
     role: 'user' | 'assistant' | 'system'
     content: string
   }>

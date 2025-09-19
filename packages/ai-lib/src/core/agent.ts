@@ -28,6 +28,10 @@ export class Agent {
     providerOptions: any
   }
   private messageBuilder: MessageBuilder
+  private initialContextMessages: Array<{
+    role: 'user' | 'assistant' | 'system'
+    content: string
+  }>
 
   constructor(config: AgentConfig) {
     // Set defaults
@@ -41,6 +45,9 @@ export class Agent {
       enableLoopControl: config.enableLoopControl ?? false,
       providerOptions: config.providerOptions || {}
     }
+
+    // Store initial context messages
+    this.initialContextMessages = config.initialContextMessages || []
 
     // Initialize message builder
     if (config.messageBuilder) {
@@ -77,7 +84,10 @@ export class Agent {
     input: string,
     context?: AgentContext
   ): Promise<AgentResult> {
-    const messages = this.messageBuilder.buildMessages(input, context)
+    // Merge initial context messages with runtime context
+    const enhancedContext = this.enhanceContextWithInitialMessages(context)
+    
+    const messages = this.messageBuilder.buildMessages(input, enhancedContext)
 
     const generateOptions: any = {
       model: this.resolveModel(),
@@ -107,7 +117,12 @@ export class Agent {
     input: string,
     context?: AgentContext
   ): AsyncGenerator<string, AgentResult, unknown> {
-    const messages = this.messageBuilder.buildMessages(input, context)
+    // Merge initial context messages with runtime context
+    const enhancedContext = this.enhanceContextWithInitialMessages(context)
+    
+    const messages = this.messageBuilder.buildMessages(input, enhancedContext)
+
+    console.log('🔍 Messages:', messages)
 
     const streamOptions: any = {
       model: this.resolveModel(),
@@ -485,10 +500,13 @@ return this.formatResult(result)
     hasContext: !!context
   })
 
+    // Merge initial context messages with runtime context
+    const enhancedContext = this.enhanceContextWithInitialMessages(context)
+    
     // Use message builder's file support if available, otherwise fallback to prompt building
     const messages = this.messageBuilder.buildMessagesWithFiles
-    ? this.messageBuilder.buildMessagesWithFiles(input, fileContext, context)
-    : this.messageBuilder.buildMessages(this.buildFilePrompt(input, fileContext), context)
+    ? this.messageBuilder.buildMessagesWithFiles(input, fileContext, enhancedContext)
+    : this.messageBuilder.buildMessages(this.buildFilePrompt(input, fileContext), enhancedContext)
     
     console.log('📨 Messages built for AI:', {
       messageCount: messages.length,
@@ -511,51 +529,60 @@ return this.formatResult(result)
   streamOptions.tools = this.buildToolsObject()
 }
 
-console.log('🚀 Starting streamText with options:', {
-  model: typeof streamOptions.model,
-  messageCount: streamOptions.messages.length,
-  temperature: streamOptions.temperature,
-  maxOutputTokens: streamOptions.maxOutputTokens,
-  hasTools: !!streamOptions.tools
-})
 
-const result = streamText(streamOptions)
-console.log('✅ streamText result created')
+// Debug: Show all messages being sent to the agent
+console.log('📤 Messages to Agent:', JSON.stringify(streamOptions.messages, null, 2))
+
+let result
+try {
+  result = streamText(streamOptions)
+} catch (error) {
+  console.error('❌ Error creating streamText:', {
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+    cause: error instanceof Error ? error.cause : undefined,
+    modelType: typeof streamOptions.model,
+    modelName: streamOptions.model?.constructor?.name || 'unknown'
+  })
+  throw new Error(`Failed to initialize streaming: ${error instanceof Error ? error.message : String(error)}`)
+}
 
 let fullContent = ''
 let chunkCount = 0
-
-console.log('🔄 Starting to iterate over textStream...')
 
 try {
   // Stream text chunks
   for await (const textPart of result.textStream) {
     chunkCount++
-    console.log('📝 Received textPart:', {
-      chunkNumber: chunkCount,
-      length: textPart.length,
-      preview: textPart.substring(0, 50) + '...'
-    })
     fullContent += textPart
     yield textPart
   }
 
-  console.log('✅ Finished streaming text chunks:', {
-    totalChunks: chunkCount,
-    totalLength: fullContent.length
-  })
-
   // Wait for final result and return it
-  console.log('⏳ Waiting for final result...')
   const finalResult = await result
-  console.log('✅ Final result received')
-
   const formattedResult = await this.formatStreamResult(finalResult, fullContent)
-  console.log('✅ Result formatted and ready to return')
-
   return formattedResult
 } catch (error) {
-  console.error('❌ Error in generateStreamWithFiles:', error)
+  console.error('❌ Error in generateStreamWithFiles:', {
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+    cause: error instanceof Error ? error.cause : undefined,
+    errorType: error?.constructor?.name || 'unknown',
+    chunkCount,
+    fullContentLength: fullContent.length,
+    modelType: typeof streamOptions.model,
+    modelName: streamOptions.model?.constructor?.name || 'unknown',
+    // Include AWS-specific error details if available
+    ...(error && typeof error === 'object' && error !== null && 'Code' in error ? { awsErrorCode: (error as any).Code } : {}),
+    ...(error && typeof error === 'object' && error !== null && 'message' in error ? { awsMessage: (error as any).message } : {}),
+    ...(error && typeof error === 'object' && error !== null && '$metadata' in error ? { awsMetadata: (error as any).$metadata } : {})
+  })
+  
+  // Re-throw with more context
+  if (error instanceof Error && error.message.includes('No output generated')) {
+    throw new Error(`AWS Bedrock streaming failed - likely model access or authentication issue. Original error: ${error.message}. Check AWS credentials and model access permissions.`)
+  }
+  
   throw error
 }
   }
@@ -780,16 +807,6 @@ if (result.usage) {
   }
 }
 
-// Debug usage data for troubleshooting
-if (process.env.NODE_ENV === 'development') {
-  console.log('🔍 Agent formatStreamResult usage debug:', {
-    hasUsage: !!result.usage,
-    usageType: typeof result.usage,
-    usageValue: result.usage,
-    resolvedUsage: usage,
-    resultKeys: Object.keys(result || {})
-  })
-}
 
 return {
   content,
@@ -804,5 +821,19 @@ return {
   caching: this.extractCachingMetrics(result),
   metadata: Object.keys(metadata).length > 0 ? metadata : undefined
 }
+  }
+
+  /**
+   * Enhance context with initial context messages
+   */
+  private enhanceContextWithInitialMessages(context?: AgentContext): AgentContext {
+    if (this.initialContextMessages.length === 0) {
+      return context || {}
+    }
+
+    return {
+      ...context,
+      initialContextMessages: this.initialContextMessages
+    }
   }
 }

@@ -4,6 +4,9 @@ export * from './base-tool.js'
 // Export built-in tools
 export * from './built-in/index.js'
 
+// Export handoff tools
+export * from './handoff-tool.js'
+
 // Convenience object for easy tool access
 import { createWebSearchTool, createFileOperationTools } from './built-in/index.js'
 

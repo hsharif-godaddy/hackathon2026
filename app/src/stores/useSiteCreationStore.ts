@@ -118,6 +118,20 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
         if (!deployResponse.ok) {
           const errorData = await deployResponse.json().catch(() => ({}))
+          
+          // Handle 409 Conflict (deployment already in progress) gracefully
+          if (deployResponse.status === 409) {
+            console.log('ℹ️ Deployment already in progress on server, switching to polling mode')
+            set((state) => {
+              state.phase = 'polling'
+              state.error = null // Clear any error since this is expected
+            })
+            
+            // Start polling for the existing deployment
+            get()._startPolling()
+            return
+          }
+          
           throw new Error(errorData.error || 'Failed to start deployment')
         }
 
@@ -335,9 +349,9 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         const initialPrompt = site.initial_prompt || 'Suggest a name for this project'
         console.log('🏷️ Using prompt:', initialPrompt)
 
-        // Call the agent to get a name suggestion
+        // Call the agents service to get a name suggestion
         console.log('🏷️ Calling suggest-name endpoint...')
-        const agentResponse = await fetch(`${agentUrl}/apps/suggest-name`, {
+        const agentResponse = await appFetch(`${agentUrl}/apps/suggest-name`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

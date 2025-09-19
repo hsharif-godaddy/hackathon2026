@@ -58,13 +58,18 @@ export function createTool<T extends z.ZodSchema>(
   options?: {
     providerOptions?: Record<string, any>
   }
-): Tool {
-  return tool({
+): Tool & { executeWithContext?: (input: z.infer<T>, context?: AgentContext) => Promise<any> } {
+  const toolInstance = tool({
     description,
     inputSchema,
     execute: async (input) => execute(input),
     ...(options?.providerOptions ? { providerOptions: options.providerOptions } : {})
   })
+  
+  // Add a custom method for context-aware execution
+  ;(toolInstance as any).executeWithContext = execute
+  
+  return toolInstance as Tool & { executeWithContext?: (input: z.infer<T>, context?: AgentContext) => Promise<any> }
 }
 
 /**

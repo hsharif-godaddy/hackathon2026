@@ -19,7 +19,7 @@ export { AppPlanTool, appPlanTool } from './app-plan-tool.js';
 export { validateLucideIcons } from './icons-validator.js';
 export { DevSupervisorLogClient } from './dev-supervisor-log-client.js';
 export { ViewLogsTool } from './view-logs-tool.js';
-export { getToolDefinitions, executeToolFunction, TOOL_FUNCTIONS } from './tool-functions.js';
+// Tool definitions and execution now handled by ai-lib agents
 export type { 
   DirectoryListingOptions, 
   DirectoryEntry, 

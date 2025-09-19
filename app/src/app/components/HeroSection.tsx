@@ -173,21 +173,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               disabled={!promptText.trim() || isLoading || isTyping}
               design='primary'
               className="group cursor-pointer absolute right-4 bottom-4 mb-0.5 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed z-10"
-            >
-              <div className="flex items-center space-x-1">
-                {isLoading ? (
-                  <>
-                    <span>Building...</span>
-                    <Spinner size='sm' />
-                  </>
-                ) : (
-                  <>
-                    <span>Start Building</span>
-                    <SendIcon className="w-4 h-4" />
-                  </>
-                )}
-              </div>
-            </Button>
+              text={isLoading ? "Building..." : "Start Building"}
+              icon={isLoading ? <Spinner size='sm' /> : <SendIcon className="w-4 h-4" />}
+            />
           </Box>
         )}
       </div>

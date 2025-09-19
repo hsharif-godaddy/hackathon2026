@@ -340,6 +340,7 @@ function SitesPageContent() {
                   
                   <Button
                     onClick={() => showDeleteAlert(site.id, site.name || 'Untitled Site')}
+                    aria-label={`Delete site ${site.name || 'Untitled Site'}`}
                     icon={<TrashIcon className="w-2 h-2" />}
                     size="sm"
                     design="inline"

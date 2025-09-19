@@ -6,26 +6,69 @@ import {
   WebSocketServerConfig, 
   ChatMessageData, 
   StreamingResult, 
-  CompletionData 
+  CompletionData,
+  AgentFactory
 } from './types'
 
 export class WebSocketServer {
   private io: SocketIOServer
-  private agent: Agent
-  private streamingRunner: ReturnType<typeof createStreamingAgenticRunner>
+  private agent?: Agent // Single agent (legacy mode)
+  private agents: Map<string, Agent> = new Map() // Multiple agents (pre-initialized)
+  private agentFactories: Map<string, AgentFactory<any>> = new Map() // Agent factories for dynamic creation
+  private streamingRunners: Map<string, ReturnType<typeof createStreamingAgenticRunner>> = new Map()
   private config: WebSocketServerConfig
+  private isMultiAgent: boolean
+  private isDynamicAgents: boolean
 
   constructor(httpServer: HTTPServer, config: WebSocketServerConfig) {
     this.config = config
+    this.isMultiAgent = !!config.agents || !!config.agentFactories
+    this.isDynamicAgents = !!config.agentFactories
     
-    // Create agent instance if config was provided instead of Agent instance
-    if (config.agent instanceof Agent) {
-      this.agent = config.agent
+    if (this.isMultiAgent) {
+      // Multi-agent mode
+      if (this.isDynamicAgents) {
+        // Dynamic agent creation mode
+        if (!config.agentFactories || Object.keys(config.agentFactories).length === 0) {
+          throw new Error('Dynamic agent mode requires at least one agent factory in config.agentFactories')
+        }
+        
+        // Store agent factories for dynamic creation
+        for (const [agentId, factory] of Object.entries(config.agentFactories)) {
+          this.agentFactories.set(agentId, factory)
+        }
+        
+        // Validate default agent if specified
+        if (config.defaultAgent && !this.agentFactories.has(config.defaultAgent)) {
+          throw new Error(`Default agent '${config.defaultAgent}' not found in agentFactories`)
+        }
+      } else {
+        // Pre-initialized agent mode
+        if (!config.agents || Object.keys(config.agents).length === 0) {
+          throw new Error('Multi-agent mode requires at least one agent in config.agents')
+        }
+        
+        // Initialize all agents
+        for (const [agentId, agentConfig] of Object.entries(config.agents)) {
+          const agent = agentConfig instanceof Agent ? agentConfig : new Agent(agentConfig)
+          this.agents.set(agentId, agent)
+          this.streamingRunners.set(agentId, createStreamingAgenticRunner(agent))
+        }
+        
+        // Validate default agent if specified
+        if (config.defaultAgent && !this.agents.has(config.defaultAgent)) {
+          throw new Error(`Default agent '${config.defaultAgent}' not found in agents`)
+        }
+      }
     } else {
-      this.agent = new Agent(config.agent)
+      // Single agent mode (legacy)
+      if (!config.agent) {
+        throw new Error('Single agent mode requires config.agent to be specified')
+      }
+      
+      this.agent = config.agent instanceof Agent ? config.agent : new Agent(config.agent)
+      this.streamingRunners.set('default', createStreamingAgenticRunner(this.agent))
     }
-    
-    this.streamingRunner = createStreamingAgenticRunner(this.agent)
     
     // Initialize Socket.IO server
     this.io = new SocketIOServer(httpServer, {
@@ -45,8 +88,62 @@ export class WebSocketServer {
       console.log('Client connected:', socketId)
       this.config.onConnection?.(socketId)
 
+      // Send agent information to client
+      if (this.isMultiAgent) {
+        const agentList = this.isDynamicAgents 
+          ? Array.from(this.agentFactories.keys()).map(agentId => ({
+              id: agentId,
+              name: agentId, // For dynamic agents, we don't have the name until creation
+              description: 'Dynamic agent - created per conversation',
+            }))
+          : Array.from(this.agents.keys()).map(agentId => ({
+              id: agentId,
+              name: this.agents.get(agentId)?.getConfig().name || agentId,
+              description: this.agents.get(agentId)?.getConfig().systemPrompt?.substring(0, 100) + '...' || '',
+            }))
+        
+        socket.emit('agents_available', {
+          type: 'agents_available',
+          agents: agentList,
+          defaultAgent: this.config.defaultAgent || agentList[0]?.id
+        })
+      }
+
       socket.on('chat_message', async (data: ChatMessageData) => {
         await this.handleChatMessage(socket, data)
+      })
+
+      socket.on('get_agents', () => {
+        // Allow clients to request agent list at any time
+        if (this.isMultiAgent) {
+          const agentList = this.isDynamicAgents 
+            ? Array.from(this.agentFactories.keys()).map(agentId => ({
+                id: agentId,
+                name: agentId, // For dynamic agents, we don't have the name until creation
+                description: 'Dynamic agent - created per conversation',
+              }))
+            : Array.from(this.agents.keys()).map(agentId => ({
+                id: agentId,
+                name: this.agents.get(agentId)?.getConfig().name || agentId,
+                description: this.agents.get(agentId)?.getConfig().systemPrompt?.substring(0, 100) + '...' || '',
+              }))
+          
+          socket.emit('agents_available', {
+            type: 'agents_available',
+            agents: agentList,
+            defaultAgent: this.config.defaultAgent || agentList[0]?.id
+          })
+        } else {
+          socket.emit('agents_available', {
+            type: 'agents_available',
+            agents: [{
+              id: 'default',
+              name: this.agent?.getConfig().name || 'AI Assistant',
+              description: this.agent?.getConfig().systemPrompt?.substring(0, 100) + '...' || '',
+            }],
+            defaultAgent: 'default'
+          })
+        }
       })
 
       socket.on('disconnect', () => {
@@ -59,9 +156,105 @@ export class WebSocketServer {
   private async handleChatMessage(socket: any, data: ChatMessageData) {
     const startTime = Date.now()
     const socketId = socket.id
-    const { message, files } = data
+    const { message, files, agentId, context: messageContext } = data
 
-    console.log('💬 Processing message:', { socketId, hasFiles: !!files, fileCount: files?.length || 0 })
+    // Determine which agent to use and create/get streaming runner
+    let selectedAgentId: string
+    let streamingRunner: ReturnType<typeof createStreamingAgenticRunner>
+    
+    if (this.isMultiAgent) {
+      if (this.isDynamicAgents) {
+        // Dynamic agent mode: create agent per message
+        const availableFactories = Array.from(this.agentFactories.keys())
+        if (availableFactories.length === 0) {
+          socket.emit('error', {
+            type: 'error',
+            content: 'No agent factories available',
+            data: { availableFactories }
+          })
+          return
+        }
+        
+        selectedAgentId = agentId || this.config.defaultAgent || availableFactories[0]!
+        
+        if (!this.agentFactories.has(selectedAgentId)) {
+          socket.emit('error', {
+            type: 'error',
+            content: `Agent factory '${selectedAgentId}' not found`,
+            data: { 
+              availableFactories: Array.from(this.agentFactories.keys()),
+              requestedAgent: selectedAgentId
+            }
+          })
+          return
+        }
+        
+        try {
+          // Extract context using the configured extractor
+          const extractedContext = this.config.contextExtractor 
+            ? this.config.contextExtractor(messageContext || {})
+            : messageContext || {}
+          
+          // Create agent dynamically with context
+          const factory = this.agentFactories.get(selectedAgentId)!
+          const agent = await factory(extractedContext)
+          streamingRunner = createStreamingAgenticRunner(agent)
+        } catch (error) {
+          socket.emit('error', {
+            type: 'error',
+            content: `Failed to create agent '${selectedAgentId}': ${error instanceof Error ? error.message : String(error)}`,
+            data: { agentId: selectedAgentId }
+          })
+          return
+        }
+      } else {
+        // Pre-initialized agent mode
+        const availableAgents = Array.from(this.agents.keys())
+        if (availableAgents.length === 0) {
+          socket.emit('error', {
+            type: 'error',
+            content: 'No agents available',
+            data: { availableAgents }
+          })
+          return
+        }
+        
+        selectedAgentId = agentId || this.config.defaultAgent || availableAgents[0]!
+        
+        if (!this.agents.has(selectedAgentId)) {
+          socket.emit('error', {
+            type: 'error',
+            content: `Agent '${selectedAgentId}' not found`,
+            data: { 
+              availableAgents: Array.from(this.agents.keys()),
+              requestedAgent: selectedAgentId
+            }
+          })
+          return
+        }
+        
+        const runner = this.streamingRunners.get(selectedAgentId)
+        if (!runner) {
+          socket.emit('error', {
+            type: 'error',
+            content: `Streaming runner for agent '${selectedAgentId}' not found`
+          })
+          return
+        }
+        streamingRunner = runner
+      }
+    } else {
+      // Single agent mode (legacy)
+      selectedAgentId = 'default'
+      streamingRunner = this.streamingRunners.get('default')!
+    }
+
+    console.log('💬 Processing message:', { 
+      socketId, 
+      agentId: selectedAgentId,
+      hasFiles: !!files, 
+      fileCount: files?.length || 0 
+    })
     this.config.onMessageStart?.(socketId, message)
     
     try {
@@ -97,8 +290,12 @@ export class WebSocketServer {
             return fileInput
           })
           
-          // Use agent's file processing with streaming
-          const generator = this.agent.processFilesStream(fileInputs, message)
+          // Create context for file processing (merge message context if provided)
+          const fileContext = messageContext ? { ...messageContext } : {}
+          
+          // Use selected agent's file processing with streaming
+          const selectedAgent = this.isMultiAgent ? this.agents.get(selectedAgentId)! : this.agent!
+          const generator = selectedAgent.processFilesStream(fileInputs, message, fileContext)
           
           let chunkCount = 0
           let generatorResult: IteratorResult<string, any>
@@ -218,9 +415,13 @@ export class WebSocketServer {
         }
       }
       
+      // Create context for tools (merge message context if provided)
+      const context = messageContext ? { ...messageContext } : {}
+      
       // Start streaming agentic loop for regular messages
-      const stream = this.streamingRunner.runStreamingLoop(message, {
+      const stream = streamingRunner.runStreamingLoop(message, {
         maxSteps: this.config.maxSteps ?? 5,
+        context,
         onEvent: async (event) => {
           switch (event.type) {
             case 'step_start':
@@ -305,7 +506,8 @@ export class WebSocketServer {
         data: {
           totalSteps: stepCount,
           usage: (this.config.includeUsageData !== false) ? (result?.usage || undefined) : undefined,
-          toolCalls: result?.toolCalls || []
+          toolCalls: result?.toolCalls || [],
+          agentId: selectedAgentId
         }
       }
       
@@ -319,10 +521,17 @@ export class WebSocketServer {
         steps: stepCount,
         toolCount: toolNames.length,
         tools: toolNames,
-        duration: `${duration}ms`
+        duration: `${duration}ms`,
+        agentId: selectedAgentId
       }
       
-      console.log('✅ Completed:', { socketId, duration: `${duration}ms`, steps: stepCount, tools: toolNames })
+      console.log('✅ Completed:', { 
+        socketId, 
+        agentId: selectedAgentId,
+        duration: `${duration}ms`, 
+        steps: stepCount, 
+        tools: toolNames 
+      })
       
       this.config.onMessageComplete?.(socketId, completionMetrics)
       
@@ -361,12 +570,6 @@ export class WebSocketServer {
     return this.io
   }
 
-  /**
-   * Get the agent instance
-   */
-  getAgent(): Agent {
-    return this.agent
-  }
 
   /**
    * Close the WebSocket server
@@ -394,6 +597,54 @@ export class WebSocketServer {
    */
   sendToClient(socketId: string, event: string, data: any): void {
     this.io.to(socketId).emit(event, data)
+  }
+
+  /**
+   * Get list of available agents
+   */
+  getAvailableAgents(): Array<{id: string, name: string, description: string}> {
+    if (this.isMultiAgent) {
+      return Array.from(this.agents.keys()).map(agentId => ({
+        id: agentId,
+        name: this.agents.get(agentId)?.getConfig().name || agentId,
+        description: this.agents.get(agentId)?.getConfig().systemPrompt?.substring(0, 100) + '...' || '',
+      }))
+    } else {
+      return [{
+        id: 'default',
+        name: this.agent?.getConfig().name || 'AI Assistant',
+        description: this.agent?.getConfig().systemPrompt?.substring(0, 100) + '...' || '',
+      }]
+    }
+  }
+
+  /**
+   * Get agent by ID
+   */
+  getAgent(agentId?: string): Agent | undefined {
+    if (this.isMultiAgent) {
+      const availableAgents = Array.from(this.agents.keys())
+      if (availableAgents.length === 0) return undefined
+      
+      const id = agentId || this.config.defaultAgent || availableAgents[0]!
+      return this.agents.get(id)
+    } else {
+      return this.agent
+    }
+  }
+
+  /**
+   * Check if server is in multi-agent mode
+   */
+  isMultiAgentMode(): boolean {
+    return this.isMultiAgent
+  }
+
+  /**
+   * Get agent count
+   */
+  getAgentCount(): number {
+    return this.isMultiAgent ? this.agents.size : 1
   }
 }
 

@@ -1,5 +1,31 @@
 # WebSocket Event Schema
 
+## Multi-Agent Support
+
+The WebSocket server now supports multiple agents. Clients can:
+- Receive `agents_available` event on connection with list of available agents
+- Send `agentId` in `chat_message` to specify which agent to use
+- Send `get_agents` event to refresh agent list
+- Receive `agentId` in completion events to know which agent responded
+
+### Agent Selection
+```typescript
+// Send message to specific agent
+socket.emit('chat_message', {
+  message: "Hello!",
+  agentId: "develop" // Optional - uses default if not specified
+})
+
+// Get available agents
+socket.emit('get_agents')
+
+// Receive agent list
+socket.on('agents_available', (data) => {
+  console.log(data.agents) // Array of {id, name, description}
+  console.log(data.defaultAgent) // Default agent ID
+})
+```
+
 ## Normalized Event Types
 
 All content rendering should flow through these standardized events:

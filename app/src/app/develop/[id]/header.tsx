@@ -108,19 +108,22 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
               />
               {/* Code Editor Button - Feature Flag Controlled */}
               {isFeatureEnabled.codeEditor() && (
-                <Button 
-                  onClick={() => handleViewModeChange('code', hasUnsavedChanges)}
-                  size="sm"
-                  design="control"
-                  active={viewMode === 'code'}
-                >
-                  Code
+                <div className="relative">
+                  <Button 
+                    onClick={() => handleViewModeChange('code', hasUnsavedChanges)}
+                    size="sm"
+                    design="control"
+                    active={viewMode === 'code'}
+                    text="Code"
+                  />
                   {hasUnsavedChanges && viewMode === 'code' && (
-                    <Tag emphasis="warning" size="sm">
-                      Unsaved changes
-                    </Tag>
+                    <div className="absolute -top-1 -right-1">
+                      <Tag emphasis="warning" size="sm">
+                        Unsaved changes
+                      </Tag>
+                    </div>
                   )}
-                </Button>
+                </div>
               )}
             </Box>
 
@@ -135,18 +138,18 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                       design="control"
                       active={previewViewMode === 'desktop'}
                       className="p-1!"
-                    >
-                      <ComputerDesktopIcon className="w-3 h-3" />
-                    </Button>
+                      aria-label="Desktop view"
+                      icon={<ComputerDesktopIcon className="w-3 h-3" />}
+                    />
                     <Button
                       onClick={() => setPreviewViewMode('mobile')}
                       size="sm"
                       design="control"
                       active={previewViewMode === 'mobile'}
                       className="p-1!"
-                    >
-                      <DevicePhoneMobileIcon className="w-3 h-3" />
-                    </Button>
+                      aria-label="Mobile view"
+                      icon={<DevicePhoneMobileIcon className="w-3 h-3" />}
+                    />
                 </Box>
                 
                 {/* App Control Buttons */}
@@ -154,6 +157,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                   <Button
                     onClick={onPreviewRefresh}
                     title="Reload preview (refresh page content)"
+                    aria-label="Reload preview"
                     icon={<RefreshIcon className="w-4! h-4! text-gray-600" />}
                     size="sm"
                     design="stateless"
@@ -164,6 +168,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                     disabled={isRestarting}
                     className="p-1 hover:bg-orange-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Restart server (rebuild and restart development server)"
+                    aria-label="Restart server"
                     icon={<RefreshIcon className={`w-4! h-4! text-intents-ux-feedbackHighContrastCritical-feedbackColor ${isRestarting && 'animate-reverse-spin'}`} />}
                     size="sm"
                     design="stateless"
@@ -179,6 +184,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                     }}
                     disabled={!actualPort || isCheckingApp || isRestarting || isStartingApp}
                     title="Open app in new tab"
+                    aria-label="Open app in new tab"
                     icon={<ArrowTopRightOnSquareIcon className="w-4! h-4! text-intents-ux-feedbackHighContrastSuccess-feedbackColor" />}
                     size="sm"
                     design="stateless"

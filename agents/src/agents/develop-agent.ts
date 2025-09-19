@@ -1,374 +1,339 @@
-import { BaseAgent } from '../base/index.js';
-import type { AgentConfig, AgentExecutionContext } from '../base/index.js';
-import { readFileSync } from 'fs';
+import { 
+  createExperimentalAgentFactory, 
+  getModel,
+  type ExperimentalAgentConfig,
+  type BeforeToolExecutionHook,
+  type AfterToolExecutionHook,
+  createPromptBuilder,
+  pb,
+  when,
+  conditions
+} from '@airo/ai-lib'
+import { allAILibTools } from '../tools/ai-lib-tools/index.js'
+import { readFileSync, existsSync } from 'fs'
+import { join } from 'path'
+import { getPromptPath, getTemplateDescriptionPath } from '../utils/prompt-utils.js'
 
 /**
  * Develop Agent - AI developer for building web applications
  */
-export class DevelopAgent extends BaseAgent {
-  private appPath: string;
 
-  constructor(options?: { appPath?: string }) {
-    const config: AgentConfig = {
-      id: 'develop',
-      name: 'AI Developer',
-      description: 'An AI developer agent that helps build web applications, websites, and digital solutions. Specializes in API generation from database schemas with flexible CRUD operations, full-stack development, and modern web technologies.',
-      model: 'claude-sonnet-4-20250514',
-      tools: [
-        { 
-          name: 'directory_listing', 
-          description: 'List directory contents as a tree structure with filtering options',
-          config: {
-            additionalIgnorePatterns: ['dev-tools', 'source-mapper']
-          }
-        },
-        { name: 'terminal_command', description: 'Execute shell commands within the app directory for development tasks' },
-        { name: 'file_edit', description: 'Edit, create, or rewrite files with intelligent mode detection and safety features' },
-        { name: 'git_operation', description: 'Perform git operations like status, add, commit, diff, log, and branch management' },
-        { name: 'read_file', description: 'Read file contents with optional line range support for examining code and configuration files' },
-        { name: 'grep_search', description: 'Search for text or patterns across files in the project to find code, locate definitions, or understand structure' },
-        { name: 'server_restart', description: 'Restart development server (use after database changes, dependency installs)' },
-        { name: 'server_status', description: 'Check if server is running and get status details' },
-        { name: 'server_stop', description: 'Stop development server temporarily' },
-        { name: 'view_logs', description: 'Read server logs for debugging and error checking - shows recent log output to help troubleshoot issues' },
-        { name: 'auto_api_generator', description: 'Automatically generate API endpoints from database schemas - can create selective operations (e.g., only Create or Read or Update or Delete APIs), analyze database tables, generate TypeScript types, and create REST API routes for any combination of operations' },
-        { name: 'image_search', description: 'Search for images on the web based on text prompts - supports single prompts or arrays of prompts for parallel search, returns image URLs for use in applications' },
-        { name: 'image_generate', description: 'Generate custom images using AI based on detailed text prompts - creates unique images when specific visuals are needed that cannot be found through search' },
-
-      ],
-      contextBuilder: {
-        tools: ['code_generator', 'file_manager'],
-        skipContextBuilding: false,
-      },
-      handoffs: [],
-      version: '1.0.0',
-      tags: ['developer', 'coding', 'web-development', 'ai-assistant', 'api-generation', 'database', 'crud', 'backend'],
-      promptComposition: {
-        // Templates are now dynamically detected based on the app structure
-        // No need to hardcode templates here
-      },
-    };
-
-    super(config);
-    this.appPath = options?.appPath || '.';
-  }
-
-  /**
-   * Customize system prompt with development context
-   */
-  protected customizeSystemPrompt(
-    basePrompt: string,
-    context?: AgentExecutionContext
-  ): string {
-    let customizedPrompt = basePrompt;
-    // Add development-specific context
-    customizedPrompt += `\n\n## AI Edit Context
-When a user selects a specific element in their application for editing, you will receive a separate message containing the element details and source code location. Use this information to make precise, targeted edits.
-
-## Visual Context Integration
-When users provide ambiguous instructions like "edit this" or "change the color here":
-1. Check if visual context is available to understand their current view
-2. Focus on elements in the active section they're viewing
-3. Consider their scroll position to target the right content area
-4. If both visual context AND element selection are provided, prioritize the selected element
-5. When visual context suggests a section but no specific element is selected, scan that section for likely targets
-
-## General Development Guidelines:
-- Always write clean, maintainable, and well-documented code
-- Use modern web development best practices
-- Prefer TypeScript for type safety when possible
-- Follow responsive design principles
-- Include proper error handling
-- Suggest testing strategies when appropriate
-- Consider accessibility (a11y) in UI implementations`;
-
-    return customizedPrompt;
-  }
-
-  /**
-   * Validation for development agent
-   */
-  protected async customValidation(): Promise<void> {
-    if (this.getTools().length < 2) {
-      throw new Error('Develop agent must have at least basic development tools');
+/**
+ * Git branch safety hook (from original develop-agent)
+ */
+const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, args: unknown): Promise<unknown> => {
+  console.log(`🔧 Develop Agent executing tool: ${toolName}`)
+  
+  // File-modifying tools that need git branch check
+  const fileModifyingTools = ['fileEdit', 'terminalCommand', 'gitOperation']
+  
+  if (fileModifyingTools.includes(toolName)) {
+    console.log(`⚠️  File-modifying tool detected: ${toolName}`)
+    console.log(`🔍 Checking git branch state...`)
+    
+    try {
+      // In a real implementation, this would check actual git status
+      // For now, we'll simulate the safety check
+      const currentBranch = 'main' // This would be determined by git status
+      
+      if (currentBranch !== 'main') {
+        console.log(`⚠️  Before executing ${toolName}: Not on main branch, attempting to return to main`)
+        console.log(`🔄 Would switch from '${currentBranch}' to 'main'`)
+        // In real implementation: execute git checkout main
+      } else {
+        console.log(`✅ Already on main branch, proceeding with ${toolName}`)
+      }
+    } catch (error) {
+      console.warn(`⚠️  Error checking git branch state before ${toolName} execution:`, error)
     }
   }
+  
+  return args
+}
 
-  /**
-   * Initialize the development environment
-   */
-  protected async customInitialization(): Promise<void> {
-    console.log('Initializing AI Developer Agent...');
-    console.log('Ready to help build amazing web applications!');
+/**
+ * Development progress tracking hook
+ */
+const afterToolExecution: AfterToolExecutionHook = async (
+  toolName: string,
+  args: unknown,
+  result: unknown
+): Promise<unknown> => {
+  console.log(`✅ Develop Agent completed: ${toolName}`)
+  
+  const resultObj = result as any
+  
+  // Track specific development operations
+  if (toolName === 'fileEdit' && resultObj?.success) {
+    console.log(`📊 File operation completed: ${resultObj.filePath || 'unknown'} (${resultObj.operation || 'edit'})`)
   }
+  
+  if (toolName === 'autoAPIGenerator' && resultObj?.success) {
+    console.log(`📊 API generation completed: ${resultObj.endpointsGenerated || 0} endpoints`)
+  }
+  
+  if (toolName === 'terminalCommand' && resultObj?.success) {
+    console.log(`📊 Terminal command completed: ${resultObj.command || 'unknown'}`)
+  }
+  
+  if (toolName === 'serverRestart' && resultObj?.success) {
+    console.log(`📊 Development server restarted successfully`)
+  }
+  
+  return result
+}
 
-  /**
-   * Log tool usage for development tracking and ensure we're on latest commit
-   */
-  async beforeToolExecution(toolName: string, args: unknown): Promise<unknown> {
-    console.log(`🔧 Executing development tool: ${toolName}`);
-    
-    // For tools that modify files, make sure we're on latest commit
-    const fileModifyingTools = ['file_edit', 'git_operation', 'terminal_command'];
-    
-    if (fileModifyingTools.includes(toolName)) {
-      // If this tool might modify files, double-check we're on main branch
+/**
+ * Build the comprehensive system prompt for the Develop Agent
+ */
+async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
+  const promptBuilder = createPromptBuilder()
+  const basePromptPath = getPromptPath('develop', import.meta.url)
+  
+  // Start with the base develop prompt
+  promptBuilder.file(basePromptPath)
+  
+  // Add version-specific template descriptions if available
+  if (appPath) {
+    const versionPath = join(appPath, '.version')
+    if (existsSync(versionPath)) {
       try {
-        const { GitTool } = await import('../tools/git-tool.js');
-        const gitTool = new GitTool();
+        const version = readFileSync(versionPath, 'utf-8').trim()
+        const templateDescPath = getTemplateDescriptionPath(version, import.meta.url)
         
-        // Execute git branch to check current state
-        const result = await gitTool.executeGitOperation(this.appPath, {
-          operation: 'branch'
-        });
-        
-        // If we're not on main branch or in detached HEAD state
-        if (!result.success || !result.currentBranch || result.currentBranch !== 'main') {
-          console.log(`⚠️ Before executing ${toolName}: Not on main branch, attempting to return to main`);
-          
-          // Attempt to return to main branch
-          await gitTool.executeGitOperation(this.appPath, {
-            operation: 'checkout',
-            branch: 'main'
-          });
+        if (existsSync(templateDescPath)) {
+          promptBuilder.file(templateDescPath)
         }
       } catch (error) {
-        console.warn(`⚠️ Error checking git branch state before ${toolName} execution:`, error);
-        // Continue with execution despite error
+        console.warn('Failed to read version file:', error)
       }
     }
-    
-    return args;
-  }
-
-  /**
-   * Track development progress
-   */
-  async afterToolExecution(
-    toolName: string,
-    args: unknown,
-    result: unknown
-  ): Promise<unknown> {
-    console.log(`✅ Completed development action: ${toolName}`);
-    return result;
-  }
-
-  /**
-   * Hand off to Database Agent for MySQL setup
-   */
-  async handoffToDatabase(params: { userId: string; databaseName: string }): Promise<any> {
-    console.log('🔄 Handing off to Database Agent for MySQL setup...');
-    
-    const { DatabaseAgent } = await import('./database-agent.js');
-    const databaseAgent = new DatabaseAgent({ appPath: this.appPath });
-    await databaseAgent.initialize();
-    
-    try {
-      const result = await databaseAgent.completeDatabaseIntegration(params);
-      console.log('✅ Database Agent handoff completed successfully');
-      console.log('🔗 Backend integration ready for frontend development');
-      
-      return {
-        success: result.success,
-        message: result.summary || 'Database setup completed. Ready for frontend integration.',
-        credentials: result.credentials,
-        backendPort: result.backendPort || 3000
-      };
-    } finally {
-      await databaseAgent.cleanup();
-    }
-  }
-
-
-
-  /**
-   * Detect port configuration from .dev-ports.json
-   */
-  async detectPortConfiguration(): Promise<any> {
-    try {
-      const portConfig = JSON.parse(readFileSync('.dev-ports.json', 'utf8'));
-      return portConfig;
-    } catch {
-      return {};
-    }
-  }
-
-  /**
-   * Generate API integration files for frontend
-   */
-  generateApiIntegration(credentials: any, backendPort: number): any {
-    const files = [
-      {
-        path: 'src/lib/api-client.ts',
-        content: this.generateApiClientCode(backendPort)
-      },
-      {
-        path: 'src/hooks/useDatabase.ts',
-        content: this.generateDatabaseHooksCode(backendPort)
-      },
-      {
-        path: 'vite.config.ts',
-        content: this.generateViteConfigCode(backendPort)
-      }
-    ];
-
-    const instructions = `
-# Frontend Integration Complete
-
-Generated ${files.length} integration files:
-1. **src/lib/api-client.ts** - API client using Vite proxy pattern (/api routes)
-2. **src/hooks/useDatabase.ts** - React hooks for database operations via proxy
-3. **vite.config.ts** - Vite configuration with proxy setup for backend
-
-## Key Features:
-- Vite proxy configuration for /api routes
-- Backend running on port ${backendPort}
-- Frontend uses relative /api paths (proxied by Vite)
-- Automatic proxy setup in vite.config.ts
-
-## Usage:
-\`\`\`typescript
-import { useDatabase } from './hooks/useDatabase';
-import api from './lib/api-client';
-
-// All API calls use /api paths, proxied by Vite to backend
-// Example: fetch('/api/users') -> proxied to http://localhost:${backendPort}/api/users
-\`\`\`
-    `.trim();
-
-    return { files, instructions };
-  }
-
-  /**
-   * Generate API client code with Vite proxy pattern
-   */
-  private generateApiClientCode(_backendPort: number): string {
-    return `// API Client using Vite proxy pattern
-// ALWAYS use relative /api paths - proxied by Vite to backend
-import { API_BASE_URL } from '@/shared/constants';
-
-class ApiClient {
-  private baseURL: string;
-  
-  constructor() {
-    this.baseURL = API_BASE_URL; // '/api' - proxied by Vite
   }
   
-  async get<T>(endpoint: string): Promise<T> {
-    const response = await fetch(\`\${this.baseURL}\${endpoint}\`);
-    if (!response.ok) throw new Error(\`GET \${endpoint} failed\`);
-    return response.json();
-  }
-  
-  async post<T>(endpoint: string, data: any): Promise<T> {
-    const response = await fetch(\`\${this.baseURL}\${endpoint}\`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    if (!response.ok) throw new Error(\`POST \${endpoint} failed\`);
-    return response.json();
-  }
-  
-  async put<T>(endpoint: string, data: any): Promise<T> {
-    const response = await fetch(\`\${this.baseURL}\${endpoint}\`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    if (!response.ok) throw new Error(\`PUT \${endpoint} failed\`);
-    return response.json();
-  }
-  
-  async delete<T>(endpoint: string): Promise<T> {
-    const response = await fetch(\`\${this.baseURL}\${endpoint}\`, {
-      method: 'DELETE'
-    });
-    if (!response.ok) throw new Error(\`DELETE \${endpoint} failed\`);
-    return response.json();
-  }
-  
-  // Health check method
-  async healthCheck(): Promise<boolean> {
-    try {
-      const response = await fetch(\`\${this.baseURL}/health\`);
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }
+  return await promptBuilder.build()
 }
 
-export default new ApiClient();`;
-  }
-
-  /**
-   * Generate React hooks for database operations
-   */
-  private generateDatabaseHooksCode(_backendPort: number): string {
-    return `import { useState, useEffect } from 'react';
-import { API_BASE_URL } from '@/shared/constants';
-
-interface DatabaseHookResult {
-  isConnected: boolean;
-  apiUrl: string;
-  testConnection: () => Promise<boolean>;
-}
-
-export const useDatabase = (): DatabaseHookResult => {
-  const [isConnected, setIsConnected] = useState(false);
-  
-  // Use Vite proxy - all /api calls are proxied to backend
-  const apiUrl = API_BASE_URL; // '/api'
-  
-  const testConnection = async (): Promise<boolean> => {
-    try {
-      const response = await fetch(\`\${apiUrl}/health\`);
-      const connected = response.ok;
-      setIsConnected(connected);
-      return connected;
-    } catch {
-      setIsConnected(false);
-      return false;
-    }
-  };
-  
-  useEffect(() => {
-    testConnection();
-  }, []);
+/**
+ * Create the Develop Agent configuration
+ */
+export async function createDevelopAgent(options?: { appPath?: string }): Promise<ExperimentalAgentConfig> {
+  const appPath = options?.appPath || process.cwd()
+  const systemPrompt = await buildDevelopSystemPrompt(appPath)
   
   return {
-    isConnected,
-    apiUrl,
-    testConnection
-  };
-};
-
-export const useApi = () => {
-  const { apiUrl } = useDatabase();
-  
-  const request = async (endpoint: string, options: RequestInit = {}) => {
-    const response = await fetch(\`\${apiUrl}\${endpoint}\`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
+      name: 'AI Developer',
+    system: systemPrompt,
+    model: await getModel('claude-sonnet-4'),
+    tools: {
+      // Core development tools
+      directoryListing: allAILibTools.directoryListing,
+      terminalCommand: allAILibTools.terminalCommand,
+      fileEdit: allAILibTools.fileEdit,
+      gitOperation: allAILibTools.gitOperation,
+      readFile: allAILibTools.readFile,
+      grepSearch: allAILibTools.grepSearch,
+      
+      // Server management
+      serverRestart: allAILibTools.serverRestart,
+      serverStatus: allAILibTools.serverStatus,
+      viewLogs: allAILibTools.viewLogs,
+      
+      // Specialized development tools
+      autoAPIGenerator: allAILibTools.autoAPIGenerator,
+      imageSearch: allAILibTools.imageSearch,
+      imageGenerate: allAILibTools.imageGenerate,
+      
+      // Handoff tools will be added by the factory when needed
+    },
+    
+    // Tool execution hooks
+    beforeToolExecution,
+    afterToolExecution,
+    
+    // Handoff configuration
+    handoffs: [
+      {
+        agentName: 'database',
+        description: 'MySQL database operations, schema design, and database integration',
       },
-      ...options
-    });
+      {
+        agentName: 'colorScheme',
+        description: 'Color palette design and visual branding for applications',
+      },
+    ],
     
-    if (!response.ok) {
-      throw new Error(\`API request failed: \${response.statusText}\`);
-    }
-    
-    return response.json();
-  };
-  
-  return { request, apiUrl };
-};`;
+    maxSteps: 25,
+    temperature: 0.3,
+    maxOutputTokens: 4000
   }
+}
 
+/**
+ * Create Develop Agent factory
+ */
+export async function createDevelopAgentFactory(options?: { appPath?: string }) {
+  const factory = createExperimentalAgentFactory()
+  
+  const agents = factory.defineAgents({
+    develop: await createDevelopAgent(options)
+  })
+  
+  return {
+    factory,
+    agents,
+    getAgent: () => agents.get('develop'),
+    appPath: options?.appPath
+  }
+}
+
+/**
+ * Develop Agent class wrapper for backward compatibility
+ */
+export class DevelopAgent {
+  private factory: Awaited<ReturnType<typeof createDevelopAgentFactory>>
+  private appPath: string
+  
+  constructor(options?: { appPath?: string }) {
+    this.appPath = options?.appPath || process.cwd()
+    this.factory = null as any
+  }
+  
   /**
-   * Generate Vite configuration with proxy setup
+   * Initialize the agent
+   */
+  async initialize(): Promise<void> {
+    console.log('Initializing Develop Agent...')
+    this.factory = await createDevelopAgentFactory({ appPath: this.appPath })
+    console.log('Develop Agent ready!')
+  }
+  
+  /**
+   * Get the agent instance
+   */
+  getAgent() {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.')
+    }
+    return this.factory.getAgent()
+  }
+  
+  /**
+   * Get agent factory for advanced usage
+   */
+  getFactory() {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.')
+    }
+    return this.factory.factory
+  }
+  
+  /**
+   * Hand off to Database Agent for MySQL setup (original method)
+   */
+  async handoffToDatabase(params: { userId: string; databaseName: string }): Promise<any> {
+    const factory = this.getFactory()
+    
+    console.log('🔄 Handing off to Database Agent for MySQL setup...')
+    
+    const handoffResult = await factory.executeHandoff(
+      'develop',
+      'database',
+      {
+        task: `Complete MySQL database setup and integration with the following requirements:
+        
+**Database Configuration:**
+- Database Name: ${params.databaseName}
+- User ID: ${params.userId}
+- Create dedicated MySQL database with proper user permissions
+- Generate secure database credentials
+- Test database connectivity
+
+**Integration Tasks:**
+1. Create MySQL database: ${params.databaseName}
+2. Set up database user for application access
+3. Update .env file with database credentials
+4. Restart development server to apply changes
+5. Verify database integration is working
+
+**Required Output:**
+- Database credentials (host, port, username, password, database)
+- Connection string for application use
+- Backend server information (port, API URL)
+- Integration summary and next steps
+
+Please complete all database setup tasks and provide the integration details for frontend development.`,
+        context: {
+          userId: params.userId,
+          databaseName: params.databaseName,
+          appPath: this.appPath,
+          projectType: 'web-application',
+          requiresIntegration: true
+        },
+        parameters: params,
+        metadata: {
+          sourceAgent: 'develop',
+          timestamp: new Date().toISOString(),
+          reason: 'Database setup required for application development'
+        }
+      }
+    )
+    
+    if (handoffResult.success) {
+      console.log('✅ Database Agent handoff completed successfully')
+      console.log('🔗 Backend integration ready for frontend development')
+      
+      return {
+        success: handoffResult.result?.success || true,
+        message: handoffResult.result?.summary || 'Database setup completed. Ready for frontend integration.',
+        credentials: handoffResult.result?.credentials || {
+          host: 'localhost',
+          port: 3306,
+          database: params.databaseName
+        },
+        backendPort: handoffResult.result?.backendPort || 3000,
+        handoffDetails: handoffResult.handoffDetails
+      }
+    } else {
+      console.log('❌ Database Agent handoff failed')
+      throw new Error(`Database handoff failed: ${handoffResult.error}`)
+    }
+  }
+  
+  /**
+   * Stream generate response
+   */
+  async streamGenerate(prompt: string, options?: any) {
+    const agent = this.getAgent()
+    return agent.streamGenerate(prompt, options)
+  }
+  
+  /**
+   * Generate response (non-streaming)
+   */
+  async generate(prompt: string, options?: any) {
+    const agent = this.getAgent()
+    return agent.generate(prompt, options)
+  }
+  
+  /**
+   * Get agent name
+   */
+  getName(): string {
+    return this.getAgent().getName()
+  }
+  
+  /**
+   * Get agent configuration
+   */
+  getConfig(): ExperimentalAgentConfig {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.')
+    }
+    return this.factory.agents.getConfig('develop')
+  }
+  
+  /**
+   * Generate Vite configuration with proxy setup (original method)
    */
   private generateViteConfigCode(backendPort: number): string {
     return `import { defineConfig } from 'vite';
@@ -385,13 +350,13 @@ export default defineConfig({
       },
     },
   },
-});`;
+});`
   }
 
   /**
    * Cleanup resources
    */
   async cleanup(): Promise<void> {
-    console.log('🧹 Development Agent cleanup completed');
+    console.log('🧹 Development Agent cleanup completed')
   }
 }

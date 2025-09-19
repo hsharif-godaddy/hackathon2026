@@ -6,7 +6,7 @@ import PencilIcon from '@ux/icon/edit'
 import WandIcon from '@ux/icon/wand'
 
 interface ChatInputProps {
-  inputValue: string
+  inputValue?: string
   isSelectMode: boolean
   isDisabled?: boolean
   onInputChange: (value: string) => void
@@ -16,7 +16,7 @@ interface ChatInputProps {
 }
 
 export default function ChatInput({
-  inputValue,
+  inputValue = '',
   isSelectMode,
   isDisabled,
   onInputChange,
@@ -47,6 +47,7 @@ export default function ChatInput({
               onClick={onToggleSelectMode}
               disabled={isDisabled}
               title={isSelectMode ? 'Select mode active' : 'Enable element selector'}
+              aria-label={isSelectMode ? 'Select mode active' : 'Enable element selector'}
               design="control"
               icon={<PencilIcon className="w-4 h-4" />}
               size="sm"
@@ -55,7 +56,8 @@ export default function ChatInput({
             {/* Send Button */}
             <Button
               onClick={onSendMessage}
-              disabled={!inputValue.trim() || isDisabled}
+              disabled={!inputValue?.trim() || isDisabled}
+              aria-label="Send message"
               design="primary"
               icon={<WandIcon className="w-4 h-4" />}
               size="sm"

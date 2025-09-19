@@ -21,7 +21,7 @@ function isValidOrigin(origin: string): boolean {
          origin === window.location.origin
 }
 
-import { postMessageToIframe } from '@/utils/postMessage'
+import { postMessageToIframe } from '../../../utils/postMessage'
 
 export interface VisualContext {
   page: string

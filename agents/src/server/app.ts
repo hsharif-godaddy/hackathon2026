@@ -6,9 +6,8 @@ import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter } from './routes/index.js';
-import { createWebSocketServer } from './routes/websocket.js';
-import { AgentRegistry } from '../registry/index.js';
-import { ExampleAgent, DevelopAgent, ColorSchemeAgent } from '../agents/index.js';
+// Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
+import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
 import { getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 
@@ -85,30 +84,43 @@ async function initialize() {
     await appRepo.initialize();
     console.log('✅ AppRepository initialized');
 
-    // Initialize agent registry
-    const registry = AgentRegistry.getInstance();
-
-    // Register agents
-    console.log('📝 Registering agents...');
-    registry.register(ExampleAgent);
-    registry.register(DevelopAgent);
-    registry.register(ColorSchemeAgent);
-
-    // Initialize all agents
-    await registry.initializeAll();
-
-    console.log('✅ Agent registry initialized');
-
-    // Setup WebSocket server
-    console.log('🔌 Setting up WebSocket server...');
-    const wss = createWebSocketServer(server);
-    console.log('✅ WebSocket server initialized');
+    // Phase 3: Setup AI-Lib WebSocket Server
+    console.log('🚀 Phase 3: Setting up AI-Lib WebSocket Server...');
+    const wsServer = await setupAILibWebSocketServer(server);
+    console.log('✅ AI-Lib WebSocket server initialized with multi-agent support');
+    
+    // Get WebSocket server info for health checks
+    const wsInfo = getWebSocketServerInfo();
+    console.log(`📊 WebSocket server info:`, {
+      totalAgents: wsInfo.totalAgents,
+      defaultAgent: wsInfo.defaultAgent,
+      availableAgents: wsInfo.agentIds
+    });
+    
+    console.log('📌 WebSocket Connection Info:');
+    console.log('  - Socket.IO: Available on default path for ai-playground compatibility');
+    console.log('  - Frontend: Use Socket.IO client to connect (not native WebSocket)');
+    console.log('  - Update frontend from native WebSocket to Socket.IO for ai-lib compatibility');
 
     // Start server
     server.listen(port, () => {
       console.log(`🌐 Server running on http://localhost:${port}`);
       console.log(`📊 Health check: http://localhost:${port}/health`);
       console.log(`🤖 Agents list: http://localhost:${port}/agents`);
+      console.log('');
+      console.log('🎉 Phase 3 Migration Complete!');
+      console.log('');
+      console.log('✅ Migration to AI-Lib Successfully Completed:');
+      console.log('  - ✅ Phase 1: All tools converted to ai-lib createTool() format');
+      console.log('  - ✅ Phase 2: BaseAgent replaced with ai-lib Agent composition');
+      console.log('  - ✅ Phase 3: WebSocket integrated with ai-lib multi-agent server');
+      console.log('');
+      console.log('🚀 AI-Lib Features Now Active:');
+      console.log('  - Multi-agent WebSocket server with agent selection');
+      console.log('  - Direct streaming and tool execution through ai-lib');
+      console.log('  - Automatic agent discovery and metadata management');
+      console.log('  - Native ai-lib message formats and events');
+      console.log('  - Complete elimination of legacy agent system');
       console.log('');
       console.log('Available endpoints:');
       console.log('');
@@ -162,10 +174,7 @@ async function shutdown() {
   console.log('🛑 Shutting down gracefully...');
 
   try {
-    // Cleanup agent registry (app cleanup now handled by main app service)
-    const registry = AgentRegistry.getInstance();
-    await registry.cleanup();
-
+    // Phase 3: AI-Lib WebSocket server handles its own cleanup automatically
     console.log('✅ Cleanup completed');
     process.exit(0);
   } catch (error) {

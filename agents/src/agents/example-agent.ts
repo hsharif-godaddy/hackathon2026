@@ -1,95 +1,168 @@
-import { BaseAgent } from '../base/index.js';
-import type { AgentConfig, AgentExecutionContext } from '../base/index.js';
+import { 
+  createExperimentalAgentFactory, 
+  getModel,
+  type ExperimentalAgentConfig,
+  type BeforeToolExecutionHook,
+  type AfterToolExecutionHook,
+  createPromptBuilder
+} from '@airo/ai-lib'
+import { allAILibTools } from '../tools/ai-lib-tools/index.js'
+import { getPromptPath } from '../utils/prompt-utils.js'
 
 /**
- * Example Agent - demonstrates the new class-based agent architecture
+ * Example Agent - demonstrates the new ExperimentalAgentFactory architecture
  */
-export class ExampleAgent extends BaseAgent {
+
+/**
+ * Example of before tool execution hook
+ */
+const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, args: unknown): Promise<unknown> => {
+  console.log(`About to execute tool: ${toolName}`)
+  return args
+}
+
+/**
+ * Example of after tool execution hook
+ */
+const afterToolExecution: AfterToolExecutionHook = async (
+  toolName: string,
+  args: unknown,
+  result: unknown
+): Promise<unknown> => {
+  console.log(`Completed tool execution: ${toolName}`)
+  return result
+}
+
+/**
+ * Create the Example Agent configuration
+ */
+export async function createExampleAgent(): Promise<ExperimentalAgentConfig> {
+  const promptBuilder = createPromptBuilder()
+  const promptPath = getPromptPath('example', import.meta.url)
+  
+  const systemPrompt = await promptBuilder
+    .file(promptPath)
+    .build()
+
+  return {
+    name: 'Example Agent',
+    system: systemPrompt,
+
+    model: await getModel('claude-sonnet-4'),
+    tools: {
+      // Example tools - in a real agent, you'd select specific tools
+      // For now, we'll just include a few basic ones
+      fileEdit: allAILibTools.fileEdit,
+      readFile: allAILibTools.readFile,
+      directoryListing: allAILibTools.directoryListing,
+    },
+    
+    // Tool execution hooks
+    beforeToolExecution,
+    afterToolExecution,
+    
+    // Agent metadata
+    handoffs: [],
+    maxSteps: 10,
+    temperature: 0.3,
+    maxOutputTokens: 2000
+  }
+}
+
+/**
+ * Create Example Agent factory with single agent
+ */
+export async function createExampleAgentFactory() {
+  const factory = createExperimentalAgentFactory()
+  
+  const agents = factory.defineAgents({
+    example: await createExampleAgent()
+  })
+  
+  return {
+    factory,
+    agents,
+    getAgent: () => agents.get('example')
+  }
+}
+
+/**
+ * Example Agent class wrapper for backward compatibility
+ * This provides the same interface as the old BaseAgent
+ */
+export class ExampleAgent {
+  private factory: Awaited<ReturnType<typeof createExampleAgentFactory>>
+  
   constructor() {
-    const config: AgentConfig = {
-      id: 'example-agent',
-      name: 'Example Agent',
-      description: 'A simple example agent that demonstrates the class-based architecture',
-      model: 'gpt-4',
-      tools: [
-        { name: 'example_tool', description: 'An example tool for demonstration' },
-        { name: 'another_tool', description: 'Another example tool' },
-      ],
-      contextBuilder: {
-        tools: [],
-        skipContextBuilding: true,
-      },
-      handoffs: [],
-      version: '1.0.0',
-      tags: ['example', 'demo', 'reference'],
-    };
-
-    super(config);
+    this.factory = null as any
   }
-
+  
   /**
-   * Example of customizing the system prompt
+   * Initialize the agent (for compatibility)
    */
-  protected customizeSystemPrompt(
-    basePrompt: string,
-    context?: AgentExecutionContext
-  ): string {
-    let customizedPrompt = basePrompt;
-
-    // Add current time context
-    if (context?.timestamp) {
-      customizedPrompt += `\n\nCurrent timestamp: ${context.timestamp.toISOString()}`;
+  async initialize(): Promise<void> {
+    console.log('Initializing Example Agent...')
+    this.factory = await createExampleAgentFactory()
+    console.log('Example Agent ready!')
+  }
+  
+  /**
+   * Get the agent instance
+   */
+  getAgent() {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.')
     }
-
-    // Add user context if available
-    if (context?.userId) {
-      customizedPrompt += `\nUser ID: ${context.userId}`;
+    return this.factory.getAgent()
+  }
+  
+  /**
+   * Get agent factory for advanced usage
+   */
+  getFactory() {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.')
     }
-
-    // Add thread context
-    if (context?.threadId) {
-      customizedPrompt += `\nThread ID: ${context.threadId}`;
+    return this.factory.factory
+  }
+  
+  /**
+   * Get agent configuration
+   */
+  getConfig(): ExperimentalAgentConfig {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.')
     }
-
-    return customizedPrompt;
+    return this.factory.agents.getConfig('example')
   }
-
+  
   /**
-   * Example of custom validation
+   * Stream generate response (main interface)
    */
-  protected async customValidation(): Promise<void> {
-    // Example validation logic
-    if (this.getTools().length < 1) {
-      throw new Error('Example agent must have at least one tool');
-    }
+  async streamGenerate(prompt: string, options?: any) {
+    const agent = this.getAgent()
+    return agent.streamGenerate(prompt, options)
   }
-
+  
   /**
-   * Example of custom initialization
+   * Generate response (non-streaming)
    */
-  protected async customInitialization(): Promise<void> {
-    console.log('Initializing Example Agent...');
-    // Perform any setup needed for this agent
-    console.log('Example Agent ready!');
+  async generate(prompt: string, options?: any) {
+    const agent = this.getAgent()
+    return agent.generate(prompt, options)
   }
-
+  
   /**
-   * Example of before tool execution hook
+   * Get agent name
    */
-  async beforeToolExecution(toolName: string, args: unknown): Promise<unknown> {
-    console.log(`About to execute tool: ${toolName}`);
-    return args;
+  getName(): string {
+    return this.getAgent().getName()
   }
-
+  
   /**
-   * Example of after tool execution hook
+   * Cleanup resources
    */
-  async afterToolExecution(
-    toolName: string,
-    args: unknown,
-    result: unknown
-  ): Promise<unknown> {
-    console.log(`Completed tool execution: ${toolName}`);
-    return result;
+  async cleanup(): Promise<void> {
+    console.log('🧹 Example Agent cleanup completed')
   }
 }

@@ -38,6 +38,11 @@ export class SimpleMessageBuilder implements MessageBuilder {
       })
     }
     
+    // Add initial context messages if provided
+    if (context?.initialContextMessages && context.initialContextMessages.length > 0) {
+      messages.push(...context.initialContextMessages as CoreMessage[])
+    }
+    
     // Add conversation history if provided
     if (context?.messages && context.messages.length > 0) {
       messages.push(...context.messages as CoreMessage[])
@@ -60,6 +65,11 @@ export class SimpleMessageBuilder implements MessageBuilder {
       role: 'system',
       content: this.systemPrompt
     })
+    
+    // Add initial context messages if provided
+    if (context?.initialContextMessages && context.initialContextMessages.length > 0) {
+      messages.push(...context.initialContextMessages as CoreMessage[])
+    }
     
     // Add conversation history if provided
     if (context?.messages && context.messages.length > 0) {

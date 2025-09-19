@@ -1,160 +1,181 @@
-import { BaseAgent } from '../base/index.js';
-import type { AgentConfig, AgentExecutionContext } from '../base/index.js';
+import { 
+  createExperimentalAgentFactory, 
+  getModel,
+  type ExperimentalAgentConfig,
+  createPromptBuilder,
+  pb
+} from '@airo/ai-lib'
+import { allAILibTools } from '../tools/ai-lib-tools/index.js'
+import { getPromptPath } from '../utils/prompt-utils.js'
 
 /**
  * Color Scheme Agent - Interactive color palette designer
  * Helps users discover and create perfect color schemes for their applications
  */
-export class ColorSchemeAgent extends BaseAgent {
-  constructor() {
-    const config: AgentConfig = {
-      id: 'color-scheme',
-      name: 'Color Scheme Designer',
-      description: 'Interactive color palette designer that helps users create beautiful, accessible color schemes through guided discovery and visual selection',
-      model: 'claude-sonnet-4-20250514',
-      tools: [
-        { 
-          name: 'app_plan', 
-          description: 'Store and manage app planning data including color palettes, app names, and flexible project data'
-        },
-        { 
-          name: 'file_edit', 
-          description: 'Create and edit files for color scheme documentation, CSS files, and design tokens'
-        },
-        { 
-          name: 'read_file', 
-          description: 'Read existing design files, color schemes, and project documentation'
-        },
-        { 
-          name: 'directory_listing', 
-          description: 'Explore project structure to understand where to save color schemes and design files'
-        },
-        {
-          name: 'image_generate',
-          description: 'Generate visual color palette previews and UI mockups to show color schemes in context'
-        }
-      ],
-      contextBuilder: {
-        tools: ['color_designer', 'app_planner'],
-        skipContextBuilding: false,
+
+/**
+ * Build the system prompt for the Color Scheme Agent
+ */
+async function buildColorSchemeSystemPrompt(): Promise<string> {
+  const promptBuilder = createPromptBuilder()
+  const promptPath = getPromptPath('color-scheme', import.meta.url)
+  
+  return await promptBuilder
+    .file(promptPath)
+    .build()
+}
+
+/**
+ * Create the Color Scheme Agent configuration
+ */
+export async function createColorSchemeAgent(): Promise<ExperimentalAgentConfig> {
+  const systemPrompt = await buildColorSchemeSystemPrompt()
+  
+  return {
+    name: 'Color Scheme Designer',
+    system: systemPrompt,
+    model: await getModel('claude-sonnet-4'),
+    tools: {
+      appPlan: allAILibTools.appPlan,
+      fileEdit: allAILibTools.fileEdit,
+      readFile: allAILibTools.readFile,
+      directoryListing: allAILibTools.directoryListing,
+      imageGenerate: allAILibTools.imageGenerate,
+    },
+    
+    // Handoff configuration
+    handoffs: [
+      {
+        agentName: 'develop',
+        description: 'Hand off to development agent to implement the chosen color scheme in the application',
       },
-      handoffs: [
-        {
-          agentName: 'develop',
-          description: 'Hand off to development agent to implement the chosen color scheme in the application',
-        },
-      ],
-      version: '1.0.0',
-      tags: ['design', 'color', 'ui', 'branding', 'accessibility'],
-    };
-
-    super(config);
-  }
-
-  /**
-   * Customize the system prompt with color-specific instructions
-   */
-  protected customizeSystemPrompt(
-    basePrompt: string,
-    context?: AgentExecutionContext
-  ): string {
-    let customizedPrompt = basePrompt;
-
-    const colorSpecificInstructions = `
-
-## Color Design Guidelines
-
-### Interactive Flow Management
-- Always start with project discovery questions
-- Use the app_plan tool to store user responses and progress
-- Present visual elements and choices throughout the process
-- Build upon previous responses to create personalized experiences
-
-### Color Psychology Application
-- Consider the emotional impact of color choices
-- Match colors to brand personality and target audience
-- Explain the reasoning behind color recommendations
-- Factor in cultural and accessibility considerations
-
-### Technical Implementation
-- Store all color data using the app_plan tool
-- Provide colors in multiple formats (hex, RGB, HSL)
-- Include usage guidelines and implementation notes
-- Ensure all palettes meet WCAG AA standards
-
-### Visual Presentation
-When presenting color options:
-- Describe colors with vivid, relatable names
-- Show colors in realistic UI contexts
-- Explain how colors work together
-- Highlight accessibility features
-
-### Sample Color Palette Names
-- "Ocean Breeze" (blues and teals)
-- "Sunset Glow" (oranges and warm tones)
-- "Forest Path" (greens and earth tones)
-- "Midnight Sky" (dark blues and purples)
-- "Fresh Morning" (light blues and whites)
-
-Remember: You're not just selecting colors, you're crafting a visual identity that enhances user experience and supports the application's goals.
-`;
-
-    return customizedPrompt + colorSpecificInstructions;
-  }
-
-  /**
-   * Validate that the color scheme agent is properly configured
-   */
-  async validate(): Promise<void> {
-    await super.validate();
+    ],
     
-    // Ensure required tools are available
-    const requiredTools = ['app_plan', 'file_edit'];
-    const availableTools = this.getTools().map(tool => tool.name);
-    
-    for (const tool of requiredTools) {
-      if (!availableTools.includes(tool)) {
-        throw new Error(`Color Scheme Agent requires ${tool} tool but it's not available`);
-      }
-    }
+    maxSteps: 15,
+    temperature: 0.7, // Higher temperature for creative color work
+    maxOutputTokens: 3000
   }
+}
 
+/**
+ * Create Color Scheme Agent factory with handoff support
+ */
+export async function createColorSchemeAgentFactory() {
+  const factory = createExperimentalAgentFactory()
+  
+  const agents = factory.defineAgents({
+    colorScheme: await createColorSchemeAgent()
+  })
+  
+  return {
+    factory,
+    agents,
+    getAgent: () => agents.get('colorScheme')
+  }
+}
+
+/**
+ * Color Scheme Agent class wrapper for backward compatibility
+ */
+export class ColorSchemeAgent {
+  private factory: Awaited<ReturnType<typeof createColorSchemeAgentFactory>>
+  
+  constructor() {
+    // Note: This will be async in the new system
+    this.factory = null as any
+  }
+  
   /**
-   * Initialize color scheme templates and defaults
+   * Initialize the agent (required for new system)
    */
   async initialize(): Promise<void> {
-    await super.initialize();
-    
-    // Could initialize default color schemes, templates, etc.
-    console.log('🎨 Color Scheme Agent initialized - ready to design beautiful palettes!');
+    console.log('Initializing Color Scheme Agent...')
+    this.factory = await createColorSchemeAgentFactory()
+    console.log('Color Scheme Agent ready!')
   }
-
+  
   /**
-   * Custom processing for color-related tool calls
+   * Get the agent instance
    */
-  async beforeToolExecution(toolName: string, args: unknown): Promise<unknown> {
-    // Add context or validation for color-specific operations
-    if (toolName === 'app_plan' && typeof args === 'object' && args !== null) {
-      const planArgs = args as any;
-      
-      // Ensure we're working with color palette data correctly
-      if (planArgs.colorPalette) {
-        console.log('🎨 Processing color palette data:', planArgs.colorPalette);
+  getAgent() {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.')
+    }
+    return this.factory.getAgent()
+  }
+  
+  /**
+   * Get agent factory for advanced usage
+   */
+  getFactory() {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.')
+    }
+    return this.factory.factory
+  }
+  
+  /**
+   * Get agent configuration
+   */
+  getConfig(): ExperimentalAgentConfig {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.')
+    }
+    return this.factory.agents.getConfig('colorScheme')
+  }
+  
+  /**
+   * Stream generate response (main interface)
+   */
+  async streamGenerate(prompt: string, options?: any) {
+    const agent = this.getAgent()
+    return agent.streamGenerate(prompt, options)
+  }
+  
+  /**
+   * Generate response (non-streaming)
+   */
+  async generate(prompt: string, options?: any) {
+    const agent = this.getAgent()
+    return agent.generate(prompt, options)
+  }
+  
+  /**
+   * Get agent name
+   */
+  getName(): string {
+    return this.getAgent().getName()
+  }
+  
+  /**
+   * Hand off to development agent
+   */
+  async handoffToDevelop(colorScheme: any): Promise<any> {
+    const factory = this.getFactory()
+    
+    return factory.executeHandoff(
+      'colorScheme',
+      'develop',
+      {
+        task: 'Implement the finalized color scheme in the application',
+        context: {
+          colorScheme,
+          implementationNotes: 'Apply the color palette to CSS variables, components, and design tokens'
+        },
+        parameters: { colorScheme },
+        metadata: {
+          sourceAgent: 'colorScheme',
+          timestamp: new Date().toISOString(),
+          reason: 'Color scheme design completed, ready for implementation'
+        }
       }
-    }
-    
-    return args;
+    )
   }
-
+  
   /**
-   * Process tool results for color-specific enhancements
+   * Cleanup resources
    */
-  async afterToolExecution(toolName: string, args: unknown, result: unknown): Promise<unknown> {
-    if (toolName === 'app_plan') {
-      // Could add color palette validation or enhancement here
-      console.log('✅ App plan operation completed for color scheme');
-    }
-    
-    return result;
+  async cleanup(): Promise<void> {
+    console.log('🧹 Color Scheme Agent cleanup completed')
   }
 }

@@ -2,6 +2,9 @@ import { ServerOptions } from 'socket.io'
 import type { Agent } from '../core/agent'
 import type { AgentConfig } from '../core/types'
 
+// Agent factory function type for dynamic agent creation
+export type AgentFactory<TContext = Record<string, unknown>> = (context?: TContext) => Promise<Agent> | Agent
+
 export interface WebSocketMessage {
   type: 'chat' | 'agentic' | 'tool_call' | 'error' | 'status'
   content?: string
@@ -13,6 +16,8 @@ export interface WebSocketMessage {
 export interface ChatMessageData {
   message: string
   useAgentic?: boolean
+  agentId?: string // For multi-agent support - specify which agent to use
+  context?: Record<string, unknown> // Generic context object for extensibility
   files?: Array<{
     id: string
     originalName: string
@@ -25,8 +30,14 @@ export interface ChatMessageData {
 }
 
 export interface WebSocketServerConfig {
-  // Agent configuration
-  agent: Agent | AgentConfig
+  // Agent configuration - single agent (legacy) or multiple agents
+  agent?: Agent | AgentConfig
+  agents?: Record<string, Agent | AgentConfig>
+  agentFactories?: Record<string, AgentFactory<any>> // Dynamic agent creation with factories
+  defaultAgent?: string // Default agent ID when using multiple agents
+  
+  // Context processing
+  contextExtractor?: (rawContext: Record<string, unknown>) => Record<string, unknown> // Extract app-specific context
   
   // Server configuration
   cors?: {
@@ -50,6 +61,7 @@ export interface WebSocketServerConfig {
     toolCount: number
     tools: string[]
     duration: string
+    agentId?: string
   }) => void
   onError?: (socketId: string, error: Error, message?: string) => void
   
@@ -70,5 +82,6 @@ export interface CompletionData {
     totalSteps: number
     usage?: unknown
     toolCalls: unknown[]
+    agentId?: string
   }
 }

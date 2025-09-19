@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthRealmType, AuthRequired } from '@godaddy/gasket-auth';
 import { SparklesIcon } from '@heroicons/react/24/outline';
 import { authConfigs } from '@/lib/gasket-config';
@@ -32,10 +32,18 @@ export default function ProtectedRoute({
   unauthorizedMessage = 'You need to be signed in to access this area of Airo App Builder.'
 }: ProtectedRouteProps) {
 
+  // State to track if component has hydrated
+  const [isClient, setIsClient] = useState(false);
+
   // Always call hooks at the top level - never conditionally
   const isMockLoginEnabled = isFeatureEnabled.mockLogin();
   const mockAuth = useMockAuth();
   const { config: gasketConfig, isLoading: configLoading } = useGasketConfig();
+
+  // Set client flag after hydration
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const LoadingComponent = () => (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center">
@@ -76,10 +84,12 @@ export default function ProtectedRoute({
             ) : (
               <Button
                 onClick={() => {
-                  const url = new URL(gasketConfig.sso.loginUrl);
-                  url.searchParams.set('app', 'airo-builder');
-                  url.searchParams.set('redirect', window.location.href);
-                  window.location.href = url.toString();
+                  if (typeof window !== 'undefined') {
+                    const url = new URL(gasketConfig.sso.loginUrl);
+                    url.searchParams.set('app', 'airo-builder');
+                    url.searchParams.set('redirect', window.location.href);
+                    window.location.href = url.toString();
+                  }
                 }}
                 design='primary'
                 text='Sign In to Continue'
@@ -102,8 +112,8 @@ export default function ProtectedRoute({
     );
   };
 
-  // Show loading state while config is loading
-  if (configLoading) {
+  // Show loading state while config is loading or during hydration
+  if (configLoading || !isClient) {
     return <LoadingComponent />;
   }
 

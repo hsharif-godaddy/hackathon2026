@@ -35,6 +35,12 @@ export interface WebSocketState {
     content: string
     toolCalls?: Array<{ name: string; id: string; input: unknown; result?: unknown }>
   }
+  availableAgents?: Array<{
+    id: string
+    name: string
+    description?: string
+  }>
+  defaultAgent?: string
 }
 
 export function useWebSocket() {
@@ -60,91 +66,52 @@ export function useWebSocket() {
       console.log('WebSocket connected')
     })
 
+    socket.on('agents_available', (data) => {
+      console.log('📥 Available agents:', data.data?.agents)
+      // Store available agents in state if needed
+      setState(prev => ({ 
+        ...prev, 
+        availableAgents: data.data?.agents || [],
+        defaultAgent: data.data?.defaultAgent 
+      }))
+    })
+
     socket.on('disconnect', () => {
       setState(prev => ({ ...prev, connected: false }))
       console.log('WebSocket disconnected')
+    })
+
+    socket.on('error', (data) => {
+      console.error('📥 Received error:', data)
+      setState(prev => ({ ...prev, status: 'error' }))
     })
 
     socket.on('status', (data) => {
       setState(prev => ({ ...prev, status: data.data?.status || 'idle' }))
     })
 
-    socket.on('chat_response', (data) => {
-      if (currentMessageRef.current) {
-        const updatedMessage: ChatMessage = {
-          ...currentMessageRef.current,
-          content: data.content,
-          toolCalls: data.data?.toolCalls,
-          usage: data.data?.usage,
-        }
-        
-        setState(prev => ({
-          ...prev,
-          messages: [...prev.messages, updatedMessage],
-          status: 'complete'
-        }))
-        
-        currentMessageRef.current = null
-      }
-    })
-
-    socket.on('agentic_step', (data) => {
-      setState(prev => ({
-        ...prev,
-        currentStep: {
-          step: data.data.step,
-          content: data.content,
-          toolCalls: data.data.toolCalls
-        }
-      }))
+    socket.on('step_start', (data) => {
+      console.log('📥 Received step_start:', data)
       
-      // Update the current message with agentic steps and accumulate tool calls
-      if (currentMessageRef.current) {
-        const newStep = {
-          step: data.data.step,
-          content: data.content,
-          toolCalls: data.data.toolCalls,
-          isFinal: data.data.isFinal
-        }
-        
-        // Accumulate all tool calls from all steps
-        const existingToolCalls = currentMessageRef.current.toolCalls || []
-        const newToolCalls = data.data.toolCalls || []
-        const allToolCalls = [...existingToolCalls, ...newToolCalls]
-        
-        currentMessageRef.current = {
-          ...currentMessageRef.current,
-          agenticSteps: [...(currentMessageRef.current.agenticSteps || []), newStep],
-          toolCalls: allToolCalls // Accumulate tool calls from all steps
-        }
-        
-        // Update the UI immediately with streaming tool calls
-        setState(prev => ({
-          ...prev,
-          messages: prev.messages.map(msg => 
-            msg.id === currentMessageRef.current?.id 
-              ? { ...msg, toolCalls: allToolCalls, agenticSteps: currentMessageRef.current?.agenticSteps }
-              : msg
-          )
-        }))
-      }
-    })
-
-    // New granular streaming events
-    socket.on('agentic_step_start', (data) => {
-      console.log('📥 Received agentic_step_start:', data)
+      // Initialize new step
       setState(prev => ({
         ...prev,
         currentStep: {
-          step: data.data.step || 1,
+          step: data.data?.step || 1,
           content: '',
           toolCalls: []
         }
       }))
     })
 
-    socket.on('agentic_text_chunk', (data) => {
-      console.log('📥 Received agentic_text_chunk:', data.content)
+    // OLD EVENT HANDLER - REMOVED (replaced by complete event)
+
+    // OLD EVENT HANDLER - REMOVED (replaced by new normalized schema events)
+
+    // OLD EVENT HANDLER - REMOVED (replaced by step_start)
+
+    socket.on('chunk', (data) => {
+      console.log('📥 Received chunk:', data.content)
       
       // Real-time text streaming
       if (currentMessageRef.current) {
@@ -172,8 +139,8 @@ export function useWebSocket() {
       }
     })
 
-    socket.on('agentic_tool_start', (data) => {
-      console.log('📥 Received agentic_tool_start:', data)
+    socket.on('tool_start', (data) => {
+      console.log('📥 Received tool_start:', data)
       
       // Add tool call placeholder immediately when it starts
       if (currentMessageRef.current) {
@@ -202,8 +169,8 @@ export function useWebSocket() {
       }
     })
 
-    socket.on('agentic_tool_result', (data) => {
-      console.log('📥 Received agentic_tool_result:', data)
+    socket.on('tool_result', (data) => {
+      console.log('📥 Received tool_result:', data)
       
       // Update the tool call with its result
       if (currentMessageRef.current) {
@@ -230,8 +197,8 @@ export function useWebSocket() {
       }
     })
 
-    socket.on('agentic_step_complete', (data) => {
-      console.log('📥 Received agentic_step_complete:', data)
+    socket.on('step_complete', (data) => {
+      console.log('📥 Received step_complete:', data)
       
       // Step completion - mainly for logging and status updates
       setState(prev => ({
@@ -244,8 +211,8 @@ export function useWebSocket() {
       }))
     })
 
-    socket.on('agentic_complete', (data) => {
-      console.log('📥 Received agentic_complete:', data)
+    socket.on('complete', (data) => {
+      console.log('📥 Received complete:', data)
       
       if (currentMessageRef.current) {
         // Preserve accumulated tool calls from streaming, don't overwrite with final data

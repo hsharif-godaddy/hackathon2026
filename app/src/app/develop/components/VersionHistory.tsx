@@ -148,9 +148,9 @@ export default function VersionHistory({
           disabled={loading}
           className="w-full"
           design="primary"
-        >
-          { loading ? <Spinner size="sm" /> : 'Refresh' }
-        </Button>
+          text={ loading ? 'Refreshing...' : 'Refresh' }
+          icon={ loading ? <Spinner size="sm" /> : undefined }
+        />
       </div>
     </div>
   )

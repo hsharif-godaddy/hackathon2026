@@ -1,14 +1,22 @@
 import type { AgentExecutionContext } from '../base/agent.interface.js';
-import { executeToolFunction } from '../tools/tool-functions.js';
+import { DirectoryListingTool } from '../tools/directory-listing.js';
+import { ReadFileTool } from '../tools/read-file.js';
 
 /**
  * Service for managing app context information that should be injected into LLM conversations
  * Provides comprehensive project context including:
- * - Directory structure (max depth 4, up to 100 lines)
+ * - Directory structure (max depth 3, up to 100 lines)
  * - Package.json information (up to 50 main dependencies, scripts, project details)
  * - Dependency installation status (checks pnpm-lock.yaml vs package.json timestamps with 5s tolerance for WSL2)
  */
 export class AppContextManager {
+  private directoryTool: DirectoryListingTool;
+  private readFileTool: ReadFileTool;
+
+  constructor() {
+    this.directoryTool = new DirectoryListingTool();
+    this.readFileTool = new ReadFileTool();
+  }
   
   /**
    * Generate context message that provides directory listing and package information to the LLM
@@ -18,17 +26,19 @@ export class AppContextManager {
   async generateContextMessage(context: AgentExecutionContext): Promise<string | null> {
     try {
       // Only generate context if we have an app context
-      if (!context.metadata?.appId) {
+      if (!context.metadata?.appId || !context.metadata?.appPath) {
         return null;
       }
 
-      // Get directory listing with max depth of 4
-      const directoryListing = await executeToolFunction('directory_listing', {
+      const appPath = context.metadata.appPath as string;
+
+      // Get directory listing with max depth of 3
+      const directoryListing = await this.directoryTool.listDirectory(appPath, {
         path: '',
-        maxDepth: 4,
+        maxDepth: 3,
         showHidden: false,
         directoriesOnly: false
-      }, context);
+      });
 
       if (!directoryListing || typeof directoryListing !== 'string') {
         return null;
@@ -56,16 +66,22 @@ export class AppContextManager {
     version?: string;
     description?: string;
     dependencies: string[];
+    devDependencies: string[];
     scripts: string[];
     dependenciesInstalled: boolean;
   } | null> {
     let packageContent: unknown = null;
     
     try {
+      // Get app path from context
+      const appPath = context.metadata?.appPath as string;
+      if (!appPath) {
+        return null;
+      }
+
       // Try to read package.json using the read_file tool
-      packageContent = await executeToolFunction('read_file', {
-        path: 'package.json'
-      }, context);
+      const readResult = await this.readFileTool.readFile({ path: 'package.json' }, appPath);
+      packageContent = readResult.success ? readResult.content : null;
 
       if (!packageContent || typeof packageContent !== 'string') {
         console.warn('AppContextManager: package.json read returned unexpected type:', typeof packageContent);
@@ -93,6 +109,7 @@ export class AppContextManager {
         version: packageJson.version,
         description: packageJson.description,
         dependencies: Object.keys(packageJson.dependencies || {}),
+        devDependencies: Object.keys(packageJson.devDependencies || {}),
         scripts: Object.keys(packageJson.scripts || {}),
         dependenciesInstalled
       };
@@ -115,13 +132,19 @@ export class AppContextManager {
    */
   private async checkDependenciesInstalled(context: AgentExecutionContext): Promise<boolean> {
     try {
+      // Get app path from context
+      const appPath = context.metadata?.appPath as string;
+      if (!appPath) {
+        return false;
+      }
+
       // Get file stats for both package.json and pnpm-lock.yaml using directory listing
-      const listing = await executeToolFunction('directory_listing', {
+      const listing = await this.directoryTool.listDirectory(appPath, {
         path: '',
         maxDepth: 1,
         showHidden: false,
         directoriesOnly: false
-      }, context);
+      });
 
       if (!listing || typeof listing !== 'string') {
         return false;
@@ -129,8 +152,9 @@ export class AppContextManager {
 
       // Look for modification times in the directory listing
       // The directory listing should show file modification times
-      const packageJsonMatch = listing.match(/package\.json.*?(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/);
-      const pnpmLockMatch = listing.match(/pnpm-lock\.yaml.*?(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/);
+      const listingStr = listing as string;
+      const packageJsonMatch = listingStr.match(/package\.json.*?(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/);
+      const pnpmLockMatch = listingStr.match(/pnpm-lock\.yaml.*?(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/);
 
       if (!packageJsonMatch || !pnpmLockMatch) {
         // If we can't find both files with timestamps, assume not installed
@@ -229,9 +253,16 @@ ${compactListing}${truncated ? '\n... (truncated for brevity)' : ''}`;
       sections.push(`Dependencies: ${deps.join(', ')}${truncated ? ` (+${packageInfo.dependencies.length - 50} more)` : ''}`);
     }
 
-    // Installation status
+    // Dev Dependencies (up to 50 dev dependencies)
+    if (packageInfo.devDependencies && packageInfo.devDependencies.length > 0) {
+      const devDeps = packageInfo.devDependencies.slice(0, 50); // Limit to first 50
+      const truncated = packageInfo.devDependencies.length > 50;
+      sections.push(`Dev Dependencies: ${devDeps.join(', ')}${truncated ? ` (+${packageInfo.devDependencies.length - 50} more)` : ''}`);
+    }
+
+    // Installation status - provide the notice you requested
     if (typeof packageInfo.dependenciesInstalled === 'boolean') {
-      sections.push(`Installation Status: ${packageInfo.dependenciesInstalled ? 'All dependencies are installed' : 'Dependencies may need installation'}`);
+      sections.push(`Installation Status: ${packageInfo.dependenciesInstalled ? 'Node modules are up to date - you don\'t need to install anything else' : 'Dependencies may need installation'}`);
     }
 
     // Available scripts
@@ -241,4 +272,10 @@ ${compactListing}${truncated ? '\n... (truncated for brevity)' : ''}`;
 
     return sections.length > 0 ? sections.join('\n') : 'Package Information: No details available';
   }
+}
+
+const appContextManager = new AppContextManager();
+
+export function getAppContextManager(): AppContextManager {
+  return appContextManager;
 }

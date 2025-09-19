@@ -119,10 +119,17 @@ export class StreamingAgenticRunner {
                 // Get the tool from the agent and execute it
                 const tools = this.agent.getTools()
                 const tool = tools[toolCall.name]
-                if (tool && tool.execute) {
-                  toolResult = await tool.execute(toolCall.input)
+                if (tool) {
+                  // Use executeWithContext if available (for ai-lib tools), otherwise use execute
+                  if ((tool as any).executeWithContext) {
+                    toolResult = await (tool as any).executeWithContext(toolCall.input, context)
+                  } else if (tool.execute) {
+                    toolResult = await tool.execute(toolCall.input)
+                  } else {
+                    console.error('Tool has no execute method:', toolCall.name)
+                  }
                 } else {
-                  console.error('Tool not found or has no execute method:', toolCall.name)
+                  console.error('Tool not found:', toolCall.name)
                 }
               } catch (error) {
                 console.error('Error executing tool:', toolCall.name, error)

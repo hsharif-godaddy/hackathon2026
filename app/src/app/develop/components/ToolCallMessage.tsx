@@ -61,6 +61,11 @@ export default function ToolCallMessage({
   }
 
   const getToolDisplayName = (toolName: string) => {
+    // Safety check for undefined/null toolName
+    if (!toolName) {
+      return 'Unknown Tool'
+    }
+    
     switch (toolName) {
       case 'directory_listing':
         return 'Directory Listing'

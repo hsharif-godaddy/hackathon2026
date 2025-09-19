@@ -1,0 +1,51 @@
+import { createTool } from '@airo/ai-lib'
+import { z } from 'zod'
+import { ReadFileTool, ReadFileOptions } from '../read-file.js'
+import { AppRepository } from '../../database/repositories/AppRepository.js'
+
+// Initialize tool instances
+const readFileTool = new ReadFileTool()
+const appRepo = new AppRepository()
+
+/**
+ * Read File Tool for AI-Lib
+ * Read file contents with optional line range support
+ */
+export const readFileAITool = createTool(
+  'Read file contents with optional line range support. Can read entire files or specific line ranges.',
+  z.object({
+    path: z.string().describe('Path to the file to read (relative to app root)'),
+    startLine: z.number().min(1).optional().describe('Starting line number (1-indexed, optional)'),
+    numLines: z.number().min(1).optional().describe('Number of lines to read from start line (optional, reads to end if not specified)')
+  }),
+  async (input, context) => {
+    const appId = context?.metadata?.appId as string
+    if (!appId) {
+      throw new Error('App ID is required for file operations')
+    }
+
+    const app = appRepo.findById(appId)
+    if (!app) {
+      throw new Error(`App '${appId}' not found`)
+    }
+
+    const result = await readFileTool.readFile(input as ReadFileOptions, app.path)
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to read file')
+    }
+
+    let response = `File: ${result.path}\n`
+    if (result.linesRead) {
+      response += `Lines ${result.linesRead.start}-${result.linesRead.end} of ${result.totalLines}\n`
+    } else {
+      response += `Total lines: ${result.totalLines}\n`
+    }
+    if (result.fileSize) {
+      response += `File size: ${result.fileSize} bytes\n`
+    }
+    response += `\n${result.content}`
+    
+    return response
+  }
+)

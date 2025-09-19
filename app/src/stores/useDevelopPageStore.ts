@@ -3,7 +3,7 @@ import { immer } from 'zustand/middleware/immer'
 import { postMessageToIframe } from '@/utils/postMessage'
 import { appService, type App } from '@/services/AppService'
 import { type Site, useSiteStore } from '@/stores/useSiteStore'
-import { useMessagesStore } from '@/stores/useMessagesStore'
+// Legacy useMessagesStore import removed - now using streamingConversationStore
 import { logger } from '@/lib/request-context'
 
 interface GitCommit {
@@ -179,11 +179,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         set((state) => { state.loadingPhase = 'loading-conversations' })
         logger.debug('develop-store.init.loading-conversations', { message: 'Loading conversations' })
         
-        const messagesStore = useMessagesStore.getState()
-        await messagesStore.initializeConversations(appId, {
-          appData: appData.app ? { initialBuildComplete: appData.app.initialBuildComplete } : undefined,
-          siteData: site ? { initial_prompt: site.initial_prompt, status: site.status } : undefined
-        })
+        // Legacy conversation initialization removed - streaming architecture handles this differently
+        logger.debug('develop-store.init.conversations-skipped', { message: 'Legacy conversation init skipped' })
         logger.info('develop-store.init.conversations-loaded', { message: 'Conversations loaded' })
 
         // Phase 4: Evaluate initial actions (auto-send, etc.)
@@ -204,45 +201,22 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     evaluateInitialActions: async () => {
       const state = get()
-      const { app, site, autoSendTriggered } = state
+      const { app, site } = state
       
-      logger.debug('develop-store.auto-send.evaluate', {
+      logger.debug('develop-store.initial-actions.evaluate', {
         message: 'Evaluating initial actions',
         hasApp: !!app,
         hasSite: !!site,
         hasInitialPrompt: !!site?.initial_prompt,
         siteStatus: site?.status,
-        initialBuildComplete: app?.initialBuildComplete,
-        autoSendTriggered
+        initialBuildComplete: app?.initialBuildComplete
       })
 
-      // Only auto-send for incomplete builds with no existing conversations
-      const messagesStore = useMessagesStore.getState()
-      const shouldAutoSend = 
-        site?.initial_prompt &&
-        site.status === 'running' &&
-        app &&
-        !app.initialBuildComplete &&
-        messagesStore.conversations.length === 0 &&
-        !autoSendTriggered
-
-      if (shouldAutoSend) {
-        const promptPreview = site.initial_prompt?.trim() 
-          ? site.initial_prompt.substring(0, 50) + (site.initial_prompt.length > 50 ? '...' : '')
-          : '[empty prompt]'
-        logger.info('develop-store.auto-send.start', { message: 'Auto-sending initial prompt', promptPreview })
-        set((state) => { state.autoSendTriggered = true })
-        
-        try {
-          await messagesStore.handleSendMessage(site.initial_prompt)
-          console.log('✅ Initial prompt auto-sent successfully')
-        } catch (error) {
-          console.error('❌ Failed to auto-send initial prompt:', error)
-          set((state) => { state.autoSendTriggered = false })
-        }
-      } else {
-        console.log('✅ No auto-send needed - conditions not met')
-      }
+      // Auto-send is now handled directly in the develop page component
+      // This method is kept for future initial actions that might be needed
+      logger.info('develop-store.initial-actions.complete', { 
+        message: 'Initial actions evaluation complete - auto-send handled by page component' 
+      })
     },
     
     // Coordinated actions

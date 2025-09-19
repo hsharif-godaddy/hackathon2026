@@ -2,17 +2,23 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
-import ChatPane from '@/app/develop/components/ChatPane'
+import StreamingChatPane from '@/app/develop/components/StreamingChatPane'
 import PreviewPane from '@/app/develop/components/PreviewPaneSimple'
 import CodeEditor from '@/app/develop/components/CodeEditor'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import Header, { HeaderRef } from './header'
-import { 
-  cleanup as cleanupMessageService
-} from '@/app/develop/components/messageService'
+// Legacy messageService cleanup removed - now using streaming architecture
 import { ProtectedRoute } from '@/components/auth'
 import { appService } from '@/services/AppService'
-import { useMessagesStore } from '@/stores/useMessagesStore'
+import { 
+  useConversations,
+  useSetInputValue,
+  useSetAiEditContext,
+  useSetCurrentAppId,
+  useIsLoading,
+  useAutoSendInitialMessage,
+  useLoadConversationHistory
+} from '@/app/develop/components/streamingConversationStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useAppStore } from '@/stores/useAppStore'
@@ -32,14 +38,13 @@ function DevelopPageContent() {
   // Server polling store - unified server status management
   const { startPollingForServer, stopPollingForServer, cleanup: cleanupServerPolling } = useServerPollingStore()
   
-  // Messages store - for conversations and messages
-  const {
-    conversations,
-    isLoading,
-    setInputValue,
-    setAiEditContext,
-    handleSendMessage: sendMessageFromStore
-  } = useMessagesStore()
+  // Streaming conversation store - for conversations and messages
+  const conversations = useConversations()
+  const setInputValue = useSetInputValue()
+  const setAiEditContext = useSetAiEditContext()
+  const setCurrentAppId = useSetCurrentAppId()
+  const autoSendInitialMessage = useAutoSendInitialMessage()
+  const loadConversationHistory = useLoadConversationHistory()
   
   // Develop page store - for UI state and coordination
   const {
@@ -78,6 +83,9 @@ function DevelopPageContent() {
   }>({})
 
   const headerRef = useRef<HeaderRef>(null)
+  
+  // Streaming store state
+  const isLoading = useIsLoading()
 
   // Main initialization - orchestrated through store
   useEffect(() => {
@@ -92,14 +100,15 @@ function DevelopPageContent() {
 
   // MESSAGE HANDLER - Uses store for message handling
   const handleSendMessage = useCallback(async (messageContent?: string) => {
-    await sendMessageFromStore(messageContent)
+    // Message sending is now handled directly by ChatPane via useWebSocketWithConversationStore
+    // Just refresh token usage for now
     headerRef.current?.refreshTokenUsage()
-  }, [sendMessageFromStore])
+  }, [])
 
   // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
     return () => {
-      cleanupMessageService(appId)
+      // Legacy cleanupMessageService removed - streaming architecture handles its own cleanup
       cleanupServerPolling()
       cleanupGitHistoryStore(appId)
       if (batchTimeoutRef.current) {
@@ -107,6 +116,31 @@ function DevelopPageContent() {
       }
     }
   }, [appId, cleanupServerPolling])
+
+  // Initialize streaming conversation store for this app
+  useEffect(() => {
+    if (!appId) return
+    
+    console.log('🔄 Initializing streaming conversation store for:', appId)
+    setCurrentAppId(appId)
+  }, [appId, setCurrentAppId])
+
+  // Load conversation history when page is ready
+  useEffect(() => {
+    console.log('🔍 Conversation loading effect triggered:', {
+      loadingPhase,
+      appId,
+      hasLoadFunction: !!loadConversationHistory
+    })
+    
+    if (loadingPhase !== 'ready' || !appId) {
+      console.log('⏭️ Skipping conversation load:', { loadingPhase, appId })
+      return
+    }
+    
+    console.log('📚 Loading conversation history for app:', appId)
+    loadConversationHistory(appId)
+  }, [loadingPhase, appId, loadConversationHistory])
 
   // Server polling - unified approach with adaptive backoff
   useEffect(() => {
@@ -279,6 +313,39 @@ function DevelopPageContent() {
     }
   }, [loadingPhase, searchParams, conversations.length, router, setInputValue, handleSendMessage])
 
+  // Handle auto-send initial message for new apps (after conversation history is loaded)
+  useEffect(() => {
+    if (loadingPhase !== 'ready' || !appId || isLoading) return
+    
+    // Wait a bit for conversation history to load, then check if we should auto-send
+    const timer = setTimeout(() => {
+      // Check if we should auto-send initial message
+      const shouldAutoSend = 
+        site?.initial_prompt &&
+        site.status === 'running' &&
+        app &&
+        !app.initialBuildComplete &&
+        conversations.length === 0 &&
+        !searchParams.get('message') // Don't auto-send if there's a URL message
+      
+      if (shouldAutoSend) {
+        console.log('🚀 Auto-sending initial message for new app:', appId)
+        
+        // Use the streaming store's auto-send function
+        const wasTriggered = autoSendInitialMessage(site.initial_prompt!, appId)
+        
+        if (wasTriggered) {
+          // Trigger the actual send after a brief delay to ensure WebSocket is ready
+          setTimeout(() => {
+            handleSendMessage(site.initial_prompt!)
+          }, 1000)
+        }
+      }
+    }, 500) // Wait 500ms for conversation history to load
+    
+    return () => clearTimeout(timer)
+  }, [loadingPhase, appId, site, app, conversations.length, searchParams, autoSendInitialMessage, handleSendMessage, isLoading])
+
   // Load git history when page is ready
   useEffect(() => {
     if (loadingPhase === 'ready' && appId) {
@@ -374,7 +441,7 @@ function DevelopPageContent() {
           }}
 
         >
-          <ChatPane
+          <StreamingChatPane
             expandedPlan={expandedPlan}
             isSelectMode={isSelectMode}
             onKeyPress={handleKeyPress}

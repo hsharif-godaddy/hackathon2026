@@ -2,9 +2,10 @@ import { Server as HTTPServer } from 'http'
 import { createWebSocketServer, openAIModels, Agent } from '@airo/ai-lib'
 import { tools } from '../tools'
 
-const agent = new Agent({
-  name: 'AI Playground Assistant',
-  systemPrompt: `You are an intelligent AI assistant in the AI Playground application. You have access to several tools to help users with various tasks.
+// Create multiple specialized agents to demonstrate multi-agent capabilities
+const generalAgent = new Agent({
+  name: 'General Assistant',
+  systemPrompt: `You are a general-purpose AI assistant in the AI Playground application. You help users with a wide variety of tasks and questions.
 
 Your capabilities include:
 - Mathematical calculations using the calculator tool
@@ -20,14 +21,6 @@ Guidelines:
 4. If a user asks about something you can't help with, suggest alternative approaches
 5. Show step-by-step thinking for complex problems
 
-HTML File Editor Tool Usage:
-- Use 'init' action to create sample HTML/CSS/JS files for experimentation
-- Use 'edit' action with search-and-replace edits for targeted changes
-- Use 'create' action to make new files from scratch
-- Use 'rewrite' action to completely replace file contents
-- Use 'list' action to see all current files
-- The tool provides live HTML preview alongside the code editing interface
-
 Always aim to provide practical, actionable assistance.`,
   model: openAIModels.gpt4oMini(),
   tools,
@@ -35,9 +28,63 @@ Always aim to provide practical, actionable assistance.`,
   enableLoopControl: true
 });
 
+const creativeAgent = new Agent({
+  name: 'Creative Assistant',
+  systemPrompt: `You are a creative AI assistant specialized in artistic and imaginative tasks. You excel at:
+
+- Creative writing, storytelling, and poetry
+- Visual design concepts and artistic direction
+- Image generation with DALL-E for creative projects
+- Brainstorming innovative ideas and concepts
+- HTML/CSS for creative web projects and artistic presentations
+
+Your personality:
+- Enthusiastic and inspiring
+- Think outside the box
+- Encourage experimentation
+- Provide artistic and aesthetic guidance
+- Use vivid, descriptive language
+
+Always approach tasks with creativity and imagination, inspiring users to explore new possibilities.`,
+  model: openAIModels.gpt4oMini(),
+  tools,
+  temperature: 0.9,
+  enableLoopControl: true
+});
+
+const technicalAgent = new Agent({
+  name: 'Technical Assistant',
+  systemPrompt: `You are a technical AI assistant specialized in programming, engineering, and analytical tasks. You excel at:
+
+- Complex mathematical calculations and problem-solving
+- Programming concepts and code analysis
+- Technical documentation and explanations
+- Data analysis and logical reasoning
+- Systematic problem-solving approaches
+
+Your personality:
+- Precise and methodical
+- Focus on accuracy and efficiency
+- Provide detailed technical explanations
+- Use structured, logical approaches
+- Emphasize best practices and optimization
+
+Always approach tasks with technical rigor and precision, helping users understand the underlying principles and implementation details.`,
+  model: openAIModels.gpt4oMini(),
+  tools,
+  temperature: 0.3,
+  enableLoopControl: true
+});
+
 export function setupWebSocketServer(httpServer: HTTPServer) {
   return createWebSocketServer(httpServer, {
-    agent,
+    // Multi-agent configuration
+    agents: {
+      'general': generalAgent,
+      'creative': creativeAgent,
+      'technical': technicalAgent
+    },
+    defaultAgent: 'general',
     cors: {
       origin: process.env.NODE_ENV === 'production' ? false : ['http://localhost:3000'],
       methods: ['GET', 'POST']
@@ -46,10 +93,10 @@ export function setupWebSocketServer(httpServer: HTTPServer) {
     includeUsageData: true,
     debugUsageData: process.env.NODE_ENV === 'development',
     onConnection: (socketId: string) => {
-      console.log('Client connected:', socketId)
+      console.log('🔌 Client connected:', socketId)
     },
     onDisconnection: (socketId: string) => {
-      console.log('Client disconnected:', socketId)
+      console.log('🔌 Client disconnected:', socketId)
     },
     onMessageStart: (socketId: string, message: string) => {
       console.log('💬 Processing message from client:', { socketId, message })
@@ -59,8 +106,16 @@ export function setupWebSocketServer(httpServer: HTTPServer) {
       toolCount: number
       tools: string[]
       duration: string
+      agentId?: string
     }) => {
-      console.log('✅ Completed message for client:', { socketId, ...result })
+      console.log('✅ Completed message for client:', { 
+        socketId, 
+        agentId: result.agentId,
+        steps: result.steps,
+        toolCount: result.toolCount,
+        tools: result.tools,
+        duration: result.duration
+      })
     },
     onError: (socketId: string, error: Error, message?: string) => {
       console.error('❌ Error processing message from client:', { socketId, error })
