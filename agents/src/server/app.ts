@@ -1,7 +1,44 @@
+// Load environment variables first
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Initialize Elastic APM first - must be before any other imports
+import apmAgent from 'elastic-apm-node';
+
+const isApmEnabled = !!(process.env.ELASTIC_APM_SECRET_TOKEN && process.env.ELASTIC_APM_SERVER_URL);
+const serviceName = 'airo-agents';
+
+if (isApmEnabled) {
+  console.log(`📊 APM Server: ${process.env.ELASTIC_APM_SERVER_URL}`);
+  console.log(`🏷️  Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🎯 Service Name: ${serviceName}`);
+} else {
+  console.log('⚠️  Elastic APM disabled - Missing ELASTIC_APM_SECRET_TOKEN or ELASTIC_APM_SERVER_URL');
+}
+
+const apm = apmAgent.start({
+  serviceName,
+  secretToken: process.env.ELASTIC_APM_SECRET_TOKEN || '',
+  serverUrl: process.env.ELASTIC_APM_SERVER_URL || '',
+  environment: process.env.NODE_ENV || 'development',
+  active: isApmEnabled,
+  // Express specific configuration
+  usePathAsTransactionName: true,
+  transactionSampleRate: 1.0,
+  captureBody: 'all',
+  captureHeaders: true,
+  // Additional configuration for better transaction capture
+  instrument: true,
+  instrumentIncomingHTTPRequests: true,
+  captureSpanStackTraces: false,
+  stackTraceLimit: 50,
+  transactionMaxSpans: 500
+});
+
+// Now import other modules after APM is initialized
 import express, { Express } from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
-import dotenv from 'dotenv';
 import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger } from './middleware/index.js';
@@ -11,14 +48,16 @@ import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-webs
 import { getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 
-// Load environment variables
-dotenv.config();
-
 const app: Express = express();
 const port = process.env.PORT || 4000;
 
 // Create HTTP server to support both Express and WebSocket
 const server = createServer(app);
+
+// APM middleware should be added BEFORE other middleware
+if (isApmEnabled) {
+  app.use(apm.middleware.connect());
+}
 
 // Security middleware
 app.use(helmet());
@@ -34,6 +73,29 @@ app.use(express.urlencoded({ extended: true }));
 // Logging
 app.use(requestLogger);
 
+// APM transaction middleware for explicit transaction creation
+if (isApmEnabled) {
+  app.use((req, res, next) => {
+    const transaction = apm.startTransaction(`${req.method} ${req.route?.path || req.path}`, 'request');
+    if (transaction) {
+      transaction.setLabel('method', req.method);
+      transaction.setLabel('path', req.path);
+      transaction.setLabel('url', req.url);
+      
+      // Add site_id label for distinguishing transactions
+      if (process.env.SITE_ID) {
+        transaction.setLabel('site_id', process.env.SITE_ID);
+      }
+      
+      res.on('finish', () => {
+        transaction.result = `HTTP ${res.statusCode}`;
+        transaction.setOutcome(res.statusCode >= 400 ? 'failure' : 'success');
+        transaction.end();
+      });
+    }
+    next();
+  });
+}
 
 // Routes
 app.use('/health', healthRouter);

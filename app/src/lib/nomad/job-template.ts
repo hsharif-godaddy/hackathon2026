@@ -183,7 +183,9 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               BEDROCK_AWS_REGION: process.env.BEDROCK_AWS_REGION || 'us-west-2',
               GETTY_API_URL: process.env.GETTY_API_URL || 'https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net/img/search',
               GETTY_APP_KEY: process.env.GETTY_APP_KEY || 'airo-app-builder',
-              GETTY_TOKEN: process.env.GETTY_TOKEN || ''
+              GETTY_TOKEN: process.env.GETTY_TOKEN || '',
+              ELASTIC_APM_SECRET_TOKEN: process.env.ELASTIC_APM_SECRET_TOKEN || '',
+              ELASTIC_APM_SERVER_URL: process.env.ELASTIC_APM_SERVER_URL || ''
             },
             Resources: {
               CPU: 32,

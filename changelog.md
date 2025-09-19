@@ -26,3 +26,4 @@
 - Created a new ai-lib wrapper around AI-SDK with a clean websocket implementation
 - Created an internal-only ai-playground app, for testing websocket/ui interactions and prototyping new features.
 - Added feature class for managing ENV centrally in agents directory
+- Added/Enabled ElasticSearch APM to agents to capture stats in ESSP
