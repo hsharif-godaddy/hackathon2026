@@ -62,11 +62,15 @@ export function createTool<T extends z.ZodSchema>(
   const toolInstance = tool({
     description,
     inputSchema,
-    execute: async (input) => execute(input),
+    execute: async (input) => {
+      // For AI SDK compatibility, we execute without context here since AI SDK doesn't support it natively
+      // Context-aware execution happens through the executeWithContext method in the agent wrapper
+      return execute(input)
+    },
     ...(options?.providerOptions ? { providerOptions: options.providerOptions } : {})
   })
   
-  // Add a custom method for context-aware execution
+  // Add a custom method for context-aware execution that will be used by ai-lib's agent wrappers
   ;(toolInstance as any).executeWithContext = execute
   
   return toolInstance as Tool & { executeWithContext?: (input: z.infer<T>, context?: AgentContext) => Promise<any> }

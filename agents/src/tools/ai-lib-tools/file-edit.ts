@@ -44,6 +44,12 @@ export const fileEditAITool = createTool(
       conversationId: context?.metadata?.conversationId as string
     })
 
+    // CRITICAL FIX: If the file operation failed, throw an error so the agent knows about it
+    // Previously, we were returning a formatted string even for failures, which made errors invisible
+    if (!result.success) {
+      throw new Error(`File edit failed: ${result.error || 'Unknown error'}`)
+    }
+
     return fileEditTool.formatResult(result)
   }
 )

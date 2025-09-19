@@ -3,13 +3,14 @@ import {
   type ExperimentalAgentConfig,
   type BeforeToolExecutionHook,
   type AfterToolExecutionHook,
+  type AgentContext,
   createPromptBuilder,
-  pb,
-  when,
-  conditions
+  pb
 } from '@airo/ai-lib'
 import { getAgentModel } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
+import { GitTool } from '../tools/git-tool.js'
+import { AppRepository } from '../database/repositories/AppRepository.js'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getPromptPath, getTemplateDescriptionPath } from '../utils/prompt-utils.js'
@@ -18,10 +19,14 @@ import { getPromptPath, getTemplateDescriptionPath } from '../utils/prompt-utils
  * Develop Agent - AI developer for building web applications
  */
 
+// Initialize git tool and app repository for branch safety checks
+const gitTool = new GitTool()
+const appRepo = new AppRepository()
+
 /**
  * Git branch safety hook (from original develop-agent)
  */
-const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, args: unknown): Promise<unknown> => {
+const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, args: unknown, context?: AgentContext): Promise<unknown> => {
   console.log(`🔧 Develop Agent executing tool: ${toolName}`)
   
   // File-modifying tools that need git branch check
@@ -32,19 +37,57 @@ const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, ar
     console.log(`🔍 Checking git branch state...`)
     
     try {
-      // In a real implementation, this would check actual git status
-      // For now, we'll simulate the safety check
-      const currentBranch = 'main' // This would be determined by git status
+      // Extract appId from execution context
+      const appId = context?.metadata?.appId as string
+      if (!appId) {
+        console.warn(`⚠️  No appId found in execution context, skipping git branch check for ${toolName}`)
+        return args
+      }
       
-      if (currentBranch !== 'main') {
-        console.log(`⚠️  Before executing ${toolName}: Not on main branch, attempting to return to main`)
-        console.log(`🔄 Would switch from '${currentBranch}' to 'main'`)
-        // In real implementation: execute git checkout main
+      // Look up app path using AppRepository
+      const app = appRepo.findById(appId)
+      if (!app) {
+        console.error(`❌ App '${appId}' not found in repository, skipping git branch check for ${toolName}`)
+        return args
+      }
+      
+      const appPath = app.path
+      console.log(`📁 Using app path: ${appPath}`)
+      
+      // Check current git branch using the actual git tool
+      const branchResult = await gitTool.executeGitOperation(appPath, {
+        operation: 'branch'
+      })
+      
+      if (branchResult.success && branchResult.currentBranch) {
+        const currentBranch = branchResult.currentBranch
+        
+        if (currentBranch !== 'main') {
+          console.log(`⚠️  Before executing ${toolName}: Not on main branch (currently on: ${currentBranch}), attempting to return to main`)
+          console.log(`🔄 Switching from '${currentBranch}' to 'main'`)
+          
+          // Execute git checkout main
+          const checkoutResult = await gitTool.executeGitOperation(appPath, {
+            operation: 'checkout',
+            branch: 'main'
+          })
+          
+          if (checkoutResult.success) {
+            console.log(`✅ Successfully switched to main branch`)
+          } else {
+            console.warn(`⚠️  Failed to switch to main branch: ${checkoutResult.error}`)
+            console.log(`🔄 Continuing with execution on ${currentBranch}`)
+          }
+        } else {
+          console.log(`✅ Already on main branch, proceeding with ${toolName}`)
+        }
       } else {
-        console.log(`✅ Already on main branch, proceeding with ${toolName}`)
+        console.warn(`⚠️  Could not determine current branch: ${branchResult.error || 'Unknown error'}`)
+        console.log(`🔄 Continuing with execution despite error`)
       }
     } catch (error) {
       console.warn(`⚠️  Error checking git branch state before ${toolName} execution:`, error)
+      console.log(`🔄 Continuing with execution despite error`)
     }
   }
   
@@ -57,7 +100,8 @@ const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, ar
 const afterToolExecution: AfterToolExecutionHook = async (
   toolName: string,
   args: unknown,
-  result: unknown
+  result: unknown,
+  context?: AgentContext
 ): Promise<unknown> => {
   console.log(`✅ Develop Agent completed: ${toolName}`)
   

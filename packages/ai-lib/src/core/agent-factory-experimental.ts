@@ -6,13 +6,13 @@
  */
 
 import { Experimental_Agent, stepCountIs, hasToolCall, type LanguageModel } from 'ai'
-import type { GlobalAgentConfig } from './types.js'
+import type { GlobalAgentConfig, AgentContext } from './types.js'
 
 /**
  * Tool execution hook function types
  */
-export type BeforeToolExecutionHook = (toolName: string, args: unknown) => Promise<unknown> | unknown
-export type AfterToolExecutionHook = (toolName: string, args: unknown, result: unknown) => Promise<unknown> | unknown
+export type BeforeToolExecutionHook = (toolName: string, args: unknown, context?: AgentContext) => Promise<unknown> | unknown
+export type AfterToolExecutionHook = (toolName: string, args: unknown, result: unknown, context?: AgentContext) => Promise<unknown> | unknown
 
 /**
  * Agent handoff configuration
@@ -189,42 +189,62 @@ export class ExperimentalAgentWrapper {
         wrappedTool.execute = async (args: any) => {
           let processedArgs = args
 
-          // Call beforeToolExecution hook
-          if (this.config.beforeToolExecution) {
-            try {
-              const hookResult = await this.config.beforeToolExecution(toolName, args)
-              // If hook returns something, use it as the new args
-              if (hookResult !== undefined) {
-                processedArgs = hookResult
-              }
-            } catch (error) {
-              console.error(`Error in beforeToolExecution hook for ${toolName}:`, error)
-              // Continue with original args if hook fails
-            }
-          }
+          // Pass execution context to tools that support it
+          const context = this.executionContext || {}
 
           // Execute the original tool function with context
           let result
           try {
-            // Pass execution context to tools that support it
-            const context = this.executionContext || {}
-            result = await originalExecute(processedArgs, context)
+
+            // Call beforeToolExecution hook
+            if (this.config.beforeToolExecution) {
+              try {
+                const hookResult = await this.config.beforeToolExecution(toolName, args, context as AgentContext)
+                // If hook returns something, use it as the new args
+                if (hookResult !== undefined) {
+                  processedArgs = hookResult
+                }
+              } catch (error) {
+                console.error(`Error in beforeToolExecution hook for ${toolName}:`, error)
+                // Continue with original args if hook fails
+              }
+            }
+            
+            // CRITICAL FIX: Use executeWithContext when available to pass context to tools like fileEdit
+            if ((tool as any).executeWithContext) {
+              result = await (tool as any).executeWithContext(processedArgs, context)
+            } else {
+              result = await originalExecute(processedArgs)
+            }
           } catch (error) {
             // Call afterToolExecution hook even on error
             if (this.config.afterToolExecution) {
               try {
-                await this.config.afterToolExecution(toolName, processedArgs, { error })
+                await this.config.afterToolExecution(toolName, processedArgs, { error }, context as AgentContext)
               } catch (hookError) {
                 console.error(`Error in afterToolExecution hook for ${toolName}:`, hookError)
               }
             }
+            
+            // IMPROVED ERROR REPORTING: Log detailed error information for better debugging
+            console.error(`❌ Tool execution failed for ${toolName}:`, {
+              toolName,
+              args: processedArgs,
+              error: error instanceof Error ? {
+                message: error.message,
+                stack: error.stack,
+                name: error.name
+              } : error,
+              context: context?.metadata || 'No context'
+            })
+            
             throw error
           }
 
           // Call afterToolExecution hook
           if (this.config.afterToolExecution) {
             try {
-              const hookResult = await this.config.afterToolExecution(toolName, processedArgs, result)
+              const hookResult = await this.config.afterToolExecution(toolName, processedArgs, result, context as AgentContext)
               // If hook returns something, use it as the new result
               if (hookResult !== undefined) {
                 result = hookResult
