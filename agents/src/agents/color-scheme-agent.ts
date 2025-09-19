@@ -6,7 +6,7 @@ import {
 } from '@airo/ai-lib'
 import { getAgentModel } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
-import { getPromptPath } from '../utils/prompt-utils.js'
+import { getModularPromptPaths } from '../utils/prompt-utils.js'
 
 /**
  * Color Scheme Agent - Interactive color palette designer
@@ -18,11 +18,19 @@ import { getPromptPath } from '../utils/prompt-utils.js'
  */
 async function buildColorSchemeSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()
-  const promptPath = getPromptPath('color-scheme', import.meta.url)
   
-  return await promptBuilder
-    .file(promptPath)
-    .build()
+  // Get modular prompt paths using helper utility
+  const paths = getModularPromptPaths(import.meta.url)
+  
+  // Load all modular prompt sections in order
+  promptBuilder
+    .file(paths.getAgentFile('color-scheme', 'core.md'))
+    .file(paths.getAgentFile('color-scheme', 'interaction-flow.md'))
+    .file(paths.getAgentFile('color-scheme', 'technical-requirements.md'))
+    .file(paths.getAgentFile('color-scheme', 'visual-context.md'))
+    .file(paths.getAgentFile('color-scheme', 'communication.md'))
+  
+  return await promptBuilder.build()
 }
 
 /**

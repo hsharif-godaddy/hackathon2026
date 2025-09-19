@@ -7,7 +7,7 @@ import {
 } from '@airo/ai-lib'
 import { getAgentModel } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
-import { getPromptPath } from '../utils/prompt-utils.js'
+import { getModularPromptPaths } from '../utils/prompt-utils.js'
 
 /**
  * Example Agent - demonstrates the new ExperimentalAgentFactory architecture
@@ -38,10 +38,14 @@ const afterToolExecution: AfterToolExecutionHook = async (
  */
 export async function createExampleAgent(): Promise<ExperimentalAgentConfig> {
   const promptBuilder = createPromptBuilder()
-  const promptPath = getPromptPath('example', import.meta.url)
   
+  // Get modular prompt paths using helper utility
+  const paths = getModularPromptPaths(import.meta.url)
+  
+  // Load modular prompt sections
   const systemPrompt = await promptBuilder
-    .file(promptPath)
+    .file(paths.getAgentFile('example', 'core.md'))
+    .file(paths.getSharedFile('communication.md'))
     .build()
 
   return {

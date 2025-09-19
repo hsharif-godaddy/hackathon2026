@@ -8,7 +8,7 @@ import {
 } from '@airo/ai-lib'
 import { getAgentModel } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
-import { getPromptPath } from '../utils/prompt-utils.js'
+import { getModularPromptPaths } from '../utils/prompt-utils.js'
 
 /**
  * Database Agent - MySQL database operations and management
@@ -66,11 +66,19 @@ const afterToolExecution: AfterToolExecutionHook = async (
  */
 async function buildDatabaseSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()
-  const promptPath = getPromptPath('database', import.meta.url)
   
-  return await promptBuilder
-    .file(promptPath)
-    .build()
+  // Get modular prompt paths using helper utility
+  const paths = getModularPromptPaths(import.meta.url)
+  
+  // Load all modular prompt sections in order
+  promptBuilder
+    .file(paths.getAgentFile('database', 'core.md'))
+    .file(paths.getAgentFile('database', 'handoff-protocol.md'))
+    .file(paths.getAgentFile('database', 'workflow.md'))
+    .file(paths.getAgentFile('database', 'visual-context.md'))
+    .file(paths.getAgentFile('database', 'communication.md'))
+  
+  return await promptBuilder.build()
 }
 
 /**

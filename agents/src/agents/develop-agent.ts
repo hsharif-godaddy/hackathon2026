@@ -11,9 +11,9 @@ import { getAgentModel } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { GitTool } from '../tools/git-tool.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
-import { readFileSync, existsSync } from 'fs'
+import { existsSync } from 'fs'
 import { join } from 'path'
-import { getPromptPath, getTemplateDescriptionPath } from '../utils/prompt-utils.js'
+import { getTemplateDescriptionPath, getModularPromptPaths, getValidatedTemplateVersion } from '../utils/prompt-utils.js'
 
 /**
  * Develop Agent - AI developer for building web applications
@@ -132,24 +132,30 @@ const afterToolExecution: AfterToolExecutionHook = async (
  */
 async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
   const promptBuilder = createPromptBuilder()
-  const basePromptPath = getPromptPath('develop', import.meta.url)
   
-  // Start with the base develop prompt
-  promptBuilder.file(basePromptPath)
+  // Get modular prompt paths using helper utility
+  const paths = getModularPromptPaths(import.meta.url)
+  
+  // Load all modular prompt sections in order
+  promptBuilder
+    .file(paths.getAgentFile('develop', 'core.md'))
+    .file(paths.getAgentFile('develop', 'tools.md'))
+    .file(paths.getAgentFile('develop', 'database.md'))
+    .file(paths.getAgentFile('develop', 'api.md'))
+    .file(paths.getAgentFile('develop', 'approach.md'))
+    .file(paths.getAgentFile('develop', 'visual-context.md'))
+    .file(paths.getSharedFile('communication.md'))
+    .file(paths.getAgentFile('develop', 'design.md'))
+    .file(paths.getSharedFile('security.md'))
   
   // Add version-specific template descriptions if available
   if (appPath) {
-    const versionPath = join(appPath, '.version')
-    if (existsSync(versionPath)) {
-      try {
-        const version = readFileSync(versionPath, 'utf-8').trim()
-        const templateDescPath = getTemplateDescriptionPath(version, import.meta.url)
-        
-        if (existsSync(templateDescPath)) {
-          promptBuilder.file(templateDescPath)
-        }
-      } catch (error) {
-        console.warn('Failed to read version file:', error)
+    const validatedVersion = getValidatedTemplateVersion(appPath)
+    if (validatedVersion) {
+      const templateDescPath = getTemplateDescriptionPath(validatedVersion, import.meta.url)
+      
+      if (existsSync(templateDescPath)) {
+        promptBuilder.file(templateDescPath)
       }
     }
   }
