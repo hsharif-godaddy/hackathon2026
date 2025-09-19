@@ -3,12 +3,12 @@ import path from "path";
 import chalk from "chalk";
 import inquirer from "inquirer";
 import { GettyConfigSetup } from "./getty-config.js";
+import { AWSSSoSetup } from "./aws-sso.js";
 
 export interface ModelConfig {
 	provider: "aws-bedrock" | "gocode";
 	awsRegion?: string;
-	awsAccessKeyId?: string;
-	awsSecretAccessKey?: string;
+	awsProfile?: string;
 	gocodeApiKey?: string;
 	gocodeBaseUrl?: string;
 }
@@ -46,9 +46,44 @@ export class EnvGenerator {
 	private projectRoot: string;
 	private static readonly DEFAULT_DATABASE_URL =
 		"mysql://airo:airopassword@localhost:3306/airo_app";
+	private awsSSO: AWSSSoSetup;
 
 	constructor(projectRoot: string) {
 		this.projectRoot = projectRoot;
+		this.awsSSO = new AWSSSoSetup();
+	}
+
+	private async checkExistingAWSProfile(): Promise<string | null> {
+		try {
+			const { execSync } = await import("child_process");
+			
+			// First check if the SSO profile exists and is logged in
+			const ssoProfileName = await this.awsSSO.getProfile();
+			try {
+				execSync(`aws sts get-caller-identity --profile ${ssoProfileName} --query "Arn" --output text`, {
+					encoding: 'utf8',
+					stdio: 'pipe'
+				});
+				return ssoProfileName;
+			} catch {
+				// SSO profile exists but not logged in or doesn't work
+			}
+
+			// Check if any default credentials work
+			try {
+				execSync('aws sts get-caller-identity --query "Arn" --output text', {
+					encoding: 'utf8',
+					stdio: 'pipe'
+				});
+				return process.env.AWS_PROFILE || 'default';
+			} catch {
+				// No working default credentials
+			}
+
+			return null;
+		} catch {
+			return null;
+		}
 	}
 
 	async promptModelProvider(): Promise<ModelConfig> {
@@ -76,34 +111,100 @@ export class EnvGenerator {
 	private async promptAWSBedrockConfig(): Promise<ModelConfig> {
 		console.log(chalk.yellow("\n🔧 AWS Bedrock Configuration"));
 		console.log("You'll need AWS credentials with Bedrock access.");
+		console.log("");
 
-		const answers = await inquirer.prompt([
+		// Check if AWS SSO profile already exists
+		const currentProfile = await this.checkExistingAWSProfile();
+		if (currentProfile) {
+			const { useExistingProfile } = await inquirer.prompt([
+				{
+					type: "confirm",
+					name: "useExistingProfile",
+					message: `Use existing AWS profile '${currentProfile}' for Bedrock?`,
+					default: true,
+				},
+			]);
+
+			if (useExistingProfile) {
+				const { awsRegion } = await inquirer.prompt([
+					{
+						type: "input",
+						name: "awsRegion",
+						message: "AWS Region (e.g., us-west-2):",
+						default: "us-west-2",
+						validate: (input) => input.length > 0 || "AWS Region is required",
+					},
+				]);
+
+				return {
+					provider: "aws-bedrock",
+					awsRegion,
+					awsProfile: currentProfile,
+				};
+			}
+		}
+
+		// Prompt to set up AWS SSO
+		const { setupSSO } = await inquirer.prompt([
+			{
+				type: "list",
+				name: "setupSSO",
+				message: "How would you like to configure AWS credentials?",
+				choices: [
+					{ name: "Set up AWS SSO profile (recommended)", value: "sso" },
+					{ name: "Use existing AWS credentials/profile", value: "existing" },
+				],
+				default: "sso",
+			},
+		]);
+
+		if (setupSSO === "sso") {
+			console.log(chalk.blue("\n🔧 Setting up AWS SSO for Bedrock access..."));
+			const ssoSuccess = await this.awsSSO.setup();
+
+			if (ssoSuccess) {
+				const profileName = await this.awsSSO.getProfile();
+				const { awsRegion } = await inquirer.prompt([
+					{
+						type: "input",
+						name: "awsRegion",
+						message: "AWS Region (e.g., us-west-2):",
+						default: "us-west-2",
+						validate: (input) => input.length > 0 || "AWS Region is required",
+					},
+				]);
+
+				return {
+					provider: "aws-bedrock",
+					awsRegion,
+					awsProfile: profileName,
+				};
+			} else {
+				console.log(chalk.red("❌ AWS SSO setup failed. Falling back to existing profile selection."));
+			}
+		}
+
+		// Fallback to selecting existing profile or default
+		const { awsProfile, awsRegion } = await inquirer.prompt([
+			{
+				type: "input",
+				name: "awsProfile",
+				message: "AWS Profile name (leave empty for default):",
+				default: "",
+			},
 			{
 				type: "input",
 				name: "awsRegion",
-				message: "AWS Region (e.g., us-east-1):",
-				default: "us-east-1",
+				message: "AWS Region (e.g., us-west-2):",
+				default: "us-west-2",
 				validate: (input) => input.length > 0 || "AWS Region is required",
-			},
-			{
-				type: "input",
-				name: "awsAccessKeyId",
-				message: "AWS Access Key ID:",
-				validate: (input) =>
-					input.length > 0 || "AWS Access Key ID is required",
-			},
-			{
-				type: "password",
-				name: "awsSecretAccessKey",
-				message: "AWS Secret Access Key:",
-				validate: (input) =>
-					input.length > 0 || "AWS Secret Access Key is required",
 			},
 		]);
 
 		return {
 			provider: "aws-bedrock",
-			...answers,
+			awsRegion,
+			awsProfile: awsProfile || undefined,
 		};
 	}
 
@@ -240,9 +341,14 @@ DATABASE_URL=${config.databaseUrl}
 		if (config.modelConfig.provider === "aws-bedrock") {
 			envContent += `# AWS Bedrock Configuration
 AI_PROVIDER=aws-bedrock
-AWS_REGION=${config.modelConfig.awsRegion}
-AWS_ACCESS_KEY_ID=${config.modelConfig.awsAccessKeyId}
-AWS_SECRET_ACCESS_KEY=${config.modelConfig.awsSecretAccessKey}
+AWS_REGION=${config.modelConfig.awsRegion}`;
+			
+			if (config.modelConfig.awsProfile) {
+				envContent += `
+AWS_PROFILE=${config.modelConfig.awsProfile}`;
+			}
+			
+			envContent += `
 BEDROCK_MODEL_ID=anthropic.claude-3-sonnet-20240229-v1:0
 `;
 		} else {
@@ -297,9 +403,14 @@ OPENAI_BASE_URL=""
 OPENAI_MODEL="anthropic.claude-3-sonnet-20240229-v1:0"
 
 # AWS Configuration
-AWS_REGION=${config.modelConfig.awsRegion}
-AWS_ACCESS_KEY_ID=${config.modelConfig.awsAccessKeyId}
-AWS_SECRET_ACCESS_KEY=${config.modelConfig.awsSecretAccessKey}
+AWS_REGION=${config.modelConfig.awsRegion}`;
+
+			if (config.modelConfig.awsProfile) {
+				envContent += `
+AWS_PROFILE=${config.modelConfig.awsProfile}`;
+			}
+			
+			envContent += `
 `;
 		} else {
 			envContent += `# GoCode Configuration
@@ -379,6 +490,10 @@ SSO_JWT=${config.ssoJwt}
 		console.log(chalk.cyan("\n📋 Configuration Summary:"));
 		console.log(`Database: MySQL (Docker container)`);
 		console.log(`AI Provider: ${config.modelConfig.provider}`);
+		if (config.modelConfig.provider === "aws-bedrock") {
+			console.log(`AWS Region: ${config.modelConfig.awsRegion}`);
+			console.log(`AWS Profile: ${config.modelConfig.awsProfile || 'default'}`);
+		}
 		console.log(
 			`Authentication: ${config.authConfig.useMockLogin ? "Mock Login" : "SSO Integration"}`,
 		);
@@ -457,63 +572,14 @@ SSO_JWT=${config.ssoJwt}
 				gettyConfig = result.envConfig;
 			} else {
 				console.log(chalk.yellow("Getty AWS proxy configuration failed, falling back to legacy SSO method..."));
-				configureGetty = "legacy-sso";
+				// Fall back to legacy SSO method
+				const legacySsoResult = await this.handleLegacySSO();
+				ssoJwt = legacySsoResult || undefined;
 			}
 		}
 
 		if (configureGetty === "legacy-sso") {
-			// Legacy SSO JWT configuration
-			const hasSsoJwtBinary = await this.checkSsoJwtBinary();
-
-			if (hasSsoJwtBinary) {
-				console.log(chalk.green("✅ SSO JWT binary found"));
-
-				const { useSsoJwt } = await inquirer.prompt([
-					{
-						type: "confirm",
-						name: "useSsoJwt",
-						message: "Generate SSO JWT token for Getty Images?",
-						default: true,
-					},
-				]);
-
-				if (useSsoJwt) {
-					console.log(chalk.blue("🔄 Generating SSO JWT token..."));
-					ssoJwt = await this.getSsoJwtToken();
-					if (ssoJwt) {
-						console.log(chalk.green("✅ SSO JWT token generated successfully"));
-					}
-				}
-			} else {
-				console.log(chalk.yellow("!  SSO JWT binary not found"));
-				console.log(
-					chalk.blue(
-						"📦 Install from: https://github.com/gdcorp-engineering/ssojwt",
-					),
-				);
-
-				const { includeSsoJwt } = await inquirer.prompt([
-					{
-						type: "confirm",
-						name: "includeSsoJwt",
-						message: "Do you have an SSO JWT token to enter manually?",
-						default: false,
-					},
-				]);
-
-				if (includeSsoJwt) {
-					const ssoAnswer = await inquirer.prompt([
-						{
-							type: "password",
-							name: "ssoJwt",
-							message: "SSO JWT Token:",
-							validate: (input) =>
-								input.length > 0 || "SSO JWT Token is required",
-						},
-					]);
-					ssoJwt = ssoAnswer.ssoJwt;
-				}
-			}
+			ssoJwt = (await this.handleLegacySSO()) || undefined;
 		}
 
 		const config: AgentsEnvConfig = {
@@ -554,6 +620,10 @@ SSO_JWT=${config.ssoJwt}
 		// Show summary
 		console.log(chalk.cyan("\n📋 Configuration Summary:"));
 		console.log(`AI Provider: ${config.modelConfig.provider}`);
+		if (config.modelConfig.provider === "aws-bedrock") {
+			console.log(`AWS Region: ${config.modelConfig.awsRegion}`);
+			console.log(`AWS Profile: ${config.modelConfig.awsProfile || 'default'}`);
+		}
 		console.log(`Template Directory: ${config.appTemplateDir}`);
 		console.log(`MySQL Host: ${config.mysqlRootHost}:${config.mysqlRootPort}`);
 		console.log(`MySQL User: ${config.mysqlRootUser}`);
@@ -616,6 +686,64 @@ SSO_JWT=${config.ssoJwt}
 			console.log(chalk.red("❌ Failed to generate SSO JWT token"));
 			return null;
 		}
+	}
+
+	private async handleLegacySSO(): Promise<string | null> {
+		// Legacy SSO JWT configuration
+		const hasSsoJwtBinary = await this.checkSsoJwtBinary();
+
+		if (hasSsoJwtBinary) {
+			console.log(chalk.green("✅ SSO JWT binary found"));
+
+			const { useSsoJwt } = await inquirer.prompt([
+				{
+					type: "confirm",
+					name: "useSsoJwt",
+					message: "Generate SSO JWT token for Getty Images?",
+					default: true,
+				},
+			]);
+
+			if (useSsoJwt) {
+				console.log(chalk.blue("🔄 Generating SSO JWT token..."));
+				const token = await this.getSsoJwtToken();
+				if (token) {
+					console.log(chalk.green("✅ SSO JWT token generated successfully"));
+				}
+				return token;
+			}
+		} else {
+			console.log(chalk.yellow("!  SSO JWT binary not found"));
+			console.log(
+				chalk.blue(
+					"📦 Install from: https://github.com/gdcorp-engineering/ssojwt",
+				),
+			);
+
+			const { includeSsoJwt } = await inquirer.prompt([
+				{
+					type: "confirm",
+					name: "includeSsoJwt",
+					message: "Do you have an SSO JWT token to enter manually?",
+					default: false,
+				},
+			]);
+
+			if (includeSsoJwt) {
+				const ssoAnswer = await inquirer.prompt([
+					{
+						type: "password",
+						name: "ssoJwt",
+						message: "SSO JWT Token:",
+						validate: (input) =>
+							input.length > 0 || "SSO JWT Token is required",
+					},
+				]);
+				return ssoAnswer.ssoJwt;
+			}
+		}
+
+		return null;
 	}
 }
 

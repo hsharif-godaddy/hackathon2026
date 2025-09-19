@@ -173,9 +173,7 @@ sso_registration_scopes = sso:account:access
     }
 
     try {
-      await execAsync(`aws sso login --profile "${this.config.profileName}"`, {
-        stdio: 'inherit'
-      });
+      await execAsync(`aws sso login --profile "${this.config.profileName}"`);
 
       console.log(chalk.green('✅ SSO login successful'));
 
@@ -249,7 +247,7 @@ sso_registration_scopes = sso:account:access
     }
   }
 
-  async getProfile(): string {
+  async getProfile(): Promise<string> {
     return this.config.profileName;
   }
 
