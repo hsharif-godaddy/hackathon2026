@@ -15,6 +15,7 @@ import { ProtectedRoute } from '@/components/auth'
 import Header from '@/components/layout/Header'
 import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { DevelopmentAdminSection } from '@/components/development'
+import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
@@ -34,6 +35,10 @@ function SitesPageContent() {
   const [alertState, setAlertState] = useState<AlertState>({ siteId: null, type: null, message: '' })
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
   const router = useRouter()
+
+  useEffect(() => {
+    logImpressionEvent({ eid: 'sites.page' })();
+  }, [])
 
   useEffect(() => {
     const fetchSites = async () => {
@@ -180,11 +185,13 @@ function SitesPageContent() {
         <Button
           onClick={onConfirm}
           disabled={actionLoading === siteId}
+          data-eid={generateClickEID('sites.site.delete_confirm')}
           className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
           text={actionLoading === siteId ? 'Deleting...' : 'Delete'}
           design="critical"
         />
         <Button
+          data-eid={generateClickEID('sites.site.delete_cancel')}
           onClick={onCancel}
           text="Cancel"
           design="secondary"
@@ -208,12 +215,14 @@ function SitesPageContent() {
         actions={
           <Button
             onClick={handleCreateNew}
+            data-eid={generateClickEID('sites.header.new')}
             data-partial="componentAiro"
             design="primary"
             icon={<PlusIcon className="w-4 h-4" />}
             text="New Site"
           />
         }
+        location='sites'
       />
 
       {/* Development Admin Section */}
@@ -318,6 +327,7 @@ function SitesPageContent() {
                     {site.preview_url && site.status === 'running' && (
                       <Button
                         href={site.preview_url}
+                        data-eid={generateClickEID('sites.site.view')}
                         icon={<EyeIcon className="w-3 h-3" />}
                         size="sm"
                         design="tertiary"
@@ -329,6 +339,7 @@ function SitesPageContent() {
                     {site.status === 'running' && (
                       <Button
                         onClick={() => router.push(`/develop/${site.id}?siteId=${site.id}`)}
+                        data-eid={generateClickEID('sites.site.edit')}
                         className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100 space-x-1"
                         icon={<PlayIcon className="w-3 h-3" />}
                         size="sm"
@@ -340,6 +351,7 @@ function SitesPageContent() {
                   
                   <Button
                     onClick={() => showDeleteAlert(site.id, site.name || 'Untitled Site')}
+                    data-eid={generateClickEID('sites.site.delete')}
                     aria-label={`Delete site ${site.name || 'Untitled Site'}`}
                     icon={<TrashIcon className="w-2 h-2" />}
                     size="sm"

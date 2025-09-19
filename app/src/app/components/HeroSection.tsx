@@ -7,6 +7,7 @@ import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
 import SendIcon from '@ux/icon/send'
 import { HeroSectionProps, HeroSectionRef } from './types'
+import { generateClickEID } from '@/utils/instrumentation'
 
 const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   promptText,
@@ -141,6 +142,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
             onClick={() => handleSignIn(window.location.href)}
             design='primary'
             text='Sign In to Continue'
+            data-eid={ generateClickEID('homepage.hero.sign_in') }
           />
         )}
         {/* Display Textarea for authenticated users */}
@@ -170,6 +172,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
             <Button 
               onClick={onStartBuilding}
               data-partial={ !isLoading ? "componentAiro" : "componentBrand" }
+              data-eid={ generateClickEID('homepage.prompt.submit') }
               disabled={!promptText.trim() || isLoading || isTyping}
               design='primary'
               className="group cursor-pointer absolute right-4 bottom-4 mb-0.5 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed z-10"

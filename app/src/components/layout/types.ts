@@ -7,4 +7,6 @@ export interface HeaderProps {
   className?: string
   // Optional callback for showing mock login modal
   onShowMockLogin?: () => void
+  // Optional location for EID tracking
+  location?: string
 }

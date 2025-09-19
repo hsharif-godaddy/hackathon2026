@@ -2,12 +2,14 @@
 
 import { useAuth } from '@/hooks/useAuth';
 import Button from '@ux/button';
+import { generateClickEID } from '@/utils/instrumentation';
 
 interface UserMenuProps {
   onShowMockLogin?: () => void;
+  location?: string;
 }
 
-export default function UserMenu({ onShowMockLogin }: UserMenuProps = {}) {
+export default function UserMenu({ onShowMockLogin, location = 'unknown' }: UserMenuProps = {}) {
   const { 
     isAuthenticated, 
     isLoading: configLoading, 
@@ -46,6 +48,7 @@ export default function UserMenu({ onShowMockLogin }: UserMenuProps = {}) {
     return (
       <>
         <Button
+          data-eid={ generateClickEID(`${location}.header.sign_in`) }
           text='Sign In'
           design='tertiary'
           onClick={handleSignInClick}
@@ -56,45 +59,10 @@ export default function UserMenu({ onShowMockLogin }: UserMenuProps = {}) {
 
   return (
     <Button
+      data-eid={ generateClickEID(`${location}.header.sign_out`) }
       text='Sign Out'
       design='tertiary'
       onClick={handleSignOut}
     />
   )
-
-  /*return (
-    <Menu
-      closeOnSelect
-      id="default-menu"
-      className="z-50"
-    >
-      <MenuButton
-        buttonAs="select"
-        design="primary"
-        text="Menu"
-      />
-      <MenuList 
-        stretch 
-        placement="bottom-end"
-      >
-        <MenuGroup label={getUserEmail()}>
-          <MenuItem onSelect={() => {}}>
-            <Link href="/sites">
-              My Sites
-            </Link>
-          </MenuItem>
-          {isFeatureEnabled.galleryPage() && (
-            <MenuItem onSelect={() => {}}>
-              <Link href="/gallery">
-                Gallery
-              </Link>
-            </MenuItem>
-          )}
-          <MenuItem onSelect={handleSignOut}>
-            Sign Out
-          </MenuItem>
-        </MenuGroup>
-      </MenuList>
-    </Menu>
-  );*/
 }

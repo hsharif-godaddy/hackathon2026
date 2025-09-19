@@ -1,10 +1,12 @@
 export interface Example {
   title: string
   prompt: string
+  slug: string
 }
 
 export interface BuiltWithItem {
   id: string
+  slug: string
   title: string
   description: string
   thumbnailPath: string

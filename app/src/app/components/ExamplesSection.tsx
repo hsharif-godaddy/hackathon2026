@@ -1,5 +1,6 @@
 import { ArrowRightIcon } from '@heroicons/react/24/outline'
 import { ExamplesSectionProps } from './types'
+import { generateClickEID, logMultipleClickEvents } from '@/utils/instrumentation'
 
 export default function ExamplesSection({ examples, onExampleClick }: ExamplesSectionProps) {
   return (
@@ -8,8 +9,15 @@ export default function ExamplesSection({ examples, onExampleClick }: ExamplesSe
       <div className="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
         {examples.map((example) => (
           <button
+            data-eid={ generateClickEID('homepage.examples.example') }
             key={example.title}
-            onClick={() => onExampleClick(example.prompt)}
+            onClick={() => {
+              onExampleClick(example.prompt);
+              logMultipleClickEvents([
+                'homepage.examples.example',
+                `homepage.examples.example_${example.slug}`,
+              ]);
+            } }
             className="group px-4 py-2 bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all duration-200 text-sm cursor-pointer"
           >
             <span className="font-medium text-gray-700 group-hover:text-purple-600 transition-colors">

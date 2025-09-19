@@ -368,6 +368,7 @@ function AppsPageContent() {
             </button>
           </>
         }
+        location='apps'
       />
 
       {/* Main Content */}

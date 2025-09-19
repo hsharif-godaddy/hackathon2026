@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { SparklesIcon } from '@heroicons/react/24/outline'
 import { useSiteCreationStore, cleanupSiteCreationStore, type SiteCreationPhase } from '@/stores/useSiteCreationStore'
+import { logImpressionEvent } from '@/utils/instrumentation'
 import Button from '@ux/button'
 
 export default function CreateAppStatus() {
@@ -49,6 +50,9 @@ export default function CreateAppStatus() {
     }
   }, [phase, siteId, router])
 
+  useEffect(() => {
+    logImpressionEvent({ eid: 'create.page' })();
+  }, [])
 
   // Default state: initializing or polling
   const getPhaseDisplay = (currentPhase: SiteCreationPhase) => {

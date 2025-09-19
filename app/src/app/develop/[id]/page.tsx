@@ -24,7 +24,7 @@ import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHisto
 import { useAppStore } from '@/stores/useAppStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { postMessageToIframe } from '@/utils/postMessage'
-// Site data is now handled by the orchestrated loading
+import { logImpressionEvent } from '@/utils/instrumentation'
 
 function DevelopPageContent() {
   const params = useParams()
@@ -86,6 +86,10 @@ function DevelopPageContent() {
   
   // Streaming store state
   const isLoading = useIsLoading()
+
+  useEffect(() => {
+    logImpressionEvent({ eid: 'develop.page' })();
+  }, [])
 
   // Main initialization - orchestrated through store
   useEffect(() => {

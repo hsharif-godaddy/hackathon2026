@@ -2,19 +2,20 @@
 
 import { useState, useCallback, useEffect, Suspense, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { appFetch } from '@/lib/gasket-config'
-import { useAuth } from '@/hooks/useAuth'
 import { isFeatureEnabled } from '@/lib/features'
+import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
+import { useAuth } from '@/hooks/useAuth'
 import Header from '@/components/layout/Header'
 import HeroSection from './components/HeroSection'
 import ExamplesSection from './components/ExamplesSection'
 import BuiltWithSection from './components/BuiltWithSection'
+import { Example, BuiltWithItem, HeroSectionRef } from './components/types'
 import Footer from './components/Footer'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
-import { Example, BuiltWithItem, HeroSectionRef } from './components/types'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import { logImpressionEvent, generateClickEID } from '@/utils/instrumentation'
 
 function HomeContent() {
   const [promptText, setPromptText] = useState("")
@@ -31,28 +32,37 @@ function HomeContent() {
   // Track if user is redirecting to prevent multiple calls
   const [isRedirecting, setIsRedirecting] = useState(false)
 
+  useEffect(() => {
+    logImpressionEvent({ eid: 'homepage.page' })();
+  }, [])
+
   const examples: Example[] = [
     {
       title: "Fitness Studio Website",
-      prompt: "I need a modern website for my local fitness studio. We offer personal training, group classes, and nutrition coaching. I want members to be able to book classes online, view schedules, and access workout plans."
+      prompt: "I need a modern website for my local fitness studio. We offer personal training, group classes, and nutrition coaching. I want members to be able to book classes online, view schedules, and access workout plans.",
+      slug: "fitness_studio"
     },
     {
       title: "Local Food Truck Landing Page",
-      prompt: "Create a landing page for a food truck. I need to showcase our menu, display our hours and show a map with our current location."
+      prompt: "Create a landing page for a food truck. I need to showcase our menu, display our hours and show a map with our current location.",
+      slug: "food_truck"
     },
     {
       title: "Freelancer Portfolio Site",
-      prompt: "Build a professional portfolio website for my graphic design services. I need a homepage, portfolio gallery, about page, services overview, and contact form. Make it clean and modern to showcase my work."
+      prompt: "Build a professional portfolio website for my graphic design services. I need a homepage, portfolio gallery, about page, services overview, and contact form. Make it clean and modern to showcase my work.",
+      slug: "freelancer_portfolio"
     },
     {
       title: "Small Business Directory",
-      prompt: "Create a simple directory website for local businesses in my town. Users should be able to browse by category, search businesses, view business profiles with contact info, and submit new business listings."
+      prompt: "Create a simple directory website for local businesses in my town. Users should be able to browse by category, search businesses, view business profiles with contact info, and submit new business listings.",
+      slug: "business_directory"
     }
   ]
 
   const builtWithItems: BuiltWithItem[] = [
     {
       id: "1",
+      slug: "web_agency",
       title: "Web Agency Website",
       description: "Comprehensive business directory with search filters, business profiles, reviews, and submission forms for new listings.",
       thumbnailPath: "/images/craft-code.png",
@@ -61,6 +71,7 @@ function HomeContent() {
     },
     {
       id: "2",
+      slug: "ancient_mariners",
       title: "Ancient Mariners",
       description: "Interactive food truck website featuring live location tracking, digital menu with ordering system, and customer reviews.",
       thumbnailPath: "/images/ancient-mariners.png",
@@ -69,6 +80,7 @@ function HomeContent() {
     },
     {
       id: "3",
+      slug: "creative_canvas",
       title: "Creative Canvas Portfolio",
       description: "Stunning portfolio site for a graphic designer with image galleries, client testimonials, and project case studies.",
       thumbnailPath: "/images/creative-portfolio.png",
@@ -77,6 +89,7 @@ function HomeContent() {
     },
     {
       id: "4",
+      slug: "fitflow_studio",
       title: "FitFlow Studio",
       description: "Modern fitness studio dashboard with online class booking, member portal, and trainer profiles.",
       thumbnailPath: "/images/fit-studio.png",
@@ -85,6 +98,7 @@ function HomeContent() {
     },
     {
       id: "5",
+      slug: "pepito_nachos",
       title: "Pepito Nachos",
       description: "Event venue booking platform with calendar integration, space galleries, pricing calculator, and vendor coordination.",
       thumbnailPath: "/images/pepito-nachos.png",
@@ -93,6 +107,7 @@ function HomeContent() {
     },
     {
       id: "6",
+      slug: "eco_shop",
       title: "EcoShop Marketplace",
       description: "Sustainable products e-commerce site with eco-friendly badges, carbon footprint tracking, and subscription boxes. Focus should be on displaying products.",
       thumbnailPath: "/images/eco-mart.png",
@@ -218,6 +233,7 @@ function HomeContent() {
         actions={
           isAuthenticated ? (
             <Button
+              data-eid={generateClickEID('homepage.header.my_sites')}
               onClick={handleStartBuilding}
               data-partial="componentAiro"
               design='primary'
@@ -228,6 +244,7 @@ function HomeContent() {
         }
         className="absolute top-0 left-0 w-full border-0!"
         onShowMockLogin={() => setShowMockLogin(true)}
+        location='homepage'
       />
 
       <Box 

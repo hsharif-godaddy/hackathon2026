@@ -1,6 +1,6 @@
 # Start command for services
 
-When asked about starting services, start this list in parallel. You HAVE TO use the right port :
+Start this list in parallel. You HAVE TO use the right port :
 
 ## Agent
 

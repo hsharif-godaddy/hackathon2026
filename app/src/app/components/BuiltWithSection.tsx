@@ -2,6 +2,7 @@ import { SparklesIcon } from '@heroicons/react/24/outline'
 import { BuiltWithSectionProps } from './types'
 import Button from '@ux/button'
 import Tag from '@ux/tag';
+import { generateClickEID, logMultipleClickEvents } from '@/utils/instrumentation';
 
 export default function BuiltWithSection({ items, onExampleClick }: BuiltWithSectionProps) {
   const scrollToTop = () => {
@@ -86,7 +87,13 @@ export default function BuiltWithSection({ items, onExampleClick }: BuiltWithSec
                     design="primary"
                     text="Try this"
                     size="md"
-                    onClick={() => handleTryThis(item.prompt!)}
+                    onClick={() => {
+                      handleTryThis(item.prompt!);
+                      logMultipleClickEvents([
+                        'homepage.built_with.try_this',
+                        `homepage.built_with.try_this_${item.slug}`,
+                      ]);
+                    }}
                     className="w-full mt-auto!"
                   />
                 )}
@@ -104,6 +111,7 @@ export default function BuiltWithSection({ items, onExampleClick }: BuiltWithSec
             design='primary'
             text='Start Building Now'
             data-partial='componentAiro'
+            data-eid={ generateClickEID('homepage.built_with.start_building') }
             size='md'
             className='py-4! px-8!'
             onClick={scrollToTop}
