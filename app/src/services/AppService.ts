@@ -236,6 +236,24 @@ export class AppService {
   }
 
   /**
+   * Restore files from a specific commit
+   */
+  async restoreCommit(appId: string, commitHash: string): Promise<{ success: boolean; message?: string }> {
+    const apiUrl = await buildDynamicAgentUrl(`apps/${appId}/git/restore`, appId)
+    const response = await appFetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ commitHash })
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to restore files from commit: ${response.status}`)
+    }
+
+    return response.json()
+  }
+
+  /**
    * Update element styles
    */
   async updateStyles(appId: string, styleData: StyleUpdateData): Promise<unknown> {

@@ -246,7 +246,7 @@ export interface ToolGrepSearchData {
 
 export interface ToolGitOperationData {
   toolName: string;
-  operation: 'status' | 'add' | 'commit' | 'diff' | 'log' | 'branch' | 'checkout' | 'merge' | 'pull' | 'push' | 'stash' | 'reset' | 'revert';
+  operation: 'status' | 'add' | 'commit' | 'diff' | 'log' | 'branch' | 'checkout' | 'merge' | 'pull' | 'push' | 'stash' | 'reset' | 'revert' | 'restore';
   appPath: string;
   appId?: string;
   options?: {

@@ -21,15 +21,18 @@ interface GitHistoryStore {
   loadingByApp: Record<string, boolean>
   errorByApp: Record<string, string | null>
   lastLoadedByApp: Record<string, number>
+  restoringByApp: Record<string, boolean>
   
   // Actions
   loadGitHistory: (appId: string, forceReload?: boolean) => Promise<void>
   refreshGitHistory: (appId: string) => Promise<void>
   clearGitHistory: (appId: string) => void
+  restoreCommit: (appId: string, commitHash: string) => Promise<boolean>
   
   // Getters
   getCommits: (appId: string) => GitCommit[]
   isLoading: (appId: string) => boolean
+  isRestoring: (appId: string) => boolean
   getError: (appId: string) => string | null
 }
 
@@ -40,6 +43,7 @@ export const useGitHistoryStore = create<GitHistoryStore>()(
     loadingByApp: {},
     errorByApp: {},
     lastLoadedByApp: {},
+    restoringByApp: {},
     
     // Load git history for a specific app
     loadGitHistory: async (appId: string, forceReload = false) => {
@@ -140,6 +144,48 @@ export const useGitHistoryStore = create<GitHistoryStore>()(
 
     getError: (appId: string) => {
       return get().errorByApp[appId] || null
+    },
+    
+    // Check if a restore operation is in progress for an app
+    isRestoring: (appId: string) => {
+      return get().restoringByApp[appId] || false
+    },
+    
+    // Restore files from a specific commit
+    restoreCommit: async (appId: string, commitHash: string) => {
+      if (!appId || !commitHash) return false
+      
+      // Set restoring state
+      set((state) => {
+        state.restoringByApp[appId] = true
+        state.errorByApp[appId] = null
+      })
+      
+      try {
+        // Use AppService to call the restore API endpoint
+        await appService.restoreCommit(appId, commitHash)
+        
+        // Refresh git history to show new commit created by restore
+        await get().refreshGitHistory(appId)
+        
+        // Clear restoring state
+        set((state) => {
+          state.restoringByApp[appId] = false
+        })
+        
+        return true
+        
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err) || 'Unknown error'
+        
+        // Set error and clear restoring state
+        set((state) => {
+          state.errorByApp[appId] = `Failed to restore commit: ${errorMessage}`
+          state.restoringByApp[appId] = false
+        })
+        
+        return false
+      }
     }
   }))
 )
@@ -155,7 +201,8 @@ export const cleanupGitHistoryStore = (appId?: string) => {
       commitsByApp: {},
       loadingByApp: {},
       errorByApp: {},
-      lastLoadedByApp: {}
+      lastLoadedByApp: {},
+      restoringByApp: {}
     })
   }
 }

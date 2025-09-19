@@ -22,7 +22,8 @@ export interface GitToolOptions {
     | 'push'
     | 'stash'
     | 'reset'
-    | 'revert';
+    | 'revert'
+    | 'restore';
   /** Files to operate on (for add, diff, etc.) */
   files?: string[];
   /** Commit message (for commit operation, or to identify commit by message for revert) */
@@ -33,7 +34,7 @@ export interface GitToolOptions {
   options?: {
     /** Include all files (for add, commit) */
     all?: boolean;
-    /** Commit hash (for revert operation) */
+    /** Commit hash (for revert/restore operation) */
     shorthash?: string;
     /** Amend last commit (for commit) */
     amend?: boolean;
@@ -189,6 +190,9 @@ export class GitTool {
           break;
         case 'revert':
           result = await this.handleRevert(appPath, options);
+          break;
+        case 'restore':
+          result = await this.handleRestore(appPath, options);
           break;
         default:
           throw new Error(`Unknown git operation: ${options.operation}`);
@@ -682,6 +686,148 @@ export class GitTool {
       return {
         success: false,
         operation: 'revert',
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Handle git restore - restore files from a specific commit
+   */
+  private async handleRestore(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+    try {
+      let commitHash = options.options?.shorthash;
+
+      if (!commitHash) {
+        return {
+          success: false,
+          operation: 'restore',
+          error: 'Commit hash is required for restore operation. Please provide a commit hash through options.shorthash.',
+        };
+      }
+
+      // First, checkout main branch to ensure we're not on a detached HEAD
+      const checkoutResult = await new Promise<{ success: boolean; stdout: string; stderr: string }>(
+        (resolve) => {
+          let stdout = '';
+          let stderr = '';
+
+          const child = spawn('git', ['checkout', 'main'], { cwd: appPath });
+
+          child.stdout?.on('data', (data) => {
+            stdout += data.toString();
+          });
+
+          child.stderr?.on('data', (data) => {
+            stderr += data.toString();
+          });
+
+          child.on('close', (code) => {
+            resolve({
+              success: code === 0,
+              stdout: stdout.trim(),
+              stderr: stderr.trim(),
+            });
+          });
+        }
+      );
+
+      // If main branch doesn't exist, try master
+      if (!checkoutResult.success && checkoutResult.stderr.includes('did not match any file(s)')) {
+        const masterCheckoutResult = await new Promise<{ success: boolean; stdout: string; stderr: string }>(
+          (resolve) => {
+            let stdout = '';
+            let stderr = '';
+
+            const child = spawn('git', ['checkout', 'main'], { cwd: appPath });
+
+            child.stdout?.on('data', (data) => {
+              stdout += data.toString();
+            });
+
+            child.stderr?.on('data', (data) => {
+              stderr += data.toString();
+            });
+
+            child.on('close', (code) => {
+              resolve({
+                success: code === 0,
+                stdout: stdout.trim(),
+                stderr: stderr.trim(),
+              });
+            });
+          }
+        );
+
+        if (!masterCheckoutResult.success) {
+          return {
+            success: false,
+            operation: 'restore',
+            error: `Failed to checkout main or master branch: ${masterCheckoutResult.stderr}`,
+          };
+        }
+      } else if (!checkoutResult.success) {
+        return {
+          success: false,
+          operation: 'restore',
+          error: `Failed to checkout main branch: ${checkoutResult.stderr}`,
+        };
+      }
+
+      // Create git restore command with appropriate options
+      const args = ['restore', `--source=${commitHash}`, '--staged', '--worktree', '.'];
+      
+      // Execute the git restore command
+      const result = await new Promise<{ success: boolean; stdout: string; stderr: string }>(
+        (resolve) => {
+          let stdout = '';
+          let stderr = '';
+
+          const child = spawn('git', args, { cwd: appPath });
+
+          child.stdout?.on('data', (data) => {
+            stdout += data.toString();
+          });
+
+          child.stderr?.on('data', (data) => {
+            stderr += data.toString();
+          });
+
+          child.on('close', (code) => {
+            resolve({
+              success: code === 0,
+              stdout: stdout.trim(),
+              stderr: stderr.trim(),
+            });
+          });
+        }
+      );
+
+      if (!result.success) {
+        return {
+          success: false,
+          operation: 'restore',
+          error: result.stderr || 'Failed to restore files',
+        };
+      }
+
+      // Auto-commit changes if restore was successful
+      const commitMessage = `Restore: Changes from commit ${commitHash.substring(0, 7).toUpperCase()}`;
+      const commitResult = await this.handleCommit(appPath, {
+        operation: 'commit',
+        message: commitMessage
+      });
+
+      // Return success with information about both operations
+      return {
+        success: true,
+        operation: 'restore',
+        output: `Successfully restored files from commit ${commitHash.substring(0, 7)} and created a new commit.\n\nRestore output: ${result.stdout || 'No output'}\n\nCommit: ${commitResult.output || 'Committed successfully'}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        operation: 'restore',
         error: error instanceof Error ? error.message : String(error),
       };
     }

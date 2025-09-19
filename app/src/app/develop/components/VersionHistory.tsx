@@ -1,10 +1,8 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import Button from '@ux/button'
-import Spinner from '@ux/spinner'
 import Tag from '@ux/tag'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
 
@@ -27,13 +25,13 @@ export default function VersionHistory({
 }: VersionHistoryProps) {
   const commitsListRef = useRef<HTMLUListElement>(null)
 
+  
   // Use Git history store
   const {
     getCommits,
     isLoading,
     getError,
-    loadGitHistory,
-    refreshGitHistory
+    loadGitHistory
   } = useGitHistoryStore()
 
   // Use develop page store for selected commit
@@ -82,7 +80,19 @@ export default function VersionHistory({
 
   if (!isOpen) return null
 
-  const renderCommitItem = ({ key, message, description, isSelected, onClick }: { key: string, message: string, description?: string | React.ReactNode, isSelected: boolean, onClick: () => void }) => (
+  const renderCommitItem = ({ 
+    key, 
+    message, 
+    description, 
+    isSelected, 
+    onClick
+  }: { 
+    key: string, 
+    message: string, 
+    description?: string | React.ReactNode, 
+    isSelected: boolean, 
+    onClick: () => void
+  }) => (
     <li
       key={key}
       className={`rounded-md overflow-auto border transition-colors duration-200 ${
@@ -91,20 +101,22 @@ export default function VersionHistory({
           : 'border-intents-ux-boxLowContrast-borderColor'
       }`}
     >
-      <button
-        onClick={onClick} 
-        className="relative pl-4 py-3 pr-8 text-left w-full transition-colors duration-200 hover:bg-intents-ux-boxLowContrastOverlay-backgroundColor hover:cursor-pointer"
-      >
-        <p className="text-sm font-medium line-clamp-1">
-          {message}
-        </p>
-        { description && (
-          <p className="text-xs">
-            {description}
+      <div className="flex flex-col">
+        <button
+          onClick={onClick} 
+          className="relative pl-4 py-3 pr-8 text-left w-full transition-colors duration-200 hover:bg-intents-ux-boxLowContrastOverlay-backgroundColor hover:cursor-pointer"
+        >
+          <p className="text-sm font-medium line-clamp-1">
+            {message}
           </p>
-        )}
-        { isSelected && <CheckboxFilledIcon className="w-5 h-5 top-1 right-1 absolute text-intents-ux-feedbackHighContrastSuccess-feedbackColor" /> }
-      </button>
+          { description && (
+            <p className="text-xs">
+              {description}
+            </p>
+          )}
+          { isSelected && <CheckboxFilledIcon className="w-5 h-5 top-1 right-1 absolute text-intents-ux-feedbackHighContrastSuccess-feedbackColor" /> }
+        </button>
+      </div>
     </li>
   )
 
@@ -138,20 +150,12 @@ export default function VersionHistory({
                   </span>
                 </div>
               ),
-              isSelected: selectedCommit?.hash === commit.hash 
+              isSelected: selectedCommit?.hash === commit.hash
             })
           })}
         </ul>
-
-        <Button
-          onClick={() => refreshGitHistory(appId)}
-          disabled={loading}
-          className="w-full"
-          design="primary"
-          text={ loading ? 'Refreshing...' : 'Refresh' }
-          icon={ loading ? <Spinner size="sm" /> : undefined }
-        />
       </div>
+      
     </div>
   )
 }

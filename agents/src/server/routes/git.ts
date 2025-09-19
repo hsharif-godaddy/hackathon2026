@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { GitTool } from '../../tools/git-tool.js';
+import { logger } from '../../logging/index.js';
 
 const router: Router = Router();
 const gitTool = new GitTool();
@@ -180,6 +181,69 @@ router.post('/apps/:id/git/return', async (req, res) => {
     console.error(`❌ Git: Error returning app to branch:`, error);
     return res.status(500).json({ 
       error: 'Failed to return to branch',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * Restore files from a specific commit
+ * Implements git restore functionality with auto-commit
+ */
+router.post('/apps/:id/git/restore', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { commitHash } = req.body;
+
+    if (!commitHash) {
+      return res.status(400).json({ error: 'Commit hash is required' });
+    }
+
+    console.log(`🔄 Git: App ${id} restoring files from commit ${commitHash.substring(0, 7)}`);
+
+    // Get app path from database
+    const app = appRepository.findById(id);
+    if (!app) {
+      console.error(`❌ Git: App ${id} not found`);
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    // First check current branch status
+    const statusResult = await gitTool.executeGitOperation(app.path, {
+      operation: 'branch'
+    });
+
+    // Log current state before attempting restore
+    if (statusResult.success) {
+      const currentBranch = statusResult.currentBranch || 'detached HEAD';
+      console.log(`ℹ️ Git: App ${id} current branch state: ${currentBranch}`);
+    } else {
+      console.warn(`⚠️ Git: Could not determine current branch for app ${id}`);
+    }
+    
+    // Execute the restore operation
+    const result = await gitTool.executeGitOperation(app.path, {
+      operation: 'restore',
+      options: {
+        shorthash: commitHash
+      }
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ 
+        error: 'Failed to restore files from commit', 
+        details: result.error 
+      });
+    }
+
+    return res.json({ 
+      success: true, 
+      message: `Restored files from commit ${commitHash}`,
+      previousState: statusResult.success ? statusResult.currentBranch : 'unknown'
+    });
+  } catch (error) {
+    return res.status(500).json({ 
+      error: 'Failed to restore files from commit',
       details: error instanceof Error ? error.message : String(error)
     });
   }
