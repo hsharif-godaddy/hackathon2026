@@ -16,8 +16,8 @@ import {
   useSetInputValue,
   useSetAiEditContext,
   useSetCurrentAppId
-} from './streamingConversationStore'
-import { useStreamingWebSocket } from './useStreamingWebSocket'
+} from '@/stores/useStreamingConversationStore'
+import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 
 interface StreamingChatPaneProps {
   expandedPlan: boolean

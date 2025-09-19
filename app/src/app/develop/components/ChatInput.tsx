@@ -1,5 +1,6 @@
 'use client'
 
+import { generateClickEID } from '@/utils/instrumentation'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import PencilIcon from '@ux/icon/edit'
@@ -28,7 +29,7 @@ export default function ChatInput({
     <div className="p-4 border-t">
       {/* Cursor-style Chat Input */}
       <div className="relative">
-        <div className="flex items-stretch space-x-2 p-3 border rounded-lg bg-white shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+        <div className="flex items-stretch space-x-2 p-3 border rounded-lg bg-white shadow-sm focus-within:ring-2">
           <div className="flex-1">
             <textarea
               value={inputValue}
@@ -45,6 +46,7 @@ export default function ChatInput({
             {/* Element Selector Button */}
             <Button
               onClick={onToggleSelectMode}
+              data-eid={ generateClickEID('develop.prompt.selector') }
               disabled={isDisabled}
               title={isSelectMode ? 'Select mode active' : 'Enable element selector'}
               aria-label={isSelectMode ? 'Select mode active' : 'Enable element selector'}
@@ -56,6 +58,7 @@ export default function ChatInput({
             {/* Send Button */}
             <Button
               onClick={onSendMessage}
+              data-eid={ generateClickEID('develop.prompt.send') }
               disabled={!inputValue?.trim() || isDisabled}
               aria-label="Send message"
               design="primary"

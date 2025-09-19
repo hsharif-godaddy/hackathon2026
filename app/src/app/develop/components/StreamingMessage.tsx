@@ -1,11 +1,7 @@
 'use client'
 
-import Link from 'next/link'
-import { SparklesIcon } from '@heroicons/react/24/outline'
-import MarkdownRenderer from './MarkdownRenderer'
-import StreamSegment from './StreamSegment'
 import StreamingIntegratedResponse from './StreamingIntegratedResponse'
-import type { ChatMessage, StreamingMessage as StreamingMessageType } from './streamingConversationStore'
+import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 
 interface StreamingMessageProps {
   message: ChatMessage | StreamingMessageType

@@ -116,7 +116,7 @@ export default function CreateAppStatus() {
                   reset()
                   router.push('/')
                 }}
-                className="w-full text-gray-500 hover:text-gray-700 transition-colors text-sm underline"
+                className="w-full text-sm underline"
               >
                 Start Over
               </button>
@@ -129,11 +129,11 @@ export default function CreateAppStatus() {
             <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">App Created Successfully!</h1>
-            <p className="text-gray-600 mb-4">
+            <h1 className="text-2xl font-bold mb-2">App Created Successfully!</h1>
+            <p className="mb-4">
               Your app is ready to build!
             </p>
-            <p className="text-sm text-gray-500">Redirecting to development environment...</p>
+            <p className="text-sm">Redirecting to development environment...</p>
           </>
         )}
         
@@ -142,8 +142,8 @@ export default function CreateAppStatus() {
             <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Finalizing Your App</h1>
-            <p className="text-gray-600 mb-6">
+            <h1 className="text-2xl font-bold mb-2">Finalizing Your App</h1>
+            <p className="mb-6">
               Getting a perfect name for your project from the AI agent...
             </p>
             
@@ -156,8 +156,8 @@ export default function CreateAppStatus() {
             <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Almost Ready!</h1>
-            <p className="text-gray-600 mb-6">
+            <h1 className="text-2xl font-bold mb-2">Almost Ready!</h1>
+            <p className=" mb-6">
               Verifying your development environment is fully ready...
             </p>
             
@@ -167,17 +167,17 @@ export default function CreateAppStatus() {
         
         { phase === 'deploying' && (
           <>
-            <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Starting Deployment</h1>
-            <p className="text-gray-600 mb-6">
+            <h1 className="text-2xl font-bold mb-2">Starting Deployment</h1>
+            <p className="mb-6">
               Initializing your development environment...
             </p>
             
             { renderAnimation() }
 
-            <div className="text-sm text-gray-500">
+            <div className="text-sm">
               <p>Setting up your project infrastructure...</p>
             </div>
           </>
@@ -185,18 +185,18 @@ export default function CreateAppStatus() {
         
         { (phase !== 'error' && phase !== 'complete' && phase !== 'updating-name' && phase !== 'verifying-agent' && phase !== 'deploying') && (
           <>
-            <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Creating Your App</h1>
-            <p className="text-gray-600 mb-6">
+            <h1 className="text-2xl font-bold mb-2">Creating Your App</h1>
+            <p className="mb-6">
               {getPhaseDisplay(phase)}
             </p>
             
             { renderAnimation() }
 
             {/* Estimated time */}
-            <div className="text-sm text-gray-500 space-y-1">
+            <div className="text-sm space-y-1">
               <p>This usually takes 30-60 seconds</p>
               <p>Please don&apos;t close this page</p>
             </div>
@@ -207,7 +207,7 @@ export default function CreateAppStatus() {
                 cleanupSiteCreationStore()
                 router.push('/')
               }}
-              className="cursor-pointer mt-8 text-gray-500 hover:text-gray-700 transition-colors text-sm underline"
+              className="cursor-pointer mt-8 transition-colors text-sm underline"
             >
               Cancel and go back
             </button>

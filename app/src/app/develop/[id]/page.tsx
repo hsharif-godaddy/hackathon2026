@@ -18,7 +18,7 @@ import {
   useIsLoading,
   useAutoSendInitialMessage,
   useLoadConversationHistory
-} from '@/app/develop/components/streamingConversationStore'
+} from '@/stores/useStreamingConversationStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useAppStore } from '@/stores/useAppStore'

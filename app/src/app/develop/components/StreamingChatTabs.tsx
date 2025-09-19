@@ -6,7 +6,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/lib/shadcn/tabs'
 import { useDevelopPageStore, OptionsSheetTab } from '@/stores/useDevelopPageStore'
 import StreamingMessageList from './StreamingMessageList'
 import OptionsSheet from './OptionsSheet'
-import type { ChatMessage, StreamingMessage } from './streamingConversationStore'
+import type { ChatMessage, StreamingMessage } from '@/stores/useStreamingConversationStore'
 
 interface StreamingChatTabsProps {
   messages: (ChatMessage | StreamingMessage)[]
@@ -14,7 +14,6 @@ interface StreamingChatTabsProps {
 }
 
 export default function StreamingChatTabs({
-  messages,
   appId
 }: StreamingChatTabsProps) {
   const { openOptionsSheet, setOpenOptionsSheet } = useDevelopPageStore()

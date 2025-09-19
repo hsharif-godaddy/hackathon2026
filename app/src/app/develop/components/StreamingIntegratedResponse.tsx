@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import MarkdownRenderer from './MarkdownRenderer'
 import ToolCallMessage from './ToolCallMessage'
-import type { ChatMessage, StreamingMessage as StreamingMessageType } from './streamingConversationStore'
+import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 
 interface StreamingIntegratedResponseProps {
   message: ChatMessage | StreamingMessageType
@@ -19,8 +19,6 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
   const hasContent = Boolean(message.content)
   const isComplete = 'isComplete' in message ? message.isComplete : true
-
-
   
   // Create chronological content blocks from segments
   const chronologicalContent = hasSegments 

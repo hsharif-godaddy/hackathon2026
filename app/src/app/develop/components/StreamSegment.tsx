@@ -1,7 +1,7 @@
 'use client'
 
 import MarkdownRenderer from './MarkdownRenderer'
-import type { StreamSegment as StreamSegmentType } from './streamingConversationStore'
+import type { StreamSegment as StreamSegmentType } from '@/stores/useStreamingConversationStore'
 
 interface StreamSegmentProps {
   segment: StreamSegmentType

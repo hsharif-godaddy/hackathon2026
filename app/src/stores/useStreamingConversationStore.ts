@@ -6,7 +6,7 @@
  */
 
 import { create } from 'zustand'
-import type { AiEditContext, PlanItem } from './types'
+import type { AiEditContext, PlanItem } from '../app/develop/components/types'
 
 // Core streaming segment types
 export interface StreamSegment {
@@ -521,7 +521,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       set({ isLoading: true })
       
       // Import buildDynamicAgentUrl dynamically to avoid circular imports
-      const { buildDynamicAgentUrl } = await import('../../../config/dynamic-api')
+      const { buildDynamicAgentUrl } = await import('../config/dynamic-api')
       
       // Build dynamic agent URL for conversations endpoint (no /apps/{appId}/ prefix)
       const conversationsUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}`, appId)

@@ -16,13 +16,13 @@ export default function DesignPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Design Your App</h1>
-            <p className="text-gray-600 mt-2">
+            <h1 className="text-3xl font-bold">Design Your App</h1>
+            <p className="mt-2">
               Customize the look and feel of your application
             </p>
           </div>
@@ -41,7 +41,7 @@ export default function DesignPage() {
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full" />
+                <div className="w-5 h-5 rounded-full" />
                 <span>Color Scheme</span>
               </CardTitle>
               <CardDescription>
@@ -51,7 +51,7 @@ export default function DesignPage() {
             <CardContent>
               {currentPalette ? (
                 <div className="space-y-3">
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium">
                     Current: {currentPalette.name}
                   </p>
                   <div className="flex space-x-2">
@@ -83,7 +83,7 @@ export default function DesignPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm">
                     No color scheme selected
                   </p>
                   <Button 
@@ -103,7 +103,7 @@ export default function DesignPage() {
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 bg-gradient-to-r from-green-500 to-blue-500 rounded-full" />
+                <div className="w-5 h-5 rounded-full" />
                 <span>Typography</span>
               </CardTitle>
               <CardDescription>
@@ -111,7 +111,7 @@ export default function DesignPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm mb-3">
                 Coming soon
               </p>
               <Button variant="outline" size="sm" disabled className="w-full">
@@ -124,7 +124,7 @@ export default function DesignPage() {
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full" />
+                <div className="w-5 h-5 rounded-full" />
                 <span>Layout</span>
               </CardTitle>
               <CardDescription>
@@ -132,7 +132,7 @@ export default function DesignPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm mb-3">
                 Coming soon
               </p>
               <Button variant="outline" size="sm" disabled className="w-full">
@@ -145,7 +145,7 @@ export default function DesignPage() {
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 bg-gradient-to-r from-orange-500 to-red-500 rounded-full" />
+                <div className="w-5 h-5 rounded-full" />
                 <span>Components</span>
               </CardTitle>
               <CardDescription>
@@ -153,7 +153,7 @@ export default function DesignPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm mb-3">
                 Coming soon
               </p>
               <Button variant="outline" size="sm" disabled className="w-full">
@@ -166,7 +166,7 @@ export default function DesignPage() {
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" />
+                <div className="w-5 h-5 rounded-full" />
                 <span>Themes</span>
               </CardTitle>
               <CardDescription>
@@ -174,7 +174,7 @@ export default function DesignPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm mb-3">
                 Coming soon
               </p>
               <Button variant="outline" size="sm" disabled className="w-full">
@@ -187,7 +187,7 @@ export default function DesignPage() {
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 bg-gradient-to-r from-teal-500 to-green-500 rounded-full" />
+                <div className="w-5 h-5 rounded-full" />
                 <span>Export</span>
               </CardTitle>
               <CardDescription>
@@ -195,7 +195,7 @@ export default function DesignPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm mb-3">
                 Export CSS, Figma tokens, etc.
               </p>
               <Button variant="outline" size="sm" disabled className="w-full">
@@ -208,7 +208,7 @@ export default function DesignPage() {
         {/* Preview Section */}
         {currentPalette && (
           <div className="mt-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Preview</h2>
+            <h2 className="text-2xl font-bold mb-6">Preview</h2>
             <Card>
               <CardContent className="p-6">
                 <div 

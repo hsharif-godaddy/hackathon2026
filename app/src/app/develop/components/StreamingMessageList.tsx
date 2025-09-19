@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useMemo } from 'react'
 import StreamingMessage from './StreamingMessage'
-import { useMessages, useActiveStream, useIsActivelyStreaming } from './streamingConversationStore'
+import { useMessages, useActiveStream, useIsActivelyStreaming } from '@/stores/useStreamingConversationStore'
 
 export default function StreamingMessageList() {
   const messagesEndRef = useRef<HTMLDivElement>(null)

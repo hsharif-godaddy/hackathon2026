@@ -46,7 +46,7 @@ export default function BuiltWithSection({ items, onExampleClick }: BuiltWithSec
             >
               {/* Thumbnail */}
               <div className="aspect-video bg-intents-ux-boxLowContrastOverlay-backgroundColor flex items-center justify-center relative overflow-hidden">
-                <img 
+                <img /* eslint-disable-line @next/next/no-img-element */
                   src={item.thumbnailPath} 
                   alt={item.title}
                   className="w-full h-full object-cover"

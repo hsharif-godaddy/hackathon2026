@@ -174,4 +174,3 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
     );
   }
 });
-

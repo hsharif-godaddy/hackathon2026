@@ -180,13 +180,13 @@ function SitesPageContent() {
     onCancel: () => void
   }) => (
     <div className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-4 z-10">
-      <p className="text-sm text-gray-700 mb-4 text-center">{message}</p>
+      <p className="text-sm mb-4 text-center">{message}</p>
       <Box orientation="horizontal" gap="md">
         <Button
           onClick={onConfirm}
           disabled={actionLoading === siteId}
           data-eid={generateClickEID('sites.site.delete_confirm')}
-          className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="text-white px-4 py-2 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           text={actionLoading === siteId ? 'Deleting...' : 'Delete'}
           design="critical"
         />
@@ -248,7 +248,7 @@ function SitesPageContent() {
         </div>
 
         {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="mb-6 border rounded-lg p-4">
             <p className="text-red-700">{error}</p>
             <button
               onClick={() => window.location.reload()}
@@ -261,12 +261,12 @@ function SitesPageContent() {
 
         {sites.length === 0 ? (
           <div className="text-center py-12">
-            <CodeBracketIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">No Sites Yet</h2>
-            <p className="text-gray-600 mb-6">Create your first AI-powered website</p>
+            <CodeBracketIcon className="w-16 h-16 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">No Sites Yet</h2>
+            <p className="mb-6">Create your first AI-powered website</p>
             <Button
               onClick={handleCreateNew}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all flex items-center space-x-2 mx-auto"
+              className="px-6 py-3 rounded-lg transition-all flex items-center space-x-2 mx-auto"
               icon={<PlusIcon className="w-5 h-5" />}
               design="primary"
               text="Create Your First Site"
@@ -277,7 +277,7 @@ function SitesPageContent() {
             {sites.map((site) => (
               <div
                 key={site.id}
-                className="relative flex flex-col bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-lg transition-all duration-200 px-6 pt-6 pb-4"
+                className="relative flex flex-col rounded-lg border hover:shadow-lg transition-all duration-200 px-6 pt-6 pb-4"
               >
                 {/* Inline Alert */}
                 {alertState.siteId === site.id && alertState.type && (
@@ -306,15 +306,15 @@ function SitesPageContent() {
                 </div>
                 
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-1">
+                  <h3 className="font-semibold mb-1">
                     {site.name || 'Untitled Site'}
                   </h3>
                   {site.initial_prompt && (
-                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                    <p className="text-sm mb-2 line-clamp-2">
                       {site.initial_prompt}
                     </p>
                   )}
-                  <div className="flex items-center text-xs text-gray-500 space-x-4">
+                  <div className="flex items-center text-xs space-x-4">
                     <div className="flex items-center space-x-1">
                       <ClockIcon className="w-3 h-3" />
                       <span>Created {formatDate(site.created_at)}</span>
@@ -322,7 +322,7 @@ function SitesPageContent() {
                   </div>
                 </div>
                 
-                <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between pt-4 mt-4 border-t">
                   <div className="flex space-x-2">
                     {site.preview_url && site.status === 'running' && (
                       <Button
@@ -340,7 +340,7 @@ function SitesPageContent() {
                       <Button
                         onClick={() => router.push(`/develop/${site.id}?siteId=${site.id}`)}
                         data-eid={generateClickEID('sites.site.edit')}
-                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100 space-x-1"
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md space-x-1"
                         icon={<PlayIcon className="w-3 h-3" />}
                         size="sm"
                         design="tertiary"

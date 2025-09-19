@@ -18,9 +18,9 @@ export default function ExamplesSection({ examples, onExampleClick }: ExamplesSe
                 `homepage.examples.example_${example.slug}`,
               ]);
             } }
-            className="group px-4 py-2 bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all duration-200 text-sm cursor-pointer"
+            className="group px-4 py-2 rounded-lg border hover:shadow-md transition-all duration-200 text-sm cursor-pointer"
           >
-            <span className="font-medium text-gray-700 group-hover:text-purple-600 transition-colors">
+            <span className="font-medium transition-colors">
               {example.title}
             </span>
             <ArrowRightIcon className="w-3 h-3 ml-1 inline opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />

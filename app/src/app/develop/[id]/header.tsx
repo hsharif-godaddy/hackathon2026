@@ -17,6 +17,7 @@ import ComputerDesktopIcon from '@ux/icon/desktop'
 import DevicePhoneMobileIcon from '@ux/icon/mobile-phone'
 import ArrowTopRightOnSquareIcon from '@ux/icon/window-new'
 import RefreshIcon from '@ux/icon/refresh'
+import { generateClickEID } from '@/utils/instrumentation'
 
 interface HeaderProps {
   app: { name?: string; port?: number } | null // App data from page state
@@ -70,7 +71,11 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
       <div className="mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-12">
           <div className="flex items-center space-x-4">
-            <Link href="/" className="flex items-center space-x-3">
+            <Link 
+              href="/" 
+              className="flex items-center space-x-3"
+              data-eid={ generateClickEID('develop.header.logo') }
+            >
               <Image src="/logo.svg" alt="Airo Logo" width={128} height={48} />
             </Link>
             <div className="h-6 w-px bg-intents-ux-boxLowContrast-borderColor" />
@@ -105,6 +110,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                 design="control"
                 active={viewMode === 'preview'}
                 text="Preview"
+                data-eid={ generateClickEID('develop.header.preview') }
               />
               {/* Code Editor Button - Feature Flag Controlled */}
               {isFeatureEnabled.codeEditor() && (
@@ -115,6 +121,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                     design="control"
                     active={viewMode === 'code'}
                     text="Code"
+                  data-eid={ generateClickEID('develop.header.code') }
                   />
                   {hasUnsavedChanges && viewMode === 'code' && (
                     <div className="absolute -top-1 -right-1">
@@ -131,9 +138,10 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
             {viewMode === 'preview' && (
               <div className="flex items-center space-x-3">
                 {/* View Mode Toggles */}
-                <Box orientation="horizontal" gap="sm" className="border border-gray-200 rounded-md p-1">
+                <Box orientation="horizontal" gap="sm" className="border rounded-md p-1">
                     <Button
                       onClick={() => setPreviewViewMode('desktop')}
+                      data-eid={ generateClickEID('develop.header.preview_desktop_mode') }
                       size="sm"
                       design="control"
                       active={previewViewMode === 'desktop'}
@@ -143,6 +151,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                     />
                     <Button
                       onClick={() => setPreviewViewMode('mobile')}
+                      data-eid={ generateClickEID('develop.header.preview_mobile_mode') }
                       size="sm"
                       design="control"
                       active={previewViewMode === 'mobile'}
@@ -156,15 +165,17 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                 <div className="flex items-center space-x-1">
                   <Button
                     onClick={onPreviewRefresh}
+                    data-eid={ generateClickEID('develop.header.refresh') }
                     title="Reload preview (refresh page content)"
                     aria-label="Reload preview"
-                    icon={<RefreshIcon className="w-4! h-4! text-gray-600" />}
+                    icon={<RefreshIcon className="w-4! h-4!" />}
                     size="sm"
                     design="stateless"
                   />
                   
                   <Button 
                     onClick={onRestartServer}
+                    data-eid={ generateClickEID('develop.header.restart') }
                     disabled={isRestarting}
                     className="p-1 hover:bg-orange-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Restart server (rebuild and restart development server)"
@@ -182,6 +193,7 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                         window.open(`http://localhost:${actualPort}`, '_blank')
                       }
                     }}
+                    data-eid={ generateClickEID('develop.header.preview_new_tab') }
                     disabled={!actualPort || isCheckingApp || isRestarting || isStartingApp}
                     title="Open app in new tab"
                     aria-label="Open app in new tab"
@@ -202,8 +214,9 @@ const Header = forwardRef<HeaderRef, HeaderProps>(function Header({
                 design="primary"
                 data-partial="componentAiro"
                 text="My Sites"
+                data-eid={ generateClickEID('develop.header.my_sites') }
               />
-              <UserMenu />
+              <UserMenu location="develop" />
             </Box>
           </div>
         </div>

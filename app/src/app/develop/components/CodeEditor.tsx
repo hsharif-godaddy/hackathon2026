@@ -16,9 +16,9 @@ import FileTree, { FileItem } from './FileTree'
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { 
   ssr: false,
   loading: () => (
-    <div className="h-full flex items-center justify-center bg-gray-900 text-white">
+    <div className="h-full flex items-center justify-center text-white">
       <div className="text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-2"></div>
         <div className="text-sm">Loading editor...</div>
       </div>
     </div>
@@ -290,7 +290,7 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-2"></div>
           <div className="text-sm text-gray-600">Loading project files...</div>
         </div>
       </div>
@@ -301,12 +301,12 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
-          <div className="text-lg font-semibold mb-2 text-red-600">Project Loading</div>
+          <div className="text-lg font-semibold mb-2">Project Loading</div>
           <div className="text-sm text-gray-600 mb-4">{error}</div>
           <button
             onClick={loadFiles}
             disabled={isLoading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            className="px-4 py-2 text-white rounded-md disabled:opacity-50"
           >
             {isLoading ? 'Loading...' : 'Retry Loading Files'}
           </button>
@@ -318,7 +318,7 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
   return (
     <div className="h-full flex bg-white">
       {/* File Tree Sidebar */}
-      <div className="w-64 border-r border-gray-200 bg-gray-50">
+      <div className="w-64 border-r">
         <FileTree 
           files={files}
           selectedFile={activeFile}
@@ -330,11 +330,11 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
       <div className="flex-1 flex flex-col">
         {/* Tabs */}
         {openFiles.length > 0 && (
-          <div className="flex items-center bg-gray-100 border-b border-gray-200 overflow-x-auto">
+          <div className="flex items-center border-b overflow-x-auto">
             {openFiles.map((file) => (
               <div
                 key={file.path}
-                className={`flex items-center px-3 py-2 border-r border-gray-200 cursor-pointer text-sm whitespace-nowrap ${
+                className={`flex items-center px-3 py-2 border-r cursor-pointer text-sm whitespace-nowrap ${
                   activeFile === file.path 
                     ? 'bg-white text-gray-900' 
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -346,11 +346,11 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
                 
                 {/* Save status indicators */}
                 {saving === file.path ? (
-                  <div className="ml-2 w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <div className="ml-2 w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" />
                 ) : recentlySaved === file.path ? (
                   <CheckIcon className="w-4 h-4 ml-2 text-green-500" />
                 ) : file.isDirty ? (
-                  <div className="w-2 h-2 bg-blue-500 rounded-full ml-2" title="Unsaved changes" />
+                  <div className="w-2 h-2 rounded-full ml-2" title="Unsaved changes" />
                 ) : null}
                 
                 <button
@@ -358,7 +358,7 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
                     e.stopPropagation()
                     handleCloseFile(file.path)
                   }}
-                  className="ml-2 p-1 rounded hover:bg-gray-200"
+                  className="ml-2 p-1 rounded"
                   title="Close file"
                 >
                   <XMarkIcon className="w-3 h-3" />
@@ -374,7 +374,7 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
                     if (file.isDirty) handleSaveFile(file.path)
                   })
                 }}
-                className="flex items-center px-3 py-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 whitespace-nowrap"
+                className="flex items-center px-3 py-2 text-sm whitespace-nowrap"
                 title="Save all files (Ctrl+S / Cmd+S)"
               >
                 <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
@@ -406,9 +406,9 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
               }}
             />
           ) : (
-            <div className="h-full flex items-center justify-center bg-gray-50">
-              <div className="text-center text-gray-500">
-                <DocumentPlusIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                <DocumentPlusIcon className="w-16 h-16 mx-auto mb-4" />
                 <h3 className="text-lg font-medium mb-2">No file selected</h3>
                 <p className="text-sm">Select a file from the tree to start editing</p>
               </div>

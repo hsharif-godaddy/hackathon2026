@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { buildDynamicApiUrl } from '../../../config/dynamic-api'
+import { buildDynamicApiUrl } from '../config/dynamic-api'
 import { 
   useWebSocketState, 
   useCurrentAppId,
@@ -18,12 +18,13 @@ import {
   useFinalizeStream,
   useSetWebSocketState,
   useSetStreamingState,
-  useSetIsLoading
-} from './streamingConversationStore'
-import type { ToolCall } from './streamingConversationStore'
-import { useStreamingConversationStore } from './streamingConversationStore'
-import type { AgentsAppContext, AgentsAppChatMessage } from '../../../types/websocket-context'
-import { captureVisualContext } from './visualContextCapture'
+  useSetIsLoading,
+  useStreamingConversationStore
+} from '@/stores/useStreamingConversationStore'
+import type { ToolCall } from '@/stores/useStreamingConversationStore'
+import type { AgentsAppContext, AgentsAppChatMessage } from '../types/websocket-context'
+import { captureVisualContext } from '../app/develop/components/visualContextCapture'
+import { logImpressionEvent } from '@/utils/instrumentation'
 
 export function useStreamingWebSocket() {
   const socketRef = useRef<Socket | null>(null)
@@ -38,6 +39,8 @@ export function useStreamingWebSocket() {
   const setWebSocketState = useSetWebSocketState()
   const setStreamingState = useSetStreamingState()
   const setIsLoading = useSetIsLoading()
+
+  const sendToolImpression = (tool: string) => logImpressionEvent({ eid: `develop.tool.${tool}` })()
 
   /**
    * Ensure we're on the latest git commit before sending messages
@@ -64,7 +67,7 @@ export function useStreamingWebSocket() {
   const createConnection = useCallback(async (appId: string): Promise<Socket> => {
     return new Promise(async (resolve, reject) => {
       // Get the dynamic config to extract the baseUrl
-      const { dynamicApiConfigService } = await import('../../../config/dynamic-api')
+      const { dynamicApiConfigService } = await import('../config/dynamic-api')
       const config = await dynamicApiConfigService.getConfigForSite(appId)
       
       // Socket.IO connects to the base URL, not the app-specific URL
@@ -120,6 +123,7 @@ export function useStreamingWebSocket() {
     socket.on('message', (data) => {
       switch (data.type) {
         case 'step_start':
+          sendToolImpression('start')
           setStreamingState('streaming')
           break
           
@@ -153,7 +157,8 @@ export function useStreamingWebSocket() {
               startTime: data.data.tool.startTime,
               endTime: Date.now()
             }
-            
+
+            sendToolImpression(data.data.tool.name)
             addToolResultSegment(toolCall)
           }
           break
@@ -169,7 +174,8 @@ export function useStreamingWebSocket() {
             usage: data.data?.usage,
             totalSteps: data.data?.step
           })
-          
+
+          sendToolImpression('complete')
           setWebSocketState({ status: 'idle' })
           setStreamingState('idle')
           setIsLoading(false)
@@ -177,6 +183,7 @@ export function useStreamingWebSocket() {
           
         case 'error':
           console.error('❌ Socket.IO error:', data)
+          sendToolImpression('error')
           setWebSocketState({ status: 'error', error: data.content })
           setStreamingState('error')
           setIsLoading(false)
