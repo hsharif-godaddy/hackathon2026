@@ -147,38 +147,43 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         )}
         {/* Display Textarea for authenticated users */}
         { isAuthenticated && (
-          <Box 
-            className="relative rounded-xl!"
-            elevation="float"
-          >
-            <textarea
-              value={displayText}
-              onChange={(e) => {
-                if (isTyping) return // Prevent user input during typing animation
-                const newValue = e.target.value
-                setDisplayText(newValue)
-                debouncedSetPromptText(newValue)
-                // Clear error when user starts typing (avoid unnecessary calls)
-                if (error && lastErrorClearRef.current !== newValue) {
-                  lastErrorClearRef.current = newValue
-                  setError(null)
-                }
-              }}
-              rows={5}
-              disabled={isLoading}
-              className="relative z-10 w-full p-5 text-md font-medium rounded-lg resize-none border-0 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-              placeholder={isTyping ? "" : "Describe the application you'd like to build..."}
-            />
-            <Button 
-              onClick={onStartBuilding}
-              data-partial={ !isLoading ? "componentAiro" : "componentBrand" }
-              data-eid={ generateClickEID('homepage.prompt.submit') }
-              disabled={!promptText.trim() || isLoading || isTyping}
-              design='primary'
-              className="group cursor-pointer absolute right-4 bottom-4 mb-0.5 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed z-10"
-              text={isLoading ? "Building..." : "Start Building"}
-              icon={isLoading ? <Spinner size='sm' /> : <SendIcon className="w-4 h-4" />}
-            />
+          <Box gap="lg">
+            <Box 
+              className="relative rounded-xl!"
+              elevation="float"
+            >
+              <textarea
+                value={displayText}
+                onChange={(e) => {
+                  if (isTyping) return // Prevent user input during typing animation
+                  const newValue = e.target.value
+                  setDisplayText(newValue)
+                  debouncedSetPromptText(newValue)
+                  // Clear error when user starts typing (avoid unnecessary calls)
+                  if (error && lastErrorClearRef.current !== newValue) {
+                    lastErrorClearRef.current = newValue
+                    setError(null)
+                  }
+                }}
+                rows={5}
+                disabled={isLoading}
+                className="relative z-10 w-full p-5 text-md font-medium rounded-lg resize-none border-0 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                placeholder={isTyping ? "" : "Describe the application you'd like to build..."}
+              />
+              <Button 
+                onClick={onStartBuilding}
+                data-partial={ !isLoading ? "componentAiro" : "componentBrand" }
+                data-eid={ generateClickEID('homepage.prompt.submit') }
+                disabled={!promptText.trim() || isLoading || isTyping}
+                design='primary'
+                className="group cursor-pointer absolute right-4 bottom-4 mb-0.5 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed z-10"
+                text={isLoading ? "Building..." : "Start Building"}
+                icon={isLoading ? <Spinner size='sm' /> : <SendIcon className="w-4 h-4" />}
+              />
+            </Box>
+            <text.p size={ -1 } className='max-w-lg mx-auto'>
+              AI can make mistakes, so double check its responses. By using Airo App Builder, you agree to our <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/ai-terms-of-use">Terms</Button> and <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/privacy-policy">Privacy Policy</Button>
+            </text.p>
           </Box>
         )}
       </div>
