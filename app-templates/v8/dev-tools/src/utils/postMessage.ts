@@ -35,7 +35,8 @@ export function isOriginAllowed(event: MessageEvent): boolean {
     return origin.startsWith('http://localhost:') || 
            origin.startsWith('https://localhost:') ||
            origin === 'http://127.0.0.1:3000' ||
-           origin === 'https://127.0.0.1:3000'
+           origin === 'https://127.0.0.1:3000' ||
+           (origin.startsWith('https://airo-builder') && origin.endsWith('godaddy.com'))
   }
   
   // In production or when specific origin is set, only allow that exact origin
