@@ -40,6 +40,10 @@ import type {
   LLMResponseData,
   LLMTokenUsageData,
   TracingEventData,
+  ConversationContextLoadData,
+  ConversationContextBuildData,
+  ConversationHistoryProcessData,
+  ConversationTokenLimitData,
 } from './app.js';
 
 /**
@@ -784,5 +788,83 @@ export const tracingEvents = {
 
   websocket: (logger: ILogger, data: TracingEventData) => {
     logger.debug(AppEvents.trace.websocket, data);
+  },
+};
+
+/**
+ * Conversation Context logging helpers
+ */
+export const conversationContextEvents = {
+  loadBegin: (logger: ILogger, data: Pick<ConversationContextLoadData, 'conversationId'>) => {
+    logger.debug(AppEvents.conversation.context.load.begin, data);
+  },
+
+  loadSuccess: (logger: ILogger, data: ConversationContextLoadData) => {
+    logger.info(AppEvents.conversation.context.load.success, data);
+  },
+
+  loadFailure: (logger: ILogger, error: Error, data: Pick<ConversationContextLoadData, 'conversationId'>) => {
+    log.error(logger, AppEvents.conversation.context.load.failure, error, data);
+  },
+
+  buildBegin: (logger: ILogger, data: Pick<ConversationContextBuildData, 'conversationId' | 'systemPromptLength' | 'currentMessageLength'>) => {
+    logger.debug(AppEvents.conversation.context.build.begin, {
+      ...data,
+      totalMessages: 0,
+      hasHistory: false,
+    });
+  },
+
+  buildSuccess: (logger: ILogger, data: ConversationContextBuildData) => {
+    logger.info(AppEvents.conversation.context.build.success, data);
+  },
+
+  buildFailure: (logger: ILogger, error: Error, data: Pick<ConversationContextBuildData, 'conversationId' | 'systemPromptLength' | 'currentMessageLength'>) => {
+    log.error(logger, AppEvents.conversation.context.build.failure, error, data);
+  },
+};
+
+/**
+ * Conversation History logging helpers
+ */
+export const conversationHistoryEvents = {
+  processBegin: (logger: ILogger, data: Pick<ConversationHistoryProcessData, 'conversationId' | 'totalDbMessages'>) => {
+    logger.debug(AppEvents.conversation.history.process.begin, {
+      ...data,
+      processedMessages: 0,
+      messageType: 'user' as const,
+    });
+  },
+
+  processSuccess: (logger: ILogger, data: ConversationHistoryProcessData) => {
+    logger.debug(AppEvents.conversation.history.process.success, data);
+  },
+
+  processFailure: (logger: ILogger, error: Error, data: Pick<ConversationHistoryProcessData, 'conversationId' | 'totalDbMessages'>) => {
+    log.error(logger, AppEvents.conversation.history.process.failure, error, data);
+  },
+};
+
+/**
+ * Conversation Token Limit logging helpers
+ */
+export const conversationTokenLimitEvents = {
+  loadBegin: (logger: ILogger, data: Pick<ConversationTokenLimitData, 'appId' | 'agentId' | 'maxTokens'>) => {
+    logger.info(AppEvents.conversation.tokenLimit.load.begin, {
+      ...data,
+      conversationsFound: 0,
+      totalDbMessages: 0,
+      processedMessages: 0,
+      estimatedTokens: 0,
+      messageDistribution: {},
+    });
+  },
+
+  loadSuccess: (logger: ILogger, data: ConversationTokenLimitData) => {
+    logger.info(AppEvents.conversation.tokenLimit.load.success, data);
+  },
+
+  loadFailure: (logger: ILogger, error: Error, data: Pick<ConversationTokenLimitData, 'appId' | 'agentId' | 'maxTokens'>) => {
+    log.error(logger, AppEvents.conversation.tokenLimit.load.failure, error, data);
   },
 };

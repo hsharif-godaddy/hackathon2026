@@ -45,4 +45,7 @@ export {
   dockerContainerEvents,
   llmEvents,
   tracingEvents,
+  conversationContextEvents,
+  conversationHistoryEvents,
+  conversationTokenLimitEvents,
 } from './helpers.js';

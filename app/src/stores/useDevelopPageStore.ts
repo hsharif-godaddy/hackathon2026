@@ -41,6 +41,7 @@ interface DevelopPageStore {
   selectedCommit: GitCommit | null
   commitHistory: GitCommit[]
   isLoadingCommits: boolean
+  isSelectingCommit: boolean
   
   // Options sheet UI
   openOptionsSheet: OptionsSheetTab | null
@@ -99,6 +100,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     commitHistory: [],
     isLoadingCommits: false,
     openOptionsSheet: null,
+    isSelectingCommit: false, // Track commit selection state
     
     // Page loading orchestration state
     loadingPhase: 'idle',
@@ -312,9 +314,19 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     },
     
     selectCommit: async (appId: string, commit: GitCommit | null) => {
+      // Prevent concurrent commit selections
+      const state = get();
+      if (state.isSelectingCommit) {
+        console.log('🔄 Commit selection already in progress, skipping...');
+        return;
+      }
+      
+      set((state) => { state.isSelectingCommit = true });
+      
       try {
         if (commit === null) {
           // Return to latest (main branch)
+          console.log('🔄 Returning to main branch...');
           await appService.returnToMainBranch(appId)
           set((state) => { state.selectedCommit = null })
           console.log('✅ Returned to main branch')
@@ -325,6 +337,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         console.log('⚠️ Note: Changes requested after this will be made on latest commit, not the viewed commit')
         
         // Checkout specific commit
+        console.log(`🔄 Checking out commit ${commit.shortHash}...`);
         await appService.checkoutCommit(appId, commit.hash)
         set((state) => { state.selectedCommit = commit })
         console.log(`✅ Checked out commit ${commit.shortHash}`)
@@ -332,6 +345,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       } catch (error) {
         console.error('❌ Error selecting commit:', error)
         throw error
+      } finally {
+        set((state) => { state.isSelectingCommit = false });
       }
     },
     

@@ -35,7 +35,7 @@ export default function VersionHistory({
   } = useGitHistoryStore()
 
   // Use develop page store for selected commit
-  const { selectedCommit, selectCommit } = useDevelopPageStore()
+  const { selectedCommit, selectCommit, isSelectingCommit } = useDevelopPageStore()
 
   const commits = getCommits(appId)
   const loading = isLoading(appId)
@@ -57,6 +57,12 @@ export default function VersionHistory({
 
   // Handle commit selection using global store
   const handleSelectCommit = async (commit: Commit) => {
+    // Don't allow selecting if already in progress
+    if (isSelectingCommit) {
+      console.log('🔄 Commit selection already in progress, ignoring click');
+      return;
+    }
+    
     if (selectedCommit?.hash === commit.hash) {
       // Deselect current commit (return to latest)
       await selectCommit(appId, null)
@@ -104,7 +110,12 @@ export default function VersionHistory({
       <div className="flex flex-col">
         <button
           onClick={onClick} 
-          className="relative pl-4 py-3 pr-8 text-left w-full transition-colors duration-200 hover:bg-intents-ux-boxLowContrastOverlay-backgroundColor hover:cursor-pointer"
+          disabled={isSelectingCommit}
+          className={`relative pl-4 py-3 pr-8 text-left w-full transition-colors duration-200 ${
+            isSelectingCommit 
+              ? 'opacity-50 cursor-not-allowed' 
+              : 'hover:bg-intents-ux-boxLowContrastOverlay-backgroundColor hover:cursor-pointer'
+          }`}
         >
           <p className="text-sm font-medium line-clamp-1">
             {message}

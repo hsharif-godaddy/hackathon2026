@@ -98,6 +98,40 @@ export interface GitToolResult {
 export class GitTool {
   private gitUtils = new GitUtils();
   
+  // Per-repository operation queues to prevent concurrent git operations
+  private static operationQueues = new Map<string, Promise<any>>();
+  
+  /**
+   * Queue a git operation for a specific repository to prevent concurrent operations
+   */
+  private async queueGitOperation<T>(appPath: string, operation: () => Promise<T>): Promise<T> {
+    // Normalize the path to use as key
+    const repoKey = appPath.replace(/\\/g, '/');
+    
+    // Get or create a promise chain for this repository
+    const currentQueue = GitTool.operationQueues.get(repoKey) || Promise.resolve();
+    
+    // Chain the new operation after the current queue
+    const newQueue = currentQueue
+      .catch(() => {
+        // Ignore errors from previous operations - they shouldn't affect new ones
+      })
+      .then(() => operation());
+    
+    // Update the queue
+    GitTool.operationQueues.set(repoKey, newQueue);
+    
+    // Clean up completed operations
+    newQueue.finally(() => {
+      // Only clean up if this is still the current queue
+      if (GitTool.operationQueues.get(repoKey) === newQueue) {
+        GitTool.operationQueues.delete(repoKey);
+      }
+    });
+    
+    return newQueue;
+  }
+  
   /**
    * Extract app ID from app path
    * App paths are typically in format: /tmp/apps/{appId} or {customerDataDir}/{appId}
@@ -128,6 +162,16 @@ export class GitTool {
    * Execute a Git operation
    */
   async executeGitOperation(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
+    // Queue the operation to prevent concurrent git operations on the same repository
+    return this.queueGitOperation(appPath, async () => {
+      return this.executeGitOperationInternal(appPath, options);
+    });
+  }
+
+  /**
+   * Internal git operation execution (called within the queue)
+   */
+  private async executeGitOperationInternal(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     const startTime = Date.now();
 
     // Build logging data once to avoid duplication

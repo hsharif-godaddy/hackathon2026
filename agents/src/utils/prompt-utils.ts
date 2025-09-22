@@ -68,8 +68,9 @@ export function getValidatedTemplateVersion(appPath: string): TemplateVersion | 
  */
 function getPromptsDir(currentModuleUrl: string): string {
   const currentDir = path.dirname(fileURLToPath(currentModuleUrl))
-  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  
   // Safe: Uses static literals relative to module location, no user input
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   return path.resolve(currentDir, '..', 'prompts')
 }
 
@@ -81,8 +82,9 @@ function getPromptsDir(currentModuleUrl: string): string {
  */
 export function getPromptPath(agentName: string, currentModuleUrl: string): string {
   const promptsDir = getPromptsDir(currentModuleUrl)
-  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  
   // Safe: agentName is developer-controlled, not user input (e.g., 'develop', 'database')
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   return path.join(promptsDir, `${agentName}.md`)
 }
 
@@ -94,8 +96,9 @@ export function getPromptPath(agentName: string, currentModuleUrl: string): stri
  */
 export function getTemplateDescriptionPath(version: TemplateVersion, currentModuleUrl: string): string {
   const promptsDir = getPromptsDir(currentModuleUrl)
-  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  
   // Safe: version is validated TemplateVersion enum value, not arbitrary user input
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   return path.join(promptsDir, 'template-descriptions', `${version}.md`)
 }
 
@@ -107,8 +110,9 @@ export function getTemplateDescriptionPath(version: TemplateVersion, currentModu
  */
 export function getAgentPromptDir(agentName: string, currentModuleUrl: string): string {
   const promptsDir = getPromptsDir(currentModuleUrl)
-  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  
   // Safe: agentName is developer-controlled, not user input (e.g., 'develop', 'database')
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   return path.join(promptsDir, agentName)
 }
 
@@ -119,8 +123,9 @@ export function getAgentPromptDir(agentName: string, currentModuleUrl: string): 
  */
 export function getSharedPromptDir(currentModuleUrl: string): string {
   const promptsDir = getPromptsDir(currentModuleUrl)
-  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  
   // Safe: Uses static literal 'shared', no user input
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   return path.join(promptsDir, 'shared')
 }
 
@@ -133,8 +138,8 @@ export function getSharedPromptDir(currentModuleUrl: string): string {
  */
 export function getAgentPromptFile(agentName: string, fileName: string, currentModuleUrl: string): string {
   const agentDir = getAgentPromptDir(agentName, currentModuleUrl)
-  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   // Safe: fileName is developer-controlled, not user input (e.g., 'core.md', 'tools.md')
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   return path.join(agentDir, fileName)
 }
 
@@ -146,8 +151,8 @@ export function getAgentPromptFile(agentName: string, fileName: string, currentM
  */
 export function getSharedPromptFile(fileName: string, currentModuleUrl: string): string {
   const sharedDir = getSharedPromptDir(currentModuleUrl)
-  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   // Safe: fileName is developer-controlled, not user input (e.g., 'communication.md', 'security.md')
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   return path.join(sharedDir, fileName)
 }
 

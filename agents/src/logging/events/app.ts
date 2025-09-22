@@ -472,6 +472,50 @@ export interface TracingEventData {
   data: Record<string, unknown>;
 }
 
+// Conversation Context Events
+export interface ConversationContextLoadData {
+  conversationId: string;
+  messageCount: number;
+  recentMessageCount: number;
+  hasHistory: boolean;
+  hasAppContext?: boolean;
+  hasAiEditContext?: boolean;
+  hasVisualContext?: boolean;
+}
+
+export interface ConversationContextBuildData {
+  conversationId?: string | undefined;
+  totalMessages: number;
+  systemPromptLength: number;
+  currentMessageLength: number;
+  hasHistory: boolean;
+  hasAppContext?: boolean | undefined;
+  hasAiEditContext?: boolean;
+  hasVisualContext?: boolean;
+  filteredMessages?: number;
+}
+
+export interface ConversationHistoryProcessData {
+  conversationId: string;
+  totalDbMessages: number;
+  processedMessages: number;
+  messageType: 'user' | 'agent';
+  hasSegments?: boolean;
+  hasToolCalls?: boolean;
+}
+
+export interface ConversationTokenLimitData {
+  appId: string;
+  agentId: string;
+  conversationsFound: number;
+  totalDbMessages: number;
+  processedMessages: number;
+  estimatedTokens: number;
+  maxTokens: number;
+  modelName?: string;
+  messageDistribution: Record<string, number>;
+}
+
 // Event type mappings for consistent naming
 export const AppEvents = {
   // Repository lifecycle: app.repository.init.{begin|success|failure}
@@ -772,6 +816,36 @@ export const AppEvents = {
     begin: 'docker.container.operation.begin' as const,
     success: 'docker.container.operation.success' as const,
     failure: 'docker.container.operation.failure' as const,
+  },
+
+  // Conversation Context events: conversation.context.{load|build}.{begin|success|failure}
+  conversation: {
+    context: {
+      load: {
+        begin: 'conversation.context.load.begin' as const,
+        success: 'conversation.context.load.success' as const,
+        failure: 'conversation.context.load.failure' as const,
+      },
+      build: {
+        begin: 'conversation.context.build.begin' as const,
+        success: 'conversation.context.build.success' as const,
+        failure: 'conversation.context.build.failure' as const,
+      },
+    },
+    history: {
+      process: {
+        begin: 'conversation.history.process.begin' as const,
+        success: 'conversation.history.process.success' as const,
+        failure: 'conversation.history.process.failure' as const,
+      },
+    },
+    tokenLimit: {
+      load: {
+        begin: 'conversation.token_limit.load.begin' as const,
+        success: 'conversation.token_limit.load.success' as const,
+        failure: 'conversation.token_limit.load.failure' as const,
+      },
+    },
   },
 } as const;
 

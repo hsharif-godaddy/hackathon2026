@@ -17,7 +17,8 @@ import {
   useSetCurrentAppId,
   useIsLoading,
   useAutoSendInitialMessage,
-  useLoadConversationHistory
+  useLoadConversationHistory,
+  useStreamingConversationStore
 } from '@/stores/useStreamingConversationStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHistoryStore'
@@ -143,7 +144,13 @@ function DevelopPageContent() {
     }
     
     console.log('📚 Loading conversation history for app:', appId)
-    loadConversationHistory(appId)
+    // Add error handling to ensure loading state is always properly reset
+    loadConversationHistory(appId).catch((error) => {
+      console.error('❌ Failed to load conversation history in page component:', error)
+      // Additional safety: force reset loading state if not handled by store
+      const { setIsLoading } = useStreamingConversationStore.getState()
+      setIsLoading(false)
+    })
   }, [loadingPhase, appId, loadConversationHistory])
 
   // Server polling - unified approach with adaptive backoff

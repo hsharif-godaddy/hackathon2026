@@ -42,6 +42,16 @@ export interface MessagePersistence {
   ): Promise<string>
 
   /**
+   * Called to continue an existing conversation with a new message
+   * Used when reusing a conversation on the same WebSocket connection
+   */
+  continueConversation?(
+    conversationId: string,
+    message: string,
+    context: MessagePersistenceContext
+  ): Promise<string>
+
+  /**
    * Called for each streaming event (chunks, tool calls, etc.)
    * This allows real-time capture of streaming data
    */

@@ -17,6 +17,16 @@ export interface StreamSegment {
   toolCall?: ToolCall
 }
 
+export interface Conversation {
+  id: string
+  appId: string
+  agentId: string
+  title?: string
+  createdAt: Date
+  updatedAt: Date
+  messageCount: number
+}
+
 export interface ToolCall {
   id: string
   name: string
@@ -94,7 +104,7 @@ export interface StreamingConversationState {
   // Additional context
   aiEditContext: AiEditContext | null
   developmentPlan: PlanItem[]
-  conversations: Array<{ id: string; updatedAt: string }>
+  conversations: Conversation[]
   
   // Per-app chat history cache (for future enhancement)
   appChatHistory: Record<string, ChatMessage[]>
@@ -126,7 +136,7 @@ export interface StreamingConversationState {
   setIsLoading: (loading: boolean) => void
   setAiEditContext: (context: AiEditContext | null) => void
   setDevelopmentPlan: (plan: PlanItem[]) => void
-  setConversations: (conversations: Array<{ id: string; updatedAt: string }>) => void
+  setConversations: (conversations: Conversation[]) => void
   
   // === WEBSOCKET ACTIONS ===
   
@@ -536,6 +546,11 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       console.log('📚 Loading conversation history for app:', appId)
       set({ isLoading: true })
       
+      // Add timeout protection
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Conversation history request timeout')), 10000)
+      })
+      
       // Import buildDynamicAgentUrl dynamically to avoid circular imports
       const { buildDynamicAgentUrl } = await import('../config/dynamic-api')
       
@@ -543,8 +558,11 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       const conversationsUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}`, appId)
       console.log('📚 Fetching conversations from:', conversationsUrl)
       
-      // Fetch conversations for this app
-      const response = await fetch(conversationsUrl)
+      // Fetch conversations for this app with timeout protection
+      const response = await Promise.race([
+        fetch(conversationsUrl),
+        timeoutPromise
+      ]) as Response
       if (!response.ok) {
         throw new Error(`Failed to fetch conversations: ${response.status}`)
       }
@@ -554,7 +572,11 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       
       if (conversations.length === 0) {
         console.log('📚 No conversation history found for app:', appId)
-        set({ isLoading: false })
+        set({ 
+          isLoading: false,
+          // Ensure we cache empty results to prevent repeated attempts
+          appChatHistory: { ...get().appChatHistory, [appId]: [] }
+        })
         return
       }
       
@@ -597,6 +619,13 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       }))
       
       
+      // Convert conversation dates from strings to Date objects
+      const convertedConversations: Conversation[] = conversations.map((conv: any) => ({
+        ...conv,
+        createdAt: new Date(conv.createdAt),
+        updatedAt: new Date(conv.updatedAt)
+      }))
+      
       // Update the store with loaded messages and cache them
       set((state) => {
         // Update both the current messages and the app cache
@@ -605,7 +634,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         
         return {
           messages: convertedMessages,
-          conversations: conversations,
+          conversations: convertedConversations,
           appChatHistory: newAppChatHistory,
           isLoading: false
         }
@@ -619,7 +648,16 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       
     } catch (error) {
       console.error('❌ Failed to load conversation history:', error)
-      set({ isLoading: false })
+      console.error('❌ Error details:', {
+        appId,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      set({ 
+        isLoading: false,
+        // Cache empty result to prevent repeated failed attempts
+        appChatHistory: { ...get().appChatHistory, [appId]: [] }
+      })
       
       // Don't throw - just log and continue with empty history
       console.log('📚 Continuing with empty conversation history for app:', appId)

@@ -75,6 +75,27 @@ export class ConversationRepository {
   }
 
   /**
+   * Get all conversations for an app and specific agent
+   */
+  async findByAppAndAgent(appId: string, agentId: string): Promise<Conversation[]> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM conversations 
+      WHERE app_id = ? AND agent_id = ?
+      ORDER BY updated_at DESC
+    `);
+    const rows = stmt.all(appId, agentId) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      appId: row.app_id,
+      agentId: row.agent_id,
+      title: row.title,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at)
+    }));
+  }
+
+  /**
    * Update conversation title
    */
   async updateTitle(conversationId: string, title: string): Promise<void> {

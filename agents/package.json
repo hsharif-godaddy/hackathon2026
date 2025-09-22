@@ -31,6 +31,7 @@
     "@ai-sdk/anthropic": "^2.0.17",
     "@ai-sdk/openai": "^2.0.30",
     "@airo/ai-lib": "file:../packages/ai-lib",
+    "@anthropic-ai/tokenizer": "^0.0.4",
     "@aws-sdk/credential-providers": "^3.888.0",
     "@babel/generator": "^7.28.0",
     "@babel/parser": "^7.28.0",
@@ -58,6 +59,7 @@
     "openai": "^5.12.2",
     "socket.io": "^4.8.1",
     "sqlite3": "^5.1.7",
+    "tiktoken": "^1.0.22",
     "uuid": "^11.1.0",
     "ws": "^8.14.2",
     "zod": "^3.25.76"

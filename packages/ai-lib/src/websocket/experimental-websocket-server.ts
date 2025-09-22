@@ -1,8 +1,27 @@
 import { Server as SocketIOServer } from 'socket.io'
 import { Server as HTTPServer } from 'http'
-import type { ExperimentalAgentFactory, ExperimentalAgentWrapper } from '../core/agent-factory-experimental'
+import type { ExperimentalAgentFactory, ExperimentalAgentWrapper } from '../core/agent-factory-experimental.js'
 import { createExperimentalAgentFactory } from '../core/agent-factory-experimental.js'
 import type { MessagePersistence, MessagePersistenceWithCleanup, PersistenceStreamingEvent, MessagePersistenceContext } from './persistence-interface.js'
+
+/**
+ * Interface for providing conversation history to agents
+ */
+export interface ConversationHistoryProvider {
+  /**
+   * Load conversation history for a given conversation ID
+   * @param conversationId - The conversation ID to load history for
+   * @param context - Additional context that might be needed for loading history
+   * @returns Array of conversation messages in chronological order
+   */
+  loadConversationHistory(
+    conversationId: string, 
+    context?: Record<string, unknown>
+  ): Promise<Array<{
+    role: 'user' | 'assistant'
+    content: string
+  }>>
+}
 
 /**
  * WebSocket Server Configuration for ExperimentalAgentFactory
@@ -32,6 +51,9 @@ export interface ExperimentalWebSocketConfig {
   
   /** Message persistence implementation */
   messagePersistence?: MessagePersistence
+  
+  /** Conversation history provider for loading conversation context */
+  conversationHistoryProvider?: ConversationHistoryProvider
   
   /** Event handlers */
   onConnection?: (socketId: string) => void
@@ -423,7 +445,7 @@ export class ExperimentalWebSocketServer {
         processedContext = data.context || {}
       }
 
-      // Start persistence if configured
+      // Handle persistence if configured
       let conversationId: string | undefined
       if (this.config.messagePersistence) {
         const metadata = (processedContext?.metadata as any) || {}
@@ -436,19 +458,81 @@ export class ExperimentalWebSocketServer {
           ...processedContext
         }
         
-        conversationId = await this.config.messagePersistence.startConversation(
-          data.message,
-          persistenceContext
-        )
+        // Check if we already have an active conversation for this socket
+        const existingConversation = this.activeConversations.get(socketId)
         
-        // Track conversation for streaming events
-        this.activeConversations.set(socketId, {
-          conversationId,
-          agentName,
-          context: persistenceContext,
-          streamingEvents: [],
-          startTime: Date.now()
-        })
+        if (existingConversation && existingConversation.agentName === agentName) {
+          // Reuse existing conversation for the same agent
+          conversationId = existingConversation.conversationId
+          if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+            console.log('🔄 Reusing existing conversation for socket:', socketId, 'conversation:', conversationId)
+          }
+          
+          // Continue the existing conversation if the method is available
+          if (this.config.messagePersistence.continueConversation) {
+            await this.config.messagePersistence.continueConversation(
+              conversationId,
+              data.message,
+              persistenceContext
+            )
+          }
+          
+          // Update context but keep the same conversation ID
+          existingConversation.context = persistenceContext
+          existingConversation.streamingEvents = []
+        } else {
+          // Create new conversation (first message or agent switch)
+          conversationId = await this.config.messagePersistence.startConversation(
+            data.message,
+            persistenceContext
+          )
+          
+          if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+            console.log('🆕 Created new conversation for socket:', socketId, 'conversation:', conversationId)
+          }
+          
+          // Track conversation for streaming events
+          this.activeConversations.set(socketId, {
+            conversationId,
+            agentName,
+            context: persistenceContext,
+            streamingEvents: [],
+            startTime: Date.now()
+          })
+        }
+      }
+
+      // Load conversation history if provider is configured and conversation ID is available
+      if (this.config.conversationHistoryProvider && !data.conversationHistory) {
+        // Try to get conversation ID from various sources
+        let historyConversationId = conversationId // From persistence
+        
+        // Also check if conversation ID is provided in context (fallback, not normally used)
+        if (!historyConversationId && processedContext?.conversation) {
+          const conversationContext = processedContext.conversation as any
+          historyConversationId = conversationContext?.conversationId
+        }
+        
+        if (historyConversationId) {
+          try {
+            console.log('📚 Loading conversation history for conversation:', historyConversationId)
+            const conversationHistory = await this.config.conversationHistoryProvider.loadConversationHistory(
+              historyConversationId,
+              processedContext
+            )
+            
+            // Add conversation history to the data
+            data.conversationHistory = conversationHistory
+            
+            console.log('✅ Loaded conversation history:', {
+              conversationId: historyConversationId,
+              historyLength: conversationHistory.length
+            })
+          } catch (error) {
+            console.warn('⚠️ Failed to load conversation history:', error)
+            // Continue without history - don't fail the entire request
+          }
+        }
       }
 
       // Call message start handler with processed context
@@ -510,7 +594,15 @@ export class ExperimentalWebSocketServer {
     
     // Add conversation history if provided
     if (data.conversationHistory && data.conversationHistory.length > 0) {
+      console.log(`🔄 ExperimentalWebSocketServer: Adding ${data.conversationHistory.length} conversation history messages`)
+      console.log(`📋 ExperimentalWebSocketServer: Conversation history details:`)
+      data.conversationHistory.forEach((msg, index) => {
+        console.log(`  ${index + 1}. ${msg.role}: ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`)
+      })
       messages.push(...data.conversationHistory)
+    } else {
+      console.log(`ℹ️ ExperimentalWebSocketServer: No conversation history provided`)
+      console.log(`🔍 ExperimentalWebSocketServer: data.conversationHistory =`, data.conversationHistory)
     }
     
     // Prepare the prompt
@@ -518,6 +610,11 @@ export class ExperimentalWebSocketServer {
     if (context) {
       prompt = `[CONTEXT]\n${JSON.stringify(context, null, 2)}\n\n${data.message}`
     }
+
+    console.log(`🚀 ExperimentalWebSocketServer: Calling streamGenerate with:`)
+    console.log(`  - Prompt: ${prompt.substring(0, 200)}${prompt.length > 200 ? '...' : ''}`)
+    console.log(`  - Messages count: ${messages.length}`)
+    console.log(`  - Messages:`, messages.map(m => `${m.role}: ${m.content.substring(0, 50)}...`))
 
     // Start streaming using streamGenerate instead of streamWithContext
     const streamResult = await agent.streamGenerate(prompt, {

@@ -2,10 +2,8 @@ import {
   createExperimentalAgentFactory, 
   type ExperimentalAgentConfig,
   createPromptBuilder,
-  pb
 } from '@airo/ai-lib'
 import { getAgentModel } from '../utils/model-selection.js'
-import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 
 /**
@@ -27,7 +25,6 @@ async function buildColorSchemeSystemPrompt(): Promise<string> {
     .file(paths.getAgentFile('color-scheme', 'core.md'))
     .file(paths.getAgentFile('color-scheme', 'interaction-flow.md'))
     .file(paths.getAgentFile('color-scheme', 'technical-requirements.md'))
-    .file(paths.getAgentFile('color-scheme', 'visual-context.md'))
     .file(paths.getAgentFile('color-scheme', 'communication.md'))
   
   return await promptBuilder.build()
@@ -44,11 +41,7 @@ export async function createColorSchemeAgent(): Promise<ExperimentalAgentConfig>
     system: systemPrompt,
     model: await getAgentModel('fast'), // Use fast model for color scheme generation
     tools: {
-      appPlan: allAILibTools.appPlan,
-      fileEdit: allAILibTools.fileEdit,
-      readFile: allAILibTools.readFile,
-      directoryListing: allAILibTools.directoryListing,
-      imageGenerate: allAILibTools.imageGenerate,
+      // we don't need any tools for this agent
     },
     
     // Handoff configuration

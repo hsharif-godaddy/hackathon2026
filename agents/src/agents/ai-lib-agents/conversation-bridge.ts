@@ -105,21 +105,37 @@ export class ConversationBridge {
     // Check if we have an existing conversation ID in context
     const existingConversationId = context.conversation?.conversationId
     
+    // Debug logging for conversation ID resolution
+    if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+      console.log('🔍 ConversationBridge.ensureConversation:', {
+        appId,
+        agentId,
+        hasConversationContext: !!context.conversation,
+        existingConversationId,
+        fullContext: context
+      })
+    }
+    
     if (existingConversationId) {
       // Verify the conversation exists
       const existing = await this.conversationRepo.getById(existingConversationId)
       if (existing) {
+        console.log('✅ ConversationBridge: Found existing conversation:', existingConversationId)
         return existingConversationId
+      } else {
+        console.log('⚠️ ConversationBridge: Conversation ID provided but not found in database:', existingConversationId)
       }
     }
 
     // Create new conversation
+    console.log('🆕 ConversationBridge: Creating new conversation for app:', appId, 'agent:', agentId)
     const conversation = await this.conversationRepo.create(
       appId, 
       agentId, 
       `Chat with ${agentId} - ${new Date().toLocaleString()}`
     )
     
+    console.log('✅ ConversationBridge: Created new conversation:', conversation.id)
     return conversation.id
   }
 

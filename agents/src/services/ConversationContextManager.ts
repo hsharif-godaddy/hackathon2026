@@ -2,6 +2,10 @@ import type { ConversationMessage, ToolCall, MessageSegment } from '../database/
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
 import { AppContextManager } from './AppContextManager.js';
 import type { AgentExecutionContext } from '../base/agent.interface.js';
+import { ToolCallRenderer } from './ToolCallRenderer.js';
+import { logger } from '../logging/index.js';
+import { conversationContextEvents, conversationHistoryEvents, conversationTokenLimitEvents } from '../logging/events/index.js';
+import { countTokens, estimateTokens } from '../utils/token-counter.js';
 
 /**
  * LLM message format for OpenAI-style APIs
@@ -106,14 +110,17 @@ export class ConversationContextManager {
       throw new Error('All messages filtered out due to empty content');
     }
 
-    // Debug logging
+    // Structured logging
     const hasAppContext = executionContext && validatedMessages.some(msg => msg.content?.startsWith('[Current Project Structure]'));
-    console.log(`ConversationContextManager: Built ${validatedMessages.length} messages for conversation ${conversationId || 'new'}${hasAppContext ? ' (with app context)' : ''}${aiEditContext ? ' (with AI edit context)' : ''}`);
-    validatedMessages.forEach((msg, idx) => {
-      const isAiEditContext = msg.content?.startsWith('[AI Edit Context');
-      const isAppContext = msg.content?.startsWith('[Current Project Structure]');
-      const prefix = isAiEditContext ? '[AI_EDIT_CONTEXT] ' : (isAppContext ? '[APP_CONTEXT] ' : '');
-      console.log(`  Message ${idx}: ${msg.role} - ${prefix}${msg.content?.substring(0, 100)}${msg.content?.length > 100 ? '...' : ''}`);
+    conversationContextEvents.buildSuccess(logger, {
+      conversationId,
+      totalMessages: validatedMessages.length,
+      systemPromptLength: systemPrompt.length,
+      currentMessageLength: currentUserMessage.length,
+      hasHistory: !!conversationId && validatedMessages.length > 2,
+      hasAppContext,
+      hasAiEditContext: !!aiEditContext,
+      hasVisualContext: !!executionContext?.metadata?.visualContext,
     });
 
     return validatedMessages;
@@ -127,9 +134,24 @@ export class ConversationContextManager {
   private async loadConversationHistory(conversationId: string): Promise<LLMMessage[]> {
     const allMessages = await this.conversationRepo.getMessages(conversationId);
     
+    // Structured logging for conversation history loading
+    conversationContextEvents.loadBegin(logger, { conversationId });
+    
     // Take the last N messages (excluding the current one which we'll add separately)
     // We want pairs of user/agent messages, so we take more and then trim appropriately
     const recentMessages = allMessages.slice(-(this.maxMessages * 2));
+    
+    if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+      conversationContextEvents.loadSuccess(logger, {
+        conversationId,
+        messageCount: allMessages.length,
+        recentMessageCount: recentMessages.length,
+        hasHistory: allMessages.length > 0,
+        hasAppContext: false,
+        hasAiEditContext: false,
+        hasVisualContext: false,
+      });
+    }
     
     const llmMessages: LLMMessage[] = [];
 
@@ -142,13 +164,18 @@ export class ConversationContextManager {
             content: message.content.trim()
           });
         } else {
-          console.warn(`Skipping message ${message.id} with empty content from conversation`);
+          if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+            conversationHistoryEvents.processBegin(logger, {
+              conversationId,
+              totalDbMessages: allMessages.length,
+            });
+          }
         }
       } else if (message.sender === 'agent') {
         // For agent messages, reconstruct from segments if available, fallback to old format
         if (message.segments && message.segments.length > 0) {
           // Use segments for proper chronological order
-          const { assistantMessages, toolMessages } = this.processMessageSegments(message.segments);
+          const { assistantMessages, toolMessages } = this.processMessageSegments(message.segments, conversationId);
           llmMessages.push(...assistantMessages, ...toolMessages);
         } else {
           // Fallback to old format for backward compatibility
@@ -176,7 +203,7 @@ export class ConversationContextManager {
   /**
    * Process message segments to create properly ordered LLM messages
    */
-  private processMessageSegments(segments: MessageSegment[]): {
+  private processMessageSegments(segments: MessageSegment[], conversationId?: string): {
     assistantMessages: LLMMessage[];
     toolMessages: LLMMessage[];
   } {
@@ -200,7 +227,13 @@ export class ConversationContextManager {
       } else if (segment.type === 'tool_call' && segment.tool_call) {
         // Only include tool calls that have results to avoid Bedrock validation errors
         if (!segment.tool_call.tool_result) {
-          console.warn(`Skipping tool call ${segment.tool_call.id} without result in conversation history`);
+          if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+          logger.warn('conversation.history.tool_call.skipped', {
+            conversationId,
+            toolCallId: segment.tool_call.id,
+            reason: 'no_result',
+          });
+        }
           continue;
         }
 
@@ -221,18 +254,36 @@ export class ConversationContextManager {
         const toolCall = this.convertSingleToolCall(segment.tool_call);
         toolCallsAccumulator.push(toolCall);
         
-        // Add the tool result as a tool message
-        const toolContent = typeof segment.tool_call.tool_result === 'string' 
-          ? segment.tool_call.tool_result.trim()
-          : JSON.stringify(segment.tool_call.tool_result);
-          
-        if (toolContent && toolContent !== '{}' && toolContent !== 'null') {
-          toolMessages.push({
-            role: 'tool',
-            content: toolContent,
-            tool_call_id: segment.tool_call.id,
-            name: segment.tool_call.tool_name
+        // Add the tool result as a rendered tool message
+        try {
+          const renderedToolCall = ToolCallRenderer.renderToolCall({
+            id: segment.tool_call.id,
+            tool_name: segment.tool_call.tool_name,
+            tool_args: segment.tool_call.tool_args,
+            tool_result: segment.tool_call.tool_result,
+            ...(segment.tool_call.error && { error: segment.tool_call.error })
           });
+          
+          toolMessages.push(renderedToolCall);
+        } catch (error) {
+          logger.warn('conversation.history.tool_call.render_failure', {
+            conversationId,
+            toolCallId: segment.tool_call.id,
+            error: (error as Error).message,
+          });
+          // Fallback to simple content
+          const toolContent = typeof segment.tool_call.tool_result === 'string' 
+            ? segment.tool_call.tool_result.trim()
+            : JSON.stringify(segment.tool_call.tool_result);
+            
+          if (toolContent && toolContent !== '{}' && toolContent !== 'null') {
+            toolMessages.push({
+              role: 'tool',
+              content: toolContent,
+              tool_call_id: segment.tool_call.id,
+              name: segment.tool_call.tool_name
+            });
+          }
         }
       }
     }
@@ -303,18 +354,37 @@ export class ConversationContextManager {
     if (message.toolCalls && message.toolCalls.length > 0) {
       for (const toolCall of message.toolCalls) {
         if (toolCall.tool_result) {
-          const toolContent = typeof toolCall.tool_result === 'string' 
-            ? toolCall.tool_result.trim()
-            : JSON.stringify(toolCall.tool_result);
-
-          // Only add tool messages with non-empty content
-          if (toolContent && toolContent !== '{}' && toolContent !== 'null') {
-            toolMessages.push({
-              role: 'tool',
-              content: toolContent,
-              tool_call_id: toolCall.id,
-              name: toolCall.tool_name
+          // Render tool call using the renderer
+          try {
+            const renderedToolCall = ToolCallRenderer.renderToolCall({
+              id: toolCall.id,
+              tool_name: toolCall.tool_name,
+              tool_args: toolCall.tool_args,
+              tool_result: toolCall.tool_result,
+              ...(toolCall.error && { error: toolCall.error })
             });
+            
+            toolMessages.push(renderedToolCall);
+          } catch (error) {
+            logger.warn('conversation.history.legacy_tool_call.render_failure', {
+              conversationId: 'unknown',
+              toolCallId: toolCall.id,
+              error: (error as Error).message,
+            });
+            // Fallback to simple content
+            const toolContent = typeof toolCall.tool_result === 'string'
+              ? toolCall.tool_result.trim()
+              : JSON.stringify(toolCall.tool_result);
+
+            // Only add tool messages with non-empty content
+            if (toolContent && toolContent !== '{}' && toolContent !== 'null') {
+              toolMessages.push({
+                role: 'tool',
+                content: toolContent,
+                tool_call_id: toolCall.id,
+                name: toolCall.tool_name
+              });
+            }
           }
         }
       }
@@ -412,7 +482,9 @@ Source Code Location:
 Instructions: The following user message refers to changes for this specific selected element. Focus your edits on the code at the specified file and location.`;
 
     } catch (error) {
-      console.warn('Error formatting AI edit context:', error);
+      logger.warn('conversation.context.ai_edit_format.failure', {
+        error: (error as Error).message,
+      });
       return '[AI Edit Context] Element selected for editing (formatting error)';
     }
   }
@@ -476,8 +548,194 @@ Viewport Size:
 Context Notes: ${contextNotes}`;
 
     } catch (error) {
-      console.warn('Error formatting visual context:', error);
+      logger.warn('conversation.context.visual_format.failure', {
+        error: (error as Error).message,
+      });
       return '[Visual Context] User context captured (formatting error)';
+    }
+  }
+
+  /**
+   * Load all messages for an app/agent combination with token-based limiting
+   * @param appId - ID of the app
+   * @param agentId - ID of the agent
+   * @param maxTokens - Maximum tokens to include (default 40k)
+   * @param modelName - Model name for accurate token counting (optional)
+   * @returns Array of LLM messages with token limit applied
+   */
+  async loadAllMessagesWithTokenLimit(
+    appId: string, 
+    agentId: string, 
+    maxTokens: number = 40000, 
+    modelName?: string
+  ): Promise<LLMMessage[]> {
+    conversationTokenLimitEvents.loadBegin(logger, {
+      appId,
+      agentId,
+      maxTokens,
+    });
+    
+    try {
+      // Get all conversations for this app/agent
+      const conversations = await this.conversationRepo.findByAppAndAgent(appId, agentId)
+      // Log conversation discovery in debug mode
+      if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+        logger.debug('conversation.token_limit.conversations_found', {
+          appId,
+          agentId,
+          conversationsCount: conversations.length,
+        });
+      }
+      
+      // Get all messages from all conversations, ordered by timestamp
+      const allMessages: Array<{
+        id: string
+        conversationId: string
+        sender: 'user' | 'agent'
+        content: string
+        segments?: any[]
+        toolCalls?: any[]
+        createdAt: Date
+      }> = []
+      
+      for (const conversation of conversations) {
+        const messages = await this.conversationRepo.getMessages(conversation.id)
+        allMessages.push(...messages.map(msg => ({
+          ...msg,
+          conversationId: conversation.id
+        })))
+      }
+      
+      // Sort by timestamp (newest first for token limiting, then reverse for chronological)
+      allMessages.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      
+      if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+        logger.debug('conversation.token_limit.messages_found', {
+          appId,
+          agentId,
+          totalMessages: allMessages.length,
+        });
+      }
+      
+      // Apply token-based limiting
+      const limitedMessages: typeof allMessages = []
+      let currentTokenCount = 0
+      
+      for (const message of allMessages) {
+        const messageContent = message.content || ''
+        
+        // Count tokens using proper tokenizer if model name provided, otherwise use estimation
+        let messageTokens: number
+        if (modelName && messageContent.trim()) {
+          try {
+            const result = countTokens(messageContent, modelName)
+            messageTokens = result.tokenCount
+            
+            if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+              logger.debug('conversation.token_limit.token_count', {
+                messageId: message.id,
+                contentLength: messageContent.length,
+                tokenCount: messageTokens,
+                provider: result.provider,
+                modelName: result.normalizedModelName,
+              });
+            }
+          } catch (error) {
+            // Fallback to estimation if token counting fails
+            messageTokens = estimateTokens(messageContent)
+            logger.warn('conversation.token_limit.fallback_estimation', {
+              messageId: message.id,
+              error: (error as Error).message,
+              estimatedTokens: messageTokens,
+            });
+          }
+        } else {
+          // Use estimation when no model name provided
+          messageTokens = estimateTokens(messageContent)
+        }
+        
+        // Check if adding this message would exceed token limit
+        if (currentTokenCount + messageTokens > maxTokens && limitedMessages.length > 0) {
+          if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+            logger.info('conversation.token_limit.limit_reached', {
+              appId,
+              agentId,
+              processedMessages: limitedMessages.length,
+              currentTokens: currentTokenCount,
+              maxTokens,
+              modelName: modelName || 'unknown',
+            });
+          }
+          break
+        }
+        
+        limitedMessages.push(message)
+        currentTokenCount += messageTokens
+      }
+      
+      // Reverse to get chronological order (oldest first)
+      limitedMessages.reverse()
+      
+      // Convert to LLM messages
+      const llmMessages: LLMMessage[] = []
+      
+      for (const message of limitedMessages) {
+        if (message.sender === 'user') {
+          if (message.content && message.content.trim() !== '') {
+            llmMessages.push({
+              role: 'user',
+              content: message.content.trim()
+            })
+          }
+        } else if (message.sender === 'agent') {
+          // Process agent messages with segments or fallback to legacy
+          if (message.segments && message.segments.length > 0) {
+            const { assistantMessages, toolMessages } = this.processMessageSegments(message.segments, message.conversationId)
+            llmMessages.push(...assistantMessages, ...toolMessages)
+          } else {
+            // Fallback to legacy format
+            const assistantMessage = this.createLegacyAssistantMessage(message)
+            if (assistantMessage) {
+              llmMessages.push(assistantMessage)
+              const toolMessages = this.createLegacyToolMessages(message)
+              llmMessages.push(...toolMessages)
+            }
+          }
+        }
+      }
+      
+      // Debug logging
+      const messagesByRole = llmMessages.reduce((acc, msg) => {
+        acc[msg.role] = (acc[msg.role] || 0) + 1
+        return acc
+      }, {} as Record<string, number>)
+      
+      const toolMessages = llmMessages.filter(msg => msg.role === 'tool')
+      const assistantMessagesWithTools = llmMessages.filter(msg => 
+        msg.role === 'assistant' && 'tool_calls' in msg && (msg as any).tool_calls?.length > 0
+      )
+      
+      conversationTokenLimitEvents.loadSuccess(logger, {
+        appId,
+        agentId,
+        conversationsFound: conversations.length,
+        totalDbMessages: allMessages.length,
+        processedMessages: limitedMessages.length,
+        estimatedTokens: currentTokenCount,
+        maxTokens,
+        modelName: modelName || 'estimation',
+        messageDistribution: messagesByRole,
+      });
+      
+      return llmMessages
+      
+    } catch (error) {
+      conversationTokenLimitEvents.loadFailure(logger, error as Error, {
+        appId,
+        agentId,
+        maxTokens,
+      });
+      return [];
     }
   }
 

@@ -1,7 +1,7 @@
 import { Server as SocketIOServer } from 'socket.io'
 import { Server as HTTPServer } from 'http'
-import { Agent } from '../core/agent'
-import { createStreamingAgenticRunner } from '../core/streaming-agentic-runner'
+import { Agent } from '../core/agent.js'
+import { createStreamingAgenticRunner } from '../core/streaming-agentic-runner.js'
 import { 
   WebSocketServerConfig, 
   ChatMessageData, 

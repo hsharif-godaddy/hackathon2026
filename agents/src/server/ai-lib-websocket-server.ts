@@ -4,12 +4,14 @@
  */
 
 import { Server as HTTPServer } from 'http'
-import { createExperimentalWebSocketServer } from '@airo/ai-lib'
+import { createExperimentalWebSocketServer, type ConversationHistoryProvider } from '@airo/ai-lib'
 import { 
   createWebSocketAgentFactory,
   aiLibAgentMetadata
 } from '../agents/ai-lib-agents/index.js'
 import { AgentsMessagePersistence } from './conversation-persistence.js'
+import { ConversationContextManager } from '../services/ConversationContextManager.js'
+import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { logger } from '../logging/index.js'
 import { MAX_PROMPT_LENGTH } from '../services/features.js'
 
@@ -18,6 +20,17 @@ import { MAX_PROMPT_LENGTH } from '../services/features.js'
  */
 export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
   console.log('🚀 Setting up ExperimentalAgentFactory WebSocket server with conversation persistence...')
+  
+  // Enable debug logging if requested
+  if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+    console.log('🔍 Conversation history debug logging enabled')
+  }
+  
+  if (process.env.DEBUG_AI_REQUESTS === 'true') {
+    console.log('🔍 AI request debug logging enabled')
+    // Enable AI SDK debug logging
+    process.env.DEBUG = 'ai:*'
+  }
 
   try {
     // Create the agent factory
@@ -25,6 +38,53 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     
     // Create message persistence implementation
     const messagePersistence = new AgentsMessagePersistence()
+    
+    // Create token-based conversation history provider
+    const conversationRepo = new ConversationRepository()
+    const conversationContextManager = new ConversationContextManager(conversationRepo, 10) // Max 10 messages
+    const conversationHistoryProvider = {
+      async loadConversationHistory(conversationId: string, context?: Record<string, unknown>): Promise<Array<{ role: 'user' | 'assistant', content: string }>> {
+        if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+          console.log('📚 TokenBasedHistoryProvider: Loading conversation history')
+        }
+        
+        // Extract appId and agentName from context
+        const metadata = (context?.metadata as any) || {}
+        const appId = metadata.appId
+        const agentName = metadata.agentId || 'develop' // Default to develop agent
+        
+        if (!appId) {
+          console.warn('⚠️ No appId found in context, cannot load conversation history')
+          return []
+        }
+        
+        if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+          console.log(`📚 Loading ALL messages for app: ${appId}, agent: ${agentName}`)
+        }
+        
+        try {
+          // Use the new token-based method with model name for accurate token counting
+          // Based on model-selection.ts, all agents currently use 'claude4'
+          const modelName = 'claude4'
+          const messages = await conversationContextManager.loadAllMessagesWithTokenLimit(appId, agentName, 40000, modelName)
+          
+          if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+            console.log(`✅ TokenBasedHistoryProvider: Loaded ${messages.length} messages`)
+          }
+          
+          // Filter out system and tool messages, and map to the expected format
+          return messages
+            .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+            .map(msg => ({
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content || ''
+            }))
+        } catch (error) {
+          console.error('❌ Error in TokenBasedHistoryProvider:', error)
+          return []
+        }
+      }
+    }
     
     // Create the WebSocket server with the agent factory and built-in persistence
     const wsServer = createExperimentalWebSocketServer(httpServer, {
@@ -34,6 +94,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       messagePersistence,
       
       // Context extractor to validate appId and message length
+      // Conversation history provider
+      conversationHistoryProvider,
+      
+      // Context extractor to validate appId
       contextExtractor: (rawContext: Record<string, unknown>) => {
         // Extract appId from context metadata
         const metadata = rawContext.metadata as any
@@ -51,7 +115,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         
         console.log('✅ Validated appId:', appId)
         
-        // Return the processed context (persistence will handle the rest)
+        // Return the processed context
         return rawContext
       },
       
@@ -83,6 +147,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     console.log(`🎨 Tool execution hooks: enabled`)
     console.log(`📋 Handoff history tracking: enabled`)
     console.log(`💾 Conversation persistence: enabled (built-in)`)
+    console.log(`🔄 Conversation history loading: enabled`)
 
     // Log agent factory details
     const availableAgents = agentFactory.getAvailableAgents()

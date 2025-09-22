@@ -17,7 +17,8 @@ export {
 } from './experimental-websocket-server.js'
 export type {
   ExperimentalWebSocketConfig,
-  ChatMessage
+  ChatMessage,
+  ConversationHistoryProvider
 } from './experimental-websocket-server.js'
 
 // Message Persistence Interface

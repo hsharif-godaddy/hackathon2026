@@ -33,6 +33,36 @@ export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
     this.appRepository = new AppRepository()
   }
 
+  async continueConversation(
+    conversationId: string,
+    message: string,
+    context: MessagePersistenceContext
+  ): Promise<string> {
+    console.log('🔄 Continuing conversation persistence:', {
+      conversationId,
+      socketId: context.socketId,
+      agentName: context.agentName,
+      appId: context.appId
+    })
+
+    // Save user message to existing conversation
+    const userMessageId = await this.conversationBridge.saveUserMessage(
+      conversationId,
+      message,
+      context as any // Cast to EnhancedAgentContext
+    )
+
+    // Track for cleanup
+    this.activeConversations.set(context.socketId, {
+      conversationId,
+      userMessageId,
+      context
+    })
+
+    console.log('💾 Conversation continued:', { conversationId, userMessageId })
+    return conversationId
+  }
+
   async startConversation(
     message: string,
     context: MessagePersistenceContext
@@ -63,10 +93,30 @@ export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
       metadata: {
         appId: context.appId,
         agentId: context.agentName,
-        userId: context.userId,
-        sessionId: context.sessionId
+        ...(context.userId && { userId: context.userId }),
+        ...(context.sessionId && { sessionId: context.sessionId })
       }
       // Other properties are optional and will be added as needed
+    }
+
+    // Copy conversation context if provided (this is crucial for conversation history!)
+    if (context.conversation) {
+      enhancedContext.conversation = context.conversation
+    }
+
+    // Debug logging for conversation context
+    if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+      console.log('🔍 ConversationPersistence: Original context.conversation:', context.conversation)
+      console.log('🔍 ConversationPersistence: Enhanced context.conversation:', enhancedContext.conversation)
+    }
+
+    // Debug logging for conversation context
+    if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+      console.log('🔍 ConversationPersistence.startConversation: conversation context:', {
+        originalConversation: context.conversation,
+        enhancedConversation: enhancedContext.conversation,
+        hasConversationId: !!(enhancedContext.conversation?.conversationId)
+      })
     }
 
     // Create or get conversation
@@ -75,6 +125,11 @@ export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
       context.agentName,
       enhancedContext
     )
+
+    // Debug logging for conversation ID result
+    if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+      console.log('🔍 ConversationPersistence: ensureConversation returned:', conversationId)
+    }
 
     // Update context with conversation ID
     enhancedContext.conversation = { conversationId }
@@ -115,9 +170,9 @@ export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
     // Convert PersistenceStreamingEvent to the format expected by ConversationBridge
     const bridgeEvents = streamingEvents.map(event => ({
       type: event.type,
-      content: event.content,
-      data: event.data,
-      timestamp: event.timestamp
+      ...(event.content !== undefined && { content: event.content }),
+      ...(event.data !== undefined && { data: event.data }),
+      ...(event.timestamp !== undefined && { timestamp: event.timestamp })
     }))
 
     // Save agent response with streaming events

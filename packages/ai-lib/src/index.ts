@@ -21,6 +21,7 @@ export * from './websocket/index.js'
 // Utility exports
 export * from './utils/env-config.js'
 export * from './utils/file-processor.js'
+export * from './utils/token-counter.js'
 
 // Convenience re-exports
 export { Agent } from './core/agent.js'
@@ -42,9 +43,23 @@ export {
   ExperimentalWebSocketServer,
   createExperimentalWebSocketServer,
   createSingleAgentFactory,
-  createSingleAgentWebSocketServer
+  createSingleAgentWebSocketServer,
+  type ConversationHistoryProvider,
+  type ExperimentalWebSocketConfig,
+  type ChatMessage
 } from './websocket/index.js'
 export { EnvConfig } from './utils/env-config.js'
+export { 
+  countTokens, 
+  countTotalTokens, 
+  countConversationTokens, 
+  estimateTokens, 
+  isTokenCountingSupported, 
+  getModelProvider,
+  type TokenCountResult,
+  type ModelProvider,
+  type SupportedModel
+} from './utils/token-counter.js'
 export { 
   createPromptBuilder, 
   PromptBuilder, 

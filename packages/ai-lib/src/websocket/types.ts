@@ -1,6 +1,6 @@
 import { ServerOptions } from 'socket.io'
-import type { Agent } from '../core/agent'
-import type { AgentConfig } from '../core/types'
+import type { Agent } from '../core/agent.js'
+import type { AgentConfig } from '../core/types.js'
 
 // Agent factory function type for dynamic agent creation
 export type AgentFactory<TContext = Record<string, unknown>> = (context?: TContext) => Promise<Agent> | Agent
