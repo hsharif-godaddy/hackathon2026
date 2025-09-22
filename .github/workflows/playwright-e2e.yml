@@ -58,22 +58,15 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
-        cache: 'npm'
+        node-version: '22'
+
+    - name: Install pnpm
+      run: npm install -g pnpm
 
     - name: Install dependencies
       run: |
-        # Check if package-lock.json exists and is in sync
-        if [ -f package-lock.json ]; then
-          echo "Found package-lock.json, attempting npm ci..."
-          if ! npm ci; then
-            echo "npm ci failed, falling back to npm install..."
-            npm install
-          fi
-        else
-          echo "No package-lock.json found, running npm install..."
-          npm install
-        fi
+        echo "Installing workspace dependencies with pnpm..."
+        pnpm install --frozen-lockfile
 
     - name: Install Playwright Browsers
       run: |

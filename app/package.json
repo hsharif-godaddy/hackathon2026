@@ -122,20 +122,5 @@
     "tailwindcss": "^4.1.12",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
-  },
-  "overrides": {
-    "caniuse-lite": "1.0.30001736",
-    "react": "19.1.0",
-    "react-dom": "19.1.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "caniuse-lite": "1.0.30001736",
-      "react": "19.1.0",
-      "react-dom": "19.1.0"
-    },
-    "onlyBuiltDependencies": [
-      "better-sqlite3"
-    ]
   }
 }

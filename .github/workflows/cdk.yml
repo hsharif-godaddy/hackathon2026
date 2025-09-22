@@ -92,8 +92,7 @@ jobs:
             STACK_NAME: ${{ env.STACK_NAME }}
             DEFAULT_ACTION: ${{ env.DEFAULT_ACTION }}
         run: |
-          cd cdk/
-          # Create .npmrc file
+          # Create .npmrc file for workspace
           echo "always-auth=true" > .npmrc
           echo "progress=false" >> .npmrc
           echo registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> .npmrc
@@ -101,7 +100,7 @@ jobs:
 
           npm install -g pnpm
 
-
+          # Install workspace dependencies (includes CDK)
           pnpm install --frozen-lockfile
 
           # npx --verbose cdk synth

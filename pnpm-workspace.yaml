@@ -1,0 +1,9 @@
+packages:
+  - "agents"
+  - "app"
+  - "packages/*"
+  - "setup"
+  - "ai-playground"
+  - "cdk"
+  - "proxy"
+

@@ -104,17 +104,17 @@ The setup can automatically configure Getty Images integration:
 
 1. **Install Project Dependencies**:
    ```bash
-   cd agents && pnpm install
-   cd app && pnpm install
+   pnpm install  # Install all workspace dependencies
    ```
 
 2. **Start Services**:
    ```bash
-   # Terminal 1 - Backend API
-   cd agents && pnpm run dev
+   # Option 1: Start both services concurrently
+   pnpm run dev
    
-   # Terminal 2 - Frontend App  
-   cd app && pnpm run dev
+   # Option 2: Start services individually
+   pnpm run dev:agents  # Backend API (port 4000)
+   pnpm run dev:app     # Frontend App (port 3000)
    ```
 
 3. **Access Application**:

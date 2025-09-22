@@ -170,8 +170,7 @@ main() {
             echo "Next steps:"
             echo "  1. Run './setup.sh' for full setup, or"
             echo "  2. Manual setup:"
-            echo "     cd agents && pnpm install"
-            echo "     cd app && pnpm install"
+            echo "     pnpm install  # Install all workspace dependencies"
             echo "  3. Configure your environment files"
         fi
         exit 0

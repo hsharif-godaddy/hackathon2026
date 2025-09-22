@@ -30,14 +30,14 @@ cd setup && pnpm start
 
 **Manual Setup:**
 ```bash
-# Install dependencies for all components
-cd agents && pnpm install
-cd ../app && pnpm install  
-cd ../app-templates/v8 && pnpm install && cd ../..
+# Install dependencies for all workspace packages
+pnpm install
 
 # Start services (requires OpenAI API key in agents/.env)
-cd agents && pnpm run dev    # Backend agents API (port 4000)
-cd app && pnpm run dev       # Main Next.js app (port 3000)
+pnpm run dev                 # Start both services concurrently
+# Or start individually:
+pnpm run dev:agents         # Backend agents API (port 4000)
+pnpm run dev:app            # Main Next.js app (port 3000)
 ```
 
 **IMPORTANT** Agent needs to run on port 4000 and App on port 3000, if something else is already running on one of this port, kill it

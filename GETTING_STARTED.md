@@ -46,13 +46,10 @@ If you prefer manual configuration:
 ### 1. Install Dependencies
 
 ```bash
-# Using pnpm (recommended)
-cd agents && pnpm install
-cd ../app && pnpm install
-cd ../app-templates/v8 && pnpm install && cd ../..
+# Using pnpm workspace (recommended)
+pnpm install
 
-# Or using npm
-npm run install-all
+# This installs dependencies for all packages at once
 ```
 
 ### 2. Configure Environment
@@ -101,22 +98,24 @@ NEXT_PUBLIC_USE_MOCK_LOGIN=true
 docker compose up app-mysql -d
 ```
 
-**Terminal 1 - Agents Backend (port 4000):**
+**Option 1 - Start both services concurrently:**
 ```bash
-cd agents
 pnpm run dev
 ```
 
-**Terminal 2 - Main App (port 3000):**
-```bash  
-cd app
-pnpm run dev
+**Option 2 - Start services individually:**
+```bash
+# Terminal 1 - Agents Backend (port 4000)
+pnpm run dev:agents
+
+# Terminal 2 - Main App (port 3000) 
+pnpm run dev:app
 ```
 
-**Terminal 3 - Database Migrations (first time only):**
+**Database Migrations (first time only):**
 ```bash
-cd app
-pnpm dlx prisma migrate dev
+# Run from project root using workspace filter
+pnpm --filter website dlx prisma migrate dev
 ```
 
 ## Access
@@ -191,9 +190,9 @@ cd setup && pnpm start
 
 **Issue**: The development server fails to start for new apps  
 **Cause**: App template dependencies are not installed  
-**Solution**: Install template dependencies:
+**Solution**: Install all dependencies using workspace:
 ```bash
-cd app-templates/v8 && pnpm install
+pnpm install
 ```
 
 ### Template directory errors

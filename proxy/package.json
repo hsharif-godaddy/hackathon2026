@@ -39,11 +39,6 @@
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   },
-  "pnpm": {
-    "overrides": {
-      "caniuse-lite": "1.0.30001736"
-    }
-  },
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
