@@ -12,6 +12,11 @@ interface FeatureConfig {
 }
 
 /**
+ * Application constants
+ */
+export const MAX_PROMPT_LENGTH = 40000
+
+/**
  * Parse environment variables and return feature configuration
  */
 function parseEnvironmentFeatures(): FeatureConfig {

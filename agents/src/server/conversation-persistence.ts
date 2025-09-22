@@ -15,6 +15,7 @@ import type {
 import { ConversationBridge } from '../agents/ai-lib-agents/conversation-bridge.js'
 import type { EnhancedAgentContext } from '../agents/ai-lib-agents/types.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
+import { MAX_PROMPT_LENGTH } from '../services/features.js'
 
 export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
   private conversationBridge: ConversationBridge
@@ -45,6 +46,10 @@ export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
     // Validate appId
     if (!context.appId) {
       throw new Error('appId is required in context')
+    }
+    
+    if (message && message.length > MAX_PROMPT_LENGTH) {
+      throw new Error(`Message exceeds maximum length of ${MAX_PROMPT_LENGTH} characters`)
     }
 
     // Validate that the app exists

@@ -11,6 +11,7 @@ import {
 } from '../agents/ai-lib-agents/index.js'
 import { AgentsMessagePersistence } from './conversation-persistence.js'
 import { logger } from '../logging/index.js'
+import { MAX_PROMPT_LENGTH } from '../services/features.js'
 
 /**
  * Create and setup the AI-Lib WebSocket server
@@ -32,14 +33,20 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       // Built-in message persistence
       messagePersistence,
       
-      // Context extractor to validate appId (still needed for validation)
+      // Context extractor to validate appId and message length
       contextExtractor: (rawContext: Record<string, unknown>) => {
         // Extract appId from context metadata
         const metadata = rawContext.metadata as any
         const appId = metadata?.appId
+        const message = rawContext.message as string
         
         if (!appId || typeof appId !== 'string') {
           throw new Error('appId is required in context.metadata.appId')
+        }
+        
+        // Validate message length - same limit as frontend
+        if (message && typeof message === 'string' && message.length > MAX_PROMPT_LENGTH) {
+          throw new Error(`Message exceeds maximum length of ${MAX_PROMPT_LENGTH} characters`)
         }
         
         console.log('✅ Validated appId:', appId)

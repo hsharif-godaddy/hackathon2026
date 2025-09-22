@@ -8,6 +8,7 @@ import { text } from '@ux/text'
 import SendIcon from '@ux/icon/send'
 import { HeroSectionProps, HeroSectionRef } from './types'
 import { generateClickEID } from '@/utils/instrumentation'
+import { MAX_PROMPT_LENGTH } from '@/lib/features'
 
 const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   promptText,
@@ -24,11 +25,11 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   const lastErrorClearRef = useRef<string>('')
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
 
-  const { 
+  const {
     isAuthenticated,
     handleSignIn
   } = useAuth(onShowMockLogin);
-  
+
   // Detect Safari browser
   const isSafari = useMemo(() => {
     if (typeof window === 'undefined') return false
@@ -60,7 +61,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
   const typeText = useCallback(async (targetText: string) => {
     if (isLoading) return
-    
+
     // Prevent animation if text is already the same
     if (displayText === targetText) return
 
@@ -72,10 +73,10 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     }
 
     const typingSpeed = 2
-    
+
     setIsTyping(true)
     animationQueueRef.current = [targetText]
-    
+
     // First, clear existing text with backspace effect
     const currentText = displayText
     for (let i = currentText.length; i >= 0; i--) {
@@ -83,7 +84,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       setDisplayText(currentText.slice(0, i))
       await new Promise(resolve => setTimeout(resolve, typingSpeed))
     }
-    
+
     // Then type the new text
     for (let i = 0; i <= targetText.length; i++) {
       if (animationQueueRef.current[0] !== targetText) return // Animation was interrupted
@@ -95,7 +96,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       }
       await new Promise(resolve => setTimeout(resolve, typingSpeed))
     }
-    
+
     setIsTyping(false)
     animationQueueRef.current = []
   }, [isLoading, displayText, setPromptText, isSafari])
@@ -105,18 +106,18 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   }), [typeText])
   return (
     <Box className="text-center flex flex-col gap-4">
-      <text.h1 
+      <text.h1
         as='heading'
-        size={ 3 }
+        size={3}
       >
         What would you like to{' '}
-        <text.span as='heading' size={ 3 } className='ai-text-gradient'>
+        <text.span as='heading' size={3} className='ai-text-gradient'>
           build today?
         </text.span>
       </text.h1>
 
       <text.p
-        size={ 2 }
+        size={2}
         className='max-w-3xl mx-auto'
       >
         Describe your idea and watch our AI team of experts bring it to life. From concept to production, we handle everything.
@@ -128,7 +129,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
           <Alert
             emphasis="critical"
             title="Error"
-            actions={ <Button design="inline" text="Dismiss" onClick={() => setError(null)} /> }
+            actions={<Button design="inline" text="Dismiss" onClick={() => setError(null)} />}
           >
             {error}
           </Alert>
@@ -137,18 +138,18 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
       <div className="w-full max-w-2xl mx-auto my-16">
         {/* Display Login button for unauthenticated users */}
-        { !isAuthenticated && (
-          <Button 
+        {!isAuthenticated && (
+          <Button
             onClick={() => handleSignIn(window.location.href)}
             design='primary'
             text='Sign In to Continue'
-            data-eid={ generateClickEID('homepage.hero.sign_in') }
+            data-eid={generateClickEID('homepage.hero.sign_in')}
           />
         )}
         {/* Display Textarea for authenticated users */}
-        { isAuthenticated && (
+        {isAuthenticated && (
           <Box gap="lg">
-            <Box 
+            <Box
               className="relative rounded-xl!"
               elevation="float"
             >
@@ -167,27 +168,41 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 }}
                 rows={5}
                 disabled={isLoading}
+                maxLength={MAX_PROMPT_LENGTH + 1}
                 className="relative z-10 w-full p-5 text-md font-medium rounded-lg resize-none border-0 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 placeholder={isTyping ? "" : "Describe the application you'd like to build..."}
               />
-              <Button 
+              <Button
                 onClick={onStartBuilding}
-                data-partial={ !isLoading ? "componentAiro" : "componentBrand" }
-                data-eid={ generateClickEID('homepage.prompt.submit') }
-                disabled={!promptText.trim() || isLoading || isTyping}
+                data-partial={!isLoading ? "componentAiro" : "componentBrand"}
+                data-eid={generateClickEID('homepage.prompt.submit')}
+                disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
                 design='primary'
                 className="group cursor-pointer absolute right-4 bottom-4 mb-0.5 transition-all flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed z-10"
                 text={isLoading ? "Building..." : "Start Building"}
                 icon={isLoading ? <Spinner size='sm' /> : <SendIcon className="w-4 h-4" />}
               />
+
+              {promptText.length >= MAX_PROMPT_LENGTH && (
+                <div className="mt-2 text-left px-5">
+                  <text.p
+                    size={0}
+                    className="font-medium"
+                    style={{ color: '#ef4444' }}
+                  >
+                    Character limit reached ({MAX_PROMPT_LENGTH.toLocaleString()})
+                  </text.p>
+                </div>
+              )}
             </Box>
-            <text.p size={ -1 } className='max-w-lg mx-auto'>
+            
+            <text.p size={-1} className='max-w-lg mx-auto'>
               AI can make mistakes, so double check its responses. By using Airo App Builder, you agree to our <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/ai-terms-of-use">Terms</Button> and <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/privacy-policy">Privacy Policy</Button>
             </text.p>
           </Box>
         )}
-      </div>
-    </Box>
+    </div>
+    </Box >
   )
 })
 

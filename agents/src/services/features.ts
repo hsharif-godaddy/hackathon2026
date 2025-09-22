@@ -24,6 +24,11 @@ interface AgentFeatureConfig {
 }
 
 /**
+ * Application constants
+ */
+export const MAX_PROMPT_LENGTH = 40000
+
+/**
  * Parse environment variables and return agent feature configuration
  */
 function parseEnvironmentFeatures(): AgentFeatureConfig {
