@@ -37,6 +37,7 @@ export interface StreamingMessage {
   toolCalls: ToolCall[]           // Tool invocations
   timestamp: Date
   isComplete: boolean
+  maxStepsReached?: boolean        // True when agent hit max steps limit
   metadata?: {
     usage?: {
       inputTokens: number
@@ -56,6 +57,7 @@ export interface ChatMessage {
   segments?: StreamSegment[]       // Preserved for rich display
   toolCalls?: ToolCall[]
   timestamp: Date
+  maxStepsReached?: boolean        // True when agent hit max steps limit
   metadata?: {
     usage?: {
       inputTokens: number
@@ -115,6 +117,7 @@ export interface StreamingConversationState {
   appendTextSegment: (content: string) => void
   addToolStartSegment: (toolCall: ToolCall) => void
   addToolResultSegment: (toolCall: ToolCall) => void
+  markMaxStepsReached: () => void
   
   // === APP CONTEXT ACTIONS ===
   
@@ -320,6 +323,18 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     
     set({ activeStream: updatedStream })
   },
+
+  markMaxStepsReached: () => {
+    const { activeStream } = get()
+    if (!activeStream) return
+    
+    const updatedStream = {
+      ...activeStream,
+      maxStepsReached: true
+    }
+    
+    set({ activeStream: updatedStream })
+  },
   
   updateToolInStream: (toolId: string, updates: Partial<ToolCall>) => {
     const { activeStream } = get()
@@ -347,6 +362,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       segments: activeStream.segments,
       toolCalls: activeStream.toolCalls,
       timestamp: activeStream.timestamp,
+      maxStepsReached: activeStream.maxStepsReached,
       metadata: {
         ...activeStream.metadata,
         ...metadata
@@ -635,6 +651,7 @@ export const useStartNewStream = () => useStreamingConversationStore(state => st
 export const useAppendTextSegment = () => useStreamingConversationStore(state => state.appendTextSegment)
 export const useAddToolStartSegment = () => useStreamingConversationStore(state => state.addToolStartSegment)
 export const useAddToolResultSegment = () => useStreamingConversationStore(state => state.addToolResultSegment)
+export const useMarkMaxStepsReached = () => useStreamingConversationStore(state => state.markMaxStepsReached)
 export const useFinalizeStream = () => useStreamingConversationStore(state => state.finalizeStream)
 export const useAutoSendInitialMessage = () => useStreamingConversationStore(state => state.autoSendInitialMessage)
 export const useLoadConversationHistory = () => useStreamingConversationStore(state => state.loadConversationHistory)

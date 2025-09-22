@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import MarkdownRenderer from './MarkdownRenderer'
-import ToolCallMessage from './ToolCallMessage'
+import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
+import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
+import ToolCallMessage from '@/app/develop/components/ToolCallMessage'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 
 interface StreamingIntegratedResponseProps {
@@ -232,9 +233,9 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
               {hasToolCalls && (
                 <div className="space-y-2">
                   {message.toolCalls?.map((toolCall, index) => (
-                    <div key={toolCall.id || `tool-${index}`} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <div key={toolCall.id || `tool-${index}`} className="border rounded-lg p-3">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-sm text-gray-700">
+                        <span className="font-medium text-sm">
                           🔧 {toolCall.name}
                         </span>
                         <span className={`text-xs px-2 py-1 rounded-full ${
@@ -249,8 +250,8 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                       {/* Tool input */}
                       {toolCall.input && Object.keys(toolCall.input).length > 0 && (
                         <div className="mb-2">
-                          <div className="text-xs text-gray-600 mb-1">Input:</div>
-                          <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
+                          <div className="text-xs mb-1">Input:</div>
+                          <pre className="text-xs p-2 rounded overflow-x-auto">
                             {JSON.stringify(toolCall.input, null, 2)}
                           </pre>
                         </div>
@@ -259,14 +260,14 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                       {/* Tool result */}
                       {toolCall.result && (
                         <div>
-                          <div className="text-xs text-gray-600 mb-1">Result:</div>
+                          <div className="text-xs mb-1">Result:</div>
                           <div className="text-sm">
                             {typeof toolCall.result === 'string' ? (
-                              <div className="bg-gray-100 p-2 rounded text-xs font-mono">
+                              <div className="p-2 rounded text-xs font-mono">
                                 {toolCall.result}
                               </div>
                             ) : (
-                              <pre className="text-xs bg-gray-100 p-2 rounded overflow-x-auto">
+                              <pre className="text-xs p-2 rounded overflow-x-auto">
                                 {JSON.stringify(toolCall.result, null, 2)}
                               </pre>
                             )}
@@ -277,8 +278,8 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                       {/* Tool error */}
                       {toolCall.error && (
                         <div className="mt-2">
-                          <div className="text-xs text-red-600 mb-1">Error:</div>
-                          <div className="text-xs text-red-800 bg-red-50 p-2 rounded">
+                          <div className="text-xs text-intents-ux-feedbackCritical-feedbackColor mb-1">Error:</div>
+                          <div className="text-xs text-rintents-ux-feedbackCritical-feedbackColor p-2 rounded">
                             {toolCall.error}
                           </div>
                         </div>
@@ -290,6 +291,14 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
             </>
           )}
         </div>
+
+        {/* Max steps reached notification */}
+        {!message.maxStepsReached && (
+          <StreamingAlertMessage
+            title="Maximum reasoning steps reached"
+            message="Content generation stopped here to maintain quick responses, but more steps are needed to complete this task. Continue with a follow-up question or break down your request into smaller parts." 
+          />
+        )}
 
         {/* Thinking indicator for active streams */}
         {isActiveStream && !isComplete && showThinkingIndicator && thinkingIndicator()}

@@ -63,7 +63,7 @@
     "zod": "^3.25.76"
   },
   "peerDependencies": {
-    "@ai-sdk/anthropic": "^1.0.0"
+    "@ai-sdk/anthropic": "^2.0.0"
   },
   "peerDependenciesMeta": {
     "@ai-sdk/anthropic": {

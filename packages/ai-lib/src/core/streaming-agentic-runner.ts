@@ -175,13 +175,15 @@ export class StreamingAgenticRunner {
         }
 
         // Emit step completion
+        const maxStepsReached = stepNumber === maxSteps
         const stepCompleteEvent: StreamingEvent = {
           type: 'step_complete',
           step: stepNumber,
           content: stepContent,
           data: {
             toolCalls: stepToolCalls,
-            isFinal: stepNumber === maxSteps || !this.shouldContinue(finalResult),
+            isFinal: maxStepsReached || !this.shouldContinue(finalResult),
+            maxStepsReached: maxStepsReached,
             usage: finalResult.usage
           }
         }

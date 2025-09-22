@@ -15,6 +15,7 @@ import {
   useAppendTextSegment,
   useAddToolStartSegment,
   useAddToolResultSegment,
+  useMarkMaxStepsReached,
   useFinalizeStream,
   useSetWebSocketState,
   useSetStreamingState,
@@ -35,6 +36,7 @@ export function useStreamingWebSocket() {
   const appendTextSegment = useAppendTextSegment()
   const addToolStartSegment = useAddToolStartSegment()
   const addToolResultSegment = useAddToolResultSegment()
+  const markMaxStepsReached = useMarkMaxStepsReached()
   const finalizeStream = useFinalizeStream()
   const setWebSocketState = useSetWebSocketState()
   const setStreamingState = useSetStreamingState()
@@ -164,6 +166,11 @@ export function useStreamingWebSocket() {
           break
           
         case 'step_complete':
+          // Check if this step completion indicates max steps reached
+          if (data.data?.maxStepsReached === true) {
+            console.log('🛑 Max steps reached - marking in state')
+            markMaxStepsReached()
+          }
           break
           
         case 'complete':
@@ -198,6 +205,7 @@ export function useStreamingWebSocket() {
     appendTextSegment,
     addToolStartSegment,
     addToolResultSegment,
+    markMaxStepsReached,
     finalizeStream,
     setWebSocketState,
     setStreamingState,
