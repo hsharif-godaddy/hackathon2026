@@ -27,12 +27,12 @@ The persistent storage architecture supports two distinct deployment modes:
 graph TB
     subgraph "Development Storage Model"
         subgraph "Ephemeral Volume"
-            EV2["NOMAD_ALLOC_DIR/customer-app/siteId"]
+            EV2["NOMAD_ALLOC_DIR/customer-app/appId"]
             EV2 --> |"/app"| APP2[Dev Container]
         end
         
         subgraph "Ceph Persistent"
-            CEPH2["Ceph: /mnt/ceph/.../siteId/git-repo"]
+            CEPH2["Ceph: /mnt/ceph/.../appId/git-repo"]
             CEPH2 --> |"bind mount /app/.git"| APP2
         end
     end
@@ -51,12 +51,12 @@ graph TB
 graph TB
     subgraph "Production Storage Model"
         subgraph "Ephemeral Volume"
-            EV2["NOMAD_ALLOC_DIR/customer-app/siteId"]
+            EV2["NOMAD_ALLOC_DIR/customer-app/appId"]
             EV2 --> |"/app"| APP2[Prod Container]
         end
         
         subgraph "Ceph Persistent"
-            CEPH2["Ceph: /mnt/ceph/.../siteId/prod"]
+            CEPH2["Ceph: /mnt/ceph/.../appId/prod"]
             CEPH2 --> |"bind mount /app/prod"| APP2
         end
     end
@@ -83,13 +83,13 @@ Example Nomad Job:
 // Development container configuration
 Config: {
   volumes: [
-    `..${NOMAD_ALLOC_DIR}/customer-app/${siteId}:/app`
+    `..${NOMAD_ALLOC_DIR}/customer-app/${appId}:/app`
   ],
   mounts: [
     {
       type: 'bind',
       readonly: false,
-      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${accountId}/${siteId}/git-repo`,
+      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/git-repo`,
       target: '/app/.git'
     }
   ]
@@ -106,13 +106,13 @@ Example Nomad Job:
 // Production container configuration  
 Config: {
   volumes: [
-    `..${NOMAD_ALLOC_DIR}/customer-app/${siteId}:/app`
+    `..${NOMAD_ALLOC_DIR}/customer-app/${appId}:/app`
   ],
   mounts: [
     {
       type: 'bind',
       readonly: false,
-      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${accountId}/${siteId}/prod`,
+      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/prod`,
       target: '/prod'
     }
   ]
@@ -123,8 +123,7 @@ Config: {
 
 ```text
 /mnt/ceph/${cephMountId}/${cephDirNumber}/
-└── ${accountId}/
-    └── ${siteId}/
+    └── ${appId}/
         ├── git-repo/          # Persistent Git repository (development)
         ├── prod/              # Production build artifacts (production)
         │   ├── v20240915-143022/  # Versioned build (timestamp)
@@ -141,7 +140,7 @@ Config: {
 
 | Mount Source | Container Target | Purpose | Persistence |
 |-------------|------------------|---------|-------------|
-| `${NOMAD_ALLOC_DIR}/customer-app/${siteId}` | `/app` | Application runtime directory | Ephemeral |
+| `${NOMAD_ALLOC_DIR}/customer-app/${appId}` | `/app` | Application runtime directory | Ephemeral |
 | `/mnt/ceph/.../git-repo` | `/app/.git` | Git repository and metadata | Persistent |
 | `/mnt/ceph/.../assets` | `/app/assets` | Large file assets | Persistent |
 | `/mnt/ceph/.../config` | `/config` | Read-only config (db creds, etc) | Persistent |
@@ -150,7 +149,7 @@ Config: {
 
 | Mount Source | Container Target | Purpose | Persistence |
 |-------------|------------------|---------|-------------|
-| `${NOMAD_ALLOC_DIR}/customer-app/${siteId}` | `/app` | Production runtime directory | Ephemeral |
+| `${NOMAD_ALLOC_DIR}/customer-app/${appId}` | `/app` | Production runtime directory | Ephemeral |
 | `/mnt/ceph/.../prod/${version}` | `/prod` | Built application files | Persistent |
 | `/mnt/ceph/.../assets` | `/app/assets` | Large file assets | Persistent |
 | `/mnt/ceph/.../config` | `/config` | Read-only config (db creds, etc) | Persistent |
@@ -348,16 +347,16 @@ chmod 755 /app
 
 ```text
 /mnt/ceph/${cephMountId}/${cephDirNumber}/
-├── customer_001/          # Isolated customer directory
-│   └── site_abc/
-│       └── git-repo/
-├── customer_002/          # Different customer, different directory
-│   └── site_xyz/
-│       └── git-repo/
+├── app_001/          # Isolated customer and app directory
+│   └── git-repo/
+|   └── ...
+├── app_002/          # Different customer, different app, different directory
+│   └── git-repo/
+|   └── ...
 ```
 
 ---
 
-*Document Version: 1.0*  
-*Last Updated: September 15, 2025*  
+*Document Version: 1.0*
+*Last Updated: September 15, 2025*
 *Status: Implementation Proposal*

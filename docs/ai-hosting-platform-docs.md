@@ -29,9 +29,9 @@ graph TB
         end
         
         subgraph "Serving Pipeline"
-            CS1[Customer Service 1]
-            CS2[Customer Service 2]
-            CSN[Customer Service N]
+            CA1[Customer App 1]
+            CA2[Customer App 2]
+            CAN[Customer App N]
 
             ING[Ingress Tier]
             CEPH[Ceph Network FS]
@@ -39,25 +39,25 @@ graph TB
         end
         
         QW --> SQS
-        NOM --> CS1
-        NOM --> CS2
-        NOM --> CSN
-        ING --> CS1
-        ING --> CS2
-        ING --> CSN
+        NOM --> CA1
+        NOM --> CA2
+        NOM --> CAN
+        ING --> CA1
+        ING --> CA2
+        ING --> CAN
 
-        CS1 --> CEPH
-        CS2 --> CEPH
-        CSN --> CEPH
+        CA1 --> CEPH
+        CA2 --> CEPH
+        CAN --> CEPH
 
-        CS1 --> MySQL
-        CS2 --> MySQL
-        CSN --> MySQL
+        CA1 --> MySQL
+        CA2 --> MySQL
+        CAN --> MySQL
         
     end
     
     AB --> PM
-    AB --> CS1
+    AB --> CA1
     PM --> SQS
     QW --> NOM
 ```
@@ -69,7 +69,7 @@ graph TB
 The Airo Builder App serves as the primary interface for users to interact with the platform. It provides:
 
 - **Communication with Platform Manager**: Manages app state and deployment configurations
-- **Direct Agent Communication**: Interfaces with customer service agents for app management
+- **Direct Agent Communication**: Interfaces with customer app agents for app management
 - **Service Discovery**: Utilizes the Platform Manager's location service to resolve agent URLs
 
 ### 2. Platform Manager Service
@@ -85,120 +85,11 @@ The Platform Manager acts as the central control plane for the entire platform:
 
 ### 3. Hosting Cell
 
-The Hosting Cell is a self-contained infrastructure unit that hosts customer services.
-
-#### Infrastructure Components
-
-| Component | Function |
-|-----------|----------|
-| **Ingress Tier** | Routes external traffic to appropriate customer services |
-| **Nomad** | Orchestrates container deployment and lifecycle management |
-| **Queue Worker** | Processes create/update/delete operations from SQS |
-| **Ceph Network FS** | Provides persistent storage across containers |
-| **MySQL Servers** | Database infrastructure for customer applications |
-
-## Customer Service Architecture
-
-Each customer service runs as a Nomad job consisting of multiple Docker containers:
-
-```mermaid
-graph LR
-    subgraph "Customer Service (Nomad Job)"
-        subgraph "Agent Container"
-            A[Agent<br/>Domain: *.agents.example.com]
-            A --> |Controls| DC1
-            A --> |Controls| DC2
-            A --> |Controls| PC1
-            A --> |Controls| PC2
-        end
-        
-            DC1[Dev App 1<br/>Domain: *.dev.example.com]
-            DC2[Dev App 2<br/>Domain: *.dev.example.com]
-        
-            PC1[Prod App 1<br/>Domain: *.prod.example.com<br/>or custom domain]
-            PC2[Prod App 2<br/>Domain: *.prod.example.com<br/>or custom domain]
-    end
-```
-
-### Container Types
-
-#### 1. Agent Container
-- **Purpose**: Central management interface for the customer service
-- **Capabilities**:
-  - Restart other containers
-  - Execute tasks on dev/prod containers
-  - Service registration with ingress
-- **Domain**: Random subdomain (structure TBD)
-- **Mount Points**:
-  - `/apps` - Shared ephemeral volume
-  - `/git` - Customer's Ceph directory
-  - `/assets` - Customer's assets directory
-
-#### 2. Development Containers
-- **Purpose**: Run customer applications in development mode
-- **Quantity**: One per application
-- **Domain**: Random subdomain on dedicated development domain
-- **Mount Points**:
-  - `/app` - Maps to `/apps/{identifier}` from shared volume
-  - `/git` - Maps to `/git/{identifier}` from Ceph
-  - `/assets/{identifier}` - Customer's app-specific assets
-
-#### 3. Production Containers
-- **Purpose**: Run customer applications in production mode
-- **Quantity**: One per deployed application
-- **Domain**: 
-  - Default: Random subdomain on production domain
-  - Optional: Customer-specified custom domain
-- **Mount Points**:
-  - `/app` - Maps to `/apps/{identifier}` from shared volume
-  - `/git` - Maps to `/git/{identifier}` from Ceph
-  - `/assets/{identifier}` - Customer's app-specific assets
+The hosting cell architecture can be found at [On-Prem Hosting Architecture](onprem-hosting-architecture.md).
 
 ## Storage Architecture
 
-```mermaid
-graph TB
-    subgraph "Storage Layers"
-        subgraph "Ephemeral Storage (Nomad Volume)"
-            EV[Shared Volume]
-            EV --> |/apps| AG[Agent]
-            EV --> |/apps/app1 → /app| D1[Dev Container 1]
-            EV --> |/apps/app2 → /app| D2[Dev Container 2]
-            EV --> |/apps/app1 → /app| P1[Prod Container 1]
-        end
-        
-        subgraph "Persistent Storage (Ceph)"
-            subgraph "Git Storage"
-                GIT[Customer Git Dir]
-                GIT --> |/git| AG
-                GIT --> |/git/app1 → /git| D1
-                GIT --> |/git/app2 → /git| D2
-            end
-            
-            subgraph "Assets Storage"
-                ASSETS[Customer Assets Dir]
-                ASSETS --> |/assets| AG
-                ASSETS --> |/assets/app1| D1
-                ASSETS --> |/assets/app2| D2
-            end
-        end
-    end
-```
-
-### Storage Types
-
-#### Ephemeral Storage
-- **Technology**: Nomad volumes
-- **Purpose**: Temporary runtime data and application code
-- **Lifecycle**: Persists for the duration of the Nomad job
-
-#### Persistent Storage
-- **Technology**: Ceph network filesystem
-- **Purpose**: Long-term storage of:
-  - Git repositories
-  - Customer assets
-  - Application data
-- **Lifecycle**: Persists beyond container restarts and redeployments
+The storage architecture can be found at [Persistent Storage Architecture](persistent-storage-architecture.md).
 
 ## Workflow Operations
 
@@ -257,8 +148,8 @@ sequenceDiagram
 ## Security Considerations
 
 ### Network Isolation
-- Each customer service runs in isolated Nomad jobs
-- Container-to-container communication restricted within customer boundaries
+- Each application runs in isolated Nomad jobs
+- Container-to-container communication restricted within application boundaries
 - Ingress tier provides traffic filtering and routing
 
 ### Access Control
@@ -267,12 +158,12 @@ sequenceDiagram
 - File system access controlled through mount point isolation
 
 ### Data Isolation
-- Customer data segregated in Ceph using unique directories
+- Application data segregated in Ceph using unique directories
 - Database isolation per customer app, by provisioning a user and database per app
 - Ephemeral volumes restricted to single customer service
 
 ---
 
-*Document Version: 1.0*  
+*Document Version: 1.0*
 *Last Updated: 2025-08-22
 *Status: Initial Draft*
