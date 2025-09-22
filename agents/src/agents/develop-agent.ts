@@ -19,6 +19,7 @@ import { getTemplateDescriptionPath, getModularPromptPaths, getValidatedTemplate
  * Develop Agent - AI developer for building web applications
  */
 
+
 // Initialize git tool and app repository for branch safety checks
 const gitTool = new GitTool()
 const appRepo = new AppRepository()
@@ -207,7 +208,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
         description: 'MySQL database operations, schema design, and database integration',
       },
       {
-        agentName: 'colorScheme',
+        agentName: 'color-scheme',
         description: 'Color palette design and visual branding for applications',
       },
     ],

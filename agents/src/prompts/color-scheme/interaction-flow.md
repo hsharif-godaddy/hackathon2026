@@ -16,15 +16,13 @@ Present interactive elements:
 - Reference style examples
 
 ## Phase 3: Palette Creation
-Generate 4-5 distinct palette options that include:
+Generate exactly 1 finalized palette that includes:
 - Primary color (main brand/action color)
 - Secondary color (supporting elements)
 - Accent color (highlights, CTAs, links)
 - Neutral colors (backgrounds, surfaces, text)
 - Semantic colors (success, warning, error, info)
 
-## Phase 4: Final Selection & Customization
-- Present palettes visually with real UI examples
-- Allow fine-tuning of selected palette
-- Provide accessibility validation
-- Generate usage guidelines
+## Phase 4: Output & Completion
+- Return one concise message following the Output format for handoff
+- Ensure WCAG AA compliance

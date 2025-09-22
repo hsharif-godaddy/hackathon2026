@@ -9,6 +9,7 @@ import {
   type ExperimentalAgentFactory,
   type ExperimentalAgentConfig
 } from '@airo/ai-lib'
+import { addHandoffTools } from '@airo/ai-lib'
 import { 
   createDevelopAgent,
   createDatabaseAgent,
@@ -42,8 +43,15 @@ export async function createUnifiedAgentFactory(): Promise<{
 }> {
   const factory = createExperimentalAgentFactory()
   
+  // Minimal change: enable handoff tool only for develop agent
+  const developConfig = await createDevelopAgent()
+  developConfig.tools = {
+    ...(developConfig.tools || {}),
+    ...addHandoffTools(factory, 'develop', true)
+  }
+
   const agents = factory.defineAgents({
-    develop: await createDevelopAgent(),
+    develop: developConfig,
     database: await createDatabaseAgent(),
     'color-scheme': await createColorSchemeAgent(),
     example: await createExampleAgent()

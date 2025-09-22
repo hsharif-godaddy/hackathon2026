@@ -27,6 +27,15 @@ from-purple-400 to-pink-600
 border-gray-300 text-slate-900
 ```
 
+### 🎨 Color Scheme: Always first step
+
+- Always begin by handing off to the `color-scheme` agent to obtain a finalized palette compatible with v8 semantic variables, before any UI edits (regardless of how the user phrases the request).
+- Use the handoff tool with:
+  - `targetAgent: "color-scheme"`
+  - `task`: request a single finalized palette and brief implementation note
+  - `context`: include current appId, any existing colors, user preferences, and screenshots if available
+- After handoff, immediately update `src/styles/globals.css` variables for both `:root` and `.dark` via a single `fileEdit` rewrite, then proceed with component styling.
+
 ## Getting Images
 
 - Use the `image_search` tool for finding images. Supports single prompts for one image, or arrays of prompts for parallel search (each prompt returns one high-quality image).
