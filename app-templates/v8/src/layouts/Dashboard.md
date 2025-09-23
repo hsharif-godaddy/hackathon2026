@@ -136,7 +136,7 @@ import {
   HelpCircle,
   LogOut
 } from 'lucide-react';
-import { Button } from '@/components/shadcn/button';
+import { Button } from '@/components/ui/button';
 
 export default function AdminDashboard() {
   return (
@@ -321,7 +321,7 @@ import {
   Download,
   Filter
 } from 'lucide-react';
-import { Button } from '@/components/shadcn/button';
+import { Button } from '@/components/ui/button';
 
 export default function AnalyticsDashboard() {
   return (
@@ -495,17 +495,4 @@ navigation: {
 
 ## Integration with Other Components
 
-The Dashboard layout works seamlessly with all shadcn/ui components and v7 patterns:
-
-```tsx
-import Dashboard from '@/layouts/Dashboard';
-import { Card } from '@/components/shadcn/card';
-import { BentoGrid } from '@/patterns/BentoGrid';
-import { Section } from '@/patterns/Section';
-
-<Dashboard config={config}>
-  <Section title="Overview" description="Your daily dashboard">
-    <BentoGrid items={dashboardWidgets} />
-  </Section>
-</Dashboard>
-```
+The Dashboard layout works seamlessly with all shadcn/ui components:

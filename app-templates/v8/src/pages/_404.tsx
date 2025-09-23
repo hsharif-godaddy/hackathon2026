@@ -1,6 +1,6 @@
 import { Link } from '../router';
-import { Button } from '../components/shadcn/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/shadcn/card';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 
 export default function NotFoundPage() {
   return (

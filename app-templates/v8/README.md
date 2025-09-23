@@ -1,6 +1,6 @@
-# V3 App Template
+# V8 App Template
 
-A modern, production-ready web application template built with Vite, React 19, Hono, and TypeScript. Designed for AI-assisted development with component introspection and excellent developer experience.
+A modern, production-ready web application template built with Vite, React, and TypeScript. Designed for AI-assisted development with component introspection, layout systems, and excellent developer experience.
 
 ## 🚀 Features
 
@@ -15,18 +15,17 @@ A modern, production-ready web application template built with Vite, React 19, H
 ## 🛠️ Tech Stack
 
 ### Frontend
-- **React 19** - Latest React with concurrent features
-- **TypeScript 5** - Full type safety
-- **Vite 6** - Fast build tool and dev server
+- **React 18+** - Modern React with hooks and concurrent features
+- **TypeScript 5** - Full type safety across the application
+- **Vite 5** - Fast build tool and dev server with HMR
 - **Tailwind CSS 3** - Utility-first CSS framework
-- **shadcn/ui** - Beautiful, accessible components
-- **TanStack Query v5** - Data fetching and caching
-- **React Router DOM v7** - Client-side routing
+- **shadcn/ui** - Beautiful, accessible component library
+- **React Router DOM** - Client-side routing
+- **Framer Motion** - Smooth animations and transitions
 
 ### Backend
-- **Hono v4** - Ultra-fast, TypeScript-first web framework
-- **Zod** - Schema validation
-- **Node.js** - JavaScript runtime
+- **Node.js API** - Simple health check and utilities
+- **TypeScript** - Type-safe backend development
 
 ### Development Tools
 - **ESLint 9** - Code linting
@@ -39,36 +38,50 @@ A modern, production-ready web application template built with Vite, React 19, H
 ## 📁 Project Structure
 
 ```
-v3-app-template/
+v8-app-template/
 ├── src/
-│   ├── frontend/           # Frontend React application
-│   │   ├── components/     # React components
-│   │   │   ├── ui/        # shadcn/ui base components
-│   │   │   └── layout/    # Layout components
-│   │   ├── pages/         # Page components
-│   │   ├── hooks/         # Custom React hooks
-│   │   ├── api/           # API client layer
-│   │   └── styles/        # Global styles
-│   ├── backend/           # Backend Hono application
-│   │   ├── api/           # API routes
-│   │   └── middleware/    # Custom middleware
-│   └── shared/            # Shared code between frontend/backend
-│       ├── types/         # TypeScript type definitions
-│       ├── utils/         # Shared utilities
-│       └── constants/     # Shared constants
-├── plugins/               # Custom Vite plugins
-└── public/                # Static assets
+│   ├── components/        # React components
+│   │   ├── ui/           # shadcn/ui base components (40+ components)
+│   │   ├── ErrorBoundary.tsx
+│   │   └── GeometricSpinner.tsx
+│   ├── layouts/          # Layout systems
+│   │   ├── Website.tsx   # Main website layout
+│   │   ├── Dashboard.tsx # Dashboard layout
+│   │   ├── Website.md    # Layout documentation
+│   │   └── parts/        # Layout components
+│   │       ├── Header.tsx
+│   │       └── Footer.tsx
+│   ├── pages/            # Page components
+│   │   ├── index.tsx     # Homepage
+│   │   └── _404.tsx      # 404 page
+│   ├── lib/              # Utilities and API
+│   │   ├── utils.ts      # Utility functions
+│   │   └── api-client.ts # API client
+│   ├── api/              # Backend API routes
+│   │   └── health.ts     # Health check endpoint
+│   ├── styles/           # Global styles
+│   │   └── globals.css
+│   ├── test/             # Test setup
+│   │   └── setup.ts
+│   ├── App.tsx           # Root application component
+│   ├── main.tsx          # Application entry point
+│   ├── router.ts         # Route definitions
+│   └── routes.tsx        # Route components
+├── dev-tools/            # Development mode enhancements
+├── source-mapper/        # AI introspection plugin
+├── public/               # Static assets
+└── scripts/              # Development scripts
 ```
 
 ## 📜 Available Scripts
 
-- `npm run dev` - Start development servers with automatic port detection
+- `npm run dev` - Start development server with hot reload
 - `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run test` - Run tests
-- `npm run lint` - Run ESLint
-- `npm run format` - Format code with Prettier
+- `npm run preview` - Preview production build locally
+- `npm run test` - Run Vitest unit tests
+- `npm run lint` - Run ESLint code linting
 - `npm run type-check` - Run TypeScript type checking
+- `npm run setup` - Initialize project with dependencies
 
 ## 🎨 UI Components
 
@@ -78,26 +91,41 @@ This template includes shadcn/ui components that are:
 - **Consistent** - Design system with CSS variables
 - **Copy-paste friendly** - Own your components
 
-To add new shadcn/ui components:
+The template includes 40+ pre-configured shadcn/ui components:
+- **Layout**: Card, Separator, Tabs, Sheet, Dialog
+- **Forms**: Button, Input, Textarea, Select, Checkbox, Switch
+- **Navigation**: Navigation Menu, Breadcrumb, Pagination
+- **Feedback**: Alert, Badge, Progress, Skeleton, Sonner
+- **Data Display**: Table, Avatar, Calendar, Hover Card
+- **Overlays**: Popover, Tooltip, Alert Dialog, Drawer
+- **Interactive**: Accordion, Collapsible, Command, Context Menu
+
+To add new components:
 ```bash
-npx shadcn-ui@latest add button
+npx shadcn-ui@latest add component-name
 ```
 
 ## 🧠 AI Integration
 
 ### Component Introspection
 
-The custom Vite plugin adds source information to components in development:
+The custom source-mapper plugin adds metadata to components in development:
 
 ```html
-<div data-source-file="/src/client/components/Button.tsx" 
+<div data-source-file="/src/components/Button.tsx" 
      data-source-line="15" 
      data-source-component="Button">
   Click Me
 </div>
 ```
 
-This helps AI tools understand your application structure.
+### Development Mode Integration
+
+The dev-tools package provides:
+- **Element selection**: Click to identify components
+- **Live editing**: Modify component props in real-time
+- **Source mapping**: Navigate directly to component source
+- **AI integration**: Enhanced context for AI development tools
 
 ### AI-Friendly Patterns
 
@@ -106,13 +134,29 @@ This helps AI tools understand your application structure.
 - **Type-first approach**: Comprehensive TypeScript types
 - **Standard patterns**: CRUD operations, form handling, error boundaries
 
-## 🗃️ API Routes
+## 🗃️ API & Layouts
 
-The template includes a minimal API setup:
-
+### API Routes
+The template includes:
 - `GET /api/health` - Health check endpoint
+- Extensible API client setup in `src/lib/api-client.ts`
 
-Ready for you to add your own API routes!
+### Layout System
+Two pre-built layout options:
+
+**Website Layout** (`src/layouts/Website.tsx`):
+- Configurable header with navigation and actions
+- Optional footer with multiple variants
+- Responsive design with mobile menu
+- Perfect for marketing sites and applications
+
+**Dashboard Layout** (`src/layouts/Dashboard.tsx`):
+- Sidebar navigation
+- Header with user actions
+- Content area with proper spacing
+- Ideal for admin panels and dashboards
+
+See `src/layouts/*.md` for detailed usage documentation.
 
 ## 🧪 Testing
 
@@ -145,20 +189,30 @@ npm run build
 Copy `env.example` to `.env` and configure:
 
 ```env
-VITE_APP_NAME=V3 App Template
-VITE_API_URL=http://localhost:3000/api
+VITE_APP_NAME=V8 App Template
+VITE_API_URL=http://localhost:5173/api
 NODE_ENV=development
-PORT=3000
+PORT=5173
 ```
 
 ### Custom Plugins
 
-The source mapper plugin can be configured in `vite.config.ts`:
+**Source Mapper Plugin**: Adds component introspection for AI tools
+**Dev Tools Plugin**: Enables development mode enhancements
+**Fullstory Integration**: Optional user analytics (configurable)
+
+Configure in `vite.config.ts`:
 
 ```typescript
-sourceMapperPlugin({
-  enabled: mode === 'development',
-  include: /\.(tsx?|jsx?)$/,
+import { defineConfig } from 'vite'
+import { sourceMapperPlugin } from './source-mapper'
+import { devToolsPlugin } from './dev-tools'
+
+export default defineConfig({
+  plugins: [
+    sourceMapperPlugin(),
+    devToolsPlugin(),
+  ]
 })
 ```
 
@@ -171,16 +225,16 @@ sourceMapperPlugin({
 - Prefer function components with hooks
 
 ### State Management
-- Use TanStack Query for server state
-- Keep local state in components
-- Use React Context for app-wide state
-- Consider Zustand for complex client state
+- Keep local state in components with useState/useReducer
+- Use React Context for app-wide state (theme, auth)
+- Consider external libraries (Zustand, Redux Toolkit) for complex state
+- Leverage layout props for shared configuration
 
-### API Design
-- Use Zod for request validation
-- Return consistent error responses
-- Include proper HTTP status codes
-- Log errors appropriately
+### Layout Usage
+- Always use Website or Dashboard layout as page wrapper
+- Configure layouts via props, not custom implementations
+- Follow layout documentation in `src/layouts/*.md`
+- Use consistent navigation and header patterns
 
 ## 🤝 Contributing
 
@@ -200,10 +254,11 @@ MIT License - feel free to use this template for any project.
 Built with amazing open-source tools:
 - [Vite](https://vitejs.dev/)
 - [React](https://react.dev/)
-- [Hono](https://hono.dev/)
 - [shadcn/ui](https://ui.shadcn.com/)
 - [Tailwind CSS](https://tailwindcss.com/)
-- [TanStack Query](https://tanstack.com/query/)
+- [TypeScript](https://www.typescriptlang.org/)
+- [Framer Motion](https://www.framer.com/motion/)
+- [Vitest](https://vitest.dev/)
 
 ---
 

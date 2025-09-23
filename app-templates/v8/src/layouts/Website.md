@@ -255,135 +255,32 @@ layout: {
 }
 ```
 
-## Complete Example
-
-Here's a full example of a landing page using the Website layout:
+## Basic Usage Example
 
 ```tsx
 import Website from '@/layouts/Website';
-import { Button } from '@/components/shadcn/button';
-import { HeroShowcase } from '@/patterns/HeroShowcase';
-import { BentoGrid } from '@/patterns/BentoGrid';
-import { FeatureSpotlight } from '@/patterns/FeatureSpotlight';
-import Section from '@/patterns/Section';
+import { Button } from '@/components/ui/button';
 
-export default function LandingPage() {
+export default function HomePage() {
   return (
     <Website config={{
       header: {
-        logo: { text: 'TechCorp' },
+        logo: { text: 'My App' },
         navItems: [
-          { href: '#features', label: 'Features' },
-          { href: '#pricing', label: 'Pricing' },
-          { href: '#about', label: 'About' },
-          { href: '#contact', label: 'Contact' }
-        ],
-        actions: (
-          <>
-            <Button variant="ghost">Sign In</Button>
-            <Button variant="default">Get Started</Button>
-          </>
-        ),
-        sticky: true
+          { href: '/', label: 'Home' },
+          { href: '/about', label: 'About' },
+          { href: '/contact', label: 'Contact' }
+        ]
       },
       footer: {
-        variant: 'columns',
-        logo: { text: 'TechCorp' },
-        description: 'Innovative solutions for modern businesses.',
-        columns: [
-          {
-            title: 'Product',
-            links: [
-              { href: '/features', label: 'Features' },
-              { href: '/pricing', label: 'Pricing' },
-              { href: '/integrations', label: 'Integrations' }
-            ]
-          },
-          {
-            title: 'Resources',
-            links: [
-              { href: '/docs', label: 'Documentation' },
-              { href: '/api', label: 'API Reference' },
-              { href: '/guides', label: 'Guides' }
-            ]
-          },
-          {
-            title: 'Company',
-            links: [
-              { href: '/about', label: 'About Us' },
-              { href: '/blog', label: 'Blog' },
-              { href: '/contact', label: 'Contact' }
-            ]
-          }
-        ],
-        social: {
-          twitter: 'https://twitter.com/techcorp',
-          github: 'https://github.com/techcorp',
-          linkedin: 'https://linkedin.com/company/techcorp'
-        },
-        copyright: '© 2024 TechCorp. All rights reserved.'
-      },
-      layout: {
-        maxWidth: 'xl',
-        padding: true
+        variant: 'simple'
       }
     }}>
-      {/* Hero Section */}
-      <HeroShowcase
-        variant="centered"
-        title="Build Amazing Products"
-        description="Transform your ideas into reality with our powerful platform."
-        image="/hero-image.jpg"
-        actions={
-          <>
-            <Button size="lg" variant="default">Start Free Trial</Button>
-            <Button size="lg" variant="outline">Watch Demo</Button>
-          </>
-        }
-      />
-
-      {/* Features Section */}
-      <Section id="features" title="Features" className="py-24">
-        <BentoGrid
-          items={[
-            {
-              title: "Lightning Fast",
-              description: "Optimized for speed and performance",
-              span: 2
-            },
-            {
-              title: "Secure",
-              description: "Enterprise-grade security",
-              span: 1
-            },
-            {
-              title: "Scalable",
-              description: "Grows with your business",
-              span: 1
-            },
-            {
-              title: "24/7 Support",
-              description: "Always here to help",
-              span: 2
-            }
-          ]}
-        />
-      </Section>
-
-      {/* Spotlight Section */}
-      <Section className="py-24 bg-gray-50">
-        <FeatureSpotlight
-          variant="split"
-          title="Powerful Analytics"
-          description="Get insights that matter with our advanced analytics dashboard."
-          image="/analytics-screenshot.png"
-          features={[
-            "Real-time data processing",
-            "Custom reports and dashboards",
-            "AI-powered insights"
-          ]}
-        />
-      </Section>
+      <div className="container mx-auto px-4 py-16 text-center">
+        <h1 className="text-4xl font-bold mb-4">Welcome to My App</h1>
+        <p className="text-xl mb-8">Build something amazing</p>
+        <Button size="lg">Get Started</Button>
+      </div>
     </Website>
   );
 }
@@ -421,7 +318,7 @@ The Website layout automatically handles mobile responsiveness:
 ## Important Notes
 
 1. **Always wrap pages**: Every page component must use the Website layout as its root element
-2. **Use patterns for content**: Combine patterns like HeroShowcase, BentoGrid, etc. inside the Website layout
+2. **Use available components**: Use UI components from `@/components/ui/` inside the Website layout
 3. **Don't create custom headers/footers**: Use the configuration options provided
 4. **Read component files**: Always read the actual component files for the most up-to-date props and options
 5. **Maintain consistency**: Use the same header/footer configuration across pages for a cohesive experience

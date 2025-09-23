@@ -1,8 +1,8 @@
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/shadcn/button";
-import { 
-  Menu, 
-  X, 
+import { Button } from "@/components/ui/button";
+import {
+  Menu,
+  X,
   ChevronDown,
   Search,
   Bell,
@@ -77,10 +77,10 @@ const maxWidthClasses = {
   full: "max-w-full",
 };
 
-export default function Dashboard({ 
-  children, 
+export default function Dashboard({
+  children,
   config = {},
-  className 
+  className
 }: DashboardProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -251,7 +251,7 @@ export default function Dashboard({
           {/* Header Actions */}
           <div className="ml-auto flex items-center gap-2">
             {headerActions}
-            
+
             {/* Notifications */}
             {notifications.enabled && (
               <Button variant="ghost" size="icon" className="relative">

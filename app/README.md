@@ -1,89 +1,173 @@
-# Airo AI Builder Website
+# Airo App Builder
 
-A mockup website demonstrating the Airo AI Builder experience, built with Next.js, TypeScript, and Tailwind CSS.
+An AI-powered application development platform that combines artificial intelligence with enterprise-grade hosting and development tools, built with Next.js, TypeScript, and Tailwind CSS.
 
 ## Pages
 
 ### 🏠 Homepage (`/`)
-- Main "What would you like to build today?" CTA
-- Example application links (E-commerce, Chatbot, SaaS, CMS)
-- Feature preview section
-- Clean, modern design inspired by GoDaddy Airo
+- Landing page with hero section and examples
+- Navigation to create new sites or browse existing ones
+- Built with section showcasing platform capabilities
+- Clean, modern design with UXCore design system
 
-### 🤖 Builder Page (`/builder`)
-- Interactive chat interface with Product Manager agent (Alex Chen)
-- Real-time conversation simulation
-- Agent profile sidebar showing specialties and workflow
-- Quick action buttons for common application types
+### 🏗️ Sites Management (`/sites`)
+- View all user sites and their status
+- Create new sites with initial prompts
+- Site status tracking (creating, running, stopped, error)
+- Quick actions for site management
 
-### 💰 Pricing Page (`/pricing`)
-- Three-tier pricing structure:
-  - **Starter** ($29/month): 1,000 tokens, basic features, no advanced datastores
-  - **Professional** ($99/month): 5,000 tokens, full agent team, all datastores
-  - **Enterprise** (Custom): Unlimited tokens, custom solutions
-- Token usage guide explaining AI consumption
-- FAQ section
+### ⚡ Site Creation (`/create/[id]`)
+- Real-time site creation progress tracking
+- Animated phase progression with queuing system
+- Background orb animations during creation
+- Automatic redirect to development environment
 
-### 👥 Team Page (`/team`)
-- Profiles of all 6 AI agents:
-  - Alex Chen (Product Manager)
-  - Morgan Taylor (Software Architect)
-  - Jordan Kim (Data Architect)
-  - Casey Rivera (Lead Developer)
-  - River Patel (Security Analyst)
-  - Sage Thompson (Site Reliability Engineer)
-- Team collaboration workflow
-- Individual agent specialties and personalities
+### 💻 Development Environment (`/develop/[id]`)
+- Full-featured IDE with Monaco editor
+- Real-time chat interface with AI agents
+- Live preview pane with hot reloading
+- File tree navigation and git integration
+- Plan tracking and progress monitoring
+- Token usage tracking and analytics
 
-## Design Features
+### 🎨 Design Tools (`/design`, `/color-scheme`)
+- Color scheme generation and customization
+- Design guidance and component documentation
+- Interactive design flows and questionnaires
 
-- **Color Scheme**: Purple to blue gradients inspired by GoDaddy Airo
-- **Typography**: Clean, modern font hierarchy
-- **Components**: Consistent button styles, cards, and navigation
-- **Responsive**: Mobile-first design with Tailwind CSS
-- **Icons**: Heroicons for consistent iconography
-- **Interactions**: Hover effects and smooth transitions
+### 📱 Apps Dashboard (`/apps`)
+- Application management and deployment
+- Server status monitoring and controls
+- Integration with development workflow
 
-## Token System
+### 🖼️ Gallery (`/gallery`)
+- Showcase of example applications and templates
+- Browse and discover different app types
 
-The pricing includes a token-based system for AI usage:
+## Design System
 
-- **Basic chat**: 1-5 tokens
-- **Code generation**: 10-50 tokens
-- **Full page creation**: 50-200 tokens
-- **Database design**: 20-100 tokens
-- **Security analysis**: 30-150 tokens
+- **UXCore Components**: Comprehensive design system with consistent styling
+- **Color Palette**: AI-themed gradients and semantic color tokens
+- **Typography**: Hierarchical text system with proper contrast
+- **Animations**: Framer Motion for smooth transitions and micro-interactions
+- **Responsive**: Mobile-first design with Tailwind CSS utilities
+- **Accessibility**: WCAG compliant components and interactions
+- **Dark Mode**: System preference aware theming
 
-## Running the Website
+## Development Workflow
+
+1. **Site Creation**: User provides initial prompt, system creates project structure
+2. **Template Application**: v8 template copied and configured for new app
+3. **Agent Interaction**: AI agents help develop features through chat interface
+4. **Live Development**: Real-time preview with hot reloading
+5. **Version Control**: Automatic git integration and history tracking
+6. **Deployment**: Seamless deployment to local or containerized environments
+
+## Running the Application
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies for all workspace packages
+pnpm install
 
-# Start development server
-npm run dev
+# Start development servers (requires OpenAI API key in agents/.env)
+pnpm run dev                 # Start both services concurrently
+# Or start individually:
+pnpm run dev:agents         # Backend agents API (port 4000)
+pnpm run dev:app            # Main Next.js app (port 3000)
 
 # Build for production
-npm run build
+pnpm run build
 
-# Start production server
-npm start
+# For complete setup instructions, see GETTING_STARTED.md
 ```
 
 ## Technology Stack
 
+### Frontend (Port 3000)
 - **Framework**: Next.js 14 with App Router
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **Icons**: Heroicons
-- **Package Manager**: npm
+- **Language**: TypeScript  
+- **Styling**: Tailwind CSS + UXCore Design System
+- **State Management**: Zustand stores
+- **Real-time**: WebSocket connections
+- **Editor**: Monaco Editor for code editing
+- **Package Manager**: pnpm
 
-## Features Demonstrated
+### Backend (Port 4000)
+- **Runtime**: Node.js with Express.js
+- **Database**: SQLite with Prisma ORM
+- **AI Integration**: OpenAI API
+- **Agent System**: Custom AI agent registry
+- **App Deployment**: Local processes or Docker containers
+- **File Operations**: Secure file system tools
 
-1. **Interactive AI Experience**: Simulated chat with Product Manager agent
-2. **Clear Value Proposition**: Three-tier pricing with feature differentiation
-3. **Team Transparency**: Detailed agent profiles showing capabilities
-4. **Modern UX**: Clean, professional design following current web standards
-5. **Responsive Design**: Works across desktop, tablet, and mobile devices
+## Key Features
 
-This mockup demonstrates how customers would interact with the Airo AI Builder platform, from initial interest through team introduction and pricing evaluation.
+1. **AI-Powered Development**: Real-time chat with specialized AI agents
+2. **Full Development Environment**: Monaco editor, file tree, live preview
+3. **Site Lifecycle Management**: From creation to deployment
+4. **Real-time Collaboration**: WebSocket-based streaming conversations
+5. **Template System**: v8 templates with Vite + React + Node.js backend
+6. **Process Management**: Automatic app lifecycle with health monitoring
+7. **Git Integration**: Version control and history tracking
+8. **Token Analytics**: Usage tracking and cost monitoring
+9. **Responsive Design**: Works across all device sizes
+10. **Design System**: UXCore components for consistent UI
+
+## Project Structure
+
+```
+app/
+├── src/
+│   ├── app/                     # Next.js App Router pages
+│   │   ├── api/                 # API routes
+│   │   │   ├── accounts/        # Account management endpoints
+│   │   │   ├── apps/            # App lifecycle API
+│   │   │   ├── auth/            # Authentication endpoints
+│   │   │   ├── config/          # Configuration endpoints
+│   │   │   ├── health/          # Health check
+│   │   │   ├── plans/           # Plan management
+│   │   │   ├── servers/         # Server management API
+│   │   │   └── sites/           # Site management API
+│   │   ├── apps/                # Apps dashboard page
+│   │   ├── color-scheme/        # Color scheme generation
+│   │   ├── components/          # Homepage components
+│   │   │   └── color/           # Color design flow components
+│   │   ├── create/[id]/         # Site creation page
+│   │   ├── design/              # Design tools page
+│   │   ├── develop/[id]/        # Development environment
+│   │   │   └── components/      # Development IDE components
+│   │   ├── gallery/             # Template gallery
+│   │   ├── sites/               # Sites management
+│   │   └── test/                # Test pages
+│   ├── components/              # Shared components
+│   │   ├── auth/                # Authentication components
+│   │   ├── development/         # Development utilities
+│   │   ├── layout/              # Layout components
+│   │   └── providers/           # React providers
+│   ├── config/                  # Configuration files
+│   ├── contexts/                # React contexts
+│   ├── hooks/                   # Custom React hooks
+│   ├── lib/                     # Core business logic
+│   │   ├── account-adapters/    # Account service adapters
+│   │   ├── database/            # Database services
+│   │   ├── deployment/          # Deployment adapters
+│   │   ├── dev-environment/     # Development environment management
+│   │   ├── shadcn/              # UI component library
+│   │   └── site-adapters/       # Site service adapters
+│   ├── services/                # External service integrations
+│   ├── stores/                  # Zustand state stores
+│   ├── styles/                  # Global styles and design system
+│   ├── types/                   # TypeScript type definitions
+│   └── utils/                   # Utility functions
+├── public/                      # Static assets
+└── package.json                 # Dependencies and scripts
+```
+
+## Architecture
+
+- **Multi-service Architecture**: Separate frontend and backend services
+- **Agent Registry**: Pluggable AI agent system
+- **Adapter Pattern**: Support for local and Docker deployment modes
+- **Real-time Communication**: WebSocket v2 protocol
+- **Database Persistence**: SQLite with foreign key constraints
+- **Template Composition**: Dynamic template system with version detection
