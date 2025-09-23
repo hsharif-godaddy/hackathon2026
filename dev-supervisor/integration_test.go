@@ -517,20 +517,20 @@ func TestHealthMonitoring(t *testing.T) {
 		HealthCheck: &HealthCheck{
 			Type:             HealthCheckTypeCommand,
 			Command:          "echo 'healthy'",
-			Interval:         5 * time.Second,
-			Timeout:          2 * time.Second,
+			Interval:         Duration(5 * time.Second),
+			Timeout:          Duration(2 * time.Second),
 			Retries:          2,
-			StartPeriod:      1 * time.Second,
+			StartPeriod:      Duration(1 * time.Second),
 			SuccessThreshold: 1,
 			FailureThreshold: 2,
 		},
 		RestartPolicy: &RestartPolicy{
 			Enabled:           true,
 			MaxRestarts:       3,
-			RestartWindow:     1 * time.Minute,
+			RestartWindow:     Duration(1 * time.Minute),
 			BackoffMultiplier: 1.5,
-			MaxBackoff:        10 * time.Second,
-			InitialDelay:      1 * time.Second,
+			MaxBackoff:        Duration(10 * time.Second),
+			InitialDelay:      Duration(1 * time.Second),
 		},
 	}
 

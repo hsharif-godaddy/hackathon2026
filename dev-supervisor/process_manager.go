@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,6 +27,11 @@ const (
 	ProcessStateError    ProcessState = "error"
 )
 
+const (
+	defaultPortWaitTimeout = 3 * time.Second
+	portCheckInterval     = 50 * time.Millisecond
+)
+
 type ProcessInfo struct {
 	PID       int          `json:"pid"`
 	Command   string       `json:"command"`
@@ -37,6 +45,7 @@ type ProcessStartRequest struct {
 	Command    string            `json:"command"`
 	Env        map[string]string `json:"env,omitempty"`
 	WorkingDir string            `json:"working_dir,omitempty"`
+	Ports      []int             `json:"ports,omitempty"` // Explicit port specification
 }
 
 type ProcessStopRequest struct {
@@ -63,6 +72,129 @@ type ManagedProcess struct {
 	waitOnce sync.Once
 	waitErr  error
 	waitDone chan struct{}
+}
+
+// getProcessPorts discovers what ports a process is actually using via /proc/net/tcp
+func getProcessPorts(pid int) ([]int, error) {
+	if pid <= 0 {
+		return nil, fmt.Errorf("invalid PID: %d", pid)
+	}
+	
+	// Read /proc/net/tcp to find listening ports for this process
+	tcpFile := "/proc/net/tcp"
+	content, err := os.ReadFile(tcpFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s: %w", tcpFile, err)
+	}
+	
+	var ports []int
+	lines := strings.Split(string(content), "\n")
+	
+	// Skip header line
+	for i, line := range lines {
+		if i == 0 || strings.TrimSpace(line) == "" {
+			continue
+		}
+		
+		fields := strings.Fields(line)
+		if len(fields) < 10 {
+			continue
+		}
+		
+		// Check if this entry belongs to our process
+		// Field 9 is the inode, we need to check if our PID has this socket
+		inode := fields[9]
+		if inode == "0" {
+			continue
+		}
+		
+		// Check if this process owns this socket by looking in /proc/PID/fd/
+		if processOwnsSocket(pid, inode) {
+			// Parse the local address (field 1: "address:port" in hex)
+			localAddr := fields[1]
+			if colonIdx := strings.LastIndex(localAddr, ":"); colonIdx != -1 {
+				portHex := localAddr[colonIdx+1:]
+				if port, err := strconv.ParseInt(portHex, 16, 32); err == nil && port > 0 {
+					ports = append(ports, int(port))
+				}
+			}
+		}
+	}
+	
+	return ports, nil
+}
+
+// processOwnsSocket checks if a process owns a socket by examining /proc/PID/fd/
+func processOwnsSocket(pid int, inode string) bool {
+	fdDir := fmt.Sprintf("/proc/%d/fd", pid)
+	entries, err := os.ReadDir(fdDir)
+	if err != nil {
+		return false
+	}
+	
+	targetLink := fmt.Sprintf("socket:[%s]", inode)
+	
+	for _, entry := range entries {
+		linkPath := filepath.Join(fdDir, entry.Name())
+		if target, err := os.Readlink(linkPath); err == nil {
+			if target == targetLink {
+				return true
+			}
+		}
+	}
+	
+	return false
+}
+
+// isPortAvailable checks if a port is available for binding
+func isPortAvailable(port int) bool {
+	// Try to bind to the port on both TCP and UDP to ensure it's fully available
+	tcpAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return false
+	}
+	
+	tcpListener, err := net.ListenTCP("tcp", tcpAddr)
+	if err != nil {
+		return false
+	}
+	defer tcpListener.Close()
+	
+	return true
+}
+
+// waitForPortsAvailable waits for the specified ports to become available
+func waitForPortsAvailable(ports []int, timeout time.Duration) error {
+	if len(ports) == 0 {
+		return nil // No ports to wait for
+	}
+	
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	
+	ticker := time.NewTicker(portCheckInterval)
+	defer ticker.Stop()
+	
+	slog.Info("waiting for ports to become available", "ports", ports, "timeout", timeout)
+	
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for ports %v to become available after %v", ports, timeout)
+		case <-ticker.C:
+			allAvailable := true
+			for _, port := range ports {
+				if !isPortAvailable(port) {
+					allAvailable = false
+					break
+				}
+			}
+			if allAvailable {
+				slog.Info("all ports now available", "ports", ports)
+				return nil
+			}
+		}
+	}
 }
 
 // ProcessManager manages the current process instance and persistent configuration
@@ -410,6 +542,29 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 	// Get the configuration from the current process
 	config := pm.currentProcess.config
 
+	// Get ports using the safest approach: explicit config first, then runtime discovery
+	var ports []int
+	
+	// Option 1: Use explicitly configured ports (safest)
+	if len(config.Ports) > 0 {
+		ports = config.Ports
+		slog.Info("using explicitly configured ports", "ports", ports)
+	} else {
+		// Option 2: Runtime discovery via /proc/net/tcp (safer than command parsing)
+		processInfo := pm.currentProcess.GetInfo()
+		if processInfo.PID > 0 {
+			var err error
+			ports, err = getProcessPorts(processInfo.PID)
+			if err != nil {
+				slog.Warn("failed to discover process ports", "pid", processInfo.PID, "error", err)
+				// No ports to wait for - continue with restart
+				ports = nil
+			} else if len(ports) > 0 {
+				slog.Info("discovered ports in use by process", "pid", processInfo.PID, "ports", ports)
+			}
+		}
+	}
+
 	// Stop current process if running
 	currentStatus := pm.currentProcess.GetInfo()
 	if currentStatus.State == ProcessStateRunning {
@@ -432,6 +587,15 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 
 		// Wait for the process to fully stop
 		pm.currentProcess.WaitForCompletion()
+
+		// Wait for ports to become available after process termination
+		// This prevents "address already in use" errors during restart
+		if len(ports) > 0 {
+			if err := waitForPortsAvailable(ports, defaultPortWaitTimeout); err != nil {
+				slog.Warn("port availability timeout during restart", "ports", ports, "error", err)
+				// Continue with restart despite port wait timeout - the new process start will fail if ports are still in use
+			}
+		}
 	}
 
 	// Create and start a completely new managed process with the same config

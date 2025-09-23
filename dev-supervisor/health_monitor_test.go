@@ -40,10 +40,10 @@ func TestHealthMonitor_Configure(t *testing.T) {
 	healthCheck := &HealthCheck{
 		Type:             HealthCheckTypeCommand,
 		Command:          "echo 'healthy'",
-		Interval:         5 * time.Second,
-		Timeout:          2 * time.Second,
+		Interval:         Duration(5 * time.Second),
+		Timeout:          Duration(2 * time.Second),
 		Retries:          3,
-		StartPeriod:      10 * time.Second,
+		StartPeriod:      Duration(10 * time.Second),
 		SuccessThreshold: 2,
 		FailureThreshold: 3,
 	}
@@ -51,10 +51,10 @@ func TestHealthMonitor_Configure(t *testing.T) {
 	restartPolicy := &RestartPolicy{
 		Enabled:           true,
 		MaxRestarts:       5,
-		RestartWindow:     5 * time.Minute,
+		RestartWindow:     Duration(5 * time.Minute),
 		BackoffMultiplier: 2.0,
-		MaxBackoff:        1 * time.Minute,
-		InitialDelay:      1 * time.Second,
+		MaxBackoff:        Duration(1 * time.Minute),
+		InitialDelay:      Duration(1 * time.Second),
 	}
 
 	// Test configuration
@@ -62,11 +62,11 @@ func TestHealthMonitor_Configure(t *testing.T) {
 
 	// Verify defaults were applied
 	healthCheck = hm.healthCheck.Load()
-	if healthCheck.Interval != 5*time.Second {
+	if healthCheck.Interval != Duration(5*time.Second) {
 		t.Errorf("Expected interval 5s, got %v", healthCheck.Interval)
 	}
 
-	if healthCheck.Timeout != 2*time.Second {
+	if healthCheck.Timeout != Duration(2*time.Second) {
 		t.Errorf("Expected timeout 2s, got %v", healthCheck.Timeout)
 	}
 
@@ -94,11 +94,11 @@ func TestHealthMonitor_ConfigureDefaults(t *testing.T) {
 
 	// Check that defaults were applied
 	healthCheck = hm.healthCheck.Load()
-	if healthCheck.Interval != 30*time.Second {
+	if healthCheck.Interval != Duration(30*time.Second) {
 		t.Errorf("Expected default interval 30s, got %v", healthCheck.Interval)
 	}
 
-	if healthCheck.Timeout != 10*time.Second {
+	if healthCheck.Timeout != Duration(10*time.Second) {
 		t.Errorf("Expected default timeout 10s, got %v", healthCheck.Timeout)
 	}
 
@@ -120,8 +120,8 @@ func TestHealthMonitor_StartStop(t *testing.T) {
 	healthCheck := &HealthCheck{
 		Type:        HealthCheckTypeCommand,
 		Command:     "true", // Always succeeds
-		Interval:    100 * time.Millisecond,
-		StartPeriod: 50 * time.Millisecond,
+		Interval:    Duration(100 * time.Millisecond),
+		StartPeriod: Duration(50 * time.Millisecond),
 	}
 
 	hm.Configure(healthCheck, nil)
@@ -192,9 +192,9 @@ func TestHealthMonitor_CommandHealthCheck(t *testing.T) {
 			healthCheck := &HealthCheck{
 				Type:             HealthCheckTypeCommand,
 				Command:          tt.command,
-				Interval:         50 * time.Millisecond, // Much shorter interval for testing
-				Timeout:          2 * time.Second,
-				StartPeriod:      1 * time.Millisecond, // Very short for testing
+				Interval:         Duration(50 * time.Millisecond), // Much shorter interval for testing
+				Timeout:          Duration(2 * time.Second),
+				StartPeriod:      Duration(1 * time.Millisecond), // Very short for testing
 				FailureThreshold: 1,
 				SuccessThreshold: 1,
 			}
@@ -232,9 +232,9 @@ func TestHealthMonitor_HTTPHealthCheck(t *testing.T) {
 	healthCheck := &HealthCheck{
 		Type:             HealthCheckTypeHTTP,
 		URL:              server.URL,
-		Interval:         100 * time.Millisecond,
-		Timeout:          5 * time.Second,
-		StartPeriod:      1 * time.Millisecond,
+		Interval:         Duration(100 * time.Millisecond),
+		Timeout:          Duration(5 * time.Second),
+		StartPeriod:      Duration(1 * time.Millisecond),
 		SuccessThreshold: 1,
 		FailureThreshold: 1,
 	}
@@ -270,9 +270,9 @@ func TestHealthMonitor_HTTPHealthCheckFailure(t *testing.T) {
 	healthCheck := &HealthCheck{
 		Type:             HealthCheckTypeHTTP,
 		URL:              server.URL,
-		Interval:         100 * time.Millisecond,
-		Timeout:          5 * time.Second,
-		StartPeriod:      1 * time.Millisecond,
+		Interval:         Duration(100 * time.Millisecond),
+		Timeout:          Duration(5 * time.Second),
+		StartPeriod:      Duration(1 * time.Millisecond),
 		SuccessThreshold: 1,
 		FailureThreshold: 1,
 	}
@@ -316,9 +316,9 @@ func TestHealthMonitor_TCPHealthCheck(t *testing.T) {
 	healthCheck := &HealthCheck{
 		Type:             HealthCheckTypeTCP,
 		Address:          listener.Addr().String(),
-		Interval:         100 * time.Millisecond,
-		Timeout:          5 * time.Second,
-		StartPeriod:      1 * time.Millisecond,
+		Interval:         Duration(100 * time.Millisecond),
+		Timeout:          Duration(5 * time.Second),
+		StartPeriod:      Duration(1 * time.Millisecond),
 		SuccessThreshold: 1,
 		FailureThreshold: 1,
 	}
@@ -345,9 +345,9 @@ func TestHealthMonitor_TCPHealthCheckFailure(t *testing.T) {
 	healthCheck := &HealthCheck{
 		Type:             HealthCheckTypeTCP,
 		Address:          "127.0.0.1:99999", // Unlikely to be in use
-		Interval:         100 * time.Millisecond,
-		Timeout:          1 * time.Second,
-		StartPeriod:      1 * time.Millisecond,
+		Interval:         Duration(100 * time.Millisecond),
+		Timeout:          Duration(1 * time.Second),
+		StartPeriod:      Duration(1 * time.Millisecond),
 		SuccessThreshold: 1,
 		FailureThreshold: 1,
 	}
@@ -373,9 +373,9 @@ func TestHealthMonitor_RestartPolicy(t *testing.T) {
 	healthCheck := &HealthCheck{
 		Type:             HealthCheckTypeCommand,
 		Command:          "false", // Always fails
-		Interval:         50 * time.Millisecond,
-		Timeout:          1 * time.Second,
-		StartPeriod:      1 * time.Millisecond,
+		Interval:         Duration(50 * time.Millisecond),
+		Timeout:          Duration(1 * time.Second),
+		StartPeriod:      Duration(1 * time.Millisecond),
 		SuccessThreshold: 1,
 		FailureThreshold: 1, // Fail immediately
 	}
@@ -383,10 +383,10 @@ func TestHealthMonitor_RestartPolicy(t *testing.T) {
 	restartPolicy := &RestartPolicy{
 		Enabled:           true,
 		MaxRestarts:       3,
-		RestartWindow:     1 * time.Minute,
+		RestartWindow:     Duration(1 * time.Minute),
 		BackoffMultiplier: 1.0, // No backoff for faster testing
-		MaxBackoff:        1 * time.Second,
-		InitialDelay:      1 * time.Millisecond,
+		MaxBackoff:        Duration(1 * time.Second),
+		InitialDelay:      Duration(1 * time.Millisecond),
 	}
 
 	hm.Configure(healthCheck, restartPolicy)
@@ -437,7 +437,7 @@ func TestHealthMonitor_GetRestartStats(t *testing.T) {
 	restartPolicy := &RestartPolicy{
 		Enabled:       true,
 		MaxRestarts:   5,
-		RestartWindow: 5 * time.Minute,
+		RestartWindow: Duration(5 * time.Minute),
 	}
 
 	hm.Configure(nil, restartPolicy)

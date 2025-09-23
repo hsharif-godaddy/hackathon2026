@@ -220,8 +220,8 @@ func TestProcessManager_ConfigureHealthCheck(t *testing.T) {
 	healthCheck := &HealthCheck{
 		Type:             HealthCheckTypeCommand,
 		Command:          "echo 'healthy'",
-		Interval:         10 * time.Second,
-		Timeout:          5 * time.Second,
+		Interval:         Duration(10 * time.Second),
+		Timeout:          Duration(5 * time.Second),
 		SuccessThreshold: 1,
 		FailureThreshold: 3,
 	}

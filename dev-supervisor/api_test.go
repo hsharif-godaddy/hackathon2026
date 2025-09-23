@@ -556,7 +556,7 @@ func TestHandleHealthConfigSet(t *testing.T) {
 		HealthCheck: &HealthCheck{
 			Type:     HealthCheckTypeCommand,
 			Command:  "echo 'healthy'",
-			Interval: 30 * time.Second,
+			Interval: Duration(30 * time.Second),
 		},
 		RestartPolicy: &RestartPolicy{
 			Enabled:     true,
@@ -1079,7 +1079,7 @@ func TestHandleHealthConfigSetPartialConfig(t *testing.T) {
 		HealthCheck: &HealthCheck{
 			Type:     HealthCheckTypeCommand,
 			Command:  "echo 'healthy'",
-			Interval: 30 * time.Second,
+			Interval: Duration(30 * time.Second),
 		},
 	}
 
