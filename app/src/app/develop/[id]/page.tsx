@@ -20,6 +20,7 @@ import {
   useLoadConversationHistory,
   useStreamingConversationStore
 } from '@/stores/useStreamingConversationStore'
+import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useAppStore } from '@/stores/useAppStore'
@@ -46,6 +47,7 @@ function DevelopPageContent() {
   const setCurrentAppId = useSetCurrentAppId()
   const autoSendInitialMessage = useAutoSendInitialMessage()
   const loadConversationHistory = useLoadConversationHistory()
+  const { sendMessage } = useStreamingWebSocket()
   
   // Develop page store - for UI state and coordination
   const {
@@ -348,7 +350,7 @@ function DevelopPageContent() {
         if (wasTriggered) {
           // Trigger the actual send after a brief delay to ensure WebSocket is ready
           setTimeout(() => {
-            handleSendMessage(site.initial_prompt!)
+            sendMessage(site.initial_prompt!, null)
           }, 1000)
         }
       }
