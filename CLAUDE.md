@@ -17,6 +17,7 @@ Airo App Builder is an AI-powered application development platform that combines
 - NEVER EDIT FILES UNDER `/tmp/apps/**`, these are **OUTPUT** of our system, not source code. **Always fix the generation logic instead**
 - We want QUALITY code. Take the time you need to think, explore multiple solutions if you need to.
 - When working under `/app` folder, and **ONLY** when under this folder, use components within our design system, UXCore @ux/, as much as possible, and use `/app/uxcore-llm.txt` for context on component documentation and refer to `/app/design-guidance.md` for design guidance.
+- Under `/app` we don't have access to default Tailwind colors, you can't use `bg-white` or `text-blue-600`.
 - Prioritize design system usage, accessibility, and usability.
 
 ## Key Commands

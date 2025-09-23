@@ -1,18 +1,18 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { SparklesIcon } from '@heroicons/react/24/outline'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useSiteCreationStore, cleanupSiteCreationStore, type SiteCreationPhase } from '@/stores/useSiteCreationStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
+import Box from '@ux/box'
 import Button from '@ux/button'
 
 export default function CreateAppStatus() {
   const router = useRouter()
   const params = useParams()
   const siteId = params.id as string
-  
-  // Get all store state and actions
+
   const {
     phase,
     error,
@@ -20,8 +20,64 @@ export default function CreateAppStatus() {
     maxRetries,
     initializeSite,
     retry,
-    reset
   } = useSiteCreationStore()
+
+  // Track phases as they occur
+  const [seenPhases, setSeenPhases] = useState<SiteCreationPhase[]>(['initializing'])
+  const [phaseQueue, setPhaseQueue] = useState<SiteCreationPhase[]>([])
+  const isProcessingQueue = useRef(false)
+
+  const phaseMessages = {
+    'initializing': 'Convincing the servers to cooperate...',
+    'deploying': 'Teaching your code how to fly...',
+    'polling': 'Adding a bit of magic...',
+    'verifying-agent': 'Making sure the AI didn\'t break anything...',
+    'updating-name': 'Asking the naming fairy for inspiration...',
+    'complete': 'Your app is ready! Redirecting, hold on tight...'
+  } as const
+
+  // Add new phases to queue when they occur
+  useEffect(() => {
+    if (!phase || phase === 'error') return
+
+    setPhaseQueue(prev => {
+      // Only add if not already in seen phases and not in queue
+      if (!seenPhases.includes(phase) && !prev.includes(phase)) {
+        return [...prev, phase]
+      }
+      return prev
+    })
+  }, [phase, seenPhases])
+
+  // Process queue with delay between phases
+  useEffect(() => {
+    if (phaseQueue.length === 0 || isProcessingQueue.current) return
+
+    isProcessingQueue.current = true
+    const nextPhase = phaseQueue[0]
+
+    const timer = setTimeout(() => {
+      setSeenPhases(prev => [...prev, nextPhase])
+      setPhaseQueue(prev => prev.slice(1))
+      isProcessingQueue.current = false
+    }, 3000)
+
+    return () => {
+      clearTimeout(timer)
+      isProcessingQueue.current = false
+    }
+  }, [phaseQueue])
+
+  // Handle redirect when complete phase is visible
+  useEffect(() => {
+    if (!seenPhases.includes('complete') || !siteId) return
+
+    const redirectTimer = setTimeout(() => {
+      router.replace(`/develop/${siteId}`)
+    }, 3000)
+
+    return () => clearTimeout(redirectTimer)
+  }, [seenPhases, siteId, router])
 
   // Initialize the creation flow
   useEffect(() => {
@@ -36,73 +92,37 @@ export default function CreateAppStatus() {
     }
   }, [siteId, initializeSite])
 
-  // Handle automatic redirect on completion
-  useEffect(() => {
-    if (phase === 'complete' && siteId) {
-      console.log('✅ Site creation complete, redirecting to develop page')
-      
-      // Brief delay before redirect for better UX
-      const timer = setTimeout(() => {
-        router.replace(`/develop/${siteId}`)
-      }, 2000)
-      
-      return () => clearTimeout(timer)
-    }
-  }, [phase, siteId, router])
-
   useEffect(() => {
     logImpressionEvent({ eid: 'create.page' })();
   }, [])
 
-  // Default state: initializing or polling
-  const getPhaseDisplay = (currentPhase: SiteCreationPhase) => {
-    switch (currentPhase) {
-      case 'initializing':
-        return 'Initializing your project...'
-      case 'polling':
-        return 'Setting up your development environment, installing dependencies, configuring your project, and verifying everything is ready...'
-      default:
-        return 'Creating your app...'
-    }
-  }
-
-  const renderAnimation = () => {
-    return (
-      <div className="flex justify-center space-x-1 mb-6">
-        <div className="w-3 h-3 bg-ai-light rounded-full animate-bounce"></div>
-        <div className="w-3 h-3 bg-ai rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-        <div className="w-3 h-3 bg-ai-dark rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="airo-sentinel-background">
-        <div className="orbs-group">
+        <div className="orbs-group animated">
           <div className="orb orb1"></div>
           <div className="orb orb2"></div>
           <div className="orb orb3"></div>
           <div className="orb orb4"></div>
         </div>
       </div>
-      <div className="text-center max-w-screen-sm">
+      <div className="text-center w-full">
         { phase === 'error' && (
           <>
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-red-600 text-2xl">⚠️</span>
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">App Creation Failed</h1>
-            <p className="text-gray-600 mb-6">
+            <h1 className="text-2xl font-bold mb-2">App Creation Failed</h1>
+            <p className="mb-12">
               {error || 'An error occurred while creating your app. Please try again.'}
             </p>
-            <div className="space-y-3">
-              <button
+            <Box
+              orientation="horizontal"
+              gap="md"
+              blockAlignChildren="center"
+            >
+              <Button
+                design="secondary"
                 onClick={() => router.push('/')}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all"
-              >
-                Go Back Home
-              </button>
+                text="Go Back Home"
+              />
               {retryCount < maxRetries && (
                 <Button
                   design="primary"
@@ -111,107 +131,85 @@ export default function CreateAppStatus() {
                   className="my-6"
                 />
               )}
-              <button
-                onClick={() => {
-                  reset()
-                  router.push('/')
-                }}
-                className="w-full text-sm underline"
-              >
-                Start Over
-              </button>
-            </div>
+            </Box>
           </>
         )}
 
-        { phase === 'complete' && (
-          <>
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
-            </div>
-            <h1 className="text-2xl font-bold mb-2">App Created Successfully!</h1>
-            <p className="mb-4">
-              Your app is ready to build!
-            </p>
-            <p className="text-sm">Redirecting to development environment...</p>
-          </>
-        )}
-        
-        { phase === 'updating-name' && (
-          <>
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
-            </div>
-            <h1 className="text-2xl font-bold mb-2">Finalizing Your App</h1>
-            <p className="mb-6">
-              Getting a perfect name for your project from the AI agent...
-            </p>
-            
-            { renderAnimation() }
-          </>
-        )}
-        
-        { phase === 'verifying-agent' && (
-          <>
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
-            </div>
-            <h1 className="text-2xl font-bold mb-2">Almost Ready!</h1>
-            <p className=" mb-6">
-              Verifying your development environment is fully ready...
-            </p>
-            
-            { renderAnimation() }
-          </>
-        )}
-        
-        { phase === 'deploying' && (
-          <>
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
-            </div>
-            <h1 className="text-2xl font-bold mb-2">Starting Deployment</h1>
-            <p className="mb-6">
-              Initializing your development environment...
-            </p>
-            
-            { renderAnimation() }
+        { phase !== 'error' && (
+          <Box gap="lg">
+            <div className="h-32 w-full mb-6 flex flex-col justify-end overflow-hidden">
+              <motion.ul className="text-center space-y-1">
+                <AnimatePresence mode="popLayout">
+                  {seenPhases.map((phaseItem, index) => {
+                    const isLatest = index === seenPhases.length - 1
+                    const distanceFromBottom = seenPhases.length - 1 - index
+                    const opacity = Math.max(0.3, 1 - (distanceFromBottom * 0.3))
+                    const fontSize = isLatest ? '1.5rem' : '1.25rem'
+                    const fontWeight = isLatest ? '500' : '300'
 
-            <div className="text-sm">
-              <p>Setting up your project infrastructure...</p>
+                    return (
+                      <motion.li
+                        key={phaseItem}
+                        layout="position"
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{
+                          opacity: isLatest ? 1 : opacity,
+                          y: 0
+                        }}
+                        exit={{ opacity: 0, y: -5 }}
+                        transition={{
+                          layout: { duration: 0.5, ease: "easeOut" },
+                          opacity: { duration: 0.6, delay: isLatest ? 0.2 : 0 },
+                          y: { duration: 0.6, delay: isLatest ? 0.2 : 0 }
+                        }}
+                        className="flex items-center justify-center space-x-2"
+                      >
+                        <span
+                          className="transition-all duration-700 ease-out"
+                          style={{
+                            opacity,
+                            fontSize,
+                            fontWeight
+                          }}
+                        >
+                          {phaseMessages[phaseItem]}
+                        </span>
+                      </motion.li>
+                    )
+                  })}
+                </AnimatePresence>
+              </motion.ul>
             </div>
-          </>
-        )}
-        
-        { (phase !== 'error' && phase !== 'complete' && phase !== 'updating-name' && phase !== 'verifying-agent' && phase !== 'deploying') && (
-          <>
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <SparklesIcon className="w-8 h-8 text-white animate-pulse" />
-            </div>
-            <h1 className="text-2xl font-bold mb-2">Creating Your App</h1>
-            <p className="mb-6">
-              {getPhaseDisplay(phase)}
-            </p>
-            
-            { renderAnimation() }
+
+            <Box
+              orientation="horizontal"
+              gap="sm"
+              className="mb-6"
+              blockAlignChildren="center"
+            >
+              <div className="w-3 h-3 bg-ai-light rounded-full animate-bounce"></div>
+              <div className="w-3 h-3 bg-ai rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+              <div className="w-3 h-3 bg-ai-dark rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            </Box>
 
             {/* Estimated time */}
-            <div className="text-sm space-y-1">
+            <Box className="text-sm" gap="sm">
               <p>This usually takes 30-60 seconds</p>
               <p>Please don&apos;t close this page</p>
-            </div>
+            </Box>
 
             {/* Cancel option */}
-            <button
-              onClick={() => {
-                cleanupSiteCreationStore()
-                router.push('/')
-              }}
-              className="cursor-pointer mt-8 transition-colors text-sm underline"
-            >
-              Cancel and go back
-            </button>
-          </>
+            <Box className="mx-auto">
+              <Button
+                onClick={() => {
+                  cleanupSiteCreationStore()
+                  router.push('/')
+                }}
+                design="tertiary"
+                text="Cancel and go back"
+              />
+            </Box>
+          </Box>
         )}
       </div>
     </div>

@@ -39,22 +39,52 @@ html, body {
 }
 
 .orbs-group .orb.orb2 {
-  left: calc(-218 / var(--ref-orb-w) * 100vw);
+  left: calc(-118 / var(--ref-orb-w) * 100vw);
   top: calc(341 / var(--ref-orb-h) * 100vh);
-  width: calc(265 / var(--ref-orb-w) * 100vw);
-  height: calc(265 / var(--ref-orb-h) * 100vh);
+  width: calc(350 / var(--ref-orb-w) * 100vw);
+  height: calc(350 / var(--ref-orb-h) * 100vh);
 }
 
 .orbs-group .orb.orb3 {
-  left: calc(747 / var(--ref-orb-w) * 100vw);
+  right: calc(-307 / var(--ref-orb-w) * 100vw);
   top: calc(-366 / var(--ref-orb-h) * 100vh);
   width: calc(700 / var(--ref-orb-w) * 100vw);
   height: calc(700 / var(--ref-orb-h) * 100vh);
 }
 
 .orbs-group .orb.orb4 {
-  left: calc(887 / var(--ref-orb-w) * 100vw);
+  right: calc(-118 / var(--ref-orb-w) * 100vw);
   top: calc(289 / var(--ref-orb-h) * 100vh);
   width: calc(405 / var(--ref-orb-w) * 100vw);
   height: calc(405 / var(--ref-orb-h) * 100vh);
+}
+
+/* Animated orbs with cycling opacity */
+.orbs-group.animated .orb {
+  animation: orbCycle 4s ease-in-out infinite;
+}
+
+.orbs-group.animated .orb.orb1 {
+  animation-delay: 0s;
+}
+
+.orbs-group.animated .orb.orb2 {
+  animation-delay: 1s;
+}
+
+.orbs-group.animated .orb.orb3 {
+  animation-delay: 2s;
+}
+
+.orbs-group.animated .orb.orb4 {
+  animation-delay: 3s;
+}
+
+@keyframes orbCycle {
+  0%, 75% {
+    opacity: 0.26;
+  }
+  25% {
+    opacity: 0.8;
+  }
 }
