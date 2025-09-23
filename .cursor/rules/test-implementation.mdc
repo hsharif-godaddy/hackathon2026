@@ -1,0 +1,452 @@
+---
+alwaysApply: true
+globs: **/*.{ts,js,tsx,jsx}
+---
+
+# Test Implementation Standards
+
+## 🚨 MANDATORY: No Placeholder Tests
+
+**Never create placeholder tests that pass without actually testing functionality.**
+
+### Core Principles
+
+1. **Real Tests Only**: Every test must verify actual behavior or be explicitly skipped
+2. **No False Positives**: Tests should not pass when the feature isn't implemented
+3. **Use `skip` for Incomplete**: If unable to write a proper test, use `it.skip()` or `describe.skip()`
+4. **Fail First**: Tests should fail initially and only pass when implementation is correct
+
+### Prohibited Patterns
+
+**❌ NEVER do this:**
+
+```typescript
+// Placeholder test that always passes
+it('should handle complex authentication', function auth() {
+  // TODO: Implement this test
+  assume(true).equals(true);  // ❌ Meaningless assertion
+});
+
+// Empty test that passes by default
+it('should process payments correctly', function payment() {
+  // Will implement later
+});
+
+// Test that doesn't actually test the feature
+it('should validate user input', function validate() {
+  const result = true; // ❌ Hardcoded success
+  assume(result).equals(true);
+});
+
+// Commented out assertions
+it('should authenticate users', function auth() {
+  // assume(authenticateUser('valid')).equals(true);  // ❌ Commented out
+  console.log('Test not implemented yet');
+});
+```
+
+### Required Patterns
+
+**✅ Use proper skip for incomplete tests:**
+
+```typescript
+// Properly skipped test with clear reason
+it.skip('should handle complex authentication flow', function auth() {
+  // Skip reason: Waiting for OAuth provider setup
+  // TODO: Implement once auth service is configured
+});
+
+// Skipped describe block for entire feature
+describe.skip('Payment Processing', function payments() {
+  // Skip reason: Payment gateway not yet integrated
+  it('should process credit cards', function credit() {
+    // Implementation pending
+  });
+});
+
+// Alternative skip syntax
+it('should validate user permissions', function permissions() {
+  // Skip this test until permission system is redesigned
+  this.skip();
+});
+```
+
+**✅ Write real tests that verify behavior:**
+
+```typescript
+// Proper test that actually validates functionality
+it('should authenticate valid users', function auth() {
+  const user = { username: 'test', password: 'valid123' };
+  const result = authenticateUser(user);
+  
+  assume(result.success).equals(true);
+  assume(result.token).to.be.a('string');
+  assume(result.token.length).greaterThan(0);
+});
+
+// Test that verifies error conditions
+it('should reject invalid credentials', function reject() {
+  const user = { username: 'test', password: 'wrong' };
+  const result = authenticateUser(user);
+  
+  assume(result.success).equals(false);
+  assume(result.error).equals('Invalid credentials');
+  assume(result.token).equals(undefined);
+});
+
+// Async test with proper awaiting
+it('should fetch user data from API', async function fetch() {
+  const userId = 'test-123';
+  const userData = await fetchUser(userId);
+  
+  assume(userData).has.property('id');
+  assume(userData.id).equals(userId);
+  assume(userData.name).to.be.a('string');
+});
+```
+
+### Test Development Process
+
+**✅ Proper TDD workflow:**
+
+1. **Write failing test first:**
+
+   ```typescript
+   it('should calculate tax correctly', function tax() {
+     const result = calculateTax(100, 0.08);
+     assume(result).equals(8.00);  // Will fail until implemented
+   });
+   ```
+
+2. **Implement minimal code to pass:**
+
+   ```typescript
+   function calculateTax(amount: number, rate: number): number {
+     return amount * rate;
+   }
+   ```
+
+3. **Refactor while keeping tests green**
+
+**❌ Don't write passing tests before implementation:**
+
+```typescript
+// Wrong: Test passes before feature exists
+it('should format currency', function format() {
+  // This will pass even though formatCurrency doesn't exist yet
+  assume('$10.00').to.be.a('string');  // ❌ Not testing the function
+});
+```
+
+### Skip Usage Guidelines
+
+**Use `skip` when:**
+
+- External dependencies aren't available (databases, APIs, services)
+- Feature requirements are unclear or changing
+- Waiting for other team members' work
+- Technical blockers prevent implementation
+- Test requires complex setup not yet available
+
+**Always include skip reason:**
+
+```typescript
+it.skip('should sync with external CRM', function sync() {
+  // Skip reason: CRM API credentials not available in test environment
+  // Ticket: AUTH-123 - Set up test CRM instance
+});
+```
+
+### Review Checklist
+
+Before merging code with tests, verify:
+
+- ✅ No tests have placeholder assertions like `assume(true).equals(true)`
+- ✅ No empty test functions that pass by default
+- ✅ Skipped tests have clear reasons and are tracked
+- ✅ All passing tests actually verify the intended behavior
+- ✅ Tests fail when expected functionality is broken/missing
+- ✅ No commented-out assertions without replacement
+
+### Tools Integration
+
+**Use test runner skip features:**
+
+```typescript
+// Node.js test runner
+import { describe, it } from 'node:test';
+
+describe('Feature X', function feature() {
+  it.skip('pending implementation', function pending() {
+    // Properly tracked as skipped
+  });
+});
+
+// Jest/Mocha style
+describe.skip('Incomplete Feature', function incomplete() {
+  // Entire suite skipped
+});
+```
+
+**Track skipped tests in CI:**
+
+- Monitor skip count in test reports
+- Create tickets for skipped tests
+- Set reminders to implement skipped tests
+- Include skip reasons in test output
+
+### Common Violations to Avoid
+
+❌ **Always-true assertions:**
+
+```typescript
+assume(1).equals(1);              // Meaningless
+assume(true).toBeTruthy();        // Always passes
+assume('string').to.be.a('string'); // Trivial
+```
+
+❌ **Console.log instead of assertions:**
+
+```typescript
+it('should work', function work() {
+  console.log('This feature works!'); // Not a test
+});
+```
+
+❌ **TODO comments in passing tests:**
+
+```typescript
+it('should validate input', function validate() {
+  // TODO: Add real validation
+  assume(input).to.exist; // Placeholder assertion
+});
+```
+
+This rule ensures test quality and prevents false confidence from placeholder tests that
+don't actually verify functionality.
+
+This rule ensures test quality and prevents false confidence from placeholder tests that don't actually verify functionality.
+
+# Test Implementation Standards
+
+## 🚨 MANDATORY: No Placeholder Tests
+
+**Never create placeholder tests that pass without actually testing functionality.**
+
+### Core Principles
+
+1. **Real Tests Only**: Every test must verify actual behavior or be explicitly skipped
+2. **No False Positives**: Tests should not pass when the feature isn't implemented
+3. **Use `skip` for Incomplete**: If unable to write a proper test, use `it.skip()` or `describe.skip()`
+4. **Fail First**: Tests should fail initially and only pass when implementation is correct
+
+### Prohibited Patterns
+
+**❌ NEVER do this:**
+
+```typescript
+// Placeholder test that always passes
+it('should handle complex authentication', function auth() {
+  // TODO: Implement this test
+  assume(true).equals(true);  // ❌ Meaningless assertion
+});
+
+// Empty test that passes by default
+it('should process payments correctly', function payment() {
+  // Will implement later
+});
+
+// Test that doesn't actually test the feature
+it('should validate user input', function validate() {
+  const result = true; // ❌ Hardcoded success
+  assume(result).equals(true);
+});
+
+// Commented out assertions
+it('should authenticate users', function auth() {
+  // assume(authenticateUser('valid')).equals(true);  // ❌ Commented out
+  console.log('Test not implemented yet');
+});
+```
+
+### Required Patterns
+
+**✅ Use proper skip for incomplete tests:**
+
+```typescript
+// Properly skipped test with clear reason
+it.skip('should handle complex authentication flow', function auth() {
+  // Skip reason: Waiting for OAuth provider setup
+  // TODO: Implement once auth service is configured
+});
+
+// Skipped describe block for entire feature
+describe.skip('Payment Processing', function payments() {
+  // Skip reason: Payment gateway not yet integrated
+  it('should process credit cards', function credit() {
+    // Implementation pending
+  });
+});
+
+// Alternative skip syntax
+it('should validate user permissions', function permissions() {
+  // Skip this test until permission system is redesigned
+  this.skip();
+});
+```
+
+**✅ Write real tests that verify behavior:**
+
+```typescript
+// Proper test that actually validates functionality
+it('should authenticate valid users', function auth() {
+  const user = { username: 'test', password: 'valid123' };
+  const result = authenticateUser(user);
+  
+  assume(result.success).equals(true);
+  assume(result.token).to.be.a('string');
+  assume(result.token.length).greaterThan(0);
+});
+
+// Test that verifies error conditions
+it('should reject invalid credentials', function reject() {
+  const user = { username: 'test', password: 'wrong' };
+  const result = authenticateUser(user);
+  
+  assume(result.success).equals(false);
+  assume(result.error).equals('Invalid credentials');
+  assume(result.token).equals(undefined);
+});
+
+// Async test with proper awaiting
+it('should fetch user data from API', async function fetch() {
+  const userId = 'test-123';
+  const userData = await fetchUser(userId);
+  
+  assume(userData).has.property('id');
+  assume(userData.id).equals(userId);
+  assume(userData.name).to.be.a('string');
+});
+```
+
+### Test Development Process
+
+**✅ Proper TDD workflow:**
+
+1. **Write failing test first:**
+
+   ```typescript
+   it('should calculate tax correctly', function tax() {
+     const result = calculateTax(100, 0.08);
+     assume(result).equals(8.00);  // Will fail until implemented
+   });
+   ```
+
+2. **Implement minimal code to pass:**
+
+   ```typescript
+   function calculateTax(amount: number, rate: number): number {
+     return amount * rate;
+   }
+   ```
+
+3. **Refactor while keeping tests green**
+
+**❌ Don't write passing tests before implementation:**
+
+```typescript
+// Wrong: Test passes before feature exists
+it('should format currency', function format() {
+  // This will pass even though formatCurrency doesn't exist yet
+  assume('$10.00').to.be.a('string');  // ❌ Not testing the function
+});
+```
+
+### Skip Usage Guidelines
+
+**Use `skip` when:**
+
+- External dependencies aren't available (databases, APIs, services)
+- Feature requirements are unclear or changing
+- Waiting for other team members' work
+- Technical blockers prevent implementation
+- Test requires complex setup not yet available
+
+**Always include skip reason:**
+
+```typescript
+it.skip('should sync with external CRM', function sync() {
+  // Skip reason: CRM API credentials not available in test environment
+  // Ticket: AUTH-123 - Set up test CRM instance
+});
+```
+
+### Review Checklist
+
+Before merging code with tests, verify:
+
+- ✅ No tests have placeholder assertions like `assume(true).equals(true)`
+- ✅ No empty test functions that pass by default
+- ✅ Skipped tests have clear reasons and are tracked
+- ✅ All passing tests actually verify the intended behavior
+- ✅ Tests fail when expected functionality is broken/missing
+- ✅ No commented-out assertions without replacement
+
+### Tools Integration
+
+**Use test runner skip features:**
+
+```typescript
+// Node.js test runner
+import { describe, it } from 'node:test';
+
+describe('Feature X', function feature() {
+  it.skip('pending implementation', function pending() {
+    // Properly tracked as skipped
+  });
+});
+
+// Jest/Mocha style
+describe.skip('Incomplete Feature', function incomplete() {
+  // Entire suite skipped
+});
+```
+
+**Track skipped tests in CI:**
+
+- Monitor skip count in test reports
+- Create tickets for skipped tests
+- Set reminders to implement skipped tests
+- Include skip reasons in test output
+
+### Common Violations to Avoid
+
+❌ **Always-true assertions:**
+
+```typescript
+assume(1).equals(1);              // Meaningless
+assume(true).toBeTruthy();        // Always passes
+assume('string').to.be.a('string'); // Trivial
+```
+
+❌ **Console.log instead of assertions:**
+
+```typescript
+it('should work', function work() {
+  console.log('This feature works!'); // Not a test
+});
+```
+
+❌ **TODO comments in passing tests:**
+
+```typescript
+it('should validate input', function validate() {
+  // TODO: Add real validation
+  assume(input).to.exist; // Placeholder assertion
+});
+```
+
+This rule ensures test quality and prevents false confidence from placeholder tests that
+don't actually verify functionality.
+
+This rule ensures test quality and prevents false confidence from placeholder tests that don't actually verify functionality.

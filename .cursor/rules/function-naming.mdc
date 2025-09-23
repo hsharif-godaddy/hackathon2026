@@ -1,0 +1,153 @@
+---
+description: Function naming and declaration rules for TypeScript and JavaScript files
+globs: **/*.{ts,js,tsx,jsx}
+alwaysApply: true
+---
+
+## Function Naming and Declaration Rules
+
+### Function Naming Rules
+
+- **ALWAYS prefer single word names** - this is the default and strongly preferred approach
+- **Module context provides meaning** - if your function is in a `config` module, you
+  don't need `getConfig`, just use `get`
+- **Only use 2 words when absolutely necessary:**
+  - Single word would create naming conflicts with existing functions/variables in the same scope
+    - Multiple similar functions in the same module need distinction (e.g., `parseBasic` vs
+      `parseAdvanced`)
+  - Single word would be genuinely ambiguous even with module context
+- **Only rename imports when necessary**: Don't rename imports unless there's an actual naming conflict
+  - ✅ `import { generate } from './tools-generator'` (no conflict)
+  - ❌ `import { generate as generateTools } from './tools-generator'` (unnecessary rename)
+  - ✅ `import { get as getConfig } from './config'` (only when needed for clarity at call site)
+- Ensure function names are **unique** and don't duplicate variable names in the same scope
+- Use camelCase for function names
+- Choose names that clearly indicate the function's purpose within its context
+- **Avoid generic prefixes** like "test", "describe", "handle" - name based on what the function actually does
+
+### Anonymous Arrow Function Rules
+
+- **Avoid anonymous arrow functions with block statements** (curly braces) unless you need
+  to interact with `this` value
+- **Always prefer named function expressions** over anonymous arrow functions with blocks
+- **This applies to ALL callbacks**: test functions, event handlers, array methods, async
+  operations, etc.
+- Simple arrow functions without blocks are acceptable for short operations
+
+### Examples
+
+**✅ Correct function naming (prefer single words with module context):**
+
+```typescript
+// In config.ts module - context is clear from module name
+export function get(serverName?: string) { ... }        // NOT getConfig
+export function load(defaultConfig: Config) { ... }     // NOT loadConfig  
+export function discover(): Config { ... }              // NOT discoverConfigs
+export function merge(configs: Config[]): Config { ... } // NOT mergeConfigs
+
+// In user.ts module - context is clear
+export function create(userData: UserData) { ... }      // NOT createUser
+export function validate(user: User) { ... }            // NOT validateUser
+export function save(user: User) { ... }                // NOT saveUser
+
+// Use import aliasing at call site for clarity if needed (only when necessary)
+import { get as getConfig, load as loadConfig } from './config';
+const config = getConfig('myServer');
+
+// When importing multiple similar functions, rename to avoid conflicts
+import { generate as generateTools } from './tools-generator';
+import { generate as generateResources } from './resources-generator';
+
+// Use 2 words only when single word creates conflicts in same scope
+function parseBasic() { ... } // Distinguish from parseAdvanced in same file
+function cloneRepo(url: string) { ... } // "clone" alone unclear in git context
+```
+
+**❌ Incorrect function naming (too verbose, not contextual, or generic prefixes):**
+
+```typescript
+// Too verbose when context is clear
+function createUserInDatabase(userData: UserData) { ... }
+function validateUserDataInput(user: User) { ... }
+
+// Generic prefixes that don't describe the action
+function testProcess() { ... } // ❌ Use "process" or "processData"
+function handleClick() { ... } // ❌ Use "onClick" or "click"
+function testValidate() { ... } // ❌ Use "validate" or "validateInput"
+
+// Duplicates variable name
+const user = getUser();
+function user() { ... } // ❌ Conflicts with variable
+```
+
+**✅ Correct arrow function usage:**
+
+```typescript
+// Simple operations without blocks - OK
+const numbers = [1, 2, 3].map(n => n * 2);
+const isValid = items.some(item => item.status === 'active');
+
+// Named function expressions for complex logic
+const processData = function process(data: Data[]) {
+  // Complex logic here
+  return result;
+};
+
+// When you need 'this' binding - anonymous arrow OK
+class Handler {
+  items = [];
+  
+  setupHandler() {
+    element.addEventListener('click', () => {
+      this.items.push(newItem); // Need 'this' binding
+    });
+  }
+}
+```
+
+**❌ Incorrect arrow function usage:**
+
+```typescript
+// Anonymous arrow with block - should be named function
+const result = data.map((item) => {
+  if (item.isValid) {
+    return processItem(item);
+  }
+  return null;
+}); // ❌ Should use named function expression
+
+// Test callbacks should also be named
+test('should process data correctly', () => {
+  const result = processData();
+  expect(result).toBe(expected);
+}); // ❌ Should use named function expression
+
+// Better versions:
+const result = data.map(function processItem(item) {
+  if (item.isValid) {
+    return processItem(item);
+  }
+  return null;
+});
+
+test('should process data correctly', function process() {
+  const result = processData();
+  expect(result).toBe(expected);
+});
+
+// More test examples - prefer single words when clear:
+test('validates user input', function validate() { ... });
+test('parses configuration file', function parse() { ... });
+test('generates report', function generate() { ... });
+test('clones repository', function clone() { ... });
+test('syncs multiple files', function sync() { ... });
+```
+
+### Implementation Notes
+
+- Consider the immediate context when naming (service, component, utility, etc.)
+- Avoid redundant words that are already clear from context
+- Use verbs for actions: `create`, `update`, `parse`, `validate`
+- Use nouns for getters/accessors: `user`, `config`, `data`
+- Named function expressions provide better stack traces and debugging experience
+- Reserve anonymous arrow functions for simple transformations and when `this` binding is required

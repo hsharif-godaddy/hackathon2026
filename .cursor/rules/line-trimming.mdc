@@ -1,0 +1,52 @@
+---
+description: "Line trimming and whitespace rules - remove trailing spaces and ensure clean formatting"
+globs: **/*.{ts,js,tsx,jsx,json,yaml,yml,md,txt,mdc,mdx}
+alwaysApply: true
+---
+
+# Line Trimming and Whitespace Rules
+
+## Required Formatting
+
+* **Remove all trailing whitespace** from the end of every line
+* **No trailing spaces** after any line of code, comments, or text
+* **No extra blank lines** at the end of files
+* **Consistent indentation** - use spaces or tabs consistently within each file
+* **Single empty line** between logical sections when appropriate
+* **No multiple consecutive empty lines** - maximum one empty line between sections
+
+## Examples
+
+**✅ Correct (no trailing spaces):**
+
+```typescript
+function process(data: string) {
+  const result = data.trim();
+  return result;
+}
+```
+
+**❌ Incorrect (has trailing spaces):**
+
+```typescript
+function process(data: string) {   
+  const result = data.trim();   
+  return result;   
+}   
+```
+
+## Implementation
+
+* **Always trim** trailing whitespace when editing any file
+* **Clean up** existing trailing spaces when touching a file
+* **Validate** that lines end cleanly without extra spaces
+* **Maintain** consistent formatting throughout the codebase
+
+## File Types
+
+This rule applies to all text-based files including:
+
+* Source code files (`.ts`, `.js`, `.tsx`, `.jsx`, etc.)
+* Configuration files (`.json`, `.yaml`, `.md`, etc.)
+* Documentation files (`.md`, `.txt`, etc.)
+* Test files and any other text content

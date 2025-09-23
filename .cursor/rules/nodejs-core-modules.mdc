@@ -1,0 +1,98 @@
+---
+description: "Node.js core module prefixing rules - always use node: prefix for core modules"
+globs: **/*.{ts,js,tsx,jsx}
+alwaysApply: true
+---
+
+## Node.js Core Module Prefixing Rules
+
+All Node.js core modules must be imported with the `node:` prefix to clearly distinguish them from third-party packages and improve code clarity.
+
+### Rules
+
+- **Always use `node:` prefix** when importing Node.js core modules
+- Apply this rule to both ES6 imports and CommonJS requires
+- This makes it explicit that the module is a Node.js built-in
+- Helps prevent confusion with similarly named npm packages
+- Improves code readability and maintainability
+
+### Node.js Core Modules (common examples)
+
+- `node:path` instead of `path`
+- `node:fs` instead of `fs`
+- `node:os` instead of `os`
+- `node:crypto` instead of `crypto`
+- `node:http` instead of `http`
+- `node:https` instead of `https`
+- `node:url` instead of `url`
+- `node:util` instead of `util`
+- `node:events` instead of `events`
+- `node:stream` instead of `stream`
+- `node:buffer` instead of `buffer`
+- `node:process` instead of `process`
+- `node:child_process` instead of `child_process`
+
+### Examples
+
+**✅ Correct (with node: prefix):**
+
+```typescript
+import { EventEmitter } from 'node:events';
+import crypto from 'node:crypto';
+import { URL } from 'node:url';
+import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+```
+
+**✅ Correct with CommonJS:**
+
+```javascript
+const crypto = require('node:crypto');
+const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
+```
+
+**❌ Incorrect (without node: prefix):**
+
+```typescript
+import crypto from 'crypto';       // ❌ Should be 'node:crypto'
+import path from 'path';           // ❌ Should be 'node:path'
+import fs from 'fs';               // ❌ Should be 'node:fs'
+import os from 'os';               // ❌ Should be 'node:os'
+```
+
+**❌ Incorrect with CommonJS:**
+
+```javascript
+const crypto = require('crypto');  // ❌ Should be require('node:crypto')
+const path = require('path');      // ❌ Should be require('node:path')
+const fs = require('fs');          // ❌ Should be require('node:fs')
+```
+
+### Mixed imports example (correct)
+
+```typescript
+// Node.js core modules with node: prefix
+import crypto from 'node:crypto';
+import path from 'node:path';
+import fs from 'node:fs';
+
+// Third-party packages without prefix
+import express from 'express';
+import lodash from 'lodash';
+import { glob } from 'glob';
+
+// Local modules
+import { utils } from './utils';
+```
+
+### Implementation Notes
+
+- The `node:` prefix was introduced in Node.js 12.20.0 and 14.13.1
+- It's now the recommended way to import core modules
+- Clearly distinguishes between core modules and npm packages
+- Prevents potential issues if an npm package has the same name as a core module
+- Most modern Node.js environments support this syntax
+- Apply this rule consistently across the entire codebase

@@ -1,0 +1,2521 @@
+# UXCore Components Documentation
+
+This document provides consolidated documentation for all UXCore components.
+
+## Table of Contents
+
+1. [Box](#box)
+2. [Form Components](#form-components)
+   - [Text Entry](#text-entry)
+   - [Text Input](#text-input)
+   - [Select Input](#select-input)
+   - [Password](#password)
+   - [Date Input](#date-input)
+   - [Time Picker](#time-picker)
+   - [Quantity Selector](#quantity-selector)
+   - [Checkbox](#checkbox)
+   - [Radio](#radio)
+   - [Search](#search)
+3. [Flyout](#flyout)
+4. [Modal](#modal)
+5. [Button](#button)
+6. [Select](#select)
+7. [Layout](#layout)
+8. [Card](#card)
+9. [Alert](#alert)
+10. [Tabs](#tabs)
+11. [Growl](#growl)
+12. [Text](#text)
+13. [Field Frame](#field-frame)
+14. [Toggle](#toggle)
+15. [Criteria](#criteria)
+16. [Progress Steps](#progress-steps)
+17. [Charts](#charts)
+18. [Table](#table)
+19. [Tooltip](#tooltip)
+20. [Dialog](#dialog)
+21. [Icon](#icon)
+22. [Spinner](#spinner)
+23. [Tag](#tag)
+24. [Menu](#menu)
+25. [Filter](#filter)
+26. [Linear Progress](#linear-progress)
+27. [Circular Progress](#circular-progress)
+28. [Corner Actions](#corner-actions)
+29. [Text Lockup](#text-lockup)
+30. [Thumb](#thumb)
+
+## Box
+
+The Box component is a foundational layout component that provides consistent spacing and alignment capabilities.
+
+### Installation
+```sh
+npm i @ux/box
+```
+
+### Overview
+Box serves as an organizational container component that helps maintain consistent spacing and alignment in layouts. It uses logical properties to handle different writing modes and provides multiple ways to align and space child elements.
+
+### Key Features
+- Flexible orientation (vertical/horizontal)
+- Logical property support for RTL
+- Built-in spacing system
+- Child alignment controls
+- Self-alignment capabilities
+- Automatic wrapping option
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `className` | `String` | Class for positioning |
+| `orientation` | `'horizontal' \| 'vertical'` | How children appear within the component. Default is `vertical` to suggest block stacking behavior |
+| `wrap` | `Boolean` | Should children wrap when room isn't available (works with `orientation='horizontal'`) |
+| `blockAlignChildren` | `'start' \| 'center' \| 'end' \| 'spaceBetween'` | Sets the block-axis alignment of children |
+| `inlineAlignChildren` | `'start' \| 'center' \| 'end'` | Sets the inline-axis alignment of children |
+| `blockAlignSelf` | `'start' \| 'center' \| 'end'` | Sets the block-axis alignment of itself when child of another Box |
+| `inlineAlignSelf` | `'start' \| 'center' \| 'end'` | Sets the inline-axis alignment of itself when child of another Box |
+| `gap` | `'sm' \| 'md' \| 'lg' \| 'xl'` | Space between children |
+| `inlinePadding` | `'sm' \| 'md' \| 'lg' \| 'xl'` | Padding in the inline axis |
+| `blockPadding` | `'sm' \| 'md' \| 'lg' \| 'xl'` | Padding in the block axis |
+| `displayType` | `String` | CSS display property, defaults to 'flex' |
+| `stretch` | `Boolean` | Stretches available space (similar to flex: 1) |
+
+### Usage Examples
+
+```jsx
+// Basic Box
+import Box from '@ux/box';
+
+function BasicExample() {
+  return (
+    <Box blockAlignChildren='center'>
+      <p>Centered content</p>
+      <Button text="Click me" />
+    </Box>
+  );
+}
+
+// Horizontal Layout with Gap
+function HorizontalExample() {
+  return (
+    <Box 
+      orientation='horizontal' 
+      gap='md'
+      wrap={true}>
+      <Card>Item 1</Card>
+      <Card>Item 2</Card>
+      <Card>Item 3</Card>
+    </Box>
+  );
+}
+
+// Complex Alignment
+function AlignmentExample() {
+  return (
+    <Box 
+      blockAlignChildren='center'
+      inlineAlignChildren='start'
+      blockPadding='lg'
+      inlinePadding='md'>
+      <h2>Title</h2>
+      <p>Content with padding</p>
+    </Box>
+  );
+}
+```
+
+### Hook Usage
+The `useBox` hook provides a way to apply Box functionality to other elements:
+
+```jsx
+import { useBox } from '@ux/box';
+
+function CustomContainer() {
+  const boxProps = useBox({ 
+    blockAlignChildren: 'center',
+    gap: 'md'
+  });
+  
+  return (
+    <div {...boxProps}>
+      <p>Custom container content</p>
+    </div>
+  );
+}
+```
+
+### Component Usage
+For component-based usage, the package exports a `box` object with HTML tag references:
+
+```jsx
+import { box } from '@ux/box';
+
+function SectionExample() {
+  return (
+    <box.section blockAlignChildren='center'>
+      <h2>Section Title</h2>
+      <p>Section content</p>
+    </box.section>
+  );
+}
+```
+
+## Form Components
+
+### Text Entry
+
+### Installation
+```sh
+npm i @ux/text-entry
+```
+
+### Overview
+The component is often meant to be used in conjunction with `<FieldFrame/>` as a replacement for a native HTML `<input/>` when building custom form controls. The `<TextEntry/>` component is designed to be _visually invisible_ without the `<FieldFrame/>` component, which provides a border (or other affordance) to signify a field for text input.
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `className` | `String` | Sets a classname on the root component for use in layout placement. |
+| `center` | `Boolean` | Centers the value within the input. |
+| `disabled` | `Boolean` | Sets `disabled` on the `<input/>`. |
+| `id` | `String` | **Required** Sets an `id` attribute on the `<input/>`, will also set on `for` attribute on label if provided. |
+| `invalid` | `Boolean` | Set style and properties to reflect invalid state. |
+| `label` | `String` `React.Component` | Creates a floating label over the input. When a component is given, it is cloned with additional classnames. | 
+| `multiline` | `Boolean` | Replaces `<input>` with `<textarea>`. |
+| `placeholder` | `String` | Placeholder text for the `<input/>`, if this and `label` are both provided, the `label` will not be shown. |
+| `readOnly` | `Boolean` | Sets `readonly` on the `<input/>`. |
+| `resize` | `String|Boolean` | For `multiline` use, allows the box to be resized. Allows for any CSS `resize` prop or `Boolean`. `true = 'both'` `false = 'none'` |
+| `required` | `String` | Changes the style of the input to reflect a required state. This does _not_ set the `required` property on the `<input/>` but `aria-required` instead. |
+| `size`| `Number` | Sizes the input. When using `multiline` this affects the vertical size. However, this will not work with floating labels; the label will determine the size. |
+| `suggestion` | `String` | This is text that can allow for a tab to autocomplete functionality to be created. An example in provided in the `/examples` directory. The text here should start with the text currently in the `<input/>` value. |
+| `type` | `String` | The type of `<input/>`, this only allows for text types (`email`, `url`, etc) |
+| `value` | `String` | The value of the `<input/>`. |
+| `visualSize` | `('sm' \| 'md')` | Sets component size, passed via ref from the convenience component |
+
+### onChange Event
+The `onChange` signature for this component is:
+```js
+onChange(theUpdatedValueExpected, { event: theOriginalEventFired });
+```
+
+### Usage Example
+```jsx
+import FieldFrame from '@ux/field-frame';
+import TextEntry from '@ux/text-entry';
+
+export default function MyInput() {
+  return (
+    <>
+      <label htmlFor='my-input'>Username</label>
+      <FieldFrame>
+        <TextEntry 
+          id='my-input'
+          type="text"
+          label="Username"
+          required
+        />
+      </FieldFrame>
+    </>
+  );
+}
+```
+
+### Text Input
+
+A composed form element that combines TextEntry with a label and optional error/help messages.
+
+### Installation
+```sh
+npm i @ux/text-input
+```
+
+### Overview
+The Text Input component provides a complete form control that includes a label, text input field, and support for validation states and messages.
+
+### Key Features
+- Built on TextEntry foundation
+- Integrated FieldFrame
+- Floating label support
+- Error and help messages
+- Full width option
+- Visual size variants
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `id` | `String` | **Required** Unique identifier |
+| `label` | `String` | Input label text |
+| `value` | `String` | Input value |
+| `onChange` | `Function` | Value change handler |
+| `type` | `String` | Input type (text, email, etc) |
+| `placeholder` | `String` | Placeholder text |
+| `errorMessage` | `String` | Error message text |
+| `helpMessage` | `String` | Helper text |
+| `required` | `Boolean` | Required field indicator |
+| `invalid` | `Boolean` | Error state |
+| `disabled` | `Boolean` | Disabled state |
+| `visualSize` | `'sm' \| 'md'` | Component size |
+| `stretch` | `Boolean` | Full width mode |
+
+### Usage Example
+```jsx
+import TextInput from '@ux/text-input';
+
+function FormExample() {
+  return (
+    <TextInput
+      id="email"
+      label="Email Address"
+      type="email"
+      required
+      helpMessage="We'll never share your email"
+      visualSize="md"
+      stretch
+    />
+  );
+}
+```
+
+### Select Input
+
+A composed form element that combines Select with a label and optional messages.
+
+### Installation
+```sh
+npm i @ux/select-input
+```
+
+### Overview
+The Select Input component provides a complete dropdown selection control with integrated label and validation support.
+
+### Key Features
+- Built on Select foundation
+- Integrated FieldFrame
+- Floating label support
+- Error and help messages
+- Full width option
+- Visual size variants
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `id` | `String` | **Required** Unique identifier |
+| `label` | `String` | Input label text |
+| `value` | `String` | Selected value |
+| `onChange` | `Function` | Selection change handler |
+| `options` | `Array` | Selection options array |
+| `errorMessage` | `String` | Error message text |
+| `helpMessage` | `String` | Helper text |
+| `required` | `Boolean` | Required field indicator |
+| `invalid` | `Boolean` | Error state |
+| `disabled` | `Boolean` | Disabled state |
+| `visualSize` | `'sm' \| 'md'` | Component size |
+| `stretch` | `Boolean` | Full width mode |
+| `placeholder` | `String` | Placeholder text |
+
+### Usage Example
+```jsx
+import SelectInput from '@ux/select-input';
+
+function FormExample() {
+  const [selected, setSelected] = useState('');
+  
+  return (
+    <SelectInput
+      id="country"
+      label="Country"
+      value={selected}
+      onChange={setSelected}
+      options={[
+        { value: 'us', label: 'United States' },
+        { value: 'ca', label: 'Canada' },
+        { value: 'mx', label: 'Mexico' }
+      ]}
+      required
+      visualSize="md"
+      stretch
+    />
+  );
+}
+```
+
+### Password
+
+### Installation
+```sh
+npm i @ux/password
+```
+
+### Overview
+The Password component builds on TextEntry and FieldFrame to provide a secure password input with optional visibility toggle and validation features.
+
+### Key Features
+- Built on TextEntry foundation
+- Optional visibility toggle
+- Help text support
+- Error message display
+- Flyout content support
+
+### Props
+Inherits props from `@ux/text-entry` and `@ux/field-frame`, with these additions:
+
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `button` | `Element` | Optional `@ux/button` above input |
+| `children` | `Node` | Flyout content |
+| `className` | `String` | Root component class |
+| `helpMessage` | `String` | Helper/hint text |
+| `errorMessage` | `String` | Error message |
+| `open` | `Boolean` | Flyout visibility control |
+
+### Event Handling
+The `onChange` callback provides a consistent signature:
+```js
+onChange(value: string, { event: originalEvent });
+```
+
+### Usage Examples
+```jsx
+// Basic Password Input
+const BasicPassword = () => (
+  <Password
+    id="login-password"
+    label="Password"
+    required={true}
+  />
+);
+
+// With Validation Flyout
+const ValidatedPassword = () => {
+  const [value, setValue] = useState('');
+  
+  return (
+    <Password
+      id="signup-password"
+      label="Create Password"
+      value={value}
+      onChange={(val) => setValue(val)}
+      helpMessage="Must be at least 8 characters"
+    >
+      <Criteria invalid={value.length < 8}>
+        Minimum 8 characters
+      </Criteria>
+    </Password>
+  );
+};
+```
+
+### Breaking Changes in v2102
+- Removed dependency on `@ux/form-element`
+- Converted to functional component with ref forwarding
+- Removed built-in validation
+- Developer-managed password visibility
+- Required `id` prop for accessibility
+- Future integration with `@ux/criteria` planned
+
+## Flyout
+
+### Installation
+```sh
+npm i @ux/flyout
+```
+
+### Overview
+A base component for all items that are visually anchored to another element, expected to appear on top of the UI. Examples include dropdowns and tooltips.
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `anchorRef` | `React ref` | Reference to the DOM node to attach the flyout visually |
+| `arrow` | `Boolean` | Display an arrow connecting to the anchor |
+| `placement` | `String` | Determines flyout placement (see Placement section) |
+| `portalElem` | `Element` | Element to attach the flyout to, helps prevent overflow clipping |
+| `strategy` | `String` | Positioning strategy: `absolute` or `fixed` |
+| `role` | `String` | ARIA role applied to the flyout |
+| `onClose` | `Function` | Callback fired when event occurs outside flyout/anchor |
+| `onPlacement` | `Function` | Callback fired on placement change |
+| `middleware` | `Array` | Array of floating-UI middleware configurations |
+
+### Placement Options
+Base placements:
+- `auto`
+- `top`
+- `right`
+- `bottom`
+- `left`
+
+Variations (`-start` or `-end` can be appended):
+- `top-end` (on top, right aligned)
+- `right-start` (on right, top aligned)
+- `bottom` (on bottom, centered)
+- `auto-end` (automatic side, alignment based on space)
+
+### Middleware
+The component exposes wrapper functions for common floating-UI middleware:
+
+- `@ux/flyout/middleware/flip` - Allows flyout to flip when overflowing
+- `@ux/flyout/middleware/stretch` - Stretches flyout to nearest relative ancestor
+- `@ux/flyout/middleware/resize` - Dynamically resizes flyout to fit viewport
+- `@ux/flyout/middleware/offset` - Adds spacing between flyout and anchor
+
+### Usage Example
+```jsx
+import Flyout from '@ux/flyout';
+
+export default function MyFlyout() {
+  const [show, setShow] = useState(false);
+  const anchorRef = useRef(null);
+
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        onClick={() => setShow(!show)}
+        aria-labelledby="my-flyout">
+        Toggle Flyout
+      </button>
+
+      {show && (
+        <Flyout 
+          anchorRef={anchorRef}
+          id="my-flyout"
+          placement="bottom"
+          arrow={true}
+          onClose={() => setShow(false)}>
+          <p>Flyout content here</p>
+        </Flyout>
+      )}
+    </>
+  );
+}
+```
+
+## Modal
+
+A dialog component that overlays the main content.
+
+### Installation
+```sh
+npm i @ux/modal
+```
+
+### Key Features
+- Customizable titles and actions
+- Portal support 
+- Accessibility features
+- Responsive design
+
+[See full Modal documentation](./components/modal)
+
+## Button
+
+A comprehensive set of styled buttons following UXCore 2.0 design patterns.
+
+### Installation
+```sh
+npm i @ux/button
+```
+
+### Key Features
+- Seven design variants (critical, inline, primary, secondary, control, option)
+- Icon support
+- Internationalization support
+- Toggle and select button modes
+- Accessibility features built-in
+
+### Design Variants
+- `critical` - Red button for destructive actions
+- `inline` - Actionable target within text (like links)
+- `primary` - Main action button
+- `secondary` - Lesser priority actions
+- `control` - Used within form controls
+- `option` - Items in selectable lists
+
+### Best Practices
+- Use `text` prop instead of children for content
+- Use `icon` prop for adding icons
+- Use `as` prop for special button types (select, toggle)
+- Apply layout styles through className, not appearance styles
+
+[See full Button documentation](./components/button)
+
+## Select
+
+A component for user selection from predefined options.
+
+### Installation
+```sh
+npm i @ux/select
+```
+
+### Key Features
+- Native select element base
+- Floating label support
+- Customizable sizing
+- Form validation states
+- Full width support
+
+### Component States
+- Default
+- Disabled
+- Invalid
+- Required
+
+### Props
+Key props include:
+- `value` - Selected option value
+- `label` - Floating label text
+- `visualSize` - Size variant (sm, md)
+- `stretch` - Full width mode
+- `invalid` - Error state
+- `required` - Required field state
+
+[See full Select documentation](./components/select)
+
+## Layout
+
+A system for structuring content using Module, Block, and Lockup components.
+
+### Installation
+```sh
+npm i @ux/layout
+```
+
+### Key Features
+- Module - Highest level container
+- Block - Mid-level content grouping
+- Lockup - Fine-grained content arrangement
+- Vertical/horizontal orientation support
+
+[See full Layout documentation](./components/layout)
+
+## Card
+
+A versatile card component that can function as both interactive and non-interactive elements.
+
+### Installation
+```sh
+npm i @ux/card
+```
+
+### Key Features
+- Multiple interaction modes (button, link, checkbox, radio)
+- Configurable spacing system
+- Controlled and uncontrolled input states
+- Accessibility features built-in
+
+### Interactive Modes
+- Default (div) - Non-interactive container
+- Button - Clickable card
+- Link - Navigation card
+- Checkbox - Multi-select card
+- Radio - Single-select card
+
+### Usage Examples
+```jsx
+<Card id="div-card">Non-interactive card</Card>
+
+<Card id="button-card" as="button" onClick={handleClick}>
+  Interactive card
+</Card>
+
+<Card id="checkbox-card" as="checkbox" onChange={handleChange}>
+  Selectable card
+</Card>
+```
+
+[See full Card documentation](./components/card)
+
+## Alert
+
+A notification component for displaying important messages and feedback.
+
+### Installation
+```sh
+npm i @ux/alert
+```
+
+### Key Features
+- Multiple emphasis states (critical, success, warning, etc.)
+- Action button support
+- Dismissable notifications
+- Accessibility-focused
+
+### Emphasis Options
+- `critical` - High priority/error messages
+- `success` - Positive confirmations
+- `warning` - Cautionary messages
+- `info` - Informational updates
+- `highlight` - Emphasized content
+- `neutral` - Default state
+- `internal` - Internal system messages
+
+### Best Practices
+- Always provide a title and ID for accessibility
+- Use appropriate emphasis for message context
+- Include clear action buttons when needed
+- Keep messages concise and focused
+
+### Usage Example
+```jsx
+<Alert 
+  id="success-alert"
+  emphasis="success"
+  title={<Text as="h3">Success!</Text>}
+  onClose={handleClose}>
+  Your changes have been saved
+</Alert>
+```
+
+[See full Alert documentation](./components/alert)
+
+## Tabs
+
+A navigation component for switching between different views or content sections.
+
+### Installation
+```sh
+npm i @ux/tabs
+```
+
+### Key Features
+- Multiple design variants (button, manila, underline)
+- Overflow handling (scroll or flyout)
+- Nested navigation support
+- Full keyboard navigation
+- ARIA compliance
+
+### Design Variants
+- `button` - Button-style tabs for menubar behavior
+- `manila` - Traditional folder tab appearance
+- `underline` - Minimalist underlined style
+
+### Overflow Modes
+- `scroll` - Horizontal scrolling with controls
+- `flyout` - Collapsible "more" menu
+
+### Best Practices
+- Use `useMemo` for static items array
+- Implement content panels with `Tabs.panelAttrs`
+- Provide clear ARIA labels
+- Consider activation mode (immediate vs manual)
+
+### Usage Example
+```jsx
+<Tabs
+  id="nav-tabs"
+  design="underline"
+  overflow="flyout"
+  items={[
+    { id: "home", text: "Home" },
+    { id: "profile", text: "Profile" },
+    {
+      id: "settings",
+      text: "Settings",
+      children: [
+        { id: "account", text: "Account" },
+        { id: "privacy", text: "Privacy" }
+      ]
+    }
+  ]}
+  onChange={handleTabChange}
+/>
+```
+
+[See full Tabs documentation](./components/tabs)
+
+## Growl
+
+A component for displaying passive, temporary notifications in an application.
+
+### Installation
+```sh
+npm i @ux/growl
+```
+
+### Key Features
+- Global notification management
+- Auto-dismissing messages
+- Action button support
+- Consistent styling with Dialog component
+
+### Implementation Details
+- Single instance per application
+- Static message management API
+- Configurable message lifetime
+- Inherits Dialog styling and props
+
+### Usage Example
+```jsx
+// Main App Component
+<div id="app">
+  <Growl />
+  {/* Other components */}
+</div>
+
+// Adding messages from anywhere
+Growl.addGrowlMessage({
+  id: 'notification-1',
+  title: <Text as="h3">Update Complete</Text>,
+  children: 'Your changes have been saved',
+  emphasis: 'success',
+  lifetime: 3000
+});
+```
+
+### Message Configuration
+- `id` - Unique identifier (auto-generated if omitted)
+- `title` - Message header using Text component
+- `children` - Main message content
+- `emphasis` - Visual style (success, warning, etc.)
+- `lifetime` - Auto-dismiss duration in milliseconds
+- `actions` - Optional action buttons
+
+[See full Growl documentation](./components/growl)
+
+## Text
+
+A fundamental typography system providing consistent text styles through both CSS classes and React components.
+
+### Installation
+```sh
+npm i @ux/text
+```
+
+### Key Features
+- Consistent typography scaling
+- Multiple text variants
+- Theme-based calculations
+- React component wrappers
+
+### Text Variants
+- `title` - For lower-level headings
+- `heading` - For higher-level headings
+- `paragraph` - For paragraph text
+- `label` - For form labels
+- `action` - For button text
+- `input` - For form inputs
+- `caption` - For help/error text
+
+### Sizing System
+- Scale from 0-5 using theme-based calculations
+- Configurable scale factor and operator
+- Responsive line heights
+- Default and custom emphasis colors
+
+### Usage Examples
+```jsx
+// React Component Usage
+<text.h2
+  as="heading"
+  size={1}
+  text="Hello World"
+/>
+
+// CSS Class Usage
+<h1 class="ux-text ux-text-heading ux-text-size2">
+  Large Heading
+</h1>
+
+<p class="ux-text ux-text-paragraph">
+  Regular paragraph text
+</p>
+```
+
+### Theme Configuration
+Base values controlled through theme intents:
+- Font size scaling
+- Line height scaling
+- Scale factors and operators
+- Emphasis colors
+
+[See full Text documentation](./components/text)
+
+## Field Frame
+
+A container component that provides visual structure for form inputs and controls.
+
+### Installation
+```sh
+npm i @ux/field-frame
+```
+
+### Key Features
+- Visual container for form inputs
+- Support for multiple inner components
+- Flyout integration
+- Form validation states
+
+### Compatible Components
+- TextEntry
+- Button
+- Select
+- Icon
+- Horizontal rules
+
+### Special Features
+- Flyout placement coordination
+- Stretching capability
+- Invalid state styling
+- Disabled state support
+
+### Usage Examples
+```jsx
+// Basic Usage
+<FieldFrame>
+  <TextEntry id="username" />
+</FieldFrame>
+
+// With Flyout Integration
+<FieldFrame ref={anchorRef} flyoutPlacement={show ? placement : null}>
+  <Button text="Toggle" onClick={() => setShow(!show)} />
+  {show && (
+    <Flyout
+      anchorRef={anchorRef}
+      placement="top"
+      onPlacement={setPlacement}
+      stretch={true}>
+      Flyout content
+    </Flyout>
+  )}
+</FieldFrame>
+```
+
+[See full Field Frame documentation](./components/field-frame)
+
+## Toggle
+
+A form control component for checkbox and radio input types with UXCore styling.
+
+### Installation
+```sh
+npm i @ux/toggle
+```
+
+### Key Features
+- Supports checkbox and radio types
+- Controlled and uncontrolled modes
+- Accessible labeling
+- UXCore-consistent styling
+
+### Component Types
+- Checkbox toggle (default)
+- Radio toggle
+- Custom label support
+- State management options
+
+### Implementation Notes
+- Defaults to checkbox if type is invalid
+- Requires unique IDs for multiple instances
+- Controlled state management available
+- Follows React form control best practices
+
+### Usage Example
+```jsx
+const ControlledToggle = () => {
+  const [checked, setChecked] = useState(false);
+  
+  return (
+    <Toggle
+      id="settings-toggle"
+      type="checkbox"
+      checked={checked}
+      onChange={() => setChecked(!checked)}
+      label="Enable feature"
+    />
+  );
+};
+```
+
+[See full Toggle documentation](./components/toggle)
+
+## Criteria
+
+A component for displaying and managing form validation rules and requirements.
+
+### Installation
+```sh
+npm i @ux/criteria
+```
+
+### Key Features
+- Individual rule visualization
+- Async validation support
+- Accessibility focused
+- Combines with SiblingSet for rule groups
+
+### Implementation Details
+- Developer-controlled validation state
+- Processing state for async checks
+- Flexible content support
+- Layout customization options
+
+### Best Practices
+- Use with SiblingSet for multiple rules
+- Connect rules to form inputs via ARIA
+- Implement clear validation logic
+- Show processing state for async checks
+
+### Usage Example
+```jsx
+const PasswordValidation = () => {
+  const [lengthValid, setLengthValid] = useState(false);
+  const [numbersValid, setNumbersValid] = useState(false);
+  
+  const id = 'password-input';
+  
+  return (
+    <>
+      <input 
+        type="password" 
+        id={id}
+        onChange={handleValidation}
+      />
+      
+      <SiblingSet 
+        label={{ content: 'Password requirements', id }}
+        orientation="vertical"
+        divider={true}>
+        <Criteria invalid={!lengthValid}>
+          At least 8 characters
+        </Criteria>
+        <Criteria invalid={!numbersValid}>
+          Include numbers
+        </Criteria>
+      </SiblingSet>
+    </>
+  );
+};
+```
+
+[See full Criteria documentation](./components/criteria)
+
+## Progress Steps
+
+A component for visualizing and managing multi-step processes or workflows.
+
+### Installation
+```sh
+npm i @ux/progress-steps
+```
+
+### Key Features
+- Simple step definition via props
+- Advanced configuration with child components
+- Navigation integration
+- Click handling support
+
+### Implementation Options
+1. Simple Steps Array:
+   - Define steps as string array
+   - Basic progress tracking
+   - Minimal configuration needed
+
+2. Step Components:
+   - Individual step configuration
+   - Link support
+   - Custom click handlers
+   - Enhanced control
+
+### Usage Examples
+```jsx
+// Simple Implementation
+<ProgressSteps
+  label="Checkout Process"
+  steps={["Cart", "Shipping", "Payment", "Review"]}
+  value={currentStep}
+/>
+
+// Advanced Implementation
+<ProgressSteps label="Account Setup" value={currentStep}>
+  <ProgressStep href="/step/1">
+    Profile
+  </ProgressStep>
+  <ProgressStep href="/step/2">
+    Preferences
+  </ProgressStep>
+  <ProgressStep onClick={handleComplete}>
+    Confirm
+  </ProgressStep>
+</ProgressSteps>
+```
+
+[See full Progress Steps documentation](./components/progress-steps)
+
+## Charts
+
+A comprehensive SVG-based charting library supporting both React and React Native platforms.
+
+### Installation
+```sh
+npm i @ux/charts
+```
+
+### Available Charts
+- Donut Chart
+- Line Chart
+- Axis Component
+- Stacked Percentage Chart
+
+### Key Features
+- Cross-platform compatibility
+- Customizable data accessors
+- Flexible formatting options
+- Interactive elements
+- Theme integration
+- Responsive dimensions
+
+### Common Props
+All charts support:
+- `data` - Source data array
+- `accessor` - Custom data access function
+- `formatter` - Label formatting function
+- `colors` - Custom color array
+- `width/height` - Chart dimensions
+- `selected` - Selected item index
+- `onPress` - Interaction handler
+
+### Chart Types
+
+#### Donut Chart
+```jsx
+<Donut
+  data={[
+    { name: "Group A", value: 30 },
+    { name: "Group B", value: 70 }
+  ]}
+  label="middle"
+  width={400}
+  height={400}
+/>
+```
+
+#### Line Chart
+```jsx
+<Line
+  data={timeSeriesData}
+  smooth={true}
+  area={true}
+  min={0}
+  max={100}
+>
+  <Axis position="x" labels={true} />
+  <Axis position="y" gridLines={1} />
+</Line>
+```
+
+### Best Practices
+- Set explicit min/max values for consistent scales
+- Use formatters for custom label display
+- Enable gridLines for better data readability
+- Consider smooth interpolation for trend visualization
+- Implement proper error handling for data access
+
+[See full Charts documentation](./components/charts)
+
+## Table
+
+A headless table component providing styled building blocks that work with external state management solutions.
+
+### Installation
+```sh
+npm i @ux/table
+```
+
+### Key Features
+- Headless design pattern
+- Integration with TanStack Table
+- Subcomponents for all table parts
+- Customizable styling
+- Row selection support
+
+### Components
+- `Table` - Main container
+- `Thead` - Table header
+- `Tbody` - Table body
+- `Tfoot` - Table footer
+- `Tr` - Table row
+- `Th` - Header cell
+- `Td` - Data cell
+
+### Best Practices
+- Use with a state management library (e.g., TanStack Table)
+- Implement sorting externally
+- Handle row selection through state management
+- Use proper ARIA scoping
+
+### Usage Examples
+```jsx
+// Basic Table
+<Table density="sm">
+  <Thead>
+    <Tr>
+      <Th scope="col">Name</Th>
+      <Th scope="col">Age</Th>
+    </Tr>
+  </Thead>
+  <Tbody>
+    <Tr>
+      <Th scope="row">John</Th>
+      <Td>30</Td>
+    </Tr>
+  </Tbody>
+</Table>
+
+// With TanStack Integration
+<Table>
+  <Thead>
+    {table.getHeaderGroups().map(headerGroup => (
+      <Tr key={headerGroup.id}>
+        {headerGroup.headers.map(header => (
+          <Th key={header.id}>
+            {flexRender(
+              header.column.columnDef.header,
+              header.getContext()
+            )}
+          </Th>
+        ))}
+      </Tr>
+    ))}
+  </Thead>
+  {/* ... */}
+</Table>
+```
+
+### Compatibility Note
+When using both `@ux/table` and `@ux/table-legacy`, use the `ux-table-legacy-compat` className to prevent style conflicts.
+
+[See full Table documentation](./components/table)
+
+## Radio
+
+A form input component for single-selection options with UXCore styling.
+
+### Installation
+```sh
+npm i @ux/radio
+```
+
+### Key Features
+- Controlled and uncontrolled modes
+- Ref forwarding support
+- Theme-based styling
+- Accessibility focus
+
+### Implementation Details
+- Required `id` and `name` props
+- Developer-managed validation
+- Consistent onChange API
+- Theme integration via `controlChosen` intents
+
+### Usage Example
+```jsx
+const RadioGroup = () => {
+  const [selected, setSelected] = useState('');
+  
+  return (
+    <form>
+      <Radio
+        id="option-1"
+        name="group"
+        label="Option 1"
+        value="opt1"
+        checked={selected === 'opt1'}
+        onChange={(checked, { event }) => setSelected(checked ? 'opt1' : '')}
+      />
+      <Radio
+        id="option-2"
+        name="group"
+        label="Option 2"
+        value="opt2"
+        checked={selected === 'opt2'}
+        onChange={(checked, { event }) => setSelected(checked ? 'opt2' : '')}
+      />
+    </form>
+  );
+};
+```
+
+[See full Radio documentation](./components/radio)
+
+## Checkbox
+
+A form input component for multiple-selection options with UXCore styling.
+
+### Installation
+```sh
+npm i @ux/checkbox
+```
+
+### Overview
+The Checkbox component provides a styled checkbox input that supports both controlled and uncontrolled usage patterns. Built with accessibility in mind, it requires proper identification and labeling.
+
+### Key Features
+- Controlled and uncontrolled modes via refs
+- Required accessibility attributes
+- Theme integration via `controlChosen`
+- Developer-managed validation state
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `id` | `String` | **Required** Unique identifier for accessibility |
+| `name` | `String` | **Required** Form field name |
+| `label` | `String` | Label text for the checkbox |
+| `checked` | `Boolean` | Controlled state value |
+| `defaultChecked` | `Boolean` | Initial state for uncontrolled usage |
+| `value` | `String` | Value attribute for form submission |
+| `invalid` | `Boolean` | Indicates validation error state |
+| `disabled` | `Boolean` | Disables the checkbox |
+
+### Event Handling
+The `onChange` callback provides a consistent signature:
+```js
+onChange(checked: boolean, { event: originalEvent });
+```
+
+### Usage Examples
+```jsx
+// Controlled Component
+const ControlledCheckbox = () => {
+  const [checked, setChecked] = useState(false);
+  
+  return (
+    <Checkbox
+      id="terms"
+      name="terms"
+      label="I agree to the terms"
+      checked={checked}
+      onChange={(checked) => setChecked(checked)}
+    />
+  );
+};
+
+// Multiple Checkboxes
+const TechnologyPoll = () => {
+  return (
+    <form>
+      <Checkbox id="html" name="tech" value="html" label="HTML" />
+      <Checkbox id="css" name="tech" value="css" label="CSS" />
+      <Checkbox id="js" name="tech" value="js" label="JavaScript" />
+    </form>
+  );
+};
+```
+
+### Breaking Changes in v2102
+- Removed dependency on `@ux/form-element`
+- Converted to functional component with ref forwarding
+- Required theme `controlChosen` intent values
+- Removed built-in validation
+- Simplified checked state management
+- Made `id` and `name` props required
+
+## Tooltip
+
+A component for displaying floating messages near anchor elements.
+
+### Installation
+```sh
+npm i @ux/tooltip
+```
+
+### Overview
+Built on top of the Flyout component, Tooltip provides a simple way to add floating help text or additional context to UI elements. The component is stateless and relies on conditional rendering for visibility control.
+
+### Key Features
+- Inherits Flyout positioning system
+- Dialog integration for rich content
+- Stateless implementation
+- Accessibility support
+
+### Props
+Inherits most props from `@ux/flyout`, with these specific additions:
+
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `anchorRef` | `Ref` | React ref of the anchor element |
+| `open` | `Boolean` | Controls visibility when content is set (defaults to true) |
+
+### Usage Examples
+```jsx
+// Basic Tooltip
+const BasicTooltip = () => {
+  const [show, setShow] = useState(false);
+  const anchorRef = useRef(null);
+
+  return (
+    <>
+      <Button 
+        ref={anchorRef}
+        onClick={() => setShow(!show)}
+        aria-haspopup={show}
+        text="Help"
+      />
+      
+      {show && (
+        <Tooltip anchorRef={anchorRef}>
+          Helpful information
+        </Tooltip>
+      )}
+    </>
+  );
+};
+
+// Rich Content with Dialog
+const RichTooltip = () => {
+  const [show, setShow] = useState(false);
+  const anchorRef = useRef(null);
+
+  return (
+    <>
+      <Button 
+        ref={anchorRef}
+        onClick={() => setShow(!show)}
+        aria-haspopup={show}
+        text="Learn More"
+      />
+      
+      {show && (
+        <Tooltip 
+          anchorRef={anchorRef} 
+          onClose={() => setShow(false)}
+        >
+          <Dialog 
+            title={<Text.h3 text="Getting Started" as="title" />}
+            id="tutorial-1"
+            padding
+            onClose={() => setShow(false)}
+          >
+            Step-by-step tutorial content
+          </Dialog>
+        </Tooltip>
+      )}
+    </>
+  );
+};
+```
+
+### Breaking Changes in v2201
+- Converted to functional component
+- Removed state management (use conditional rendering)
+- Removed ariaLabels prop
+- Legacy version moved to @ux/legacy
+
+## Dialog
+
+A base notification layout component that provides consistent structure for overlaid content.
+
+### Installation
+```sh
+npm i @ux/dialog
+```
+
+### Overview
+Dialog serves as the foundation for several other notification components like Alert, Modal, and Growl. It provides a standardized layout structure with minimal default styling, making it highly customizable for different use cases.
+
+### Key Features
+- Standard notification layout
+- Action button support
+- Accessibility integration
+- Flexible styling options
+- Icon integration
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `actions` | `Elements` | Action buttons (`@ux/button` components) |
+| `ariaLabels` | `Object` | ARIA label configuration object |
+| `contrast` | `String` | Optional contrast layer for colored elements |
+| `icon` | `Component` | Optional `@ux/icon` next to title |
+| `id` | `String` | Required for title-content relationship |
+| `onClose` | `Function` | Dismiss callback |
+| `padding` | `Boolean\|Number\|String` | Container padding |
+| `stretch` | `Boolean` | Full width mode |
+| `title` | `String\|Component` | Dialog title (preferably `@ux/text`) |
+
+### Usage Example
+```jsx
+const ExampleDialog = () => {
+  const [show, setShow] = useState(true);
+  
+  return (
+    <section>
+      {show && (
+        <Dialog 
+          role="alert"
+          id="example-alert"
+          title={<Text.h2 text="Important Notice" />}
+          onClose={() => setShow(false)}
+          actions={[
+            <Button 
+              text="Confirm"
+              onClick={() => setShow(false)}
+            />
+          ]}>
+          This is an important message that requires attention.
+        </Dialog>
+      )}
+    </section>
+  );
+};
+```
+
+### Related Components
+Several components build on Dialog to provide specific functionality:
+- `@ux/alert` - For important messages
+- `@ux/modal` - For modal dialogs
+- `@ux/growl` - For temporary notifications
+
+## Icon
+
+A comprehensive SVG icon library for UXCore with CSS-based progressive enhancement.
+
+### Installation
+```sh
+npm i @ux/icon
+```
+
+### Overview
+The Icon component provides access to the full UXCore icon set through individual components. Each icon is delivered as an SVG with CSS-based content loading for optimal performance.
+
+### Key Features
+- Individual icon imports
+- CSS-based SVG delivery
+- Server-side rendering support
+- Customizable dimensions
+- Accessibility support
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `width` | `number` | SVG element width |
+| `height` | `number` | SVG element height |
+| `className` | `string` | SVG element class |
+| `desc` | `string` | Icon description for accessibility |
+| `title` | `string` | Icon title for accessibility |
+| `role` | `string` | ARIA role (defaults to 'img') |
+| `placeholder` | `object` | Server-side/loading placeholder |
+
+### Usage Examples
+```jsx
+// Basic Usage
+import Upload from '@ux/icon/cloud-upload';
+
+<Upload width={24} height={24} />
+
+// With Custom Styling
+import Delete from '@ux/icon/trash';
+
+<Delete 
+  width={32} 
+  height={32}
+  fill="currentColor"
+  className="custom-icon"
+/>
+
+// With Accessibility
+import Info from '@ux/icon/info';
+
+<Info
+  title="Information"
+  desc="Click for more details"
+  width={20}
+  height={20}
+/>
+```
+
+### CSS Integration
+Each icon requires its corresponding CSS file:
+```css
+@import "@ux/icon/cloud-upload/index.css";
+```
+
+### Server-Side Rendering
+Icons are intentionally not rendered server-side to prevent duplicate payloads. SVG content is delivered through CSS and hydrated on the client.
+
+### Legacy Support
+The package includes a progressive enhancement script for legacy `.uxicon` class usage, but this functionality is deprecated.
+
+## Date Input
+
+A component for displaying and managing localized calendar-based date selection.
+
+### Installation
+```sh
+npm i @ux/date-input
+```
+
+### Key Features
+- Localized calendar display
+- Single and range date selection
+- Pagination controls
+- RTL support
+- Customizable date restrictions
+- Accessibility support
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `value` | `Array<String>` | Selected dates |
+| `page` | `Array<String> \| String` | Current page in view |
+| `pageCount` | `Number` | Number of consecutive calendar pages |
+| `locale` | `String` | Localization string |
+| `rtl` | `Boolean` | RTL mode toggle |
+| `label` | `String` | Component label |
+| `disabled` | `Boolean` | Disables entire component |
+| `id` | `String` | Accessibility identifier |
+| `ariaLabels` | `Object` | ARIA label configurations |
+| `onChange` | `Function` | Selection callback |
+| `onPaginate` | `Function` | Page change callback |
+| `placeholder` | `String` | Input placeholder |
+| `open` | `Boolean` | Flyout visibility control |
+| `onOpenChange` | `Function` | Visibility change callback |
+| `shouldDisableDate` | `Function` | Date restriction function |
+| `shouldEmphasizeDate` | `Function` | Date emphasis function |
+| `prevButton` | `Boolean` | Show previous page button |
+| `nextButton` | `Boolean` | Show next page button |
+| `markToday` | `Boolean` | Highlight current date |
+| `sameDaySelection` | `Boolean` | Allow same day in range selection |
+| `helpMessage` | `String` | Helper text below input |
+| `errorMessage` | `String` | Error message below input |
+| `required` | `Boolean` | Visual required indicator |
+| `invalid` | `Boolean` | Visual error indicator |
+| `visualSize` | `('sm' \| 'md')` | Component size (default: 'md') |
+
+### Usage Examples
+```jsx
+// Basic Date Input
+const BasicDatePicker = () => {
+  const [value, setValue] = useState([]);
+  
+  return (
+    <DateInput
+      id="event-date"
+      label="Event Date"
+      value={value}
+      onSelect={setValue}
+    />
+  );
+};
+
+// Controlled Calendar Page
+const ControlledCalendar = () => {
+  const [value, setValue] = useState([]);
+  const [page, setPage] = useState('2025-04-21');
+  
+  return (
+    <DateInput 
+      value={value}
+      onSelect={setValue}
+      page={page}
+      onPaginate={setPage}
+      pageCount={2}
+      markToday
+    />
+  );
+};
+
+// With Date Restrictions
+const RestrictedCalendar = () => {
+  const disableWeekends = (date) => {
+    const day = new Date(date).getDay();
+    return day === 0 || day === 6;
+  };
+  
+  return (
+    <DateInput
+      shouldDisableDate={disableWeekends}
+      helpMessage="Select a weekday"
+    />
+  );
+};
+```
+
+## Password
+
+A specialized input component for password fields with enhanced security features.
+
+### Installation
+```sh
+npm i @ux/password
+```
+
+### Overview
+The Password component builds on TextEntry and FieldFrame to provide a secure password input with optional visibility toggle and validation features.
+
+### Key Features
+- Built on TextEntry foundation
+- Optional visibility toggle
+- Help text support
+- Error message display
+- Flyout content support
+
+### Props
+Inherits props from `@ux/text-entry` and `@ux/field-frame`, with these additions:
+
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `button` | `Element` | Optional `@ux/button` above input |
+| `children` | `Node` | Flyout content |
+| `className` | `String` | Root component class |
+| `helpMessage` | `String` | Helper/hint text |
+| `errorMessage` | `String` | Error message |
+| `open` | `Boolean` | Flyout visibility control |
+
+### Event Handling
+The `onChange` callback provides a consistent signature:
+```js
+onChange(value: string, { event: originalEvent });
+```
+
+### Usage Examples
+```jsx
+// Basic Password Input
+const BasicPassword = () => (
+  <Password
+    id="login-password"
+    label="Password"
+    required={true}
+  />
+);
+
+// With Validation Flyout
+const ValidatedPassword = () => {
+  const [value, setValue] = useState('');
+  
+  return (
+    <Password
+      id="signup-password"
+      label="Create Password"
+      value={value}
+      onChange={(val) => setValue(val)}
+      helpMessage="Must be at least 8 characters"
+    >
+      <Criteria invalid={value.length < 8}>
+        Minimum 8 characters
+      </Criteria>
+    </Password>
+  );
+};
+```
+
+### Breaking Changes in v2102
+- Removed dependency on `@ux/form-element`
+- Converted to functional component with ref forwarding
+- Removed built-in validation
+- Developer-managed password visibility
+- Required `id` prop for accessibility
+- Future integration with `@ux/criteria` planned
+
+## Spinner
+
+A component for displaying loading and processing states.
+
+### Installation
+```sh
+npm i @ux/spinner
+```
+
+### Overview
+The Spinner component provides a consistent loading indicator across the UXCore library, with support for different sizes and optional labels.
+
+### Key Features
+- Multiple size options
+- Simple API
+- Consistent animation
+- Label support
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `size` | `'sm' \| 'md' \| 'lg'` | Sets spinner size (default: 'md') |
+
+### Usage Examples
+```jsx
+// Basic Usage
+<Spinner />
+
+// With Size and Label
+<div>
+  <label>Loading...</label>
+  <Spinner size="lg" />
+</div>
+
+// In Button
+<Button disabled>
+  <Spinner size="sm" /> Processing
+</Button>
+```
+
+## Tag
+
+A stateless component for providing visual emphasis on status and states.
+
+### Installation
+```sh
+npm i @ux/tag
+```
+
+### Overview
+The Tag component is used to highlight status information or distinguish between different characteristics of objects. It provides multiple design variants and emphasis states for different use cases.
+
+### Key Features
+- Multiple design variants
+- Emphasis states using intents
+- Icon integration
+- Size options
+- High contrast support
+- Indicator styling
+
+### Use Cases
+- Status indication
+- Object characteristics
+- Attention-requiring states
+- Category labeling
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `children` | `Element` | Tag content |
+| `className` | `String` | Positioning class |
+| `design` | `'filled'\|'inline'` | Visual style (default: 'filled') |
+| `emphasis` | `String` | Intent feedback category |
+| `highcontrast` | `Boolean` | High contrast mode |
+| `icon` | `Boolean\|Component` | Default or custom icon |
+| `indicator` | `Boolean` | Indicator style toggle |
+| `size` | `'sm'\|'md'\|'lg'` | Size variant (default: 'md') |
+
+### Usage Examples
+```jsx
+// Basic Tag
+<Tag>Default</Tag>
+
+// With Emphasis
+<Tag emphasis="critical">
+  Watch out!
+</Tag>
+
+// Inline Design
+<Tag 
+  emphasis="information" 
+  design="inline">
+  Check this out
+</Tag>
+
+// With Indicator
+<Tag 
+  emphasis="success" 
+  indicator={true}
+  icon={true}>
+  Active
+</Tag>
+
+// Custom Icon
+import CheckIcon from '@ux/icon/check';
+
+<Tag 
+  emphasis="success"
+  icon={<CheckIcon />}>
+  Verified
+</Tag>
+```
+
+### Breaking Changes Note
+The legacy `type` prop is deprecated in favor of `emphasis` to align with other components. While `type` remains supported for migrations, `emphasis` is the preferred prop.
+
+## Menu
+
+A comprehensive dropdown menu system with support for nested items, grouping, and advanced interaction patterns.
+
+### Installation
+```sh
+npm i @ux/menu
+```
+
+### Overview
+The Menu component provides a complete dropdown menu system with support for keyboard navigation, grouping, disabled states, and integration with routing systems like Next.js.
+
+### Key Features
+- Keyboard navigation
+- Touch interface support
+- RTL support
+- Item grouping
+- Disabled states
+- Next.js integration
+- Size variants
+
+### Components
+- `Menu` - Container component
+- `MenuButton` - Trigger element
+- `MenuList` - Items container
+- `MenuItem` - Individual item
+- `MenuGroup` - Item grouping
+- `MenuSeparator` - Visual divider
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `as` | `any` | Root element type |
+| `children` | `node` | MenuButton and MenuList |
+| `closeOnSelect` | `boolean` | Auto-close on selection |
+| `id` | `string` | HTML ID attribute |
+| `isTouch` | `boolean` | Touch interface mode |
+| `onSelect` | `function` | Selection callback |
+| `rtl` | `boolean` | RTL mode |
+| `size` | `'small'` | Menu size variant |
+
+### Advanced Implementation
+The Menu system uses a hooks-based architecture for state management:
+
+#### DropdownProvider
+Context provider for menu state:
+```jsx
+<DropdownProvider
+  id="main-menu"
+  closeOnSelect={true}
+  rtl={false}
+  size="small"
+>
+  {children}
+</DropdownProvider>
+```
+
+#### Hooks
+- `useDropdownTrigger` - Trigger element management
+- `useDropdownListbox` - List container management
+- `useDropdownPopover` - Flyout/portal management
+- `useDropdownItem` - Individual item management
+
+### Usage Examples
+```jsx
+// Basic Menu
+const BasicMenu = () => (
+  <Menu id="basic-menu">
+    <MenuButton text="Open Menu" />
+    <MenuList>
+      <MenuItem onSelect={() => console.log('Selected 1')}>
+        First Item
+      </MenuItem>
+      <MenuItem onSelect={() => console.log('Selected 2')}>
+        Second Item
+      </MenuList>
+  </Menu>
+);
+
+// With Groups and Separators
+const GroupedMenu = () => (
+  <Menu id="grouped-menu">
+    <MenuButton text="Actions" />
+    <MenuList>
+      <MenuItem>View Details</MenuItem>
+      <MenuItem>Edit</MenuItem>
+      <MenuSeparator />
+      <MenuGroup label="Danger Zone">
+        <MenuItem>Archive</MenuItem>
+        <MenuItem>Delete</MenuItem>
+      </MenuGroup>
+    </MenuList>
+  </Menu>
+);
+
+// Next.js Integration
+const NavigationMenu = () => (
+  <Menu id="nav-menu">
+    <MenuButton text="Navigation" />
+    <MenuList>
+      <Link href="/settings" passHref>
+        <MenuItem>Settings</MenuItem>
+      </Link>
+      <Link href="/profile" passHref>
+        <MenuItem>Profile</MenuItem>
+      </Link>
+    </MenuList>
+  </Menu>
+);
+```
+
+### Hook APIs
+
+#### useDropdownTrigger
+```typescript
+interface TriggerProps {
+  onKeyDown?: (event: KeyboardEvent) => void;
+  onMouseDown?: (event: MouseEvent) => void;
+  id?: string;
+  ref?: Ref;
+}
+
+interface TriggerReturn {
+  data: {
+    isExpanded: boolean;
+    controls: string;
+  };
+  props: {
+    ref: Ref;
+    id: string;
+    onKeyDown: (event: KeyboardEvent) => void;
+    onMouseDown: (event: MouseEvent) => void;
+  };
+}
+```
+
+#### useDropdownListbox
+```typescript
+interface ListboxProps {
+  loop?: boolean;
+  orientation?: 'horizontal' | 'vertical';
+  onKeyDown?: (event: KeyboardEvent) => void;
+  ref?: Ref;
+}
+
+interface ListboxReturn {
+  data: {
+    activeDescendant: string;
+    size: string;
+    triggerId: string;
+  };
+  props: {
+    tabIndex: number;
+    ref: Ref;
+    id: string;
+    onKeyDown: (event: KeyboardEvent) => void;
+    'aria-activedescendant': string;
+    'aria-labelledby': string;
+  };
+}
+```
+
+#### useDropdownItem
+```typescript
+interface ItemProps {
+  disabled?: boolean;
+  index?: number;
+  isLink?: boolean;
+  onClick?: (event: MouseEvent) => void;
+  onSelect?: (value: any) => void;
+  valueText?: string;
+  ref?: Ref;
+}
+
+interface ItemReturn {
+  data: {
+    isDisabled: boolean;
+    isSelected: boolean;
+    isActive: boolean;
+    size: string;
+  };
+  props: {
+    id: string;
+    tabIndex: number;
+    ref: Ref;
+    'aria-disabled': boolean;
+    'data-selected': boolean;
+    'data-valuetext': string;
+    onClick: (event: MouseEvent) => void;
+    // ...other event handlers
+  };
+}
+```
+
+## Filter
+
+> **Deprecation Notice**: This component is deprecated. Please use the `Menu` component for similar functionality and better support.
+
+A specialized dropdown component that maintains an open state while making selections, typically used for filtering data.
+
+### Installation
+```sh
+npm i @ux/filter
+```
+
+### Key Features
+- Persistent dropdown state during selection
+- Multi-select support
+- Category grouping
+- Icon integration
+- Keyboard navigation
+- Bottom action support
+- RTL support
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `bottomAction` | `Element\|Function` | Component rendered at list end |
+| `onItemChange` | `Function` | Selection change callback |
+| `children` | `String` | Button text content |
+| `data` | `Array<Category>` | Filter categories and items |
+| `menuLeft` | `Boolean` | Left-aligned menu expansion |
+| `open` | `Boolean` | Controls dropdown visibility |
+| `selectedItemIds` | `String[]` | Pre-selected item IDs |
+| `className` | `String` | Root element class |
+| `buttonDesign` | `String` | Button style variant |
+
+### Data Structure
+Each category in the data array should follow this structure:
+```typescript
+interface Category {
+  title?: string;
+  rows: FilterItem[];
+}
+
+interface FilterItem {
+  id: string;
+  title: string;
+  icon?: ReactNode;
+  selected?: boolean;
+}
+```
+
+### Usage Example
+```jsx
+const FilterExample = () => {
+  const [selectedIds, setSelectedIds] = useState([]);
+  
+  const categories = [
+    {
+      title: "Status",
+      rows: [
+        { id: "active", title: "Active", icon: <CheckIcon /> },
+        { id: "pending", title: "Pending", icon: <ClockIcon /> },
+        { id: "archived", title: "Archived", icon: <ArchiveIcon /> }
+      ]
+    },
+    {
+      title: "Type",
+      rows: [
+        { id: "personal", title: "Personal" },
+        { id: "business", title: "Business" }
+      ]
+    }
+  ];
+
+  return (
+    <Filter
+      data={categories}
+      selectedItemIds={selectedIds}
+      onItemChange={(ids) => setSelectedIds(ids)}
+      bottomAction={
+        <Button 
+          text="Clear All" 
+          onClick={() => setSelectedIds([])} 
+        />
+      }
+    >
+      Filter Items
+    </Filter>
+  );
+};
+```
+
+### Accessibility
+- Uses ARIA listbox pattern
+- Supports keyboard navigation
+- Maintains focus management
+- Provides ARIA labels for interactive elements
+
+### Migration Note
+It is recommended to migrate to the `Menu` component which provides improved functionality, better accessibility, and ongoing support. The Menu component offers similar features with a more flexible API and better integration with modern React patterns.
+
+## Linear Progress
+
+A horizontal or vertical progress indicator that shows completion status of an operation.
+
+### Installation
+```sh
+npm i @ux/linear-progress
+```
+
+### Key Features
+- Horizontal and vertical orientations
+- Support for determinate and indeterminate states
+- Custom labels and output text
+- Tick marks with labels
+- Color emphasis variants
+- Accessibility support
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `className` | `String` | Optional class name for positioning |
+| `children` | `Node` | Content to display within the bar |
+| `id` | `String` | Required unique identifier |
+| `emphasis` | `String` | Feedback expression (warning, info, etc.) |
+| `orientation` | `String` | 'horizontal' or 'vertical' |
+| `stretch` | `Boolean` | Full width of container |
+| `min` | `Number` | Minimum value (default: 0) |
+| `max` | `Number` | Maximum value (default: 100) |
+| `step` | `Number` | Step increment (default: 1) |
+| `value` | `Number|Number[]` | Current progress value(s) |
+| `markers` | `Number` | Number of tick markers |
+| `ticks` | `Node[]` | Custom tick labels |
+| `clip` | `String` | Padding for tick labels |
+| `label` | `Node` | Start label content |
+| `output` | `Node` | End label content |
+
+### Usage Example
+```jsx
+import LinearProgress from '@ux/linear-progress';
+
+function ProgressExample() {
+  return (
+    <LinearProgress
+      id="download-progress"
+      label="Downloading..."
+      value={75}
+      emphasis="info"
+      output="75%"
+      ticks={['0%', '25%', '50%', '75%', '100%']}
+    />
+  );
+}
+```
+
+## Circular Progress
+
+A circular progress indicator that can show determinate progress values or act as an indeterminate loading spinner.
+
+### Installation
+```sh
+npm i @ux/circular-progress
+```
+
+### Key Features
+- Multiple size variants
+- Support for determinate and indeterminate states
+- Custom rotation starting point
+- Color emphasis variants
+- Center content customization
+- Accessibility support
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `className` | `String` | Optional class name for positioning |
+| `children` | `Node` | Content within circle (e.g., tooltips) |
+| `disabled` | `Boolean` | Disabled state styling |
+| `id` | `String` | Unique identifier |
+| `name` | `String` | Form data identifier |
+| `label` | `Node` | Text below the circle |
+| `output` | `Node` | Content in circle center |
+| `emphasis` | `String` | Feedback variant |
+| `min` | `Number` | Minimum value (default: 0) |
+| `max` | `Number` | Maximum value (default: 100) |
+| `step` | `Number` | Step increment (default: 1) |
+| `value` | `Number|Number[]` | Current progress value(s) |
+| `rotation` | `String` | CSS rotation for start point |
+| `size` | `String` | Size variant (xs, sm, md, lg) |
+
+### Usage Example
+```jsx
+import CircularProgress from '@ux/circular-progress';
+
+function LoadingExample() {
+  return (
+    <CircularProgress
+      id="upload-progress"
+      value={60}
+      emphasis="success"
+      output="60%"
+      size="lg"
+      label="Uploading file..."
+    />
+  );
+}
+```
+
+### Accessibility
+Both Linear and Circular Progress components:
+- Use ARIA attributes for progress state
+- Support keyboard navigation
+- Provide text alternatives for visual indicators
+- Allow customization of ARIA labels
+- Handle reduced motion preferences
+
+## Search
+
+A search input component with built-in results list functionality.
+
+### Installation
+```sh
+npm i @ux/search
+```
+
+### Key Features
+- Auto-complete suggestions
+- Customizable results display
+- Clear button option
+- Keyboard navigation support
+- Flyout results placement
+- Accessibility support
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `id` | `String` | Required unique identifier |
+| `ariaLabels` | `Object` | Custom screen reader labels |
+| `button` | `Node` | Optional action button |
+| `children` | `Node` | Custom results content |
+| `clearable` | `Boolean` | Show clear button when filled |
+| `items` | `Array` | Search result items |
+| `onClear` | `Function` | Clear button handler |
+| `onConfirm` | `Function` | Enter key handler |
+| `onSelect` | `Function` | Selection handler |
+| `placement` | `String` | Results flyout position |
+| `portalElem` | `Node` | Custom portal element |
+| `visualSize` | `String` | Component size (sm/md) |
+
+### Usage Example
+```jsx
+import Search from '@ux/search';
+
+function SearchExample() {
+  return (
+    <Search
+      id="product-search"
+      items={['Item 1', 'Item 2', 'Item 3']}
+      clearable
+      onSelect={(item) => console.log('Selected:', item)}
+      placeholder="Search products..."
+    />
+  );
+}
+```
+
+## Quantity Selector
+
+A spinbutton input for selecting numeric quantities with increment/decrement controls.
+
+### Installation
+```sh
+npm i @ux/quantity-selector
+```
+
+### Key Features
+- Increment/decrement buttons
+- Min/max value constraints
+- Numeric input validation
+- Error state handling
+- Support for floating labels
+- Accessibility support
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `id` | `String` | Required unique identifier |
+| `label` | `Node` | Required input label |
+| `value` | `Number` | Current quantity value |
+| `onChange` | `Function` | Value change handler |
+| `min` | `Number` | Minimum allowed value |
+| `max` | `Number` | Maximum allowed value |
+| `disabled` | `Boolean` | Disabled state |
+| `errorMessage` | `String` | Error message text |
+| `helpMessage` | `String` | Help message text |
+| `visualSize` | `String` | Component size (sm/md) |
+| `ariaLabels` | `Object` | Button labels for screen readers |
+
+### Usage Example
+```jsx
+import QuantitySelector from '@ux/quantity-selector';
+
+function QuantityExample() {
+  const [quantity, setQuantity] = React.useState(1);
+  return (
+    <QuantitySelector
+      id="product-quantity"
+      label="Quantity"
+      value={quantity}
+      onChange={setQuantity}
+      min={1}
+      max={10}
+    />
+  );
+}
+```
+
+## Time Picker
+
+A dropdown component for selecting time values with customizable formatting.
+
+### Installation
+```sh
+npm i @ux/time-picker
+```
+
+### Key Features
+- 12/24 hour format support
+- Customizable minute intervals
+- Locale-aware formatting
+- Custom time validation
+- Keyboard navigation
+- Accessibility support
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `id` | `String` | Required unique identifier |
+| `value` | `String` | Selected time value |
+| `onChange` | `Function` | Selection change handler |
+| `hour12` | `Boolean` | Use 12-hour format |
+| `minuteInterval` | `Number` | Minutes between options |
+| `locale` | `String` | Locale for formatting |
+| `shouldDisableTime` | `Function` | Time validation function |
+| `placeholder` | `String` | Input placeholder text |
+| `visualSize` | `String` | Component size (sm/md) |
+
+### Usage Example
+```jsx
+import TimePicker from '@ux/time-picker';
+
+function TimePickerExample() {
+  return (
+    <TimePicker
+      id="appointment-time"
+      placeholder="Select time"
+      minuteInterval={30}
+      hour12={true}
+      locale="en-US"
+    />
+  );
+}
+```
+
+## Corner Actions
+
+A component for positioning action buttons in the corner of a container.
+
+### Installation
+```sh
+npm i @ux/corner-actions
+```
+
+### Key Features
+- Flexible positioning
+- Space customization
+- Floating behavior
+- Auto-width handling
+- Works with any action components
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `space` | `String|Object` | Spacing configuration |
+| `float` | `Boolean` | Enable floating behavior |
+| `children` | `Node` | Action components |
+| `className` | `String` | Optional custom class |
+
+### Usage Example
+```jsx
+import CornerActions from '@ux/corner-actions';
+import Button from '@ux/button';
+
+function CardWithActions() {
+  return (
+    <Card>
+      <CornerActions space="xl">
+        <Button icon={<EditIcon/>} design="control" size="sm" />
+      </CornerActions>
+      <h2>Card Title</h2>
+      {/* Card content */}
+    </Card>
+  );
+}
+```
+
+## Text Lockup
+
+A component for creating consistent text hierarchies with optional icons.
+
+### Installation
+```sh
+npm i @ux/text-lockup
+```
+
+### Key Features
+- Multiple size variants
+- Support for eyebrow text
+- Optional icons
+- Custom title levels
+- Consistent spacing
+- Flexible content layout
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `eyebrow` | `Node` | Text above title |
+| `title` | `Node` | Main heading text |
+| `titleLevel` | `Number` | Heading level (1-6) |
+| `children` | `Node` | Body content |
+| `size` | `String` | Size variant (xs/sm/md/lg/xl) |
+| `icon` | `Node` | Optional leading icon |
+| `emphasis` | `String` | Icon color emphasis |
+
+### Usage Example
+```jsx
+import TextLockup from '@ux/text-lockup';
+
+function ContentExample() {
+  return (
+    <TextLockup
+      eyebrow="New Feature"
+      title="Introducing Text Lockup"
+      size="lg"
+    >
+      <p>Create consistent text hierarchies with optional icons.</p>
+    </TextLockup>
+  );
+}
+```
+
+## Thumb
+
+An interactive draggable element used in slider and range components.
+
+### Installation
+```sh
+npm i @ux/thumb
+```
+
+### Key Features
+- Drag interaction support
+- Percentage-based positioning
+- RTL support
+- Custom precision
+- Touch device support
+- Accessibility considerations
+
+### Props
+| Prop | Type | Description |
+| ---- | ---- | ----------- |
+| `anchorRef` | `Element` | Reference element for movement |
+| `onChange` | `Function` | Position change handler |
+| `x` | `Number` | Horizontal position (0-100) |
+| `y` | `Number` | Vertical position (0-100) |
+| `rtl` | `Boolean` | Right-to-left support |
+| `precision` | `Number` | Decimal place precision |
+| `className` | `String` | Optional custom class |
+
+### Usage Example
+```jsx
+import Thumb from '@ux/thumb';
+
+function SliderExample() {
+  const ref = React.useRef();
+  const [position, setPosition] = React.useState(0);
+  
+  return (
+    <div ref={ref}>
+      <Thumb
+        anchorRef={ref}
+        x={position}
+        y={50}
+        onChange={(x, y) => setPosition(x)}
+      />
+    </div>
+  );
+}
+```
+
+### Accessibility
+Note that the Thumb component is typically used as part of larger interactive components (like sliders or toggles) and relies on the parent component to implement keyboard interactions and ARIA attributes appropriate for the specific use case.

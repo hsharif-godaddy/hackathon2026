@@ -14,10 +14,10 @@ interface PlanTrackerProps {
   onToggleExpandedPlan: () => void
 }
 
-export default function PlanTracker({ 
-  developmentPlan, 
-  expandedPlan, 
-  onToggleExpandedPlan 
+export default function PlanTracker({
+  developmentPlan,
+  expandedPlan,
+  onToggleExpandedPlan
 }: PlanTrackerProps) {
   const getCurrentActiveItem = () => {
     return developmentPlan.find(item => item.status === 'in_progress') || developmentPlan[0]
@@ -70,11 +70,11 @@ export default function PlanTracker({
                   <h3 className="text-sm font-semibold text-gray-900">{activeItem.title}</h3>
                   <p className="text-xs text-gray-700 mt-1">{activeItem.description}</p>
                 </div>
-                <div className="flex items-center space-x-1 text-xs text-gray-600">
+                <div className="flex items-center space-x-1 text-xs">
                   <span>Est. {activeItem.estimatedTime}</span>
                 </div>
               </div>
-              
+
               {/* Tasks */}
               <div className="space-y-2">
                 <p className="text-xs font-medium text-gray-800">Current Tasks:</p>
@@ -93,18 +93,18 @@ export default function PlanTracker({
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center">
                   <div className="text-lg font-semibold text-green-600">3</div>
-                  <div className="text-xs text-gray-600">Complete</div>
+                  <div className="text-xs">Complete</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-semibold text-blue-600">1</div>
-                  <div className="text-xs text-gray-600">In Progress</div>
+                  <div className="text-xs">In Progress</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-semibold text-gray-400">3</div>
-                  <div className="text-xs text-gray-600">Pending</div>
+                  <div className="text-xs">Pending</div>
                 </div>
               </div>
-              
+
               {/* Progress Bar */}
               <div className="mt-4">
                 <div className="flex justify-between text-xs text-gray-600 mb-1">

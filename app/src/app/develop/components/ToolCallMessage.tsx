@@ -1,21 +1,17 @@
 'use client'
 
-import { useState } from 'react'
-import { 
-  ChevronDownIcon,
-  ChevronRightIcon,
-  ClockIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  FolderIcon, 
-  DocumentTextIcon, 
-  CodeBracketIcon,
-  CommandLineIcon,
-  WrenchScrewdriverIcon,
-  PhotoIcon
-} from '@heroicons/react/24/outline'
+import { useState, useMemo } from 'react'
+import { motion, LayoutGroup } from 'framer-motion'
 import Box from '@ux/box'
 import { text } from '@ux/text'
+import AlertIcon from '@ux/icon/alert'
+import CheckmarkIcon from '@ux/icon/checkmark'
+import ChevronDownIcon from '@ux/icon/chevron-down'
+import ChevronRightIcon from '@ux/icon/chevron-right'
+import ClockIcon from '@ux/icon/clock'
+import MarkdownRenderer from './MarkdownRenderer'
+import FullscreenModal from './FullscreenModal'
+import { getToolDisplayName } from '../../../utils/toolNameMapping'
 
 interface ToolCallMessageProps {
   toolName: string
@@ -26,78 +22,24 @@ interface ToolCallMessageProps {
   toolArgs?: string
 }
 
-export default function ToolCallMessage({ 
-  toolName, 
-  toolStatus, 
-  duration, 
-  toolResult, 
+export default function ToolCallMessage({
+  toolName,
+  toolStatus,
+  duration,
+  toolResult,
   error,
-  toolArgs 
+  toolArgs
 }: ToolCallMessageProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-
-  const getToolIcon = (toolName: string) => {
-    switch (toolName) {
-      case 'directory_listing':
-        return <FolderIcon className="w-4 h-4" />
-      case 'file_read':
-      case 'read_file':
-        return <DocumentTextIcon className="w-4 h-4" />
-      case 'file_edit':
-        return <DocumentTextIcon className="w-4 h-4" />
-      case 'code_search':
-      case 'codebase_search':
-      case 'grep_search':
-        return <CodeBracketIcon className="w-4 h-4" />
-      case 'terminal':
-      case 'run_command':
-      case 'run_terminal_cmd':
-        return <CommandLineIcon className="w-4 h-4" />
-      case 'image_search':
-        return <PhotoIcon className="w-4 h-4" />
-      default:
-        return <WrenchScrewdriverIcon className="w-4 h-4" />
-    }
-  }
-
-  const getToolDisplayName = (toolName: string) => {
-    // Safety check for undefined/null toolName
-    if (!toolName) {
-      return 'Unknown Tool'
-    }
-    
-    switch (toolName) {
-      case 'directory_listing':
-        return 'Directory Listing'
-      case 'file_read':
-      case 'read_file':
-        return 'Read File'
-      case 'file_edit':
-        return 'File Edit'
-      case 'code_search':
-      case 'codebase_search':
-        return 'Code Search'
-      case 'grep_search':
-        return 'Text Search'
-      case 'terminal':
-      case 'run_command':
-      case 'run_terminal_cmd':
-        return 'Terminal'
-      case 'image_search':
-        return 'Image Search'
-      default:
-        return toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-    }
-  }
 
   const getStatusIcon = () => {
     switch (toolStatus) {
       case 'running':
         return <ClockIcon className="w-4 h-4 text-intents-ux-feedbackHighContrastInfo-feedbackColor animate-spin" />
       case 'success':
-        return <CheckCircleIcon className="w-4 h-4 text-intents-ux-feedbackHighContrastSuccess-feedbackColor" />
+        return <CheckmarkIcon className="w-4 h-4 text-intents-ux-feedbackHighContrastSuccess-feedbackColor" />
       case 'error':
-        return <ExclamationTriangleIcon className="w-4 h-4 text-intents-ux-feedbackHighContrastCritical-feedbackColor" />
+        return <AlertIcon className="w-4 h-4 text-intents-ux-feedbackHighContrastCritical-feedbackColor" />
     }
   }
 
@@ -109,7 +51,7 @@ export default function ToolCallMessage({
 
   const formatArgs = (args?: string) => {
     if (!args) return ''
-    
+
     try {
       const parsed = JSON.parse(args)
       return JSON.stringify(parsed, null, 2)
@@ -140,32 +82,34 @@ export default function ToolCallMessage({
     // Match all markdown image formats: ![alt text](image_url)
     const imageMatches = toolResult.matchAll(/!\[([^\]]*)\]\(([^\)]+)\)/g)
     const images = []
-    
+
     for (const match of imageMatches) {
       images.push({
         alt: match[1] || 'Search result image',
         url: match[2]
       })
     }
-    
+
     return images.length > 0 ? images : null
   }
 
   const filename = getFileName(toolName, toolArgs)
   const hasOutput = Boolean(toolResult || error)
+  const layoutId = useMemo(() =>
+    `tool-output-${toolName}-${toolArgs ? JSON.stringify(toolArgs).slice(0, 20) : 'no-args'}-${toolResult ? toolResult.slice(0, 20) : 'no-result'}`.replace(/[^a-zA-Z0-9-]/g, '-'),
+    [toolName, toolArgs, toolResult]
+  )
 
   return (
-    <div className="space-y-1">
+    <LayoutGroup>
+      <div className="space-y-1">
       {/* Header */}
-      <div 
+      <div
         className={`flex items-center justify-between py-1 ${hasOutput ? 'cursor-pointer hover:opacity-70' : ''}`}
         onClick={hasOutput ? () => setIsExpanded(!isExpanded) : undefined}
       >
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-1">
-            {getToolIcon(toolName)}
-            {getStatusIcon()}
-          </div>
+        <div className="flex items-center space-x-1">
+          {getStatusIcon()}
           <div className="flex items-center space-x-2 overflow-hidden">
             <text.strong size={ -1 } className="text-sm truncate">
               {getToolDisplayName(toolName)}
@@ -182,7 +126,7 @@ export default function ToolCallMessage({
             )}
           </div>
         </div>
-        
+
         {hasOutput && (
           <div className="flex items-center space-x-1">
             {toolStatus === 'error' && (
@@ -202,87 +146,114 @@ export default function ToolCallMessage({
 
       {/* Expandable content */}
       {isExpanded && hasOutput && (
-        <div className="mt-2 mb-4 space-y-2">
+        <div className="mt-2 mb-4 px-2 py-4 space-y-4 rounded-md bg-intents-ux-boxLowContrast-backgroundColor">
           {/* Duration (only shown when expanded) */}
           {duration && (
-            <div className="text-xs text-gray-500">
-              Duration: {formatDuration(duration)}
-            </div>
+            <Box gap="sm" orientation="horizontal" className="mb-2">
+              <div className="text-xs font-bold pl-2">Duration</div>
+              <div className="text-xs">{formatDuration(duration)}</div>
+            </Box>
           )}
-          
+
           {/* Tool arguments (if available) */}
           {toolArgs && (
-            <div>
-              <div className="text-xs mb-1">Arguments:</div>
-              <pre className="text-xs whitespace-pre-wrap font-mono bg-intents-ux-boxLowContrast-backgroundColor p-2 rounded text-left max-h-32 overflow-y-auto">
+            <Box gap="sm">
+              <div className="text-xs font-bold px-2">Arguments</div>
+              <pre className="text-xs whitespace-pre-wrap font-mono bg-intents-ux-box-backgroundColor shadow-md p-2 rounded text-left max-h-32 overflow-y-auto">
                 {formatArgs(toolArgs)}
               </pre>
-            </div>
+            </Box>
           )}
-          
+
           {/* Tool output */}
-          <div>
-            <div className="text-xs text-gray-500 mb-1">
-              {error ? 'Error:' : 'Output:'}
+          <Box gap="sm">
+            <div className="flex items-center justify-between px-2">
+              <div className="text-xs font-bold">
+                {error ? 'Error' : 'Output'}
+              </div>
+              {!error && toolResult && toolName !== 'image_search' && toolName !== 'imageSearch' && (
+                <FullscreenModal
+                  content={toolResult}
+                  toolName={toolName}
+                  layoutId={layoutId}
+                  type="markdown"
+                />
+              )}
             </div>
-            {toolName === 'image_search' && !error && toolResult ? (
-              <div className="space-y-2">
+            {(toolName === 'image_search' || toolName === 'imageSearch') && !error && toolResult ? (
+              <div className="bg-intents-ux-box-backgroundColor shadow-md">
                 {(() => {
                   const images = extractImagesFromResult(toolResult)
                   if (images && images.length > 0) {
                     return (
-                      <Box>
-                        <div className="bg-intents-ux-boxLowContrast-backgroundColor p-3 rounded">
-                          {/* Compact grid for multiple images */}
-                          <div className={`grid gap-2 mb-3 ${images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                            {images.map((imageData, index) => (
-                              <div key={index} className="space-y-1">
-                                <img 
-                                  src={imageData.url} 
-                                  alt={imageData.alt}
-                                  className="w-full h-auto max-h-32 object-cover rounded shadow-sm"
-                                  onError={(e) => {
-                                    const target = e.target as HTMLImageElement
-                                    target.style.display = 'none'
-                                    const fallback = target.nextSibling as HTMLElement
-                                    if (fallback) fallback.style.display = 'block'
-                                  }}
-                                />
-                                <div className="text-xs text-red-600 hidden p-1 bg-red-50 rounded text-center">
-                                  Failed to load: {imageData.alt}
-                                </div>
-                                {imageData.alt && (
-                                  <p className="text-xs text-gray-600 text-center truncate">
-                                    {imageData.alt}
-                                  </p>
-                                )}
-                              </div>
-                            ))}
-                          </div>
+                      <div className="p-3 rounded">
+                        {/* Compact grid for multiple images */}
+                        <div className={`grid gap-2 mb-3 ${images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                          {images.map((imageData, index) => (
+                            <div key={index} className="space-y-1">
+                              <FullscreenModal
+                                imageUrl={imageData.url}
+                                imageAlt={imageData.alt}
+                                title={imageData.alt}
+                                type="image"
+                                layoutId={`image-${index}-${layoutId}`}
+                              >
+                                <motion.div 
+                                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                                  layoutId={`image-${index}-${layoutId}`}
+                                >
+                                  <img /* eslint-disable-line @next/next/no-img-element */
+                                    src={imageData.url}
+                                    alt={imageData.alt}
+                                    className="w-full h-32 object-cover rounded shadow-sm"
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement
+                                      target.style.display = 'none'
+                                      const fallback = target.nextSibling as HTMLElement
+                                      if (fallback) fallback.style.display = 'block'
+                                    }}
+                                  />
+                                  <div className="text-xs text-red-600 hidden p-1 bg-red-50 rounded text-center">
+                                    Failed to load: {imageData.alt}
+                                  </div>
+                                </motion.div>
+                              </FullscreenModal>
+                              {imageData.alt && (
+                                <p className="text-xs text-gray-600 text-center truncate">
+                                  {imageData.alt}
+                                </p>
+                              )}
+                            </div>
+                          ))}
                         </div>
                         <div className="text-xs text-gray-600 font-mono">
                           {images.length} image{images.length !== 1 ? 's' : ''} found
                         </div>
-                      </Box>
+                      </div>
                     )
                   }
                   return (
-                    <pre className="text-xs whitespace-pre-wrap font-mono max-h-64 overflow-y-auto p-2 rounded text-left text-gray-600 bg-gray-50">
+                    <pre className="text-xs whitespace-pre-wrap font-mono max-h-64 overflow-y-auto p-2 text-left">
                       {toolResult}
                     </pre>
                   )
                 })()}
               </div>
             ) : (
-              <pre className={`text-xs whitespace-pre-wrap font-mono max-h-64 overflow-y-auto p-2 rounded text-left ${
-                error ? 'text-red-700 bg-red-50' : 'text-gray-600 bg-gray-50'
-              }`}>
-                {error || toolResult}
-              </pre>
+              <motion.div
+                className="bg-intents-ux-box-backgroundColor shadow-md p-2 rounded max-h-64 overflow-y-auto"
+                layoutId={!error && toolResult ? layoutId : undefined}
+              >
+                <MarkdownRenderer
+                  content={error || toolResult}
+                  className="text-sm leading-relaxed break-words"
+                />
+              </motion.div>
             )}
-          </div>
+          </Box>
         </div>
       )}
-    </div>
+      </div>
+    </LayoutGroup>
   )
 }

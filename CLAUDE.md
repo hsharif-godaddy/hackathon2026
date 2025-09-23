@@ -1,6 +1,8 @@
-# CLAUDE.md
+# Agents Rules
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code and other agents when working with code in this repository.
+
+**Read this before writing, editing, or executing anything in this repo.**
 
 ## Project Overview
 
@@ -14,6 +16,8 @@ Airo App Builder is an AI-powered application development platform that combines
 - If you are unsure about something, at the start or anywhere in your execution process, stop and ask questions.
 - NEVER EDIT FILES UNDER `/tmp/apps/**`, these are **OUTPUT** of our system, not source code. **Always fix the generation logic instead**
 - We want QUALITY code. Take the time you need to think, explore multiple solutions if you need to.
+- When working under `/app` folder, and **ONLY** when under this folder, use components within our design system, UXCore @ux/, as much as possible, and use `/app/uxcore-llm.txt` for context on component documentation and refer to `/app/design-guidance.md` for design guidance.
+- Prioritize design system usage, accessibility, and usability.
 
 ## Key Commands
 
@@ -61,7 +65,6 @@ pnpm run dev:app            # Main Next.js app (port 3000)
   - Authentication integration
 
 - **app-templates/** - Template system for new applications
-  - v1, v2, v3, v7, v8 templates with different architectures
   - v8 is current: Vite + React frontend + Node.js backend
   - Templates are copied and customized for new apps
 
@@ -110,13 +113,6 @@ Comprehensive file system tools in `agents/src/tools/`:
 
 ## Important Patterns
 
-### Template Version Detection
-
-Templates are automatically detected and configured:
-- Environment variable `APP_TEMPLATE_DIR` 
-- Dynamic template composition in agent prompts
-- Version-specific development server handling
-
 ### Development Server Lifecycle
 
 Apps go through states: `creating` → `created` → `running`/`stopped`/`error`
@@ -139,19 +135,6 @@ Apps go through states: `creating` → `created` → `running`/`stopped`/`error`
 - All file operations include security filtering and validation  
 - Process management includes automatic cleanup and orphan recovery
 - Token usage tracking is always enabled regardless of UI settings
-
-## Environment Configuration
-
-Key environment variables in `agents/.env`:
-```bash
-NODE_ENV=development
-OPENAI_API_KEY=""                    # Required: Your OpenAI API key
-OPENAI_BASE_URL=""                   # Optional: Custom OpenAI base URL
-OPENAI_MODEL="claude-sonnet-4"       # Model to use
-APP_TEMPLATE_DIR='app-templates/v3'  # Template directory
-SHOW_USAGE_COST=true                # Show token usage costs
-DOC_APPS=false                      # Use local mode (true for Docker)
-```
 
 ## Logging Standards
 

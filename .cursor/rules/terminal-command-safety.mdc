@@ -1,0 +1,168 @@
+---
+description: Terminal Command Safety Rule
+globs: **/*.{ts,js,tsx,jsx}
+alwaysApply: true
+---
+
+# Terminal Command Safety Rule
+
+**MANDATORY: Avoid terminal commands that cause shell parsing issues or hanging prompts.**
+
+## Core Principle
+
+When using the `run_terminal_cmd` tool, ensure commands are simple, safe, and don't trigger shell parsing problems that lead to `dquote>` prompts or hanging processes.
+
+## Prohibited Command Patterns
+
+### ❌ Avoid Complex Quoting
+
+```bash
+# DON'T: Complex quotes that cause dquote> prompts
+node cli.js --message "Hello world!"
+echo "Some string with 'nested quotes'"
+timeout 10s command --arg "quoted value"
+
+# DON'T: Commands with unmatched quotes
+grep "pattern with missing quote
+```
+
+### ❌ Avoid Interactive Commands
+
+```bash
+# DON'T: Commands that wait for user input
+read -p "Enter value: "
+vim filename.txt
+nano config.json
+
+# DON'T: Commands that might hang indefinitely
+ssh remote-server
+telnet hostname port
+```
+
+### ❌ Avoid Complex Shell Features
+
+```bash
+# DON'T: Complex shell pipelines that might break
+command | complex | pipeline | that | might | fail
+command $(with nested $(command substitution))
+
+# DON'T: Commands with complex redirections
+command > file 2>&1 < input
+```
+
+## Preferred Command Patterns
+
+### ✅ Simple Commands Without Quotes
+
+```bash
+# GOOD: Simple commands without complex quoting
+node --test packages/cli/test/bin.test.ts
+ls -la packages/
+cat package.json
+
+# GOOD: Use existing test suites instead of manual testing
+node --test test-file.ts
+npm test
+```
+
+### ✅ Basic File Operations
+
+```bash
+# GOOD: Simple file operations
+ls packages/
+mkdir new-directory
+rm temp-file.txt
+cp source.txt dest.txt
+
+# GOOD: Basic git operations
+git status
+git add filename
+git log --oneline
+```
+
+### ✅ Process Information
+
+```bash
+# GOOD: Safe information gathering
+ps aux | head
+which node
+node --version
+npm --version
+```
+
+## Testing Strategy
+
+### ✅ Prefer Test Suites Over Manual CLI Testing
+
+```bash
+# GOOD: Use existing test infrastructure
+node --test packages/cli/test/bin.test.ts
+node --test packages/config/test/config.test.ts
+
+# AVOID: Manual CLI testing with complex arguments
+# Instead rely on comprehensive test coverage
+```
+
+### ✅ Simple Validation Commands
+
+```bash
+# GOOD: Basic functionality checks
+node packages/cli/bin.ts help
+node packages/cli/bin.ts --version
+
+# AVOID: Complex CLI invocations with quoted arguments
+```
+
+## Error Prevention
+
+### ✅ Command Validation Checklist
+
+- [ ] No unmatched quotes or complex quoting
+- [ ] No interactive prompts or user input required
+- [ ] No commands that might hang indefinitely
+- [ ] No complex shell features (pipes, redirections, substitutions)
+- [ ] Can be interrupted cleanly with Ctrl+C
+- [ ] Has predictable, finite execution time
+
+### ✅ Alternative Approaches
+
+- **Instead of manual CLI testing**: Use existing test suites
+- **Instead of complex commands**: Break into simple steps
+- **Instead of quoted arguments**: Use test fixtures or configuration files
+- **Instead of interactive tools**: Use programmatic alternatives
+
+## Common Violations to Avoid
+
+❌ **Commands with quotes:**
+
+```bash
+node cli.js --message "some text"  # Causes dquote> issues
+```
+
+❌ **Timeout with complex args:**
+
+```bash
+timeout 10s node cli.js --arg "value"  # Shell parsing problems
+```
+
+❌ **Interactive commands:**
+
+```bash
+read input  # Waits for user input
+```
+
+❌ **Complex pipelines:**
+
+```bash
+command | grep "pattern" | sort  # Multiple failure points
+```
+
+## Implementation Notes
+
+- **Rely on test suites** for validation instead of manual terminal testing
+- **Use simple, atomic commands** that don't require complex shell features
+- **Verify commands work** in isolation before using in automated contexts
+- **Always have exit strategy** - commands should complete or be easily interrupted
+- **Test command safety** in a separate terminal before automation
+
+This rule ensures reliable, predictable terminal operations that don't cause hanging prompts, parsing errors, or interactive sessions that can't be automated safely.

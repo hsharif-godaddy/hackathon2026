@@ -1,0 +1,136 @@
+---
+description: Test structure and organization standards for consistent testing patterns
+globs: **/*.test.{ts,js}
+alwaysApply: true
+---
+
+# Test Structure Standards
+
+## Required Libraries
+
+- Use `node:test` as the primary test runner
+- Use `assume` as the main assertion library
+- Avoid other testing frameworks unless specifically required
+
+## Test Organization Pattern
+
+### 1. Top-Level Describe Block
+
+The first `describe` statement must be the **package name** being tested:
+
+```typescript
+describe('mdc-parser', function packageTests() {
+  // All tests for this package
+});
+```
+
+### 2. Function/API Describe Blocks
+
+Each function or API should have its own `describe` block with `#` prefix:
+
+```typescript
+describe('#parse', function parseTests() {
+  // All tests for the parse function
+});
+
+describe('#stringify', function stringifyTests() {
+  // All tests for the stringify function
+});
+```
+
+### 3. Test Cases with `it`
+
+Individual test cases use `it` statements with descriptive names:
+
+```typescript
+it('should parse basic MDC file with frontmatter', function parseBasic() {
+  // Test implementation
+});
+```
+
+## Whitespace and Formatting
+
+- **No extra empty lines** between describe blocks and their content
+- **No extra empty lines** between it blocks and their content
+- **One empty line** between test cases (it blocks)
+- **One empty line** between logical sections within a test function
+- **No trailing empty lines** inside describe or it blocks
+- **No trailing spaces** at the end of any line
+- **Compact structure** - minimize unnecessary whitespace
+
+## Complete Example Structure
+
+```typescript
+import { parse, stringify } from '../src/index.js';
+import { describe, it } from 'node:test';
+import assume from 'assume';
+
+describe('mdc-parser', function packageTests() {
+  describe('#parse', function parseTests() {
+    it('should parse basic MDC file with frontmatter', function parseBasic() {
+      const input = '---\ntitle: Test\n---\nContent';
+      const result = parse(input);
+      assume(result.metadata.title).equals('Test');
+    });
+
+    it('should handle files without frontmatter', function parseEmpty() {
+      const input = 'Just content';
+      const result = parse(input);
+      assume(result.content).equals('Just content');
+    });
+  });
+
+  describe('#stringify', function stringifyTests() {
+    it('should generate valid MDC format', function stringifyBasic() {
+      const input = { metadata: { title: 'Test' }, content: 'Content' };
+      const result = stringify(input);
+      assume(result).includes('---\ntitle: Test\n---');
+    });
+  });
+});
+```
+
+## Naming Conventions
+
+### Describe Block Function Names
+
+- Package level: `function packageTests()`
+- API level: `function [functionName]Tests()` (e.g., `parseTests`, `syncTests`)
+
+### Test Function Names
+
+- Use descriptive action-based names: `parseBasic`, `syncMultiple`, `validateInput`
+- Avoid generic prefixes like "test", "should", "when"
+- Keep to 1-2 words when possible
+
+## Nested Testing
+
+For complex APIs with multiple scenarios, use nested describes:
+
+```typescript
+describe('#reposync', function reposyncTests() {
+  describe('with single glob pattern', function singleGlob() {
+    it('should sync markdown files', function syncMarkdown() {
+      // Test implementation
+    });
+  });
+
+  describe('with multiple glob patterns', function multipleGlobs() {
+    it('should handle different file types', function syncMultipleTypes() {
+      // Test implementation
+    });
+  });
+});
+```
+
+## Import Organization
+
+Follow the standard import sorting rules, with test-specific imports:
+
+```typescript
+import { functionToTest } from '../src/index.js';
+import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
+import assume from 'assume';
+import path from 'node:path';
+```

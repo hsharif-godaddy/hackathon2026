@@ -1,0 +1,251 @@
+---
+description: Prevent single-use variables that add unnecessary indirection
+globs: **/*.{ts,js,tsx,jsx}
+alwaysApply: true
+tags:
+  - code-quality
+  - simplicity
+  - readability
+---
+
+# No Single-Use Variables Rule
+
+Avoid creating variables (`const`, `let`, `var`) that are only referenced once in the code. Use the expression directly instead to reduce indirection and improve code clarity.
+
+## Rules
+
+* **Don't create variables for single-use values** - if a variable is only used once, inline the expression
+* **Apply to all variable types**: `const`, `let`, and `var` declarations
+* **Exceptions allowed for**:
+  * Variables that improve readability of complex expressions
+  * Variables used for debugging purposes
+  * Variables that make code significantly more maintainable
+  * Variables in loops where the expression would be recalculated
+  * Variables that represent important domain concepts even if used once
+
+## Examples
+
+**❌ Incorrect (unnecessary single-use variables):**
+
+```typescript
+// Single-use constant
+const userId = user.id;
+return await getUserData(userId);
+
+// Single-use calculation
+const total = price * quantity;
+sendOrder(total);
+
+// Single-use object property
+const name = config.database.name;
+connect(name);
+
+// Single-use function call
+const result = processData(input);
+console.log(result);
+
+// Single-use string concatenation
+const message = `Hello, ${user.name}!`;
+showNotification(message);
+```
+
+**✅ Correct (direct usage):**
+
+```typescript
+// Use value directly
+return await getUserData(user.id);
+
+// Use calculation directly
+sendOrder(price * quantity);
+
+// Use property directly
+connect(config.database.name);
+
+// Use function call directly
+console.log(processData(input));
+
+// Use template literal directly
+showNotification(`Hello, ${user.name}!`);
+```
+
+**✅ Acceptable exceptions (variables improve readability):**
+
+```typescript
+// Complex expression that benefits from a variable
+const isEligibleForDiscount = user.isPremium && 
+  order.total > 100 && 
+  user.membershipDays > 30 && 
+  !user.hasUsedDiscount;
+  
+if (isEligibleForDiscount) {
+  applyDiscount(order);
+}
+
+// Domain concept that adds semantic meaning
+const TAX_RATE = 0.08;
+const finalPrice = basePrice * (1 + TAX_RATE);
+
+// Debugging variable (temporary)
+const debugInfo = { userId: user.id, timestamp: Date.now() };
+console.log('Debug:', debugInfo);
+
+// Loop where expression would be recalculated
+for (let i = 0; i < items.length; i++) {
+  const currentItem = items[i]; // Good: prevents items[i] repetition
+  if (currentItem.isValid && currentItem.price > 0) {
+    processItem(currentItem);
+  }
+}
+```
+
+**❌ Don't create single-use variables for:**
+
+```typescript
+// Simple property access
+const id = object.id;
+doSomething(id); // Should be: doSomething(object.id);
+
+// Simple function calls
+const data = getData();
+process(data); // Should be: process(getData());
+
+// Simple calculations
+const doubled = value * 2;
+return doubled; // Should be: return value * 2;
+
+// Simple string operations
+const trimmed = text.trim();
+validate(trimmed); // Should be: validate(text.trim());
+
+// Simple array operations
+const first = array[0];
+use(first); // Should be: use(array[0]);
+```
+
+## Implementation Notes
+
+* **Review variable usage** before creating any new variable declaration
+* **Ask yourself**: "Is this variable used more than once? Does it add semantic meaning?"
+* **Prefer direct expression** when the intent is clear without a variable
+* **Use meaningful names** for variables that do provide value
+* **Consider scope**: Variables in smaller scopes are more likely to be single-use
+* **Be especially careful** with variables that are immediately returned or passed to functions
+* **Refactor existing single-use variables** when you encounter them during code maintenance
+
+This rule helps maintain cleaner, more direct code by eliminating unnecessary indirection while preserving variables that genuinely improve code readability or maintainability.
+
+## Automated Detection Methods
+
+### Manual Verification Checklist
+
+When reviewing code, systematically check each `const`/`let`/`var` declaration:
+
+1. **Count usage**: Search for the variable name in the function/scope
+2. **Verify references**: Ensure you count ALL references, not just obvious ones
+3. **Check edge cases**: Look for variables used in object literals, template strings, etc.
+4. **Apply exceptions**: Only keep if it adds significant semantic meaning
+
+### Grep Search Patterns
+
+Use these patterns to find potential violations:
+
+```bash
+# Find const declarations followed by single usage
+grep -n "const [a-zA-Z_][a-zA-Z0-9_]* =" file.ts
+
+# Then manually verify each one by searching:
+grep -n "variableName" file.ts
+```
+
+### Common Missed Patterns
+
+These patterns are frequently missed in manual reviews:
+
+```typescript
+// ❌ Object spread in function calls (easy to miss)
+const commands = { ...generateA(), ...generateB() };
+someFunction(commands); // Only used once!
+
+// ❌ Template literals (usage can be subtle)
+const serverName = getServerName();
+console.log(`Connected to ${serverName}`); // Only used once!
+
+// ❌ Method chaining that looks complex
+const result = await client.callTool({ name, args });
+return result; // Only used once!
+
+// ❌ Variables in conditionals (looks like multiple uses)
+const config = loadConfig();
+if (config) { processConfig(config); } // Still only used once!
+```
+
+### Systematic Review Process
+
+1. **List all variable declarations** in the file/function
+2. **For each variable**, count actual references (not the declaration)
+3. **If count === 1**, check if it meets exception criteria:
+   * Complex expression that aids readability?
+   * Important domain concept that adds semantic meaning?
+   * Used in loop where expression would be recalculated?
+4. **If no exceptions apply**, inline the variable
+
+### ESLint Integration (Future)
+
+Consider adding ESLint rules to automate detection:
+
+```json
+{
+  "rules": {
+    "prefer-destructuring": "error",
+    "@typescript-eslint/no-unused-vars": "error",
+    "no-var": "error"
+  }
+}
+```
+
+### Regular Audit Process
+
+* **Schedule monthly reviews** of recent code changes
+* **Search for patterns**: `const.*=.*\n.*return` (const followed by return)
+* **Use git hooks** to flag potential violations in PRs
+* **Code review checklist** must include single-use variable verification
+
+### Detection Script Example
+
+Here's a simple bash script to help identify potential single-use variables:
+
+```bash
+#!/bin/bash
+# single-use-detector.sh - Helps find potential single-use variables
+
+file="$1"
+if [[ -z "$file" ]]; then
+    echo "Usage: $0 <typescript-file>"
+    exit 1
+fi
+
+echo "Checking $file for potential single-use variables..."
+echo "=================================================="
+
+# Find all const/let declarations
+grep -n "^\s*const\s\+\|^\s*let\s\+" "$file" | while read -r line; do
+    line_num=$(echo "$line" | cut -d: -f1)
+    var_name=$(echo "$line" | sed -E 's/.*const\s+([a-zA-Z_][a-zA-Z0-9_]*).*/\1/' | sed -E 's/.*let\s+([a-zA-Z_][a-zA-Z0-9_]*).*/\1/')
+    
+    if [[ -n "$var_name" && "$var_name" != *"{"* ]]; then
+        # Count usage (excluding the declaration line)
+        usage_count=$(grep -n "\b$var_name\b" "$file" | grep -v "^$line_num:" | wc -l)
+        
+        if [[ $usage_count -eq 1 ]]; then
+            echo "⚠️  Potential single-use variable '$var_name' at line $line_num"
+            echo "   Declaration: $(echo "$line" | cut -d: -f2-)"
+            echo "   Usage: $(grep -n "\b$var_name\b" "$file" | grep -v "^$line_num:" | head -1)"
+            echo ""
+        fi
+    fi
+done
+
+echo "Review each flagged variable to determine if it should be inlined."
+```
+
+Usage: `./single-use-detector.sh packages/cli/bin.ts`

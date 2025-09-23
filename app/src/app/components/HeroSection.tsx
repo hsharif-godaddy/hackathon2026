@@ -195,7 +195,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 </div>
               )}
             </Box>
-            
+
             <text.p size={-1} className='max-w-lg mx-auto'>
               AI can make mistakes, so double check its responses. By using Airo App Builder, you agree to our <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/ai-terms-of-use">Terms</Button> and <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/privacy-policy">Privacy Policy</Button>
             </text.p>

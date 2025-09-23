@@ -1,0 +1,82 @@
+---
+description: Import statement sorting rules for TypeScript, JavaScript, and TSX files
+globs: **/*.{ts,js,tsx,jsx}
+alwaysApply: true
+---
+
+## Import Statement Sorting Rules
+
+All import and require statements must be sorted by the **length of the statement**, with the **longest entries first**.
+
+### Rules
+
+- Sort imports and requires by **exact total character length** of the entire statement
+- **Longer statements come before shorter ones** (descending order by character count)
+- Count **every character** including spaces, quotes, semicolons, and special characters
+- When applying this rule, **measure each statement precisely** - do not group by module type or alphabetize
+- Maintain relative order for statements of **exactly equal length** only
+- Apply this rule to both ES6 imports and CommonJS requires
+- If grouping imports logically (optional), sort by length **within each group**
+
+### Examples
+
+**✅ Correct (longest first by exact character count):**
+
+```typescript
+import { VeryLongInterfaceNameWithManyWords, AnotherLongType } from './very-long-path/to/some/complex/module';
+import { SomeInterface, AnotherType } from './path/to/module';
+import { ShortType } from './short-path';
+import fs from 'fs';
+```
+
+**❌ Incorrect (not sorted by length):**
+
+```typescript
+import fs from 'fs';
+import { ShortType } from './short-path';
+import { SomeInterface, AnotherType } from './path/to/module';
+import { VeryLongInterfaceNameWithManyWords, AnotherLongType } from './very-long-path/to/some/complex/module';
+```
+
+**✅ Correct with requires:**
+
+```javascript
+const { VeryLongModuleNameWithManyExports, AnotherLongExport } = require('./very-long-path/to/complex/module');
+const { SomeExport, AnotherExport } = require('./path/to/module');
+const fs = require('fs-extra');
+const os = require('os');
+```
+
+### Character Counting Method
+
+When counting characters, include **EVERY** character in the import statement:
+
+- Letters: `i`, `m`, `p`, `o`, `r`, `t`
+- Spaces: ` ` (between words and around braces)
+- Punctuation: `{`, `}`, `,`, `'`, `"`, `;`, `:`
+- Keywords: `import`, `from`, `require`, `const`
+- Everything else: brackets, parentheses, dots, slashes, etc.
+
+**Verification method**: Use this Node.js command to count precisely:
+
+```javascript
+const statement = "import { dirname, join } from 'node:path';";
+console.log(`"${statement}" = ${statement.length} chars`);
+```
+
+**Character counting examples:**
+
+- `import { dirname, join } from 'node:path';` = **42 chars** (count: i-m-p-o-r-t-[space]-{-[space]-d-i-r-n-a-m-e-,-[space]-j-o-i-n-[space]-}-[space]-f-r-o-m-[space]-'-n-o-d-e-:-p-a-t-h-'-;)
+- `import { fileURLToPath } from 'node:url';` = **41 chars**
+- `import { readFileSync } from 'node:fs';` = **39 chars**
+- `import help from 'send-help';` = **29 chars**
+
+### Implementation Notes
+
+- **Measure precisely**: Count every single character as shown in the examples above
+- **Do not group by type**: Avoid alphabetizing or grouping by module type when sorting - only character length matters
+- **Use exact counting**: When in doubt, use `statement.length` in Node.js to verify
+- **Common mistake**: Don't sort alphabetically - `'node:path'` (42 chars) comes before `'node:url'` (41 chars) even though "path" > "url" alphabetically
+- This rule helps maintain consistency and makes import sections more predictable
+- Longer, more complex imports are more visible at the top
+- The character count includes the entire statement from start to semicolon

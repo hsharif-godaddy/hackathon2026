@@ -8,6 +8,7 @@ import {
   WrenchScrewdriverIcon,
   PhotoIcon
 } from '@heroicons/react/24/outline'
+import { getToolDisplayName } from '../../../utils/toolNameMapping'
 
 interface ToolResultMessageProps {
   toolName: string
@@ -35,26 +36,6 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
     }
   }
 
-  const getToolDisplayName = (toolName: string) => {
-    switch (toolName) {
-      case 'directory_listing':
-        return 'Directory Listing'
-      case 'file_read':
-      case 'read_file':
-        return 'File Read'
-      case 'code_search':
-        return 'Code Search'
-      case 'grep_search':
-        return 'Text Search'
-      case 'terminal':
-      case 'run_command':
-        return 'Terminal'
-      case 'image_search':
-        return 'Image Search'
-      default:
-        return toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-    }
-  }
 
   const extractImagesFromResult = (toolResult: string) => {
     // Match all markdown image formats: ![alt text](image_url)

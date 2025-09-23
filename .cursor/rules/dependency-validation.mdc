@@ -1,0 +1,196 @@
+---
+title: Dependency Validation Rule
+---
+
+# Dependency Validation Rule
+
+**MANDATORY: All imported packages must be declared in package.json dependencies.**
+
+## Core Principle
+
+Every `import` or `require` statement that references an external package (not a relative file path) MUST have a corresponding entry in the `dependencies` or `devDependencies` section of [package.json](mdc:package.json).
+
+## Required Validation Process
+
+Before using any external package in code:
+
+1. **Check if already declared**: Search [package.json](mdc:package.json) for the package name
+2. **Add if missing**: Add the package to the appropriate dependencies section
+3. **Install the dependency**: Run `npm install` to update package-lock.json
+4. **Verify installation**: Ensure the package is available before using
+
+## Import Patterns That Require Dependencies
+
+### ✅ These imports MUST be in package.json:
+
+```typescript
+// Third-party packages
+import { z } from 'zod';                          // ✅ Must be in dependencies
+import assume from 'assume';                      // ✅ Must be in devDependencies  
+import { McpServer } from '@modelcontextprotocol/sdk'; // ✅ Must be in dependencies
+import express from 'express';                    // ✅ Must be in dependencies
+import lodash from 'lodash';                      // ✅ Must be in dependencies
+```
+
+### ✅ These imports do NOT need package.json entries:
+
+```typescript
+// Node.js core modules (with node: prefix)
+import { readFile } from 'node:fs/promises';     // ✅ Core module, no dependency needed
+import { join } from 'node:path';                // ✅ Core module, no dependency needed
+import crypto from 'node:crypto';                // ✅ Core module, no dependency needed
+
+// Relative imports (local files)
+import { create } from './server.ts';            // ✅ Local file, no dependency needed
+import { config } from '../config/index.ts';    // ✅ Local file, no dependency needed
+import packageInfo from './package.json' with { type: 'json' }; // ✅ Local file
+
+// Package subpath exports (already declared parent)
+import { create } from '@godaddy/codexcurator/mcp'; // ✅ Subpath of declared package
+```
+
+## Dependency Categories
+
+### Production Dependencies (`dependencies`)
+
+For packages used in runtime/production code:
+
+```json
+{
+  "dependencies": {
+    "zod": "^3.23.8",
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "express": "^4.18.0"
+  }
+}
+```
+
+### Development Dependencies (`devDependencies`)  
+
+For packages used only in testing, building, or development:
+
+```json
+{
+  "devDependencies": {
+    "assume": "^2.3.0",
+    "@biomejs/biome": "^2.1.1",
+    "typescript": "^5.0.0"
+  }
+}
+```
+
+## Common Violations and Fixes
+
+### ❌ Import without dependency declaration:
+
+```typescript
+// Code uses zod but package.json missing:
+import { z } from 'zod'; // ❌ Error: zod not in dependencies
+
+// Fix: Add to package.json
+{
+  "dependencies": {
+    "zod": "^3.23.8"  // ✅ Now properly declared
+  }
+}
+```
+
+### ❌ Wrong dependency category:
+
+```typescript
+// Test file using assume
+import assume from 'assume'; // Used in tests only
+
+// Wrong: in dependencies (production)
+{
+  "dependencies": {
+    "assume": "^2.3.0"  // ❌ Should be devDependencies
+  }
+}
+
+// Correct: in devDependencies
+{
+  "devDependencies": {
+    "assume": "^2.3.0"  // ✅ Correct category
+  }
+}
+```
+
+## Implementation Checklist
+
+Before committing code that imports external packages:
+
+- [ ] ✅ Check every `import`/`require` statement for external packages
+- [ ] ✅ Verify each package is declared in [package.json](mdc:package.json)
+- [ ] ✅ Use correct category (`dependencies` vs `devDependencies`)
+- [ ] ✅ Run `npm install` after adding new dependencies
+- [ ] ✅ Test that imports work correctly
+- [ ] ✅ Commit both code changes and package.json updates together
+
+## Version Specification
+
+Use semantic versioning ranges appropriately:
+
+```json
+{
+  "dependencies": {
+    "stable-package": "^2.1.0",      // ✅ Caret range for stable APIs
+    "new-package": "~1.0.5",         // ✅ Tilde for patch-level updates
+    "exact-version": "3.0.0"         // ✅ Exact when needed for compatibility
+  }
+}
+```
+
+## Error Prevention
+
+### Pre-commit Validation
+
+Always verify before committing:
+
+1. **Scan imports**: Look for any external package imports
+2. **Cross-reference**: Check each against [package.json](mdc:package.json)
+3. **Add missing**: Update package.json for any missing packages
+4. **Test installation**: Run `npm install` and test imports work
+5. **Commit together**: Include both code and package.json changes
+
+### Code Review Checklist
+
+When reviewing code changes:
+
+- [ ] All new imports have corresponding package.json entries
+- [ ] Dependencies are in the correct category (prod vs dev)
+- [ ] Version ranges are appropriate
+- [ ] package-lock.json is updated if needed
+
+## Enforcement Tools
+
+Consider using automated tools to prevent this issue:
+
+```json
+{
+  "scripts": {
+    "check-deps": "npm ls --depth=0",
+    "audit": "npm audit",
+    "outdated": "npm outdated"
+  }
+}
+```
+
+## Examples of Proper Workflow
+
+### ✅ Correct Process:
+
+1. **Identify need**: "I need to use zod for schema validation"
+2. **Add dependency**: Update [package.json](mdc:package.json) with `"zod": "^3.23.8"`
+3. **Install**: Run `npm install`
+4. **Import and use**: `import { z } from 'zod';`
+5. **Test**: Verify code works correctly
+6. **Commit**: Include both code and package.json changes
+
+### ❌ Incorrect Process:
+
+1. **Import directly**: `import { z } from 'zod';` // ❌ Package not declared
+2. **Code fails**: Runtime error or build failure
+3. **Retroactive fix**: Add to package.json after the fact // ❌ Should be done first
+
+This rule ensures dependency management integrity and prevents runtime errors due to missing packages.

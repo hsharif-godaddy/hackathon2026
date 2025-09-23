@@ -1,0 +1,129 @@
+---
+description: Import naming rules to prevent unnecessary aliasing and validate existing renames
+globs: **/*.{ts,js,tsx,jsx}
+alwaysApply: true
+---
+
+# Import Naming Rules
+
+## 🚨 CRITICAL: No Unnecessary Import Renaming
+
+**NEVER rename imports unless there is an actual naming conflict in the same file.**
+
+### Core Principles
+
+1. **Default to original names**: Always import functions with their original exported names
+2. **Only rename when conflicts exist**: Use `import { name as newName }` ONLY when
+   multiple imports would create naming conflicts
+3. **Validate existing renames**: When editing files, verify that all `import as`
+   statements are still necessary
+4. **Remove unnecessary aliases**: Clean up any `import as` that doesn't resolve an actual conflict
+
+### Examples
+
+**✅ Correct - No unnecessary renaming:**
+
+```typescript
+// Single import - use original name
+import { get } from './config';
+import { create } from './user';
+import { parse } from './parser';
+
+// No conflicts in this file - no renaming needed
+import { generate } from './tools-generator';
+const result = generate(data);
+```
+
+**✅ Correct - Necessary renaming for conflicts:**
+
+```typescript
+// Both modules export 'generate' - renaming required
+import { generate as generateTools } from './tools-generator';
+import { generate as generateResources } from './resources-generator';
+
+// Both used in same file - aliases prevent conflicts
+const toolCommands = generateTools(tools);
+const resourceCommands = generateResources(resources);
+```
+
+**✅ Correct - Renaming for call-site clarity:**
+
+```typescript
+// When the import context needs clarification at usage
+import { get as getConfig } from './config';
+import { get as getUser } from './user';
+
+// Clear which 'get' function is being called
+const config = getConfig('server');
+const user = getUser('123');
+```
+
+**❌ Incorrect - Unnecessary renaming:**
+
+```typescript
+// NO conflicts in this file - renaming is unnecessary
+import { get as getConfig } from './config';  // ❌ Just use 'get'
+import { load as loadData } from './loader';  // ❌ Just use 'load'
+import { parse as parseJson } from './json';  // ❌ Just use 'parse'
+
+// Should be:
+import { get } from './config';
+import { load } from './loader';
+import { parse } from './json';
+```
+
+### Validation Checklist
+
+When editing any file with imports, ALWAYS verify:
+
+1. **Check for actual conflicts**: Are there multiple imports with the same name?
+2. **Remove unnecessary aliases**: Can any `import as` be simplified to the original name?
+3. **Verify alias necessity**: For each `import as`, confirm it resolves a real naming conflict
+4. **Module context consideration**: Does the module name provide enough context to use short function names?
+
+### Common Violations to Fix
+
+❌ **Verbose aliasing when module context is clear:**
+
+```typescript
+import { getConfig } from './config';     // ❌ Should be 'get'
+import { loadConfig } from './config';    // ❌ Should be 'load'  
+import { parseConfig } from './config';   // ❌ Should be 'parse'
+```
+
+❌ **Aliasing single imports without conflicts:**
+
+```typescript
+import { process as processData } from './processor';  // ❌ No conflict exists
+```
+
+❌ **Overly descriptive aliases:**
+
+```typescript
+import { create as createNewUser } from './user';  // ❌ 'create' is sufficient
+```
+
+### Default Import vs Named Import Aliasing
+
+**Default imports are NOT aliasing** (these are correct):
+
+```typescript
+import assume from 'assume';        // ✅ Default import, not aliasing
+import help from 'send-help';       // ✅ Default import, not aliasing
+import argh from 'argh';            // ✅ Default import, not aliasing
+```
+
+**Named import aliasing should be minimal**:
+
+```typescript
+import { named as renamed } from './module';  // Only when necessary
+```
+
+## Enforcement
+
+- **Review all `import as` statements** in any file being edited
+- **Question every alias**: Is this resolving an actual conflict?
+- **Simplify when possible**: Remove aliases that don't serve a purpose
+- **Prioritize readability**: Shorter names are better when context is clear
+
+This rule helps maintain clean, readable imports and prevents unnecessary verbosity in the codebase.

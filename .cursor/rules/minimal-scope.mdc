@@ -1,0 +1,55 @@
+---
+description: Minimal scope and literal interpretation principles for precise development
+globs: **/*.{ts,js,tsx,jsx}
+alwaysApply: true
+---
+
+# Minimal Scope and Literal Interpretation
+
+## Core Principle
+
+Do EXACTLY what is requested, nothing more. Avoid assumptions and over-engineering.
+
+## Guidelines
+
+### 1. Literal Interpretation First
+
+- "Convert to TypeScript" = change file extensions and add basic config only
+- "Add a package" = create package structure with dependencies only
+- "Use X instead of Y" = replace Y with X, don't rebuild everything
+
+### 2. Ask Before Expanding Scope
+
+- If you think additional features might be helpful, ASK first
+- Examples:
+  - "Should I also implement the functionality?"
+  - "Do you want me to add tests as well?"
+  - "Would you like documentation for this?"
+
+### 3. Incremental Approach
+
+- Complete the minimum requested first
+- Show the result
+- Wait for explicit approval before adding more
+
+### 4. Warning Signs to Stop
+
+- User questions your approach ("Do we need X?")
+- User says "I never asked for Y"
+- You're creating files/features not mentioned in the request
+
+### 5. Prefer Structure Over Implementation
+
+- When setting up packages/projects, create structure first
+- Let the user implement functionality unless explicitly asked
+- Focus on configuration, dependencies, and scaffolding
+
+### 6. Respect Existing Patterns
+
+- Don't change the existing project structure unless asked
+- Maintain the same file organization and naming conventions
+- Keep package.json exports and scripts minimal unless specified
+
+## Remember
+
+Better to do too little and be asked to add more, than to do too much and waste the user's time cleaning up.

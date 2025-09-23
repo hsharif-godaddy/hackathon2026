@@ -9,6 +9,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 interface MarkdownRendererProps {
   content: string
   className?: string
+  fullscreen?: boolean
 }
 
 // Utility function to check and handle incomplete markdown markers
@@ -56,7 +57,8 @@ const processMarkdown = (content: string): string => {
 
 export default function MarkdownRenderer({ 
   content, 
-  className = '' 
+  className = '',
+  fullscreen = false
 }: MarkdownRendererProps) {
   const [displayContent, setDisplayContent] = useState(content)
 
@@ -99,16 +101,16 @@ export default function MarkdownRenderer({
             return <div className="my-2">{children}</div>
           },
           h1({ children }) {
-            return <h1 className="text-xl font-bold mt-4 mb-2 text-gray-900">{children}</h1>
+            return <h1 className={`font-bold mt-4 mb-2 text-gray-900 ${fullscreen ? 'text-2xl' : 'text-xl'}`}>{children}</h1>
           },
           h2({ children }) {
-            return <h2 className="text-lg font-semibold mt-3 mb-2 text-gray-900">{children}</h2>
+            return <h2 className={`font-semibold mt-3 mb-2 text-gray-900 ${fullscreen ? 'text-xl' : 'text-lg'}`}>{children}</h2>
           },
           h3({ children }) {
-            return <h3 className="text-base font-semibold mt-2 mb-1 text-gray-900">{children}</h3>
+            return <h3 className={`font-semibold mt-2 mb-1 text-gray-900 ${fullscreen ? 'text-lg' : 'text-base'}`}>{children}</h3>
           },
           p({ children }) {
-            return <p className="mb-2 leading-relaxed">{children}</p>
+            return <p className={`mb-2 leading-relaxed ${fullscreen ? 'text-base' : ''}`}>{children}</p>
           },
           ul({ children }) {
             return <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>

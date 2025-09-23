@@ -1,0 +1,299 @@
+---
+alwaysApply: true
+description: "Enforces the use of async APIs over synchronous calls for better performance and non-blocking behavior"
+globs: **/*.{ts,js,tsx,jsx}
+---
+
+# Async API Preference Rule
+
+**MANDATORY: Always prefer async APIs over sync calls when async equivalents are available.**
+
+## Core Principle
+
+Use asynchronous functions and APIs by default to maintain non-blocking behavior, better
+performance, and modern Node.js best practices. Only use synchronous calls when no async
+equivalent exists or in very specific initialization scenarios.
+
+## File System Operations
+
+### ✅ Preferred (Async)
+
+```typescript
+import { readFile, writeFile, access, mkdir, readdir } from 'node:fs/promises';
+
+// Reading files
+const content = await readFile('config.json', 'utf8');
+
+// Writing files  
+await writeFile('output.json', JSON.stringify(data, null, 2));
+
+// Checking file existence
+try {
+  await access(filePath);
+  // File exists
+} catch {
+  // File doesn't exist
+}
+
+// Creating directories
+await mkdir(dirPath, { recursive: true });
+
+// Reading directories
+const files = await readdir(dirPath);
+```
+
+### ❌ Avoid (Sync)
+
+```typescript
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+
+// Don't use these unless absolutely necessary
+const content = readFileSync('config.json', 'utf8');     // ❌
+writeFileSync('output.json', JSON.stringify(data));      // ❌
+if (existsSync(filePath)) { }                            // ❌
+mkdirSync(dirPath, { recursive: true });                // ❌
+```
+
+## Function Signatures
+
+### ✅ Async Function Design
+
+```typescript
+/**
+ * Load and parse configuration file
+ * @param path - Path to config file
+ * @returns Promise resolving to parsed configuration
+ */
+async function loadConfig(path: string): Promise<Config> {
+  const content = await readFile(path, 'utf8');
+  return JSON.parse(content);
+}
+
+/**
+ * Discover configurations from multiple sources
+ * @returns Promise resolving to merged configurations
+ */
+export async function discover(): Promise<MCPConfig> {
+  const configs = [];
+  for (const path of configPaths) {
+    const config = await load(path);
+    if (config) configs.push(config);
+  }
+  return merge(configs);
+}
+```
+
+### ❌ Sync Function Design
+
+```typescript
+// Avoid designing new sync functions
+function loadConfig(path: string): Config {              // ❌
+  const content = readFileSync(path, 'utf8');           // ❌
+  return JSON.parse(content);
+}
+```
+
+## Function Calls and Usage
+
+### ✅ Async Usage Patterns
+
+```typescript
+// Always await async functions
+const config = await loadConfig('app.json');
+const servers = await discoverServers();
+const result = await processData(input);
+
+// Use Promise.all for parallel operations
+const [config, servers, data] = await Promise.all([
+  loadConfig('app.json'),
+  discoverServers(),
+  fetchData()
+]);
+
+// Handle errors with try/catch
+try {
+  const result = await riskyOperation();
+  return result;
+} catch (error) {
+  console.error('Operation failed:', error);
+  throw error;
+}
+```
+
+### ❌ Sync Usage Patterns
+
+```typescript
+// Don't call sync versions when async available
+const config = loadConfigSync('app.json');              // ❌
+const exists = existsSync(filePath);                    // ❌
+const data = readFileSync(path, 'utf8');               // ❌
+```
+
+## Database and Network Operations
+
+### ✅ Always Async
+
+```typescript
+// Database queries
+const users = await db.query('SELECT * FROM users');
+await db.insert('users', userData);
+
+// HTTP requests
+const response = await fetch(url);
+const data = await response.json();
+
+// External process execution
+const { stdout } = await spawn('command', args);
+```
+
+## Acceptable Sync Usage (Exceptions)
+
+Synchronous calls are **ONLY** acceptable in these specific scenarios:
+
+### 1. No Async Equivalent Available
+
+```typescript
+// When the API only provides sync version
+const cwd = process.cwd();                              // ✅ No async version
+const platform = os.platform();                        // ✅ No async version
+const env = process.env.NODE_ENV;                       // ✅ No async version
+```
+
+### 2. Application Initialization (Rare Cases)
+
+```typescript
+// Early startup configuration where blocking is acceptable
+function initializeApp() {
+  if (existsSync('./config.json')) {                    // ✅ Startup only
+    const config = readFileSync('./config.json', 'utf8'); // ✅ Startup only
+    return JSON.parse(config);
+  }
+  return defaultConfig;
+}
+```
+
+### 3. Specific Config File Loading (Transition Period)
+
+```typescript
+// When explicitly loading config files for CLI argument processing
+// This should be migrated to async when the calling context allows
+if (configFilePath) {
+  if (!existsSync(configFilePath)) {                    // ✅ Specific case
+    throw new Error(`Config file not found: ${configFilePath}`);
+  }
+  config = JSON.parse(readFileSync(configFilePath, 'utf8')); // ✅ Specific case
+}
+```
+
+## Migration Strategy
+
+When converting sync to async:
+
+1. **Update function signatures** to return `Promise<T>`
+2. **Add `async` keyword** to function declarations
+3. **Add `await` keyword** to all async calls within the function
+4. **Update JSDoc** to reflect Promise return types
+5. **Update all callers** to use `await` or `.then()`
+6. **Update tests** to handle async behavior
+
+### Example Migration
+
+```typescript
+// Before (sync)
+function load(path: string): Config | null {
+  if (!existsSync(path)) return null;
+  const content = readFileSync(path, 'utf8');
+  return JSON.parse(content);
+}
+
+// After (async)
+async function load(path: string): Promise<Config | null> {
+  try {
+    await access(path);
+  } catch {
+    return null;
+  }
+  const content = await readFile(path, 'utf8');
+  return JSON.parse(content);
+}
+```
+
+## Error Handling
+
+### ✅ Async Error Handling
+
+```typescript
+async function safeOperation(): Promise<Result> {
+  try {
+    const result = await riskyAsyncOperation();
+    return result;
+  } catch (error) {
+    console.error('Operation failed:', error.message);
+    throw error; // Re-throw for caller to handle
+  }
+}
+```
+
+## Testing Async Functions
+
+### ✅ Async Test Patterns
+
+```typescript
+import { describe, it } from 'node:test';
+
+describe('async operations', () => {
+  it('should load configuration', async () => {          // ✅ async test
+    const config = await loadConfig('test.json');
+    assume(config).has.property('servers');
+  });
+
+  it('should handle missing files', async () => {        // ✅ async test
+    const config = await loadConfig('missing.json');
+    assume(config).equals(null);
+  });
+});
+```
+
+## Performance Benefits
+
+- **Non-blocking**: Allows other operations to continue while I/O completes
+- **Scalability**: Better handling of concurrent operations
+- **Resource efficiency**: Doesn't tie up threads waiting for I/O
+- **Modern Node.js**: Follows current best practices and patterns
+
+## Enforcement Checklist
+
+When reviewing code, verify:
+
+- ✅ All file system operations use `node:fs/promises`
+- ✅ Functions that perform I/O are declared `async`
+- ✅ All async function calls use `await`
+- ✅ JSDoc reflects `Promise<T>` return types
+- ✅ Error handling uses try/catch with async operations
+- ✅ Tests for async functions are properly async
+- ✅ No unnecessary sync calls when async alternatives exist
+
+## Common Violations to Fix
+
+❌ **Using sync fs operations:**
+
+```typescript
+import { readFileSync, existsSync } from 'node:fs';     // ❌ Use fs/promises
+```
+
+❌ **Forgetting await:**
+
+```typescript
+const result = asyncFunction();                         // ❌ Missing await
+```
+
+❌ **Sync function design for I/O:**
+
+```typescript
+function loadData(): Data {                             // ❌ Should be async
+  return readFileSync('data.json');                     // ❌ Sync I/O
+}
+```
+
+This rule ensures consistent, performant, and modern asynchronous patterns throughout the
+codebase while allowing for the rare cases where synchronous operations are truly necessary.
