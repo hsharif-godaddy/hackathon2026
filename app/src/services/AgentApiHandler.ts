@@ -1,4 +1,4 @@
-import { appFetch } from '@/lib/gasket-config'
+import { agentFetch } from '@/lib/agent-fetch'
 import { buildApiUrl } from '@/config/api'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { logger } from '@/lib/request-context'
@@ -35,7 +35,7 @@ export class AgentApiHandler {
    */
   async get(endpoint: string, siteId?: string): Promise<Response> {
     const url = await this.buildAgentUrl(endpoint, siteId)
-    return await appFetch(url)
+    return await agentFetch(url)
   }
 
   /**
@@ -55,7 +55,7 @@ export class AgentApiHandler {
       requestOptions.body = JSON.stringify(body)
     }
 
-    return await appFetch(url, requestOptions)
+    return await agentFetch(url, requestOptions)
   }
 
   /**
@@ -75,7 +75,7 @@ export class AgentApiHandler {
       requestOptions.body = JSON.stringify(body)
     }
 
-    return await appFetch(url, requestOptions)
+    return await agentFetch(url, requestOptions)
   }
 
   /**
@@ -88,7 +88,7 @@ export class AgentApiHandler {
       method: 'DELETE'
     }
 
-    return await appFetch(url, requestOptions)
+    return await agentFetch(url, requestOptions)
   }
 
   /**

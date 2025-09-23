@@ -1,6 +1,7 @@
 import { logger } from '@/lib/request-context';
 import { NextRequest, NextResponse } from 'next/server';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
+import { serverAgentFetch } from '@/lib/agent-fetch';
 import {
   withCustomerAuth,
   customerHasAccount,
@@ -47,7 +48,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     
     const body = await request.text()
     
-    const response = await fetch(agentUrl, {
+    const response = await serverAgentFetch(agentUrl, request, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

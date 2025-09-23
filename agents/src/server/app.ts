@@ -41,7 +41,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { createServer } from 'http';
 
-import { corsMiddleware, errorHandler, notFoundHandler, requestLogger } from './middleware/index.js';
+import { corsMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
@@ -97,14 +97,10 @@ if (isApmEnabled) {
   });
 }
 
-// Routes
+// Public routes (no authentication required)
 app.use('/health', healthRouter);
-app.use('/agents', agentsRouter);
-app.use('/apps', appsRouter);
-app.use('/agent', chatRouter);
-app.use('/', gitRouter);
 
-// Root endpoint
+// Root endpoint (public)
 app.get('/', (req, res) => {
   res.json({
     name: '@airo/agents',
@@ -123,6 +119,12 @@ app.get('/', (req, res) => {
     documentation: 'See README.md for detailed API documentation',
   });
 });
+
+// Protected routes requiring authentication  
+app.use('/agents', jwtAuthMiddleware.authenticate, agentsRouter);
+app.use('/apps', jwtAuthMiddleware.authenticate, appsRouter);
+app.use('/agent', jwtAuthMiddleware.authenticate, chatRouter);
+app.use('/', jwtAuthMiddleware.authenticate, gitRouter);
 
 // Error handling
 app.use(notFoundHandler);

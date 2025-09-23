@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { appFetch } from '@/lib/gasket-config'
+import { agentFetch } from '@/lib/agent-fetch'
 
 export interface Site {
   id: string
@@ -351,7 +352,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
         // Call the agents service to get a name suggestion
         console.log('🏷️ Calling suggest-name endpoint...')
-        const agentResponse = await appFetch(`${agentUrl}/apps/suggest-name`, {
+        const agentResponse = await agentFetch(`${agentUrl}/apps/suggest-name`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

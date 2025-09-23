@@ -1,4 +1,5 @@
 import { appFetch } from '@/lib/gasket-config';
+import { agentFetch } from '@/lib/agent-fetch';
 import { logger } from '@/lib/request-context';
 
 export interface SiteStatus {
@@ -225,7 +226,7 @@ export class SitePollingService {
     try {
       logger.info('🔍 Checking if app already exists for site:', siteId);
 
-      const response = await fetch(`${agentUrl}/apps/${siteId}`, {
+      const response = await agentFetch(`${agentUrl}/apps/${siteId}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -389,7 +390,7 @@ export class SitePollingService {
       // Register app with agent service before updating status
       try {
         logger.info('📝 Registering app with agent service:', siteId);
-        const registerResponse = await appFetch(`${site.agent_url}/apps/register`, {
+        const registerResponse = await agentFetch(`${site.agent_url}/apps/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

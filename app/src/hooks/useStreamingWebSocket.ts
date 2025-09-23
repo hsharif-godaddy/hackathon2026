@@ -27,6 +27,22 @@ import type { AgentsAppContext, AgentsAppChatMessage } from '../types/websocket-
 import { captureVisualContext } from '../app/develop/components/visualContextCapture'
 import { logImpressionEvent } from '@/utils/instrumentation'
 
+/**
+ * Get JWT token from browser cookies for Socket.IO authentication
+ */
+const getAuthTokenFromCookie = (): string | null => {
+  if (typeof document === 'undefined') return null;
+  
+  const cookies = document.cookie.split(';');
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === 'auth_idp') {
+      return decodeURIComponent(value);
+    }
+  }
+  return null;
+};
+
 export function useStreamingWebSocket() {
   const socketRef = useRef<Socket | null>(null)
   const webSocketState = useWebSocketState()
@@ -76,11 +92,33 @@ export function useStreamingWebSocket() {
       const socketUrl = config.baseUrl
       console.log('🔌 Creating Socket.IO connection to:', socketUrl)
       
-      const socket = io(socketUrl, {
+      // Get JWT token for authentication (aligned with new agents service)
+      let authToken = null;
+      try {
+        const { isAuthDisabled } = await import('../lib/gasket-config');
+        if (!(await isAuthDisabled())) {
+          authToken = getAuthTokenFromCookie();
+        }
+      } catch (error) {
+        console.warn('Could not determine auth status:', error);
+      }
+      
+      // Create Socket.IO connection with JWT authentication
+      const socketOptions: any = {
         transports: ['websocket', 'polling'],
         timeout: 10000,
         autoConnect: true
-      })
+      };
+      
+      // Add JWT authentication headers (required by new agents service)
+      if (authToken) {
+        socketOptions.extraHeaders = {
+          'Authorization': `Bearer ${authToken}`
+        };
+        console.log('🔐 Socket.IO connection will include JWT authentication');
+      }
+      
+      const socket = io(socketUrl, socketOptions)
 
       socket.on('connect', () => {
         console.log('🔌 Socket.IO connected')

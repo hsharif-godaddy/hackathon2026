@@ -5,6 +5,7 @@
 
 import { BaseDeploymentAdapter } from './base-adapter';
 import { DeploymentConfig, DeploymentResult } from './types';
+import { agentFetch } from '@/lib/agent-fetch';
 import { mkdirSync, rmSync, existsSync, cpSync } from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
@@ -399,7 +400,7 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.agentsServiceUrl}/health`, {
+      const response = await agentFetch(`${this.agentsServiceUrl}/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000) // 5 second timeout
       });
@@ -426,15 +427,16 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
     try {
       this.log('info', 'Creating app record in agents service', { siteId, name });
 
-      const response = await fetch(`${this.agentsServiceUrl}/apps/create`, {
+      const response = await agentFetch(`${this.agentsServiceUrl}/apps/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          siteId,
           name,
-          initialPrompt,
-          siteId
+          appPath,
+          initialPrompt
         }),
         signal: AbortSignal.timeout(10000) // 10 second timeout
       });

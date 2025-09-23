@@ -6,6 +6,7 @@
 import { BaseDeploymentAdapter } from './base-adapter';
 import { DeploymentConfig, DeploymentResult } from './types';
 import { DevEnvironmentManager } from '../dev-environment/DevEnvironmentManager';
+import { agentFetch } from '@/lib/agent-fetch';
 import Database from 'better-sqlite3';
 import { existsSync } from 'fs';
 import path from 'path';
@@ -242,7 +243,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
    */
   private async checkAgentsService(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.agentsServiceUrl}/health`, {
+      const response = await agentFetch(`${this.agentsServiceUrl}/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000)
       });
@@ -259,7 +260,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
     try {
       this.log('info', 'Registering app with agents service', { siteId, name });
 
-      const response = await fetch(`${this.agentsServiceUrl}/apps/register`, {
+      const response = await agentFetch(`${this.agentsServiceUrl}/apps/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

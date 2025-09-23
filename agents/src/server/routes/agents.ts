@@ -1,58 +1,53 @@
 import { Router, IRouter } from 'express';
-import { AgentRegistry } from '../../registry/index.js';
 import { NotFoundError } from '../middleware/index.js';
+import { aiLibAgentMetadata } from '../../agents/ai-lib-agents/index.js';
 
 const router: IRouter = Router();
-const registry = AgentRegistry.getInstance();
 
 /**
- * GET /agents - List all available agents
+ * GET /agents - List all available agents (using AI-Lib agents)
  */
 router.get('/', (req, res) => {
-  const configs = registry.getEnabledConfigs();
+  // Use AI-Lib agent metadata (same as WebSocket system)
+  const agentList = Object.values(aiLibAgentMetadata);
   
   res.json({
-    agents: configs.map(config => ({
-      id: config.id,
-      name: config.name,
-      description: config.description,
-      version: config.version,
-      tags: config.tags,
-      toolCount: config.tools.length,
-      hasContextBuilder: !!config.contextBuilder,
-      handoffCount: config.handoffs?.length || 0,
+    agents: agentList.map(metadata => ({
+      id: metadata.id,
+      name: metadata.name,
+      description: metadata.description,
+      version: metadata.version,
+      tags: metadata.tags,
+      toolCount: metadata.toolGroups.length,
+      hasContextBuilder: true, // AI-Lib agents always have context
+      handoffCount: 0, // Available in AI-Lib but not exposed in metadata
     })),
-    total: configs.length,
+    total: agentList.length,
   });
 });
 
 /**
- * GET /agents/:agentId - Get specific agent information
+ * GET /agents/:agentId - Get specific agent information (using AI-Lib agents)
  */
 router.get('/:agentId', async (req, res, next) => {
   try {
     const { agentId } = req.params;
     
-    if (!registry.hasAgent(agentId)) {
+    // Check if agent exists in AI-Lib metadata
+    const metadata = aiLibAgentMetadata[agentId];
+    if (!metadata) {
       throw new NotFoundError(`Agent '${agentId}' not found`);
     }
     
-    const config = registry.getAgentConfig(agentId);
-    if (!config) {
-      throw new NotFoundError(`Agent '${agentId}' configuration not found`);
-    }
-    
     res.json({
-      id: config.id,
-      name: config.name,
-      description: config.description,
-      version: config.version,
-      tags: config.tags,
-      model: config.model,
-      outputType: config.outputType,
-      tools: config.tools,
-      contextBuilder: config.contextBuilder,
-      handoffs: config.handoffs,
+      id: metadata.id,
+      name: metadata.name,
+      description: metadata.description,
+      version: metadata.version,
+      tags: metadata.tags,
+      toolGroups: metadata.toolGroups,
+      hasContextBuilder: true,
+      handoffCount: 0, // Available in AI-Lib but not exposed in metadata
     });
   } catch (error) {
     next(error);
