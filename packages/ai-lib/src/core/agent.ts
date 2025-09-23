@@ -100,7 +100,34 @@ export class Agent {
       generateOptions.tools = this.buildToolsObject()
     }
 
-    const result = await generateText(generateOptions)
+    let result
+    try {
+      result = await generateText(generateOptions)
+    } catch (error: any) {
+      // Handle API call errors (like tool input validation failures)
+      if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {
+        console.error('❌ Tool input validation error in Agent.generate:', error.message)
+        
+        // Create a formatted result that includes the error message for the LLM
+        const errorResult = {
+          text: `Tool call failed due to invalid input format: ${error.message}. Please ensure all tool arguments are properly formatted as valid JSON objects. Check that:
+1. All string values are properly quoted
+2. All object properties use valid JSON syntax
+3. No undefined or null values are passed as tool arguments
+4. Arrays and objects are properly structured
+
+Please retry your tool call with corrected input formatting.`,
+          toolCalls: [],
+          usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+          finishReason: 'error'
+        }
+        
+        return this.formatResult(errorResult)
+      }
+      
+      // Re-throw other errors
+      throw error
+    }
 
     // Debug logging if enabled
     if (process.env.DEBUG === 'true') {
@@ -135,18 +162,71 @@ export class Agent {
       streamOptions.tools = this.buildToolsObject()
     }
 
-    const result = streamText(streamOptions)
+    let result
+    try {
+      result = streamText(streamOptions)
+    } catch (error: any) {
+      // Handle API call errors (like tool input validation failures)
+      if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {
+        console.error('❌ Tool input validation error in Agent.generateStream:', error.message)
+        
+        // Yield the error message as text content
+        const errorMessage = `Tool call failed due to invalid input format: ${error.message}. Please ensure all tool arguments are properly formatted as valid JSON objects. Check that:
+1. All string values are properly quoted
+2. All object properties use valid JSON syntax
+3. No undefined or null values are passed as tool arguments
+4. Arrays and objects are properly structured
+
+Please retry your tool call with corrected input formatting.`
+        
+        yield errorMessage
+        
+        // Return a formatted error result
+        return await this.formatStreamResult({
+          text: errorMessage,
+          toolCalls: [],
+          usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+          finishReason: 'error'
+        }, errorMessage)
+      }
+      
+      // Re-throw other errors
+      throw error
+    }
 
     let fullContent = ''
 
-    // Stream text chunks
-    for await (const textPart of result.textStream) {
-      fullContent += textPart
-      yield textPart
-    }
+    try {
+      // Stream text chunks
+      for await (const textPart of result.textStream) {
+        fullContent += textPart
+        yield textPart
+      }
 
-    // Wait for final result and return it
-    const finalResult = await result
+      // Wait for final result and return it
+      const finalResult = await result
+    } catch (error: any) {
+      // Handle streaming errors (like tool input validation failures during streaming)
+      if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {
+        console.error('❌ Tool input validation error during streaming:', error.message)
+        
+        const errorMessage = `\n\nTool call failed due to invalid input format: ${error.message}. Please ensure all tool arguments are properly formatted as valid JSON objects and retry your tool call with corrected input formatting.`
+        
+        yield errorMessage
+        fullContent += errorMessage
+        
+        // Return a formatted error result
+        return await this.formatStreamResult({
+          text: fullContent,
+          toolCalls: [],
+          usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+          finishReason: 'error'
+        }, fullContent)
+      }
+      
+      // Re-throw other errors
+      throw error
+    }
 
     return await this.formatStreamResult(finalResult, fullContent)
   }

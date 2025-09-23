@@ -380,11 +380,44 @@ export class ExperimentalAgentWrapper {
     // Add the main prompt
     messages.push({ role: 'user' as const, content: prompt })
 
-    const streamResult = this.agent.stream(
-      messages.length > 1 
-        ? { messages } 
-        : { prompt }
-    )
+    let streamResult
+    try {
+      streamResult = this.agent.stream(
+        messages.length > 1 
+          ? { messages } 
+          : { prompt }
+      )
+    } catch (error: any) {
+      // Handle API call errors (like tool input validation failures)
+      if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {
+        console.error('❌ Tool input validation error in ExperimentalAgentWrapper.streamGenerate:', error.message)
+        
+        // Create an error message for the LLM
+        const errorMessage = `Tool call failed due to invalid input format: ${error.message}. Please ensure all tool arguments are properly formatted as valid JSON objects. Check that:
+1. All string values are properly quoted
+2. All object properties use valid JSON syntax
+3. No undefined or null values are passed as tool arguments
+4. Arrays and objects are properly structured
+
+Please retry your tool call with corrected input formatting.`
+
+        // Return a mock stream result with the error message
+        return {
+          textStream: (async function* () {
+            yield errorMessage
+          })(),
+          baseStream: null,
+          getFinalResult: async () => ({
+            usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+            finishReason: 'error',
+            toolCalls: []
+          })
+        }
+      }
+      
+      // Re-throw other errors
+      throw error
+    }
 
     return {
       // Provide the text stream for the caller to iterate over

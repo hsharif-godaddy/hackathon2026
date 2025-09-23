@@ -149,19 +149,60 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'design.md'))
     .file(paths.getSharedFile('security.md'))
   
-  // Add version-specific template descriptions if available
-  if (appPath) {
-    const validatedVersion = getValidatedTemplateVersion(appPath)
-    if (validatedVersion) {
-      const templateDescPath = getTemplateDescriptionPath(validatedVersion, import.meta.url)
-      
-      if (existsSync(templateDescPath)) {
-        promptBuilder.file(templateDescPath)
-      }
-    }
-  }
+  // Template descriptions are now dynamically injected during conversation execution
+  // via AILibContextManager.buildContextMessages() based on app context
   
   return await promptBuilder.build()
+}
+
+/**
+ * Build dynamic system prompt with context enrichment
+ */
+async function buildDynamicSystemPrompt(context?: AgentContext): Promise<string> {
+  console.log('🎯 Building dynamic system prompt with context:', {
+    hasContext: !!context,
+    contextKeys: context ? Object.keys(context) : [],
+    hasMetadata: !!(context?.metadata),
+    appId: context?.metadata?.appId
+  })
+
+  // Get the base static system prompt
+  const baseSystemPrompt = await buildDevelopSystemPrompt()
+  
+  if (!context?.metadata?.appId) {
+    console.log('⚠️ No appId in context, returning static system prompt')
+    return baseSystemPrompt
+  }
+
+  try {
+    // Import the context manager here to avoid circular dependencies
+    const { AILibContextManager } = await import('../ai-lib-agents/context-manager.js')
+    const contextManager = new AILibContextManager()
+    
+    // Convert context to enhanced format
+    const enhancedContext = contextManager.convertToEnhancedContext(context)
+    
+    // Build context messages
+    const contextResult = await contextManager.buildContextMessages(baseSystemPrompt, enhancedContext)
+    
+    // Combine base system prompt with context messages
+    const contextMessages = contextResult.contextMessages.map(msg => msg.content).join('\n\n')
+    
+    const enrichedSystemPrompt = contextMessages ? 
+      `${baseSystemPrompt}\n\n${contextMessages}` : baseSystemPrompt
+    
+    console.log('✅ Dynamic system prompt built:', {
+      baseLength: baseSystemPrompt.length,
+      contextMessagesCount: contextResult.contextMessages.length,
+      totalLength: enrichedSystemPrompt.length,
+      enriched: contextResult.contextMessages.length > 0
+    })
+    
+    return enrichedSystemPrompt
+  } catch (error) {
+    console.error('❌ Failed to build dynamic system prompt, falling back to static:', error)
+    return baseSystemPrompt
+  }
 }
 
 /**

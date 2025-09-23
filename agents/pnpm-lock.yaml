@@ -230,7 +230,7 @@ packages:
     resolution: {directory: ../packages/ai-lib, type: directory}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      '@ai-sdk/anthropic': ^1.0.0
+      '@ai-sdk/anthropic': ^2.0.0
     peerDependenciesMeta:
       '@ai-sdk/anthropic':
         optional: true

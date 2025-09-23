@@ -33,12 +33,19 @@ export class AppContextManager {
       const appPath = context.metadata.appPath as string;
 
       // Get directory listing with max depth of 3
-      const directoryListing = await this.directoryTool.listDirectory(appPath, {
+      const directoryResult = await this.directoryTool.listDirectory(appPath, {
         path: '',
         maxDepth: 3,
         showHidden: false,
         directoriesOnly: false
       });
+
+      if (!directoryResult) {
+        return null;
+      }
+
+      // Format the directory result as a tree string
+      const directoryListing = this.directoryTool.formatAsTree(directoryResult);
 
       if (!directoryListing || typeof directoryListing !== 'string') {
         return null;
@@ -48,10 +55,16 @@ export class AppContextManager {
       const packageInfo = await this.getPackageInfo(context);
 
       // Format both directory listing and package info into context message
-      return this.formatAppContext(directoryListing, packageInfo);
+      const formattedContext = this.formatAppContext(directoryListing, packageInfo)
+      
+      // Always show concise summary
+      console.log(`🏗️ AppContext: Generated for ${packageInfo?.name || 'unknown'} (${directoryResult.fileCount} files, ${directoryResult.directoryCount} dirs)`)
+
+      return formattedContext;
       
     } catch (error) {
       console.warn('AppContextManager: Failed to generate context message:', error);
+      console.warn('AppContextManager: Error stack:', error instanceof Error ? error.stack : 'No stack');
       return null;
     }
   }
@@ -75,6 +88,7 @@ export class AppContextManager {
     try {
       // Get app path from context
       const appPath = context.metadata?.appPath as string;
+      
       if (!appPath) {
         return null;
       }

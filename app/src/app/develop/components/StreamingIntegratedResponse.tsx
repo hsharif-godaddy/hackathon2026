@@ -293,7 +293,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
         </div>
 
         {/* Max steps reached notification */}
-        {!message.maxStepsReached && (
+        {message.maxStepsReached && (
           <StreamingAlertMessage
             title="Maximum reasoning steps reached"
             message="Content generation stopped here to maintain quick responses, but more steps are needed to complete this task. Continue with a follow-up question or break down your request into smaller parts." 

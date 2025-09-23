@@ -15,7 +15,7 @@ export interface ConversationHistoryProvider {
    * @returns Array of conversation messages in chronological order
    */
   loadConversationHistory(
-    conversationId: string, 
+    conversationId: string,
     context?: Record<string, unknown>
   ): Promise<Array<{
     role: 'user' | 'assistant'
@@ -33,28 +33,28 @@ export interface ExperimentalWebSocketConfig {
     list: () => (string | number)[]
     [key: string]: any
   }
-  
+
   /** Default agent name to use if none specified */
   defaultAgent?: string
-  
+
   /** Context extractor function for processing custom context */
   contextExtractor?: (rawContext: Record<string, unknown>) => Record<string, unknown>
-  
+
   /** CORS configuration */
   cors?: {
     origin?: string | string[] | boolean
     methods?: string[]
   }
-  
+
   /** Include detailed usage data in responses */
   includeUsageData?: boolean
-  
+
   /** Message persistence implementation */
   messagePersistence?: MessagePersistence
-  
+
   /** Conversation history provider for loading conversation context */
   conversationHistoryProvider?: ConversationHistoryProvider
-  
+
   /** Event handlers */
   onConnection?: (socketId: string) => void
   onDisconnection?: (socketId: string) => void
@@ -66,7 +66,7 @@ export interface ExperimentalWebSocketConfig {
     toolCalls?: any[]
   }, context?: Record<string, unknown>) => void
   onError?: (socketId: string, error: Error, message?: string, context?: Record<string, unknown>) => void
-  
+
   /** Socket.IO server options */
   socketOptions?: Partial<import('socket.io').ServerOptions>
 }
@@ -138,7 +138,7 @@ export class ExperimentalWebSocketServer {
   private setupEventHandlers(): void {
     this.io.on('connection', (socket) => {
       const socketId = socket.id
-      
+
       // Call connection handler
       this.config.onConnection?.(socketId)
 
@@ -149,7 +149,7 @@ export class ExperimentalWebSocketServer {
       socket.on('chat', async (data: ChatMessage) => {
         await this.handleChatMessage(socket, data)
       })
-      
+
       socket.on('chat_message', async (data: ChatMessage) => {
         await this.handleChatMessage(socket, data)
       })
@@ -167,7 +167,7 @@ export class ExperimentalWebSocketServer {
           controller.abort()
           this.activeStreams.delete(socketId)
         }
-        
+
         // Handle persistence cleanup
         const conversation = this.activeConversations.get(socketId)
         if (conversation && this.config.messagePersistence) {
@@ -180,7 +180,7 @@ export class ExperimentalWebSocketServer {
           }
           this.activeConversations.delete(socketId)
         }
-        
+
         this.config.onDisconnection?.(socketId)
       })
 
@@ -200,7 +200,7 @@ export class ExperimentalWebSocketServer {
    */
   private sendAvailableAgents(socket: any): void {
     const agentList = this.config.agents.list()
-    
+
     socket.emit('message', {
       type: 'agents_available',
       content: '',
@@ -230,10 +230,10 @@ export class ExperimentalWebSocketServer {
         data,
         timestamp: new Date()
       }
-      
+
       // Add to local tracking
       conversation.streamingEvents.push(event)
-      
+
       // Call persistence capture
       await this.config.messagePersistence.captureStreamingEvent(
         conversation.conversationId,
@@ -255,13 +255,13 @@ export class ExperimentalWebSocketServer {
           step: currentStep,
           source: 'ai_response'
         }
-        
+
         socket.emit('message', {
           type: 'chunk',
           content: chunk,
           data: chunkData
         } as WebSocketMessage)
-        
+
         await this.captureStreamingEvent(socket.id, 'chunk', chunk, chunkData)
       }
       return
@@ -272,24 +272,24 @@ export class ExperimentalWebSocketServer {
       let accumulatedToolInput = new Map<string, string>() // Track tool input deltas
       let eventCount = 0
       let toolEventCount = 0
-      
+
       while (true) {
         const { done, value } = await reader.read()
-        
+
         if (done) {
           break
         }
-        
+
         eventCount++
-        
+
         if (value?.part) {
           const part = value.part
-          
+
           // Log tool-related events for debugging
           if (part.type.includes('tool')) {
             toolEventCount++
           }
-          
+
           switch (part.type) {
             case 'text-delta':
               // Handle text chunks
@@ -297,20 +297,20 @@ export class ExperimentalWebSocketServer {
                 step: currentStep,
                 source: 'ai_response'
               }
-              
+
               socket.emit('message', {
                 type: 'chunk',
                 content: part.text,
                 data: textData
               } as WebSocketMessage)
-              
+
               await this.captureStreamingEvent(socket.id, 'chunk', part.text, textData)
               break
-              
+
             case 'tool-input-start':
               // Tool call is starting
               accumulatedToolInput.set(part.id, '')
-              
+
               const toolStartData = {
                 step: currentStep,
                 tool: {
@@ -319,29 +319,29 @@ export class ExperimentalWebSocketServer {
                   input: {} // Will be populated as deltas arrive
                 }
               }
-              
+
               socket.emit('message', {
                 type: 'tool_start',
                 content: `Using ${part.toolName}...`,
                 data: toolStartData
               } as WebSocketMessage)
-              
+
               await this.captureStreamingEvent(socket.id, 'tool_start', `Using ${part.toolName}...`, toolStartData)
               break
-              
+
             case 'tool-input-delta':
               // Accumulate tool input
               const currentInput = accumulatedToolInput.get(part.id) || ''
               accumulatedToolInput.set(part.id, currentInput + part.delta)
               break
-              
+
             case 'tool-call':
               // Tool call is complete with full input
               break
-              
+
             case 'tool-result':
               // Tool execution completed with result
-              
+
               const toolResultData = {
                 step: currentStep,
                 tool: {
@@ -351,19 +351,19 @@ export class ExperimentalWebSocketServer {
                   output: part.output
                 }
               }
-              
+
               socket.emit('message', {
                 type: 'tool_result',
                 content: `${part.toolName} completed`,
                 data: toolResultData
               } as WebSocketMessage)
-              
+
               await this.captureStreamingEvent(socket.id, 'tool_result', `${part.toolName} completed`, toolResultData)
               break
-              
+
             case 'tool-error':
               // Tool execution completed with error (but we'll treat it as completed)
-              
+
               const toolErrorData = {
                 step: currentStep,
                 tool: {
@@ -373,17 +373,17 @@ export class ExperimentalWebSocketServer {
                   output: part.error?.message || part.error || 'Tool execution error'
                 }
               }
-              
-              
+
+
               socket.emit('message', {
                 type: 'tool_result',
                 content: `${part.toolName} completed`,
                 data: toolErrorData
               } as WebSocketMessage)
-              
+
               await this.captureStreamingEvent(socket.id, 'tool_result', `${part.toolName} completed`, toolErrorData)
               break
-              
+
             default:
               // Unhandled tool event
               break
@@ -398,13 +398,13 @@ export class ExperimentalWebSocketServer {
           step: currentStep,
           source: 'ai_response'
         }
-        
+
         socket.emit('message', {
           type: 'chunk',
           content: chunk,
           data: chunkData
         } as WebSocketMessage)
-        
+
         await this.captureStreamingEvent(socket.id, 'chunk', chunk, chunkData)
       }
     }
@@ -457,17 +457,17 @@ export class ExperimentalWebSocketServer {
           sessionId: metadata.sessionId,
           ...processedContext
         }
-        
+
         // Check if we already have an active conversation for this socket
         const existingConversation = this.activeConversations.get(socketId)
-        
+
         if (existingConversation && existingConversation.agentName === agentName) {
           // Reuse existing conversation for the same agent
           conversationId = existingConversation.conversationId
           if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
             console.log('🔄 Reusing existing conversation for socket:', socketId, 'conversation:', conversationId)
           }
-          
+
           // Continue the existing conversation if the method is available
           if (this.config.messagePersistence.continueConversation) {
             await this.config.messagePersistence.continueConversation(
@@ -476,7 +476,7 @@ export class ExperimentalWebSocketServer {
               persistenceContext
             )
           }
-          
+
           // Update context but keep the same conversation ID
           existingConversation.context = persistenceContext
           existingConversation.streamingEvents = []
@@ -486,11 +486,11 @@ export class ExperimentalWebSocketServer {
             data.message,
             persistenceContext
           )
-          
+
           if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
             console.log('🆕 Created new conversation for socket:', socketId, 'conversation:', conversationId)
           }
-          
+
           // Track conversation for streaming events
           this.activeConversations.set(socketId, {
             conversationId,
@@ -506,13 +506,13 @@ export class ExperimentalWebSocketServer {
       if (this.config.conversationHistoryProvider && !data.conversationHistory) {
         // Try to get conversation ID from various sources
         let historyConversationId = conversationId // From persistence
-        
+
         // Also check if conversation ID is provided in context (fallback, not normally used)
         if (!historyConversationId && processedContext?.conversation) {
           const conversationContext = processedContext.conversation as any
           historyConversationId = conversationContext?.conversationId
         }
-        
+
         if (historyConversationId) {
           try {
             console.log('📚 Loading conversation history for conversation:', historyConversationId)
@@ -520,10 +520,10 @@ export class ExperimentalWebSocketServer {
               historyConversationId,
               processedContext
             )
-            
+
             // Add conversation history to the data
             data.conversationHistory = conversationHistory
-            
+
             console.log('✅ Loaded conversation history:', {
               conversationId: historyConversationId,
               historyLength: conversationHistory.length
@@ -548,18 +548,18 @@ export class ExperimentalWebSocketServer {
     } catch (error) {
       // Handle errors following the schema
       const errorMessage = error instanceof Error ? error.message : String(error)
-      
+
       socket.emit('message', {
         type: 'error',
         content: errorMessage,
-        data: { 
+        data: {
           timestamp: new Date().toISOString(),
           agentId: agentName || this.config.defaultAgent
         }
       } as WebSocketMessage)
 
       this.config.onError?.(socketId, error instanceof Error ? error : new Error(String(error)), data.message, processedContext)
-      
+
       // Handle persistence error
       const conversation = this.activeConversations.get(socketId)
       if (conversation && this.config.messagePersistence) {
@@ -588,10 +588,10 @@ export class ExperimentalWebSocketServer {
     agentName: string,
     startTime: number
   ): Promise<void> {
-    
+
     // Prepare messages array
     const messages = []
-    
+
     // Add conversation history if provided
     if (data.conversationHistory && data.conversationHistory.length > 0) {
       console.log(`🔄 ExperimentalWebSocketServer: Adding ${data.conversationHistory.length} conversation history messages`)
@@ -604,7 +604,7 @@ export class ExperimentalWebSocketServer {
       console.log(`ℹ️ ExperimentalWebSocketServer: No conversation history provided`)
       console.log(`🔍 ExperimentalWebSocketServer: data.conversationHistory =`, data.conversationHistory)
     }
-    
+
     // Prepare the prompt
     let prompt = data.message
     if (context) {
@@ -616,17 +616,58 @@ export class ExperimentalWebSocketServer {
     console.log(`  - Messages count: ${messages.length}`)
     console.log(`  - Messages:`, messages.map(m => `${m.role}: ${m.content.substring(0, 50)}...`))
 
-    // Start streaming using streamGenerate instead of streamWithContext
-    const streamResult = await agent.streamGenerate(prompt, {
-      ...(messages.length > 0 && { 
-        messages: messages.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }))
-      }),
-      // Pass execution context for tools
-      ...(context && { executionContext: context })
-    })
+    // Start streaming using streamGenerate with error handling for tool validation issues
+    let streamResult
+    try {
+      streamResult = await agent.streamGenerate(prompt, {
+        ...(messages.length > 0 && {
+          messages: messages.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          }))
+        }),
+        // Pass execution context for tools
+        ...(context && { executionContext: context })
+      })
+    } catch (error: any) {
+      // Handle API call errors (like tool input validation failures)
+      if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {
+        console.error('❌ Tool input validation error:', error.message)
+
+        // Create an error message that explains the issue to the LLM
+        const errorExplanation = `Tool call failed due to invalid input format: ${error.message}. Please ensure all tool arguments are properly formatted as valid JSON objects. Check that:
+1. All string values are properly quoted
+2. All object properties use valid JSON syntax
+3. No undefined or null values are passed as tool arguments
+4. Arrays and objects are properly structured
+
+Please retry your tool call with corrected input formatting.`
+
+        // Send error message to client
+        socket.emit('message', {
+          type: 'error',
+          content: errorExplanation,
+          data: {
+            timestamp: new Date().toISOString(),
+            agentId: agentName,
+            errorType: 'tool_validation_error',
+            originalError: error.message
+          }
+        } as WebSocketMessage)
+
+        // Also capture this for persistence
+        await this.captureStreamingEvent(socket.id, 'error', errorExplanation, {
+          agentId: agentName,
+          errorType: 'tool_validation_error',
+          originalError: error.message
+        })
+
+        return
+      }
+
+      // Re-throw other errors to be handled by the outer catch block
+      throw error
+    }
 
     let currentStep = 1
     let fullContent = ''
@@ -641,7 +682,7 @@ export class ExperimentalWebSocketServer {
       content: '',
       data: stepStartData
     } as WebSocketMessage)
-    
+
     // Capture for persistence
     await this.captureStreamingEvent(socket.id, 'step_start', '', stepStartData)
 
@@ -688,14 +729,14 @@ export class ExperimentalWebSocketServer {
         usage: finalResult.usage,
         toolCalls: finalResult.toolCalls
       }
-      
+
       await this.config.messagePersistence.completeConversation(
         conversation.conversationId,
         conversation.streamingEvents,
         result,
         conversation.context
       )
-      
+
       // Clean up conversation tracking
       this.activeConversations.delete(socket.id)
     }
@@ -742,7 +783,7 @@ export function createSingleAgentFactory(
   factory.defineAgents({
     [agentName]: agentConfig
   })
-  
+
   return factory
 }
 
@@ -767,7 +808,7 @@ export function createSingleAgentWebSocketServer(
 ): ExperimentalWebSocketServer {
   const factory = createSingleAgentFactory(agentName, agentConfig)
   const agents = factory.defineAgents({ [agentName]: agentConfig })
-  
+
   return new ExperimentalWebSocketServer(httpServer, {
     agents,
     defaultAgent: agentName,

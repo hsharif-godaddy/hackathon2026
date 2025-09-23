@@ -8,8 +8,25 @@ import { AppContextManager } from '../../services/AppContextManager.js'
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js'
 import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig } from './types.js'
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
+
+/**
+ * Context logging configuration interface
+ */
+export interface ContextLoggingConfig {
+  detailed: boolean
+  appContextContent: boolean
+  templateContent: boolean
+  visualContextDetails: boolean
+  rawContextData: boolean
+}
+
 import type { AgentExecutionContext } from '../../base/agent.interface.js'
 import type { AgentsAppContext } from '../../types/websocket-context.js'
+import { getValidatedTemplateVersion, getTemplateDescriptionPath } from '../../utils/prompt-utils.js'
+import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { existsSync, readFileSync } from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
 /**
  * AI-Lib Context Manager
@@ -18,15 +35,19 @@ import type { AgentsAppContext } from '../../types/websocket-context.js'
 export class AILibContextManager {
     private conversationContextManager: ConversationContextManager
     private appContextManager: AppContextManager
+    private appRepository: AppRepository
     private config: ContextGenerationConfig
+    private loggingConfig?: ContextLoggingConfig
 
-    constructor(config: Partial<ContextGenerationConfig> = {}) {
+    constructor(config: Partial<ContextGenerationConfig> = {}, loggingConfig?: ContextLoggingConfig) {
         this.conversationContextManager = new ConversationContextManager(
             new ConversationRepository(),
             config.maxHistoryMessages || DEFAULT_CONTEXT_CONFIG.maxHistoryMessages
         )
         this.appContextManager = new AppContextManager()
+        this.appRepository = new AppRepository()
         this.config = { ...DEFAULT_CONTEXT_CONFIG, ...config }
+        this.loggingConfig = loggingConfig
     }
 
     /**
@@ -42,37 +63,57 @@ export class AILibContextManager {
         systemPrompt: string
         contextMessages: Array<{ role: 'user' | 'system'; content: string }>
     }> {
-        console.log('🎨 Building context messages (keeping system prompt static):', {
+        // Always show concise summary
+        const contextSummary = {
             hasMetadata: !!context.metadata,
-            hasConversation: !!context.conversation,
             hasAppContext: !!context.appContext,
-            hasAiEditContext: !!context.aiEditContext,
             hasVisualContext: !!context.visualContext,
-            conversationMaxMessages: context.conversation?.maxMessages,
-            appContextDepth: context.appContext?.maxDirectoryDepth
-        })
+            hasAiEditContext: !!context.aiEditContext
+        }
+        console.log(`🎨 Building context messages: ${Object.entries(contextSummary).filter(([_, v]) => v).map(([k]) => k.replace('has', '').toLowerCase()).join(', ')}`)
 
-        const contextMessages = await this.buildRichContextMessages(context)
-
-        // If no context messages, return just the base prompt
-        if (contextMessages.length === 0) {
-            console.log('📝 No context messages generated, using static system prompt only')
-            return {
-                systemPrompt: baseSystemPrompt,
-                contextMessages: []
-            }
+        // Detailed logging if enabled
+        if (this.loggingConfig?.detailed) {
+            console.log('🔍 Context details:', {
+                ...contextSummary,
+                conversationMaxMessages: context.conversation?.maxMessages,
+                appContextDepth: context.appContext?.maxDirectoryDepth
+            })
         }
 
-        console.log('📋 Generated context messages:', {
-            totalMessages: contextMessages.length,
-            messageTypes: contextMessages.map(msg => msg.type),
-            totalContextLength: contextMessages.reduce((sum, msg) => sum + msg.content.length, 0)
-        })
+        const contextMessages = await this.buildRichContextMessages(context)
 
         // Convert context messages to conversation format
         const conversationContextMessages: Array<{ role: 'user' | 'system'; content: string }> = []
 
-        // Add app context as system message
+        // Always show message count summary
+        console.log(`📋 Generated ${contextMessages.length} raw context messages`)
+        
+        // Detailed logging if enabled
+        if (this.loggingConfig?.detailed) {
+            console.log('📋 Context message details:', {
+                messageTypes: contextMessages.map(msg => msg.type),
+                totalContextLength: contextMessages.reduce((sum, msg) => sum + msg.content.length, 0)
+            })
+        }
+
+        // Add template description as system message FIRST (most important context)
+        const templateDescription = await this.getTemplateDescription(context)
+        if (templateDescription) {
+            const templateMessage = `## Template Framework Description\n\n${templateDescription}`
+            
+            // Template content logging if enabled
+            if (this.loggingConfig?.templateContent) {
+                console.log('📋 Template Description Content:', templateDescription.substring(0, 500) + '...')
+            }
+            
+            conversationContextMessages.push({
+                role: 'system',
+                content: templateMessage
+            })
+        }
+
+        // Add app context as system message (second priority)
         const appContextMessages = contextMessages.filter(msg => msg.type === 'app_context')
         if (appContextMessages.length > 0) {
             conversationContextMessages.push({
@@ -81,7 +122,7 @@ export class AILibContextManager {
             })
         }
 
-        // Add visual context as system message
+        // Add visual context as system message (third priority)
         const visualMessages = contextMessages.filter(msg => msg.type === 'visual_context')
         if (visualMessages.length > 0) {
             conversationContextMessages.push({
@@ -90,7 +131,7 @@ export class AILibContextManager {
             })
         }
 
-        // Add AI edit context as system message
+        // Add AI edit context as system message (LAST - most specific/immediate)
         const aiEditMessages = contextMessages.filter(msg => msg.type === 'ai_edit_context')
         if (aiEditMessages.length > 0) {
             conversationContextMessages.push({
@@ -99,11 +140,27 @@ export class AILibContextManager {
             })
         }
 
-        console.log('✅ Context messages built:', {
-            staticSystemPromptLength: baseSystemPrompt.length,
-            contextMessagesCount: conversationContextMessages.length,
-            totalContextLength: conversationContextMessages.reduce((sum, msg) => sum + msg.content.length, 0)
-        })
+        // Always show concise final summary
+        const messageTypes = conversationContextMessages.map(msg => 
+            msg.content.includes('## Template Framework Description') ? 'template' :
+            msg.content.includes('## Current Project Context') ? 'app' :
+            msg.content.includes('## User Visual Context') ? 'visual' :
+            msg.content.includes('## Selected Element Context') ? 'element' : 'unknown'
+        )
+        console.log(`✅ Built ${conversationContextMessages.length} system messages [${messageTypes.join(', ')}]`)
+
+        // Detailed logging if enabled
+        if (this.loggingConfig?.detailed) {
+            console.log('🔍 Context message breakdown:', {
+                staticSystemPromptLength: baseSystemPrompt.length,
+                totalContextLength: conversationContextMessages.reduce((sum, msg) => sum + msg.content.length, 0),
+                messageDetails: conversationContextMessages.map((msg, index) => ({
+                    index: index + 1,
+                    type: messageTypes[index],
+                    length: msg.content.length
+                }))
+            })
+        }
 
         return {
             systemPrompt: baseSystemPrompt,
@@ -191,12 +248,38 @@ export class AILibContextManager {
      */
     private async buildAppContextMessage(context: EnhancedAgentContext): Promise<ContextMessage | null> {
         try {
+            console.log('🔍 Building app context message:', {
+                hasMetadata: !!context.metadata,
+                appId: context.metadata?.appId,
+                appPath: context.metadata?.appPath,
+                hasAppContext: !!context.appContext
+            })
+
             const executionContext = this.buildExecutionContext(context)
+            
+            console.log('🔍 Execution context built:', {
+                threadId: executionContext.threadId,
+                hasMetadata: !!executionContext.metadata,
+                metadataAppId: executionContext.metadata?.appId,
+                metadataAppPath: executionContext.metadata?.appPath
+            })
+
             const appContextContent = await this.appContextManager.generateContextMessage(executionContext)
 
             if (!appContextContent) {
+                console.log('🏗️ AppContext: No app context generated - AppContextManager returned null')
                 return null
             }
+
+            console.log('🏗️ AppContext Generated:', {
+                contentLength: appContextContent.length,
+                appId: context.metadata?.appId,
+                contentPreview: appContextContent.substring(0, 300) + '...'
+            })
+
+            console.log('📋 Full App Context Content:', {
+                content: appContextContent
+            })
 
             return {
                 role: 'user',
@@ -331,12 +414,26 @@ Context Notes: ${contextNotes}`
      * Build execution context for compatibility with existing services
      */
     private buildExecutionContext(context: EnhancedAgentContext): AgentExecutionContext {
+        // Resolve appPath from appId using AppRepository
+        let appPath = ''
+        const appId = context.metadata?.appId as string
+        
+        if (appId) {
+            const app = this.appRepository.findById(appId)
+            if (app) {
+                appPath = app.path
+                console.log('🔍 Resolved appPath from appId:', { appId, appPath })
+            } else {
+                console.warn('⚠️ App not found in repository:', appId)
+            }
+        }
+
         return {
             threadId: 'ai-lib-context-' + Date.now(),
             timestamp: new Date(),
             metadata: {
                 appId: context.metadata?.appId,
-                appPath: '', // Will be resolved by AppContextManager
+                appPath, // Resolved from AppRepository
                 visualContext: context.visualContext,
                 ...context.metadata
             }
@@ -349,14 +446,21 @@ Context Notes: ${contextNotes}`
      * @returns Enhanced agent context with all available sections
      */
     convertToEnhancedContext(rawContext: AgentsAppContext): EnhancedAgentContext {
-        console.log('📋 Converting raw context to enhanced context (all sections enabled):', {
-            originalContextKeys: Object.keys(rawContext).filter(key => rawContext[key as keyof AgentsAppContext]),
-            hasMetadata: !!rawContext.metadata,
-            hasConversation: !!rawContext.conversation,
-            hasAppContext: !!rawContext.appContext,
-            hasAiEditContext: !!rawContext.aiEditContext,
-            hasVisualContext: !!rawContext.visualContext
-        })
+        // Always show concise conversion summary
+        const availableContexts = Object.keys(rawContext).filter(key => rawContext[key as keyof AgentsAppContext])
+        console.log(`📋 Converting context: ${availableContexts.length} sections available`)
+
+        // Detailed logging if enabled
+        if (this.loggingConfig?.detailed) {
+            console.log('🔍 Context conversion details:', {
+                originalContextKeys: availableContexts,
+                hasMetadata: !!rawContext.metadata,
+                hasConversation: !!rawContext.conversation,
+                hasAppContext: !!rawContext.appContext,
+                hasAiEditContext: !!rawContext.aiEditContext,
+                hasVisualContext: !!rawContext.visualContext
+            })
+        }
 
         // Simply convert the structure, keeping all available context
         const enhancedContext: EnhancedAgentContext = {
@@ -366,11 +470,6 @@ Context Notes: ${contextNotes}`
             ...(rawContext.aiEditContext && { aiEditContext: rawContext.aiEditContext }),
             ...(rawContext.visualContext && { visualContext: rawContext.visualContext })
         }
-
-        console.log('✅ Context conversion complete:', {
-            enhancedContextKeys: Object.keys(enhancedContext).filter(key => enhancedContext[key as keyof EnhancedAgentContext]),
-            allSectionsEnabled: true
-        })
 
         return enhancedContext
     }
@@ -384,6 +483,81 @@ Context Notes: ${contextNotes}`
         messageTypes: Record<string, number>
     }> {
         return this.conversationContextManager.getConversationSummary(conversationId)
+    }
+
+    /**
+     * Get template description based on app context
+     * @param context - Enhanced agent context containing app metadata
+     * @returns Template description content or null if not available
+     */
+    private async getTemplateDescription(context: EnhancedAgentContext): Promise<string | null> {
+        // Extract appId from context metadata
+        const appId = context.metadata?.appId as string
+        if (!appId) {
+            console.log('🔍 No appId found in context metadata, skipping template description')
+            return null
+        }
+
+        // Look up app path using AppRepository
+        const app = this.appRepository.findById(appId)
+        if (!app) {
+            console.warn(`❌ App '${appId}' not found in repository, skipping template description`)
+            return null
+        }
+
+        const appPath = app.path
+        console.log(`📁 Checking template version for app path: ${appPath}`)
+
+        // Get validated template version from app directory
+        const validatedVersion = getValidatedTemplateVersion(appPath)
+        if (!validatedVersion) {
+            console.log('📝 No valid template version found, skipping template description')
+            return null
+        }
+
+        // Get template description file path
+        // Note: We need to handle both source (src/) and compiled (dist/) locations
+        let templateDescPath = getTemplateDescriptionPath(validatedVersion, import.meta.url)
+        
+        // If the path doesn't exist (likely because we're running from dist/), 
+        // try to find it in the source directory
+        if (!existsSync(templateDescPath)) {
+            // Construct path to source directory
+            const currentDir = path.dirname(fileURLToPath(import.meta.url))
+            const sourcePromptsDir = path.resolve(currentDir, '..', '..', '..', 'src', 'prompts')
+            templateDescPath = path.join(sourcePromptsDir, 'template-descriptions', `${validatedVersion}.md`)
+            
+            console.log(`🔍 Trying source path: ${templateDescPath}`)
+        }
+        
+        if (!existsSync(templateDescPath)) {
+            console.warn(`❌ Template description file not found: ${templateDescPath}`)
+            return null
+        }
+
+        try {
+            const templateDescription = readFileSync(templateDescPath, 'utf-8')
+            const trimmedDescription = templateDescription.trim()
+            
+            console.log(`✅ Loaded template description for version ${validatedVersion}: ${templateDescPath}`)
+            console.log('🎨 Template Description Loaded:', {
+                templateVersion: validatedVersion,
+                contentLength: trimmedDescription.length,
+                appId: context.metadata?.appId,
+                filePath: templateDescPath,
+                contentPreview: trimmedDescription.substring(0, 500) + '...'
+            })
+
+            console.log('📋 Full Template Description Content:', {
+                templateVersion: validatedVersion,
+                content: trimmedDescription
+            })
+            
+            return trimmedDescription
+        } catch (error) {
+            console.error(`❌ Failed to read template description file: ${templateDescPath}`, error)
+            return null
+        }
     }
 
 }

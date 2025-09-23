@@ -9,17 +9,59 @@ import {
   createWebSocketAgentFactory,
   aiLibAgentMetadata
 } from '../agents/ai-lib-agents/index.js'
+import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js'
 import { AgentsMessagePersistence } from './conversation-persistence.js'
 import { ConversationContextManager } from '../services/ConversationContextManager.js'
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { logger } from '../logging/index.js'
 import { MAX_PROMPT_LENGTH } from '../services/features.js'
+import type { AgentsAppContext } from '../types/websocket-context.js'
+
+/**
+ * Context logging configuration
+ */
+interface ContextLoggingConfig {
+  /** Enable detailed context logging (default: false) */
+  detailed: boolean
+  /** Enable app context content logging (default: false) */
+  appContextContent: boolean
+  /** Enable template description content logging (default: false) */
+  templateContent: boolean
+  /** Enable visual context details (default: false) */
+  visualContextDetails: boolean
+  /** Enable raw context data logging (default: false) */
+  rawContextData: boolean
+}
+
+/**
+ * Create context logging configuration from environment variables
+ */
+function createContextLoggingConfig(): ContextLoggingConfig {
+  return {
+    detailed: process.env.DEBUG_CONTEXT_DETAILED === 'true',
+    appContextContent: process.env.DEBUG_APP_CONTEXT_CONTENT === 'true',
+    templateContent: process.env.DEBUG_TEMPLATE_CONTENT === 'true', 
+    visualContextDetails: process.env.DEBUG_VISUAL_CONTEXT === 'true',
+    rawContextData: process.env.DEBUG_RAW_CONTEXT === 'true'
+  }
+}
 
 /**
  * Create and setup the AI-Lib WebSocket server
  */
 export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
   console.log('🚀 Setting up ExperimentalAgentFactory WebSocket server with conversation persistence...')
+  
+  // Create context logging configuration
+  const contextLoggingConfig = createContextLoggingConfig()
+  console.log('🎛️ Context logging configuration:', {
+    summary: 'Always enabled (concise)',
+    detailed: contextLoggingConfig.detailed ? 'Enabled (DEBUG_CONTEXT_DETAILED=true)' : 'Disabled',
+    appContextContent: contextLoggingConfig.appContextContent ? 'Enabled (DEBUG_APP_CONTEXT_CONTENT=true)' : 'Disabled',
+    templateContent: contextLoggingConfig.templateContent ? 'Enabled (DEBUG_TEMPLATE_CONTENT=true)' : 'Disabled',
+    visualContextDetails: contextLoggingConfig.visualContextDetails ? 'Enabled (DEBUG_VISUAL_CONTEXT=true)' : 'Disabled',
+    rawContextData: contextLoggingConfig.rawContextData ? 'Enabled (DEBUG_RAW_CONTEXT=true)' : 'Disabled'
+  })
   
   // Enable debug logging if requested
   if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
@@ -36,12 +78,82 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     // Create the agent factory
     const agentFactory = await createWebSocketAgentFactory()
     
+    // Create context manager for app context and template descriptions
+    const contextManager = new AILibContextManager({}, contextLoggingConfig)
+    
     // Create message persistence implementation
     const messagePersistence = new AgentsMessagePersistence()
     
     // Create token-based conversation history provider
     const conversationRepo = new ConversationRepository()
     const conversationContextManager = new ConversationContextManager(conversationRepo, 10) // Max 10 messages
+    
+    // Create system context message provider with configurable logging
+    const systemContextProvider = {
+      async loadSystemContextMessages(context?: Record<string, unknown>): Promise<Array<{ role: 'system', content: string }>> {
+        // Always show concise summary
+        console.log('🎯 SystemContext: Loading context messages')
+        
+        if (!context) {
+          console.log('⚠️ SystemContext: No context provided')
+          return []
+        }
+        
+        try {
+          // Convert to enhanced context and enrich with app context and template descriptions
+          const agentsAppContext = context as AgentsAppContext
+          
+          // Detailed logging if enabled
+          if (contextLoggingConfig.detailed) {
+            console.log('🔍 SystemContext: Converting to enhanced context:', {
+              rawContextKeys: Object.keys(agentsAppContext),
+              hasMetadata: !!agentsAppContext.metadata,
+              hasAppContext: !!agentsAppContext.appContext,
+              hasVisualContext: !!agentsAppContext.visualContext,
+              hasAiEditContext: !!agentsAppContext.aiEditContext
+            })
+          }
+          
+          // Raw context data logging if enabled
+          if (contextLoggingConfig.rawContextData) {
+            console.log('📋 SystemContext: Raw context data:', agentsAppContext)
+          }
+          
+          const enhancedContext = contextManager.convertToEnhancedContext(agentsAppContext)
+          
+          // Build context messages including app context and template descriptions
+          const contextResult = await contextManager.buildContextMessages('', enhancedContext)
+          
+          // Always show summary
+          const contextTypes = contextResult.contextMessages.map(msg => 
+            msg.content.includes('## Template Framework Description') ? 'template' :
+            msg.content.includes('## Current Project Context') ? 'app' :
+            msg.content.includes('## User Visual Context') ? 'visual' :
+            msg.content.includes('## Selected Element Context') ? 'element' : 'unknown'
+          )
+          
+          console.log(`✅ SystemContext: Built ${contextResult.contextMessages.length} messages [${contextTypes.join(', ')}]`)
+          
+          // Detailed context breakdown if enabled
+          if (contextLoggingConfig.detailed) {
+            contextResult.contextMessages.forEach((msg, index) => {
+              const msgType = contextTypes[index]
+              console.log(`📄 SystemContext Message ${index + 1} (${msgType}): ${msg.content.length} chars`)
+            })
+          }
+          
+          // Return as system messages
+          return contextResult.contextMessages.map(msg => ({
+            role: 'system' as const,
+            content: msg.content
+          }))
+        } catch (error) {
+          console.error('❌ SystemContext: Error loading context:', error)
+          return []
+        }
+      }
+    }
+    
     const conversationHistoryProvider = {
       async loadConversationHistory(conversationId: string, context?: Record<string, unknown>): Promise<Array<{ role: 'user' | 'assistant', content: string }>> {
         if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
@@ -97,6 +209,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       // Conversation history provider
       conversationHistoryProvider,
       
+      // System context message provider (custom extension)
+      systemContextProvider,
+      
       // Context extractor to validate appId
       contextExtractor: (rawContext: Record<string, unknown>) => {
         // Extract appId from context metadata
@@ -115,7 +230,22 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         
         console.log('✅ Validated appId:', appId)
         
-        // Return the processed context
+        // DEBUG: Log the raw context being received
+        console.log('🔍 Raw Context Received:', {
+          keys: Object.keys(rawContext),
+          hasMetadata: !!rawContext.metadata,
+          hasAppContext: !!rawContext.appContext,
+          hasVisualContext: !!rawContext.visualContext,
+          hasAiEditContext: !!rawContext.aiEditContext,
+          hasConversation: !!rawContext.conversation,
+          messageLength: message?.length || 0,
+          appId
+        })
+        
+        // Log the full context for debugging (but don't modify it)
+        console.log('📋 Full Raw Context Data:', rawContext)
+        
+        // Return the processed context unchanged
         return rawContext
       },
       

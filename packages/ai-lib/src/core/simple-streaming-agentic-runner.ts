@@ -80,36 +80,109 @@ export class SimpleStreamingAgenticRunner {
 
     try {
       // Use AI SDK 5's streamText with built-in agentic loop
-      const result = streamText({
-        model: this.options.model,
-        messages,
-        tools: this.options.tools || {},
-        ...(this.options.temperature !== undefined && { temperature: this.options.temperature }),
-        ...(this.options.maxTokens !== undefined && { maxOutputTokens: this.options.maxTokens }),
-        // AI SDK 5's built-in agentic loop control
-        stopWhen: stopConditions,
-        // Note: experimental_continueSteps may not be available in current AI SDK version
-      })
+      let result
+      try {
+        result = streamText({
+          model: this.options.model,
+          messages,
+          tools: this.options.tools || {},
+          ...(this.options.temperature !== undefined && { temperature: this.options.temperature }),
+          ...(this.options.maxTokens !== undefined && { maxOutputTokens: this.options.maxTokens }),
+          // AI SDK 5's built-in agentic loop control
+          stopWhen: stopConditions,
+          // Note: experimental_continueSteps may not be available in current AI SDK version
+        })
+      } catch (error: any) {
+        // Handle API call errors (like tool input validation failures)
+        if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {
+          console.error('❌ Tool input validation error in SimpleStreamingAgenticRunner:', error.message)
+          
+          const errorMessage = `Tool call failed due to invalid input format: ${error.message}. Please ensure all tool arguments are properly formatted as valid JSON objects. Check that:
+1. All string values are properly quoted
+2. All object properties use valid JSON syntax
+3. No undefined or null values are passed as tool arguments
+4. Arrays and objects are properly structured
+
+Please retry your tool call with corrected input formatting.`
+
+          // Emit error event
+          const errorEvent: StreamingAgenticEvent = {
+            type: 'complete',
+            data: {
+              error: errorMessage,
+              content: errorMessage
+            }
+          }
+          
+          if (onEvent) await onEvent(errorEvent)
+          yield errorEvent
+          
+          return { text: errorMessage, usage: { totalTokens: 0 }, finishReason: 'error' }
+        }
+        
+        // Re-throw other errors
+        throw error
+      }
 
       let stepCount = 1
       let accumulatedContent = ''
 
-      // Stream text content
-      for await (const textPart of result.textStream) {
-        accumulatedContent += textPart
-        
-        const textEvent: StreamingAgenticEvent = {
-          type: 'text',
-          content: textPart,
-          step: stepCount
+      try {
+        // Stream text content
+        for await (const textPart of result.textStream) {
+          accumulatedContent += textPart
+          
+          const textEvent: StreamingAgenticEvent = {
+            type: 'text',
+            content: textPart,
+            step: stepCount
+          }
+          
+          if (onEvent) await onEvent(textEvent)
+          yield textEvent
+        }
+
+        // Get final result with tool calls
+        const finalResult = await result
+      } catch (error: any) {
+        // Handle streaming errors (like tool input validation failures during streaming)
+        if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {
+          console.error('❌ Tool input validation error during streaming in SimpleStreamingAgenticRunner:', error.message)
+          
+          const errorMessage = `\n\nTool call failed due to invalid input format: ${error.message}. Please ensure all tool arguments are properly formatted as valid JSON objects and retry your tool call with corrected input formatting.`
+          
+          accumulatedContent += errorMessage
+          
+          // Emit error as text event
+          const errorTextEvent: StreamingAgenticEvent = {
+            type: 'text',
+            content: errorMessage,
+            step: stepCount
+          }
+          
+          if (onEvent) await onEvent(errorTextEvent)
+          yield errorTextEvent
+          
+          // Emit completion event with error
+          const errorCompleteEvent: StreamingAgenticEvent = {
+            type: 'complete',
+            data: {
+              content: accumulatedContent,
+              error: error.message,
+              usage: { totalTokens: 0 },
+              finishReason: 'error'
+            }
+          }
+          
+          if (onEvent) await onEvent(errorCompleteEvent)
+          yield errorCompleteEvent
+          
+          return { text: accumulatedContent, usage: { totalTokens: 0 }, finishReason: 'error' }
         }
         
-        if (onEvent) await onEvent(textEvent)
-        yield textEvent
+        // Re-throw other errors
+        throw error
       }
-
-      // Get final result with tool calls
-      const finalResult = await result
 
       // Get tool calls (they're a promise in AI SDK 5)
       const toolCalls = await finalResult.toolCalls
