@@ -241,7 +241,7 @@ export class DockerContainerManager {
 			const hostSocketPath = `${hostSocketDir}/dev-supervisor.sock`;
 
 			// Ensure socket directory exists and has correct permissions using safe fs operations
-			// Use 0o777 to allow Docker container processes to write socket files
+			// Use 777 permissions to allow container processes to write socket files
 			try {
 				mkdirSync(hostSocketDir, { recursive: true, mode: 0o777 });
 			} catch (error) {
