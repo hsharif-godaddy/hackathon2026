@@ -55,3 +55,16 @@ docker-compose*
 # Documentation
 *.md
 !README.md
+
+# Test files (exclude from production)
+test-*.js
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+
+# Development and build artifacts
+dist
+
+# Large lock files (already installed in image)
+pnpm-lock.yaml

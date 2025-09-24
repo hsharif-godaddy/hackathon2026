@@ -30,7 +30,7 @@ jobs:
     steps:
 
       - name: Checkout Codebase
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
 
       # Retrieve Katana application info with the katana-get-app GitHub Action
       - id: katana-app
@@ -41,7 +41,7 @@ jobs:
 
       - name: Get Artifactory Token # This action retrieves the Artifactory token
         id: jfrog
-        uses: jfrog/setup-jfrog-cli@f748a0599171a192a2668afee8d0497f7c1069df # v4.5.6
+        uses: jfrog/setup-jfrog-cli@88e9eba31c07e31beefa4cef5c0e93d1af9535d7 # v4.6.1
         env:
           JF_URL: ${{ vars.JF_URL }} # Stored at the org level so you don't have to worry about it
         with:
@@ -82,8 +82,9 @@ jobs:
           artifact_options_json: |
             {
               "protocol": "https",
-              "ports": [3443],
-              "healthcheckPath": "/api/health"
+              "ports": [8443],
+              "healthcheckPath": "/api/health",
+              "healthcheckGracePeriod": 30
             }
 
       # Promote the published artifact to the selected environment with the katana-promote-artifact GitHub Action

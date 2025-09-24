@@ -6,6 +6,10 @@ services:
       context: ./agents
       platforms:
         - linux/amd64
+      cache_from:
+        - type=local,src=.docker-cache/agents
+      cache_to:
+        - type=local,dest=.docker-cache/agents,mode=max
     container_name: airo-agents
     ports:
       - "4000:4000"
@@ -30,19 +34,18 @@ services:
       context: ./app
       platforms:
         - linux/amd64
-      args:
-        - UPSTREAM_VERSION=22
-        - BASE_IMAGE=node
+      cache_from:
+        - type=local,src=.docker-cache/app
+      cache_to:
+        - type=local,dest=.docker-cache/app,mode=max
     container_name: airo-app
     ports:
-      - "443:3443"
+      - "8443:8443"
     environment:
       - NODE_ENV=production
       - PORT=3000
       - HTTPS_PORT=3443
-      - DATABASE_PATH=/app/data/airo-builder-platform.db
-    depends_on:
-      - agents
+      - DATABASE_URL=mysql://airo:airopassword@host.internal:3306/airo_app
     networks:
       - airo-network
     restart: unless-stopped

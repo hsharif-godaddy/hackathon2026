@@ -19,6 +19,8 @@ import pluginIntl from '@gasket/plugin-intl';
 import pluginUxp from '@godaddy/gasket-plugin-uxp';
 import pluginOtel from '@godaddy/gasket-plugin-otel';
 import gasketData from './gasket-data.js';
+import tls from 'tls';
+import fs from 'fs';
 
 export default makeGasket({
   environments: {
@@ -66,7 +68,21 @@ export default makeGasket({
     target: {
       host: 'localhost',
       port: 3000
-    }
+    },
+    ...(process.env.NODE_ENV === 'production' && (() => {
+      const keyPath = process.env.SERVER_KEY_PATH || '/app/certs/server.key';
+      const certPath = process.env.SERVER_CERT_PATH || '/app/certs/server.crt';
+      if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+        return {
+          ssl: {
+            key: fs.readFileSync(keyPath),
+            cert: fs.readFileSync(certPath)
+          }
+        };
+      } else {
+        throw new Error(`SSL certificate files not found at ${keyPath} and/or ${certPath}`);
+      }
+    })())
   },
   intl: {
     locales: [

@@ -7,8 +7,6 @@ import { BaseDeploymentAdapter } from './base-adapter';
 import { DeploymentConfig, DeploymentResult } from './types';
 import { DevEnvironmentManager } from '../dev-environment/DevEnvironmentManager';
 import { agentFetch } from '@/lib/agent-fetch';
-import Database from 'better-sqlite3';
-import { existsSync } from 'fs';
 import path from 'path';
 
 export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
@@ -27,12 +25,8 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
     this.baseAppsDir = process.env.LOCAL_APPS_DIR || '/tmp/apps';
     this.templateDir = process.env.APP_TEMPLATE_DIR || path.join(process.cwd(), '..', 'app-templates', 'v8');
 
-    // Create in-memory database for dev environment
-    const dbPath = process.env.DEV_DB_PATH || '/tmp/dev-env.db';
-    const db = new Database(dbPath);
-
-    // Initialize dev environment manager with Docker adapter
-    this.devEnvironmentManager = new DevEnvironmentManager(db);
+    // Initialize dev environment manager (now uses DatabaseManager)
+    this.devEnvironmentManager = new DevEnvironmentManager();
 
     this.log('info', 'Docker deployment adapter initialized', {
       agentsServiceUrl: this.agentsServiceUrl,

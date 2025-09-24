@@ -3,7 +3,6 @@
  * Tests the complete flow: create → start → status → stop → cleanup
  */
 
-import Database from 'better-sqlite3';
 import { DevEnvironmentManager } from './DevEnvironmentManager';
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import path from 'path';
@@ -11,14 +10,8 @@ import path from 'path';
 async function testDevEnvironment() {
   console.log('🧪 Starting dev environment integration test...');
   
-  // Create a temporary database for testing
-  const testDbPath = '/tmp/test-dev-env.db';
-  if (existsSync(testDbPath)) {
-    rmSync(testDbPath);
-  }
-  
-  const db = new Database(testDbPath);
-  const devManager = new DevEnvironmentManager(db);
+  // Create dev environment manager (now uses DatabaseManager which handles MySQL)
+  const devManager = new DevEnvironmentManager();
   
   try {
     // 1. Initialize the dev environment manager
@@ -54,7 +47,7 @@ async function testDevEnvironment() {
       
       // 5. Check app status
       console.log('\n📋 Step 5: Check app status');
-      const appInfo = devManager.getDevApp(testAppId);
+      const appInfo = await devManager.getDevApp(testAppId);
       console.log('✅ App info:', appInfo);
       
       const status = await devManager.getDevAppStatus(testAppId);
@@ -93,13 +86,8 @@ async function testDevEnvironment() {
     
     throw error;
   } finally {
-    // Close database
-    db.close();
-    
-    // Remove test database
-    if (existsSync(testDbPath)) {
-      rmSync(testDbPath);
-    }
+    // No database cleanup needed since we use DatabaseManager singleton
+    console.log('✅ Test cleanup completed');
   }
 }
 

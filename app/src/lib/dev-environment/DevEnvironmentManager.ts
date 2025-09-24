@@ -1,5 +1,4 @@
 import { logger } from '../request-context';
-import type { Database } from 'better-sqlite3';
 import { DevDatabase, type DevAppInfo } from './database/DevDatabase';
 import { PortManager } from './utils/port-manager';
 import { GitUtils } from './utils/git';
@@ -39,8 +38,8 @@ export class DevEnvironmentManager {
   private adapter: IAppAdapter | null = null;
   private initialized = false;
 
-  constructor(database: Database) {
-    this.devDb = new DevDatabase(database);
+  constructor() {
+    this.devDb = new DevDatabase();
     this.portManager = new PortManager(this.devDb);
     this.gitUtils = new GitUtils();
     this.templateService = new TemplateCopyService();
@@ -52,7 +51,7 @@ export class DevEnvironmentManager {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    // Initialize dev-specific database tables
+    // Initialize in-memory dev database (no database tables needed)
     this.devDb.initializeTables();
 
     // Initialize the appropriate adapter using the factory

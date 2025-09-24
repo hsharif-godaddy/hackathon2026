@@ -105,7 +105,7 @@ export class DockerAppService implements IAppAdapter {
    */
 
   async getRunningServers(): Promise<ServerInfo[]> {
-    const containerServers = this.containerManager.getRunningServers();
+    const containerServers = await this.containerManager.getRunningServers();
     
     return containerServers.map(server => ({
       appId: server.appId,

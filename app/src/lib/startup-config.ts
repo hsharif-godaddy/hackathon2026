@@ -14,19 +14,21 @@ export function logStartupConfiguration() {
   console.log('================================================');
 
   // Database Configuration
+  const hasDatabaseUrl = !!process.env.DATABASE_URL?.startsWith('mysql://');
   const hasMySqlCredentials = !!process.env.MYSQL_DB_USERNAME && !!process.env.MYSQL_DB_PASSWORD &&
   !!process.env.MYSQL_DB_PATH && !!process.env.MYSQL_DB_PORT && !!process.env.MYSQL_DB_NAME;
 
   console.log('🔧 Database Configuration:');
   console.log(`   Environment: ${process.env.NODE_ENV}`);
-  console.log(`   Database Type: ${hasMySqlCredentials ? 'MySQL (Production)' : 'SQLite (Development)'}`);
-  if (hasMySqlCredentials) {
+  console.log(`   Database Type: MySQL (with SQLite-syntax conversion)`);
+  if (hasDatabaseUrl) {
+    console.log(`   MySQL via DATABASE_URL: configured`);
+  } else if (hasMySqlCredentials) {
     console.log(`   MySQL Host: ${process.env.MYSQL_DB_PATH || 'default'}`);
     console.log(`   MySQL Port: ${process.env.MYSQL_DB_PORT || '3306'}`);
     console.log(`   MySQL Database: ${process.env.MYSQL_DB_NAME || 'airo_builder'}`);
   } else {
-    const dbPath = process.env.DATABASE_PATH || 'data/airo-builder-platform.db';
-    console.log(`   SQLite Path: ${dbPath}`);
+    console.log(`   ⚠️  No MySQL configuration found`);
   }
 
   // SQS Nomad Service Configuration

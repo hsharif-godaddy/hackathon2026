@@ -7,14 +7,13 @@ import { logger } from '../request-context';
 import { AccountService } from './account-service';
 import { MOCK_USER } from '@/lib/mock-auth';
 
-const accountService = new AccountService();
-
 /**
  * Ensure test user account exists in the database
  * This allows the mock auth system to work with existing APIs without spreading mock code everywhere
  */
 export async function ensureTestUserExists(): Promise<void> {
   try {
+    const accountService = new AccountService(); // Create instance when needed
     const testShopperId = MOCK_USER.id;
     const testCustomerId = MOCK_USER.id; // Use same ID for simplicity
     

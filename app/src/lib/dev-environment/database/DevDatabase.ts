@@ -1,5 +1,4 @@
 import { logger } from '../../request-context';
-import type { Database } from 'better-sqlite3';
 
 export interface DevAppInfo {
   appId: string;
@@ -22,69 +21,30 @@ export interface RunningProcess {
 
 /**
  * Database operations for dev environment
- * Uses separate dev-specific tables to avoid modifying production schema
+ * Uses in-memory storage to avoid async pollution
+ * Data persists only during the dev session
  */
 export class DevDatabase {
-  private db: Database;
+  private devApps = new Map<string, DevAppInfo>();
+  private runningProcesses = new Map<string, RunningProcess>();
+  private portAllocations = new Set<number>();
 
-  constructor(db: Database) {
-    this.db = db;
+  constructor() {
+    // In-memory storage, no initialization needed
   }
 
   /**
-   * Initialize dev-specific database tables
-   * These tables store development metadata without modifying production schema
+   * Initialize dev-specific database tables (no-op for in-memory)
    */
   initializeTables(): void {
-    // Create dev_apps table for development-specific app metadata
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS dev_apps (
-        app_id TEXT PRIMARY KEY,
-        port INTEGER NOT NULL UNIQUE,
-        app_path TEXT NOT NULL,
-        template_version TEXT DEFAULT 'v3',
-        status TEXT NOT NULL DEFAULT 'creating',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Create running_processes table for process tracking
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS running_processes (
-        id TEXT PRIMARY KEY,
-        app_id TEXT NOT NULL,
-        pid INTEGER NOT NULL,
-        port INTEGER NOT NULL,
-        started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        status TEXT NOT NULL DEFAULT 'running',
-        FOREIGN KEY (app_id) REFERENCES dev_apps(app_id) ON DELETE CASCADE
-      )
-    `);
+    // No initialization needed for in-memory storage
   }
 
   /**
    * Find dev app info by ID
    */
   findDevAppById(appId: string): DevAppInfo | null {
-    const stmt = this.db.prepare(`
-      SELECT app_id, port, app_path, template_version, status, created_at, updated_at
-      FROM dev_apps
-      WHERE app_id = ?
-    `);
-    
-    const row = stmt.get(appId) as any;
-    if (!row) return null;
-    
-    return {
-      appId: row.app_id,
-      port: row.port,
-      appPath: row.app_path,
-      templateVersion: row.template_version,
-      status: row.status,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at),
-    };
+    return this.devApps.get(appId) || null;
   }
 
   /**
@@ -98,60 +58,52 @@ export class DevDatabase {
       return existing;
     }
     
-    const now = new Date().toISOString();
+    const now = new Date();
+    const fullDevApp: DevAppInfo = {
+      ...devApp,
+      templateVersion: devApp.templateVersion || 'v3',
+      createdAt: now,
+      updatedAt: now,
+    };
     
-    const stmt = this.db.prepare(`
-      INSERT INTO dev_apps (app_id, port, app_path, template_version, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    this.devApps.set(devApp.appId, fullDevApp);
+    this.portAllocations.add(devApp.port);
     
-    try {
-      stmt.run(
-        devApp.appId,
-        devApp.port,
-        devApp.appPath,
-        devApp.templateVersion || 'v3',
-        devApp.status,
-        now,
-        now
-      );
-      
-      return this.findDevAppById(devApp.appId)!;
-    } catch (error) {
-      // If we get a UNIQUE constraint error, check if the app was created by another process
-      if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
-        logger.info(`⚠️ UNIQUE constraint failed for app ${devApp.appId}, checking if it exists now`);
-        const existingAfterError = this.findDevAppById(devApp.appId);
-        if (existingAfterError) {
-          logger.info(`✅ App ${devApp.appId} was created by another process, returning existing record`);
-          return existingAfterError;
-        }
-      }
-      throw error;
-    }
+    return fullDevApp;
   }
 
   /**
    * Update dev app status
    */
   updateDevAppStatus(appId: string, status: DevAppInfo['status']): boolean {
-    const stmt = this.db.prepare(`
-      UPDATE dev_apps 
-      SET status = ?, updated_at = ?
-      WHERE app_id = ?
-    `);
+    const app = this.devApps.get(appId);
+    if (!app) return false;
     
-    const result = stmt.run(status, new Date().toISOString(), appId);
-    return result.changes > 0;
+    app.status = status;
+    app.updatedAt = new Date();
+    this.devApps.set(appId, app);
+    
+    return true;
   }
 
   /**
    * Delete a dev app
    */
   deleteDevApp(appId: string): boolean {
-    const stmt = this.db.prepare('DELETE FROM dev_apps WHERE app_id = ?');
-    const result = stmt.run(appId);
-    return result.changes > 0;
+    const app = this.devApps.get(appId);
+    if (!app) return false;
+    
+    this.devApps.delete(appId);
+    this.portAllocations.delete(app.port);
+    
+    // Remove related running processes
+    for (const [processId, process] of this.runningProcesses.entries()) {
+      if (process.appId === appId) {
+        this.runningProcesses.delete(processId);
+      }
+    }
+    
+    return true;
   }
 
   /**
@@ -160,12 +112,16 @@ export class DevDatabase {
   addProcessRecord(appId: string, pid: number, port: number): string {
     const processId = `proc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    const stmt = this.db.prepare(`
-      INSERT INTO running_processes (id, app_id, pid, port, started_at, status)
-      VALUES (?, ?, ?, ?, datetime('now'), 'running')
-    `);
+    const process: RunningProcess = {
+      id: processId,
+      appId,
+      pid,
+      port,
+      startedAt: new Date().toISOString(),
+      status: 'running'
+    };
     
-    stmt.run(processId, appId, pid, port);
+    this.runningProcesses.set(processId, process);
     return processId;
   }
 
@@ -173,58 +129,50 @@ export class DevDatabase {
    * Remove process record by app ID
    */
   removeProcessRecord(appId: string): void {
-    const stmt = this.db.prepare('DELETE FROM running_processes WHERE app_id = ?');
-    stmt.run(appId);
+    for (const [processId, process] of this.runningProcesses.entries()) {
+      if (process.appId === appId) {
+        this.runningProcesses.delete(processId);
+      }
+    }
   }
 
   /**
    * Get running processes
    */
   getRunningProcesses(): RunningProcess[] {
-    const stmt = this.db.prepare('SELECT * FROM running_processes WHERE status = ?');
-    const rows = stmt.all('running') as any[];
-    
-    return rows.map(row => ({
-      id: row.id,
-      appId: row.app_id,
-      pid: row.pid,
-      port: row.port,
-      startedAt: row.started_at,
-      status: row.status,
-    }));
+    return Array.from(this.runningProcesses.values()).filter(p => p.status === 'running');
   }
 
   /**
    * Check if a dev app exists
    */
   devAppExists(appId: string): boolean {
-    const stmt = this.db.prepare('SELECT 1 FROM dev_apps WHERE app_id = ? LIMIT 1');
-    return !!stmt.get(appId);
+    return this.devApps.has(appId);
   }
 
   /**
    * Get all allocated ports
    */
   getAllocatedPorts(): number[] {
-    const stmt = this.db.prepare('SELECT port FROM dev_apps ORDER BY port ASC');
-    return (stmt.all() as Array<{ port: number }>).map(row => row.port);
+    return Array.from(this.portAllocations).sort((a, b) => a - b);
   }
 
   /**
    * Check if a specific port is allocated
    */
   isPortAllocated(port: number): boolean {
-    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM dev_apps WHERE port = ?');
-    const result = stmt.get(port) as { count: number };
-    return result.count > 0;
+    return this.portAllocations.has(port);
   }
 
   /**
    * Get the app that owns a specific port
    */
   getAppByPort(port: number): { appId: string } | null {
-    const stmt = this.db.prepare('SELECT app_id FROM dev_apps WHERE port = ?');
-    const result = stmt.get(port) as { app_id: string } | undefined;
-    return result ? { appId: result.app_id } : null;
+    for (const app of this.devApps.values()) {
+      if (app.port === port) {
+        return { appId: app.appId };
+      }
+    }
+    return null;
   }
 }

@@ -333,8 +333,10 @@ export class DockerContainerManager {
 	 */
 	async stopContainer(appId: string): Promise<boolean> {
 		const startTime = Date.now();
-		const containerInfo =
-			this.containers.get(appId) || this.getContainerFromDb(appId);
+		let containerInfo = this.containers.get(appId);
+		if (!containerInfo) {
+			containerInfo = this.getContainerFromDb(appId);
+		}
 
 		if (!containerInfo) {
 			logger.warn(`⚠️ Container not found for stop operation: ${appId}`);
@@ -534,8 +536,8 @@ export class DockerContainerManager {
 		logger.info('🔍 Starting container recovery process...');
 
 		try {
-			// Get all container records from database
-			const containerRecords = this.getAllContainers();
+		// Get all container records from database
+		const containerRecords = this.getAllContainers();
 
 			logger.info(`🔍 Found ${containerRecords.length} container records`);
 
@@ -656,7 +658,7 @@ export class DockerContainerManager {
 	/**
 	 * Save container info to database
 	 */
-	private saveContainerToDb(containerInfo: ContainerInfo): void {
+	private async saveContainerToDb(containerInfo: ContainerInfo): Promise<void> {
 		// For Docker mode, we'll store container info in the running_processes table
 		// with additional metadata
 		try {
@@ -706,21 +708,21 @@ export class DockerContainerManager {
 	/**
 	 * Remove container from database
 	 */
-	private removeContainerFromDb(appId: string): void {
+	private async removeContainerFromDb(appId: string): Promise<void> {
 		this.devDb.removeProcessRecord(appId);
 	}
 
 	/**
 	 * Get running containers as server info
 	 */
-	getRunningServers(): Array<{
+	async getRunningServers(): Promise<Array<{
 		appId: string;
 		port: number;
 		url: string;
 		status: string;
 		containerId: string;
 		imageName: string;
-	}> {
+	}>> {
 		const runningServers: Array<{
 			appId: string;
 			port: number;
@@ -976,8 +978,7 @@ export class DockerContainerManager {
 	 * Get the host socket path for a specific app
 	 */
 	getHostSocketPath(appId: string): string | null {
-		const containerInfo =
-			this.containers.get(appId) || this.getContainerFromDb(appId);
+		const containerInfo = this.containers.get(appId) || this.getContainerFromDb(appId);
 		return containerInfo?.hostSocketPath || null;
 	}
 

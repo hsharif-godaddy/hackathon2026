@@ -31,10 +31,7 @@ export interface DatabaseStatement {
 }
 
 export interface DatabaseConfig {
-  type: 'sqlite' | 'mysql';
-
-  // SQLite specific
-  path?: string;
+  type: 'mysql';
 
   // MySQL specific
   host?: string;

@@ -2,8 +2,6 @@ import { logger } from '../request-context';
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 import { getDeploymentAdapter } from '@/lib/deployment';
 import { DevEnvironmentManager } from '@/lib/dev-environment/DevEnvironmentManager';
-import Database from 'better-sqlite3';
-import path from 'path';
 import type { ISiteAdapter, SiteInfo, CreateSiteRequest, ServerInfo, SiteLimitCheck } from './interfaces/ISiteAdapter';
 import { SiteStatus } from '@/generated/prisma';
 
@@ -16,7 +14,6 @@ import { SiteStatus } from '@/generated/prisma';
 export class DevSiteAdapter implements ISiteAdapter {
   private siteService: PrismaSiteService;
   private devEnvManager: DevEnvironmentManager | null = null;
-  private db: Database.Database | null = null;
 
   constructor() {
     // SAFETY CHECK: Prevent usage in production environments
@@ -26,21 +23,16 @@ export class DevSiteAdapter implements ISiteAdapter {
 
   private async getDevEnvManager(): Promise<DevEnvironmentManager> {
     if (!this.devEnvManager) {
-      // Use the same database path as the agents service
-      const dbPath = path.join(process.cwd(), 'development.db');
-      this.db = new Database(dbPath);
-      this.devEnvManager = new DevEnvironmentManager(this.db);
+      // Create dev environment manager (now uses DatabaseManager)
+      this.devEnvManager = new DevEnvironmentManager();
       await this.devEnvManager.initialize();
     }
     return this.devEnvManager;
   }
 
   private cleanup(): void {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-      this.devEnvManager = null;
-    }
+    // No cleanup needed anymore since DevEnvironmentManager uses DatabaseManager singleton
+    this.devEnvManager = null;
   }
 
   async createSite(request: CreateSiteRequest): Promise<SiteInfo> {

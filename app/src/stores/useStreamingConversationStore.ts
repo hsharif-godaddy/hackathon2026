@@ -11,7 +11,7 @@ import type { AiEditContext, PlanItem } from '../app/develop/components/types'
 // Core streaming segment types
 export interface StreamSegment {
   id: string
-  type: 'text' | 'tool_start' | 'tool_result'
+  type: 'text' | 'tool_start' | 'tool_result' | 'tool_call' | 'content'
   content: string
   timestamp: Date
   toolCall?: ToolCall
@@ -36,6 +36,7 @@ export interface ToolCall {
   error?: string
   startTime?: number
   endTime?: number
+  duration?: number
 }
 
 // Streaming message (actively being built)
