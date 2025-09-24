@@ -25,7 +25,13 @@ if [ -d "/app/logs" ]; then
 fi
 
 # Ensure agent user owns the app directory contents (important for bind mounts)
-chown -R agent:agent /app
+if [ -d "/app/.git" ]; then
+    find /app -mindepth 1 -maxdepth 1 ! -name '.git' -exec chown -R agent:agent {} +
+    # Change ownership of .git directory itself but not its contents (to avoid git object permission issues)
+    chown agent:agent /app/.git 2>/dev/null || true
+else
+    chown -R agent:agent /app
+fi
 echo "✅ App directory ownership fixed"
 
 echo "🚀 Switching to agent user and starting dev-supervisor..."
