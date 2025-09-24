@@ -1,0 +1,201 @@
+# Structured Logging Standards
+
+## Overview
+This project uses a structured logging system with TypeScript interfaces and consistent event naming. **Console.log statements are prohibited** - use the structured logging system instead.
+
+## Key Principles
+
+### 1. Professional Production-Grade Logging
+- **NEVER** use emojis, symbols, or visual decorations in log messages
+- **ALWAYS** use clear, professional language suitable for production environments
+- **NEVER** use `console.log`, `console.error`, `console.warn`, or `console.info`
+- **ALWAYS** use the typed event helpers from `src/logging/events/`
+- **ALWAYS** import `logger` from the appropriate context module
+
+### 2. Structured Data Only
+- Use typed interfaces, no string interpolation in log messages
+- Pass data as structured objects, not embedded in strings
+- Each log event should have a clear, typed interface
+
+### 3. Hierarchical Required Fields
+- Domain-specific context enforcement through TypeScript
+- Use appropriate event categories (app, agent, conversation, etc.)
+- Include relevant IDs and context data
+
+### 4. Consistent Lifecycle Naming
+- Use standardized `begin/success/failure` patterns
+- Follow the established event naming conventions
+
+## Examples
+
+### ❌ Bad - Console logging
+```typescript
+console.log('Starting site creation for:', siteId)
+console.error('Failed to load conversation:', error)
+console.warn('Agent endpoint not ready yet')
+```
+
+### ✅ Good - Current structured logging patterns
+```typescript
+import { logger } from '@/lib/request-context'
+
+// App service pattern (current)
+logger.info('develop-store.init.start', { message: 'Starting page initialization', appId })
+logger.info('services.polling.health', { siteId, message: 'Polling services health' })
+logger.error('app.creation.failed', { error: createError.message, siteId })
+
+// Agents service pattern (current)
+logger.warn('conversation.history.tool_call.skipped', {
+  conversationId,
+  toolCallId: segment.tool_call.id,
+  reason: 'no_result',
+});
+
+logger.info('Initial build marked as complete after first commit', {
+  appId,
+  commitMessage: message,
+  commitCount
+});
+```
+
+## ⚠️ CRITICAL: NO CONSOLE.LOG ALLOWED
+
+**NEVER use console.log, console.error, console.warn, or console.info in this codebase.**
+
+### ❌ FORBIDDEN - Console logging
+```typescript
+// These are PROHIBITED and will be rejected in code reviews
+console.log('Starting site creation for:', siteId)
+console.error('Failed to load conversation:', error)
+console.warn('Agent endpoint not ready yet')
+console.info('App created successfully')
+```
+
+### ✅ REQUIRED - Use logger instead
+```typescript
+// Always use the logger from request context
+import { logger } from '@/lib/request-context'
+
+logger.info('site.creation.start', { siteId, message: 'Starting site creation' })
+logger.error('conversation.load.failed', { error: error.message, conversationId })
+logger.warn('agent.endpoint.not_ready', { agentUrl, waitTime: 5000 })
+logger.info('app.creation.success', { appId, name: 'my-app' })
+```
+
+## Import Patterns
+
+### Backend (agents/)
+```typescript
+import { logger } from '../logging/logger.js'
+import { appCreationEvents } from '../logging/events/index.js'
+```
+
+### Frontend (app/)
+```typescript
+import { logger } from '@/lib/request-context'
+```
+
+## Enforcement
+
+- **Code Reviews**: All console.log statements will be rejected
+- **Linting**: Configure ESLint to forbid console methods
+- **Type Safety**: All logging must use TypeScript helpers
+- **Context**: Always include relevant IDs and structured data
+
+## Migration Guide
+
+When converting console statements:
+
+1. Identify the domain/category (app, site, conversation, etc.)
+2. Choose appropriate event type (begin/success/error/info)
+3. Structure the data as typed objects
+4. Use the corresponding event helper
+
+### Before (FORBIDDEN)
+```typescript
+console.log('Starting app creation for:', appId)
+console.error('App creation failed:', error)
+```
+
+### After (REQUIRED)
+```typescript
+// App service pattern
+logger.info('app.creation.start', { appId, message: 'Starting app creation' })
+logger.error('app.creation.failed', { appId, error: error.message })
+
+// Agents service pattern (preferred)
+logger.info('app.creation.begin', {
+  appId,
+  name: 'my-app',
+  templateVersion: 'v8',
+  baseDir: '/tmp/apps',
+  port: 3000
+})
+logger.error('app.creation.failure', { appId, error: error.message })
+```
+
+## Current Implementation Status
+
+### App Service Logging Pattern
+The app service currently uses a **mixed approach** with simple event names and context objects:
+
+```typescript
+// Current app service pattern
+logger.info('develop-store.init.start', { message: 'Starting page initialization', appId })
+logger.info('services.polling.health', { siteId, message: 'Polling services health' })
+logger.error('app.creation.failed', { error: createError.message, siteId })
+```
+
+**Characteristics:**
+- Simple, descriptive event names
+- Mixed context (sometimes rich objects, sometimes simple values)
+- **NO EMOJIS** - Professional production-grade logging only
+- Pattern: `logger.level('event-name', context)`
+
+### Agents Service Logging Pattern
+The agents service uses a **more structured approach** with hierarchical event names:
+
+```typescript
+// Current agents service pattern
+logger.warn('conversation.history.tool_call.skipped', {
+  conversationId,
+  toolCallId: segment.tool_call.id,
+  reason: 'no_result',
+});
+
+logger.info('Initial build marked as complete after first commit', {
+  appId,
+  commitMessage: message,
+  commitCount
+});
+```
+
+**Characteristics:**
+- Structured, hierarchical event names (`domain.operation.lifecycle`)
+- Always rich, structured context objects
+- **NO EMOJIS** - Professional production-grade logging only
+- More consistent with enterprise logging standards
+
+### Mixed Console Usage
+The agents service also has some console.log usage that should be migrated:
+
+```typescript
+// Found in agents service (should be migrated)
+console.warn('Unknown model "%s", defaulting to OpenAI gpt-4o for token counting', modelName)
+console.error('Error counting tokens for OpenAI model "%s":', modelName, error)
+console.log('Agent feature flags and configuration:', { ... })
+```
+
+## Migration Priority
+
+1. **High Priority**: Migrate console.log statements in agents service
+2. **Medium Priority**: Standardize app service logging to match agents pattern
+3. **Low Priority**: Add structured event helpers for both services
+
+## Benefits
+
+- **Searchability**: Structured logs are easily queryable
+- **Type Safety**: Compile-time validation of log data
+- **Consistency**: Standardized format across the codebase
+- **Monitoring**: Better integration with log aggregation tools
+- **Debugging**: Rich context data for troubleshooting
