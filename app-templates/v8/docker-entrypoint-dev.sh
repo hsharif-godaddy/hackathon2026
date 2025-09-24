@@ -4,7 +4,12 @@ set -e
 # This script runs as root to fix permissions on bind-mounted directories
 # then switches to the agent user to run the actual application
 
-echo "🔧 Fixing permissions on bind-mounted directories..."
+echo "🔧 Setting up user permissions and bind-mounted directories..."
+
+# Get the current agent user's UID/GID
+AGENT_UID=$(id -u agent)
+AGENT_GID=$(id -g agent)
+echo "📋 Agent user configured with UID=${AGENT_UID}, GID=${AGENT_GID}"
 
 # Fix ownership and permissions on socket directory (bind mounted from host)
 if [ -d "/tmp/supervisor" ]; then
@@ -25,16 +30,19 @@ if [ -d "/app/logs" ]; then
 fi
 
 # Ensure agent user owns the app directory contents (important for bind mounts)
-if [ -d "/app/.git" ]; then
-    find /app -mindepth 1 -maxdepth 1 ! -name '.git' -exec chown -R agent:agent {} +
-    # Change ownership of .git directory itself but not its contents (to avoid git object permission issues)
-    chown agent:agent /app/.git 2>/dev/null || true
-else
-    chown -R agent:agent /app
-fi
+# This is crucial for files created by the host user to be editable by the container user
+echo "🔄 Fixing ownership of /app directory..."
+chown -R agent:agent /app
 echo "✅ App directory ownership fixed"
 
-echo "🚀 Switching to agent user and starting dev-supervisor..."
+# Ensure the agent user has a proper home directory with correct permissions
+if [ ! -d "/home/agent" ]; then
+    mkdir -p /home/agent
+fi
+chown -R agent:agent /home/agent
+echo "✅ Agent home directory permissions fixed"
+
+echo "🚀 Switching to agent user (UID=${AGENT_UID}, GID=${AGENT_GID}) and starting dev-supervisor..."
 
 # Switch to agent user and execute the original command
 exec gosu agent "$@"

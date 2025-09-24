@@ -1,14 +1,17 @@
 # Development Dockerfile for V8 App Template (Vite + React + Hono)
 FROM node:22-alpine
 
+# Accept build arguments for dynamic UID/GID mapping
+ARG HOST_UID=790
+ARG HOST_GID=790
+
 # Install curl for health checks, gosu for user switching, and dev-supervisor dependencies
 RUN apk add --no-cache curl ca-certificates tzdata gosu
 
-# Create the group and user
-# Using same GID/UID as main Dockerfile for consistency
-# Create as regular user (not system user) so we can use su if needed
-RUN addgroup -g 790 agent
-RUN adduser -D -G agent -u 790 agent
+# Create the group and user with dynamic UID/GID
+# This allows the container user to match the host user for proper file permissions
+RUN addgroup -g ${HOST_GID} agent
+RUN adduser -D -G agent -u ${HOST_UID} agent
 RUN echo 'agent:agent' | chpasswd
 
 # Set working directory

@@ -229,7 +229,7 @@ export class JWTValidationService {
    * Extract JWT token from request headers  
    * Only supports Authorization header with Bearer token (no cookies due to cross-origin)
    */
-  extractTokenFromRequest(req: Request): string | null {
+  extractTokenFromRequest = (req: Request): string | null => {
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
       return authHeader.substring(7);
@@ -241,7 +241,7 @@ export class JWTValidationService {
   /**
    * Sanitize error messages for security
    */
-  sanitizeErrorMessage(error: any): string {
+  sanitizeErrorMessage = (error: any): string => {
     // Map known JWT errors to safe messages
     if (error.name === 'TokenExpiredError') return 'Token expired';
     if (error.name === 'JsonWebTokenError') return 'Invalid token format';

@@ -4,6 +4,7 @@ import { promisify } from "util";
 import path from "path";
 import { existsSync, readFileSync, mkdirSync } from "fs";
 import { DevDatabase } from '../database/DevDatabase';
+import os from "node:os";
 
 const execAsync = promisify(exec);
 
@@ -77,6 +78,26 @@ export class DockerContainerManager {
 				error: error instanceof Error ? error.message : String(error),
 			});
 			return "v1";
+		}
+	}
+
+	/**
+	 * Get the current host user's UID and GID for proper file permissions in containers
+	 */
+	private getHostUserInfo(): { uid: number; gid: number } {
+		try {
+			// Get current user info
+			const userInfo = os.userInfo();
+			return {
+				uid: userInfo.uid,
+				gid: userInfo.gid
+			};
+		} catch (error) {
+			logger.warn("Could not get host user info, using default UID/GID", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+			// Fallback to default values if we can't get user info
+			return { uid: 790, gid: 790 };
 		}
 	}
 
@@ -210,10 +231,14 @@ export class DockerContainerManager {
 			// Ensure dev-supervisor image is available before building app image
 			await this.ensureDevSupervisorImage();
 
+			// Get host user info for proper file permissions
+			const { uid, gid } = this.getHostUserInfo();
+			logger.info(`📋 Building with host user mapping: UID=${uid}, GID=${gid}`);
+
 			// Build the Docker image
 			logger.info(`📦 Building Docker image: ${imageName}`);
 
-			const buildCommand = `docker build -f Dockerfile.dev -t ${imageName} .`;
+			const buildCommand = `docker build -f Dockerfile.dev --build-arg HOST_UID=${uid} --build-arg HOST_GID=${gid} -t ${imageName} .`;
 
 			const buildProcess = execAsync(buildCommand, {
 				cwd: appPath,
