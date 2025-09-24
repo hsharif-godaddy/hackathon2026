@@ -186,12 +186,61 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
           
           // Filter out system and tool messages, and map to the expected format
+          // Convert assistant messages with tool calls to plain text for conversation history
           return messages
             .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-            .map(msg => ({
-              role: msg.role as 'user' | 'assistant',
-              content: msg.content || ''
-            }))
+            .map(msg => {
+              if (msg.role === 'assistant' && (msg as any).tool_calls) {
+                // Convert tool calls to readable text for conversation history
+                const toolCalls = (msg as any).tool_calls || []
+                let content = msg.content || ''
+                
+                // Append tool call information as readable text
+                if (toolCalls.length > 0) {
+                  const toolDescriptions = toolCalls.map((toolCall: any) => {
+                    try {
+                      const toolName = toolCall.function?.name || 'unknown_tool'
+                      const toolArgs = toolCall.function?.arguments
+                      
+                      // Try to parse and format the arguments safely
+                      let formattedArgs = 'unknown_arguments'
+                      if (toolArgs) {
+                        try {
+                          const parsedArgs = typeof toolArgs === 'string' ? JSON.parse(toolArgs) : toolArgs
+                          // Create a safe, readable representation
+                          if (typeof parsedArgs === 'object') {
+                            formattedArgs = Object.entries(parsedArgs)
+                              .map(([key, value]) => `${key}: ${String(value).substring(0, 100)}`)
+                              .join(', ')
+                          } else {
+                            formattedArgs = String(parsedArgs).substring(0, 100)
+                          }
+                        } catch (jsonError) {
+                          // If JSON parsing fails, use the raw string but truncate it
+                          formattedArgs = `invalid_json: ${String(toolArgs).substring(0, 100)}`
+                        }
+                      }
+                      
+                      return `Called ${toolName} with: ${formattedArgs}`
+                    } catch (error) {
+                      return `Called tool with invalid data`
+                    }
+                  }).join('\n')
+                  
+                  content = content ? `${content}\n\n[Tool calls: ${toolDescriptions}]` : `[Tool calls: ${toolDescriptions}]`
+                }
+                
+                return {
+                  role: msg.role as 'user' | 'assistant',
+                  content
+                }
+              } else {
+                return {
+                  role: msg.role as 'user' | 'assistant',
+                  content: msg.content || ''
+                }
+              }
+            })
         } catch (error) {
           console.error('❌ Error in TokenBasedHistoryProvider:', error)
           return []
@@ -209,9 +258,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       // Context extractor to validate appId and message length
       // Conversation history provider
       conversationHistoryProvider,
-      
-      // System context message provider (custom extension)
-      systemContextProvider,
       
       // Context extractor to validate appId
       contextExtractor: (rawContext: Record<string, unknown>, socketContext?: any) => {

@@ -588,6 +588,7 @@ export class ExperimentalWebSocketServer {
     agentName: string,
     startTime: number
   ): Promise<void> {
+    let currentStep = 1
 
     // Prepare messages array
     const messages = []
@@ -631,48 +632,109 @@ export class ExperimentalWebSocketServer {
       })
     } catch (error: any) {
       // Handle API call errors (like tool input validation failures)
-      if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {
+      console.log('🔍 Caught error in streamGenerate:', {
+        name: error?.name,
+        message: error?.message,
+        isAPIError: error?.name === 'AI_APICallError',
+        hasToolUseInvalid: error?.message?.includes('toolUse.input is invalid'),
+        hasJSONParsingFailed: error?.message?.includes('JSON parsing failed')
+      })
+      
+      if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid') || error?.message?.includes('JSON parsing failed')) {
         console.error('❌ Tool input validation error:', error.message)
 
-        // Create an error message that explains the issue to the LLM
-        const errorExplanation = `Tool call failed due to invalid input format: ${error.message}. Please ensure all tool arguments are properly formatted as valid JSON objects. Check that:
-1. All string values are properly quoted
-2. All object properties use valid JSON syntax
-3. No undefined or null values are passed as tool arguments
-4. Arrays and objects are properly structured
-
-Please retry your tool call with corrected input formatting.`
-
-        // Send error message to client
+        // Emit step start for the failed tool call
+        const stepStartData = {
+          step: currentStep,
+          stepType: 'reasoning'
+        }
         socket.emit('message', {
-          type: 'error',
-          content: errorExplanation,
+          type: 'step_start',
+          content: '',
+          data: stepStartData
+        } as WebSocketMessage)
+        await this.captureStreamingEvent(socket.id, 'step_start', '', stepStartData)
+
+        // Send tool failure result to show the user what went wrong
+        const toolErrorData = {
+          step: currentStep,
+          tool: {
+            id: 'failed-tool-call',
+            name: 'tool_validation_failed',
+            input: {},
+            output: `Tool call failed due to invalid JSON format: ${error.message}. Please check your JSON syntax and try again.`
+          }
+        }
+
+        socket.emit('message', {
+          type: 'tool_result',
+          content: 'Tool call failed - invalid JSON format',
+          data: toolErrorData
+        } as WebSocketMessage)
+
+        await this.captureStreamingEvent(socket.id, 'tool_result', 'Tool call failed - invalid JSON format', toolErrorData)
+
+        // Emit step complete to indicate this attempt is done
+        socket.emit('message', {
+          type: 'step_complete',
+          content: '',
           data: {
-            timestamp: new Date().toISOString(),
-            agentId: agentName,
-            errorType: 'tool_validation_error',
-            originalError: error.message
+            step: currentStep,
+            isFinal: false,
+            toolCalls: [{
+              id: 'failed-tool-call',
+              name: 'tool_validation_failed',
+              input: {},
+              output: `Invalid JSON in tool call: ${error.message}`
+            }],
+            usage: undefined
           }
         } as WebSocketMessage)
 
-        // Also capture this for persistence
-        await this.captureStreamingEvent(socket.id, 'error', errorExplanation, {
-          agentId: agentName,
-          errorType: 'tool_validation_error',
-          originalError: error.message
-        })
+        // Create an error explanation that helps the LLM understand and retry
+        const retryPrompt = `The previous tool call failed due to invalid JSON syntax. Error: ${error.message}
 
-        return
+Please analyze what went wrong and retry the tool call with properly formatted JSON. Ensure:
+1. All string values are properly quoted with double quotes
+2. All object properties use valid JSON syntax  
+3. No trailing commas in objects or arrays
+4. All brackets and braces are properly closed
+5. No undefined or null values are passed as tool arguments
+
+Please try again with corrected formatting.`
+
+        // Continue the conversation by making a new streamGenerate call with the error feedback
+        try {
+          currentStep++
+          
+          // Add the error as a user message to help the agent understand what went wrong
+          const retryMessages = [...messages, 
+            { role: 'user' as const, content: data.message },
+            { role: 'assistant' as const, content: 'I encountered an error with my tool call due to invalid JSON syntax. Let me fix that and try again.' },
+            { role: 'user' as const, content: retryPrompt }
+          ]
+
+          streamResult = await agent.streamGenerate(retryPrompt, {
+            messages: retryMessages.map(msg => ({
+              role: msg.role,
+              content: msg.content
+            })),
+            ...(context && { executionContext: context })
+          })
+        } catch (retryError: any) {
+          // If retry also fails, fall back to error handling
+          console.error('❌ Retry also failed:', retryError.message)
+          throw retryError
+        }
+      } else {
+        // Re-throw other errors to be handled by the outer catch block
+        throw error
       }
-
-      // Re-throw other errors to be handled by the outer catch block
-      throw error
     }
 
-    let currentStep = 1
     let fullContent = ''
 
-    // Emit step start
+    // Emit step start (currentStep was already incremented in error handler if needed)
     const stepStartData = {
       step: currentStep,
       stepType: 'reasoning'

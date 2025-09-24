@@ -37,7 +37,7 @@ export class AILibContextManager {
     private appContextManager: AppContextManager
     private appRepository: AppRepository
     private config: ContextGenerationConfig
-    private loggingConfig?: ContextLoggingConfig
+    private loggingConfig: ContextLoggingConfig | undefined
 
     constructor(config: Partial<ContextGenerationConfig> = {}, loggingConfig?: ContextLoggingConfig) {
         this.conversationContextManager = new ConversationContextManager(

@@ -14,6 +14,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { getTemplateDescriptionPath, getModularPromptPaths, getValidatedTemplateVersion } from '../utils/prompt-utils.js'
+import { AILibContextManager } from './ai-lib-agents/context-manager.js'
 
 /**
  * Develop Agent - AI developer for building web applications
@@ -175,18 +176,17 @@ async function buildDynamicSystemPrompt(context?: AgentContext): Promise<string>
   }
 
   try {
-    // Import the context manager here to avoid circular dependencies
-    const { AILibContextManager } = await import('../ai-lib-agents/context-manager.js')
+    // Use the context manager to build enhanced context
     const contextManager = new AILibContextManager()
     
     // Convert context to enhanced format
-    const enhancedContext = contextManager.convertToEnhancedContext(context)
+    const enhancedContext = contextManager.convertToEnhancedContext(context as any)
     
     // Build context messages
     const contextResult = await contextManager.buildContextMessages(baseSystemPrompt, enhancedContext)
     
     // Combine base system prompt with context messages
-    const contextMessages = contextResult.contextMessages.map(msg => msg.content).join('\n\n')
+    const contextMessages = contextResult.contextMessages.map((msg: { role: 'user' | 'system'; content: string }) => msg.content).join('\n\n')
     
     const enrichedSystemPrompt = contextMessages ? 
       `${baseSystemPrompt}\n\n${contextMessages}` : baseSystemPrompt
