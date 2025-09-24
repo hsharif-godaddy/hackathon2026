@@ -279,7 +279,7 @@ export class JWTAuthMiddleware {
       }
 
       // Extract JWT token from request
-      const token = this.extractTokenFromRequest(req);
+      const token = this.jwtValidationService.extractTokenFromRequest(req);
       
       if (!token) {
         res.status(401).json({

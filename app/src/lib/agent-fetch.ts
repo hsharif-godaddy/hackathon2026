@@ -35,9 +35,21 @@ function getServerJWTToken(request?: NextRequest): string | null {
 
 /**
  * Authenticated fetch for agent API calls (client-side)
- * Always includes JWT token in Authorization header
+ * Always includes JWT token unless explicitly bypassed via NEXT_PUBLIC_AUTH_IN_DEV=true
  */
 export async function agentFetch(url: string, options?: RequestInit): Promise<Response> {
+  // Check if auth is explicitly disabled in development
+  try {
+    const { isAuthDisabled } = await import('../lib/gasket-config');
+    if (await isAuthDisabled()) {
+      console.log('🔧 Agent API call in auth bypass mode - NEXT_PUBLIC_AUTH_IN_DEV=true');
+      return makeUnauthenticatedRequest(url, options);
+    }
+  } catch (error) {
+    console.warn('Could not determine auth status, assuming auth required:', error);
+  }
+
+  // Auth is required - get and validate token
   const token = getCurrentJWTToken();
   
   if (!token) {
@@ -49,9 +61,21 @@ export async function agentFetch(url: string, options?: RequestInit): Promise<Re
 
 /**
  * Authenticated fetch for agent API calls (server-side)
- * Always includes JWT token in Authorization header
+ * Always includes JWT token unless explicitly bypassed via NEXT_PUBLIC_AUTH_IN_DEV=true
  */
 export async function serverAgentFetch(url: string, request: NextRequest, options?: RequestInit): Promise<Response> {
+  // Check if auth is explicitly disabled in development
+  try {
+    const { isAuthDisabled } = await import('../lib/gasket-config');
+    if (await isAuthDisabled()) {
+      console.log('🔧 Server agent API call in auth bypass mode - NEXT_PUBLIC_AUTH_IN_DEV=true');
+      return makeUnauthenticatedRequest(url, options);
+    }
+  } catch (error) {
+    console.warn('Could not determine auth status, assuming auth required:', error);
+  }
+
+  // Auth is required - get and validate token
   const token = getServerJWTToken(request);
   
   if (!token) {
@@ -80,4 +104,24 @@ function makeAuthenticatedRequest(url: string, token: string, options?: RequestI
   };
 
   return fetch(url, authenticatedOptions);
+}
+
+/**
+ * Internal helper to make unauthenticated requests (only used when auth is explicitly disabled)
+ */
+function makeUnauthenticatedRequest(url: string, options?: RequestInit): Promise<Response> {
+  // Prepare headers without authentication
+  const headers = new Headers(options?.headers);
+  
+  // Only set Content-Type if not already set and if we have a body
+  if (!headers.has('Content-Type') && options?.body) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const unauthenticatedOptions: RequestInit = {
+    ...options,
+    headers
+  };
+
+  return fetch(url, unauthenticatedOptions);
 }
