@@ -279,6 +279,7 @@ export class DockerContainerManager {
 					templateSpecific.push(
 						`-e PORT=${port}`,
 						`-e VITE_HOST=0.0.0.0`,
+						`-e ALLOWED_ORIGINS=http://localhost:3000,https://localhost:3000`,
 						`-v /app/dist`,
 						`-p ${port}:${port}`
 					);

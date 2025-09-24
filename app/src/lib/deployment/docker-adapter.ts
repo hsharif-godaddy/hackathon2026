@@ -280,12 +280,12 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       });
 
     } catch (error) {
-      this.log('warn', 'Failed to register app with agents service', {
+      this.log('error', 'Failed to register app with agents service', {
         siteId,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
-      // Don't throw - agents registration is not critical for deployment
-      // The app can still run in Docker even if agents registration fails
+      // Throw error to fail deployment - agent registration is required for proper functionality
+      throw new Error(`Agent registration failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

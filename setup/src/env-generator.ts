@@ -14,11 +14,13 @@ export interface ModelConfig {
 }
 
 export interface AuthConfig {
-	useMockLogin: boolean;
+	authType: "none" | "mock" | "jwt";
 	ssoLoginUrl?: string;
 	ssoLogoutUrl?: string;
 	authRealm?: string;
 	authRisk?: string;
+	// Deprecated - maintained for backward compatibility
+	useMockLogin?: boolean;
 }
 
 export interface AppEnvConfig {
@@ -35,6 +37,7 @@ export interface AgentsEnvConfig {
 	appTemplateDir: string;
 	showUsageCost: boolean;
 	modelConfig: ModelConfig;
+	authType: "none" | "mock" | "jwt";
 	mysqlRootHost: string;
 	mysqlRootPort: number;
 	mysqlRootUser: string;
@@ -242,25 +245,41 @@ export class EnvGenerator {
 
 	async promptAuthConfig(): Promise<AuthConfig> {
 		console.log(chalk.cyan("\n🔐 Authentication Configuration"));
+		console.log(chalk.gray("Choose the authentication type for your development environment:"));
 
-		const { authMethod } = await inquirer.prompt([
+		const { authType } = await inquirer.prompt([
 			{
 				type: "list",
-				name: "authMethod",
-				message: "Which authentication method would you like to use?",
+				name: "authType",
+				message: "Which authentication type would you like to use?",
 				choices: [
-					{ name: "Mock Login (Development/Testing)", value: "mock" },
-					{ name: "SSO Integration (Production)", value: "sso" },
+					{ 
+						name: "None - No authentication required (Local Development)", 
+						value: "none",
+						short: "None"
+					},
+					{ 
+						name: "Mock - Fake authentication with test users (Development/Testing)", 
+						value: "mock",
+						short: "Mock"
+					},
+					{ 
+						name: "JWT - Full authentication with SSO (Production)", 
+						value: "jwt",
+						short: "JWT"
+					},
 				],
-				default: "mock",
+				default: "none",
 			},
 		]);
 
-		if (authMethod === "sso") {
+		if (authType === "jwt") {
 			return await this.promptSSOConfig();
 		} else {
 			return {
-				useMockLogin: true,
+				authType: authType as "none" | "mock",
+				// Set legacy flag for backward compatibility
+				useMockLogin: authType === "mock"
 			};
 		}
 	}
@@ -314,6 +333,7 @@ export class EnvGenerator {
 		]);
 
 		return {
+			authType: "jwt",
 			useMockLogin: false,
 			...answers,
 		};
@@ -364,13 +384,13 @@ GOCODE_API_KEY=${config.modelConfig.gocodeApiKey}
 SHOW_USAGE_COST=true
 
 # Authentication Configuration
+AUTH_TYPE=${config.authConfig.authType}
 `;
 
-		if (config.authConfig.useMockLogin) {
-			envContent += `NEXT_PUBLIC_USE_MOCK_LOGIN=true
-`;
-		} else {
-			envContent += `NEXT_PUBLIC_USE_MOCK_LOGIN=false
+		// Add SSO configuration if using JWT authentication
+		if (config.authConfig.authType === "jwt") {
+			envContent += `
+# SSO Configuration (Used when AUTH_TYPE=jwt)
 NEXT_PUBLIC_SSO_LOGIN_URL=${config.authConfig.ssoLoginUrl}
 NEXT_PUBLIC_SSO_LOGOUT_URL=${config.authConfig.ssoLogoutUrl}
 
@@ -379,6 +399,13 @@ NEXT_PUBLIC_AUTH_REALM=${config.authConfig.authRealm}
 NEXT_PUBLIC_AUTH_RISK=${config.authConfig.authRisk}
 `;
 		}
+
+		// Add legacy compatibility flags (deprecated but maintained for compatibility)
+		envContent += `
+# Legacy Authentication Settings (DEPRECATED - Use AUTH_TYPE instead)
+# These are maintained for backward compatibility
+NEXT_PUBLIC_USE_MOCK_LOGIN=${config.authConfig.authType === "mock" ? "true" : "false"}
+`;
 
 		return envContent;
 	}
@@ -421,6 +448,12 @@ OPENAI_MODEL="claude-sonnet-4"
 		}
 
 		envContent += `
+# Authentication Configuration
+AUTH_TYPE=${config.authType}
+
+# Legacy Authentication Setting (DEPRECATED - Use AUTH_TYPE instead)
+BYPASS_AUTH_FOR_LOCAL=${config.authType === "none" ? "true" : "false"}
+
 # MySQL configuration (for app databases, not agent storage)
 MYSQL_ROOT_HOST=${config.mysqlRootHost}
 MYSQL_ROOT_PORT=${config.mysqlRootPort}
@@ -495,7 +528,7 @@ SSO_JWT=${config.ssoJwt}
 			console.log(`AWS Profile: ${config.modelConfig.awsProfile || 'default'}`);
 		}
 		console.log(
-			`Authentication: ${config.authConfig.useMockLogin ? "Mock Login" : "SSO Integration"}`,
+			`Authentication: AUTH_TYPE=${config.authConfig.authType}`,
 		);
 		console.log(`App Port: ${config.port}`);
 	}
@@ -587,6 +620,7 @@ SSO_JWT=${config.ssoJwt}
 			appTemplateDir: "app-templates/v8",
 			showUsageCost: true,
 			modelConfig,
+			authType: "none", // Default to no auth for agents service in development
 			mysqlRootHost: mysqlConfig.mysqlRootHost,
 			mysqlRootPort: parseInt(mysqlConfig.mysqlRootPort, 10),
 			mysqlRootUser: mysqlConfig.mysqlRootUser,

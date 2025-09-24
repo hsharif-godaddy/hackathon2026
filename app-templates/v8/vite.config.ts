@@ -12,6 +12,9 @@ if (process.env.FRONTEND_DOMAIN) {
 if (process.env.ALLOWED_ORIGINS) {
 	allowedHosts.push(...process.env.ALLOWED_ORIGINS.split(','));
 }
+if (process.env.VITE_PARENT_ORIGIN) {
+	allowedHosts.push(process.env.VITE_PARENT_ORIGIN);
+}
 if (allowedHosts.length === 0) {
 	allowedHosts.push('*');
 }

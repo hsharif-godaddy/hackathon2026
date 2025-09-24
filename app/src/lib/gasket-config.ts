@@ -53,7 +53,7 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
         realm: 'idp',
         risk: 'low',
         type: ['basic'],
-        disableInDev: process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_AUTH_IN_DEV === 'true'
+        disableInDev: false // Now handled by centralized auth system in features.ts
       },
       sso: {
         loginUrl: process.env.NEXT_PUBLIC_SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login',
@@ -161,12 +161,12 @@ export async function getLogoutUrl(): Promise<string> {
   return `${baseUrl}?${params.toString()}`;
 }
 
-// Helper function to check if auth is disabled in dev (async version)
+// Helper function to check if auth is disabled (now uses centralized auth system)
 export async function isAuthDisabled(): Promise<boolean> {
-  const gasketConfig = await getGasketConfig();
-  const disabled = gasketConfig.auth.disableInDev;
+  const { auth } = await import('./features');
+  const disabled = auth.isDisabled();
   if (disabled && typeof globalThis !== 'undefined' && !globalThis.__authDisabledLogged) {
-    logger.info('🔧 Authentication disabled in development (NEXT_PUBLIC_AUTH_IN_DEV=true)');
+    logger.info(`🔧 Authentication disabled (AUTH_TYPE=${auth.getType()})`);
     logger.info('   - All protected routes are accessible');
     logger.info('   - JWT validation returns mock success');
     logger.info('   - No SSO calls will be made');

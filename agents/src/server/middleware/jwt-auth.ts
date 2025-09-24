@@ -19,6 +19,13 @@ export interface CustomerContext {
 
 export interface AuthenticatedRequest extends Request {
   customerContext?: CustomerContext;
+  authDetails?: {
+    customerId?: string;
+    shopperId?: string;
+    siteId?: string;
+    authenticationBypass?: boolean;
+    bypassReason?: string;
+  };
 }
 
 // Public key cache entry with TTL
@@ -262,16 +269,25 @@ export class JWTAuthMiddleware {
     try {
       // Bypass authentication for local development when explicitly disabled
       if (process.env.BYPASS_AUTH_FOR_LOCAL === 'true') {
-        console.log('🚨 Authentication bypassed for local development');
-        
         // Add mock customer context for local development
-        (req as AuthenticatedRequest).customerContext = {
+        const customerContext: CustomerContext = {
           customerId: 'local-dev-customer',
           shopperId: 'local-dev-shopper',
           accountId: 'local-dev-account',
           siteId: process.env.SITE_ID || 'local-dev-site',
           exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
           iat: Math.floor(Date.now() / 1000)
+        };
+        
+        (req as AuthenticatedRequest).customerContext = customerContext;
+        
+        // Add auth details for request logging
+        (req as AuthenticatedRequest).authDetails = {
+          customerId: customerContext.customerId,
+          shopperId: customerContext.shopperId,
+          siteId: customerContext.siteId,
+          authenticationBypass: true,
+          bypassReason: 'BYPASS_AUTH_FOR_LOCAL enabled for development'
         };
         
         next();
@@ -334,12 +350,13 @@ export class JWTAuthMiddleware {
       // Add customer context to request
       (req as AuthenticatedRequest).customerContext = customerContext;
       
-      console.log('Customer authentication successful:', {
+      // Add auth details for request logging
+      (req as AuthenticatedRequest).authDetails = {
         customerId: customerContext.customerId,
         shopperId: customerContext.shopperId,
         siteId: customerContext.siteId,
-        endpoint: req.path
-      });
+        authenticationBypass: false
+      };
       
       next();
       

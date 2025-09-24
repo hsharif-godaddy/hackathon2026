@@ -4,7 +4,6 @@ export * from './core/agent.js'
 export * from './core/agent-factory.js'
 export * from './core/agent-factory-experimental.js'
 export * from './core/streaming-agentic-runner.js'
-export * from './core/simple-streaming-agentic-runner.js'
 
 // Provider exports
 export * from './providers/unified-provider.js'
@@ -27,7 +26,6 @@ export * from './utils/token-counter.js'
 export { Agent } from './core/agent.js'
 export { AgentFactory, createAgentFactory, defaultAgentFactory } from './core/agent-factory.js'
 export { StreamingAgenticRunner, createStreamingAgenticRunner } from './core/streaming-agentic-runner.js'
-export { SimpleStreamingAgenticRunner, createSimpleStreamingAgenticRunner, streamAgenticLoop } from './core/simple-streaming-agentic-runner.js'
 export { 
   SimpleMessageBuilder, 
   CachingMessageBuilder, 

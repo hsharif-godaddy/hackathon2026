@@ -3,12 +3,25 @@
  * This module handles all environment variable parsing and feature flags
  */
 
+/**
+ * Authentication types supported by the agents service
+ */
+export enum AuthType {
+  /** Full JWT authentication with SSO (production) */
+  JWT = 'jwt',
+  /** Mock authentication for development/testing */
+  MOCK = 'mock',
+  /** No authentication (local development only) */
+  NONE = 'none'
+}
+
 interface AgentFeatureConfig {
   // Price and usage limits
   dailyPriceLimit: number
   
   // Server configuration
   nodeEnv: string
+  authType: AuthType
   
   // OpenAI configuration
   openaiApiKey: string | undefined
@@ -29,6 +42,36 @@ interface AgentFeatureConfig {
 export const MAX_PROMPT_LENGTH = 40000
 
 /**
+ * Determine authentication type based on environment
+ */
+function determineAuthType(): AuthType {
+  const nodeEnv = process.env.NODE_ENV
+  const explicitAuthType = process.env.AUTH_TYPE?.toLowerCase() as AuthType
+  
+  // Explicit AUTH_TYPE override (for testing/debugging)
+  if (explicitAuthType && Object.values(AuthType).includes(explicitAuthType)) {
+    return explicitAuthType
+  }
+  
+  // Default behavior based on NODE_ENV
+  switch (nodeEnv) {
+    case 'production':
+      return AuthType.JWT
+    case 'development':
+      // In development, check legacy environment variable for compatibility
+      if (process.env.BYPASS_AUTH_FOR_LOCAL === 'true') {
+        return AuthType.NONE
+      }
+      return AuthType.MOCK
+    case 'test':
+      return AuthType.MOCK
+    default:
+      // Unknown environment - default to JWT for security
+      return AuthType.JWT
+  }
+}
+
+/**
  * Parse environment variables and return agent feature configuration
  */
 function parseEnvironmentFeatures(): AgentFeatureConfig {
@@ -38,6 +81,7 @@ function parseEnvironmentFeatures(): AgentFeatureConfig {
     
     // Server configuration
     nodeEnv: process.env.NODE_ENV || 'development',
+    authType: determineAuthType(),
         
     // OpenAI configuration
     openaiApiKey: process.env.OPENAI_API_KEY,
@@ -89,6 +133,22 @@ export const getAgentConfig = {
       password: features.mysqlRootPass,
     };
   },
+} as const
+
+/**
+ * Authentication helper functions for agents service
+ */
+export const auth = {
+  /** Get current authentication type */
+  getType: () => getAgentFeatures().authType,
+  /** Check if authentication is disabled (no auth required) */
+  isDisabled: () => getAgentFeatures().authType === AuthType.NONE,
+  /** Check if using mock authentication */
+  isMock: () => getAgentFeatures().authType === AuthType.MOCK,
+  /** Check if using full JWT authentication */
+  isJWT: () => getAgentFeatures().authType === AuthType.JWT,
+  /** Check if authentication is required (not NONE) */
+  isRequired: () => getAgentFeatures().authType !== AuthType.NONE
 } as const
 
 /**

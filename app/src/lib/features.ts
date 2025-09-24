@@ -3,8 +3,21 @@
  * This module handles all environment variable parsing and feature flags
  */
 
+/**
+ * Authentication types supported by the application
+ */
+export enum AuthType {
+  /** Full JWT authentication with SSO (production) */
+  JWT = 'jwt',
+  /** Mock authentication for development/testing */
+  MOCK = 'mock',
+  /** No authentication (local development only) */
+  NONE = 'none'
+}
+
 interface FeatureConfig {
   showCodeEditor: boolean
+  authType: AuthType
   useMockLogin: boolean
   developmentMode: boolean
   showGalleryPage: boolean
@@ -17,12 +30,46 @@ interface FeatureConfig {
 export const MAX_PROMPT_LENGTH = 40000
 
 /**
+ * Determine authentication type based on environment
+ */
+function determineAuthType(): AuthType {
+  const nodeEnv = process.env.NODE_ENV
+  const explicitAuthType = process.env.AUTH_TYPE?.toLowerCase() as AuthType
+  
+  // Explicit AUTH_TYPE override (for testing/debugging)
+  if (explicitAuthType && Object.values(AuthType).includes(explicitAuthType)) {
+    return explicitAuthType
+  }
+  
+  // Default behavior based on NODE_ENV
+  switch (nodeEnv) {
+    case 'production':
+      return AuthType.JWT
+    case 'development':
+      // In development, check legacy environment variables for compatibility
+      if (process.env.NEXT_PUBLIC_USE_MOCK_LOGIN === 'true' || 
+          process.env.NEXT_PUBLIC_AUTH_IN_DEV === 'true') {
+        return AuthType.NONE
+      }
+      return AuthType.MOCK
+    case 'test':
+      return AuthType.MOCK
+    default:
+      // Unknown environment - default to JWT for security
+      return AuthType.JWT
+  }
+}
+
+/**
  * Parse environment variables and return feature configuration
  */
 function parseEnvironmentFeatures(): FeatureConfig {
+  const authType = determineAuthType()
+  
   return {
     showCodeEditor: process.env.NEXT_PUBLIC_SHOW_CODE_EDITOR === 'true',
-    useMockLogin: process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_LOGIN === 'true',
+    authType: authType,
+    useMockLogin: authType === AuthType.MOCK || authType === AuthType.NONE,
     developmentMode: process.env.NODE_ENV === 'development',
     showGalleryPage: process.env.NEXT_PUBLIC_SHOW_GALLERY_PAGE === 'true',
     // Add more feature parsing here
@@ -44,6 +91,22 @@ export const isFeatureEnabled = {
   developmentMode: () => features.developmentMode,
   galleryPage: () => features.showGalleryPage,
   // Add more feature checkers here
+} as const
+
+/**
+ * Authentication helper functions
+ */
+export const auth = {
+  /** Get current authentication type */
+  getType: () => features.authType,
+  /** Check if authentication is disabled (no auth required) */
+  isDisabled: () => features.authType === AuthType.NONE,
+  /** Check if using mock authentication */
+  isMock: () => features.authType === AuthType.MOCK,
+  /** Check if using full JWT authentication */
+  isJWT: () => features.authType === AuthType.JWT,
+  /** Check if authentication is required (not NONE) */
+  isRequired: () => features.authType !== AuthType.NONE
 } as const
 
 /**

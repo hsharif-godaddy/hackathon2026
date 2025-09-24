@@ -593,6 +593,30 @@ export class DevelopmentHandler implements LogHandler {
       parts.push(this.gray(`[req:${requestId}]`));
     }
 
+    // Add auth details if present
+    if (data.auth) {
+      const authParts: string[] = [];
+      if (data.auth.customerId) {
+        authParts.push(`customer:${this.cyan(data.auth.customerId)}`);
+      }
+      if (data.auth.shopperId) {
+        authParts.push(`shopper:${this.cyan(data.auth.shopperId)}`);
+      }
+      if (data.auth.siteId) {
+        authParts.push(`site:${this.cyan(data.auth.siteId)}`);
+      }
+      if (data.auth.authenticationBypass) {
+        authParts.push(this.yellow('bypass'));
+        if (data.auth.bypassReason) {
+          authParts.push(this.gray(`(${data.auth.bypassReason})`));
+        }
+      }
+      
+      if (authParts.length > 0) {
+        parts.push(this.gray(`[${authParts.join(' ')}]`));
+      }
+    }
+
     // Add error details on same line if it's an error
     if (isError && event.error) {
       parts.push(this.red(`- ${event.error.message}`));

@@ -304,7 +304,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         const endpointUrl = `${agentUrl}/apps/${siteId}/ensure-running`
         console.log('🔍 Constructed endpoint URL:', endpointUrl)
 
-        const response = await fetch(endpointUrl, {
+        const response = await agentFetch(endpointUrl, {
           method: 'POST',
           signal: AbortSignal.timeout(15000) // 15 second timeout (same as integration test)
         })

@@ -195,6 +195,7 @@ Please retry your tool call with corrected input formatting.`
     }
 
     let fullContent = ''
+    let finalResult: Awaited<ReturnType<typeof streamText>>
 
     try {
       // Stream text chunks
@@ -204,7 +205,7 @@ Please retry your tool call with corrected input formatting.`
       }
 
       // Wait for final result and return it
-      const finalResult = await result
+      finalResult = await result
     } catch (error: any) {
       // Handle streaming errors (like tool input validation failures during streaming)
       if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {

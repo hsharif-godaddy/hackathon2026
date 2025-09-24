@@ -373,6 +373,13 @@ export interface HttpRequestData {
   headers?: Record<string, string>;
   query?: Record<string, any>;
   body?: any;
+  auth?: {
+    customerId?: string;
+    shopperId?: string;
+    siteId?: string;
+    authenticationBypass?: boolean;
+    bypassReason?: string;
+  };
   responseStats?: {
     statusCode: number;
     contentLength?: number;

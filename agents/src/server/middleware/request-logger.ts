@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { logger } from '../../logging/index.js';
 import { httpRequestEvents } from '../../logging/events/index.js';
 import { nanoid } from 'nanoid';
+import type { AuthenticatedRequest } from './jwt-auth.js';
 
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const start = Date.now();
@@ -12,6 +13,9 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
   const contentType = req.get('Content-Type');
   const accept = req.get('Accept');
   const authorization = req.get('Authorization');
+  
+  // Get auth details if available (set by JWT auth middleware)
+  const authDetails = (req as AuthenticatedRequest).authDetails;
   
   const requestData = {
     method: req.method,
@@ -26,7 +30,9 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
     },
     ...(Object.keys(req.query).length > 0 && { query: req.query }),
     // Only log body for non-GET requests and if it's not too large
-    ...(req.method !== 'GET' && req.body && JSON.stringify(req.body).length < 1000 && { body: req.body })
+    ...(req.method !== 'GET' && req.body && JSON.stringify(req.body).length < 1000 && { body: req.body }),
+    // Include auth details if available
+    ...(authDetails && { auth: authDetails })
   };
   
   // Log response when finished (single log message)
