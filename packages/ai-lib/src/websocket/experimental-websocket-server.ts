@@ -2,26 +2,17 @@ import { Server as SocketIOServer } from 'socket.io'
 import { Server as HTTPServer } from 'http'
 import type { ExperimentalAgentFactory, ExperimentalAgentWrapper } from '../core/agent-factory-experimental.js'
 import { createExperimentalAgentFactory } from '../core/agent-factory-experimental.js'
-import type { MessagePersistence, MessagePersistenceWithCleanup, PersistenceStreamingEvent, MessagePersistenceContext } from './persistence-interface.js'
+import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '../utils/model-pricing.js'
+import type { 
+  MessageProvider, 
+  ContextProvider, 
+  ConversationPersistence, 
+  ConversationPersistenceWithCleanup,
+  ConversationMessage,
+  PersistenceStreamingEvent,
+  ConversationContext
+} from './interfaces.js'
 
-/**
- * Interface for providing conversation history to agents
- */
-export interface ConversationHistoryProvider {
-  /**
-   * Load conversation history for a given conversation ID
-   * @param conversationId - The conversation ID to load history for
-   * @param context - Additional context that might be needed for loading history
-   * @returns Array of conversation messages in chronological order
-   */
-  loadConversationHistory(
-    conversationId: string,
-    context?: Record<string, unknown>
-  ): Promise<Array<{
-    role: 'user' | 'assistant'
-    content: string
-  }>>
-}
 
 /**
  * WebSocket Server Configuration for ExperimentalAgentFactory
@@ -50,10 +41,13 @@ export interface ExperimentalWebSocketConfig {
   includeUsageData?: boolean
 
   /** Message persistence implementation */
-  messagePersistence?: MessagePersistence
+  messagePersistence?: ConversationPersistence
 
-  /** Conversation history provider for loading conversation context */
-  conversationHistoryProvider?: ConversationHistoryProvider
+  /** Message provider for loading conversation history */
+  messageProvider?: MessageProvider
+
+  /** Context provider for loading system context and other contextual messages */
+  contextProvider?: ContextProvider
 
   /** Event handlers */
   onConnection?: (socketId: string) => void
@@ -79,10 +73,7 @@ export interface ChatMessage {
   agentName?: string // For backward compatibility
   agentId?: string   // Following schema pattern
   context?: Record<string, unknown>
-  conversationHistory?: Array<{
-    role: 'user' | 'assistant'
-    content: string
-  }>
+  conversationHistory?: ConversationMessage[]
 }
 
 /**
@@ -107,7 +98,7 @@ export class ExperimentalWebSocketServer {
   private activeConversations: Map<string, {
     conversationId: string
     agentName: string
-    context: MessagePersistenceContext
+    context: ConversationContext
     streamingEvents: PersistenceStreamingEvent[]
     startTime: number
   }> = new Map()
@@ -173,7 +164,7 @@ export class ExperimentalWebSocketServer {
         if (conversation && this.config.messagePersistence) {
           // Check if persistence supports cleanup
           if ('handleDisconnection' in this.config.messagePersistence) {
-            await (this.config.messagePersistence as MessagePersistenceWithCleanup).handleDisconnection(
+            await (this.config.messagePersistence as ConversationPersistenceWithCleanup).handleDisconnection(
               socketId,
               [conversation.conversationId]
             )
@@ -449,7 +440,7 @@ export class ExperimentalWebSocketServer {
       let conversationId: string | undefined
       if (this.config.messagePersistence) {
         const metadata = (processedContext?.metadata as any) || {}
-        const persistenceContext: MessagePersistenceContext = {
+        const persistenceContext: ConversationContext = {
           socketId,
           agentName,
           appId: metadata.appId,
@@ -503,35 +494,24 @@ export class ExperimentalWebSocketServer {
       }
 
       // Load conversation history if provider is configured and conversation ID is available
-      if (this.config.conversationHistoryProvider && !data.conversationHistory) {
-        // Try to get conversation ID from various sources
-        let historyConversationId = conversationId // From persistence
+      if (this.config.messageProvider && !data.conversationHistory && conversationId) {
+        try {
+          console.log('📚 Loading conversation history for conversation:', conversationId)
+          const conversationHistory = await this.config.messageProvider.loadMessages(
+            conversationId,
+            processedContext || {}
+          )
 
-        // Also check if conversation ID is provided in context (fallback, not normally used)
-        if (!historyConversationId && processedContext?.conversation) {
-          const conversationContext = processedContext.conversation as any
-          historyConversationId = conversationContext?.conversationId
-        }
+          // Add conversation history to the data
+          data.conversationHistory = conversationHistory
 
-        if (historyConversationId) {
-          try {
-            console.log('📚 Loading conversation history for conversation:', historyConversationId)
-            const conversationHistory = await this.config.conversationHistoryProvider.loadConversationHistory(
-              historyConversationId,
-              processedContext
-            )
-
-            // Add conversation history to the data
-            data.conversationHistory = conversationHistory
-
-            console.log('✅ Loaded conversation history:', {
-              conversationId: historyConversationId,
-              historyLength: conversationHistory.length
-            })
-          } catch (error) {
-            console.warn('⚠️ Failed to load conversation history:', error)
-            // Continue without history - don't fail the entire request
-          }
+          console.log('✅ Loaded conversation history:', {
+            conversationId,
+            historyLength: conversationHistory.length
+          })
+        } catch (error) {
+          console.warn('⚠️ Failed to load conversation history:', error)
+          // Continue without history - don't fail the entire request
         }
       }
 
@@ -578,6 +558,77 @@ export class ExperimentalWebSocketServer {
   }
 
   /**
+   * Assemble messages from various providers with proper ordering and cache points
+   */
+  private async assembleMessages(
+    data: ChatMessage, 
+    context: Record<string, unknown> | undefined
+  ): Promise<{
+    messages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }>
+    contextMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }>
+  }> {
+    const messages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }> = []
+    const contextMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }> = []
+    const beforeHistoryMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }> = []
+    const afterHistoryMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }> = []
+
+    // Load context messages if provider is configured
+    if (this.config.contextProvider) {
+      try {
+        const contextToLoad = context || {}
+        const loadedContextMessages = await this.config.contextProvider.loadContextMessages(contextToLoad)
+        
+        // Separate messages by insertion order and convert to proper format
+        for (const msg of loadedContextMessages) {
+          const { insertionOrder, ...messageWithoutOrder } = msg
+          const convertedMessage = {
+            role: messageWithoutOrder.role,
+            content: messageWithoutOrder.content,
+            ...(messageWithoutOrder.cachePoint && { cachePoint: messageWithoutOrder.cachePoint })
+          }
+          
+          if (insertionOrder === 'before_history') {
+            beforeHistoryMessages.push(convertedMessage)
+          } else {
+            afterHistoryMessages.push(convertedMessage)
+          }
+        }
+        
+        console.log(`✅ Loaded ${loadedContextMessages.length} context messages (${beforeHistoryMessages.length} before history, ${afterHistoryMessages.length} after history)`)
+        console.log(`🎯 Cache points: ${loadedContextMessages.filter(m => m.cachePoint).length} messages with caching enabled`)
+      } catch (error) {
+        console.error('❌ Error loading context messages:', error)
+        // Continue without context if loading fails
+      }
+    }
+
+    // Assemble final message order:
+    // 1. Context messages marked "before_history"
+    contextMessages.push(...beforeHistoryMessages)
+    
+    // 2. Conversation history (if provided) - convert to proper format
+    if (data.conversationHistory && data.conversationHistory.length > 0) {
+      console.log(`🔄 Adding ${data.conversationHistory.length} conversation history messages`)
+      const convertedHistoryMessages = data.conversationHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        ...(msg.cachePoint && { cachePoint: msg.cachePoint })
+      }))
+      messages.push(...convertedHistoryMessages)
+    }
+    
+    // 3. Context messages marked "after_history"
+    contextMessages.push(...afterHistoryMessages)
+
+    console.log(`🚀 Message assembly complete:`)
+    console.log(`  - Context messages: ${contextMessages.length}`)
+    console.log(`  - History messages: ${messages.length}`)
+    console.log(`  - Total cache points: ${[...contextMessages, ...messages].filter(m => m.cachePoint).length}`)
+
+    return { messages, contextMessages }
+  }
+
+  /**
    * Stream agent response to client using normalized event schema
    */
   private async streamAgentResponse(
@@ -590,43 +641,20 @@ export class ExperimentalWebSocketServer {
   ): Promise<void> {
     let currentStep = 1
 
-    // Prepare messages array
-    const messages = []
+    // Assemble messages using clean interface-based approach
+    const { messages, contextMessages } = await this.assembleMessages(data, context)
 
-    // Add conversation history if provided
-    if (data.conversationHistory && data.conversationHistory.length > 0) {
-      console.log(`🔄 ExperimentalWebSocketServer: Adding ${data.conversationHistory.length} conversation history messages`)
-      console.log(`📋 ExperimentalWebSocketServer: Conversation history details:`)
-      data.conversationHistory.forEach((msg, index) => {
-        console.log(`  ${index + 1}. ${msg.role}: ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`)
-      })
-      messages.push(...data.conversationHistory)
-    } else {
-      console.log(`ℹ️ ExperimentalWebSocketServer: No conversation history provided`)
-      console.log(`🔍 ExperimentalWebSocketServer: data.conversationHistory =`, data.conversationHistory)
-    }
+    // Keep the original user prompt intact - no modification!
+    const originalPrompt = data.message
 
-    // Prepare the prompt
-    let prompt = data.message
-    if (context) {
-      prompt = `[CONTEXT]\n${JSON.stringify(context, null, 2)}\n\n${data.message}`
-    }
-
-    console.log(`🚀 ExperimentalWebSocketServer: Calling streamGenerate with:`)
-    console.log(`  - Prompt: ${prompt.substring(0, 200)}${prompt.length > 200 ? '...' : ''}`)
-    console.log(`  - Messages count: ${messages.length}`)
-    console.log(`  - Messages:`, messages.map(m => `${m.role}: ${m.content.substring(0, 50)}...`))
-
-    // Start streaming using streamGenerate with error handling for tool validation issues
+    // Start streaming using streamGenerate with clean message assembly
     let streamResult
     try {
-      streamResult = await agent.streamGenerate(prompt, {
-        ...(messages.length > 0 && {
-          messages: messages.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          }))
-        }),
+      streamResult = await agent.streamGenerate(originalPrompt, {
+        // Add context messages with cache points intact
+        ...(contextMessages.length > 0 && { context: contextMessages }),
+        // Add conversation history messages
+        ...(messages.length > 0 && { messages }),
         // Pass execution context for tools
         ...(context && { executionContext: context })
       })
@@ -709,16 +737,14 @@ Please try again with corrected formatting.`
           
           // Add the error as a user message to help the agent understand what went wrong
           const retryMessages = [...messages, 
-            { role: 'user' as const, content: data.message },
+            { role: 'user' as const, content: originalPrompt },
             { role: 'assistant' as const, content: 'I encountered an error with my tool call due to invalid JSON syntax. Let me fix that and try again.' },
             { role: 'user' as const, content: retryPrompt }
           ]
 
           streamResult = await agent.streamGenerate(retryPrompt, {
-            messages: retryMessages.map(msg => ({
-              role: msg.role,
-              content: msg.content
-            })),
+            ...(contextMessages.length > 0 && { context: contextMessages }),
+            messages: retryMessages,
             ...(context && { executionContext: context })
           })
         } catch (retryError: any) {
@@ -753,6 +779,57 @@ Please try again with corrected formatting.`
 
     // Get final result with usage and tool calls
     const finalResult = await streamResult.getFinalResult()
+    
+    // Log token and cache usage information
+    if (finalResult.usage) {
+      // Merge usage data with caching information
+      const usage: TokenUsage = {
+        ...finalResult.usage,
+        // Include cache metrics from the caching object if available
+        ...((finalResult as any).caching && {
+          cachedInputTokensRead: (finalResult as any).caching.cachedInputTokens,
+          cachedInputTokensWrite: (finalResult as any).caching.cacheWriteInputTokens
+        })
+      }
+      
+      // Get model information from agent config
+      // Get model name from agent configuration
+      let modelName = 'unknown'
+      try {
+        const agentConfig = agent.getConfig()
+        modelName = agentConfig.modelName || agentName || 'unknown'
+      } catch (error) {
+        console.warn(`⚠️  Failed to get model name from agent config: ${error}`)
+        modelName = agentName || 'unknown'
+      }
+      
+      console.log(`📊 Token Usage Statistics:`)
+      console.log(`   Input tokens: ${usage.inputTokens || 0}`)
+      console.log(`   Output tokens: ${usage.outputTokens || 0}`)  
+      console.log(`   Total tokens: ${usage.totalTokens || 0}`)
+      
+      // Log cache usage if available
+      const totalCachedTokens = (usage.cachedInputTokensRead || 0) + (usage.cachedInputTokensWrite || 0)
+      if (totalCachedTokens > 0) {
+        const cacheHitRate = getCacheHitRate(usage)
+        console.log(`   🎯 Cached input tokens: ${totalCachedTokens}`)
+        if (usage.cachedInputTokensRead && usage.cachedInputTokensWrite) {
+          console.log(`     • Read: ${usage.cachedInputTokensRead}, Write: ${usage.cachedInputTokensWrite}`)
+        } else if (usage.cachedInputTokensRead) {
+          console.log(`     • Read: ${usage.cachedInputTokensRead}`)
+        } else if (usage.cachedInputTokensWrite) {
+          console.log(`     • Write: ${usage.cachedInputTokensWrite}`)
+        }
+        console.log(`   💰 Cache hit rate: ${cacheHitRate.toFixed(1)}%`)
+      } else {
+        console.log(`   🔍 No cache usage detected`)
+      }
+      
+      // Calculate and log cost estimate using accurate model pricing
+      const costEstimate = calculateCostEstimate(usage, modelName)
+      const costLines = formatCostEstimate(costEstimate, usage)
+      costLines.forEach(line => console.log(line))
+    }
 
     // Calculate duration
     const duration = `${Date.now() - startTime}ms`
@@ -858,6 +935,17 @@ export function createExperimentalWebSocketServer(
 ): ExperimentalWebSocketServer {
   return new ExperimentalWebSocketServer(httpServer, config)
 }
+
+// Re-export interfaces for convenience
+export type {
+  MessageProvider,
+  ContextProvider,
+  ConversationPersistence,
+  ConversationPersistenceWithCleanup,
+  ConversationMessage,
+  PersistenceStreamingEvent,
+  ConversationContext
+} from './interfaces.js'
 
 /**
  * Helper function for single agent use case

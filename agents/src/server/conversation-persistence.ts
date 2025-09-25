@@ -6,18 +6,17 @@
  */
 
 import type { 
-  MessagePersistence, 
-  MessagePersistenceWithCleanup, 
+  ConversationPersistence, 
+  ConversationPersistenceWithCleanup, 
   PersistenceStreamingEvent, 
-  MessagePersistenceContext, 
-  ConversationResult 
+  ConversationContext
 } from '@airo/ai-lib'
 import { ConversationBridge } from '../agents/ai-lib-agents/conversation-bridge.js'
 import type { EnhancedAgentContext } from '../agents/ai-lib-agents/types.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { MAX_PROMPT_LENGTH } from '../services/features.js'
 
-export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
+export class AgentsMessagePersistence implements ConversationPersistenceWithCleanup {
   private conversationBridge: ConversationBridge
   private appRepository: AppRepository
   
@@ -25,7 +24,7 @@ export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
   private activeConversations = new Map<string, {
     conversationId: string
     userMessageId: string
-    context: MessagePersistenceContext
+    context: ConversationContext
   }>()
 
   constructor() {
@@ -36,8 +35,8 @@ export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
   async continueConversation(
     conversationId: string,
     message: string,
-    context: MessagePersistenceContext
-  ): Promise<string> {
+    context: ConversationContext
+  ): Promise<void> {
     console.log('🔄 Continuing conversation persistence:', {
       conversationId,
       socketId: context.socketId,
@@ -60,12 +59,11 @@ export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
     })
 
     console.log('💾 Conversation continued:', { conversationId, userMessageId })
-    return conversationId
   }
 
   async startConversation(
     message: string,
-    context: MessagePersistenceContext
+    context: ConversationContext
   ): Promise<string> {
     console.log('💾 Starting conversation persistence:', {
       socketId: context.socketId,
@@ -155,7 +153,7 @@ export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
   async captureStreamingEvent(
     conversationId: string,
     event: PersistenceStreamingEvent,
-    context: MessagePersistenceContext
+    context: ConversationContext
   ): Promise<void> {
     // Capture streaming events for persistence (no logging to reduce noise)
   }
@@ -163,8 +161,8 @@ export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
   async completeConversation(
     conversationId: string,
     streamingEvents: PersistenceStreamingEvent[],
-    result: ConversationResult,
-    context: MessagePersistenceContext
+    result: any,
+    context: ConversationContext
   ): Promise<void> {
 
     // Convert PersistenceStreamingEvent to the format expected by ConversationBridge
@@ -192,7 +190,7 @@ export class AgentsMessagePersistence implements MessagePersistenceWithCleanup {
     conversationId: string | undefined,
     error: Error,
     message?: string,
-    context?: MessagePersistenceContext
+    context?: ConversationContext
   ): Promise<void> {
     console.error('💾 Conversation error:', {
       conversationId,

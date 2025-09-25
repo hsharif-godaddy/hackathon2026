@@ -6,6 +6,7 @@
  */
 
 import { getModel, getModelInfo } from '@airo/ai-lib'
+import { logger } from '../logging/index.js'
 
 export type ModelTier = 'full' | 'fast'
 
@@ -43,9 +44,9 @@ async function isBedrockAvailable(): Promise<boolean> {
       return false
     }
     
-    // Test with a simple model info call
-    const modelInfo = getModelInfo('claude4')
-    return modelInfo.provider === 'bedrock' && !modelInfo.usingProxy
+    // Test with a simple model info call - pass AWS region to force Bedrock provider detection
+    const modelInfo = getModelInfo('claude4', { awsRegion: process.env.AWS_REGION || 'us-east-1' })
+    return modelInfo.provider === 'bedrock'
   } catch {
     return false
   }
@@ -88,29 +89,49 @@ export async function getAgentModel(tier: ModelTier) {
   const anthropicAvailable = isAnthropicAvailable()
   const openaiAvailable = isOpenAIAvailable()
   
-  console.log(`🤖 Selecting ${tier} model...`)
-  console.log(`   Bedrock available: ${bedrockAvailable}`)
-  console.log(`   Anthropic available: ${anthropicAvailable}`)
-  console.log(`   OpenAI available: ${openaiAvailable}`)
+  logger.info('model.selection.begin', {
+    tier,
+    providers: {
+      bedrockAvailable,
+      anthropicAvailable,
+      openaiAvailable
+    }
+  })
   
   let selectedModel: string
   
   if (bedrockAvailable) {
     // Prefer Bedrock for better models and cost
     selectedModel = config.bedrock
-    console.log(`   ✅ Using Bedrock model: ${selectedModel}`)
+    logger.info('model.provider.selected', {
+      provider: 'bedrock',
+      selectedModel,
+      tier
+    })
   } else if (anthropicAvailable) {
     // Second preference: Anthropic direct API
     selectedModel = config.bedrock // Use Claude models through Anthropic API
-    console.log(`   ✅ Using Anthropic API model: ${selectedModel}`)
+    logger.info('model.provider.selected', {
+      provider: 'anthropic',
+      selectedModel,
+      tier
+    })
   } else if (openaiAvailable) {
     // Fallback to OpenAI
     selectedModel = config.openai
-    console.log(`   ✅ Using OpenAI model: ${selectedModel}`)
+    logger.info('model.provider.selected', {
+      provider: 'openai',
+      selectedModel,
+      tier
+    })
   } else {
     // Last resort - try fallback (may use proxy if configured)
     selectedModel = config.fallback
-    console.log(`   ⚠️  No providers configured, using fallback: ${selectedModel}`)
+    logger.warn('model.provider.fallback', {
+      selectedModel,
+      tier,
+      reason: 'no_providers_configured'
+    })
   }
   
   try {
@@ -118,11 +139,114 @@ export async function getAgentModel(tier: ModelTier) {
     
     // Log final model info
     const modelInfo = getModelInfo(selectedModel)
-    console.log(`   📊 Final model: ${modelInfo.fullName} (${modelInfo.provider}${modelInfo.usingProxy ? ' via proxy' : ''})`)
+    logger.info('model.selection.success', {
+      tier,
+      selectedModel,
+      modelInfo: {
+        shortName: modelInfo.shortName,
+        fullName: modelInfo.fullName,
+        provider: modelInfo.provider,
+        usingProxy: modelInfo.usingProxy
+      }
+    })
     
     return model
   } catch (error) {
-    console.error(`❌ Failed to load model ${selectedModel}:`, error)
+    logger.error('model.selection.failure', {
+      tier,
+      selectedModel,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    throw new Error(`Failed to initialize ${tier} model. Please check your API credentials.`)
+  }
+}
+
+/**
+ * Get the appropriate model and model name for the specified tier
+ * 
+ * @param tier - 'full' for premium models, 'fast' for quick responses
+ * @returns Promise<{model: LanguageModel, modelName: string}> - The selected model instance and name
+ */
+export async function getAgentModelWithName(tier: ModelTier): Promise<{model: any, modelName: string}> {
+  const config = MODEL_MAPPINGS[tier]
+  
+  // Check provider availability
+  const bedrockAvailable = await isBedrockAvailable()
+  const anthropicAvailable = isAnthropicAvailable()
+  const openaiAvailable = isOpenAIAvailable()
+  
+  logger.info('model.selection.with_name.begin', {
+    tier,
+    providers: {
+      bedrockAvailable,
+      anthropicAvailable,
+      openaiAvailable
+    }
+  })
+  
+  let selectedModel: string
+  
+  if (bedrockAvailable) {
+    // Prefer Bedrock for better models and cost
+    selectedModel = config.bedrock
+    logger.info('model.provider.selected', {
+      provider: 'bedrock',
+      selectedModel,
+      tier,
+      operation: 'with_name'
+    })
+  } else if (anthropicAvailable) {
+    // Second preference: Anthropic direct API
+    selectedModel = config.bedrock // Use Claude models through Anthropic API
+    logger.info('model.provider.selected', {
+      provider: 'anthropic',
+      selectedModel,
+      tier,
+      operation: 'with_name'
+    })
+  } else if (openaiAvailable) {
+    // Fallback to OpenAI
+    selectedModel = config.openai
+    logger.info('model.provider.selected', {
+      provider: 'openai',
+      selectedModel,
+      tier,
+      operation: 'with_name'
+    })
+  } else {
+    // Last resort - try fallback (may use proxy if configured)
+    selectedModel = config.fallback
+    logger.warn('model.provider.fallback', {
+      selectedModel,
+      tier,
+      reason: 'no_providers_configured',
+      operation: 'with_name'
+    })
+  }
+  
+  try {
+    const model = await getModel(selectedModel)
+    
+    // Log final model info
+    const modelInfo = getModelInfo(selectedModel)
+    logger.info('model.selection.with_name.success', {
+      tier,
+      selectedModel,
+      modelInfo: {
+        shortName: modelInfo.shortName,
+        fullName: modelInfo.fullName,
+        provider: modelInfo.provider,
+        usingProxy: modelInfo.usingProxy
+      }
+    })
+    
+    return { model, modelName: selectedModel }
+  } catch (error) {
+    logger.error('model.selection.with_name.failure', {
+      tier,
+      selectedModel,
+      error: error instanceof Error ? error.message : String(error)
+    })
     throw new Error(`Failed to initialize ${tier} model. Please check your API credentials.`)
   }
 }

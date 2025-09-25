@@ -6,7 +6,7 @@ import {
   createPromptBuilder,
   pb
 } from '@airo/ai-lib'
-import { getAgentModel } from '../utils/model-selection.js'
+import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 
@@ -86,11 +86,13 @@ async function buildDatabaseSystemPrompt(): Promise<string> {
  */
 export async function createDatabaseAgent(options?: { appPath?: string }): Promise<ExperimentalAgentConfig> {
   const systemPrompt = await buildDatabaseSystemPrompt()
+  const { model, modelName } = await getAgentModelWithName('full') // Use full model for complex database operations
   
   return {
     name: 'Database Manager',
     system: systemPrompt,
-    model: await getAgentModel('full'), // Use full model for complex database operations
+    model,
+    modelName,
     tools: {
       mysqlOperation: allAILibTools.mysqlOperation,
       serverRestart: allAILibTools.serverRestart,

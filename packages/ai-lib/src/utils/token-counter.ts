@@ -1,5 +1,6 @@
 import { encoding_for_model, type TiktokenModel } from 'tiktoken'
 import { countTokens as countAnthropicTokens } from '@anthropic-ai/tokenizer'
+import { normalizeModelName, type ModelProvider } from './model-normalization.js'
 
 /**
  * Supported model types for token counting
@@ -24,9 +25,9 @@ export type SupportedModel =
   | 'global.anthropic.claude-sonnet-4-20250514-v1:0'
 
 /**
- * Model provider type
+ * Re-export ModelProvider type for compatibility
  */
-export type ModelProvider = 'openai' | 'anthropic' | 'bedrock-claude'
+export type { ModelProvider }
 
 /**
  * Token counting result
@@ -37,82 +38,6 @@ export interface TokenCountResult {
   normalizedModelName: string
 }
 
-/**
- * Normalize model names to their canonical forms
- */
-function normalizeModelName(modelName: string): { normalizedName: string; provider: ModelProvider } {
-  const lowerModel = modelName.toLowerCase().trim()
-  
-  // OpenAI model mappings
-  const openaiModels: Record<string, string> = {
-    'gpt-4o': 'gpt-4o',
-    'gpt4o': 'gpt-4o',
-    'gpt-4o-mini': 'gpt-4o-mini', 
-    'gpt4o-mini': 'gpt-4o-mini',
-    'gpt-4': 'gpt-4',
-    'gpt4': 'gpt-4',
-    'gpt-4-turbo': 'gpt-4-turbo',
-    'gpt-3.5-turbo': 'gpt-3.5-turbo',
-    'gpt35': 'gpt-3.5-turbo',
-    'gpt-35-turbo': 'gpt-3.5-turbo',
-  }
-  
-  // Check OpenAI models first
-  if (openaiModels[lowerModel]) {
-    return { normalizedName: openaiModels[lowerModel], provider: 'openai' }
-  }
-  
-  // Bedrock Claude model patterns (full ARN-like names)
-  if (lowerModel.includes('anthropic.claude')) {
-    // Extract the base model type from bedrock ARNs
-    if (lowerModel.includes('claude-sonnet-4')) {
-      return { normalizedName: 'claude-sonnet-4', provider: 'bedrock-claude' }
-    }
-    if (lowerModel.includes('claude-3-5-sonnet')) {
-      return { normalizedName: 'claude-3-5-sonnet', provider: 'bedrock-claude' }
-    }
-    if (lowerModel.includes('claude-3-5-haiku')) {
-      return { normalizedName: 'claude-3-5-haiku', provider: 'bedrock-claude' }
-    }
-    if (lowerModel.includes('claude-3-haiku')) {
-      return { normalizedName: 'claude-3-haiku', provider: 'bedrock-claude' }
-    }
-    if (lowerModel.includes('claude-3-sonnet')) {
-      return { normalizedName: 'claude-3-sonnet', provider: 'bedrock-claude' }
-    }
-    if (lowerModel.includes('claude-3-opus')) {
-      return { normalizedName: 'claude-3-opus', provider: 'bedrock-claude' }
-    }
-  }
-  
-  // Anthropic model mappings (short names and aliases)
-  const anthropicModels: Record<string, string> = {
-    'claude-3-opus': 'claude-3-opus',
-    'claude-3-sonnet': 'claude-3-sonnet', 
-    'claude-3-haiku': 'claude-3-haiku',
-    'claude-3-5-sonnet': 'claude-3-5-sonnet',
-    'claude-3.5-sonnet': 'claude-3-5-sonnet',
-    'claude-3-5-haiku': 'claude-3-5-haiku',
-    'claude-sonnet-4': 'claude-sonnet-4',
-    'claude-sonnet-4-20250514': 'claude-sonnet-4',
-    // Aliases
-    'claude4': 'claude-sonnet-4',
-    'sonnet4': 'claude-sonnet-4',
-    'claude35-sonnet': 'claude-3-5-sonnet',
-    'claude-haiku': 'claude-3-5-haiku',
-    'claude3-haiku': 'claude-3-haiku',
-    'haiku': 'claude-3-5-haiku',
-    'sonnet': 'claude-3-5-sonnet'
-  }
-  
-  if (anthropicModels[lowerModel]) {
-    return { normalizedName: anthropicModels[lowerModel], provider: 'anthropic' }
-  }
-  
-  // Default to OpenAI if unrecognized (fallback behavior)
-  console.warn('Unknown model "%s", defaulting to OpenAI gpt-4o for token counting', modelName)
-  return { normalizedName: 'gpt-4o', provider: 'openai' }
-}
 
 /**
  * Get tiktoken model name for OpenAI models
@@ -198,7 +123,9 @@ export function countTokens(text: string, modelName: string): TokenCountResult {
     }
   }
   
-  const { normalizedName, provider } = normalizeModelName(modelName)
+  const modelInfo = normalizeModelName(modelName)
+  const normalizedName = modelInfo.normalizedName
+  const provider = modelInfo.provider
   
   let tokenCount: number
   
@@ -277,8 +204,9 @@ export function estimateTokens(text: string): number {
  */
 export function isTokenCountingSupported(modelName: string): boolean {
   try {
-    const { provider } = normalizeModelName(modelName)
-    return provider === 'openai' || provider === 'anthropic' || provider === 'bedrock-claude'
+    const modelInfo = normalizeModelName(modelName)
+    return modelInfo.isSupported && 
+           (modelInfo.provider === 'openai' || modelInfo.provider === 'anthropic' || modelInfo.provider === 'bedrock-claude')
   } catch {
     return false
   }
@@ -288,6 +216,6 @@ export function isTokenCountingSupported(modelName: string): boolean {
  * Get the provider for a given model name
  */
 export function getModelProvider(modelName: string): ModelProvider {
-  const { provider } = normalizeModelName(modelName)
-  return provider
+  const modelInfo = normalizeModelName(modelName)
+  return modelInfo.provider
 }

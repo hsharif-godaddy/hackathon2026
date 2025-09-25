@@ -3,7 +3,7 @@ import {
   type ExperimentalAgentConfig,
   createPromptBuilder,
 } from '@airo/ai-lib'
-import { getAgentModel } from '../utils/model-selection.js'
+import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 
 /**
@@ -35,11 +35,13 @@ async function buildColorSchemeSystemPrompt(): Promise<string> {
  */
 export async function createColorSchemeAgent(): Promise<ExperimentalAgentConfig> {
   const systemPrompt = await buildColorSchemeSystemPrompt()
+  const { model, modelName } = await getAgentModelWithName('fast') // Use fast model for color scheme generation
   
   return {
     name: 'Color Scheme Designer',
     system: systemPrompt,
-    model: await getAgentModel('fast'), // Use fast model for color scheme generation
+    model,
+    modelName,
     tools: {
       // we don't need any tools for this agent
     },

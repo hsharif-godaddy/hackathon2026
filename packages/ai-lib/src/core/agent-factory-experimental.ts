@@ -95,6 +95,8 @@ export interface ExperimentalAgentConfig {
   system?: string
   /** Model to use (must be LanguageModel instance) */
   model: LanguageModel
+  /** Original model name used for token cost calculations */
+  modelName?: string
   /** Tools available to this agent */
   tools?: Record<string, any>
   /** Temperature for generation (0-1) */
@@ -320,9 +322,9 @@ export class ExperimentalAgentWrapper {
    */
   async streamGenerate(prompt: string, options?: {
     /** Previous conversation messages */
-    messages?: Array<{ role: 'user' | 'assistant', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
+    messages?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
     /** Custom context messages to be injected before previous conversation messages */
-    context?: Array<{ role: 'user' | 'assistant', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
+    context?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
     /** Execution context for tools (appId, userId, etc.) */
     executionContext?: Record<string, unknown>
   }): Promise<{

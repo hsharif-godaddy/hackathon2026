@@ -18,14 +18,11 @@ export {
 export type {
   ExperimentalWebSocketConfig,
   ChatMessage,
-  ConversationHistoryProvider
+  MessageProvider,
+  ContextProvider,
+  ConversationPersistence,
+  ConversationPersistenceWithCleanup,
+  ConversationMessage,
+  PersistenceStreamingEvent,
+  ConversationContext
 } from './experimental-websocket-server.js'
-
-// Message Persistence Interface
-export type { 
-  MessagePersistence, 
-  MessagePersistenceWithCleanup, 
-  PersistenceStreamingEvent, 
-  MessagePersistenceContext, 
-  ConversationResult 
-} from './persistence-interface.js'

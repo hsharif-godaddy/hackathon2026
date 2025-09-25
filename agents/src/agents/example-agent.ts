@@ -5,7 +5,7 @@ import {
   type AfterToolExecutionHook,
   createPromptBuilder
 } from '@airo/ai-lib'
-import { getAgentModel } from '../utils/model-selection.js'
+import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 
@@ -48,11 +48,13 @@ export async function createExampleAgent(): Promise<ExperimentalAgentConfig> {
     .file(paths.getSharedFile('communication.md'))
     .build()
 
+  const { model, modelName } = await getAgentModelWithName('fast') // Use fast model for example/demo purposes
+
   return {
     name: 'Example Agent',
     system: systemPrompt,
-
-    model: await getAgentModel('fast'), // Use fast model for example/demo purposes
+    model,
+    modelName,
     tools: {
       // Example tools - in a real agent, you'd select specific tools
       // For now, we'll just include a few basic ones

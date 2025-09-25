@@ -9,10 +9,13 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 import type { LanguageModel } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
-
-const claude4 = 'global.anthropic.claude-sonnet-4-20250514-v1:0'
-const claude35 = 'us.anthropic.claude-3-5-sonnet-20240620-v1:0'
-const claude3haiku = 'us.anthropic.claude-3-5-haiku-20241022-v1:0'
+import { 
+  normalizeModelName, 
+  getLegacyModelMappings, 
+  getAvailableModels as getAvailableModelsFromNormalization,
+  isModelSupported as isModelSupportedFromNormalization,
+  getFullModelName as getFullModelNameFromNormalization
+} from '../utils/model-normalization.js'
 
 /**
  * Claude models that can be routed through OpenAI proxy
@@ -27,37 +30,8 @@ const CLAUDE_PROXY_MODELS = {
   'haiku': 'claude-3-5-haiku-20241022',
 } as const
 
-/**
- * Model short name mappings to full model identifiers
- */
-const MODEL_MAPPINGS = {
-  // OpenAI Models
-  'gpt-4o': 'gpt-4o',
-  'gpt-4o-mini': 'gpt-4o-mini',
-  'gpt-4': 'gpt-4',
-  'gpt-3.5-turbo': 'gpt-3.5-turbo',
-  
-  // Short aliases for OpenAI
-  'gpt4o': 'gpt-4o',
-  'gpt4o-mini': 'gpt-4o-mini',
-  'gpt4': 'gpt-4',
-  'gpt35': 'gpt-3.5-turbo',
-  
-  // Bedrock Claude Models
-  'claude-3-haiku': claude3haiku,
-  'claude-3.5-sonnet': claude35,
-  'claude-sonnet-4': claude4,
-  
-  // Short aliases for Bedrock Claude
-  'claude3-haiku': claude3haiku,
-  'claude-haiku': claude3haiku,
-  'claude35-sonnet': claude35,
-  'claude4': claude4,
-  'sonnet4': claude4,
-  'haiku': claude3haiku,
-  'sonnet': claude35,
-} as const
-
+// Use unified model mappings from model-normalization
+const MODEL_MAPPINGS = getLegacyModelMappings()
 type ModelShortName = keyof typeof MODEL_MAPPINGS
 
 /**
@@ -199,19 +173,29 @@ function getProviderType(modelName: string, config?: ProviderConfig): 'openai' |
     return proxyType
   }
   
-  const fullModelName = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
+  // Check if AWS/Bedrock is available and prefer it when possible
+  const hasAwsCredentials = !!(
+    config?.awsAccessKeyId ||
+    config?.awsSecretAccessKey ||
+    config?.awsRegion ||
+    process.env.AWS_ACCESS_KEY_ID || 
+    process.env.AWS_PROFILE ||
+    process.env.AWS_REGION
+  )
   
-  // Check if it's a Bedrock model
-  if (fullModelName.includes('anthropic.') || 
-      fullModelName.includes('amazon.') || 
-      fullModelName.includes('stability.') ||
-      fullModelName.includes('cohere.') ||
-      fullModelName.includes('global.')) {
-    return 'bedrock'
+  // Use unified model normalization to determine provider - prefer Bedrock if AWS available
+  const modelInfo = normalizeModelName(modelName, hasAwsCredentials)
+  
+  // Map unified provider types to legacy types
+  switch (modelInfo.provider) {
+    case 'bedrock-claude':
+      return 'bedrock'
+    case 'anthropic':
+      return 'anthropic'
+    case 'openai':
+    default:
+      return 'openai'
   }
-  
-  // Default to OpenAI
-  return 'openai'
 }
 
 /**
@@ -401,21 +385,21 @@ export async function getModel(
  * Get available model short names
  */
 export function getAvailableModels(): string[] {
-  return Object.keys(MODEL_MAPPINGS).sort()
+  return getAvailableModelsFromNormalization()
 }
 
 /**
  * Check if a model name is supported
  */
 export function isModelSupported(modelName: string): boolean {
-  return modelName in MODEL_MAPPINGS
+  return isModelSupportedFromNormalization(modelName)
 }
 
 /**
  * Get the full model identifier from a short name
  */
 export function getFullModelName(shortName: string): string {
-  return MODEL_MAPPINGS[shortName as ModelShortName] || shortName
+  return getFullModelNameFromNormalization(shortName)
 }
 
 /**
@@ -486,7 +470,7 @@ export function getModelInfo(modelName: string, config?: ProviderConfig) {
       proxyReason = 'AWS not available, using Anthropic API directly'
     }
   } else {
-    fullModelName = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
+    fullModelName = getFullModelNameFromNormalization(modelName)
   }
   
   return {

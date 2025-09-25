@@ -4,7 +4,24 @@
  */
 
 import { Server as HTTPServer } from 'http'
-import { createExperimentalWebSocketServer, type ConversationHistoryProvider } from '@airo/ai-lib'
+import { 
+  createExperimentalWebSocketServer,
+  type MessageProvider,
+  type ContextProvider,
+  type ConversationPersistence,
+  type ConversationMessage,
+  type PersistenceStreamingEvent,
+  type ConversationContext
+} from '@airo/ai-lib'
+// Define ContextMessage interface locally (extends ConversationMessage with required insertionOrder)
+interface ContextMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  /** Optional cache point for cost optimization */
+  cachePoint?: { type: 'ephemeral' }
+  /** When to insert this message relative to conversation history */
+  insertionOrder: 'before_history' | 'after_history'
+}
 import { 
   createWebSocketAgentFactory,
   aiLibAgentMetadata
@@ -51,26 +68,39 @@ function createContextLoggingConfig(): ContextLoggingConfig {
  * Create and setup the AI-Lib WebSocket server
  */
 export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
-  console.log('🚀 Setting up ExperimentalAgentFactory WebSocket server with conversation persistence...')
+  logger.info('websocket.server.setup.begin', {
+    message: 'Setting up ExperimentalAgentFactory WebSocket server with conversation persistence'
+  })
   
   // Create context logging configuration
   const contextLoggingConfig = createContextLoggingConfig()
-  console.log('🎛️ Context logging configuration:', {
+  logger.info('websocket.context.config', {
     summary: 'Always enabled (concise)',
-    detailed: contextLoggingConfig.detailed ? 'Enabled (DEBUG_CONTEXT_DETAILED=true)' : 'Disabled',
-    appContextContent: contextLoggingConfig.appContextContent ? 'Enabled (DEBUG_APP_CONTEXT_CONTENT=true)' : 'Disabled',
-    templateContent: contextLoggingConfig.templateContent ? 'Enabled (DEBUG_TEMPLATE_CONTENT=true)' : 'Disabled',
-    visualContextDetails: contextLoggingConfig.visualContextDetails ? 'Enabled (DEBUG_VISUAL_CONTEXT=true)' : 'Disabled',
-    rawContextData: contextLoggingConfig.rawContextData ? 'Enabled (DEBUG_RAW_CONTEXT=true)' : 'Disabled'
+    detailed: contextLoggingConfig.detailed,
+    appContextContent: contextLoggingConfig.appContextContent,
+    templateContent: contextLoggingConfig.templateContent,
+    visualContextDetails: contextLoggingConfig.visualContextDetails,
+    rawContextData: contextLoggingConfig.rawContextData,
+    debugFlags: {
+      DEBUG_CONTEXT_DETAILED: process.env.DEBUG_CONTEXT_DETAILED === 'true',
+      DEBUG_APP_CONTEXT_CONTENT: process.env.DEBUG_APP_CONTEXT_CONTENT === 'true',
+      DEBUG_TEMPLATE_CONTENT: process.env.DEBUG_TEMPLATE_CONTENT === 'true',
+      DEBUG_VISUAL_CONTEXT: process.env.DEBUG_VISUAL_CONTEXT === 'true',
+      DEBUG_RAW_CONTEXT: process.env.DEBUG_RAW_CONTEXT === 'true'
+    }
   })
   
   // Enable debug logging if requested
   if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-    console.log('🔍 Conversation history debug logging enabled')
+    logger.debug('websocket.debug.conversation_history.enabled', {
+      message: 'Conversation history debug logging enabled'
+    })
   }
   
   if (process.env.DEBUG_AI_REQUESTS === 'true') {
-    console.log('🔍 AI request debug logging enabled')
+    logger.debug('websocket.debug.ai_requests.enabled', {
+      message: 'AI request debug logging enabled'
+    })
     // Enable AI SDK debug logging
     process.env.DEBUG = 'ai:*'
   }
@@ -89,14 +119,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     const conversationRepo = new ConversationRepository()
     const conversationContextManager = new ConversationContextManager(conversationRepo, 10) // Max 10 messages
     
-    // Create system context message provider with configurable logging
-    const systemContextProvider = {
-      async loadSystemContextMessages(context?: Record<string, unknown>): Promise<Array<{ role: 'system', content: string }>> {
+    // Create context provider implementation for app context and templates
+    const contextProvider: ContextProvider = {
+      async loadContextMessages(context: Record<string, unknown>): Promise<ContextMessage[]> {
         // Always show concise summary
-        console.log('🎯 SystemContext: Loading context messages')
+        logger.debug('websocket.context.provider.loading', {
+          message: 'Loading context messages'
+        })
         
         if (!context) {
-          console.log('⚠️ SystemContext: No context provided')
+          logger.warn('websocket.context.provider.no_context', {
+            message: 'No context provided'
+          })
           return []
         }
         
@@ -106,7 +140,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           
           // Detailed logging if enabled
           if (contextLoggingConfig.detailed) {
-            console.log('🔍 SystemContext: Converting to enhanced context:', {
+            logger.debug('websocket.context.provider.detailed', {
+              message: 'Converting to enhanced context',
               rawContextKeys: Object.keys(agentsAppContext),
               hasMetadata: !!agentsAppContext.metadata,
               hasAppContext: !!agentsAppContext.appContext,
@@ -117,7 +152,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           
           // Raw context data logging if enabled
           if (contextLoggingConfig.rawContextData) {
-            console.log('📋 SystemContext: Raw context data:', agentsAppContext)
+            logger.debug('websocket.context.provider.raw_data', {
+              message: 'Raw context data',
+              context: agentsAppContext
+            })
           }
           
           const enhancedContext = contextManager.convertToEnhancedContext(agentsAppContext)
@@ -133,32 +171,66 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             msg.content.includes('## Selected Element Context') ? 'element' : 'unknown'
           )
           
-          console.log(`✅ SystemContext: Built ${contextResult.contextMessages.length} messages [${contextTypes.join(', ')}]`)
+          logger.info('websocket.context.provider.success', {
+            message: 'Built context messages',
+            messageCount: contextResult.contextMessages.length,
+            messageTypes: contextTypes
+          })
           
           // Detailed context breakdown if enabled
           if (contextLoggingConfig.detailed) {
             contextResult.contextMessages.forEach((msg, index) => {
               const msgType = contextTypes[index]
-              console.log(`📄 SystemContext Message ${index + 1} (${msgType}): ${msg.content.length} chars`)
+              logger.debug('websocket.context.provider.message_detail', {
+                message: 'Context message details',
+                messageIndex: index + 1,
+                messageType: msgType,
+                contentLength: msg.content.length
+              })
             })
           }
           
-          // Return as system messages
-          return contextResult.contextMessages.map(msg => ({
-            role: 'system' as const,
-            content: msg.content
-          }))
+          // Return as context messages with proper insertion order and cache points
+          return contextResult.contextMessages.map((msg, index) => {
+            const msgType = contextTypes[index]
+            
+            // Determine insertion order based on message type
+            let insertionOrder: 'before_history' | 'after_history'
+            if (msgType === 'template' || msgType === 'app') {
+              // Template descriptions and app context go before conversation history
+              insertionOrder = 'before_history'
+            } else {
+              // Visual context and element context go after conversation history  
+              insertionOrder = 'after_history'
+            }
+            
+            return {
+              role: 'system' as const,
+              content: msg.content,
+              // Add cache point for template descriptions (large system prompts)
+              ...(msgType === 'template' && {
+                cachePoint: { type: 'ephemeral' as const }
+              }),
+              insertionOrder
+            }
+          })
         } catch (error) {
-          console.error('❌ SystemContext: Error loading context:', error)
+          logger.error('websocket.context.provider.failure', {
+            message: 'Error loading context',
+            error: error instanceof Error ? error.message : String(error)
+          })
           return []
         }
       }
     }
     
-    const conversationHistoryProvider = {
-      async loadConversationHistory(conversationId: string, context?: Record<string, unknown>): Promise<Array<{ role: 'user' | 'assistant', content: string }>> {
+    // Create message provider implementation for conversation history
+    const messageProvider: MessageProvider = {
+      async loadMessages(conversationId: string, context: Record<string, unknown>): Promise<ConversationMessage[]> {
         if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-          console.log('📚 TokenBasedHistoryProvider: Loading conversation history')
+          logger.debug('websocket.message.provider.loading', {
+            message: 'Loading conversation messages'
+          })
         }
         
         // Extract appId and agentName from context
@@ -167,12 +239,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const agentName = metadata.agentId || 'develop' // Default to develop agent
         
         if (!appId) {
-          console.warn('⚠️ No appId found in context, cannot load conversation history')
+          logger.warn('websocket.message.provider.no_app_id', {
+            message: 'No appId found in context, cannot load conversation history'
+          })
           return []
         }
         
         if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-          console.log(`📚 Loading ALL messages for app: ${appId}, agent: ${agentName}`)
+          logger.debug('websocket.message.provider.loading_messages', {
+            message: 'Loading ALL messages',
+            appId,
+            agentName
+          })
         }
         
         try {
@@ -182,7 +260,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const messages = await conversationContextManager.loadAllMessagesWithTokenLimit(appId, agentName, 40000, modelName)
           
           if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-            console.log(`✅ TokenBasedHistoryProvider: Loaded ${messages.length} messages`)
+            logger.debug('websocket.message.provider.success', {
+              message: 'Loaded messages',
+              messageCount: messages.length
+            })
           }
           
           // Filter out system and tool messages, and map to the expected format
@@ -208,7 +289,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                         try {
                           const parsedArgs = typeof toolArgs === 'string' ? JSON.parse(toolArgs) : toolArgs
                           // Create a safe, readable representation
-                          if (typeof parsedArgs === 'object') {
+                          if (typeof parsedArgs === 'object' && parsedArgs !== null) {
                             formattedArgs = Object.entries(parsedArgs)
                               .map(([key, value]) => `${key}: ${String(value).substring(0, 100)}`)
                               .join(', ')
@@ -242,7 +323,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               }
             })
         } catch (error) {
-          console.error('❌ Error in TokenBasedHistoryProvider:', error)
+          logger.error('websocket.message.provider.failure', {
+            message: 'Error in MessageProvider',
+            error: error instanceof Error ? error.message : String(error)
+          })
           return []
         }
       }
@@ -255,9 +339,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       // Built-in message persistence
       messagePersistence,
       
-      // Context extractor to validate appId and message length
-      // Conversation history provider
-      conversationHistoryProvider,
+      // Message provider for conversation history
+      messageProvider,
+      
+      // Context provider for app context and templates
+      contextProvider,
       
       // Context extractor to validate appId
       contextExtractor: (rawContext: Record<string, unknown>, socketContext?: any) => {
@@ -279,11 +365,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         if (socketContext && socketContext.socket && socketContext.socket.handshake.auth) {
           const { customerContext } = socketContext.socket.handshake.auth;
 
-          console.log('✅ Validated appId:', appId)
+          logger.debug('websocket.context.app_id.validated', {
+            message: 'Validated appId',
+            appId
+          })
         
           // DEBUG: Log the raw context being received
-          console.log('🔍 Raw Context Received:', {
-            keys: Object.keys(rawContext),
+          logger.debug('websocket.context.raw_received', {
+            message: 'Raw context received',
+            contextKeys: Object.keys(rawContext),
             hasMetadata: !!rawContext.metadata,
             hasAppContext: !!rawContext.appContext,
             hasVisualContext: !!rawContext.visualContext,
@@ -294,7 +384,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
           
           // Log the full context for debugging (but don't modify it)
-          console.log('📋 Full Raw Context Data:', rawContext)
+          logger.debug('websocket.context.full_raw_data', {
+            message: 'Full raw context data',
+            rawContext
+          })
 
           return {
             ...rawContext,
@@ -319,7 +412,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       
       // Connection handler
       onConnection: (socketId: string) => {
-        console.log('🔌 WebSocket client connected:', socketId)
+        logger.info('websocket.connection.connected', {
+          message: 'WebSocket client connected',
+          socketId
+        })
       },
       
       // Optional event handlers (persistence is now handled automatically)
@@ -327,7 +423,13 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Authentication already done at handshake - just log the message start
         if (context && context.customerContext) {
           const customerContext = context.customerContext as any;
-          console.log(`📨 WebSocket message from customer ${customerContext.customerId} (${customerContext.shopperId}): "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
+          logger.info('websocket.message.start', {
+            message: 'WebSocket message from customer',
+            customerId: customerContext.customerId,
+            shopperId: customerContext.shopperId,
+            messagePreview: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
+            agentName
+          });
         } else if (process.env.BYPASS_AUTH_FOR_LOCAL !== 'true') {
           throw new Error('Missing customer context - authentication may have failed');
         }
@@ -338,17 +440,30 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const steps = result.steps || 0;
         const agentId = result.agentId || 'unknown';
         
-        console.log(`✅ WebSocket message completed for ${socketId}: ${steps} steps, ${duration} (agent: ${agentId})`);
+        logger.info('websocket.message.completed', {
+          message: 'WebSocket message completed',
+          socketId,
+          steps,
+          duration,
+          agentId
+        });
         
         // Log customer context if available (for audit purposes)
         if (context?.customerContext) {
           const customerContext = context.customerContext as any;
-          console.log(`📊 WebSocket request completed for customer: ${customerContext.customerId} (shopper: ${customerContext.shopperId})`);
+          logger.info('websocket.request.customer_completed', {
+            message: 'WebSocket request completed for customer',
+            customerId: customerContext.customerId,
+            shopperId: customerContext.shopperId
+          });
         }
       },
       
       onDisconnection: (socketId: string) => {
-        console.log('🔌 WebSocket client disconnected:', socketId)
+        logger.info('websocket.connection.disconnected', {
+          message: 'WebSocket client disconnected',
+          socketId
+        })
       },
       
       onError: (socketId: string, error: Error, message?: string) => {
@@ -372,16 +487,20 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       }
     })
 
-    console.log('📡 ExperimentalAgentFactory WebSocket server ready for connections')
-    console.log(`🎯 Available agents: ${agentFactory.getAvailableAgents().map(a => a.id).join(', ')}`)
-    console.log(`🔧 Default agent: develop`)
-    console.log(`📊 Agent count: ${agentFactory.getAgentCount()}`)
-    console.log(`🌐 Multi-agent mode: ${agentFactory.isMultiAgentMode()}`)
-    console.log(`🏭 Agent handoffs: enabled`)
-    console.log(`🎨 Tool execution hooks: enabled`)
-    console.log(`📋 Handoff history tracking: enabled`)
-    console.log(`💾 Conversation persistence: enabled (built-in)`)
-    console.log(`🔄 Conversation history loading: enabled`)
+    logger.info('websocket.server.ready', {
+      message: 'ExperimentalAgentFactory WebSocket server ready for connections',
+      availableAgents: agentFactory.getAvailableAgents().map(a => a.id),
+      defaultAgent: 'develop',
+      agentCount: agentFactory.getAgentCount(),
+      multiAgentMode: agentFactory.isMultiAgentMode(),
+      features: {
+        agentHandoffs: true,
+        toolExecutionHooks: true,
+        handoffHistoryTracking: true,
+        conversationPersistence: true,
+        conversationHistoryLoading: true
+      }
+    })
 
     // Add Socket.IO authentication middleware
     wsServer.getIO().use(async (socket, next) => {
@@ -402,16 +521,24 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const token = authHeader.substring(7);
         
         // Do FULL JWT validation at handshake (including signature verification)
-        console.log('🔐 Performing full JWT validation with SSO at handshake...');
+        logger.info('websocket.auth.jwt_validation.start', {
+          message: 'Performing full JWT validation with SSO at handshake'
+        });
         
         const validationResult = await jwtAuthMiddleware.jwtValidationService.authenticate(token);
         
         if (!validationResult.valid) {
-          console.log(`❌ CONNECTION REJECTED: JWT validation failed - ${validationResult.reason}`);
+          logger.warn('websocket.auth.connection_rejected', {
+            message: 'CONNECTION REJECTED: JWT validation failed',
+            reason: validationResult.reason
+          });
           throw new Error(`JWT validation failed: ${validationResult.reason}`);
         }
         
-        console.log(`✅ Connection approved: Full JWT validation passed for customer ${validationResult.payload?.cid}`);
+        logger.info('websocket.auth.connection_approved', {
+          message: 'Connection approved: Full JWT validation passed',
+          customerId: validationResult.payload?.cid
+        });
         
         // Store validated user data in socket for reuse (no more SSO calls needed!)
         socket.handshake.auth = { 
@@ -427,12 +554,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Add token refresh handler for this socket
         socket.on('tokenRefresh', async (data) => {
           try {
-            console.log(`🔄 Token refresh requested for customer ${socket.handshake.auth.customerContext.customerId}`);
+            logger.info('websocket.auth.token_refresh.requested', {
+              message: 'Token refresh requested',
+              customerId: socket.handshake.auth.customerContext.customerId
+            });
             
             const refreshResult = await jwtAuthMiddleware.jwtValidationService.authenticate(data.newToken);
             
             if (!refreshResult.valid) {
-              console.log(`❌ Token refresh failed: ${refreshResult.reason}`);
+              logger.warn('websocket.auth.token_refresh.failed', {
+                message: 'Token refresh failed',
+                reason: refreshResult.reason
+              });
               socket.emit('tokenRefreshError', { error: refreshResult.reason });
               return;
             }
@@ -448,7 +581,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               }
             };
             
-            console.log(`✅ Token refreshed for customer ${refreshResult.payload?.cid}, expires: ${new Date(refreshResult.payload?.exp * 1000).toISOString()}`);
+            logger.info('websocket.auth.token_refresh.success', {
+              message: 'Token refreshed for customer',
+              customerId: refreshResult.payload?.cid,
+              expiryTime: new Date(refreshResult.payload?.exp * 1000).toISOString()
+            });
             socket.emit('tokenRefreshSuccess', { 
               newExpiry: refreshResult.payload?.exp,
               customerId: refreshResult.payload?.cid 
@@ -456,7 +593,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error(`❌ Token refresh error: ${errorMessage}`);
+            logger.error('websocket.auth.token_refresh.error', {
+              message: 'Token refresh error',
+              error: errorMessage
+            });
             socket.emit('tokenRefreshError', { error: errorMessage });
           }
         });
@@ -465,7 +605,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`❌ Socket.IO auth failed: ${errorMessage}`);
+        logger.error('websocket.auth.socket_auth_failed', {
+          message: 'Socket.IO auth failed',
+          error: errorMessage
+        });
         next(new Error(`Authentication failed: ${errorMessage}`));
       }
     });
@@ -473,9 +616,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     return { wsServer, agentFactory }
 
   } catch (error) {
-    console.error('❌ Failed to setup ExperimentalAgentFactory WebSocket server:', error)
-    logger.error('WebSocket server setup failed', {
-      error: error instanceof Error ? error.message : String(error),
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logger.error('websocket.server.setup.failure', {
+      message: 'Failed to setup ExperimentalAgentFactory WebSocket server',
+      error: errorMessage,
       stack: error instanceof Error ? error.stack : undefined
     })
     throw error

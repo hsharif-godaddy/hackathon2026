@@ -42,7 +42,9 @@ export {
   createExperimentalWebSocketServer,
   createSingleAgentFactory,
   createSingleAgentWebSocketServer,
-  type ConversationHistoryProvider,
+  type MessageProvider,
+  type ContextProvider,
+  type ConversationPersistence,
   type ExperimentalWebSocketConfig,
   type ChatMessage
 } from './websocket/index.js'

@@ -7,7 +7,7 @@ import {
   createPromptBuilder,
   pb
 } from '@airo/ai-lib'
-import { getAgentModel } from '../utils/model-selection.js'
+import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { GitTool } from '../tools/git-tool.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
@@ -211,11 +211,13 @@ async function buildDynamicSystemPrompt(context?: AgentContext): Promise<string>
 export async function createDevelopAgent(options?: { appPath?: string }): Promise<ExperimentalAgentConfig> {
   const appPath = options?.appPath || process.cwd()
   const systemPrompt = await buildDevelopSystemPrompt(appPath)
+  const { model, modelName } = await getAgentModelWithName('full') // Use full model for complex development tasks
   
   return {
       name: 'AI Developer',
     system: systemPrompt,
-    model: await getAgentModel('full'), // Use full model for complex development tasks
+    model,
+    modelName,
     tools: {
       // Core development tools
       directoryListing: allAILibTools.directoryListing,
@@ -256,7 +258,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     
     maxSteps: 25,
     temperature: 0.3,
-    maxOutputTokens: 4000
+    maxOutputTokens: 8000
   }
 }
 
