@@ -740,7 +740,7 @@ export class GitTool {
    */
   private async handleRestore(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
-      let commitHash = options.options?.shorthash;
+      const commitHash = options.options?.shorthash;
 
       if (!commitHash) {
         return {

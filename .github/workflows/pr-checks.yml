@@ -142,10 +142,10 @@ jobs:
         run: |
           if [ -f pnpm-lock.yaml ]; then
             echo "📦 Installing v8 template with pnpm (lock file present)"
-            pnpm install --frozen-lockfile
+            pnpm install --frozen-lockfile --ignore-workspace
           else
             echo "📦 Installing v8 template with pnpm (no lock file)"
-            pnpm install
+            pnpm install --ignore-workspace
           fi
 
       - name: Check v8 template license compliance

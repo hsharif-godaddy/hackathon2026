@@ -8,6 +8,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server/app.ts",
+    "prebuild": "cd ../packages/ai-lib && npm run build",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/server/app.js",

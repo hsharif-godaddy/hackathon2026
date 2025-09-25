@@ -273,7 +273,7 @@ function createMockRequest(statusCode: number, responseData: any) {
   const mockRequest = {
     write: vi.fn(),
     end: vi.fn(),
-    on: vi.fn((event: string, callback: Function) => {
+    on: vi.fn((event: string, callback: (...args: any[]) => void) => {
       if (event === 'error') {
         // Store error callback for later use if needed
       }
@@ -284,7 +284,7 @@ function createMockRequest(statusCode: number, responseData: any) {
   setTimeout(() => {
     const mockResponse = {
       statusCode,
-      on: vi.fn((event: string, callback: Function) => {
+      on: vi.fn((event: string, callback: (...args: any[]) => void) => {
         if (event === 'data') {
           callback(JSON.stringify(responseData));
         } else if (event === 'end') {

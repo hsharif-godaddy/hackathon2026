@@ -30,7 +30,7 @@ describe('DevSupervisorLogClient Unit Tests', () => {
     };
     
     // Mock the createDevSupervisorClient function to return our mock
-    vi.mocked(require('../../services/DevSupervisorClient.js').createDevSupervisorClient).mockReturnValue(mockDevSupervisor);
+    vi.mocked(createDevSupervisorClient).mockReturnValue(mockDevSupervisor);
     
     // Create tool with mock socket path
     logClient = new DevSupervisorLogClient('/tmp/test.sock');
