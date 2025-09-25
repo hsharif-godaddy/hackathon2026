@@ -58,8 +58,6 @@ jobs:
       - name: Install pnpm
         run: npm install -g pnpm
 
-      - name: Install license checker
-        run: npm install -g license-checker
 
       - name: Configure pnpm registry (root workspace)
         run: |
@@ -131,9 +129,6 @@ jobs:
         with:
           node-version: "22.12"
 
-      - name: Install license checker
-        run: npm install -g license-checker
-
       - name: Install pnpm
         run: npm install -g pnpm
 
@@ -151,20 +146,8 @@ jobs:
       - name: Check v8 template license compliance
         working-directory: ./app-templates/v8
         run: |
-          echo "🔍 Checking v8 template license compliance..."
-          
-          ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC"
-          
-          echo "✅ Allowed licenses: $ALLOWED_LICENSES"
-          
-          license-checker \
-            --onlyAllow "$ALLOWED_LICENSES" \
-            --summary
-          
-          echo "📋 Generating detailed license report..."
-          license-checker \
-            --onlyAllow "$ALLOWED_LICENSES" \
-            --out licenses-report.txt
+          echo "🔍 Checking v8 template license compliance using script..."
+          ../../scripts/license-check.sh
         continue-on-error: false
 
       - name: Upload v8 template license report

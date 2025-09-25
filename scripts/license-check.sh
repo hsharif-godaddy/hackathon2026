@@ -2,36 +2,10 @@
 
 # Simple Dynamic License Checker
 # Dynamically detects GoDaddy packages and runs license check
-# NOTE: This script requires either sudo privileges or root access to install dependencies (jq).
 set -e
 
-# Detect package manager
-if command -v pnpm &> /dev/null && [ -f "pnpm-lock.yaml" ] || [ -f "pnpm-workspace.yaml" ]; then
-  PACKAGE_MANAGER="pnpm"
-  echo "📦 Using pnpm package manager"
-elif command -v yarn &> /dev/null && [ -f "yarn.lock" ]; then
-  PACKAGE_MANAGER="yarn"
-  echo "📦 Using yarn package manager"
-else
-  PACKAGE_MANAGER="npm"
-  echo "📦 Using npm package manager"
-fi
-
-# Install dependencies (always use npm for global installs)
+# Install dependencies
 npm install -g license-checker
-if ! command -v jq &> /dev/null; then
-  echo "Installing jq..."
-  if command -v sudo &> /dev/null; then
-    sudo apt-get update && sudo apt-get install -y jq
-  elif [ "$(id -u)" -eq 0 ]; then
-    apt-get update && apt-get install -y jq
-  else
-    echo "Error: 'jq' is not installed and neither 'sudo' is available nor running as root. Please install 'jq' manually." >&2
-    exit 1
-  fi
-else
-  echo "jq already available"
-fi
 
 # Package-specific configurations
 if [ "$MATRIX_PACKAGE" = "agents" ]; then
@@ -41,30 +15,13 @@ elif [ "$MATRIX_PACKAGE" = "app" ]; then
   # Dynamically generate exclusions for all GoDaddy-owned packages
   echo "🔍 Detecting GoDaddy-owned packages to exclude..."
   
-  # Get the list of dependencies as JSON using the appropriate package manager
-  if [ "$PACKAGE_MANAGER" = "pnpm" ]; then
-    # Use pnpm list which works better with pnpm workspaces
-    DEP_JSON=$(pnpm list --depth=0 --json 2>/dev/null)
-  elif [ "$PACKAGE_MANAGER" = "yarn" ]; then
-    # Use yarn list for yarn workspaces
-    DEP_JSON=$(yarn list --depth=0 --json 2>/dev/null)
-  else
-    # Use npm list for npm projects
-    DEP_JSON=$(npm list --depth=0 --json 2>/dev/null)
-  fi
+  # Get the list of dependencies as JSON using pnpm
+  DEP_JSON=$(pnpm list --depth=0 --json 2>/dev/null)
   
   # Extract GoDaddy-owned packages and their versions using jq
-  # Handle both npm (object) and pnpm/yarn (array) JSON formats
   # Include both dependencies and devDependencies
-  if [ "$PACKAGE_MANAGER" = "pnpm" ] || [ "$PACKAGE_MANAGER" = "yarn" ]; then
-    # pnpm/yarn returns an array, get the first element
-    GODADDY_DEPS=$(echo "$DEP_JSON" | jq -r '.[0].dependencies // {} | to_entries[] | select(.key | test("^(@godaddy|@ux|gd-)")) | "\(.key)@\(.value.version)"')
-    GODADDY_DEV_DEPS=$(echo "$DEP_JSON" | jq -r '.[0].devDependencies // {} | to_entries[] | select(.key | test("^(@godaddy|@ux|gd-)")) | "\(.key)@\(.value.version)"')
-  else
-    # npm returns a single object
-    GODADDY_DEPS=$(echo "$DEP_JSON" | jq -r '.dependencies // {} | to_entries[] | select(.key | test("^(@godaddy|@ux|gd-)")) | "\(.key)@\(.value.version)"')
-    GODADDY_DEV_DEPS=$(echo "$DEP_JSON" | jq -r '.devDependencies // {} | to_entries[] | select(.key | test("^(@godaddy|@ux|gd-)")) | "\(.key)@\(.value.version)"')
-  fi
+  GODADDY_DEPS=$(echo "$DEP_JSON" | jq -r '.[0].dependencies // {} | to_entries[] | select(.key | test("^@godaddy")) | "\(.key)@\(.value.version)"')
+  GODADDY_DEV_DEPS=$(echo "$DEP_JSON" | jq -r '.[0].devDependencies // {} | to_entries[] | select(.key | test("^@godaddy")) | "\(.key)@\(.value.version)"')
   
   # Combine dependencies and devDependencies
   GODADDY_LIST=$(echo -e "$GODADDY_DEPS\n$GODADDY_DEV_DEPS" | grep -v '^$')
@@ -74,7 +31,7 @@ elif [ "$MATRIX_PACKAGE" = "app" ]; then
   else
     GODADDY_PACKAGES=""
   fi
-  MANUAL_EXCLUSIONS="website@0.1.0"
+  MANUAL_EXCLUSIONS="website@0.1.0;@ux/alert@2500.3.4;@ux/box@2500.3.4;@ux/button@2500.3.4;@ux/disrupt@2500.3.5;@ux/flyout@2500.3.4;@ux/icon@2500.3.4;@ux/intents@2500.3.2;@ux/menu@2500.3.5;@ux/modal@2500.3.5;@ux/spinner@2500.3.4;@ux/tag@2500.3.4;@ux/tailwind-intents@2500.3.2;@ux/text@2500.3.4;@ux/postcss-intents@2500.3.2;gd-auth@1.4.1"
   ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC"
   if [ -n "$GODADDY_PACKAGES" ]; then
     EXCLUSIONS="${GODADDY_PACKAGES};${MANUAL_EXCLUSIONS}"
