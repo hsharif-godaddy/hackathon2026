@@ -669,6 +669,24 @@ importers:
         specifier: ^5.9.2
         version: 5.9.2
 
+  bedrock-log-viewer:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.658.1
+        version: 3.893.0
+      cors:
+        specifier: ^2.8.5
+        version: 2.8.5
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.6.1
+      express:
+        specifier: ^4.19.2
+        version: 4.21.2
+      zlib:
+        specifier: ^1.0.5
+        version: 1.0.5
+
   cdk:
     dependencies:
       '@gd-safeguard/godaddy-constructs':
@@ -10321,6 +10339,10 @@ packages:
   yoctocolors@2.1.2:
     resolution: {integrity: sha512-CzhO+pFNo8ajLM2d2IW/R93ipy99LWjtwblvC1RsoSUMZgyLbYFr221TnSNT7GjGdYui6P459mw9JH/g/zW2ug==}
     engines: {node: '>=18'}
+
+  zlib@1.0.5:
+    resolution: {integrity: sha512-40fpE2II+Cd3k8HWTWONfeKE2jL+P42iWJ1zzps5W51qcTsOUKM5Q5m2PFb0CLxlmFAaUuUdJGc3OfZy947v0w==}
+    engines: {node: '>=0.2.0'}
 
   zod-to-json-schema@3.24.6:
     resolution: {integrity: sha512-h/z3PKvcTcTetyjl1fkj79MHNEjm+HpD6NXheWjzOekY7kV+lwDYnHw+ivHkijnCSMz1yJaWBD9vu/Fcmk+vEg==}
@@ -22814,6 +22836,8 @@ snapshots:
   yoctocolors-cjs@2.1.3: {}
 
   yoctocolors@2.1.2: {}
+
+  zlib@1.0.5: {}
 
   zod-to-json-schema@3.24.6(zod@3.25.76):
     dependencies:

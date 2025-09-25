@@ -6,4 +6,5 @@ packages:
   - "ai-playground"
   - "cdk"
   - "proxy"
+  - "bedrock-log-viewer"
 
