@@ -251,6 +251,38 @@ export class ConversationRepository {
   }
 
   /**
+   * Get messages from multiple conversations in a single query (batch operation)
+   */
+  async getMessagesBatch(conversationIds: string[]): Promise<ConversationMessage[]> {
+    if (conversationIds.length === 0) {
+      return [];
+    }
+
+    // Create placeholders for the IN clause
+    const placeholders = conversationIds.map(() => '?').join(',');
+    
+    const stmt = this.db.prepare(`
+      SELECT * FROM conversation_messages 
+      WHERE conversation_id IN (${placeholders})
+      ORDER BY created_at ASC
+    `);
+    
+    const rows = stmt.all(...conversationIds) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      conversationId: row.conversation_id,
+      sender: row.sender,
+      content: row.content,
+      messageType: row.message_type,
+      toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+      segments: row.segments ? JSON.parse(row.segments) : undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      createdAt: new Date(row.created_at)
+    }));
+  }
+
+  /**
    * Generate a title from the first user message (truncated)
    */
   generateTitle(firstMessage: string): string {
@@ -267,7 +299,12 @@ export class ConversationRepository {
   /**
    * Get conversation with message count for UI display
    */
-  async getConversationsWithMessageCount(appId: string): Promise<Array<Conversation & { messageCount: number }>> {
+  async getConversationsWithMessageCount(
+    appId: string,
+    options: { limit?: number; offset?: number } = {}
+  ): Promise<Array<Conversation & { messageCount: number }>> {
+    const { limit = 50, offset = 0 } = options;
+    
     const stmt = this.db.prepare(`
       SELECT 
         c.id,
@@ -282,9 +319,10 @@ export class ConversationRepository {
       WHERE c.app_id = ?
       GROUP BY c.id
       ORDER BY c.updated_at DESC
+      LIMIT ? OFFSET ?
     `);
 
-    const rows = stmt.all(appId) as any[];
+    const rows = stmt.all(appId, limit, offset) as any[];
 
     return rows.map(row => ({
       id: row.id,
@@ -295,6 +333,20 @@ export class ConversationRepository {
       updatedAt: new Date(row.updated_at),
       messageCount: row.message_count
     }));
+  }
+
+  /**
+   * Get total count of conversations for an app
+   */
+  async getConversationCount(appId: string): Promise<number> {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM conversations
+      WHERE app_id = ?
+    `);
+
+    const row = stmt.get(appId) as any;
+    return row.count;
   }
 
   /**

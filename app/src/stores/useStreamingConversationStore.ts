@@ -107,6 +107,14 @@ export interface StreamingConversationState {
   developmentPlan: PlanItem[]
   conversations: Conversation[]
   
+  // Pagination state
+  conversationPagination: {
+    total: number
+    loaded: number
+    hasMore: boolean
+    isLoading: boolean
+  }
+  
   // Per-app chat history cache (for future enhancement)
   appChatHistory: Record<string, ChatMessage[]>
   
@@ -155,6 +163,7 @@ export interface StreamingConversationState {
   getMessageCount: () => number
   autoSendInitialMessage: (message: string, appId: string) => boolean
   loadConversationHistory: (appId: string) => Promise<void>
+  loadMoreConversations: (appId: string) => Promise<void>
 }
 
 // Helper function to generate unique IDs
@@ -174,6 +183,12 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   aiEditContext: null,
   developmentPlan: [],
   conversations: [],
+  conversationPagination: {
+    total: 0,
+    loaded: 0,
+    hasMore: false,
+    isLoading: false
+  },
   appChatHistory: {},
   websocket: {
     connected: false,
@@ -426,6 +441,12 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         // Don't reset isLoading - let loadConversationHistory manage it
         aiEditContext: null,
         conversations: [],
+        conversationPagination: {
+          total: 0,
+          loaded: 0,
+          hasMore: false,
+          isLoading: false
+        },
         appChatHistory: newAppChatHistory,
         websocket: { connected: false, status: 'idle' }
       })
@@ -477,6 +498,12 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       isLoading: false,
       aiEditContext: null,
       conversations: [],
+      conversationPagination: {
+        total: 0,
+        loaded: 0,
+        hasMore: false,
+        isLoading: false
+      },
       appChatHistory: {},
       websocket: { connected: false, status: 'idle' }
     })
@@ -556,7 +583,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       const { buildDynamicAgentUrl } = await import('../config/dynamic-api')
       
       // Build dynamic agent URL for conversations endpoint (no /apps/{appId}/ prefix)
-      const conversationsUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}`, appId)
+      const conversationsUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}?limit=1&offset=0`, appId)
       console.log('📚 Fetching conversations from:', conversationsUrl)
       
       // Fetch conversations for this app with timeout protection
@@ -568,13 +595,20 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         throw new Error(`Failed to fetch conversations: ${response.status}`)
       }
       
-      const conversations = await response.json()
+      const data = await response.json()
+      const conversations = data.conversations || []
       console.log('📚 Found conversations:', conversations.length)
       
       if (conversations.length === 0) {
         console.log('📚 No conversation history found for app:', appId)
         set({ 
           isLoading: false,
+          conversationPagination: {
+            total: data.pagination?.total || 0,
+            loaded: 0,
+            hasMore: false,
+            isLoading: false
+          },
           // Ensure we cache empty results to prevent repeated attempts
           appChatHistory: { ...get().appChatHistory, [appId]: [] }
         })
@@ -636,6 +670,12 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         return {
           messages: convertedMessages,
           conversations: convertedConversations,
+          conversationPagination: {
+            total: data.pagination?.total || 0,
+            loaded: convertedConversations.length,
+            hasMore: data.pagination?.hasMore || false,
+            isLoading: false
+          },
           appChatHistory: newAppChatHistory,
           isLoading: false
         }
@@ -656,12 +696,147 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       })
       set({ 
         isLoading: false,
+        conversationPagination: {
+          total: 0,
+          loaded: 0,
+          hasMore: false,
+          isLoading: false
+        },
         // Cache empty result to prevent repeated failed attempts
         appChatHistory: { ...get().appChatHistory, [appId]: [] }
       })
       
       // Don't throw - just log and continue with empty history
       console.log('📚 Continuing with empty conversation history for app:', appId)
+    }
+  },
+
+  // Load more conversations from previous history
+  loadMoreConversations: async (appId: string) => {
+    const state = get()
+    
+    // Don't load if already loading or no more to load
+    if (state.conversationPagination.isLoading || !state.conversationPagination.hasMore) {
+      console.log('⏭️ Skipping load more - already loading or no more to load')
+      return
+    }
+    
+    try {
+      console.log('📚 Loading more conversations for app:', appId)
+      set((state) => ({
+        conversationPagination: {
+          ...state.conversationPagination,
+          isLoading: true
+        }
+      }))
+      
+      // Import buildDynamicAgentUrl dynamically to avoid circular imports
+      const { buildDynamicAgentUrl } = await import('../config/dynamic-api')
+      
+      const offset = state.conversationPagination.loaded
+      const limit = 5 // Load 5 more conversations at a time
+      
+      // Fetch older conversations
+      const conversationsUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}?limit=${limit}&offset=${offset}`, appId)
+      console.log('📚 Fetching more conversations from:', conversationsUrl)
+      
+      const response = await fetch(conversationsUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch more conversations: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      const newConversations = data.conversations || []
+      console.log('📚 Found additional conversations:', newConversations.length)
+      
+      if (newConversations.length === 0) {
+        set((state) => ({
+          conversationPagination: {
+            ...state.conversationPagination,
+            hasMore: false,
+            isLoading: false
+          }
+        }))
+        return
+      }
+      
+      // Convert conversations
+      const convertedNewConversations = newConversations.map((conv: any) => ({
+        ...conv,
+        createdAt: new Date(conv.createdAt),
+        updatedAt: new Date(conv.updatedAt)
+      }))
+      
+      // Load messages for all new conversations
+      const conversationIds = newConversations.map((conv: any) => conv.id).join(',')
+      const messagesUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}/messages?conversationIds=${conversationIds}`, appId)
+      
+      const messagesResponse = await fetch(messagesUrl)
+      if (!messagesResponse.ok) {
+        throw new Error(`Failed to fetch conversation messages: ${messagesResponse.status}`)
+      }
+      
+      const messagesData = await messagesResponse.json()
+      const newMessages = messagesData.messages || []
+      
+      console.log('📚 Loaded messages for older conversations:', newMessages.length)
+      
+      // Convert backend messages to frontend format
+      const convertedNewMessages: ChatMessage[] = newMessages.map((msg: any) => ({
+        id: msg.id,
+        role: msg.sender === 'user' ? 'user' : 'assistant',
+        type: msg.sender === 'user' ? 'user' : 'assistant',
+        sender: msg.sender,
+        content: msg.content,
+        timestamp: new Date(msg.createdAt),
+        toolCalls: msg.toolCalls || [],
+        segments: (msg.segments || []).map((segment: any) => ({
+          id: segment.id,
+          type: segment.type,
+          content: segment.content || '',
+          timestamp: new Date(segment.timestamp || segment.createdAt || msg.createdAt),
+          toolCall: segment.toolCall
+        })),
+        metadata: msg.metadata
+      }))
+      
+      // Update store with new conversations and messages
+      set((state) => {
+        const combinedMessages = [...convertedNewMessages, ...state.messages].sort(
+          (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+        )
+        
+        const newAppChatHistory = { ...state.appChatHistory }
+        newAppChatHistory[appId] = combinedMessages
+        
+        return {
+          messages: combinedMessages,
+          conversations: [...state.conversations, ...convertedNewConversations],
+          conversationPagination: {
+            total: data.pagination?.total || state.conversationPagination.total,
+            loaded: state.conversationPagination.loaded + convertedNewConversations.length,
+            hasMore: data.pagination?.hasMore || false,
+            isLoading: false
+          },
+          appChatHistory: newAppChatHistory
+        }
+      })
+      
+      console.log('✅ More conversations loaded successfully:', {
+        appId,
+        newConversationsCount: convertedNewConversations.length,
+        newMessagesCount: convertedNewMessages.length,
+        totalLoaded: state.conversationPagination.loaded + convertedNewConversations.length
+      })
+      
+    } catch (error) {
+      console.error('❌ Failed to load more conversations:', error)
+      set((state) => ({
+        conversationPagination: {
+          ...state.conversationPagination,
+          isLoading: false
+        }
+      }))
     }
   }
 }))
@@ -694,6 +869,8 @@ export const useMarkMaxStepsReached = () => useStreamingConversationStore(state 
 export const useFinalizeStream = () => useStreamingConversationStore(state => state.finalizeStream)
 export const useAutoSendInitialMessage = () => useStreamingConversationStore(state => state.autoSendInitialMessage)
 export const useLoadConversationHistory = () => useStreamingConversationStore(state => state.loadConversationHistory)
+export const useLoadMoreConversations = () => useStreamingConversationStore(state => state.loadMoreConversations)
+export const useConversationPagination = () => useStreamingConversationStore(state => state.conversationPagination)
 
 export const useSetCurrentAppId = () => useStreamingConversationStore(state => state.setCurrentAppId)
 export const useSetInputValue = () => useStreamingConversationStore(state => state.setInputValue)
