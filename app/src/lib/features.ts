@@ -21,6 +21,8 @@ interface FeatureConfig {
   useMockLogin: boolean
   developmentMode: boolean
   showGalleryPage: boolean
+  devSupervisorUseTcp: boolean
+  devSupervisorTcpPort: string
   // Add more features here as needed
 }
 
@@ -72,6 +74,8 @@ function parseEnvironmentFeatures(): FeatureConfig {
     useMockLogin: authType === AuthType.MOCK || authType === AuthType.NONE,
     developmentMode: process.env.NODE_ENV === 'development',
     showGalleryPage: process.env.NEXT_PUBLIC_SHOW_GALLERY_PAGE === 'true',
+    devSupervisorUseTcp: process.env.DEV_SUPERVISOR_USE_TCP === 'true',
+    devSupervisorTcpPort: process.env.DEV_SUPERVISOR_TCP_PORT || '8877',
     // Add more feature parsing here
   }
 }
@@ -90,6 +94,7 @@ export const isFeatureEnabled = {
   mockLogin: () => features.useMockLogin,
   developmentMode: () => features.developmentMode,
   galleryPage: () => features.showGalleryPage,
+  devSupervisorTcp: () => features.devSupervisorUseTcp,
   // Add more feature checkers here
 } as const
 
@@ -107,6 +112,33 @@ export const auth = {
   isJWT: () => features.authType === AuthType.JWT,
   /** Check if authentication is required (not NONE) */
   isRequired: () => features.authType !== AuthType.NONE
+} as const
+
+/**
+ * Dev-supervisor configuration helpers
+ */
+export const devSupervisor = {
+  /** Check if TCP mode should be used (only in development) */
+  shouldUseTcp: () => {
+    // Only allow TCP mode in development
+    if (!isFeatureEnabled.developmentMode()) {
+      return false;
+    }
+    
+    // Enable if explicitly configured
+    if (isFeatureEnabled.devSupervisorTcp()) {
+      return true;
+    }
+    
+    // Auto-enable on macOS for better Docker compatibility (development only)
+    if (typeof process !== 'undefined' && process.platform === 'darwin') {
+      return true;
+    }
+    
+    return false;
+  },
+  /** Get the configured TCP port */
+  getTcpPort: () => features.devSupervisorTcpPort,
 } as const
 
 /**

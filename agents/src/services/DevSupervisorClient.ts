@@ -1,5 +1,6 @@
 import http from 'http';
 import { existsSync } from 'fs';
+import net from 'net';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 
@@ -152,17 +153,19 @@ export interface RestartStats {
 }
 
 /**
- * Client for communicating with dev-supervisor over Unix domain socket
+ * Client for communicating with dev-supervisor over Unix domain socket or TCP
  */
 export class DevSupervisorClient {
-  private socketPath: string;
+  private connectionPath: string;
+  private useTcp: boolean;
   private logger: Logger;
 
-  constructor(socketPath: string) {
-    if (!socketPath) {
-      throw new Error('DevSupervisorClient requires an explicit socket path - no default allowed');
+  constructor(connectionPath: string) {
+    if (!connectionPath) {
+      throw new Error('DevSupervisorClient requires an explicit connection path - no default allowed');
     }
-    this.socketPath = socketPath;
+    this.connectionPath = connectionPath;
+    this.useTcp = connectionPath.startsWith('tcp://');
     this.logger = Logger.create({ service: 'dev-supervisor-client' });
   }
 
@@ -170,8 +173,29 @@ export class DevSupervisorClient {
    * Check if dev-supervisor is available
    */
   isAvailable(): boolean {
-    return existsSync(this.socketPath);
+    if (this.useTcp) {
+      return this.isTcpPortOpen();
+    } else {
+      return existsSync(this.connectionPath);
+    }
   }
+
+  /**
+   * Check if TCP port is open
+   */
+  private isTcpPortOpen(): boolean {
+    try {
+      const url = new URL(this.connectionPath);
+      const port = parseInt(url.port) || 8080;
+      const host = url.hostname || 'localhost';
+      
+      // Simple TCP connection test using sync method
+      return testTcpConnectionSync(host, port);
+    } catch (error) {
+      return false;
+    }
+  }
+
 
   /**
    * Execute a command via dev-supervisor
@@ -412,18 +436,38 @@ export class DevSupervisorClient {
   }
 
   /**
-   * Make HTTP request to dev-supervisor over Unix socket
+   * Make HTTP request to dev-supervisor over Unix socket or TCP
    */
   private makeRequest(method: string, path: string, data?: any): Promise<any> {
     return new Promise((resolve, reject) => {
-      const options: http.RequestOptions = {
-        socketPath: this.socketPath,
-        method,
-        path,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      };
+      let options: http.RequestOptions;
+
+      if (this.useTcp) {
+        // TCP connection
+        const url = new URL(this.connectionPath);
+        const port = parseInt(url.port) || 8080;
+        const host = url.hostname || 'localhost';
+        
+        options = {
+          hostname: host,
+          port: port,
+          method,
+          path,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        };
+      } else {
+        // Unix socket connection
+        options = {
+          socketPath: this.connectionPath,
+          method,
+          path,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        };
+      }
 
       const req = http.request(options, (res) => {
         let body = '';
@@ -449,7 +493,9 @@ export class DevSupervisorClient {
 
       req.on('error', (error) => {
         if ((error as any).code === 'ENOENT') {
-          reject(new Error(`dev-supervisor not available at ${this.socketPath}`));
+          reject(new Error(`dev-supervisor not available at ${this.connectionPath}`));
+        } else if ((error as any).code === 'ECONNREFUSED') {
+          reject(new Error(`dev-supervisor TCP connection refused at ${this.connectionPath}`));
         } else {
           reject(error);
         }
@@ -467,22 +513,82 @@ export class DevSupervisorClient {
 /**
  * Check if dev-supervisor is available in the current environment
  */
-export function isDevSupervisorAvailable(socketPath: string): boolean {
-  if (!socketPath) {
-    throw new Error('isDevSupervisorAvailable requires an explicit socket path - no default allowed');
+export function isDevSupervisorAvailable(connectionPath: string): boolean {
+  if (!connectionPath) {
+    throw new Error('isDevSupervisorAvailable requires an explicit connection path - no default allowed');
   }
-  return existsSync(socketPath);
+  
+  if (connectionPath.startsWith('tcp://')) {
+    try {
+      const url = new URL(connectionPath);
+      const port = parseInt(url.port) || 8080;
+      const host = url.hostname || 'localhost';
+      
+      // Use same TCP test method as the client
+      return testTcpConnectionSync(host, port);
+    } catch (error) {
+      return false;
+    }
+  } else {
+    return existsSync(connectionPath);
+  }
+}
+
+/**
+ * Test TCP connection synchronously
+ */
+function testTcpConnectionSync(host: string, port: number): boolean {
+  const socket = new net.Socket();
+  let connected = false;
+  
+  socket.setTimeout(500);
+  
+  socket.on('connect', () => {
+    connected = true;
+    socket.end();
+  });
+  
+  socket.on('error', () => {
+    socket.destroy();
+  });
+  
+  socket.on('timeout', () => {
+    socket.destroy();
+  });
+  
+  try {
+    socket.connect(port, host);
+    
+    // Wait for connection result with busy-wait (since we need sync behavior for API compatibility)
+    const start = Date.now();
+    while (!connected && !socket.destroyed && Date.now() - start < 500) {
+      // Small busy-wait loop to yield CPU without external commands
+      for (let i = 0; i < 1000; i++) {
+        // Minimal CPU yielding
+        Date.now();
+      }
+    }
+    
+    if (!socket.destroyed) {
+      socket.destroy();
+    }
+    
+    return connected;
+  } catch (error) {
+    socket.destroy();
+    return false;
+  }
 }
 
 /**
  * Create a DevSupervisorClient instance if available
  */
-export function createDevSupervisorClient(socketPath: string): DevSupervisorClient | null {
-  if (!socketPath) {
-    throw new Error('createDevSupervisorClient requires an explicit socket path - no default allowed');
+export function createDevSupervisorClient(connectionPath: string): DevSupervisorClient | null {
+  if (!connectionPath) {
+    throw new Error('createDevSupervisorClient requires an explicit connection path - no default allowed');
   }
-  if (isDevSupervisorAvailable(socketPath)) {
-    return new DevSupervisorClient(socketPath);
+  if (isDevSupervisorAvailable(connectionPath)) {
+    return new DevSupervisorClient(connectionPath);
   }
   return null;
 }

@@ -29,6 +29,8 @@ type Config struct {
 	ShutdownTimeout         time.Duration
 	ProcessLogging          bool // Enable/disable child process stdout/stderr logging
 	ProcessLoggingToStdout  bool // Enable/disable outputting child process logs to structured logging (stdout)
+	UseTCP                  bool // Enable TCP mode instead of Unix socket (insecure, dev only)
+	TCPPort                 string // TCP port to listen on when UseTCP is true
 }
 
 func getSocketPath() string {
@@ -43,6 +45,23 @@ func getProcessLoggingToStdout() bool {
 	env := os.Getenv("DEV_SUPERVISOR_DISABLE_PROCESS_STDOUT")
 	// Default is true (enabled), only disable if explicitly set to "true"
 	return env != "true"
+}
+
+func getTCPConfig() (bool, string) {
+	useTCP := os.Getenv("DEV_SUPERVISOR_USE_TCP")
+	port := os.Getenv("DEV_SUPERVISOR_TCP_PORT")
+	
+	// Default to false (Unix socket mode)
+	if useTCP != "true" {
+		return false, ""
+	}
+	
+	// Default port if TCP is enabled but no port specified
+	if port == "" {
+		port = "8080"
+	}
+	
+	return true, port
 }
 
 type Server struct {
@@ -130,7 +149,10 @@ func (s *Server) setupRoutes() {
 	healthRouter.HandleFunc("/restart-stats", s.handleRestartStats).Methods("GET")
 }
 
-func (s *Server) getConfiguredSocketPath() string {
+func (s *Server) getConfiguredAddress() string {
+	if s.config != nil && s.config.UseTCP {
+		return "tcp://" + s.config.TCPPort
+	}
 	if s.config != nil && s.config.SocketPath != "" {
 		return s.config.SocketPath
 	}
@@ -138,17 +160,23 @@ func (s *Server) getConfiguredSocketPath() string {
 }
 
 // waitForServerReady waits for the server to be ready to accept connections
-func (s *Server) waitForServerReady(socketPath string, timeout time.Duration) error {
+func (s *Server) waitForServerReady(address string, useTCP bool, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+
+	network := "unix"
+	if useTCP {
+		network = "tcp"
+		address = "localhost:" + address
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("server failed to become ready within %v", timeout)
 		default:
-			// Try to connect to the socket
-			conn, err := net.Dial("unix", socketPath)
+			// Try to connect to the socket/port
+			conn, err := net.Dial(network, address)
 			if err == nil {
 				conn.Close()
 				return nil
@@ -165,20 +193,28 @@ func (s *Server) StartWithConfig(config *Config) error {
 	// Configure process manager logging
 	s.procMgr.SetProcessLogging(config.ProcessLogging)
 	s.procMgr.SetStructuredLogging(config.ProcessLoggingToStdout)
-	return s.startServer(config.SocketPath, config.ShutdownTimeout)
+	
+	if config.UseTCP {
+		return s.startTCPServer(config.TCPPort, config.ShutdownTimeout)
+	} else {
+		return s.startUnixServer(config.SocketPath, config.ShutdownTimeout)
+	}
 }
 
 func (s *Server) Start() error {
+	useTCP, tcpPort := getTCPConfig()
 	config := &Config{
 		SocketPath:             getSocketPath(),
 		ShutdownTimeout:        5 * time.Second,
 		ProcessLogging:         true,                   // Default: enable child process logging
 		ProcessLoggingToStdout: getProcessLoggingToStdout(), // Default: enable structured output, configurable via env
+		UseTCP:                 useTCP,
+		TCPPort:                tcpPort,
 	}
 	return s.StartWithConfig(config)
 }
 
-func (s *Server) startServer(socketPath string, shutdownTimeout time.Duration) error {
+func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duration) error {
 	// Remove existing socket file if it exists
 	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 		return err
@@ -267,8 +303,8 @@ func (s *Server) startServer(socketPath string, shutdownTimeout time.Duration) e
 		}
 	} else {
 		// If we are PID 1, the PID1Manager handles shutdown
-		// Wait for server to be shut down
-		<-make(chan struct{}) // Block forever, PID1Manager will call shutdown
+		// Wait for server to be shut down (block forever until PID1Manager calls shutdown)
+		select {}
 	}
 
 	// Clean up socket file
@@ -277,6 +313,94 @@ func (s *Server) startServer(socketPath string, shutdownTimeout time.Duration) e
 	}
 
 	slog.Info("server stopped")
+	return nil
+}
+
+func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) error {
+	// Create TCP listener
+	listener, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		return fmt.Errorf("failed to create TCP listener on port %s: %w", port, err)
+	}
+
+	slog.Warn("dev-supervisor starting in TCP mode (INSECURE - development only)", "port", port, "pid", os.Getpid())
+	slog.Warn("TCP mode exposes dev-supervisor API to network - use only in secure development environments")
+
+	// Create HTTP server
+	server := &http.Server{
+		Handler:      s.router,
+		ReadTimeout:  defaultTimeout,
+		WriteTimeout: defaultTimeout,
+		IdleTimeout:  2 * defaultTimeout,
+	}
+
+	// Start PID 1 manager with shutdown callback
+	s.pid1Mgr.Start(func() {
+		slog.Info("shutdown initiated by PID 1 manager")
+		// Trigger graceful server shutdown with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+
+		shutdownComplete := make(chan error, 1)
+		go func() {
+			shutdownComplete <- server.Shutdown(ctx)
+		}()
+
+		select {
+		case err := <-shutdownComplete:
+			if err != nil {
+				slog.Error("PID 1 shutdown error", "error", err)
+			} else {
+				slog.Info("PID 1 shutdown completed gracefully")
+			}
+		case <-ctx.Done():
+			slog.Warn("PID 1 shutdown timeout exceeded", "timeout", shutdownTimeout)
+		}
+	})
+
+	// Start server in a goroutine
+	go func() {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			slog.Error("TCP server failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// If we're not PID 1, still wait for signals manually
+	if os.Getpid() != 1 {
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		<-quit
+
+		slog.Info("shutting down TCP server")
+
+		// Graceful shutdown with configurable timeout
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+
+		// Shutdown in background and wait for completion or timeout
+		shutdownComplete := make(chan error, 1)
+		go func() {
+			shutdownComplete <- server.Shutdown(ctx)
+		}()
+
+		select {
+		case err := <-shutdownComplete:
+			if err != nil {
+				slog.Error("TCP server shutdown error", "error", err)
+			} else {
+				slog.Info("TCP server shutdown completed gracefully")
+			}
+		case <-ctx.Done():
+			slog.Warn("TCP server shutdown timeout exceeded, forcing shutdown", "timeout", shutdownTimeout)
+		}
+	} else {
+		// If we are PID 1, the PID1Manager handles shutdown
+		// Wait for server to be shut down (block forever until PID1Manager calls shutdown)
+		select {}
+	}
+
+	slog.Info("TCP server stopped")
 	return nil
 }
 
@@ -346,6 +470,8 @@ func parseFlags() *Config {
 	config := &Config{}
 
 	flag.StringVar(&config.SocketPath, "socket", "", "Unix domain socket path (overrides DEV_SUPERVISOR_SOCKET_PATH)")
+	flag.BoolVar(&config.UseTCP, "tcp", false, "Use TCP instead of Unix socket (INSECURE - development only)")
+	flag.StringVar(&config.TCPPort, "port", "", "TCP port to listen on when using -tcp flag (overrides DEV_SUPERVISOR_TCP_PORT)")
 	flag.BoolVar(&config.ShowVersion, "version", false, "Show version and exit")
 	flag.BoolVar(&config.ShowVersion, "v", false, "Show version and exit (shorthand)")
 	flag.BoolVar(&config.ShowHelp, "help", false, "Show help and exit")
@@ -355,25 +481,51 @@ func parseFlags() *Config {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", AppName)
 		fmt.Fprintf(os.Stderr, "%s - A containerized service that acts as PID 1 in Docker containers,\n", AppName)
-		fmt.Fprintf(os.Stderr, "providing centralized process management through an HTTP API over Unix domain sockets.\n\n")
+		fmt.Fprintf(os.Stderr, "providing centralized process management through an HTTP API over Unix domain sockets or TCP.\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "Environment Variables:\n")
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_SOCKET_PATH  Path for Unix domain socket (default: /tmp/dev-supervisor.sock)\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_USE_TCP      Enable TCP mode instead of Unix socket (set to 'true')\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_TCP_PORT     TCP port to listen on (default: 8080)\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
-		fmt.Fprintf(os.Stderr, "  %s                                    # Use default settings\n", AppName)
+		fmt.Fprintf(os.Stderr, "  %s                                    # Use default settings (Unix socket)\n", AppName)
 		fmt.Fprintf(os.Stderr, "  %s -socket /app/supervisor.sock       # Custom socket path\n", AppName)
+		fmt.Fprintf(os.Stderr, "  %s -tcp -port 9090                    # TCP mode on port 9090 (INSECURE)\n", AppName)
 		fmt.Fprintf(os.Stderr, "  %s -shutdown-timeout 30s              # Custom shutdown timeout\n", AppName)
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "WARNING: TCP mode is insecure and should only be used in development environments!\n")
 		fmt.Fprintf(os.Stderr, "\n")
 	}
 
 	flag.Parse()
 
-	// Override socket path from flag if provided
-	if config.SocketPath == "" {
-		config.SocketPath = getSocketPath()
+	// Handle TCP vs Unix socket configuration
+	if config.UseTCP {
+		// TCP mode
+		if config.TCPPort == "" {
+			// Check environment variable for port
+			_, envPort := getTCPConfig()
+			if envPort != "" {
+				config.TCPPort = envPort
+			} else {
+				config.TCPPort = "8080" // Default port
+			}
+		}
+	} else {
+		// Check if environment variable forces TCP mode
+		useTCP, tcpPort := getTCPConfig()
+		if useTCP {
+			config.UseTCP = true
+			config.TCPPort = tcpPort
+		} else {
+			// Unix socket mode
+			if config.SocketPath == "" {
+				config.SocketPath = getSocketPath()
+			}
+		}
 	}
 
 	// Set default process logging configuration
@@ -403,11 +555,21 @@ func main() {
 	// Initialize structured logging
 	initLogging()
 
-	slog.Info("starting dev-supervisor",
-		"version", Version,
-		"socket_path", config.SocketPath,
-		"pid", os.Getpid(),
-		"shutdown_timeout", config.ShutdownTimeout)
+	if config.UseTCP {
+		slog.Info("starting dev-supervisor",
+			"version", Version,
+			"mode", "tcp",
+			"port", config.TCPPort,
+			"pid", os.Getpid(),
+			"shutdown_timeout", config.ShutdownTimeout)
+	} else {
+		slog.Info("starting dev-supervisor",
+			"version", Version,
+			"mode", "unix",
+			"socket_path", config.SocketPath,
+			"pid", os.Getpid(),
+			"shutdown_timeout", config.ShutdownTimeout)
+	}
 
 	server := NewServer()
 
@@ -425,7 +587,11 @@ func main() {
 		}()
 
 		// Wait for server to be ready
-		if err := server.waitForServerReady(config.SocketPath, 5*time.Second); err != nil {
+		address := config.SocketPath
+		if config.UseTCP {
+			address = config.TCPPort
+		}
+		if err := server.waitForServerReady(address, config.UseTCP, 5*time.Second); err != nil {
 			slog.Error("server failed to start", "error", err)
 			os.Exit(1)
 		}

@@ -144,7 +144,7 @@ func TestServerGetConfiguredSocketPath(t *testing.T) {
 			server := NewServer()
 			server.config = tt.config
 
-			result := server.getConfiguredSocketPath()
+			result := server.getConfiguredAddress()
 			if result != tt.expected {
 				t.Errorf("Expected %s, got %s", tt.expected, result)
 			}

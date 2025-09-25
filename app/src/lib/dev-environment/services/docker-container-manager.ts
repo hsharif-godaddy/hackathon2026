@@ -4,9 +4,25 @@ import { promisify } from "util";
 import path from "path";
 import { existsSync, readFileSync, mkdirSync } from "fs";
 import { DevDatabase } from '../database/DevDatabase';
-import os from "node:os";
+import { devSupervisor } from '../../features';
+import { userInfo } from "node:os";
 
 const execAsync = promisify(exec);
+
+/**
+ * Determine if TCP mode should be used for dev-supervisor
+ * Uses centralized features module and ensures development-only usage
+ */
+function shouldUseTcpMode(): boolean {
+	return devSupervisor.shouldUseTcp();
+}
+
+/**
+ * Get TCP port for dev-supervisor
+ */
+function getTcpPort(): string {
+	return devSupervisor.getTcpPort();
+}
 
 export interface ContainerInfo {
 	appId: string;
@@ -15,7 +31,9 @@ export interface ContainerInfo {
 	status: "building" | "running" | "stopped" | "error";
 	imageName: string;
 	createdAt: Date;
-	hostSocketPath?: string; // Path to dev-supervisor socket on host filesystem
+	hostSocketPath?: string; // Path to dev-supervisor socket on host filesystem (Unix mode)
+	tcpConnectionUrl?: string; // TCP connection URL (TCP mode)
+	supervisorPort?: number; // TCP port for dev-supervisor (TCP mode)
 }
 
 /**
@@ -87,10 +105,10 @@ export class DockerContainerManager {
 	private getHostUserInfo(): { uid: number; gid: number } {
 		try {
 			// Get current user info
-			const userInfo = os.userInfo();
+			const user = userInfo();
 			return {
-				uid: userInfo.uid,
-				gid: userInfo.gid
+				uid: user.uid,
+				gid: user.gid
 			};
 		} catch (error) {
 			logger.warn("Could not get host user info, using default UID/GID", {
@@ -261,16 +279,30 @@ export class DockerContainerManager {
 			// Create and start the container with volume mounting for live development
 			logger.info(`🚀 Starting Docker container: ${containerName} on port ${port}`);
 
-			// Create unique socket directory for this app on the host using sanitized ID
-			const hostSocketDir = `/tmp/dev-supervisor-${dockerSafeId}`;
-			const hostSocketPath = `${hostSocketDir}/dev-supervisor.sock`;
+			// Determine connection mode for dev-supervisor
+			const useTcp = shouldUseTcpMode();
+			let hostSocketPath: string | undefined;
+			let tcpConnectionUrl: string | undefined;
+			let supervisorPort: number | undefined;
 
-			// Ensure socket directory exists and has correct permissions using safe fs operations
-			// Use 777 permissions to allow container processes to write socket files
-			try {
-				mkdirSync(hostSocketDir, { recursive: true, mode: 0o777 });
-			} catch (error) {
-				logger.warn(`⚠️ Failed to create socket directory ${hostSocketDir}:`, error);
+			if (useTcp) {
+				// TCP mode - use port mapping
+				supervisorPort = parseInt(getTcpPort()) + parseInt(dockerSafeId.slice(-3)) || 8877; // Unique port per app
+				tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
+				logger.info(`📡 Using TCP mode for dev-supervisor: ${tcpConnectionUrl}`);
+			} else {
+				// Unix socket mode
+				const hostSocketDir = `/tmp/dev-supervisor-${dockerSafeId}`;
+				hostSocketPath = `${hostSocketDir}/dev-supervisor.sock`;
+
+				// Ensure socket directory exists and has correct permissions using safe fs operations
+				// Use 777 permissions to allow container processes to write socket files
+				try {
+					mkdirSync(hostSocketDir, { recursive: true, mode: 0o777 });
+				} catch (error) {
+					logger.warn(`⚠️ Failed to create socket directory ${hostSocketDir}:`, error);
+				}
+				logger.info(`🔌 Using Unix socket mode for dev-supervisor: ${hostSocketPath}`);
 			}
 
 			const templateSpecific = [];
@@ -311,16 +343,38 @@ export class DockerContainerManager {
 					break;
 			}
 
-			const runCommand = [
+			// Build Docker run command based on connection mode
+			const baseCommand = [
 				"docker run -d",
 				`--name ${containerName}`,
 				`-v "${appPath}:/app"`, // Mount app directory for live editing
 				`-v /app/node_modules`, // Anonymous volume for node_modules to avoid conflicts
-				`-v "${hostSocketDir}:/tmp/supervisor"`, // Mount socket directory for dev-supervisor communication
+			];
+
+			// Add dev-supervisor configuration based on mode
+			const devSupervisorConfig = [];
+			if (useTcp) {
+				// TCP mode configuration
+				devSupervisorConfig.push(
+					`-p ${supervisorPort}:${supervisorPort}`, // Map dev-supervisor TCP port
+					"-e DEV_SUPERVISOR_USE_TCP=true",
+					`-e DEV_SUPERVISOR_TCP_PORT=${supervisorPort}`
+				);
+			} else {
+				// Unix socket mode configuration
+				const hostSocketDir = path.dirname(hostSocketPath!);
+				devSupervisorConfig.push(
+					`-v "${hostSocketDir}:/tmp/supervisor"`, // Mount socket directory for dev-supervisor communication
+					"-e DEV_SUPERVISOR_SOCKET_PATH=/tmp/supervisor/dev-supervisor.sock"
+				);
+			}
+
+			const runCommand = [
+				...baseCommand,
+				...devSupervisorConfig,
 				...templateSpecific,
 				"-e HOST=0.0.0.0",
 				"-e NODE_ENV=development",
-				"-e DEV_SUPERVISOR_SOCKET_PATH=/tmp/supervisor/dev-supervisor.sock", // Configure dev-supervisor socket path inside container
 				"--restart unless-stopped",
 				imageName,
 			].join(" ");
@@ -336,6 +390,8 @@ export class DockerContainerManager {
 				imageName,
 				createdAt: new Date(),
 				hostSocketPath,
+				tcpConnectionUrl,
+				supervisorPort,
 			};
 
 			// Store in memory and database
@@ -541,16 +597,41 @@ export class DockerContainerManager {
 	getAllContainers(): ContainerInfo[] {
 		// Get all container records from database
 		const runningRecords = this.devDb.getRunningProcesses();
+		const useTcp = shouldUseTcpMode();
 		
-		return runningRecords.map((record) => ({
-			appId: record.appId,
-			containerId: `container-${record.appId}`, // Docker containers would have real IDs
-			port: record.port,
-			status: "running" as const,
-			imageName: `airo-app-${record.appId}:dev`,
-			hostSocketPath: `/tmp/dev-supervisor-${record.appId}/dev-supervisor.sock`,
-			createdAt: new Date(record.startedAt),
-		}));
+		return runningRecords.map((record) => {
+			const sanitizedId = this.sanitizeAppId(record.appId);
+			let containerInfo: ContainerInfo = {
+				appId: record.appId,
+				containerId: `container-${record.appId}`, // Docker containers would have real IDs
+				port: record.port,
+				status: "running" as const,
+				imageName: `airo-app-${sanitizedId}:dev`,
+				createdAt: new Date(record.startedAt),
+			};
+
+			if (useTcp) {
+				const supervisorPort = parseInt(getTcpPort()) + parseInt(sanitizedId.slice(-3)) || 8877;
+				containerInfo.tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
+				containerInfo.supervisorPort = supervisorPort;
+			} else {
+				containerInfo.hostSocketPath = `/tmp/dev-supervisor-${sanitizedId}/dev-supervisor.sock`;
+			}
+
+			return containerInfo;
+		});
+	}
+
+	/**
+	 * Get dev-supervisor connection path for an app
+	 */
+	getConnectionPath(appId: string): string | null {
+		const containerInfo = this.containers.get(appId) || this.getContainerFromDb(appId);
+		if (!containerInfo) {
+			return null;
+		}
+		
+		return containerInfo.tcpConnectionUrl || containerInfo.hostSocketPath || null;
 	}
 
 	/**
@@ -720,15 +801,27 @@ export class DockerContainerManager {
 
 		if (!record) return null;
 
-		return {
+		const sanitizedId = this.sanitizeAppId(record.appId);
+		const useTcp = shouldUseTcpMode();
+		
+		let containerInfo: ContainerInfo = {
 			appId: record.appId,
 			containerId: `container-${record.appId}`,
 			port: record.port,
 			status: "running",
-			imageName: `airo-app-${record.appId}:dev`,
-			hostSocketPath: `/tmp/dev-supervisor-${record.appId}/dev-supervisor.sock`,
+			imageName: `airo-app-${sanitizedId}:dev`,
 			createdAt: new Date(record.startedAt),
 		};
+
+		if (useTcp) {
+			const supervisorPort = parseInt(getTcpPort()) + parseInt(sanitizedId.slice(-3)) || 8877;
+			containerInfo.tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
+			containerInfo.supervisorPort = supervisorPort;
+		} else {
+			containerInfo.hostSocketPath = `/tmp/dev-supervisor-${sanitizedId}/dev-supervisor.sock`;
+		}
+
+		return containerInfo;
 	}
 
 	/**
@@ -1001,7 +1094,8 @@ export class DockerContainerManager {
 	}
 
 	/**
-	 * Get the host socket path for a specific app
+	 * Get the host socket path for a specific app (Unix mode only)
+	 * @deprecated Use getConnectionPath() instead for both TCP and Unix socket support
 	 */
 	getHostSocketPath(appId: string): string | null {
 		const containerInfo = this.containers.get(appId) || this.getContainerFromDb(appId);

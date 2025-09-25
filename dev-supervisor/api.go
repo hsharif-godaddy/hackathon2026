@@ -36,7 +36,7 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 		"version":                 Version,
 		"pid":                     os.Getpid(),
 		"is_pid1":                 os.Getpid() == 1,
-		"socket_path":             s.getConfiguredSocketPath(),
+		"socket_path":             s.getConfiguredAddress(),
 		"uptime":                  uptime.String(),
 		"process":                 processStatus,
 		"health":                  healthStatus,

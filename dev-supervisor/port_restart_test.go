@@ -30,7 +30,7 @@ func TestPortReuseAfterRestart(t *testing.T) {
 	}()
 
 	// Wait for server to be ready
-	if err := server.waitForServerReady(socketPath, 5*time.Second); err != nil {
+	if err := server.waitForServerReady(socketPath, false, 5*time.Second); err != nil {
 		t.Fatalf("Server failed to start: %v", err)
 	}
 
@@ -144,7 +144,7 @@ func TestConcurrentRestarts(t *testing.T) {
 	}()
 
 	// Wait for server to be ready
-	if err := server.waitForServerReady(socketPath, 5*time.Second); err != nil {
+	if err := server.waitForServerReady(socketPath, false, 5*time.Second); err != nil {
 		t.Fatalf("Server failed to start: %v", err)
 	}
 
@@ -307,7 +307,7 @@ func BenchmarkRestartWithPortWait(b *testing.B) {
 		server.StartWithConfig(config)
 	}()
 
-	if err := server.waitForServerReady(socketPath, 5*time.Second); err != nil {
+	if err := server.waitForServerReady(socketPath, false, 5*time.Second); err != nil {
 		b.Fatalf("Server failed to start: %v", err)
 	}
 
