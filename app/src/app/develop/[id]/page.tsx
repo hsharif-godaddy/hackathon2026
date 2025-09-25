@@ -10,7 +10,7 @@ import Header, { HeaderRef } from './header'
 // Legacy messageService cleanup removed - now using streaming architecture
 import { ProtectedRoute } from '@/components/auth'
 import { appService } from '@/services/AppService'
-import { 
+import {
   useConversations,
   useSetInputValue,
   useSetAiEditContext,
@@ -33,13 +33,13 @@ function DevelopPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const appId = params.id as string
-  
+
   // App store - for app lifecycle operations
   const { restartApp: appStoreRestartApp } = useAppStore()
-  
+
   // Server polling store - unified server status management
   const { startPollingForServer, stopPollingForServer, cleanup: cleanupServerPolling } = useServerPollingStore()
-  
+
   // Streaming conversation store - for conversations and messages
   const conversations = useConversations()
   const setInputValue = useSetInputValue()
@@ -48,7 +48,7 @@ function DevelopPageContent() {
   const autoSendInitialMessage = useAutoSendInitialMessage()
   const loadConversationHistory = useLoadConversationHistory()
   const { sendMessage } = useStreamingWebSocket()
-  
+
   // Develop page store - for UI state and coordination
   const {
     viewMode,
@@ -69,7 +69,7 @@ function DevelopPageContent() {
     site,
     initializePage
   } = useDevelopPageStore()
-  
+
   // Git history store - handles loading with smart retry logic
   const {
     loadGitHistory,
@@ -78,7 +78,7 @@ function DevelopPageContent() {
   // Local state (only what's not in stores)
   const [showUsageCost, setShowUsageCost] = useState(false)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
-  
+
   // Store last known iframe state for restoration
   const lastIframeState = useRef<{
     url?: string
@@ -86,7 +86,7 @@ function DevelopPageContent() {
   }>({})
 
   const headerRef = useRef<HeaderRef>(null)
-  
+
   // Streaming store state
   const isLoading = useIsLoading()
 
@@ -127,7 +127,7 @@ function DevelopPageContent() {
   // Initialize streaming conversation store for this app
   useEffect(() => {
     if (!appId) return
-    
+
     console.log('🔄 Initializing streaming conversation store for:', appId)
     setCurrentAppId(appId)
   }, [appId, setCurrentAppId])
@@ -139,12 +139,12 @@ function DevelopPageContent() {
       appId,
       hasLoadFunction: !!loadConversationHistory
     })
-    
+
     if (loadingPhase !== 'ready' || !appId) {
       console.log('⏭️ Skipping conversation load:', { loadingPhase, appId })
       return
     }
-    
+
     console.log('📚 Loading conversation history for app:', appId)
     // Add error handling to ensure loading state is always properly reset
     loadConversationHistory(appId).catch((error) => {
@@ -158,10 +158,10 @@ function DevelopPageContent() {
   // Server polling - unified approach with adaptive backoff
   useEffect(() => {
     if (!appId) return
-    
+
     console.log('🚀 Starting unified server polling for:', appId)
     startPollingForServer(appId)
-    
+
     return () => {
       console.log('⏹️ Stopping server polling for:', appId)
       stopPollingForServer(appId)
@@ -310,12 +310,12 @@ function DevelopPageContent() {
   // Handle URL message parameter - simplified logic
   useEffect(() => {
     if (loadingPhase !== 'ready') return
-    
+
     const message = searchParams.get('message')
     if (message && conversations.length === 0) {
       const decodedMessage = decodeURIComponent(message)
       setInputValue(decodedMessage)
-      
+
       // Auto-send and clear URL
       setTimeout(() => {
         handleSendMessage(decodedMessage)
@@ -329,24 +329,24 @@ function DevelopPageContent() {
   // Handle auto-send initial message for new apps (after conversation history is loaded)
   useEffect(() => {
     if (loadingPhase !== 'ready' || !appId || isLoading) return
-    
+
     // Wait a bit for conversation history to load, then check if we should auto-send
     const timer = setTimeout(() => {
       // Check if we should auto-send initial message
-      const shouldAutoSend = 
+      const shouldAutoSend =
         site?.initial_prompt &&
         site.status === 'running' &&
         app &&
         !app.initialBuildComplete &&
         conversations.length === 0 &&
         !searchParams.get('message') // Don't auto-send if there's a URL message
-      
+
       if (shouldAutoSend) {
         console.log('🚀 Auto-sending initial message for new app:', appId)
-        
+
         // Use the streaming store's auto-send function
         const wasTriggered = autoSendInitialMessage(site.initial_prompt!, appId)
-        
+
         if (wasTriggered) {
           // Trigger the actual send after a brief delay to ensure WebSocket is ready
           setTimeout(() => {
@@ -355,7 +355,7 @@ function DevelopPageContent() {
         }
       }
     }, 500) // Wait 500ms for conversation history to load
-    
+
     return () => clearTimeout(timer)
   }, [loadingPhase, appId, site, app, conversations.length, searchParams, autoSendInitialMessage, handleSendMessage, isLoading])
 
@@ -367,30 +367,23 @@ function DevelopPageContent() {
     }
   }, [loadingPhase, appId, loadGitHistory])
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
-      e.preventDefault()
-      handleSendMessage()
-    }
-  }
-
   const handleRestartServer = async () => {
     if (!appId) return
-    
+
     console.log('🔄 Starting server restart process...')
-    
+
     try {
       await restartAppFromStore(appId, appStoreRestartApp)
       console.log('✅ App restart completed successfully')
-      
+
       // Refresh the preview after successful restart
       setTimeout(() => {
         handlePreviewRefresh()
       }, 1000)
-      
+
     } catch (error) {
       console.error('❌ Error restarting server:', error)
-      
+
       // More user-friendly error message
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       if (errorMessage.includes('404')) {
@@ -414,12 +407,12 @@ function DevelopPageContent() {
       } catch (error) {
         console.error('Cannot request visual context:', error)
       }
-      
+
       // Wait a bit for the response, then refresh with whatever state we have
       setTimeout(() => {
-        window.postMessage({ 
+        window.postMessage({
           type: 'preview-refresh',
-          preserveState: lastIframeState.current 
+          preserveState: lastIframeState.current
         }, window.location.origin)
       }, 100) // Short delay to allow visual context response
     } else {
@@ -445,9 +438,9 @@ function DevelopPageContent() {
       {/* Main Content Area */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Chat Panel */}
-        <div 
+        <div
           className="flex flex-col border-r flex-shrink-0"
-          style={{ 
+          style={{
             width: `${chatPaneWidth}px`,
             minWidth: `${chatPaneWidth}px`,
             maxWidth: `${chatPaneWidth}px`
@@ -457,7 +450,6 @@ function DevelopPageContent() {
           <StreamingChatPane
             expandedPlan={expandedPlan}
             isSelectMode={isSelectMode}
-            onKeyPress={handleKeyPress}
             onToggleSelectMode={toggleSelectMode}
             onToggleExpandedPlan={toggleExpandedPlan}
             appId={appId}
@@ -465,7 +457,7 @@ function DevelopPageContent() {
         </div>
 
         {/* Resizable Divider */}
-        <ResizableDivider 
+        <ResizableDivider
           onResize={handlePanelResize}
           initialLeftWidth={chatPaneWidth}
           minLeftWidth={300}
@@ -478,7 +470,7 @@ function DevelopPageContent() {
           <div className="flex-1 overflow-hidden relative">
             {/* Preview Pane */}
             <div className={`absolute inset-0 ${viewMode === 'preview' ? 'block' : 'hidden'}`}>
-              <PreviewPane 
+              <PreviewPane
                 appId={appId}
                 viewMode={previewViewMode}
                 selectedCommit={selectedCommit || undefined}
@@ -487,13 +479,13 @@ function DevelopPageContent() {
                   // App data refreshing is now handled by the store
                 }}
               />
-              
+
             </div>
 
             {/* Code Editor */}
             <div className={`absolute inset-0 ${viewMode === 'code' ? 'block' : 'hidden'}`}>
-              <CodeEditor 
-                appId={appId} 
+              <CodeEditor
+                appId={appId}
                 onUnsavedChanges={setHasUnsavedChanges}
               />
             </div>
@@ -506,7 +498,7 @@ function DevelopPageContent() {
 
 export default function Develop() {
   return (
-    <ProtectedRoute 
+    <ProtectedRoute
       requiredAccess="user"
       loadingMessage="Loading Development Environment"
       unauthorizedMessage="You need to be signed in to access the development environment."

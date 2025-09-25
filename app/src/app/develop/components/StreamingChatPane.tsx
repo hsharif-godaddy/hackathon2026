@@ -4,9 +4,9 @@ import { useRef, useMemo } from 'react'
 import PlanTracker from './PlanTracker'
 import ChatInput from './ChatInput'
 import StreamingChatTabs from './StreamingChatTabs'
-import { 
-  useInputValue, 
-  useIsLoading, 
+import {
+  useInputValue,
+  useIsLoading,
   useCurrentAppId,
   useMessages,
   useActiveStream,
@@ -31,7 +31,6 @@ interface StreamingChatPaneProps {
 export default function StreamingChatPane({
   expandedPlan,
   isSelectMode,
-  onKeyPress,
   onToggleSelectMode,
   onToggleExpandedPlan,
   appId = ''
@@ -48,24 +47,24 @@ export default function StreamingChatPane({
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
   const setCurrentAppId = useSetCurrentAppId()
-  
+
   // Get WebSocket functionality
   const { sendMessage } = useStreamingWebSocket()
-  
+
   // Combine messages and activeStream with useMemo to prevent infinite loops
   const allMessages = useMemo(() => {
     return activeStream ? [...messages, activeStream] : messages
   }, [messages, activeStream])
-  
+
   // Only show messages and state if they belong to the current app context
   const visibleMessages = (currentAppId === appId) ? allMessages : []
   const safeInputValue = (currentAppId === appId) ? (inputValue || '') : ''
   const safeAiEditContext = (currentAppId === appId) ? aiEditContext : null
-  
+
   // Debug current state (only log when there's a significant change)
   const prevDebugRef = useRef<string>('')
   const currentDebugState = `${appId}-${currentAppId}-${visibleMessages?.length}`
-  
+
   // Only log if app changed or messages changed (ignore loading/input changes)
   if (prevDebugRef.current !== currentDebugState) {
     console.log('🎯 StreamingChatPane state changed:', {
@@ -76,23 +75,23 @@ export default function StreamingChatPane({
     })
     prevDebugRef.current = currentDebugState
   }
-  
+
   // Track processing state - use isLoading OR isStreaming to match original behavior
   const isProcessing = isLoading || isStreaming
-  
+
   // Handle sending a message
   const handleSendMessage = () => {
     console.log('🎯 StreamingChatPane handleSendMessage called:', {
       inputValue: inputValue?.slice(0, 50) + '...',
       sendMessage: typeof sendMessage
     })
-    
+
     if (inputValue?.trim()) {
       // Ensure we're connected to the right app
       if (currentAppId !== appId) {
         setCurrentAppId(appId)
       }
-      
+
       // Send the message using the streaming WebSocket
       sendMessage(inputValue, safeAiEditContext)
     }
@@ -100,17 +99,17 @@ export default function StreamingChatPane({
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <PlanTracker 
+      <PlanTracker
         developmentPlan={developmentPlan}
         expandedPlan={expandedPlan}
         onToggleExpandedPlan={onToggleExpandedPlan}
       />
-      
+
       <StreamingChatTabs
         messages={visibleMessages}
         appId={appId}
       />
-      
+
       {isProcessing && (
         <div className="mx-4 mb-2 rounded-md p-2 flex items-center justify-center">
           <div className="flex space-x-1 mr-2">
@@ -120,7 +119,7 @@ export default function StreamingChatPane({
           </div>
         </div>
       )}
-      
+
       {safeAiEditContext && (
         <div className="mx-4 mb-2 px-3 py-2 border rounded-md">
           <div className="flex items-center justify-between">
@@ -141,14 +140,13 @@ export default function StreamingChatPane({
           </div>
         </div>
       )}
-      
+
       <ChatInput
         inputValue={safeInputValue}
         isSelectMode={isSelectMode}
         isDisabled={isProcessing}
         onInputChange={setInputValue}
         onSendMessage={handleSendMessage}
-        onKeyPress={onKeyPress}
         onToggleSelectMode={onToggleSelectMode}
       />
     </div>

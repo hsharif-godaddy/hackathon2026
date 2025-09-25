@@ -12,7 +12,7 @@ interface ChatInputProps {
   isDisabled?: boolean
   onInputChange: (value: string) => void
   onSendMessage: () => void
-  onKeyPress: (e: React.KeyboardEvent) => void
+  onKeyDown: (e: React.KeyboardEvent) => void
   onToggleSelectMode: () => void
 }
 
@@ -22,9 +22,15 @@ export default function ChatInput({
   isDisabled,
   onInputChange,
   onSendMessage,
-  onKeyPress,
   onToggleSelectMode
 }: ChatInputProps) {
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      onSendMessage()
+    }
+  }
+
   return (
     <div className="p-4 border-t">
       {/* Cursor-style Chat Input */}
@@ -34,14 +40,14 @@ export default function ChatInput({
             <textarea
               value={inputValue}
               onChange={(e) => onInputChange(e.target.value)}
-              onKeyPress={onKeyPress}
+              onKeyDown={onKeyDown}
               placeholder={isDisabled ? "Processing... please wait" : "Ask Airo to modify code, add features, or explain implementation..."}
               rows={3}
               disabled={isDisabled}
               className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-sm chat-input-text`}
             />
           </div>
-          
+
           <Box className="flex flex-col space-y-2" gap="sm">
             {/* Element Selector Button */}
             <Button
@@ -54,7 +60,7 @@ export default function ChatInput({
               icon={<PencilIcon className="w-4 h-4" />}
               size="sm"
             />
-            
+
             {/* Send Button */}
             <Button
               onClick={onSendMessage}
