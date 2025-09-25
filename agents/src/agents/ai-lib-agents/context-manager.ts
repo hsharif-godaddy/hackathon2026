@@ -8,17 +8,8 @@ import { AppContextManager } from '../../services/AppContextManager.js'
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js'
 import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig } from './types.js'
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
-
-/**
- * Context logging configuration interface
- */
-export interface ContextLoggingConfig {
-  detailed: boolean
-  appContextContent: boolean
-  templateContent: boolean
-  visualContextDetails: boolean
-  rawContextData: boolean
-}
+import { logger } from '../../logging/index.js'
+import { getAgentConfig } from '../../services/features.js'
 
 import type { AgentExecutionContext } from '../../base/agent.interface.js'
 import type { AgentsAppContext } from '../../types/websocket-context.js'
@@ -37,9 +28,8 @@ export class AILibContextManager {
     private appContextManager: AppContextManager
     private appRepository: AppRepository
     private config: ContextGenerationConfig
-    private loggingConfig: ContextLoggingConfig | undefined
 
-    constructor(config: Partial<ContextGenerationConfig> = {}, loggingConfig?: ContextLoggingConfig) {
+    constructor(config: Partial<ContextGenerationConfig> = {}) {
         this.conversationContextManager = new ConversationContextManager(
             new ConversationRepository(),
             config.maxHistoryMessages || DEFAULT_CONTEXT_CONFIG.maxHistoryMessages
@@ -47,7 +37,6 @@ export class AILibContextManager {
         this.appContextManager = new AppContextManager()
         this.appRepository = new AppRepository()
         this.config = { ...DEFAULT_CONTEXT_CONFIG, ...config }
-        this.loggingConfig = loggingConfig
     }
 
     /**
@@ -70,11 +59,16 @@ export class AILibContextManager {
             hasVisualContext: !!context.visualContext,
             hasAiEditContext: !!context.aiEditContext
         }
-        console.log(`🎨 Building context messages: ${Object.entries(contextSummary).filter(([_, v]) => v).map(([k]) => k.replace('has', '').toLowerCase()).join(', ')}`)
+        
+        logger.info('context.build.start', {
+            availableContexts: Object.entries(contextSummary).filter(([_, v]) => v).map(([k]) => k.replace('has', '').toLowerCase()),
+            ...contextSummary
+        })
 
         // Detailed logging if enabled
-        if (this.loggingConfig?.detailed) {
-            console.log('🔍 Context details:', {
+        const contextLogging = getAgentConfig.contextLogging()
+        if (contextLogging.detailed) {
+            logger.debug('context.build.details', {
                 ...contextSummary,
                 conversationMaxMessages: context.conversation?.maxMessages,
                 appContextDepth: context.appContext?.maxDirectoryDepth
@@ -87,11 +81,13 @@ export class AILibContextManager {
         const conversationContextMessages: Array<{ role: 'user' | 'system'; content: string }> = []
 
         // Always show message count summary
-        console.log(`📋 Generated ${contextMessages.length} raw context messages`)
+        logger.info('context.messages.generated', {
+            messageCount: contextMessages.length
+        })
         
         // Detailed logging if enabled
-        if (this.loggingConfig?.detailed) {
-            console.log('📋 Context message details:', {
+        if (contextLogging.detailed) {
+            logger.debug('context.messages.details', {
                 messageTypes: contextMessages.map(msg => msg.type),
                 totalContextLength: contextMessages.reduce((sum, msg) => sum + msg.content.length, 0)
             })
@@ -100,16 +96,16 @@ export class AILibContextManager {
         // Add template description as system message FIRST (most important context)
         const templateDescription = await this.getTemplateDescription(context)
         if (templateDescription) {
-            const templateMessage = `## Template Framework Description\n\n${templateDescription}`
-            
             // Template content logging if enabled
-            if (this.loggingConfig?.templateContent) {
-                console.log('📋 Template Description Content:', templateDescription.substring(0, 500) + '...')
+            if (contextLogging.templateContent) {
+                logger.debug('context.template.content', {
+                    contentPreview: templateDescription.substring(0, 500)
+                })
             }
             
             conversationContextMessages.push({
                 role: 'system',
-                content: templateMessage
+                content: templateDescription
             })
         }
 
@@ -118,45 +114,58 @@ export class AILibContextManager {
         if (appContextMessages.length > 0) {
             conversationContextMessages.push({
                 role: 'system',
-                content: `## Current Project Context\n\n${appContextMessages.map(msg => msg.content).join('\n\n')}`
+                content: appContextMessages.map(msg => msg.content).join('\n\n')
             })
         }
 
-        // Add visual context as system message (third priority)
+        // Add visual context as user message (third priority)
         const visualMessages = contextMessages.filter(msg => msg.type === 'visual_context')
         if (visualMessages.length > 0) {
             conversationContextMessages.push({
-                role: 'system',
-                content: `## User Visual Context\n\n${visualMessages.map(msg => msg.content).join('\n\n')}`
+                role: 'user',
+                content: visualMessages.map(msg => msg.content).join('\n\n')
             })
         }
 
-        // Add AI edit context as system message (LAST - most specific/immediate)
+        // Add AI edit context as user message (LAST - most specific/immediate)
         const aiEditMessages = contextMessages.filter(msg => msg.type === 'ai_edit_context')
         if (aiEditMessages.length > 0) {
             conversationContextMessages.push({
-                role: 'system',
-                content: `## Selected Element Context\n\n${aiEditMessages.map(msg => msg.content).join('\n\n')}`
+                role: 'user',
+                content: aiEditMessages.map(msg => msg.content).join('\n\n')
             })
         }
 
-        // Always show concise final summary
-        const messageTypes = conversationContextMessages.map(msg => 
-            msg.content.includes('## Template Framework Description') ? 'template' :
-            msg.content.includes('## Current Project Context') ? 'app' :
-            msg.content.includes('## User Visual Context') ? 'visual' :
-            msg.content.includes('## Selected Element Context') ? 'element' : 'unknown'
-        )
-        console.log(`✅ Built ${conversationContextMessages.length} system messages [${messageTypes.join(', ')}]`)
+        // Determine message types based on order and context
+        const messageTypes: string[] = []
+        let typeIndex = 0
+        if (templateDescription) {
+            messageTypes[typeIndex++] = 'template'
+        }
+        if (appContextMessages.length > 0) {
+            messageTypes[typeIndex++] = 'app'
+        }
+        if (visualMessages.length > 0) {
+            messageTypes[typeIndex++] = 'visual'
+        }
+        if (aiEditMessages.length > 0) {
+            messageTypes[typeIndex++] = 'element'
+        }
+
+        logger.info('context.build.success', {
+            messageCount: conversationContextMessages.length,
+            messageTypes
+        })
 
         // Detailed logging if enabled
-        if (this.loggingConfig?.detailed) {
-            console.log('🔍 Context message breakdown:', {
+        if (contextLogging.detailed) {
+            logger.debug('context.build.breakdown', {
                 staticSystemPromptLength: baseSystemPrompt.length,
                 totalContextLength: conversationContextMessages.reduce((sum, msg) => sum + msg.content.length, 0),
                 messageDetails: conversationContextMessages.map((msg, index) => ({
                     index: index + 1,
-                    type: messageTypes[index],
+                    type: messageTypes[index] || 'unknown',
+                    role: msg.role,
                     length: msg.content.length
                 }))
             })
@@ -199,7 +208,9 @@ export class AILibContextManager {
                     content: msg.content
                 }))
         } catch (error) {
-            console.error('AILibContextManager: Error building conversation history:', error)
+            logger.error('context.conversation_history.build.failure', {
+                error: error instanceof Error ? error.message : String(error)
+            })
             return []
         }
     }
@@ -237,7 +248,9 @@ export class AILibContextManager {
                 }
             }
         } catch (error) {
-            console.error('AILibContextManager: Error building context messages:', error)
+            logger.error('context.messages.build.failure', {
+                error: error instanceof Error ? error.message : String(error)
+            })
         }
 
         return messages
@@ -248,7 +261,7 @@ export class AILibContextManager {
      */
     private async buildAppContextMessage(context: EnhancedAgentContext): Promise<ContextMessage | null> {
         try {
-            console.log('🔍 Building app context message:', {
+            logger.debug('context.app.build.start', {
                 hasMetadata: !!context.metadata,
                 appId: context.metadata?.appId,
                 appPath: context.metadata?.appPath,
@@ -257,7 +270,7 @@ export class AILibContextManager {
 
             const executionContext = this.buildExecutionContext(context)
             
-            console.log('🔍 Execution context built:', {
+            logger.debug('context.execution.built', {
                 threadId: executionContext.threadId,
                 hasMetadata: !!executionContext.metadata,
                 metadataAppId: executionContext.metadata?.appId,
@@ -267,19 +280,23 @@ export class AILibContextManager {
             const appContextContent = await this.appContextManager.generateContextMessage(executionContext)
 
             if (!appContextContent) {
-                console.log('🏗️ AppContext: No app context generated - AppContextManager returned null')
+                logger.debug('context.app.build.empty', {
+                    reason: 'AppContextManager returned null'
+                })
                 return null
             }
 
-            console.log('🏗️ AppContext Generated:', {
+            logger.info('context.app.build.success', {
                 contentLength: appContextContent.length,
-                appId: context.metadata?.appId,
-                contentPreview: appContextContent.substring(0, 300) + '...'
+                appId: context.metadata?.appId
             })
 
-            console.log('📋 Full App Context Content:', {
-                content: appContextContent
-            })
+            const contextLogging = getAgentConfig.contextLogging()
+            if (contextLogging.appContextContent) {
+                logger.debug('context.app.content', {
+                    content: appContextContent
+                })
+            }
 
             return {
                 role: 'user',
@@ -287,7 +304,9 @@ export class AILibContextManager {
                 type: 'app_context'
             }
         } catch (error) {
-            console.error('AILibContextManager: Error building app context:', error)
+            logger.error('context.app.build.failure', {
+                error: error instanceof Error ? error.message : String(error)
+            })
             return null
         }
     }
@@ -338,7 +357,9 @@ Instructions: The following user message refers to changes for this specific sel
                 type: 'ai_edit_context'
             }
         } catch (error) {
-            console.error('AILibContextManager: Error building AI edit context:', error)
+            logger.error('context.ai_edit.build.failure', {
+                error: error instanceof Error ? error.message : String(error)
+            })
             return null
         }
     }
@@ -405,7 +426,9 @@ Context Notes: ${contextNotes}`
                 type: 'visual_context'
             }
         } catch (error) {
-            console.error('AILibContextManager: Error building visual context:', error)
+            logger.error('context.visual.build.failure', {
+                error: error instanceof Error ? error.message : String(error)
+            })
             return null
         }
     }
@@ -422,9 +445,9 @@ Context Notes: ${contextNotes}`
             const app = this.appRepository.findById(appId)
             if (app) {
                 appPath = app.path
-                console.log('🔍 Resolved appPath from appId:', { appId, appPath })
+                logger.debug('context.app.path.resolved', { appId, appPath })
             } else {
-                console.warn('⚠️ App not found in repository:', appId)
+                logger.warn('context.app.path.not_found', { appId })
             }
         }
 
@@ -448,11 +471,16 @@ Context Notes: ${contextNotes}`
     convertToEnhancedContext(rawContext: AgentsAppContext): EnhancedAgentContext {
         // Always show concise conversion summary
         const availableContexts = Object.keys(rawContext).filter(key => rawContext[key as keyof AgentsAppContext])
-        console.log(`📋 Converting context: ${availableContexts.length} sections available`)
+        
+        logger.info('context.conversion.start', {
+            availableSections: availableContexts.length,
+            sections: availableContexts
+        })
 
         // Detailed logging if enabled
-        if (this.loggingConfig?.detailed) {
-            console.log('🔍 Context conversion details:', {
+        const contextLogging = getAgentConfig.contextLogging()
+        if (contextLogging.detailed) {
+            logger.debug('context.conversion.details', {
                 originalContextKeys: availableContexts,
                 hasMetadata: !!rawContext.metadata,
                 hasConversation: !!rawContext.conversation,
@@ -494,24 +522,31 @@ Context Notes: ${contextNotes}`
         // Extract appId from context metadata
         const appId = context.metadata?.appId as string
         if (!appId) {
-            console.log('🔍 No appId found in context metadata, skipping template description')
+            logger.debug('context.template.skip', {
+                reason: 'No appId found in context metadata'
+            })
             return null
         }
 
         // Look up app path using AppRepository
         const app = this.appRepository.findById(appId)
         if (!app) {
-            console.warn(`❌ App '${appId}' not found in repository, skipping template description`)
+            logger.warn('context.template.app_not_found', {
+                appId,
+                reason: 'App not found in repository'
+            })
             return null
         }
 
         const appPath = app.path
-        console.log(`📁 Checking template version for app path: ${appPath}`)
+        logger.debug('context.template.version_check', { appPath })
 
         // Get validated template version from app directory
         const validatedVersion = getValidatedTemplateVersion(appPath)
         if (!validatedVersion) {
-            console.log('📝 No valid template version found, skipping template description')
+            logger.debug('context.template.no_version', {
+                reason: 'No valid template version found'
+            })
             return null
         }
 
@@ -527,11 +562,11 @@ Context Notes: ${contextNotes}`
             const sourcePromptsDir = path.resolve(currentDir, '..', '..', '..', 'src', 'prompts')
             templateDescPath = path.join(sourcePromptsDir, 'template-descriptions', `${validatedVersion}.md`)
             
-            console.log(`🔍 Trying source path: ${templateDescPath}`)
+            logger.debug('context.template.path.fallback', { templateDescPath })
         }
         
         if (!existsSync(templateDescPath)) {
-            console.warn(`❌ Template description file not found: ${templateDescPath}`)
+            logger.warn('context.template.file_not_found', { templateDescPath })
             return null
         }
 
@@ -539,23 +574,27 @@ Context Notes: ${contextNotes}`
             const templateDescription = readFileSync(templateDescPath, 'utf-8')
             const trimmedDescription = templateDescription.trim()
             
-            console.log(`✅ Loaded template description for version ${validatedVersion}: ${templateDescPath}`)
-            console.log('🎨 Template Description Loaded:', {
+            logger.info('context.template.load.success', {
                 templateVersion: validatedVersion,
                 contentLength: trimmedDescription.length,
                 appId: context.metadata?.appId,
-                filePath: templateDescPath,
-                contentPreview: trimmedDescription.substring(0, 500) + '...'
+                filePath: templateDescPath
             })
 
-            console.log('📋 Full Template Description Content:', {
-                templateVersion: validatedVersion,
-                content: trimmedDescription
-            })
+            const contextLogging = getAgentConfig.contextLogging()
+            if (contextLogging.templateContent) {
+                logger.debug('context.template.content', {
+                    templateVersion: validatedVersion,
+                    content: trimmedDescription
+                })
+            }
             
             return trimmedDescription
         } catch (error) {
-            console.error(`❌ Failed to read template description file: ${templateDescPath}`, error)
+            logger.error('context.template.read.failure', {
+                templateDescPath,
+                error: error instanceof Error ? error.message : String(error)
+            })
             return null
         }
     }

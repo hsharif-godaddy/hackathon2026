@@ -34,6 +34,14 @@ interface AgentFeatureConfig {
   mysqlRootUser: string
   mysqlRootPass: string
 
+  // Context logging configuration
+  contextLogging: {
+    detailed: boolean
+    appContextContent: boolean
+    templateContent: boolean
+    visualContextDetails: boolean
+    rawContextData: boolean
+  }
 }
 
 /**
@@ -94,6 +102,14 @@ function parseEnvironmentFeatures(): AgentFeatureConfig {
     mysqlRootUser: process.env.MYSQL_ROOT_USER || 'root',
     mysqlRootPass: process.env.MYSQL_ROOT_PASS || 'airo',
     
+    // Context logging configuration
+    contextLogging: {
+      detailed: process.env.DEBUG_CONTEXT_DETAILED === 'true',
+      appContextContent: process.env.DEBUG_CONTEXT_APP_CONTENT === 'true',
+      templateContent: process.env.DEBUG_CONTEXT_TEMPLATE_CONTENT === 'true',
+      visualContextDetails: process.env.DEBUG_CONTEXT_VISUAL_DETAILS === 'true',
+      rawContextData: process.env.DEBUG_CONTEXT_RAW_DATA === 'true'
+    }
   }
 }
 
@@ -133,6 +149,7 @@ export const getAgentConfig = {
       password: features.mysqlRootPass,
     };
   },
+  contextLogging: () => getAgentFeatures().contextLogging,
 } as const
 
 /**

@@ -32,37 +32,9 @@ import { ConversationContextManager } from '../services/ConversationContextManag
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { logger } from '../logging/index.js'
 import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
-import { MAX_PROMPT_LENGTH } from '../services/features.js'
+import { MAX_PROMPT_LENGTH, getAgentConfig } from '../services/features.js'
 import type { AgentsAppContext } from '../types/websocket-context.js'
 
-/**
- * Context logging configuration
- */
-interface ContextLoggingConfig {
-  /** Enable detailed context logging (default: false) */
-  detailed: boolean
-  /** Enable app context content logging (default: false) */
-  appContextContent: boolean
-  /** Enable template description content logging (default: false) */
-  templateContent: boolean
-  /** Enable visual context details (default: false) */
-  visualContextDetails: boolean
-  /** Enable raw context data logging (default: false) */
-  rawContextData: boolean
-}
-
-/**
- * Create context logging configuration from environment variables
- */
-function createContextLoggingConfig(): ContextLoggingConfig {
-  return {
-    detailed: process.env.DEBUG_CONTEXT_DETAILED === 'true',
-    appContextContent: process.env.DEBUG_APP_CONTEXT_CONTENT === 'true',
-    templateContent: process.env.DEBUG_TEMPLATE_CONTENT === 'true', 
-    visualContextDetails: process.env.DEBUG_VISUAL_CONTEXT === 'true',
-    rawContextData: process.env.DEBUG_RAW_CONTEXT === 'true'
-  }
-}
 
 /**
  * Create and setup the AI-Lib WebSocket server
@@ -72,15 +44,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     message: 'Setting up ExperimentalAgentFactory WebSocket server with conversation persistence'
   })
   
-  // Create context logging configuration
-  const contextLoggingConfig = createContextLoggingConfig()
+  // Create context logging configuration  
+  const contextLogging = getAgentConfig.contextLogging()
   logger.info('websocket.context.config', {
     summary: 'Always enabled (concise)',
-    detailed: contextLoggingConfig.detailed,
-    appContextContent: contextLoggingConfig.appContextContent,
-    templateContent: contextLoggingConfig.templateContent,
-    visualContextDetails: contextLoggingConfig.visualContextDetails,
-    rawContextData: contextLoggingConfig.rawContextData,
+    detailed: contextLogging.detailed,
+    appContextContent: contextLogging.appContextContent,
+    templateContent: contextLogging.templateContent,
+    visualContextDetails: contextLogging.visualContextDetails,
+    rawContextData: contextLogging.rawContextData,
     debugFlags: {
       DEBUG_CONTEXT_DETAILED: process.env.DEBUG_CONTEXT_DETAILED === 'true',
       DEBUG_APP_CONTEXT_CONTENT: process.env.DEBUG_APP_CONTEXT_CONTENT === 'true',
@@ -110,7 +82,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     const agentFactory = await createWebSocketAgentFactory()
     
     // Create context manager for app context and template descriptions
-    const contextManager = new AILibContextManager({}, contextLoggingConfig)
+    const contextManager = new AILibContextManager()
     
     // Create message persistence implementation
     const messagePersistence = new AgentsMessagePersistence()
@@ -139,7 +111,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const agentsAppContext = context as AgentsAppContext
           
           // Detailed logging if enabled
-          if (contextLoggingConfig.detailed) {
+          if (contextLogging.detailed) {
             logger.debug('websocket.context.provider.detailed', {
               message: 'Converting to enhanced context',
               rawContextKeys: Object.keys(agentsAppContext),
@@ -151,7 +123,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           }
           
           // Raw context data logging if enabled
-          if (contextLoggingConfig.rawContextData) {
+          if (contextLogging.rawContextData) {
             logger.debug('websocket.context.provider.raw_data', {
               message: 'Raw context data',
               context: agentsAppContext
@@ -178,7 +150,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           })
           
           // Detailed context breakdown if enabled
-          if (contextLoggingConfig.detailed) {
+          if (contextLogging.detailed) {
             contextResult.contextMessages.forEach((msg, index) => {
               const msgType = contextTypes[index]
               logger.debug('websocket.context.provider.message_detail', {
