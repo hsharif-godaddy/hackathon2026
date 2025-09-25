@@ -1,11 +1,13 @@
 import { logger } from './request-context';
 // Gasket configuration for Airo App Builder authentication
 
-// Extend globalThis type for auth logging flag and config cache
+// Extend globalThis interface for auth logging flag and config cache
 declare global {
-  var __authDisabledLogged: boolean | undefined;
-  var __gasketConfigCache: GasketConfig | undefined;
-  var __gasketConfigPromise: Promise<GasketConfig> | undefined;
+  interface GlobalThis {
+    __authDisabledLogged?: boolean;
+    __gasketConfigCache?: GasketConfig;
+    __gasketConfigPromise?: Promise<GasketConfig>;
+  }
 }
 
 export interface GasketConfig {

@@ -57,8 +57,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     logger.info('apps.create.start', { message: 'Creating app via site adapter', siteId, name: name.trim() });
 
-    let finalAppName = name.trim();
-    let nameSuggested = false;
+    const finalAppName = name.trim();
+    const nameSuggested = false;
     const originalName = name.trim();
     let aiGeneratedName: string | undefined;
 

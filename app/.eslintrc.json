@@ -1,0 +1,20 @@
+{
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "rules": {
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-var-requires": "warn",
+    "@typescript-eslint/ban-types": "warn",
+    "@typescript-eslint/no-unnecessary-type-constraint": "warn"
+  },
+  "ignorePatterns": [
+    "node_modules/**",
+    ".next/**",
+    "out/**",
+    "build/**",
+    "dist/**",
+    "next-env.d.ts",
+    "src/generated/**",
+    "prisma/generated/**"
+  ]
+}

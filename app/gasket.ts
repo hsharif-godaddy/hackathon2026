@@ -80,7 +80,8 @@ export default makeGasket({
           }
         };
       } else {
-        throw new Error(`SSL certificate files not found at ${keyPath} and/or ${certPath}`);
+        console.warn(`SSL certificate files not found at ${keyPath} and/or ${certPath}, skipping SSL configuration`);
+        return {};
       }
     })())
   },

@@ -7,6 +7,7 @@ import { logger } from '../request-context';
  */
 // Global variable to persist across Next.js hot reloads
 declare global {
+  // eslint-disable-next-line no-var
   var __databaseManager: DatabaseManager | undefined;
 }
 

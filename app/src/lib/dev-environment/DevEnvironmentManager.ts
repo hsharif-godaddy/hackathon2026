@@ -84,7 +84,7 @@ export class DevEnvironmentManager {
       logger.info(`🚀 Creating dev app: ${name} (${siteId})`);
 
       // 1. Check if app already exists - if so, return early
-      let existingApp = this.devDb.findDevAppById(siteId);
+      const existingApp = this.devDb.findDevAppById(siteId);
       
       if (existingApp && (existingApp.status === 'created' || existingApp.status === 'running')) {
         logger.info(`✅ App ${siteId} already exists with status: ${existingApp.status}, skipping creation`);
