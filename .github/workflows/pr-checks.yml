@@ -74,30 +74,9 @@ jobs:
       - name: Check license compliance
         working-directory: ${{ matrix.working-directory }}
         run: |
-          echo "🔍 Checking license compliance..."
-          
-          # Package-specific configurations
-          if [ "${{ matrix.package }}" = "agents" ]; then
-            EXCLUSIONS="argparse@2.0.1;tslib@2.8.1"
-            ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0"
-          elif [ "${{ matrix.package }}" = "app" ]; then
-            EXCLUSIONS="@godaddy/gasket-auth@3.3.15;website@0.1.0;@godaddy/gasket-plugin-auth@3.4.3"
-            ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC"
-          fi
-          
-          echo "🚫 Excluding packages: $EXCLUSIONS"
-          echo "✅ Allowed licenses: $ALLOWED_LICENSES"
-          
-          license-checker \
-            --onlyAllow "$ALLOWED_LICENSES" \
-            --excludePackages "$EXCLUSIONS" \
-            --summary
-          
-          echo "📋 Generating detailed license report..."
-          license-checker \
-            --onlyAllow "$ALLOWED_LICENSES" \
-            --excludePackages "$EXCLUSIONS" \
-            --out licenses-report.txt
+          ../scripts/license-check.sh
+        env:
+          MATRIX_PACKAGE: ${{ matrix.package }}
         continue-on-error: false
 
       - name: Upload license report
