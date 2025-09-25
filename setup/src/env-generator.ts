@@ -677,7 +677,7 @@ SSO_JWT=${config.ssoJwt}
 		try {
 			const { execSync } = await import("child_process");
 			execSync(
-				'docker ps --filter "name=airo-app-mysql" --format "{{.Names}}"',
+				'docker ps --filter "name=airo-app-mysql" --format "{{.Names}}" | grep "airo-app-mysql"',
 				{
 					encoding: "utf8",
 					stdio: "pipe",

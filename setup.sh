@@ -91,8 +91,10 @@ main() {
     
     # Check if dependencies are installed for the setup app
     if [ ! -d "node_modules" ]; then
+        echo -e "${BLUE}🔑 Authenticating with Artifactory...${NC}"
+        pnpm login --progress true --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ --auth-type web
         echo -e "${BLUE}📦 Installing setup dependencies...${NC}"
-        pnpm install --silent
+        pnpm install
         echo ""
     fi
     
@@ -122,8 +124,9 @@ main() {
     echo -e "${CYAN}🚀 Next Steps:${NC}"
     echo ""
     echo -e "${YELLOW}1. Install project dependencies:${NC}"
+    echo "   cd packages/ai-lib && pnpm install && pnpm build"
     echo "   cd agents && pnpm install"
-    echo "   cd app && pnpm install"
+    echo "   cd app && pnpm dlx prisma generate && pnpm install"
     echo ""
     echo -e "${YELLOW}2. Start the development services:${NC}"
     echo "   # Terminal 1 - Backend API (port 4000)"

@@ -5,12 +5,12 @@ FROM node:22-alpine
 ARG HOST_UID=790
 ARG HOST_GID=790
 
-# Install curl for health checks, gosu for user switching, and dev-supervisor dependencies
-RUN apk add --no-cache curl ca-certificates tzdata gosu
+# Install curl for health checks and dev-supervisor dependencies
+RUN apk add --no-cache curl ca-certificates tzdata
 
 # Create the group and user with dynamic UID/GID
 # This allows the container user to match the host user for proper file permissions
-RUN addgroup -g ${HOST_GID} agent
+RUN addgroup -g ${HOST_UID} agent
 RUN adduser -D -G agent -u ${HOST_UID} agent
 RUN echo 'agent:agent' | chpasswd
 
@@ -18,11 +18,7 @@ RUN echo 'agent:agent' | chpasswd
 WORKDIR /app
 
 # Copy dev-supervisor binary from pre-built image
-COPY --from=airo-dev-supervisor:latest /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
-
-# Copy dev-specific entrypoint script
-COPY docker-entrypoint-dev.sh /usr/local/bin/docker-entrypoint-dev.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint-dev.sh
+COPY --chown=agent:agent --from=airo-dev-supervisor:latest /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
 
 # Copy package files to check for pnpm-lock.yaml
 COPY --chown=agent:agent package.json ./
@@ -41,28 +37,29 @@ RUN if [ -f pnpm-lock.yaml ]; then \
 # Copy source code (node_modules excluded via .dockerignore)
 COPY --chown=agent:agent . .
 
-# Create logs and supervisor socket directories 
-# The entrypoint script will fix permissions for bind mounts at runtime
+# Create logs and supervisor socket directories
 RUN mkdir -p logs /tmp/supervisor
+RUN chown -R agent:agent logs /tmp/supervisor
 
 # Make sure the agent user owns the app directory initially
 RUN chown -R agent:agent /app
 
-# Note: We don't switch users here - the entrypoint script handles this
+# Switch to the agent user so we are not running as root
+USER agent
 
 # Create clean npm environment for agent user and configure pnpm store
-RUN mkdir -p /home/agent && chown agent:agent /home/agent
-RUN su agent -c 'echo "registry=https://registry.npmjs.org/" > ~/.npmrc'
+RUN mkdir -p /home/agent
+RUN echo "registry=https://registry.npmjs.org/" > ~/.npmrc
 RUN if [ -f pnpm-lock.yaml ]; then \
-    su agent -c 'pnpm config set store-dir /shared/pnpm-store'; \
+    pnpm config set store-dir /shared/pnpm-store; \
     fi
 
 # Install dependencies as the agent user
 # Support both npm and pnpm (v3 templates may use pnpm)
 RUN if [ -f pnpm-lock.yaml ]; then \
-    su agent -c 'pnpm install --registry=https://registry.npmjs.org/'; \
+    pnpm install --registry=https://registry.npmjs.org/; \
     else \
-    su agent -c 'npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit'; \
+    npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit; \
     fi
 
 # Expose the frontend port (will be overridden by PREFERRED_FRONTEND_PORT)
@@ -79,5 +76,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl --unix-socket /tmp/supervisor/dev-supervisor.sock http://localhost/health || exit 1
 
 # Use our dev-specific entrypoint script to fix permissions then run dev-supervisor
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint-dev.sh"]
-CMD ["/usr/local/bin/dev-supervisor", "npm", "run", "dev"]
+ENTRYPOINT ["/usr/local/bin/dev-supervisor"]
+CMD ["npm", "run", "dev"]
