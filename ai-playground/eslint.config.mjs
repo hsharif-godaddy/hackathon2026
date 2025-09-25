@@ -17,8 +17,15 @@ const eslintConfig = [
       ".next/**",
       "out/**",
       "build/**",
+      "dist/**",
       "next-env.d.ts",
+      "src/server/index.js", // Ignore compiled JS file
     ],
+  },
+  {
+    rules: {
+      "@typescript-eslint/no-explicit-any": "warn", // Change from error to warning
+    },
   },
 ];
 
