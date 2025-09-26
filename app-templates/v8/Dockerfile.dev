@@ -10,7 +10,20 @@ RUN apk add --no-cache curl ca-certificates tzdata
 
 # Create the group and user with dynamic UID/GID
 # This allows the container user to match the host user for proper file permissions
-RUN addgroup -g ${HOST_UID} agent
+# First, check if HOST_GID is already in use and reassign the conflicting group
+RUN if getent group ${HOST_GID} >/dev/null 2>&1; then \
+    echo "GID ${HOST_GID} is already in use, reassigning to GID 9999"; \
+    sed -i "/^[^:]*:[^:]*:${HOST_GID}:/s/:${HOST_GID}:/:9999:/" /etc/group; \
+    fi
+
+# Check if HOST_UID is already in use and reassign the conflicting user
+RUN if getent passwd ${HOST_UID} >/dev/null 2>&1; then \
+    echo "UID ${HOST_UID} is already in use, reassigning to UID 9999"; \
+    sed -i "/^[^:]*:[^:]*:${HOST_UID}:/s/:${HOST_UID}:/:9999:/" /etc/passwd; \
+    fi
+
+# Now create our agent group and user with the required HOST_GID and HOST_UID
+RUN addgroup -g ${HOST_GID} agent
 RUN adduser -D -G agent -u ${HOST_UID} agent
 RUN echo 'agent:agent' | chpasswd
 
