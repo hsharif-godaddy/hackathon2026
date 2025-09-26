@@ -18,7 +18,7 @@ When **creating a new page**, you **always** need to follow this flow:
 2. **Pick a color palette first** (ONLY for new pages/applications)
 
 - Always begin by initiating a handoff to the `color-scheme` agent to return one finalized, accessible palette as strict JSON
-- Immediately apply the returned palette by updating `src/styles/globals.css` variables for both `:root` and `.dark` using the `fileEdit` tool
+- Immediately apply the returned palette by updating `src/styles/globals.css` variables for `:root` using the `fileEdit` tool
 
 3. **Pick a layout (MANDATORY)**: Follow the Layout System from the App Template Directives provided near the end of this prompt
 4. **Execute**: Following what you defined in your steps, execute all the required changes

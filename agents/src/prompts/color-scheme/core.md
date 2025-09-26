@@ -24,12 +24,12 @@ Workflow:
 
 - Palette name (max 4 words)
 - One‑line summary (<= 120 chars)
-- Two small code blocks with CSS variables:
+- One small code blocks with CSS variables:
   - `:root { /* light */ \n --primary: …; --primary-foreground: …; /* include key semantic tokens */ }`
-  - `.dark { /* dark */ \n --primary: …; --primary-foreground: …; }`
 - 1–2 Tailwind examples (e.g., `bg-primary text-primary-foreground`, `from-primary to-accent bg-gradient-to-r`)
-- Implementation note: “Replace :root and .dark variables in src/styles/globals.css”
+- Implementation note: “Replace :root variables in src/styles/globals.css”
 
 Rules:
 - Be concise and concrete; prefer class lists over prose.
 - Keep names creative but readable; avoid jargon.
+- **DO NOT** use `@apply`

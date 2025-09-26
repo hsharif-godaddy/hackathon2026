@@ -52,7 +52,7 @@ border-gray-300 text-slate-900
   - `targetAgent: "color-scheme"`
   - `task`: request a single finalized palette and brief implementation note
   - `context`: include current appId, any existing colors, user preferences, and screenshots if available
-- After handoff, immediately update `src/styles/globals.css` variables for both `:root` and `.dark` via a single `fileEdit` rewrite, then proceed with component styling.
+- After handoff, immediately update `src/styles/globals.css` variables for `:root` via a single `fileEdit` rewrite, then proceed with component styling.
 
 ### Getting Images
 

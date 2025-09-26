@@ -27,12 +27,6 @@ Each palette must be compatible with v8's semantic CSS variable system using HSL
       "--sidebar": "210 40% 95%",
       "--sidebar-primary": "210 100% 45%"
     },
-    "dark": {
-      "--background": "222 84% 4%",
-      "--foreground": "210 40% 98%",
-      "--primary": "210 100% 55%",
-      "...": "complete dark mode variants"
-    }
   },
   "tailwindClasses": {
     "primary": "bg-primary text-primary-foreground",
@@ -61,14 +55,13 @@ Each palette must be compatible with v8's semantic CSS variable system using HSL
 
 ### 1. CSS Variable Format
 - Use HSL format without `hsl()` wrapper: `"210 100% 45%"`
-- Ensure complete light/dark mode coverage
 - Include all required semantic variables (primary, secondary, accent, muted, card, sidebar, chart-1 through chart-5)
 
 ### 2. Direct Implementation
 - Update CSS variables directly in `src/styles/globals.css`
-- Replace the `:root` and `.dark` variable values
+- Replace the `:root` variable values
 - Provide Tailwind class usage examples
-- Ensure WCAG AA compliance in both light and dark modes
+- Ensure WCAG AA compliance
 
 ### 3. Semantic Color Usage
 Always provide usage guidelines with semantic classes:
