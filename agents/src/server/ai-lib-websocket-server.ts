@@ -135,62 +135,25 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           // Build context messages including app context and template descriptions
           const contextResult = await contextManager.buildContextMessages('', enhancedContext)
           
-          // Always show summary
-          const contextTypes = contextResult.contextMessages.map(msg => 
-            msg.content.includes('## Template Framework Description') ? 'template' :
-            msg.content.includes('## Current Project Context') ? 'app' :
-            msg.content.includes('## User Visual Context') ? 'visual' :
-            msg.content.includes('## Selected Element Context') ? 'element' : 'unknown'
-          )
-          
           logger.info('websocket.context.provider.success', {
             message: 'Built context messages',
-            messageCount: contextResult.contextMessages.length,
-            messageTypes: contextTypes
+            messageCount: contextResult.contextMessages.length
           })
           
-          // Detailed context breakdown if enabled
-          if (contextLogging.detailed) {
-            contextResult.contextMessages.forEach((msg, index) => {
-              const msgType = contextTypes[index]
-              logger.debug('websocket.context.provider.message_detail', {
-                message: 'Context message details',
-                messageIndex: index + 1,
-                messageType: msgType,
-                contentLength: msg.content.length
-              })
-            })
-          }
-          
-          // Return as context messages with proper insertion order and cache points
-          return contextResult.contextMessages.map((msg, index) => {
-            const msgType = contextTypes[index]
-            
-            // Determine insertion order based on message type
-            let insertionOrder: 'before_history' | 'after_history'
-            if (msgType === 'template' || msgType === 'app') {
-              // Template descriptions and app context go before conversation history
-              insertionOrder = 'before_history'
-            } else {
-              // Visual context and element context go after conversation history  
-              insertionOrder = 'after_history'
-            }
-            
-            return {
-              role: 'system' as const,
-              content: msg.content,
-              // Add cache point for template descriptions (large system prompts)
-              ...(msgType === 'template' && {
-                cachePoint: { type: 'ephemeral' as const }
-              }),
-              insertionOrder
-            }
-          })
+          // Return the context messages directly - the context manager already set insertionOrder
+          return contextResult.contextMessages.map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+            ...(msg.insertionOrder && { insertionOrder: msg.insertionOrder }),
+            ...(msg.cachePoint && { cachePoint: msg.cachePoint })
+          }))
         } catch (error) {
           logger.error('websocket.context.provider.failure', {
             message: 'Error loading context',
-            error: error instanceof Error ? error.message : String(error)
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined
           })
+          console.error('❌ Context provider error details:', error)
           return []
         }
       }

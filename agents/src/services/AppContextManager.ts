@@ -35,7 +35,7 @@ export class AppContextManager {
       // Get directory listing with max depth of 3
       const directoryResult = await this.directoryTool.listDirectory(appPath, {
         path: '',
-        maxDepth: 3,
+        maxDepth: 4,
         showHidden: false,
         directoriesOnly: false
       });

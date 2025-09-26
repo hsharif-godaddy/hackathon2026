@@ -603,7 +603,7 @@ export class ExperimentalWebSocketServer {
     }
 
     // Assemble final message order:
-    // 1. Context messages marked "before_history"
+    // 1. Context messages marked "before_history" go to contextMessages
     contextMessages.push(...beforeHistoryMessages)
     
     // 2. Conversation history (if provided) - convert to proper format
@@ -617,12 +617,12 @@ export class ExperimentalWebSocketServer {
       messages.push(...convertedHistoryMessages)
     }
     
-    // 3. Context messages marked "after_history"
-    contextMessages.push(...afterHistoryMessages)
+    // 3. Context messages marked "after_history" go to messages (after conversation history, before user message)
+    messages.push(...afterHistoryMessages)
 
     console.log(`🚀 Message assembly complete:`)
-    console.log(`  - Context messages: ${contextMessages.length}`)
-    console.log(`  - History messages: ${messages.length}`)
+    console.log(`  - Context messages (before history): ${contextMessages.length}`)
+    console.log(`  - Messages (history + after-history context): ${messages.length}`)
     console.log(`  - Total cache points: ${[...contextMessages, ...messages].filter(m => m.cachePoint).length}`)
 
     return { messages, contextMessages }

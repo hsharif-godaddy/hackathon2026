@@ -63,6 +63,8 @@ export interface ContextMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
   type?: 'app_context' | 'ai_edit_context' | 'visual_context' | 'conversation_history'
+  insertionOrder?: 'before_history' | 'after_history'
+  cachePoint?: { type: 'ephemeral' }
 }
 
 /**

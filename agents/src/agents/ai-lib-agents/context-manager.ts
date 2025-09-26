@@ -50,7 +50,7 @@ export class AILibContextManager {
         context: EnhancedAgentContext
     ): Promise<{
         systemPrompt: string
-        contextMessages: Array<{ role: 'user' | 'system'; content: string }>
+        contextMessages: Array<{ role: 'user' | 'system'; content: string; insertionOrder?: 'before_history' | 'after_history'; cachePoint?: { type: 'ephemeral' } }>
     }> {
         // Always show concise summary
         const contextSummary = {
@@ -78,7 +78,7 @@ export class AILibContextManager {
         const contextMessages = await this.buildRichContextMessages(context)
 
         // Convert context messages to conversation format
-        const conversationContextMessages: Array<{ role: 'user' | 'system'; content: string }> = []
+        const conversationContextMessages: Array<{ role: 'user' | 'system'; content: string; insertionOrder?: 'before_history' | 'after_history'; cachePoint?: { type: 'ephemeral' } }> = []
 
         // Always show message count summary
         logger.info('context.messages.generated', {
@@ -105,7 +105,9 @@ export class AILibContextManager {
             
             conversationContextMessages.push({
                 role: 'system',
-                content: templateDescription
+                content: templateDescription,
+                insertionOrder: 'before_history',
+                cachePoint: { type: 'ephemeral' }
             })
         }
 
@@ -114,25 +116,29 @@ export class AILibContextManager {
         if (appContextMessages.length > 0) {
             conversationContextMessages.push({
                 role: 'system',
-                content: appContextMessages.map(msg => msg.content).join('\n\n')
+                content: appContextMessages.map(msg => msg.content).join('\n\n'),
+                insertionOrder: 'before_history'
             })
         }
 
-        // Add visual context as user message (third priority)
+        // Add visual context as user message (third priority) - but skip if we have AI edit context
         const visualMessages = contextMessages.filter(msg => msg.type === 'visual_context')
-        if (visualMessages.length > 0) {
+        const aiEditMessages = contextMessages.filter(msg => msg.type === 'ai_edit_context')
+        const hasAiEditContext = aiEditMessages.length > 0
+        if (visualMessages.length > 0 && !hasAiEditContext) {
             conversationContextMessages.push({
                 role: 'user',
-                content: visualMessages.map(msg => msg.content).join('\n\n')
+                content: visualMessages.map(msg => msg.content).join('\n\n'),
+                insertionOrder: 'after_history'
             })
         }
 
         // Add AI edit context as user message (LAST - most specific/immediate)
-        const aiEditMessages = contextMessages.filter(msg => msg.type === 'ai_edit_context')
         if (aiEditMessages.length > 0) {
             conversationContextMessages.push({
                 role: 'user',
-                content: aiEditMessages.map(msg => msg.content).join('\n\n')
+                content: aiEditMessages.map(msg => msg.content).join('\n\n'),
+                insertionOrder: 'after_history'
             })
         }
 
@@ -145,7 +151,7 @@ export class AILibContextManager {
         if (appContextMessages.length > 0) {
             messageTypes[typeIndex++] = 'app'
         }
-        if (visualMessages.length > 0) {
+        if (visualMessages.length > 0 && !hasAiEditContext) {
             messageTypes[typeIndex++] = 'visual'
         }
         if (aiEditMessages.length > 0) {
@@ -335,9 +341,8 @@ export class AILibContextManager {
                 }
             }
 
-            const content = `[AI Edit Context - Selected Element]
-
-Element Details:
+            const content = `[AI Edit Context]
+I have selected the following element:
 - Tag: ${sanitizedContext.element.tag}
 - Classes: ${sanitizedContext.element.classes}
 - ID: ${sanitizedContext.element.id}
@@ -349,7 +354,8 @@ Source Code Location:
 - Component: ${sanitizedContext.source.componentName}
 - Line: ${sanitizedContext.source.lineNumber}
 
-Instructions: The following user message refers to changes for this specific selected element. Focus your edits on the code at the specified file and location.`
+Focus your edits on the code at the specified file and location.
+DO NOT MAKE ANY CHANGES TO THE CODE THAT IS NOT SPECIFIED IN THE AI EDIT CONTEXT.`
 
             return {
                 role: 'user',
