@@ -1,8 +1,11 @@
 import http from 'http';
 import { existsSync } from 'fs';
 import net from 'net';
+import { execSync } from 'child_process';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
+import { validateHostPort, escapeShellArg } from '../utils/network-validation.js';
+import { buildCurlCommand } from '../utils/command-builder.js';
 
 export interface ExecOptions {
   /** The command to execute */
@@ -535,47 +538,29 @@ export function isDevSupervisorAvailable(connectionPath: string): boolean {
 }
 
 /**
- * Test TCP connection synchronously
+ * Test TCP connection synchronously using execSync with a simple curl command
  */
 function testTcpConnectionSync(host: string, port: number): boolean {
-  const socket = new net.Socket();
-  let connected = false;
-  
-  socket.setTimeout(500);
-  
-  socket.on('connect', () => {
-    connected = true;
-    socket.end();
-  });
-  
-  socket.on('error', () => {
-    socket.destroy();
-  });
-  
-  socket.on('timeout', () => {
-    socket.destroy();
-  });
-  
   try {
-    socket.connect(port, host);
+    // Validate host and port parameters to prevent command injection
+    const [safeHost, safePort] = validateHostPort(host, port);
     
-    // Wait for connection result with busy-wait (since we need sync behavior for API compatibility)
-    const start = Date.now();
-    while (!connected && !socket.destroyed && Date.now() - start < 500) {
-      // Small busy-wait loop to yield CPU without external commands
-      for (let i = 0; i < 1000; i++) {
-        // Minimal CPU yielding
-        Date.now();
-      }
-    }
+    // Build the curl command using the secure command builder
+    const url = `http://${safeHost}:${safePort}/health`;
+    const command = buildCurlCommand(url, {
+      connectTimeout: 1,
+      maxTime: 1,
+      failOnError: true
+    });
     
-    if (!socket.destroyed) {
-      socket.destroy();
-    }
+    execSync(command, { 
+      timeout: 2000,
+      stdio: 'ignore'
+    });
     
-    return connected;
+    return true;
   } catch (error) {
-    socket.destroy();
+    // If curl fails (connection refused, timeout, etc.) or validation fails, return false
     return false;
   }
 }

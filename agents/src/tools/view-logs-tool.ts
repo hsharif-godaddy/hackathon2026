@@ -3,6 +3,7 @@ import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 import { toolLogReaderEvents } from '../logging/events/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 
 export interface DevLogsOptions {
   /** Number of recent log lines to retrieve (default: 50, max: 1000) */
@@ -48,18 +49,18 @@ export class ViewLogsTool {
    */
   private async initializeForApp(appId: string): Promise<boolean> {
     try {
-      // Get app info from database to retrieve socket path
-      const app = this.appRepository.findById(appId);
+      // Use the factory to get proper connection path (handles TCP vs Unix socket)
+      const appInfo = DevSupervisorClientFactory.getAppInfo(appId);
       
-      if (!app || !app.socketPath) {
+      if (!appInfo || !appInfo.socketPath) {
         this.logger.warn('dev_logs.init.failure', {
           appId,
-          error: 'App not found or socket path not configured'
+          error: 'App not found or connection path not configured'
         });
         return false;
       }
       
-      this.logClient = new DevSupervisorLogClient(app.socketPath);
+      this.logClient = new DevSupervisorLogClient(appInfo.socketPath);
       return this.logClient.isAvailable();
     } catch (error) {
       this.logger.warn('dev_logs.init.failure', {

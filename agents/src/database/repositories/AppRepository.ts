@@ -4,6 +4,7 @@ import { getDatabase } from '../connection.js';
 import { GitUtils } from '../../utils/git.js';
 import type { App, UpdateAppRequest } from '../schema.js';
 import { DevSupervisorClient } from '../../services/DevSupervisorClient.js';
+import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { Logger } from '../../logging/index.js';
 import { getErrorMessage } from '../../utils/error.js';
 import { appCleanupEvents } from '../../logging/events/index.js';
@@ -402,13 +403,14 @@ export class AppRepository {
     }
 
     // Use dev supervisor for restart in local mode
-    if (app.socketPath && existsSync(app.socketPath)) {
+    const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+    if (devSupervisor) {
       try {
-        const devSupervisor = new DevSupervisorClient(app.socketPath);
-
+        const appInfo = DevSupervisorClientFactory.getAppInfo(appId);
+        
         this.logger.info('app.server.restart.devsupervisor.begin', {
-        appId,
-          socketPath: app.socketPath
+          appId,
+          connectionPath: appInfo?.socketPath
         });
 
         // Dev supervisor handles the restart logic internally
@@ -420,23 +422,22 @@ export class AppRepository {
         });
 
         this.logger.info('app.server.restart.success', {
-            appId,
+          appId,
           exitCode: result.exit_code
         });
 
         return result.exit_code === 0;
       } catch (error) {
         this.logger.error('app.server.restart.devsupervisor.failed', {
-            appId,
+          appId,
           error: getErrorMessage(error)
         });
         return false;
       }
-      } else {
+    } else {
       this.logger.warn('app.server.restart.no_supervisor', {
         appId,
-        socketPath: app.socketPath,
-        socketExists: app.socketPath ? existsSync(app.socketPath) : false
+        available: DevSupervisorClientFactory.isAvailableForApp(appId)
       });
       return false;
     }

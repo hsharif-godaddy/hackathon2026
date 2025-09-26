@@ -45,8 +45,18 @@ function generateTcpConnectionUrl(appId: string): string {
  * Handles socket path resolution, availability checking, and error handling
  */
 export class DevSupervisorClientFactory {
-  private static appRepo = new AppRepository();
   private static logger = Logger.create({ service: 'dev-supervisor-client-factory' });
+  private static appRepositoryInstance: AppRepository | null = null;
+
+  /**
+   * Get AppRepository instance (lazy loaded to avoid circular dependency)
+   */
+  private static getAppRepository(): AppRepository {
+    if (!this.appRepositoryInstance) {
+      this.appRepositoryInstance = new AppRepository();
+    }
+    return this.appRepositoryInstance;
+  }
 
   /**
    * Create a DevSupervisorClient for a specific app
@@ -60,7 +70,7 @@ export class DevSupervisorClientFactory {
       source: 'app_lookup'
     });
 
-    const app = this.appRepo.findById(appId);
+    const app = this.getAppRepository().findById(appId);
     if (!app) {
       this.logger.error('dev_supervisor.client.create.app_not_found', {
         appId,
@@ -158,7 +168,7 @@ export class DevSupervisorClientFactory {
       }
 
       // Fall back to Unix socket mode
-      const app = this.appRepo.findById(appId);
+      const app = this.getAppRepository().findById(appId);
       if (!app || !app.socketPath) {
         return false;
       }
@@ -196,7 +206,7 @@ export class DevSupervisorClientFactory {
    */
   static getAppInfo(appId: string): { socketPath: string; port: number; path: string } | null {
     try {
-      const app = this.appRepo.findById(appId);
+      const app = this.getAppRepository().findById(appId);
       if (!app) {
         return null;
       }
