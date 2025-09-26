@@ -47,7 +47,18 @@ export const fileEditAITool = createTool(
     // CRITICAL FIX: If the file operation failed, throw an error so the agent knows about it
     // Previously, we were returning a formatted string even for failures, which made errors invisible
     if (!result.success) {
-      throw new Error(`File edit failed: ${result.error || 'Unknown error'}`)
+      // Include edit details in the error for better debugging
+      let errorMessage = `File edit failed: ${result.error || 'Unknown error'}`;
+      if (result.warning) {
+        errorMessage += `\nEdit attempts:\n${result.warning}`;
+      }
+      if (input.edits && input.edits.length > 0) {
+        errorMessage += `\nRequested edits (${input.edits.length}):\n`;
+        input.edits.forEach((edit, index) => {
+          errorMessage += `${index + 1}. Replace: "${edit.old.substring(0, 100)}${edit.old.length > 100 ? '...' : ''}" with: "${edit.new.substring(0, 100)}${edit.new.length > 100 ? '...' : ''}"\n`;
+        });
+      }
+      throw new Error(errorMessage);
     }
 
     return fileEditTool.formatResult(result)

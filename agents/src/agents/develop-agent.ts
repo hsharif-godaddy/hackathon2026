@@ -141,9 +141,9 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
   // Load all modular prompt sections in order
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
-    .file(paths.getAgentFile('develop', 'tools.md'))
-    .file(paths.getAgentFile('develop', 'database.md'))
-    .file(paths.getAgentFile('develop', 'api.md'))
+    //.file(paths.getAgentFile('develop', 'tools.md'))
+    //.file(paths.getAgentFile('develop', 'database.md'))
+    //.file(paths.getAgentFile('develop', 'api.md'))
     .file(paths.getAgentFile('develop', 'approach.md'))
     .file(paths.getAgentFile('develop', 'visual-context.md'))
     .file(paths.getSharedFile('communication.md'))

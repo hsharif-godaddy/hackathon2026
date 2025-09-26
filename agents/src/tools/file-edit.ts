@@ -576,6 +576,23 @@ export class FileEditTool {
     }
 
     if (content === originalContent) {
+      // Log detailed edit failure information for debugging
+      logger.error('File edit failed - no changes applied', {
+        toolName: 'FileEditTool',
+        filePath: options.path,
+        mode: 'edit',
+        editsAttempted: options.edits.length,
+        editDetails: options.edits.map((edit, index) => ({
+          editIndex: index,
+          oldText: edit.old.length > 100 ? `${edit.old.substring(0, 100)}...` : edit.old,
+          newText: edit.new.length > 100 ? `${edit.new.substring(0, 100)}...` : edit.new,
+          oldTextLength: edit.old.length,
+          newTextLength: edit.new.length,
+        })),
+        editResults: editResults,
+        ...(context?.appId && { appId: context.appId }),
+      });
+      
       return {
         success: false,
         path: options.path,

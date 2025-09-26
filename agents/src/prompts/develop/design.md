@@ -7,7 +7,7 @@
 
 ## Color System
 
-**CRITICAL**: v8 uses semantic colors. You MUST follow these rules:
+**CRITICAL**: use semantic colors. You MUST follow these rules:
 
 ### ✅ ALWAYS Use Semantic Colors
 ```css
