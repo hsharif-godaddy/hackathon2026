@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { withGasketData } from '@gasket/nextjs/layout';
+import { makeLayout } from '@godaddy/gasket-next/layout';
 import AuthProvider from "@/components/providers/AuthProvider";
 import FullStoryProvider from "@/components/providers/FullStoryProvider";
+
 import "@/styles/globals.scss";
 
-import { makeLayout } from '@godaddy/gasket-next/layout';
 import gasket from '../../gasket';
 
 export const metadata: Metadata = {
@@ -11,9 +13,9 @@ export const metadata: Metadata = {
   description: "Airo App Builder",
 };
 
-const PresentationLayout = makeLayout(gasket);
+const PresentationLayout = withGasketData(gasket)(makeLayout(gasket));
 
-export default function RootLayout({
+async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -21,10 +23,10 @@ export default function RootLayout({
   return (
     <PresentationLayout>
       <FullStoryProvider>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <AuthProvider>{children}</AuthProvider>
       </FullStoryProvider>
     </PresentationLayout>
   )
 }
+
+export default RootLayout;

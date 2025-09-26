@@ -477,6 +477,9 @@ importers:
       "@godaddy/gasket-plugin-self-certs":
         specifier: ^3.3.10
         version: 3.3.10
+      "@godaddy/gasket-plugin-switchboard":
+        specifier: ^3.3.10
+        version: 3.5.9
       "@godaddy/gasket-plugin-traffic":
         specifier: ^3.4.5
         version: 3.4.5
@@ -2632,6 +2635,14 @@ packages:
         integrity: sha512-D9xLKzs8MgTpi3Dcday5rNTd8Z599hT30EIQDNk16RUfssAoFf2GtpFb6uwVGbiOCsvuxNJ4N0ky96pBYuoXQQ==,
         tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-plugin-self-certs/-/@godaddy/gasket-plugin-self-certs-3.3.10.tgz,
       }
+
+  "@godaddy/gasket-plugin-switchboard@3.5.9":
+    resolution:
+      {
+        integrity: sha512-nAmelhS4Zwqf+mp4xp9KzSRobR7kckwdqq2zgk6Ca12mMcf4yHsN4BQzS7AOlS8LJG+yl9T01K1g6tbUpDcEWA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-plugin-switchboard/-/@godaddy/gasket-plugin-switchboard-3.5.9.tgz,
+      }
+    engines: { node: ">=20.0.0" }
 
   "@godaddy/gasket-plugin-traffic@3.4.5":
     resolution:
@@ -5976,6 +5987,14 @@ packages:
       {
         integrity: sha512-KGYxvIOXcceOAbEk4bi/dVLEK9z8sZ0uBB3Il5b1rhfClSpcX0yfRO0KmTkqR2cnQDymwLB+25ZyMzICg/cm/A==,
       }
+
+  "@switchboard/client@2.5.3":
+    resolution:
+      {
+        integrity: sha512-cAcvpk7kGI2wln9z+dQINSlST3JWF0zazt8/u6tuT4H09DwMSi+rGQa1hCye+SxZEBKbBEarSEehujiVw5l6Lg==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@switchboard/client/-/@switchboard/client-2.5.3.tgz,
+      }
+    engines: { node: ">=14.0.0" }
 
   "@tailwindcss/node@4.1.13":
     resolution:
@@ -16633,6 +16652,12 @@ packages:
       }
     engines: { node: ">= 0.4" }
 
+  typed-emitter@2.1.0:
+    resolution:
+      {
+        integrity: sha512-g/KzbYKbH5C2vPkaXGu8DJlHrGKHLsM25Zg9WuC9pMGfuvT+X25tZQWo5fK1BjBm8+UrVE9LDCvaY0CQk+fXDA==,
+      }
+
   typedarray@0.0.6:
     resolution:
       {
@@ -19292,6 +19317,11 @@ snapshots:
     dependencies:
       "@godaddy/quickcert": 1.0.1
 
+  "@godaddy/gasket-plugin-switchboard@3.5.9":
+    dependencies:
+      "@switchboard/client": 2.5.3
+      lodash: 4.17.21
+
   "@godaddy/gasket-plugin-traffic@3.4.5":
     dependencies:
       "@gasket/core": 7.6.2
@@ -21897,6 +21927,11 @@ snapshots:
     dependencies:
       "@swc/counter": 0.1.3
       tslib: 2.8.1
+
+  "@switchboard/client@2.5.3":
+    dependencies:
+      detect-libc: 2.1.0
+      typed-emitter: 2.1.0
 
   "@tailwindcss/node@4.1.13":
     dependencies:
@@ -29534,6 +29569,10 @@ snapshots:
       is-typed-array: 1.1.15
       possible-typed-array-names: 1.1.0
       reflect.getprototypeof: 1.0.10
+
+  typed-emitter@2.1.0:
+    optionalDependencies:
+      rxjs: 7.8.2
 
   typedarray@0.0.6: {}
 

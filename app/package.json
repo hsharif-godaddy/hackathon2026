@@ -53,6 +53,7 @@
     "@godaddy/gasket-plugin-otel": "^3.4.5",
     "@godaddy/gasket-plugin-security": "^3.3.10",
     "@godaddy/gasket-plugin-self-certs": "^3.3.10",
+    "@godaddy/gasket-plugin-switchboard": "^3.3.10",
     "@godaddy/gasket-plugin-traffic": "^3.4.5",
     "@godaddy/gasket-plugin-uxp": "^3.5.1",
     "@godaddy/gasket-plugin-visitor": "^3.6.1",

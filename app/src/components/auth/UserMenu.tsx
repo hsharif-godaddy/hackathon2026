@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@/hooks/useAuth';
+import { useState, useEffect } from 'react';
 import Button from '@ux/button';
 import { generateClickEID } from '@/utils/instrumentation';
 
@@ -18,13 +19,19 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
     handleSignIn
   } = useAuth(onShowMockLogin);
 
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
   // Handle sign in - the modal will be handled by the page component
   const handleSignInClick = () => {
     handleSignIn();
   };
 
-  // Show loading state while config is loading
-  if (configLoading) {
+  // Prevent hydration mismatch by showing loading until mounted
+  if (!hasMounted || configLoading) {
     return (
       <div className="flex items-center space-x-3">
         <div className="animate-pulse w-20 h-8 bg-gray-200 rounded"></div>

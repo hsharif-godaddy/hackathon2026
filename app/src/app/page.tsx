@@ -15,22 +15,20 @@ import Footer from './components/Footer'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import Spinner from '@ux/spinner'
 import { logImpressionEvent, generateClickEID } from '@/utils/instrumentation'
 
 function HomeContent() {
   const [promptText, setPromptText] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [isRedirecting, setIsRedirecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showMockLogin, setShowMockLogin] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const heroSectionRef = useRef<HeroSectionRef>(null)
 
-  // Use reusable auth hook
   const { isAuthenticated, isAuthDisabled, gasketConfig } = useAuth(() => setShowMockLogin(true))
-
-  // Track if user is redirecting to prevent multiple calls
-  const [isRedirecting, setIsRedirecting] = useState(false)
 
   useEffect(() => {
     logImpressionEvent({ eid: 'homepage.page' })();
@@ -228,8 +226,8 @@ function HomeContent() {
           <div className="orb orb4"></div>
         </div>
       </div>
-      
-      <Header 
+
+      <Header
         actions={
           isAuthenticated ? (
             <Button
@@ -247,7 +245,7 @@ function HomeContent() {
         location='homepage'
       />
 
-      <Box 
+      <Box
         className="mx-auto px-4 sm:px-6 lg:px-8 pt-24 min-h-screen"
         inlineAlignChildren='center'
         blockAlignChildren='center'
@@ -262,7 +260,7 @@ function HomeContent() {
           setError={setError}
           onShowMockLogin={() => setShowMockLogin(true)}
         />
-      
+
         { isAuthenticated && (
           <ExamplesSection
             examples={examples}
@@ -271,8 +269,8 @@ function HomeContent() {
         )}
       </Box>
 
-      <BuiltWithSection 
-        items={builtWithItems} 
+      <BuiltWithSection
+        items={builtWithItems}
         onExampleClick={handleExampleClick}
       />
 
@@ -291,7 +289,15 @@ function HomeContent() {
 
 export default function Home() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={
+      <Box
+        className="min-h-screen"
+        inlineAlignChildren='center'
+        blockAlignChildren='center'
+      >
+        <Spinner />
+      </Box>
+    }>
       <HomeContent />
     </Suspense>
   )
