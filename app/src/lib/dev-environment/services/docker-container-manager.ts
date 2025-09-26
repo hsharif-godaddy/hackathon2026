@@ -601,7 +601,7 @@ export class DockerContainerManager {
 		
 		return runningRecords.map((record) => {
 			const sanitizedId = this.sanitizeAppId(record.appId);
-			let containerInfo: ContainerInfo = {
+			const containerInfo: ContainerInfo = {
 				appId: record.appId,
 				containerId: `container-${record.appId}`, // Docker containers would have real IDs
 				port: record.port,
@@ -804,7 +804,7 @@ export class DockerContainerManager {
 		const sanitizedId = this.sanitizeAppId(record.appId);
 		const useTcp = shouldUseTcpMode();
 		
-		let containerInfo: ContainerInfo = {
+		const containerInfo: ContainerInfo = {
 			appId: record.appId,
 			containerId: `container-${record.appId}`,
 			port: record.port,

@@ -2,6 +2,7 @@
  * Centralized feature configuration system
  * This module handles all environment variable parsing and feature flags
  */
+import { logger } from '@/lib/request-context';
 
 /**
  * Authentication types supported by the application
@@ -147,6 +148,6 @@ export const devSupervisor = {
  */
 export function logFeatureState(): void {
   if (process.env.NODE_ENV === 'development') {
-    console.log('Feature flags:', features)
+    logger.debug('features.state', { message: 'Feature flags', features })
   }
 }

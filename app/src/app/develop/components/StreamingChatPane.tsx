@@ -18,6 +18,7 @@ import {
   useSetCurrentAppId
 } from '@/stores/useStreamingConversationStore'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
+import { logger } from '@/lib/request-context'
 
 interface StreamingChatPaneProps {
   expandedPlan: boolean
@@ -31,6 +32,7 @@ interface StreamingChatPaneProps {
 export default function StreamingChatPane({
   expandedPlan,
   isSelectMode,
+  onKeyPress,
   onToggleSelectMode,
   onToggleExpandedPlan,
   appId = ''
@@ -67,7 +69,8 @@ export default function StreamingChatPane({
 
   // Only log if app changed or messages changed (ignore loading/input changes)
   if (prevDebugRef.current !== currentDebugState) {
-    console.log('🎯 StreamingChatPane state changed:', {
+    logger.debug('chat-pane.state-change', {
+      message: 'StreamingChatPane state changed',
       appIdFromProps: appId,
       currentAppIdFromStore: currentAppId,
       messagesCount: visibleMessages?.length,
@@ -81,9 +84,10 @@ export default function StreamingChatPane({
 
   // Handle sending a message
   const handleSendMessage = () => {
-    console.log('🎯 StreamingChatPane handleSendMessage called:', {
-      inputValue: inputValue?.slice(0, 50) + '...',
-      sendMessage: typeof sendMessage
+    logger.debug('chat-pane.send-message', {
+      message: 'StreamingChatPane handleSendMessage called',
+      inputValuePreview: inputValue?.slice(0, 50) + '...',
+      hasSendMessageFunction: !!sendMessage
     })
 
     if (inputValue?.trim()) {
@@ -147,6 +151,7 @@ export default function StreamingChatPane({
         isDisabled={isProcessing}
         onInputChange={setInputValue}
         onSendMessage={handleSendMessage}
+        onKeyDown={onKeyPress}
         onToggleSelectMode={onToggleSelectMode}
       />
     </div>

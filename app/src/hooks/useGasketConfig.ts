@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getGasketConfig, gasketConfig, type GasketConfig } from '@/lib/gasket-config';
+import { logger } from '@/lib/request-context';
 
 export interface UseGasketConfigReturn {
   config: GasketConfig;
@@ -46,7 +47,7 @@ export function useGasketConfig(): UseGasketConfigReturn {
         if (!canceled) {
           const errorMessage = err instanceof Error ? err.message : 'Failed to load configuration';
           setError(errorMessage);
-          console.warn('useGasketConfig: Failed to load runtime config:', err);
+          logger.warn('gasket-config.load.failure', { message: 'Failed to load runtime config', error: err instanceof Error ? err.message : String(err) });
           // Keep using static config on error
         }
       } finally {

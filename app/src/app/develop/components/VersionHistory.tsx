@@ -5,6 +5,7 @@ import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import Tag from '@ux/tag'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
+import { logger } from '@/lib/request-context'
 
 interface Commit {
   hash: string
@@ -59,7 +60,7 @@ export default function VersionHistory({
   const handleSelectCommit = async (commit: Commit) => {
     // Don't allow selecting if already in progress
     if (isSelectingCommit) {
-      console.log('🔄 Commit selection already in progress, ignoring click');
+      logger.debug('version-history.commit.selection-busy', { message: 'Commit selection already in progress, ignoring click' });
       return;
     }
     

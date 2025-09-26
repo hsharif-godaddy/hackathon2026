@@ -1,6 +1,7 @@
 import { AdapterConfigResolver, type AdapterType } from './interfaces/common';
 import type { IAppAdapter } from './interfaces/IAppAdapter';
 import type { DevDatabase } from '../database/DevDatabase';
+import { logger } from '@/lib/request-context';
 
 /**
  * Factory function to create the appropriate adapter based on environment
@@ -8,7 +9,7 @@ import type { DevDatabase } from '../database/DevDatabase';
 export async function createAppAdapter(devDb: DevDatabase): Promise<IAppAdapter> {
   const adapterType = AdapterConfigResolver.getAdapterType();
   
-  console.log(`🔧 Creating ${adapterType} adapter...`);
+  logger.info('adapters.create', { message: `Creating ${adapterType} adapter` });
 
   if (adapterType === 'docker') {
     // Dynamically import Docker adapter to avoid loading it in process mode

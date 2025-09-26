@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import { appFetch } from '@/lib/gasket-config'
+import { logger } from '@/lib/request-context'
 
 // Enable Immer MapSet plugin for Map support
 enableMapSet()
@@ -66,11 +67,11 @@ export const useServerPollingStore = create<ServerPollingStore>()(
       
       // Don't start if already polling
       if (existing?.isPolling) {
-        console.log(`🔄 Already polling server ${appId}`)
+        logger.debug('server-polling.already-active', { message: 'Already polling server', appId })
         return
       }
       
-      console.log(`🚀 Starting polling for server ${appId}`)
+      logger.info('server-polling.start', { message: 'Starting polling for server', appId })
       
       set((state) => {
         state.servers.set(appId, {
@@ -92,7 +93,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
       
       if (!pollingState) return
       
-      console.log(`⏹️ Stopping polling for server ${appId}`)
+      logger.info('server-polling.stop', { message: 'Stopping polling for server', appId })
       
       // Clear any pending timeout
       if (pollingState.timeoutId) {
@@ -130,19 +131,19 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         state.servers.clear()
       })
       
-      console.log('🧹 Cleaned up all server polling')
+      logger.info('server-polling.cleanup', { message: 'Cleaned up all server polling' })
     },
     
     _pollServer: async (appId: string) => {
       const pollingState = get().servers.get(appId)
       
       if (!pollingState || !pollingState.isPolling) {
-        console.log(`⏹️ Polling stopped for ${appId}`)
+        logger.debug('server-polling.already-stopped', { message: 'Polling stopped', appId })
         return
       }
       
       try {
-        console.log(`🔍 Polling server ${appId} (attempt ${pollingState.pollCount + 1})`)
+        logger.debug('server-polling.attempt', { message: 'Polling server', appId, attempt: pollingState.pollCount + 1 })
         
         const response = await appFetch(`/api/servers/${appId}`)
         
@@ -172,14 +173,14 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         
         // Stop polling if server is ready
         if (serverData.status === 'running' && serverData.url) {
-          console.log(`✅ Server ${appId} is ready at ${serverData.url}`)
+          logger.info('server-polling.ready', { message: 'Server is ready', appId, url: serverData.url })
           get().stopPollingForServer(appId)
           return
         }
         
         // Stop polling if server failed permanently
         if (serverData.status === 'failed') {
-          console.log(`❌ Server ${appId} failed permanently`)
+          logger.warn('server-polling.failed', { message: 'Server failed permanently', appId })
           get().stopPollingForServer(appId)
           return
         }
@@ -188,7 +189,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         get()._scheduleNextPoll(appId)
         
       } catch (error) {
-        console.error(`❌ Error polling server ${appId}:`, error)
+        logger.error('server-polling.error', { message: 'Error polling server', appId, error: error instanceof Error ? error.message : String(error) })
         
         set((state) => {
           const currentState = state.servers.get(appId)
@@ -218,7 +219,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
       
       const nextInterval = get()._calculateNextInterval(pollingState.pollCount)
       
-      console.log(`⏰ Scheduling next poll for ${appId} in ${nextInterval}ms (attempt ${pollingState.pollCount + 1})`)
+      logger.debug('server-polling.schedule', { message: 'Scheduling next poll', appId, nextInterval, attempt: pollingState.pollCount + 1 })
       
       const timeoutId = setTimeout(() => {
         get()._pollServer(appId)

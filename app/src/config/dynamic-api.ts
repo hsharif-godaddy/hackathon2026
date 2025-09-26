@@ -4,6 +4,7 @@
  * Provides site-specific API configuration by fetching agent URLs from the sites database
  * Fallbacks to static configuration when no site context is available
  */
+import { logger } from '@/lib/request-context'
 
 export interface DynamicApiConfig {
   baseUrl: string
@@ -58,7 +59,8 @@ export class DynamicApiConfigService {
             lastFetched: Date.now()
           })
 
-          console.log('🌐 Using dynamic API config for site:', {
+          logger.info('dynamic-api.config.use', {
+            message: 'Using dynamic API config for site',
             siteId,
             agentUrl: site.agent_url,
             wsUrl: config.wsUrl
@@ -70,7 +72,9 @@ export class DynamicApiConfigService {
           const status = site?.status || 'unknown'
           const hasAgentUrl = !!site?.agent_url
 
-          console.log(`⏳ Site ${siteId} not ready:`, {
+          logger.info('dynamic-api.site.not-ready', {
+            message: `Site ${siteId} not ready`,
+            siteId,
             status,
             hasAgentUrl,
             agentUrl: site?.agent_url
@@ -82,7 +86,7 @@ export class DynamicApiConfigService {
         throw new Error(`Failed to fetch site ${siteId}: ${response.status} ${response.statusText}`)
       }
     } catch (error) {
-      console.warn('⚠️ Failed to fetch dynamic config for site:', siteId, error)
+      logger.warn('dynamic-api.config.fetch-failure', { message: 'Failed to fetch dynamic config for site', siteId, error: error instanceof Error ? error.message : String(error) })
       throw error
     }
   }
@@ -131,29 +135,29 @@ export class DynamicApiConfigService {
 
             if (site?.agent_url && site.status === 'running') {
               const config = await this.getConfigForSite(siteId)
-              console.log('✅ Agent URL became available for site:', siteId)
+              logger.info('dynamic-api.agent-url.available', { message: 'Agent URL became available for site', siteId })
               resolve(config)
               return
             }
 
             if (site?.status === 'failed') {
-              console.log('❌ Site deployment failed, stopping poll:', siteId)
+              logger.warn('dynamic-api.polling.failure', { message: 'Site deployment failed, stopping poll', siteId })
               resolve(null)
               return
             }
           }
 
           if (attempts >= maxAttempts) {
-            console.log('⏰ Polling timeout for agent URL:', siteId)
+            logger.warn('dynamic-api.polling.timeout', { message: 'Polling timeout for agent URL', siteId })
             resolve(null)
             return
           }
 
-          console.log(`🔄 Waiting for agent URL (${attempts}/${maxAttempts}):`, siteId)
+          logger.debug('dynamic-api.polling.waiting', { message: 'Waiting for agent URL', attempts, maxAttempts, siteId })
           setTimeout(poll, interval)
 
         } catch (error) {
-          console.error('❌ Error polling for agent URL:', error)
+          logger.error('dynamic-api.polling.error', { message: 'Error polling for agent URL', error: error instanceof Error ? error.message : String(error) })
           if (attempts >= maxAttempts) {
             resolve(null)
           } else {

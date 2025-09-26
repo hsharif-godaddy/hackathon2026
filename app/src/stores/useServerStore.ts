@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import { appService } from '@/services/AppService'
+import { logger } from '@/lib/request-context'
 
 // Enable Immer MapSet plugin for Map/Set support
 enableMapSet()
@@ -182,7 +183,7 @@ export const useServerStore = create<ServerStore>()(
            error.message.includes('ECONNREFUSED') ||
            error.name === 'AbortError')
            
-        console.log(`Health check failed for ${appId} (${isConnectionRefused ? 'connection refused' : 'other error'}):`, error instanceof Error ? error.message : error)
+        logger.warn('server-store.health-check.failure', { message: `Health check failed for ${appId}`, appId, error: error instanceof Error ? error.message : String(error), isConnectionRefused })
         
         set((state) => {
           const srv = state.servers.get(appId)
@@ -196,7 +197,7 @@ export const useServerStore = create<ServerStore>()(
             if (isConnectionRefused) {
               if (srv.consecutiveFailures >= 3) {
                 // After 3+ consecutive connection refused errors, mark as STOPPED
-                console.log(`🛑 Server ${appId} marked as STOPPED after ${srv.consecutiveFailures} connection refused errors`)
+                logger.warn('server-store.health-check.marked-stopped', { message: 'Server marked as STOPPED after connection refused errors', appId, consecutiveFailures: srv.consecutiveFailures })
                 srv.status = ServerStatus.STOPPED
                 srv.actualPort = undefined // Clear stale port reference
                 
@@ -223,7 +224,7 @@ export const useServerStore = create<ServerStore>()(
                 baseInterval * Math.pow(2, srv.consecutiveFailures - 2),
                 30000 // Cap at 30 seconds
               )
-              console.log(`📉 Increased health check interval for ${appId} to ${srv.healthCheckInterval}ms after ${srv.consecutiveFailures} failures`)
+              logger.info('server-store.health-check.interval-increased', { message: 'Increased health check interval', appId, newInterval: srv.healthCheckInterval, consecutiveFailures: srv.consecutiveFailures })
             }
           }
         })
@@ -233,7 +234,7 @@ export const useServerStore = create<ServerStore>()(
     },
     
     waitForServerReady: async (appId: string) => {
-      console.log(`⏳ Waiting for server to be ready for appId: ${appId}`)
+      logger.info('server-store.wait-ready.begin', { message: 'Waiting for server to be ready', appId })
       
       const maxAttempts = 60 // 60 attempts × 1 second = 1 minute timeout
       let attempts = 0
@@ -247,7 +248,9 @@ export const useServerStore = create<ServerStore>()(
           // Look for our specific appId in the running servers
           const serverForApp = servers.find((server: { appId: string; port: number }) => server.appId === appId)
           
-          console.log(`🔍 Attempt ${attempts + 1}: Searching for appId ${appId} in servers:`, {
+          logger.debug('server-store.wait-ready.attempt', {
+            message: `Attempt ${attempts + 1}: Searching for appId`,
+            attempt: attempts + 1,
             targetAppId: appId,
             foundServers: servers.map(s => ({ appId: s.appId, port: s.port })),
             foundMatch: !!serverForApp
@@ -255,7 +258,7 @@ export const useServerStore = create<ServerStore>()(
           
           if (serverForApp && serverForApp.port) {
             const serverUrl = `http://localhost:${serverForApp.port}`
-            console.log(`✅ Found server for appId ${appId} on port ${serverForApp.port}`)
+            logger.info('server-store.wait-ready.found', { message: 'Found server for appId', appId, port: serverForApp.port })
             
             // Update our store with the confirmed port
             set((state) => {
@@ -271,17 +274,17 @@ export const useServerStore = create<ServerStore>()(
             return serverUrl
           }
           
-          console.log(`❌ Attempt ${attempts + 1}: AppId ${appId} not found in running servers yet`)
+          logger.debug('server-store.wait-ready.not-found', { message: 'AppId not found in running servers yet', attempt: attempts + 1, appId })
           
         } catch (error) {
-          console.log(`❌ Error checking servers: ${error}`)
+          logger.error('server-store.wait-ready.error', { message: 'Error checking servers', error: error instanceof Error ? error.message : String(error), appId })
         }
         
         attempts++
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
       
-      console.log(`⏰ Timeout waiting for server for appId: ${appId}`)
+      logger.warn('server-store.wait-ready.timeout', { message: 'Timeout waiting for server', appId })
       
       // Update store to reflect timeout
       set((state) => {
@@ -297,7 +300,7 @@ export const useServerStore = create<ServerStore>()(
     },
     
     startHealthMonitoring: (appId: string, delayInitialCheck = false) => {
-      console.log(`🔍 Starting health monitoring for appId: ${appId}${delayInitialCheck ? ' (with delayed initial check)' : ''}`)
+      logger.info('server-store.monitor.start', { message: 'Starting health monitoring for appId', appId, delayInitialCheck })
       
       // Skip if already monitoring
       const existingServer = get().servers.get(appId)
@@ -310,7 +313,7 @@ export const useServerStore = create<ServerStore>()(
       // Initial health check with optional delay for newly started servers
       if (delayInitialCheck) {
         // Give the server time to start accepting connections (3 seconds)
-        console.log(`⏳ Delaying initial health check for ${appId} by 3 seconds to allow server startup`)
+        logger.info('server-store.monitor.delay', { message: 'Delaying initial health check to allow server startup', appId, delayMs: 3000 })
         setTimeout(() => checkServerHealth(appId), 3000)
       } else {
         checkServerHealth(appId)
@@ -401,7 +404,7 @@ export const useServerStore = create<ServerStore>()(
     
     // Backend validation functions
     revalidateWithBackend: async (appId: string) => {
-      console.log(`🔄 Revalidating server ${appId} with backend`)
+      logger.info('server-store.revalidate.begin', { message: 'Revalidating server with backend', appId })
       
       try {
         const data = await appService.getServers()
@@ -417,7 +420,7 @@ export const useServerStore = create<ServerStore>()(
             
             if (serverForApp && serverForApp.port) {
               // Server found in backend, update our state
-              console.log(`✅ Backend confirms server ${appId} on port ${serverForApp.port}`)
+              logger.info('server-store.revalidate.confirmed', { message: 'Backend confirms server', appId, port: serverForApp.port })
               server.actualPort = serverForApp.port
               server.status = ServerStatus.RUNNING
               server.isHealthy = true
@@ -431,7 +434,7 @@ export const useServerStore = create<ServerStore>()(
               }
             } else {
               // Server NOT found in backend, mark as stopped
-              console.log(`❌ Backend does not list server ${appId}, marking as stopped`)
+              logger.warn('server-store.revalidate.not-found', { message: 'Backend does not list server, marking as stopped', appId })
               server.status = ServerStatus.STOPPED
               server.isHealthy = false
               server.actualPort = undefined
@@ -448,7 +451,7 @@ export const useServerStore = create<ServerStore>()(
         
         return !!serverForApp
       } catch (error) {
-        console.error(`❌ Failed to revalidate server ${appId} with backend:`, error)
+        logger.error('server-store.revalidate.failure', { message: 'Failed to revalidate server with backend', appId, error: error instanceof Error ? error.message : String(error) })
         
         set((state) => {
           const server = state.servers.get(appId)
@@ -490,7 +493,7 @@ export const useServerStore = create<ServerStore>()(
         return
       }
       
-      console.log('🔄 Starting periodic backend sync (every 30 seconds)')
+      logger.info('server-store.periodic-sync.start', { message: 'Starting periodic backend sync (every 30 seconds)' })
       
       const intervalId = setInterval(async () => {
         const { servers } = get()
@@ -512,7 +515,7 @@ export const useServerStore = create<ServerStore>()(
             
             if (!backendAppIds.has(appId) && server.status !== ServerStatus.STOPPED) {
               // Server in our store but not in backend - likely died
-              console.log(`🚨 Periodic sync: Server ${appId} no longer in backend, marking as stopped`)
+              logger.warn('server-store.periodic-sync.server-gone', { message: 'Periodic sync: Server no longer in backend, marking as stopped', appId })
               
               set((state) => {
                 const srv = state.servers.get(appId)
@@ -541,7 +544,7 @@ export const useServerStore = create<ServerStore>()(
             }
           }
         } catch (error) {
-          console.warn('Periodic backend sync failed:', error)
+          logger.warn('server-store.periodic-sync.failure', { message: 'Periodic backend sync failed', error: error instanceof Error ? error.message : String(error) })
         }
       }, 30000) // Every 30 seconds
       
@@ -554,7 +557,7 @@ export const useServerStore = create<ServerStore>()(
       const intervalId = get().periodicSyncIntervalId
       if (intervalId) {
         clearInterval(intervalId)
-        console.log('⏹️ Stopped periodic backend sync')
+        logger.info('server-store.periodic-sync.stop', { message: 'Stopped periodic backend sync' })
         
         set((state) => {
           state.periodicSyncIntervalId = undefined

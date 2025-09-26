@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { appService, type App, type AppStatusData, type CreateAppData } from '@/services/AppService'
+import { logger } from '@/lib/request-context'
 
 export enum AppStatus {
   CREATING = 'creating',
@@ -146,7 +147,7 @@ export const useAppStore = create<AppStore>()(
           }
         }
       } catch (error) {
-        console.error('Error polling app status:', error)
+        logger.error('app-store.polling.failure', { message: 'Error polling app status', error: error instanceof Error ? error.message : 'Unknown error occurred' })
         set((state) => {
           state.creationError = error instanceof Error ? error.message : 'Unknown error occurred'
           state.isCreating = false
@@ -203,18 +204,18 @@ export const useAppStore = create<AppStore>()(
     // Ensure app is running
     ensureAppIsRunning: async (appId: string) => {
       try {
-        console.log('🔍 Ensuring app is running:', appId)
+        logger.info('app-store.ensure-running.begin', { message: 'Ensuring app is running', appId })
         
         const data = await appService.ensureAppIsRunning(appId)
-        console.log('📊 App ensure-running response:', data)
+        logger.info('app-store.ensure-running.response', { message: 'App ensure-running response', data })
         
         if (data.success) {
-          console.log(`✅ App is now running: ${data.message}`)
+          logger.info('app-store.ensure-running.success', { message: 'App is now running', appMessage: data.message })
         }
         
         return data
       } catch (error) {
-        console.error('Error ensuring app is running:', error)
+        logger.error('app-store.ensure-running.failure', { message: 'Error ensuring app is running', error: error instanceof Error ? error.message : 'Unknown error' })
         throw error
       }
     },
@@ -226,24 +227,24 @@ export const useAppStore = create<AppStore>()(
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          console.log('🔄 Restart attempt for app:', { attempt, maxRetries, appId })
+          logger.info('app-store.restart.attempt', { message: 'Restart attempt for app', attempt, maxRetries, appId })
           await appService.restartApp(appId)
-          console.log('✅ App restarted successfully')
+          logger.info('app-store.restart.success', { message: 'App restarted successfully' })
           return
         } catch (error) {
           lastError = error as Error
-          console.error('❌ Restart attempt failed:', { attempt, maxRetries, error })
+          logger.error('app-store.restart.attempt-failed', { message: 'Restart attempt failed', attempt, maxRetries, error: error instanceof Error ? error.message : 'Unknown error' })
           
           if (attempt < maxRetries) {
             // Wait before retry, with exponential backoff
             const waitTime = attempt * 2000 // 2s, 4s
-            console.log('⏳ Waiting before retry:', { waitTime })
+            logger.info('app-store.restart.retry-wait', { message: 'Waiting before retry', waitTime })
             await new Promise(resolve => setTimeout(resolve, waitTime))
           }
         }
       }
       
-      console.error('❌ All restart attempts failed for app:', { appId })
+      logger.error('app-store.restart.all-attempts-failed', { message: 'All restart attempts failed for app', appId })
       throw lastError || new Error('Restart failed after multiple attempts')
     },
     
@@ -258,13 +259,13 @@ export const useAppStore = create<AppStore>()(
           state.apps.forEach(app => {
             const runningServer = runningServers.find(server => server.appId === app.id)
             if (runningServer && runningServer.port !== app.port) {
-              console.log(`🔄 Auto-syncing port for ${app.id}: ${app.port} -> ${runningServer.port}`)
+              logger.info('app-store.port-sync', { message: 'Auto-syncing port', appId: app.id, oldPort: app.port, newPort: runningServer.port })
               app.port = runningServer.port
             }
           })
         })
       } catch (error) {
-        console.error('Failed to sync actual ports:', error)
+        logger.error('app-store.port-sync.failure', { message: 'Failed to sync actual ports', error: error instanceof Error ? error.message : 'Unknown error' })
       }
     }
   }))

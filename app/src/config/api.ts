@@ -6,6 +6,7 @@
  */
 
 import { buildDynamicApiUrl, buildDynamicWsUrl } from './dynamic-api'
+import { logger } from '@/lib/request-context'
 
 export interface ApiConfig {
   baseUrl: string
@@ -72,7 +73,7 @@ export async function buildWsUrlWithSite(endpoint: string, siteId: string): Prom
 
 // Log configuration in development
 if (process.env.NODE_ENV === 'development') {
-  console.log('🌐 Using Dynamic URLs Only - No static configuration')
-  console.log('💡 All API calls use site-specific agent URLs from database')
-  console.log('🚫 Static environment variables (NEXT_PUBLIC_API_BASE_URL, NEXT_PUBLIC_API_WS_URL) are no longer used')
+  logger.info('api.config.dynamic-mode', { message: 'Using Dynamic URLs Only - No static configuration' })
+  logger.info('api.config.agent-urls', { message: 'All API calls use site-specific agent URLs from database' })
+  logger.info('api.config.env-vars-deprecated', { message: 'Static environment variables (NEXT_PUBLIC_API_BASE_URL, NEXT_PUBLIC_API_WS_URL) are no longer used' })
 }

@@ -11,6 +11,7 @@ import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useDevelopPageStore, OptionsSheetTab } from '@/stores/useDevelopPageStore'
 import { postMessageToIframe } from '@/utils/postMessage'
 import Button from '@ux/button'
+import { logger } from '@/lib/request-context'
 
 // Timing constants for iframe lifecycle management
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
@@ -171,11 +172,11 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
   useEffect(() => {
     if (!appId) return
     
-    console.log(`🚀 Starting server polling for ${appId}`)
+    logger.info('preview-pane.polling.start', { message: 'Starting server polling', appId })
     startPollingForServer(appId)
     
     return () => {
-      console.log(`⏹️ Stopping server polling for ${appId}`)
+      logger.info('preview-pane.polling.stop', { message: 'Stopping server polling', appId })
       stopPollingForServer(appId)
     }
   }, [appId, startPollingForServer, stopPollingForServer])
@@ -199,7 +200,7 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
           // Fallback timeout in case iframe doesn't send ready signal
           const fallbackTimer = setTimeout(() => {
             if (isWaitingForIframeReady) {
-              console.warn('Iframe ready timeout, attempting state restoration anyway')
+              logger.warn('preview-pane.iframe.timeout', { message: 'Iframe ready timeout, attempting state restoration anyway' })
               attemptStateRestoration()
             }
           }, STATE_RESTORE_FALLBACK_MS)
@@ -207,11 +208,11 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
           // Clear timer when component unmounts or state changes
           return () => clearTimeout(fallbackTimer)
         } else {
-          console.log('URL mismatch, clearing pending state restoration')
+          logger.debug('preview-pane.state-restore.url-mismatch', { message: 'URL mismatch, clearing pending state restoration' })
           setPendingStateRestore(null)
         }
       } catch (error) {
-        console.warn('Failed to parse URLs for state restoration:', error)
+        logger.warn('preview-pane.state-restore.parse-error', { message: 'Failed to parse URLs for state restoration', error: error instanceof Error ? error.message : String(error) })
         setPendingStateRestore(null)
       }
     }
@@ -227,13 +228,13 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
       const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url) : null
       
       if (!savedUrl || currentUrl.pathname !== savedUrl.pathname || currentUrl.search !== savedUrl.search) {
-        console.log('URL mismatch during restoration, aborting')
+        logger.debug('preview-pane.state-restore.abort', { message: 'URL mismatch during restoration, aborting' })
         setPendingStateRestore(null)
         setIsWaitingForIframeReady(false)
         return
       }
     } catch (error) {
-      console.warn('Failed to validate URLs during restoration:', error)
+      logger.warn('preview-pane.state-restore.validation-error', { message: 'Failed to validate URLs during restoration', error: error instanceof Error ? error.message : String(error) })
       setPendingStateRestore(null)
       setIsWaitingForIframeReady(false)
       return
@@ -259,7 +260,7 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
         }
         postMessageToIframe(iframeRef.current, restoreMessage)
       } catch (postMessageError) {
-        console.error('Failed to restore state:', postMessageError)
+        logger.error('preview-pane.state-restore.failure', { message: 'Failed to restore state', error: postMessageError instanceof Error ? postMessageError.message : String(postMessageError) })
       }
     }
     
@@ -273,7 +274,7 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
     const handleMessage = (event: MessageEvent) => {
       // Handle iframe ready signal for immediate state restoration
       if (event.data.type === 'IFRAME_READY' && isWaitingForIframeReady) {
-        console.log('Iframe ready signal received, restoring state immediately')
+        logger.debug('preview-pane.iframe.ready', { message: 'Iframe ready signal received, restoring state immediately' })
         attemptStateRestoration()
         return
       }
@@ -298,7 +299,7 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
   }, [serverState?.isReady, isWaitingForIframeReady, attemptStateRestoration])
   
   const handleManualRetry = () => {
-    console.log(`🔄 Manual retry for ${appId}`)
+    logger.info('preview-pane.retry', { message: 'Manual retry for server', appId })
     // Restart polling for this server
     stopPollingForServer(appId)
     startPollingForServer(appId)
@@ -308,7 +309,7 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
   }
   
   const handleIframeError = () => {
-    console.log(`❌ Iframe error for ${appId}`)
+    logger.warn('preview-pane.iframe.error', { message: 'Iframe error', appId })
     setIframeError(true)
   }
   

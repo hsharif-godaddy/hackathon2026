@@ -144,7 +144,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           return contextResult.contextMessages.map((msg) => ({
             role: msg.role,
             content: msg.content,
-            ...(msg.insertionOrder && { insertionOrder: msg.insertionOrder }),
+            insertionOrder: msg.insertionOrder || 'after_history',
             ...(msg.cachePoint && { cachePoint: msg.cachePoint })
           }))
         } catch (error) {

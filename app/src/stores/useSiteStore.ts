@@ -88,7 +88,7 @@ export const useSiteStore = create<SiteStore>()(
         return siteData
 
       } catch (error) {
-        console.error('❌ Failed to fetch site:', error)
+        logger.error('site-store.fetch.failure', { message: 'Failed to fetch site', siteId, error: error instanceof Error ? error.message : String(error) })
 
         set((state) => {
           state.loading[siteId] = false

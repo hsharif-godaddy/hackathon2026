@@ -450,6 +450,7 @@ function DevelopPageContent() {
           <StreamingChatPane
             expandedPlan={expandedPlan}
             isSelectMode={isSelectMode}
+            onKeyPress={() => {}}
             onToggleSelectMode={toggleSelectMode}
             onToggleExpandedPlan={toggleExpandedPlan}
             appId={appId}

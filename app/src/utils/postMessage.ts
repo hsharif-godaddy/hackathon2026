@@ -1,6 +1,7 @@
 /**
  * Secure postMessage utilities for iframe communication
  */
+import { logger } from '@/lib/request-context';
 
 /**
  * Safely posts a message to an iframe using the iframe's actual origin
@@ -9,7 +10,7 @@
  */
 export function postMessageToIframe(iframe: HTMLIFrameElement, message: any): void {
   if (!iframe.contentWindow) {
-    console.warn('Cannot send message: iframe contentWindow not available')
+    logger.warn('post-message.no-content-window', { message: 'Cannot send message: iframe contentWindow not available' })
     return
   }
 
@@ -21,7 +22,7 @@ export function postMessageToIframe(iframe: HTMLIFrameElement, message: any): vo
     iframe.contentWindow.postMessage(message, targetOrigin)
   } catch (error) {
     // Fallback to wildcard if URL parsing fails (still better than nothing)
-    console.error('Could not determine iframe origin, using wildcard:', error)
+    logger.error('post-message.origin-error', { message: 'Could not determine iframe origin, using wildcard', error: error instanceof Error ? error.message : String(error) })
     iframe.contentWindow.postMessage(message, '*')
   }
 }

@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+import { logger } from '@/lib/request-context';
+
 declare global {
   interface Window {
     _expDataLayer: any[];
@@ -40,7 +42,7 @@ export const logPageEvent = (page: string): () => void => () => {
     };
     getExpDataLayer()?.push(pageEventData);
   } catch (_e) {
-    console.error('Failed to log page information for url %s', page);
+    logger.error('instrumentation.page.failure', { message: 'Failed to log page information', page });
   }
 };
 
@@ -80,7 +82,7 @@ export const logInteractionEvent = ({ eid, type = 'click', data = null }: LogInt
     };
     getExpDataLayer()?.push(eventData);
   } catch (_e) {
-    console.error(`Failed to log click event information for eid: ${eid} (${ EID_BASE + '.' + eid + '.' + type })`);
+    logger.error('instrumentation.interaction.failure', { message: 'Failed to log click event information', eid, fullEid: EID_BASE + '.' + eid + '.' + type });
   }
 };
 
@@ -141,6 +143,6 @@ export const logImpressionEvent = ({ eid, data = null }: LogImpressionEventProps
     };
     getExpDataLayer()?.push(impressionData);
   } catch (_e) {
-    console.error(`Failed to log impression event information for eid: ${eid} (${ EID_BASE + '.' + eid + '.impression' })`);
+    logger.error('instrumentation.impression.failure', { message: 'Failed to log impression event information', eid, fullEid: EID_BASE + '.' + eid + '.impression' });
   }
 };

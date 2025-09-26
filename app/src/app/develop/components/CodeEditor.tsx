@@ -11,6 +11,7 @@ import {
   ArrowDownTrayIcon
 } from '@heroicons/react/24/outline'
 import FileTree, { FileItem } from './FileTree'
+import { logger } from '@/lib/request-context'
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { 
@@ -125,7 +126,7 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
       const result = await appService.readFile(appId, filePath)
       return result.content
     } catch (error) {
-      console.error('Error loading file content:', error)
+      logger.error('code-editor.file.load-error', { message: 'Error loading file content', error: error instanceof Error ? error.message : String(error) })
       return `// Error loading file: ${error instanceof Error ? error.message : 'Unknown error'}`
     }
   }, [appId])
@@ -136,7 +137,7 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
       const result = await appService.writeFile(appId, filePath, content, 'rewrite')
       return result.success || true
     } catch (error) {
-      console.error('Error saving file:', error)
+      logger.error('code-editor.file.save-error', { message: 'Error saving file', error: error instanceof Error ? error.message : String(error) })
       return false
     }
   }, [appId])
@@ -262,9 +263,9 @@ export default function CodeEditor({ appId, onUnsavedChanges }: CodeEditorProps)
         window.postMessage({ type: 'file-saved', path: pathToSave }, window.location.origin)
       }
 
-      console.log(`Saved ${pathToSave}`)
+      logger.info('code-editor.file.saved', { message: 'File saved', path: pathToSave })
     } catch (error) {
-      console.error('Failed to save file:', error)
+      logger.error('code-editor.file.save-failed', { message: 'Failed to save file', error: error instanceof Error ? error.message : String(error) })
       alert('Failed to save file')
     } finally {
       setSaving(null)

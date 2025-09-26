@@ -26,6 +26,7 @@ import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { AgentsAppContext, AgentsAppChatMessage } from '../types/websocket-context'
 import { captureVisualContext } from '../app/develop/components/visualContextCapture'
 import { logImpressionEvent } from '@/utils/instrumentation'
+import { logger } from '@/lib/request-context'
 
 /**
  * Get JWT token from browser cookies for Socket.IO authentication
@@ -72,10 +73,10 @@ export function useStreamingWebSocket() {
       })
       
       if (!response.ok) {
-        console.warn('⚠️ Git return request failed (non-blocking):', response.status)
+        logger.warn('websocket.git-return.failure', { message: 'Git return request failed (non-blocking)', status: response.status })
       }
     } catch (error) {
-      console.warn('⚠️ Git return error (non-blocking):', error)
+      logger.warn('websocket.git-return.error', { message: 'Git return error (non-blocking)', error: error instanceof Error ? error.message : String(error) })
     }
   }, [])
 
@@ -90,7 +91,7 @@ export function useStreamingWebSocket() {
       
       // Socket.IO connects to the base URL, not the app-specific URL
       const socketUrl = config.baseUrl
-      console.log('🔌 Creating Socket.IO connection to:', socketUrl)
+      logger.info('websocket.connection.create', { message: 'Creating Socket.IO connection', url: socketUrl })
       
       // Get JWT token for authentication (aligned with new agents service)
       let authToken = null;
@@ -100,7 +101,7 @@ export function useStreamingWebSocket() {
           authToken = getAuthTokenFromCookie();
         }
       } catch (error) {
-        console.warn('Could not determine auth status:', error);
+        logger.warn('websocket.connection.auth', { message: 'Could not determine auth status', error: error instanceof Error ? error.message : String(error) });
       }
       
       // Create Socket.IO connection with JWT authentication
@@ -115,32 +116,31 @@ export function useStreamingWebSocket() {
         socketOptions.extraHeaders = {
           'Authorization': `Bearer ${authToken}`
         };
-        console.log('🔐 Socket.IO connection will include JWT authentication');
+        logger.info('websocket.connection.jwt', { message: 'Socket.IO connection will include JWT authentication' });
       }
       
       const socket = io(socketUrl, socketOptions)
 
       socket.on('connect', () => {
-        console.log('🔌 Socket.IO connected')
+        logger.info('websocket.connection.success', { message: 'Socket.IO connected' })
         setWebSocketState({ connected: true, status: 'idle' })
         resolve(socket)
       })
 
       socket.on('connect_error', (error) => {
-        console.error('🔌 Socket.IO connection error:', error)
+        logger.error('websocket.connection.error', { message: 'Socket.IO connection error', error: error.message })
         setWebSocketState({ connected: false, status: 'error', error: error.message })
         reject(new Error(`Failed to connect to Socket.IO: ${error.message}`))
       })
 
       socket.on('disconnect', (reason) => {
-        console.log('🔌 Socket.IO disconnected:', reason)
+        logger.info('websocket.connection.disconnect', { message: 'Socket.IO disconnected', reason })
         setWebSocketState({ connected: false, status: 'idle' })
       })
 
       // Listen for agent availability
       socket.on('agents_available', (data) => {
-        console.log('🤖 Available agents:', data.agents)
-        console.log('🎯 Default agent:', data.defaultAgent)
+        logger.info('websocket.agents.available', { message: 'Available agents', agents: data.agents, defaultAgent: data.defaultAgent })
       })
     })
   }, [setWebSocketState])
@@ -151,7 +151,7 @@ export function useStreamingWebSocket() {
   const setupEventHandlers = useCallback((socket: Socket) => {
     // Status updates
     socket.on('status', (data) => {
-      console.log('📊 Status:', data.data?.status, data.content)
+      logger.debug('websocket.status', { message: 'Status update', status: data.data?.status, content: data.content })
       
       if (data.data?.status === 'thinking') {
         setWebSocketState({ status: 'streaming' })
@@ -206,7 +206,7 @@ export function useStreamingWebSocket() {
         case 'step_complete':
           // Check if this step completion indicates max steps reached
           if (data.data?.maxStepsReached === true) {
-            console.log('🛑 Max steps reached - marking in state')
+            logger.info('websocket.steps.max-reached', { message: 'Max steps reached - marking in state' })
             markMaxStepsReached()
           }
           break
@@ -227,7 +227,7 @@ export function useStreamingWebSocket() {
           break
           
         case 'error':
-          console.error('❌ Socket.IO error:', data)
+          logger.error('websocket.error', { message: 'Socket.IO error', data })
           sendToolImpression('error')
           setWebSocketState({ status: 'error', error: data.content })
           setStreamingState('error')
@@ -276,7 +276,7 @@ export function useStreamingWebSocket() {
       // Set up streaming event handlers
       setupEventHandlers(socket)
 
-      console.log('📤 Sending Socket.IO message for app:', currentAppId)
+      logger.info('websocket.message.send', { message: 'Sending Socket.IO message for app', appId: currentAppId })
 
       // Get current state for rich context
       const state = useStreamingConversationStore.getState()
@@ -287,7 +287,7 @@ export function useStreamingWebSocket() {
       const conversationId = currentConversation?.id
       
       // Capture visual context from iframe
-      console.log('📸 Capturing visual context from iframe...')
+      logger.debug('websocket.visual-context.capture', { message: 'Capturing visual context from iframe' })
       const visualContext = await captureVisualContext()
       
       // Build rich context object with proper typing
@@ -321,7 +321,8 @@ export function useStreamingWebSocket() {
         ...(visualContext && { visualContext }),
       }
       
-      console.log('📤 Sending message with rich context:', {
+      logger.debug('websocket.message.details', {
+        message: 'Sending message with rich context',
         messageLength: content.length,
         hasAiEditContext: !!aiEditContext,
         hasVisualContext: !!visualContext,
@@ -345,7 +346,7 @@ export function useStreamingWebSocket() {
       socket.emit('chat_message', chatMessage)
 
     } catch (error) {
-      console.error('❌ Failed to send message:', error)
+      logger.error('websocket.message.failure', { message: 'Failed to send message', error: error instanceof Error ? error.message : String(error) })
       setWebSocketState({ 
         status: 'error', 
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -370,7 +371,7 @@ export function useStreamingWebSocket() {
   useEffect(() => {
     return () => {
       if (socketRef.current) {
-        console.log('🧹 Cleaning up Socket.IO connection')
+        logger.info('websocket.cleanup', { message: 'Cleaning up Socket.IO connection' })
         socketRef.current.disconnect()
         socketRef.current = null
       }

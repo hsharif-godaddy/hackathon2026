@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { appFetch } from '@/lib/gasket-config'
 import { agentFetch } from '@/lib/agent-fetch'
+import { logger } from '@/lib/request-context'
 
 export interface Site {
   id: string
@@ -75,8 +76,8 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
     // Initialize site creation flow
     initializeSite: async (siteId: string) => {
-      console.log('🚀 [STORE] Initializing site creation for:', siteId)
-      console.log('🚀 [STORE] Store version check - updated with debugging')
+      logger.info('site.creation.begin', { message: 'Initializing site creation', siteId })
+      logger.info('site.creation.version_check', { message: 'Store version check - updated with debugging' })
 
       set((state) => {
         state.siteId = siteId
@@ -102,12 +103,12 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
       // Prevent multiple concurrent deployment attempts
       if (phase === 'deploying') {
-        console.log('⚠️ Deployment already in progress, skipping duplicate request')
+        logger.info('site.deployment.duplicate', { message: 'Deployment already in progress, skipping duplicate request' })
         return
       }
 
       try {
-        console.log('🚀 Starting deployment for site:', siteId)
+        logger.info('site.deployment.start', { message: 'Starting deployment for site', siteId })
         set((state) => {
           state.phase = 'deploying'
           state.error = null
@@ -122,7 +123,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           
           // Handle 409 Conflict (deployment already in progress) gracefully
           if (deployResponse.status === 409) {
-            console.log('ℹ️ Deployment already in progress on server, switching to polling mode')
+            logger.info('site.deployment.already_in_progress', { message: 'Deployment already in progress on server, switching to polling mode' })
             set((state) => {
               state.phase = 'polling'
               state.error = null // Clear any error since this is expected
@@ -137,7 +138,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         }
 
         const deployData = await deployResponse.json()
-        console.log('✅ Deployment started:', deployData.message)
+        logger.info('site.deployment.success', { message: 'Deployment started', deployMessage: deployData.message })
 
         // Move to polling phase
         set((state) => {
@@ -148,7 +149,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         get()._startPolling()
 
       } catch (error) {
-        console.error('❌ Error starting deployment:', error)
+        logger.error('site.deployment.failure', { message: 'Error starting deployment', error: error instanceof Error ? error.message : 'Unknown error' })
         set((state) => {
           state.error = error instanceof Error ? error.message : 'Failed to start deployment'
           state.phase = 'error'
@@ -163,7 +164,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
       // Don't start if already polling
       if (pollingInterval) return
 
-      console.log('🔄 Starting to poll for site status')
+      logger.info('site.polling.start', { message: 'Starting to poll for site status' })
       set((state) => {
         state.isPolling = true
       })
@@ -187,7 +188,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
       if (pollingInterval) {
         clearInterval(pollingInterval)
-        console.log('🛑 Stopped polling for site status')
+        logger.info('site.polling.stop', { message: 'Stopped polling for site status' })
 
         set((state) => {
           state.pollingInterval = null
@@ -203,7 +204,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
       if (!siteId || phase !== 'polling') return
 
       try {
-        console.log('🔄 [STORE] Polling site status for siteId:', siteId)
+        logger.info('site.polling.status', { message: 'Polling site status', siteId })
 
         // Get full site data from API
         const siteResponse = await appFetch(`/api/sites/${siteId}`)
@@ -219,7 +220,8 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
         // Use the potentially updated status from health check service
         if (siteStatus.status !== siteData.status) {
-          console.log('🔄 [STORE] Status updated by health check:', {
+          logger.info('site.polling.status_update', {
+            message: 'Status updated by health check',
             original: siteData.status,
             updated: siteStatus.status
           })
@@ -231,7 +233,8 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           state.lastPollTime = Date.now()
         })
 
-        console.log('📊 Site status poll result:', {
+        logger.info('site.polling.result', {
+          message: 'Site status poll result',
           siteId: siteData.id,
           status: siteData.status,
           hasAgentUrl: !!siteData.agent_url,
@@ -244,8 +247,8 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
         // Check if agent is running (has agent_url and status is 'running')
         if (siteData.status === 'running' && siteData.agent_url) {
-          console.log('✅ Site is running! Verifying agent endpoint...')
-          console.log('🔍 Agent URL to verify:', siteData.agent_url)
+          logger.info('site.verification.begin', { message: 'Site is running! Verifying agent endpoint' })
+          logger.info('site.verification.url', { message: 'Agent URL to verify', url: siteData.agent_url })
 
           get()._stopPolling()
           set((state) => {
@@ -254,14 +257,14 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
           // Verify the agent endpoint is actually working
           const isAgentReady = await get()._verifyAgentEndpoint(siteData.agent_url)
-          console.log('🔍 Agent verification result:', isAgentReady)
+          logger.info('site.verification.result', { message: 'Agent verification result', success: isAgentReady })
 
           if (isAgentReady) {
-            console.log('✅ Agent endpoint verified! Starting name update...')
+            logger.info('site.verification.success', { message: 'Agent endpoint verified! Starting name update' })
             await get()._updateSiteName(siteData.agent_url)
           } else {
             // Agent not ready yet, wait longer before retrying (likely still registering)
-            console.log('⏳ Agent endpoint not ready yet, waiting 10 seconds before resuming polling...')
+            logger.info('site.verification.not_ready', { message: 'Agent endpoint not ready yet, waiting 10 seconds before resuming polling' })
             set((state) => {
               state.phase = 'polling'
             })
@@ -281,7 +284,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         // Continue polling if still pending/queued
 
       } catch (error) {
-        console.error('❌ Error polling for site status:', error)
+        logger.error('site.polling.failure', { message: 'Error polling for site status', error: error instanceof Error ? error.message : 'Unknown error' })
         get()._stopPolling()
         set((state) => {
           state.error = error instanceof Error ? error.message : 'Failed to check site status'
@@ -296,36 +299,36 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         // Get siteId for the correct endpoint path
         const { siteId } = get()
         if (!siteId) {
-          console.error('❌ No siteId available for agent verification')
+          logger.error('site.verification.no_site_id', { message: 'No siteId available for agent verification' })
           return false
         }
 
-        console.log('🔍 Original agent URL:', agentUrl)
+        logger.info('site.verification.agent_url', { message: 'Original agent URL', url: agentUrl })
         const endpointUrl = `${agentUrl}/apps/${siteId}/ensure-running`
-        console.log('🔍 Constructed endpoint URL:', endpointUrl)
+        logger.info('site.verification.endpoint_url', { message: 'Constructed endpoint URL', url: endpointUrl })
 
         const response = await agentFetch(endpointUrl, {
           method: 'POST',
           signal: AbortSignal.timeout(15000) // 15 second timeout (same as integration test)
         })
 
-        console.log('🔍 Agent endpoint response:', response.status, response.statusText)
+        logger.info('site.verification.response', { message: 'Agent endpoint response', status: response.status, statusText: response.statusText })
 
         if (response.ok) {
           const data = await response.json()
-          console.log('✅ Agent endpoint responded:', data)
+          logger.info('site.verification.response_data', { message: 'Agent endpoint responded', data })
           return true
         } else if (response.status === 404) {
-          console.log('⚠️ Agent endpoint not found (404) - likely still registering with agents service')
+          logger.warn('site.verification.not_found', { message: 'Agent endpoint not found (404) - likely still registering with agents service' })
           return false
         } else {
-          console.log('⚠️ Agent endpoint returned non-OK status:', response.status, response.statusText)
+          logger.warn('site.verification.non_ok_status', { message: 'Agent endpoint returned non-OK status', status: response.status, statusText: response.statusText })
           const errorText = await response.text().catch(() => 'Unable to read response')
-          console.log('⚠️ Agent endpoint error response:', errorText)
+          logger.warn('site.verification.error_response', { message: 'Agent endpoint error response', errorText })
           return false
         }
       } catch (error) {
-        console.log('⚠️ Agent endpoint verification failed with error:', error)
+        logger.warn('site.verification.error', { message: 'Agent endpoint verification failed with error', error: error instanceof Error ? error.message : 'Unknown error' })
         return false
       }
     },
@@ -334,7 +337,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
     _updateSiteName: async (agentUrl: string) => {
       const { siteId, site } = get()
       if (!siteId || !site) {
-        console.log('❌ No siteId or site data for name update')
+        logger.warn('site.name_update.no_data', { message: 'No siteId or site data for name update' })
         return
       }
 
@@ -343,15 +346,15 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           state.phase = 'updating-name'
         })
 
-        console.log('🏷️ Starting name update from agent...')
-        console.log('🏷️ Site data:', { siteId, initialPrompt: site.initial_prompt })
+        logger.info('site.name_update.begin', { message: 'Starting name update from agent' })
+        logger.info('site.name_update.data', { message: 'Site data', siteId, initialPrompt: site.initial_prompt })
 
         // Get initial prompt from site
         const initialPrompt = site.initial_prompt || 'Suggest a name for this project'
-        console.log('🏷️ Using prompt:', initialPrompt)
+        logger.info('site.name_update.prompt', { message: 'Using prompt', initialPrompt })
 
         // Call the agents service to get a name suggestion
-        console.log('🏷️ Calling suggest-name endpoint...')
+        logger.info('site.name_update.api_call', { message: 'Calling suggest-name endpoint' })
         const agentResponse = await agentFetch(`${agentUrl}/apps/suggest-name`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -360,14 +363,14 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           })
         })
 
-        console.log('🏷️ Agent response status:', agentResponse.status, agentResponse.statusText)
+        logger.info('site.name_update.api_response', { message: 'Agent response status', status: agentResponse.status, statusText: agentResponse.statusText })
 
         if (agentResponse.ok) {
           const nameData = await agentResponse.json()
           const suggestedName = nameData.name || nameData.suggestedName
 
           if (suggestedName) {
-            console.log('🏷️ Got suggested name from agent:', suggestedName)
+            logger.info('site.name_update.suggestion', { message: 'Got suggested name from agent', suggestedName })
 
             // Update the site name
             const updateResponse = await appFetch(`/api/sites/${siteId}`, {
@@ -377,18 +380,18 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
             })
 
             if (updateResponse.ok) {
-              console.log('✅ Site name updated successfully')
+              logger.info('site.name_update.success', { message: 'Site name updated successfully', name: suggestedName })
               set((state) => {
                 if (state.site) {
                   state.site.name = suggestedName
                 }
               })
             } else {
-              console.warn('⚠️ Failed to update site name, continuing anyway')
+              logger.warn('site.name_update.update_failure', { message: 'Failed to update site name, continuing anyway' })
             }
           }
         } else {
-          console.warn('⚠️ Failed to get name suggestion from agent, continuing anyway')
+          logger.warn('site.name_update.suggestion_failure', { message: 'Failed to get name suggestion from agent, continuing anyway' })
         }
 
         // Complete the flow
@@ -397,9 +400,9 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         })
 
       } catch (error) {
-        console.error('❌ Error in name update flow:', error)
+        logger.error('site.name_update.error', { message: 'Error in name update flow', error: error instanceof Error ? error.message : 'Unknown error' })
         // Don't fail the entire flow for name update issues
-        console.log('⚠️ Name update failed, marking as complete anyway')
+        logger.warn('site.name_update.continue', { message: 'Name update failed, marking as complete anyway' })
         set((state) => {
           state.phase = 'complete'
         })
@@ -418,7 +421,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         return
       }
 
-      console.log(`🔄 Retrying site creation (attempt ${retryCount + 1}/${maxRetries})`)
+      logger.info('site.creation.retry', { message: `Retrying site creation`, attempt: retryCount + 1, maxRetries })
 
       get()._stopPolling()
 
@@ -435,13 +438,13 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
     // Clean up resources
     cleanup: () => {
-      console.log('🧹 Cleaning up site creation store')
+      logger.info('site.creation.cleanup', { message: 'Cleaning up site creation store' })
       get()._stopPolling()
     },
 
     // Reset store to initial state
     reset: () => {
-      console.log('🔄 Resetting site creation store')
+      logger.info('site.creation.reset', { message: 'Resetting site creation store' })
       get()._stopPolling()
 
       set((state) => {

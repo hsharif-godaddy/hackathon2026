@@ -192,7 +192,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         logger.info('develop-store.init.complete', { message: 'Page initialization complete', appId })
 
       } catch (error) {
-        console.error('❌ Page initialization failed:', error)
+        logger.error('develop-store.init.failure', { message: 'Page initialization failed', error: error instanceof Error ? error.message : String(error) })
         set((state) => {
           state.loadingPhase = 'idle'
           state.loadingError = error instanceof Error ? error.message : String(error)
@@ -235,7 +235,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         await new Promise(resolve => setTimeout(resolve, 5000))
         
       } catch (error) {
-        console.error('❌ Error restarting server:', error)
+        logger.error('develop-store.restart.failure', { message: 'Error restarting server', error: error instanceof Error ? error.message : String(error) })
         throw error
       } finally {
         set((state) => { state.isRestarting = false })
@@ -251,7 +251,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         
         if (data.action === 'rebuild' || data.action === 'start') {
           set((state) => { state.isStartingApp = true })
-          console.log(`🔄 App is being ${data.action === 'rebuild' ? 'rebuilt' : 'started'}...`)
+          logger.info('develop-store.app-action', { message: `App is being ${data.action === 'rebuild' ? 'rebuilt' : 'started'}`, action: data.action })
           
           // Wait for the action to complete
           await new Promise(resolve => setTimeout(resolve, 1000))
@@ -259,7 +259,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           set((state) => { state.isStartingApp = false })
         }
       } catch (error) {
-        console.error('Error ensuring app is running:', error)
+        logger.error('develop-store.ensure-running.failure', { message: 'Error ensuring app is running', error: error instanceof Error ? error.message : String(error) })
       } finally {
         set((state) => {
           state.isCheckingApp = false
@@ -281,32 +281,32 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           try {
             const { commits } = await appService.getGitHistory(appId)
             set((state) => { state.commitHistory = commits || [] })
-            console.log(`✅ Git history loaded: ${commits?.length || 0} commits for app ${appId}`)
+            logger.info('develop-store.git-history.loaded', { message: 'Git history loaded', commits: commits?.length || 0, appId })
             return // Success, exit retry loop
           } catch (err: unknown) {
             attempts++
-            console.log(`⚠️ Git history attempt ${attempts}/${maxAttempts} failed for app ${appId}:`, (err as Error)?.message)
+            logger.warn('develop-store.git-history.attempt-failed', { message: 'Git history attempt failed', attempt: attempts, maxAttempts, appId, error: (err as Error)?.message })
             
             // Don't retry on certain error codes that won't resolve with time
             if ((err as Error)?.message?.includes('404') || (err as Error)?.message?.includes('403')) {
-              console.log(`🚫 App ${appId} not found or forbidden, stopping git history retries`)
+              logger.warn('develop-store.git-history.stopped', { message: 'App not found or forbidden, stopping git history retries', appId })
               break
             }
             
             if (attempts < maxAttempts) {
               const delay = baseDelay * attempts
-              console.log(`⏳ Retrying git history for ${appId} in ${delay}ms...`)
+              logger.info('develop-store.git-history.retry', { message: 'Retrying git history', appId, delay })
               await new Promise(resolve => setTimeout(resolve, delay))
             }
           }
         }
         
         // If all attempts failed, set empty history (don't crash the app)
-        console.log(`❌ All git history attempts failed for app ${appId}, using empty history`)
+        logger.warn('develop-store.git-history.all-attempts-failed', { message: 'All git history attempts failed, using empty history', appId })
         set((state) => { state.commitHistory = [] })
         
       } catch (err) {
-        console.error(`Error loading commit history for app ${appId}:`, err)
+        logger.error('develop-store.git-history.error', { message: 'Error loading commit history', appId, error: err instanceof Error ? err.message : String(err) })
         set((state) => { state.commitHistory = [] })
       } finally {
         set((state) => { state.isLoadingCommits = false })
@@ -317,7 +317,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       // Prevent concurrent commit selections
       const state = get();
       if (state.isSelectingCommit) {
-        console.log('🔄 Commit selection already in progress, skipping...');
+        logger.info('develop-store.commit-selection.skip', { message: 'Commit selection already in progress, skipping' });
         return;
       }
       
@@ -326,24 +326,29 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       try {
         if (commit === null) {
           // Return to latest (main branch)
-          console.log('🔄 Returning to main branch...');
+          logger.info('develop-store.commit-selection.return-main', { message: 'Returning to main branch' });
           await appService.returnToMainBranch(appId)
           set((state) => { state.selectedCommit = null })
-          console.log('✅ Returned to main branch')
+          logger.info('develop-store.commit-selection.return-main-success', { message: 'Returned to main branch' })
           return
         }
         
-        console.log(`🔍 Viewing commit ${commit.shortHash}: "${commit.message}" (${commit.date})`)
-        console.log('⚠️ Note: Changes requested after this will be made on latest commit, not the viewed commit')
+        logger.info('develop-store.commit-selection.view', {
+          message: 'Viewing commit',
+          commitHash: commit.shortHash,
+          commitMessage: commit.message,
+          date: commit.date
+        })
+        logger.warn('develop-store.commit-selection.note', { message: 'Changes requested after this will be made on latest commit, not the viewed commit' })
         
         // Checkout specific commit
-        console.log(`🔄 Checking out commit ${commit.shortHash}...`);
+        logger.info('develop-store.commit-selection.checkout', { message: 'Checking out commit', commitHash: commit.shortHash });
         await appService.checkoutCommit(appId, commit.hash)
         set((state) => { state.selectedCommit = commit })
-        console.log(`✅ Checked out commit ${commit.shortHash}`)
+        logger.info('develop-store.commit-selection.checkout-success', { message: 'Checked out commit', commitHash: commit.shortHash })
         
       } catch (error) {
-        console.error('❌ Error selecting commit:', error)
+        logger.error('develop-store.commit-selection.error', { message: 'Error selecting commit', error: error instanceof Error ? error.message : String(error) })
         throw error
       } finally {
         set((state) => { state.isSelectingCommit = false });
