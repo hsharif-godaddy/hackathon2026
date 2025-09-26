@@ -35,7 +35,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   // Show access restricted message if feature flag is disabled
-  if (isAppbuilderAccessEnabled) {
+  if (!isAppbuilderAccessEnabled) {
     return (
       <Box
         className="min-h-screen"
