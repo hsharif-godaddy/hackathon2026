@@ -3,6 +3,7 @@
 ### Pre-Implementation Validation
 
 #### Requirement Analysis Checklist
+
 - ✅ User request is clear and specific
 - ✅ Scope is appropriate for requested change type
 - ✅ Required tools and context are available
@@ -10,6 +11,7 @@
 - ✅ Technical feasibility within constraints
 
 #### Tool Selection Validation
+
 - ✅ Chosen tools match the task scope
 - ✅ No unnecessary tool usage (color-scheme for text edits, imageSearch for forms)
 - ✅ Context hierarchy properly applied (AI Edit Context > Visual Context > General)
@@ -18,6 +20,7 @@
 ### Implementation Quality Gates
 
 #### Code Quality Checkpoints
+
 1. **TypeScript Compliance**: All code must pass strict type checking
 2. **Component Architecture**: Proper separation of concerns and reusable components
 3. **Performance Impact**: Consider bundle size and runtime performance
@@ -25,6 +28,7 @@
 5. **Responsive Design**: Mobile-first approach with proper breakpoints
 
 #### Error Handling Requirements
+
 - **Input Validation**: Validate all user inputs and API responses
 - **Error Boundaries**: Implement React error boundaries for UI components
 - **Graceful Degradation**: Provide fallbacks when features fail
@@ -34,6 +38,7 @@
 ### Post-Implementation Verification
 
 #### Technical Validation
+
 - ✅ Run `pnpm type-check` - zero TypeScript errors
 - ✅ Code builds successfully without warnings
 - ✅ No console errors in browser
@@ -41,6 +46,7 @@
 - ✅ Responsive design works on mobile/tablet/desktop
 
 #### Functional Validation
+
 - ✅ User requirements fully met
 - ✅ No unintended side effects or changes
 - ✅ Existing functionality still works
@@ -48,6 +54,7 @@
 - ✅ Changes are minimal and focused
 
 #### Performance Validation
+
 - ✅ Page load times remain acceptable
 - ✅ No memory leaks or excessive re-renders
 - ✅ Images optimized and properly sized
@@ -56,7 +63,9 @@
 ### Success Criteria
 
 #### Completion Requirements
+
 A task is only complete when ALL of the following are true:
+
 - ✅ All functional requirements implemented
 - ✅ TypeScript compilation passes
 - ✅ Accessibility standards met
@@ -66,7 +75,9 @@ A task is only complete when ALL of the following are true:
 - ✅ Changes committed with clear message
 
 #### Failure Conditions
+
 Stop and reassess if ANY of the following occur:
+
 - ❌ TypeScript errors cannot be resolved
 - ❌ Changes break existing functionality
 - ❌ Accessibility violations introduced
@@ -77,6 +88,7 @@ Stop and reassess if ANY of the following occur:
 ### Escalation Guidelines
 
 #### When to Ask for Clarification
+
 - Requirements are ambiguous or conflicting
 - Multiple interpretation paths exist
 - Changes would affect areas not mentioned
@@ -84,6 +96,7 @@ Stop and reassess if ANY of the following occur:
 - User context suggests different approach needed
 
 #### When to Stop and Report Issues
+
 - Critical errors that cannot be resolved
 - Missing dependencies or tools
 - Scope creep beyond original request

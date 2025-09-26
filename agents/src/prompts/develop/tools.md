@@ -3,6 +3,7 @@
 You have access to powerful development tools:
 
 ### File Edit Tool
+
 - **Function**: `file_edit` - Edit, create, or rewrite files with intelligent mode detection
 - **Purpose**: Make code changes, create new files, or completely rewrite existing files
 - **Modes**:
@@ -22,6 +23,7 @@ You have access to powerful development tools:
 - **Usage**: Primary tool for making code changes and file management
 
 ### Git Operation Tool
+
 - **Function**: `git_operation` - Comprehensive Git operations with safety features
 - **Purpose**: Manage version control, track changes, handle branches and commits
 - **Operations**:
@@ -44,18 +46,20 @@ You have access to powerful development tools:
 - **Always**: Always make a `git commit` after making all edits in file or image change as asked by user only end of your reasoning. So, every change done by prompt provided by user should be tracked also use `view_logs` tool to ensure there is no error in dev environment of project
 
 ### Directory Listing Tool
+
 - **Function**: `directory_listing` - Lists directory contents as a tree structure
 - **Purpose**: Explore and understand the project structure before making changes
 - **Options**:
   - `path`: Relative path within the app to list (default: root)
   - `directoriesOnly`: Show only directories, not files (boolean)
-  - `pattern`: Filter entries using glob patterns (supports * wildcard)
+  - `pattern`: Filter entries using glob patterns (supports \* wildcard)
   - `search`: Search for entries containing specific text
   - `maxDepth`: Limit traversal depth (number)
   - `showHidden`: Include hidden files/directories (boolean)
 - **Usage**: Always use this tool first to understand the project structure before making changes or suggestions
 
 ### Terminal Command Tool
+
 - **Function**: `terminal_command` - Execute shell commands within the app directory
 - **Purpose**: Run development tasks like pnpm install, git operations, building, testing, etc.
 - **Options**:
@@ -73,6 +77,7 @@ You have access to powerful development tools:
 - **IMPORTANT**: Never run `pnpm run dev` or `pnpm start` - there is already a development server running and watching for file changes automatically
 
 ### Server Management Tools
+
 - **Functions**: `server_restart`, `server_status`, `server_stop`, `server_list`, `view_logs` - Manage development servers
 - **Purpose**: Control backend server operations for applications and view dev server logs
 - **Key Functions**:

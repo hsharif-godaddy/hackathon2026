@@ -1,6 +1,6 @@
 /**
  * Streaming-First Conversation Store
- * 
+ *
  * Clean architecture designed for real-time AI streaming responses.
  * No backward compatibility - built for streaming from the ground up.
  */

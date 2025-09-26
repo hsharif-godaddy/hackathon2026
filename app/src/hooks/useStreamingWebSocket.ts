@@ -1,6 +1,6 @@
 /**
  * Streaming WebSocket Hook
- * 
+ *
  * Connects Socket.IO events directly to the streaming store.
  * Clean, direct mapping without message array manipulation.
  */
@@ -8,8 +8,8 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { buildDynamicApiUrl } from '../config/dynamic-api'
-import { 
-  useWebSocketState, 
+import {
+  useWebSocketState,
   useCurrentAppId,
   useStartNewStream,
   useAppendTextSegment,

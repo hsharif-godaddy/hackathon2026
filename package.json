@@ -14,11 +14,62 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "prepare": "husky && husky install"
   },
   "devDependencies": {
     "@playwright/test": "^1.51.1",
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "husky": "^8.0.0",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.0.0"
+  },
+  "lint-staged": {
+    "agents/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter @airo/agents lint:fix"
+    ],
+    "app/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter app lint"
+    ],
+    "ai-playground/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter ai-playground lint"
+    ],
+    "proxy/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter proxy lint:fix"
+    ],
+    "packages/ai-lib/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter ai-lib lint:fix"
+    ],
+    "app-templates/v8/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter v8-template lint:fix"
+    ],
+    "website/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter website lint"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ],
+    "package.json": [
+      "bash -c 'MATRIX_PACKAGE=root ./scripts/license-check.sh'"
+    ],
+    "app/package.json": [
+      "bash -c 'cd app && MATRIX_PACKAGE=app ../../scripts/license-check.sh'"
+    ],
+    "ai-playground/package.json": [
+      "bash -c 'cd ai-playground && MATRIX_PACKAGE=ai-playground ../../scripts/license-check.sh'"
+    ],
+    "proxy/package.json": [
+      "bash -c 'cd proxy && MATRIX_PACKAGE=proxy ../../scripts/license-check.sh'"
+    ],
+    "packages/ai-lib/package.json": [
+      "bash -c 'cd packages/ai-lib && MATRIX_PACKAGE=ai-lib ../../../scripts/license-check.sh'"
+    ],
+    "app-templates/v8/package.json": [
+      "bash -c 'cd app-templates/v8 && MATRIX_PACKAGE=v8-template ../../../scripts/license-check.sh'"
+    ],
+    "website/package.json": [
+      "bash -c 'cd website && MATRIX_PACKAGE=website ../../scripts/license-check.sh'"
+    ]
   },
   "pnpm": {
     "overrides": {

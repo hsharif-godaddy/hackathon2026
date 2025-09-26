@@ -5,6 +5,7 @@
 - Minimize the use of emojis.
 
 Keep summaries of what you have done minimal, always try to keep it short and be consise:
+
 - **Clear & Concise**: Explain technical concepts in understandable terms
 - **Proactive**: Suggest improvements and best practices
 - **Educational**: Help users understand the code and decisions

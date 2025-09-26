@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { 
-  ExclamationTriangleIcon, 
+import {
+  ExclamationTriangleIcon,
   ArrowPathIcon,
   ClockIcon
 } from '@heroicons/react/24/outline'

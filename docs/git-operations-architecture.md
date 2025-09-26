@@ -27,41 +27,41 @@ sequenceDiagram
     participant Agent
     participant LLM
     participant DevSupervisor as dev-supervisor
-    
+
     Customer->>Agent: Submit feature request
     Agent->>Agent: Execute git recovery check
-    
+
     alt Recovery needed
         Agent->>DevSupervisor: Execute recovery workflow
     end
-    
+
     Agent->>DevSupervisor: git checkout -b timestamp-requestId
     Agent->>LLM: Process customer request
-    
+
     loop For each tool call
         LLM->>Agent: Execute tool
         Agent->>Agent: Process tool execution
         Agent->>DevSupervisor: Check for file changes
-        
+
         alt Files changed
             Agent->>DevSupervisor: git add .
             Agent->>DevSupervisor: git commit -m "timestamp-tool_name"
         end
     end
-    
+
     LLM->>Agent: End of message
     Agent->>DevSupervisor: Check for final changes
-    
+
     alt Final changes exist
         Agent->>DevSupervisor: git add .
         Agent->>DevSupervisor: git commit -m "timestamp-end-of-message"
     end
-    
+
     Agent->>Agent: Generate squash commit message
     Agent->>DevSupervisor: git checkout main
     Agent->>DevSupervisor: git merge --squash timestamp-requestId
     Agent->>DevSupervisor: git commit -m "meaningful_message"
-    
+
     Agent->>Customer: Feature complete
 ```
 
@@ -86,7 +86,7 @@ graph TB
         FEAT1[20240915143022-req_abc123def456<br/>Customer Request 1]
         FEAT2[20250915143022-req_afsadf321243<br/>Customer Request 2]
         FEAT3[20260915143022-req_cxbvbcv56744<br/>Active Feature Branch]
-        
+
         MAIN --> FEAT1
         MAIN --> FEAT2
         MAIN --> FEAT3
@@ -147,7 +147,7 @@ graph TB
         C3[20240915143128-write_file]
         C4[20240915143120-end-of-message]
         C5[Customer added authentication system]
-        
+
         C1 --> C2
         C2 --> C3
         C3 --> C4
@@ -166,17 +166,17 @@ flowchart TD
     START[New Feature Request] --> CHECK{On main branch?}
     CHECK -->|Yes| PROCEED[Proceed with feature]
     CHECK -->|No| RECOVERY[Execute Recovery]
-    
+
     RECOVERY --> UNCOMMITTED{Uncommitted changes?}
     UNCOMMITTED -->|Yes| COMMIT[Commit changes]
     UNCOMMITTED -->|No| DIFF[Get diff from main]
-    
+
     COMMIT --> DIFF
     DIFF --> SIZE{Diff manageable?}
-    
+
     SIZE -->|Yes| LLM_MSG[Generate commit message]
     SIZE -->|No| FALLBACK[Use fallback message]
-    
+
     LLM_MSG --> SQUASH[Squash merge to main]
     FALLBACK --> SQUASH
     SQUASH --> NOTIFY[Notify LLM of recovery]
@@ -230,11 +230,11 @@ sequenceDiagram
     participant Customer
     participant Agent
     participant DevSupervisor as dev-supervisor
-    
+
     Customer->>Agent: Request commit preview
     Agent->>DevSupervisor: git checkout {commit_id}
     Agent->>Customer: Show preview (chat disabled)
-    
+
     alt Customer confirms revert
         Customer->>Agent: Confirm revert
         Agent->>Agent: Calculate commits to revert
@@ -312,22 +312,22 @@ flowchart TD
     OPERATION[Git Operation] --> ERROR{Error occurred?}
     ERROR -->|No| SUCCESS[Operation Success]
     ERROR -->|Yes| ANALYZE[Analyze Error Type]
-    
+
     ANALYZE --> LOCKFILE{Lock file error?}
     ANALYZE --> CONFIG{Config error?}
     ANALYZE --> CORRUPT{Corruption error?}
     ANALYZE --> MISSING{Missing .git?}
-    
+
     LOCKFILE -->|Yes| WAIT[Wait and retry]
     CONFIG -->|Yes| SET_CONFIG[Reset configuration]
     CORRUPT -->|Yes| FSCK[Check integrity]
     MISSING -->|Yes| ESCALATE[Lock app, contact support]
-    
+
     WAIT --> RETRY[Retry operation]
     SET_CONFIG --> RETRY
     FSCK --> BACKUP[Restore from backup]
     BACKUP --> RETRY
-    
+
     RETRY --> FINAL{Success?}
     FINAL -->|Yes| SUCCESS
     FINAL -->|No| ESCALATE
@@ -391,20 +391,23 @@ Feature branches are preserved after merging to main for debugging and troublesh
 To manage repository size and performance, the system implements automated cleanup:
 
 **Cleanup Triggers:**
+
 - Daily scheduled maintenance
 - Repository size thresholds
 - Branch count limits
 
 **Cleanup Strategy:**
+
 - Preserve branches from last 30 days (configurable)
 - Keep minimum of 50 most recent branches (configurable)
 - Prioritize retention of branches with significant changes
 - Never delete branches referenced in support tickets
 
 **Cleanup Commands:**
+
 ```bash
 # List branches older than 30 days
-git for-each-ref --format='%(refname:short) %(committerdate)' refs/heads/ | 
+git for-each-ref --format='%(refname:short) %(committerdate)' refs/heads/ |
   awk '$2 < "'$(date -d '30 days ago' -I)'"'
 
 # Delete old feature branches (preserve main and recent branches)
@@ -427,7 +430,7 @@ git branch -D old_feature_branch_name
 
 ---
 
-*Document Version: 1.0*  
-*Created: September 25, 2025*  
-*Classification: Internal*  
-*Audience: Platform Engineering & Development Teams*
+_Document Version: 1.0_  
+_Created: September 25, 2025_  
+_Classification: Internal_  
+_Audience: Platform Engineering & Development Teams_

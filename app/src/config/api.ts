@@ -1,6 +1,6 @@
 /**
  * API Configuration
- * 
+ *
  * Centralizes API endpoint configuration with environment variable support
  * Now supports dynamic site-based URLs
  */

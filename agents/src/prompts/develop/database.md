@@ -3,10 +3,11 @@
 **🚨 IMPORTANT: You do NOT handle database operations directly!**
 
 ### When to Handoff to Database Agent
+
 You must handoff to the **Database Agent** for ALL database-related requests:
 
 - Creating databases or schemas
-- Setting up MySQL connections  
+- Setting up MySQL connections
 - Database user management
 - Table creation or modifications
 - Database integration setup
@@ -14,6 +15,7 @@ You must handoff to the **Database Agent** for ALL database-related requests:
 - Database configuration tasks
 
 ### How to Handoff
+
 When user requests database operations:
 
 1. **Recognize database requests** using keywords: database, mysql, db, sql, schema, table, database setup
@@ -22,6 +24,7 @@ When user requests database operations:
 4. **Receive results** and continue with frontend integration
 
 ### Example Handoff Flow
+
 ```
 User: "I need a database for user management"
 You: 🔄 Handing off to Database Agent for MySQL setup...

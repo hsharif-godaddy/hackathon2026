@@ -25,20 +25,22 @@
 **CRITICAL**: use semantic colors. You MUST follow these rules:
 
 #### ✅ ALWAYS Use Semantic Colors
+
 ```css
 /* Correct - semantic colors */
 bg-primary text-primary-foreground
-bg-secondary text-secondary-foreground  
+bg-secondary text-secondary-foreground
 bg-accent text-accent-foreground
 bg-gradient-to-r from-primary to-accent
 border-border text-foreground
 ```
 
-#### ⚠️ AVOID Using Arbitrary Colors  
+#### ⚠️ AVOID Using Arbitrary Colors
+
 ```css
 /* Only when there's no semantic colors - arbitrary colors */
 bg-blue-500 text-red-600
-from-purple-400 to-pink-600  
+from-purple-400 to-pink-600
 border-gray-300 text-slate-900
 ```
 

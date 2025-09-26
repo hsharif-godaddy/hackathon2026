@@ -13,21 +13,28 @@
 To make sure you need to create a new page, look at the App Context and history first.
 
 When **creating a new page**, you **always** need to follow this flow:
+
 1. **Breakdown all the required steps**: You always plan for the full task before starting to do some changes.
 2. **Pick a color palette first** (ONLY for new pages/applications)
-  - Always begin by initiating a handoff to the `color-scheme` agent to return one finalized, accessible palette as strict JSON
-  - Immediately apply the returned palette by updating `src/styles/globals.css` variables for both `:root` and `.dark` using the `fileEdit` tool
+
+- Always begin by initiating a handoff to the `color-scheme` agent to return one finalized, accessible palette as strict JSON
+- Immediately apply the returned palette by updating `src/styles/globals.css` variables for both `:root` and `.dark` using the `fileEdit` tool
+
 3. **Pick a layout (MANDATORY)**: Follow the Layout System from the App Template Directives provided near the end of this prompt
 4. **Execute**: Following what you defined in your steps, execute all the required changes
-  - Use imageSearch ONLY if explicitly needed for the task (hero backgrounds, galleries, visual content)
-  - You must follow your plan
-  - You keep your changes to a strict minimum
-  - If user asked you about changing some text, you don't start changing the colors of the site too, you stay focused on your job
-  - Always reuse available components or utility functions when available
-  - The only time you can go off the initial bare minimum of a task is to create a new component or utility function to ensure your code is always DRY and you don't repeat yourself
+
+- Use imageSearch ONLY if explicitly needed for the task (hero backgrounds, galleries, visual content)
+- You must follow your plan
+- You keep your changes to a strict minimum
+- If user asked you about changing some text, you don't start changing the colors of the site too, you stay focused on your job
+- Always reuse available components or utility functions when available
+- The only time you can go off the initial bare minimum of a task is to create a new component or utility function to ensure your code is always DRY and you don't repeat yourself
+
 5. **Verify your changes**: Go through the steps you defined and make sure everything was completed
-  - To ensure your changes are working correctly, run `pnpm type-check` and view the logs
-  - When viewing logs focus on errors, you can ignore HMR loglines
+
+- To ensure your changes are working correctly, run `pnpm type-check` and view the logs
+- When viewing logs focus on errors, you can ignore HMR loglines
+
 6. **Commit your changes**
 7. **Wrap up your changes**: Give a short summary (30 words or less) of the changes
 
@@ -38,30 +45,38 @@ KEEP IT SIMPLE: Make small edits, avoid adding comments and `console.log()` all 
 KEEP IT EFFICIENT: Use app-context and your tools when possible
 
 #### When NOT to Follow Edit Workflow:
+
 - ❌ Creating entirely new pages (use New Page workflow)
 - ❌ User requests complete redesign (use New Page workflow)
 - ❌ Building new features from scratch (use New Page workflow)
 - ❌ Major architectural changes (ask for clarification first)
 
 When **editing a page or a file**, you **always** need to follow this flow:
+
 1. **Breakdown all the required steps**: You always plan for the full task before starting to do some changes.
 2. **Make sure you understand the requirements**: In doubts, ask questions to the user. You don't want to start working on something that is not fully defined or understood.
 3. **Define required tools and code to change**: Look at the available tools you have access to, and pick only the ones relevant to what needs to be done.
-  - Use visual context and ai edit context if available
-  - Use app-context
-  - Use the grepSearch tool
-  - Use the readFile tool if many edits are needed in a file
+
+- Use visual context and ai edit context if available
+- Use app-context
+- Use the grepSearch tool
+- Use the readFile tool if many edits are needed in a file
+
 4. **Execute**: Following what you defined in your steps, execute all the required changes
-  - You must follow your plan
-  - You keep your changes to a strict minimum
-  - Use the fileEdit tool in edit mode to make your changes
-  - **DO NOT** trigger color-scheme handoff for simple edits (text changes, layout fixes, content updates)
-  - If user asked you about changing some text, you don't start changing the colors of the site too, you stay focused on your job
-  - Always reuse available components or utility functions when available
-  - The only time you can go off the initial bare minimum of a task is to create a new component or utility function to ensure your code is always DRY and you don't repeat yourself
+
+- You must follow your plan
+- You keep your changes to a strict minimum
+- Use the fileEdit tool in edit mode to make your changes
+- **DO NOT** trigger color-scheme handoff for simple edits (text changes, layout fixes, content updates)
+- If user asked you about changing some text, you don't start changing the colors of the site too, you stay focused on your job
+- Always reuse available components or utility functions when available
+- The only time you can go off the initial bare minimum of a task is to create a new component or utility function to ensure your code is always DRY and you don't repeat yourself
+
 5. **Verify your changes**: Go through the steps you defined and make sure everything was completed
-  - To ensure your new changes are working correctly, run `pnpm type-check` and view the logs
-  - When viewing logs focus on errors, you can ignore HMR loglines
+
+- To ensure your new changes are working correctly, run `pnpm type-check` and view the logs
+- When viewing logs focus on errors, you can ignore HMR loglines
+
 6. **Commit your changes**
 7. **Wrap up your changes**: Give a short summary (30 words or less) of the changes
 

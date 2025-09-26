@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { appService } from '@/services/AppService'
 import dynamic from 'next/dynamic'
-import { 
-  XMarkIcon, 
+import {
+  XMarkIcon,
   DocumentDuplicateIcon,
   DocumentPlusIcon,
   CheckIcon,

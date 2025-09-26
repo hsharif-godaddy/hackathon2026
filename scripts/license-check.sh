@@ -8,7 +8,10 @@ set -e
 npm install -g license-checker
 
 # Package-specific configurations
-if [ "$MATRIX_PACKAGE" = "agents" ]; then
+if [ "$MATRIX_PACKAGE" = "root" ]; then
+  EXCLUSIONS=""
+  ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0"
+elif [ "$MATRIX_PACKAGE" = "agents" ]; then
   EXCLUSIONS="argparse@2.0.1;tslib@2.8.1"
   ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0"
 elif [ "$MATRIX_PACKAGE" = "app" ]; then
