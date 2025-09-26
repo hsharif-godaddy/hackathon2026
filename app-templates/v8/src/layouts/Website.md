@@ -147,32 +147,43 @@ header: {
 ```typescript
 interface FooterConfig {
   variant?: 'simple' | 'columns' | 'centered' | 'detailed';
+  copyright?: {
+    text?: string;
+    showYear?: boolean;
+    position?: 'left' | 'center' | 'right';
+  };
+  sections?: Array<{
+    title: string;
+    links: Array<{
+      href: string;
+      label: string;
+      external?: boolean;
+    }>;
+  }>;
+  socialLinks?: Array<{
+    href: string;
+    label: string;
+    icon?: React.ReactNode;
+  }>;
+  description?: string;
   logo?: {
     text?: string;
-    image?: string;
+    href?: string;
+    className?: string;
   };
-  description?: string;
-  columns?: Array<{
-    title: string;
-    links: Array<{ href: string; label: string }>;
+  bottomLinks?: Array<{
+    href: string;
+    label: string;
+    external?: boolean;
   }>;
-  bottomLinks?: Array<{ href: string; label: string }>;
-  copyright?: string;
-  social?: {
-    twitter?: string;
-    github?: string;
-    linkedin?: string;
-    facebook?: string;
-    instagram?: string;
-    youtube?: string;
-  };
   newsletter?: {
-    title: string;
-    description: string;
+    title?: string;
+    description?: string;
     placeholder?: string;
     buttonText?: string;
   };
-  className?: string;
+  background?: 'default' | 'muted' | 'dark';
+  border?: boolean;
 }
 ```
 
@@ -188,7 +199,11 @@ interface FooterConfig {
 ```tsx
 footer: {
   variant: 'simple',
-  copyright: '© 2024 MyApp. All rights reserved.',
+  copyright: {
+    text: 'MyApp',
+    showYear: true,
+    position: 'center'
+  },
   bottomLinks: [
     { href: '/privacy', label: 'Privacy' },
     { href: '/terms', label: 'Terms' }
@@ -202,7 +217,7 @@ footer: {
   variant: 'detailed',
   logo: { text: 'MyApp' },
   description: 'Building the future of web applications.',
-  columns: [
+  sections: [
     {
       title: 'Product',
       links: [
@@ -220,11 +235,11 @@ footer: {
       ]
     }
   ],
-  social: {
-    twitter: 'https://twitter.com/myapp',
-    github: 'https://github.com/myapp',
-    linkedin: 'https://linkedin.com/company/myapp'
-  },
+  socialLinks: [
+    { href: 'https://twitter.com/myapp', label: 'Twitter' },
+    { href: 'https://github.com/myapp', label: 'GitHub' },
+    { href: 'https://linkedin.com/company/myapp', label: 'LinkedIn' }
+  ],
   newsletter: {
     title: 'Stay updated',
     description: 'Get the latest news and updates.',
