@@ -8,8 +8,8 @@
 export interface ToolCallResult {
   id: string
   tool_name: string
-  tool_args: any
-  tool_result: any
+  tool_args: unknown
+  tool_result: unknown
   error?: string | undefined
 }
 
@@ -42,7 +42,9 @@ export class ToolCallRenderer {
   private static getRenderer(toolName: string): (toolCall: ToolCallResult) => string {
     switch (toolName) {
       case 'read_file':
-        return this.renderReadFile
+        return this.renderReadFileSummary
+      case 'file_edit':
+        return this.renderFileEditSummary
       case 'list_dir':
         return this.renderListDir
       default:
@@ -51,19 +53,96 @@ export class ToolCallRenderer {
   }
 
   /**
-   * Render read_file tool call results
+   * Render read_file tool call results as summary
+   */
+  private static renderReadFileSummary(toolCall: ToolCallResult): string {
+    if (toolCall.error) {
+      return `Failed to read file: ${toolCall.error}`;
+    }
+
+    const args = toolCall.tool_args as Record<string, unknown>;
+    const result = toolCall.tool_result;
+    const filePath = (args?.target_file as string) || (args?.file_path as string) || (args?.path as string) || 'unknown';
+
+    if (!result || typeof result !== 'string') {
+      return `No content found for file: ${filePath}`;
+    }
+
+    const fileName = filePath.split('/').pop() || filePath;
+    const lines = result.split('\n');
+    const lineCount = lines.length;
+    const charCount = result.length;
+    const sizeInfo = charCount < 1024 ? `${charCount} chars` : `${(charCount / 1024).toFixed(1)} KB`;
+
+    // Check if it was a partial read based on line numbers in args
+    const startLine = args?.startLine as number;
+    const numLines = args?.numLines as number;
+    if (startLine && numLines) {
+      const endLine = startLine + numLines - 1;
+      return `Read ${fileName} lines ${startLine}-${endLine} (${lineCount} lines, ${sizeInfo})`;
+    } else if (startLine) {
+      return `Read ${fileName} from line ${startLine} (${lineCount} lines, ${sizeInfo})`;
+    } else {
+      return `Read ${fileName} (${lineCount} lines, ${sizeInfo})`;
+    }
+  }
+
+  /**
+   * Render file_edit tool call results as summary
+   */
+  private static renderFileEditSummary(toolCall: ToolCallResult): string {
+    if (toolCall.error) {
+      return `Failed to edit file: ${toolCall.error}`;
+    }
+
+    const args = toolCall.tool_args as Record<string, unknown>;
+    const result = toolCall.tool_result as Record<string, unknown>;
+    const filePath = (args?.path as string) || 'unknown';
+    const fileName = filePath.split('/').pop() || filePath;
+    const mode = (args?.mode as string) || (result?.mode as string) || 'edit';
+
+    if (!result || !(result.success as boolean)) {
+      const error = (result?.error as string) || 'Unknown error';
+      return `Failed to ${mode} ${fileName}: ${error}`;
+    }
+
+    const changes = result.changes as Record<string, number>;
+    switch (mode) {
+      case 'create': {
+        const createLines = changes?.totalLines || 0;
+        return `Created ${fileName} (${createLines} lines)`;
+      }
+        
+      case 'rewrite': {
+        const rewriteLines = changes?.totalLines || 0;
+        return `Rewrote ${fileName} (${rewriteLines} lines)`;
+      }
+        
+      case 'edit': {
+        const additions = changes?.additions || 0;
+        const deletions = changes?.deletions || 0;
+        return `Modified ${fileName} (+${additions} -${deletions} lines)`;
+      }
+        
+      default:
+        return `Updated ${fileName}`;
+    }
+  }
+
+  /**
+   * Render read_file tool call results (detailed - legacy)
    */
   private static renderReadFile(toolCall: ToolCallResult): string {
     if (toolCall.error) {
-      return `❌ Failed to read file: ${toolCall.error}`
+      return `Failed to read file: ${toolCall.error}`
     }
 
-    const args = toolCall.tool_args
+    const args = toolCall.tool_args as Record<string, unknown>
     const result = toolCall.tool_result
-    const filePath = args?.target_file || args?.file_path || 'unknown'
+    const filePath = (args?.target_file as string) || (args?.file_path as string) || 'unknown'
 
     if (!result || typeof result !== 'string') {
-      return `❌ No content found for file: ${filePath}`
+      return `No content found for file: ${filePath}`
     }
 
     // Count lines and show preview
@@ -75,7 +154,7 @@ export class ToolCallRenderer {
     const previewLines = lines.slice(0, 10)
     const hasMore = lines.length > 10
 
-    return `📄 **File: \`${filePath}\`** (${sizeInfo})
+    return `**File: \`${filePath}\`** (${sizeInfo})
 
 \`\`\`
 ${previewLines.join('\n')}${hasMore ? '\n... [truncated]' : ''}
@@ -92,9 +171,9 @@ ${hasMore ? `*Full file content available (${lineCount} total lines)*` : '*Compl
       return `Failed to list directory: ${toolCall.error}`
     }
 
-    const args = toolCall.tool_args
+    const args = toolCall.tool_args as Record<string, unknown>
     const result = toolCall.tool_result
-    const dirPath = args?.target_directory || args?.path || 'unknown'
+    const dirPath = (args?.target_directory as string) || (args?.path as string) || 'unknown'
 
     if (!result || !Array.isArray(result)) {
       return `No directory listing found for: ${dirPath}`
@@ -131,7 +210,7 @@ ${hasMore ? `*Full file content available (${lineCount} total lines)*` : '*Compl
    */
   private static renderDefault(toolCall: ToolCallResult): string {
     if (toolCall.error) {
-      return `❌ Tool execution failed: ${toolCall.error}`
+      return `Tool execution failed: ${toolCall.error}`
     }
 
     const args = JSON.stringify(toolCall.tool_args, null, 2)

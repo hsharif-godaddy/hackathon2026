@@ -118,6 +118,39 @@ function isFileBlocked(filePath: string): { blocked: boolean; reason?: string } 
  */
 export class ReadFileTool {
   /**
+   * Create a summary of the file read operation for conversation history
+   */
+  summarizeOperation(options: ReadFileOptions, result: ReadFileResult): string {
+    if (!result.success) {
+      return `Failed to read ${result.path}: ${result.error}`;
+    }
+
+    const fileName = result.path.split('/').pop() || result.path;
+    const sizeInfo = result.fileSize ? this.formatFileSize(result.fileSize) : '';
+    
+    if (result.linesRead) {
+      // Partial read
+      const lineRange = result.linesRead.start === result.linesRead.end 
+        ? `line ${result.linesRead.start}`
+        : `lines ${result.linesRead.start}-${result.linesRead.end}`;
+      return `Read ${fileName} ${lineRange} (${result.totalLines} total lines${sizeInfo ? ', ' + sizeInfo : ''})`;
+    } else {
+      // Full file read
+      return `Read ${fileName} (${result.totalLines} lines${sizeInfo ? ', ' + sizeInfo : ''})`;
+    }
+  }
+
+  /**
+   * Format file size in human readable format
+   */
+  private formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
+  /**
    * Read a file with optional line range
    */
   async readFile(options: ReadFileOptions, appPath: string): Promise<ReadFileResult> {

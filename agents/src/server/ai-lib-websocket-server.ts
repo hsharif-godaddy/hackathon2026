@@ -30,6 +30,7 @@ import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js'
 import { AgentsMessagePersistence } from './conversation-persistence.js'
 import { ConversationContextManager } from '../services/ConversationContextManager.js'
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
+import { fileContextRegistry } from '../services/FileContextRegistry.js'
 import { logger } from '../logging/index.js'
 import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
 import { MAX_PROMPT_LENGTH, getAgentConfig } from '../services/features.js'
@@ -83,6 +84,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     
     // Create context manager for app context and template descriptions
     const contextManager = new AILibContextManager()
+    
+    // Register context manager with file context registry for tools
+    fileContextRegistry.setContextManager(contextManager)
     
     // Create message persistence implementation
     const messagePersistence = new AgentsMessagePersistence()

@@ -11,6 +11,10 @@ import { logger } from '../logging/index.js';
 import { toolFileEditEvents, toolBuildEvents, toolServerHealthEvents } from '../logging/events/index.js';
 import { ServerManagementTool } from './server-management-tool.js';
 
+// Constants for consistent text truncation
+const EDIT_RESULT_TRUNCATION_LENGTH = 50;
+const DEBUG_TEXT_TRUNCATION_LENGTH = 100;
+
 export interface FileEditOptions {
   /** Path to the file to edit (relative to app root) */
   path: string;
@@ -569,9 +573,9 @@ export class FileEditTool {
       const result = this.applyEdit(content, edit, options.fuzzyMatch !== false);
       if (result.success) {
         content = result.content;
-        editResults.push(`✓ Replaced: ${edit.old.substring(0, 50)}${edit.old.length > 50 ? '...' : ''}`);
+        editResults.push(`✓ Replaced: ${edit.old.substring(0, EDIT_RESULT_TRUNCATION_LENGTH)}${edit.old.length > EDIT_RESULT_TRUNCATION_LENGTH ? '...' : ''}`);
       } else {
-        editResults.push(`✗ Failed: ${edit.old.substring(0, 50)}${edit.old.length > 50 ? '...' : ''} - ${result.error}`);
+        editResults.push(`✗ Failed: ${edit.old.substring(0, EDIT_RESULT_TRUNCATION_LENGTH)}${edit.old.length > EDIT_RESULT_TRUNCATION_LENGTH ? '...' : ''} - ${result.error}`);
       }
     }
 
@@ -584,8 +588,8 @@ export class FileEditTool {
         editsAttempted: options.edits.length,
         editDetails: options.edits.map((edit, index) => ({
           editIndex: index,
-          oldText: edit.old.length > 100 ? `${edit.old.substring(0, 100)}...` : edit.old,
-          newText: edit.new.length > 100 ? `${edit.new.substring(0, 100)}...` : edit.new,
+          oldText: edit.old.length > DEBUG_TEXT_TRUNCATION_LENGTH ? `${edit.old.substring(0, DEBUG_TEXT_TRUNCATION_LENGTH)}...` : edit.old,
+          newText: edit.new.length > DEBUG_TEXT_TRUNCATION_LENGTH ? `${edit.new.substring(0, DEBUG_TEXT_TRUNCATION_LENGTH)}...` : edit.new,
           oldTextLength: edit.old.length,
           newTextLength: edit.new.length,
         })),
@@ -804,6 +808,38 @@ export class FileEditTool {
         error: error instanceof Error ? error.message : String(error),
       });
       // Don't throw error, as the file operation itself was successful
+    }
+  }
+
+  /**
+   * Create a summary of the file edit operation for conversation history
+   */
+  summarizeOperation(options: FileEditOptions, result: FileEditResult): string {
+    if (!result.success) {
+      return `Failed to ${result.mode} ${result.path}: ${result.error}`;
+    }
+
+    const fileName = result.path.split('/').pop() || result.path;
+    
+    switch (result.mode) {
+      case 'create': {
+        const createLines = result.changes?.totalLines || 0;
+        return `Created ${fileName} (${createLines} lines)`;
+      }
+        
+      case 'rewrite': {
+        const rewriteLines = result.changes?.totalLines || 0;
+        return `Rewrote ${fileName} (${rewriteLines} lines)`;
+      }
+        
+      case 'edit': {
+        const additions = result.changes?.additions || 0;
+        const deletions = result.changes?.deletions || 0;
+        return `Modified ${fileName} (+${additions} -${deletions} lines)`;
+      }
+        
+      default:
+        return `Updated ${fileName}`;
     }
   }
 

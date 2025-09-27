@@ -238,6 +238,14 @@ export class AILibContextManager {
                 }
             }
 
+            // Build hot files context
+            if (context.metadata?.appId) {
+                const hotFilesMessage = await this.buildHotFilesContextMessage(context)
+                if (hotFilesMessage) {
+                    messages.push(hotFilesMessage)
+                }
+            }
+
             // Build AI edit context
             if (this.config.includeAiEditContext && context.aiEditContext) {
                 const aiEditMessage = this.buildAiEditContextMessage(context.aiEditContext)
@@ -260,6 +268,59 @@ export class AILibContextManager {
         }
 
         return messages
+    }
+
+    /**
+     * Build hot files context message using FileContextManager
+     */
+    private async buildHotFilesContextMessage(context: EnhancedAgentContext): Promise<ContextMessage | null> {
+        try {
+            // Extract appId and resolve appPath from context metadata
+            const appId = context.metadata?.appId as string
+            if (!appId) {
+                logger.debug('context.hot_files.skip', {
+                    reason: 'No appId found in context metadata'
+                })
+                return null
+            }
+
+            // Look up app path using AppRepository
+            const app = this.appRepository.findById(appId)
+            if (!app) {
+                logger.warn('context.hot_files.app_not_found', {
+                    appId,
+                    reason: 'App not found in repository'
+                })
+                return null
+            }
+
+            const appPath = app.path
+            const fileContextManager = this.conversationContextManager.getFileContextManager(appPath)
+            const hotFilesContext = await fileContextManager.getHotFilesContext()
+
+            if (!hotFilesContext) {
+                logger.debug('context.hot_files.build.empty', {
+                    reason: 'FileContextManager returned null'
+                })
+                return null
+            }
+
+            logger.info('context.hot_files.build.success', {
+                contentLength: hotFilesContext.length,
+                appId
+            })
+
+            return {
+                role: 'user',
+                content: hotFilesContext,
+                type: 'hot_files_context'
+            }
+        } catch (error) {
+            logger.error('context.hot_files.build.failure', {
+                error: error instanceof Error ? error.message : String(error)
+            })
+            return null
+        }
     }
 
     /**
@@ -506,6 +567,31 @@ Context Notes: ${contextNotes}`
         }
 
         return enhancedContext
+    }
+
+    /**
+     * Record a file modification operation
+     */
+    recordFileModification(appPath: string, filePath: string, success: boolean): void {
+        this.conversationContextManager.recordFileModification(appPath, filePath, success)
+    }
+
+    /**
+     * Record a file read operation
+     */
+    recordFileRead(appPath: string, filePath: string): void {
+        this.conversationContextManager.recordFileRead(appPath, filePath)
+    }
+
+    /**
+     * Get file context summary for an app
+     */
+    getFileContextSummary(appPath: string): {
+        totalFiles: number;
+        hotFiles: number;
+        totalTokensUsed: number;
+    } {
+        return this.conversationContextManager.getFileContextSummary(appPath)
     }
 
     /**

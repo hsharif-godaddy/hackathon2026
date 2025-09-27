@@ -2,6 +2,10 @@ import { createTool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { FileEditTool, FileEditOptions } from '../file-edit.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { fileContextRegistry } from '../../services/FileContextRegistry.js'
+
+// Constants for error message formatting
+const ERROR_TEXT_TRUNCATION_LENGTH = 100
 
 // Initialize tool instances
 const fileEditTool = new FileEditTool()
@@ -44,6 +48,9 @@ export const fileEditAITool = createTool(
       conversationId: context?.metadata?.conversationId as string
     })
 
+    // Record the file operation for hot file tracking
+    fileContextRegistry.recordFileModification(app.path, input.path, result.success)
+
     // CRITICAL FIX: If the file operation failed, throw an error so the agent knows about it
     // Previously, we were returning a formatted string even for failures, which made errors invisible
     if (!result.success) {
@@ -55,7 +62,7 @@ export const fileEditAITool = createTool(
       if (input.edits && input.edits.length > 0) {
         errorMessage += `\nRequested edits (${input.edits.length}):\n`;
         input.edits.forEach((edit, index) => {
-          errorMessage += `${index + 1}. Replace: "${edit.old.substring(0, 100)}${edit.old.length > 100 ? '...' : ''}" with: "${edit.new.substring(0, 100)}${edit.new.length > 100 ? '...' : ''}"\n`;
+          errorMessage += `${index + 1}. Replace: "${edit.old.substring(0, ERROR_TEXT_TRUNCATION_LENGTH)}${edit.old.length > ERROR_TEXT_TRUNCATION_LENGTH ? '...' : ''}" with: "${edit.new.substring(0, ERROR_TEXT_TRUNCATION_LENGTH)}${edit.new.length > ERROR_TEXT_TRUNCATION_LENGTH ? '...' : ''}"\n`;
         });
       }
       throw new Error(errorMessage);

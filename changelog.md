@@ -19,6 +19,15 @@
 
 ### Internal Changes
 
+- **Conversation History Management System**: Intelligent file context tracking and tool summarization for massive token savings and improved agent performance
+  - Added `FileContextManager`: Tracks file access patterns and auto-includes "hot files" in conversation context (30k token limit)
+  - Added tool summarization system with concise summaries replacing verbose outputs (e.g., `📄 Read Button.tsx (45 lines, 1.2 KB)` vs full content)
+  - Added smart file prioritization based on recency and frequency heuristics with automatic cleanup
+  - Updated `ToolCallRenderer` with file operation summaries for reduced token usage
+  - Enhanced `ConversationContextManager` with FileContextManager integration
+  - Updated AI-lib tools (file-edit, read-file) to automatically record file operations for hot file tracking
+  - Added `FileContextRegistry` singleton for tool access to context management
+  - Backward compatible implementation with no breaking changes
 - Added new setup.sh script for setting up local development environment.
 - Improved mock-auth in development environment.
 - Update more logging to be structured

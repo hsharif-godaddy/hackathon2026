@@ -39,6 +39,22 @@ export interface UpdateAppRequest {
   name?: string;
 }
 
+export interface FileContext {
+  id: string;
+  appPath: string;
+  filePath: string;
+  lastModified: number;
+  lastRead: number;
+  modificationCount: number;
+  readCount: number;
+  fileSize: number;
+  tokenCount: number;
+  contentHash: string;
+  actualFileModTime: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface RunningProcess {
   id: string;
   appId: string;
@@ -122,6 +138,7 @@ export function initializeSchema(db: Database): void {
   createConversationsTable(db);
   createConversationMessagesTable(db);
   createTokenUsageTable(db);
+  createFileContextTable(db);
   
   // Create all indexes
   createIndexes(db);
@@ -131,6 +148,9 @@ export function initializeSchema(db: Database): void {
   
   // Apply migrations for existing databases
   applyMigrations(db);
+  
+  // Create file context indexes after migrations (in case table was created during migration)
+  createFileContextIndexes(db);
 }
 
 /**
@@ -245,6 +265,30 @@ function createTokenUsageTable(db: Database): void {
 }
 
 /**
+ * Create the file_context table for tracking hot files state
+ */
+function createFileContextTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS file_context (
+      id TEXT PRIMARY KEY,
+      app_path TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      last_modified INTEGER NOT NULL,
+      last_read INTEGER NOT NULL,
+      modification_count INTEGER NOT NULL DEFAULT 0,
+      read_count INTEGER NOT NULL DEFAULT 0,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      token_count INTEGER NOT NULL DEFAULT 0,
+      content_hash TEXT NOT NULL,
+      actual_file_mod_time INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(app_path, file_path)
+    )
+  `);
+}
+
+/**
  * Create all database indexes for efficient queries
  */
 function createIndexes(db: Database): void {
@@ -296,6 +340,42 @@ function createIndexes(db: Database): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_token_usage_conversation_id ON token_usage(conversation_id)
   `);
+
+}
+
+/**
+ * Create indexes specifically for file_context table
+ * Called after migrations to ensure table exists
+ */
+function createFileContextIndexes(db: Database): void {
+  try {
+    // Check if file_context table exists before creating indexes
+    const tableExists = db.prepare(`
+      SELECT name FROM sqlite_master 
+      WHERE type='table' AND name='file_context'
+    `).get();
+    
+    if (tableExists) {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_file_context_app_path ON file_context(app_path)
+      `);
+
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_file_context_last_read ON file_context(last_read)
+      `);
+
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_file_context_modification_count ON file_context(modification_count)
+      `);
+
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_file_context_read_count ON file_context(read_count)
+      `);
+    }
+  } catch (err) {
+    // Indexes might fail to create, that's okay for now
+    console.warn('Failed to create file_context indexes:', err);
+  }
 }
 
 /**
@@ -348,6 +428,53 @@ function applyMigrations(db: Database): void {
     db.exec(`ALTER TABLE apps ADD COLUMN template_version TEXT`);
   } catch (err) {
     // Column might already exist, that's fine
+  }
+
+  // Ensure file_context table exists and has all required columns
+  // This migration ensures compatibility with existing databases
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS file_context (
+        id TEXT PRIMARY KEY,
+        app_path TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        last_modified INTEGER NOT NULL,
+        last_read INTEGER NOT NULL,
+        modification_count INTEGER NOT NULL DEFAULT 0,
+        read_count INTEGER NOT NULL DEFAULT 0,
+        file_size INTEGER NOT NULL DEFAULT 0,
+        token_count INTEGER NOT NULL DEFAULT 0,
+        content_hash TEXT NOT NULL,
+        actual_file_mod_time INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(app_path, file_path)
+      )
+    `);
+  } catch (err) {
+    // Table might already exist, that's fine
+  }
+
+  // Add missing columns to existing file_context table if they don't exist
+  const fileContextColumns = [
+    'ALTER TABLE file_context ADD COLUMN last_modified INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE file_context ADD COLUMN last_read INTEGER NOT NULL DEFAULT 0', 
+    'ALTER TABLE file_context ADD COLUMN modification_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE file_context ADD COLUMN read_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE file_context ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE file_context ADD COLUMN token_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE file_context ADD COLUMN content_hash TEXT NOT NULL DEFAULT ""',
+    'ALTER TABLE file_context ADD COLUMN actual_file_mod_time INTEGER',
+    'ALTER TABLE file_context ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP',
+    'ALTER TABLE file_context ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP'
+  ];
+
+  for (const columnSql of fileContextColumns) {
+    try {
+      db.exec(columnSql);
+    } catch (err) {
+      // Column might already exist, that's fine
+    }
   }
   
   // Add port column if it doesn't exist (for existing databases)

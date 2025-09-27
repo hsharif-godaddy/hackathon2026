@@ -279,3 +279,61 @@ This project uses **pnpm** as the package manager. All commands should use `pnpm
 - `pnpm run dev` - Start development server
 - `pnpm test` - Run tests
 - `pnpm run lint` - Run linting
+
+## Pull Request Guidelines
+
+### Changelog Requirements
+
+**All significant changes MUST be documented in `changelog.md` before creating a pull request.**
+
+#### When to Add Changelog Entries
+
+Add entries for:
+- ✅ **New Features**: Any new functionality, tools, or capabilities
+- ✅ **Breaking Changes**: Changes that affect existing functionality or APIs
+- ✅ **Performance Improvements**: Optimizations, token savings, reduced API calls
+- ✅ **Bug Fixes**: Significant bug fixes or stability improvements
+- ✅ **Architecture Changes**: New classes, services, or system redesigns
+- ✅ **Internal Changes**: Developer experience improvements, tooling, infrastructure
+
+#### Changelog Format
+
+Add entries under the appropriate section in `changelog.md`:
+- **Public Facing Changes**: User-visible features and improvements
+- **Internal Changes**: Developer and system-level improvements
+
+Use descriptive, actionable language:
+```markdown
+### Internal Changes
+
+- **Feature Name**: Brief description of impact/benefit
+  - Added `ComponentName`: Specific functionality details
+  - Updated `ServiceName` with enhancement details
+  - Enhanced system with specific improvements
+  - Backward compatible implementation with no breaking changes
+```
+
+#### Examples
+
+**Good changelog entries:**
+```markdown
+- **Conversation History Management System**: Intelligent file context tracking and tool summarization for massive token savings and improved agent performance
+  - Added `FileContextManager`: Tracks file access patterns and auto-includes "hot files" in conversation context (30k token limit)
+  - Added tool summarization system with concise summaries replacing verbose outputs
+```
+
+**Poor changelog entries:**
+```markdown
+- Fixed stuff
+- Updated files
+- Made improvements
+```
+
+### PR Checklist
+
+Before creating a pull request:
+- [ ] Added changelog entry in `changelog.md`
+- [ ] Ran `pnpm typecheck` (no TypeScript errors)
+- [ ] Ran `pnpm lint` (no linting errors)
+- [ ] Tested changes work as expected
+- [ ] Verified backward compatibility (if applicable)

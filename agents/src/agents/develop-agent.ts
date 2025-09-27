@@ -138,6 +138,7 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
   // Load all modular prompt sections in order
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
+    .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     //.file(paths.getAgentFile('develop', 'tools.md'))
     //.file(paths.getAgentFile('develop', 'database.md'))
     //.file(paths.getAgentFile('develop', 'api.md'))
@@ -146,7 +147,6 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'visual-context.md'))
     .file(paths.getAgentFile('develop', 'validation.md'))
     .file(paths.getAgentFile('develop', 'design.md'))
-    .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('security.md'))
 
   // Template descriptions are now dynamically injected during conversation execution

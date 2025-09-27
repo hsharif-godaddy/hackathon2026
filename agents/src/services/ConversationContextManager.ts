@@ -1,6 +1,7 @@
 import type { ConversationMessage, ToolCall, MessageSegment } from '../database/schema.js';
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
 import { AppContextManager } from './AppContextManager.js';
+import { FileContextManager } from './FileContextManager.js';
 import type { AgentExecutionContext } from '../base/agent.interface.js';
 import { ToolCallRenderer } from './ToolCallRenderer.js';
 import { logger } from '../logging/index.js';
@@ -33,11 +34,22 @@ export class ConversationContextManager {
   private conversationRepo: ConversationRepository;
   private readonly maxMessages: number;
   private appContextManager: AppContextManager;
+  private fileContextManagers = new Map<string, FileContextManager>();
 
   constructor(conversationRepo: ConversationRepository, maxMessages: number = 10) {
     this.conversationRepo = conversationRepo;
     this.maxMessages = maxMessages;
     this.appContextManager = new AppContextManager();
+  }
+
+  /**
+   * Get or create a FileContextManager for an app
+   */
+  public getFileContextManager(appPath: string): FileContextManager {
+    if (!this.fileContextManagers.has(appPath)) {
+      this.fileContextManagers.set(appPath, new FileContextManager(appPath));
+    }
+    return this.fileContextManagers.get(appPath)!;
   }
 
   /**
@@ -79,6 +91,15 @@ export class ConversationContextManager {
       const appContextMessage = await this.appContextManager.generateContextMessage(executionContext);
       if (appContextMessage) {
         messages.push({ role: 'user', content: appContextMessage });
+      }
+    }
+
+    // Add hot files context if execution context is available
+    if (executionContext?.metadata?.appPath) {
+      const fileContextManager = this.getFileContextManager(executionContext.metadata.appPath as string);
+      const hotFilesContext = await fileContextManager.getHotFilesContext();
+      if (hotFilesContext) {
+        messages.push({ role: 'user', content: hotFilesContext });
       }
     }
 
@@ -736,6 +757,43 @@ Context Notes: ${contextNotes}`;
         maxTokens,
       });
       return [];
+    }
+  }
+
+  /**
+   * Record a file modification operation
+   */
+  recordFileModification(appPath: string, filePath: string, success: boolean): void {
+    const fileContextManager = this.getFileContextManager(appPath);
+    fileContextManager.recordFileModification(filePath, success);
+  }
+
+  /**
+   * Record a file read operation
+   */
+  recordFileRead(appPath: string, filePath: string): void {
+    const fileContextManager = this.getFileContextManager(appPath);
+    fileContextManager.recordFileRead(filePath);
+  }
+
+  /**
+   * Get file context summary for an app
+   */
+  getFileContextSummary(appPath: string): {
+    totalFiles: number;
+    hotFiles: number;
+    totalTokensUsed: number;
+  } {
+    const fileContextManager = this.getFileContextManager(appPath);
+    return fileContextManager.getSummary();
+  }
+
+  /**
+   * Prune old file context entries for memory management
+   */
+  pruneFileContexts(): void {
+    for (const fileContextManager of this.fileContextManagers.values()) {
+      fileContextManager.pruneOldEntries();
     }
   }
 

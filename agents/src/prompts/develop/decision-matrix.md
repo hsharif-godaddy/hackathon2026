@@ -7,8 +7,10 @@
 **ONLY** trigger color-scheme handoff when:
 
 - ✅ Creating a completely new page/application
-- ✅ User explicitly requests "new color scheme" or "rebrand"
-- ✅ User mentions specific brand colors to implement
+- ✅ User mentions changing/using specific colors (e.g., "use blue", "make it red", "primary color should be...")
+- ✅ User requests theme changes (dark/light mode, "dark theme", "light backgrounds")
+- ✅ User wants color scheme changes ("new color scheme", "rebrand", "different colors")
+- ✅ User describes overall visual tone changes ("more vibrant", "corporate colors", "brand colors")
 
 **DO NOT** trigger color-scheme handoff when:
 
