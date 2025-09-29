@@ -5,7 +5,7 @@ export interface HeaderProps {
   actions?: React.ReactNode
   // Optional className for custom styling
   className?: string
-  // Optional callback for showing mock login modal
+  // Optional callback for showing mock login dialog
   onShowMockLogin?: () => void
   // Optional location for EID tracking
   location?: string

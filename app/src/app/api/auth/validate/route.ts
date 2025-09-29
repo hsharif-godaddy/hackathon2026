@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { gdAuthService } from '@/lib/gd-auth-service';
+// Lazy import to avoid initializing gd-auth during module loading
 import { isAuthDisabled } from '@/lib/gasket-config';
 import { isFeatureEnabled } from '@/lib/features';
 import { MOCK_USER } from '@/lib/mock-auth';
@@ -66,7 +66,8 @@ export async function GET(request: NextRequest) {
         reason: 'Development mode - authentication disabled'
       }, { status: 200 });
     }
-    // Extract token using gd-auth service
+    // Extract token using gd-auth service (lazy import)
+    const { gdAuthService } = await import('@/lib/gd-auth-service');
     const token = gdAuthService.extractTokenFromRequest(request);
     
     if (!token) {

@@ -1,25 +1,38 @@
 import { NextResponse } from 'next/server';
 import { logger } from '@/lib/request-context';
+import { auth } from '@/lib/features';
 
 // Server-side configuration that can access actual environment variables
 const getServerConfig = () => {
+  // Use server-side environment variables (runtime, not build-time)
+  const loginUrl = process.env.SSO_LOGIN_URL;
+  const logoutUrl = process.env.SSO_LOGOUT_URL;
+  const loginRedirectUrl = process.env.LOGIN_REDIRECT_URL;
+  const logoutRedirectUrl = process.env.LOGOUT_REDIRECT_URL;
+
   return {
     auth: {
       realm: 'idp',
       risk: 'low',
       type: ['basic'],
-      disableInDev: process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_AUTH_IN_DEV === 'true'
+      authType: auth.getType(),
+      isDisabled: auth.isDisabled(),
+      isMock: auth.isMock(),
+      isJWT: auth.isJWT()
     },
     sso: {
-      loginUrl: process.env.NEXT_PUBLIC_SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login',
-      logoutUrl: process.env.NEXT_PUBLIC_SSO_LOGOUT_URL || 'https://sso.test-godaddy.com/logout'
+      loginUrl: loginUrl || 'https://sso.test-godaddy.com/login',
+      logoutUrl: logoutUrl || 'https://sso.test-godaddy.com/logout'
     },
     redirects: {
-      loginRedirectUrl: process.env.NEXT_PUBLIC_LOGIN_REDIRECT_URL || 'https://airo-builder.test-godaddy.com/',
-      logoutRedirectUrl: process.env.NEXT_PUBLIC_LOGOUT_REDIRECT_URL || 'https://airo-builder.test-godaddy.com/'
+      loginRedirectUrl: loginRedirectUrl || 'https://airo-builder.test-godaddy.com/',
+      logoutRedirectUrl: logoutRedirectUrl || 'https://airo-builder.test-godaddy.com/'
     }
   };
 };
+
+// Force dynamic rendering to ensure runtime environment variables are used
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {

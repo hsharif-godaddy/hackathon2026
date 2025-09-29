@@ -8,6 +8,9 @@ import {
 } from '@/lib/customer-auth'
 import { logger } from '@/lib/request-context'
 
+// Force dynamic rendering to prevent database calls during build
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/servers - Get running servers (authenticated)
  */

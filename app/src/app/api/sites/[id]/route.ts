@@ -8,6 +8,9 @@ import {
   type CustomerAuthContext 
 } from '@/lib/customer-auth';
 
+// Force dynamic rendering to prevent database calls during build
+export const dynamic = 'force-dynamic';
+
 // GET /api/sites/[id] - Get specific site
 async function handleGetSite(request: NextRequest, siteId: string, authContext?: CustomerAuthContext) {
   const siteAdapter = SiteAdapterFactory.getInstance();

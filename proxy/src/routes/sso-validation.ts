@@ -42,7 +42,7 @@ async function getPublicKey(kid: string): Promise<string | null> {
     }
 
     // Extract host from SSO endpoint and construct public key URL
-    const ssoUrl = process.env.NEXT_PUBLIC_SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
+    const ssoUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
     const ssoHost = new URL(ssoUrl).hostname;
     const keyUrl = `https://${ssoHost}/v1/api/key/${kid}`;
 

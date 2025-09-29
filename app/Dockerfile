@@ -9,38 +9,36 @@ RUN apk add --no-cache openssl wget
 # Install pnpm globally
 RUN npm install -g pnpm
 
-WORKDIR /app
+WORKDIR /workspace
 
-# Copy .npmrc for private registry authentication
-COPY .npmrc ./
-
-COPY package.json ./
+# Copy workspace files first (for pnpm workspace setup)
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY app/package.json ./app/
+COPY app/.npmrc ./
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Install dependencies with BuildKit cache mounts (pnpm store + cache)
-RUN --mount=type=cache,id=pnpm-store,target=/root/.pnpm-store \
-    --mount=type=cache,id=pnpm-cache,target=/root/.cache/pnpm \
-    pnpm install && rm -f .npmrc
+# Install dependencies using pnpm workspace
+RUN pnpm install
+
+# Copy app source code
+COPY app/ ./app/
+
+WORKDIR /workspace/app
 
 # Generate self-signed SSL certificates BEFORE build (gasket.ts needs them)
 # ALB will do SSL termination, this cert is for backend HTTPS and local dev
-RUN mkdir -p /app/certs && \
-    openssl req -x509 -newkey rsa:4096 -keyout /app/certs/server.key -out /app/certs/server.crt \
+RUN mkdir -p /workspace/app/certs && \
+    openssl req -x509 -newkey rsa:4096 -keyout /workspace/app/certs/server.key -out /workspace/app/certs/server.crt \
     -days 365 -nodes -subj "/C=US/ST=CA/L=San Francisco/O=Airo/CN=*" \
     -addext "subjectAltName=DNS:*,IP:127.0.0.1,IP:0.0.0.0"
-
-# Copy application code (separate layer for better caching)
-COPY . /app/
 
 # Generate Prisma client for Alpine Linux platform (required for build)
 ENV PRISMA_CLI_QUERY_ENGINE_TYPE=binary
 ENV PRISMA_CLIENT_ENGINE_TYPE=binary
 RUN pnpm prebuild && pnpm build
 
-WORKDIR /app
-
-RUN mkdir -p /app/data && chown -R node:node /app
+RUN mkdir -p /workspace/app/data && chown -R node:node /workspace/app
 
 USER node
 

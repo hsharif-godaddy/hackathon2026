@@ -68,7 +68,7 @@ jobs:
         env:
           NODE_ENV: production
         run: |
-          docker build --platform linux/amd64 -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} app/
+          docker build --platform linux/amd64 -f app/Dockerfile -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} .
 
       # Publish the built container image to Katana with the katana-publish-artifact GitHub Action
       - id: katana-publish

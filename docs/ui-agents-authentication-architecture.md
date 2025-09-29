@@ -317,7 +317,7 @@ The agents service automatically selects validation method based on environment:
 
 - `NODE_ENV`: When set to `production`, uses direct SSO validation
 - `PROXY_URL`: URL of the proxy service
-- `NEXT_PUBLIC_SSO_LOGIN_URL`: SSO endpoint URL for public key fetching
+- `SSO_LOGIN_URL`: SSO endpoint URL for public key fetching
 
 **Validation Strategy:**
 

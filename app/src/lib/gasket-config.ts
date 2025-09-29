@@ -1,4 +1,5 @@
 import { logger } from './request-context';
+import { auth } from './features';
 // Gasket configuration for Airo App Builder authentication
 
 // Extend globalThis interface for auth logging flag and config cache
@@ -15,7 +16,10 @@ export interface GasketConfig {
     realm: string;
     risk: string;
     type: string[];
-    disableInDev: boolean;
+    authType: string;
+    isDisabled: boolean;
+    isMock: boolean;
+    isJWT: boolean;
   };
   sso: {
     loginUrl: string;
@@ -27,79 +31,99 @@ export interface GasketConfig {
   };
 }
 
-// Build-safe static configuration with sensible defaults
-// This ensures the app works even if runtime config fails
-const staticGasketConfig: GasketConfig = {
-  auth: {
-    realm: 'idp',
-    risk: 'low',
-    type: ['basic'],
-    disableInDev: false // Default to secure, will be overridden by runtime config
-  },
-  sso: {
-    loginUrl: 'https://sso.test-godaddy.com/login',
-    logoutUrl: 'https://sso.test-godaddy.com/logout'
-  },
-  redirects: {
-    loginRedirectUrl: 'https://airo-builder.test-godaddy.com/',
-    logoutRedirectUrl: 'https://airo-builder.test-godaddy.com/'
-  }
-};
-
-// Runtime configuration loader
+// Runtime configuration loader (lazy - only called when needed)
 async function loadRuntimeConfig(): Promise<GasketConfig> {
   // Server-side: access environment variables directly
   if (typeof window === 'undefined') {
-    return {
+    logger.info('🔧 Loading server-side gasket config from environment');
+    
+    const config = {
       auth: {
         realm: 'idp',
         risk: 'low',
         type: ['basic'],
-        disableInDev: false // Now handled by centralized auth system in features.ts
+        authType: auth.getType(),
+        isDisabled: auth.isDisabled(),
+        isMock: auth.isMock(),
+        isJWT: auth.isJWT()
       },
       sso: {
-        loginUrl: process.env.NEXT_PUBLIC_SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login',
-        logoutUrl: process.env.NEXT_PUBLIC_SSO_LOGOUT_URL || 'https://sso.test-godaddy.com/logout'
+        loginUrl: process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login',
+        logoutUrl: process.env.SSO_LOGOUT_URL || 'https://sso.test-godaddy.com/logout'
       },
       redirects: {
-        loginRedirectUrl: process.env.NEXT_PUBLIC_LOGIN_REDIRECT_URL || 'https://airo-builder.test-godaddy.com/',
-        logoutRedirectUrl: process.env.NEXT_PUBLIC_LOGOUT_REDIRECT_URL || 'https://airo-builder.test-godaddy.com/'
+        loginRedirectUrl: process.env.LOGIN_REDIRECT_URL || 'https://airo-builder.test-godaddy.com/',
+        logoutRedirectUrl: process.env.LOGOUT_REDIRECT_URL || 'https://airo-builder.test-godaddy.com/'
       }
     };
+    
+    logger.info('🔧 Server-side config loaded:', {
+      loginUrl: config.sso.loginUrl,
+      logoutUrl: config.sso.logoutUrl
+    });
+    
+    return config;
   }
 
-  // Client-side: fetch from API
+  // Client-side: fetch from API (lazy)
+  logger.info('🔧 Loading client-side gasket config from /api/config');
+  
   try {
     const response = await fetch('/api/config');
     if (!response.ok) {
-      throw new Error(`Config API error: ${response.status}`);
+      throw new Error(`Config API error: ${response.status} ${response.statusText}`);
     }
-    return await response.json();
+    
+    const config = await response.json();
+    logger.info('🔧 Client-side config loaded from API:', {
+      loginUrl: config.sso?.loginUrl,
+      logoutUrl: config.sso?.logoutUrl
+    });
+    
+    return config;
   } catch (error) {
-    logger.warn('Failed to load runtime config, using static config:', error);
-    return staticGasketConfig;
+    logger.error('🔧 Failed to load runtime config - no fallback available:', error);
+    throw new Error(`Configuration loading failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
-// Get configuration (async, cached)
+// Get configuration (async, cached, lazy)
 export async function getGasketConfig(): Promise<GasketConfig> {
   // Return cached config if available
   if (typeof globalThis !== 'undefined' && globalThis.__gasketConfigCache) {
+    logger.info('🔧 Using cached gasket config');
     return globalThis.__gasketConfigCache;
   }
 
   // Return existing promise if already loading
   if (typeof globalThis !== 'undefined' && globalThis.__gasketConfigPromise) {
+    logger.info('🔧 Waiting for existing gasket config load');
     return globalThis.__gasketConfigPromise;
   }
 
+  logger.info('🔧 Loading fresh gasket config');
+
   // Load and cache configuration
   const configPromise = loadRuntimeConfig().then(config => {
+    logger.info('🔧 Gasket config loaded successfully:', {
+      loginUrl: config.sso.loginUrl,
+      logoutUrl: config.sso.logoutUrl
+    });
+    
     if (typeof globalThis !== 'undefined') {
       globalThis.__gasketConfigCache = config;
       globalThis.__gasketConfigPromise = undefined; // Clear promise after resolution
     }
     return config;
+  }).catch(error => {
+    logger.error('🔧 Failed to load gasket config:', error);
+    
+    if (typeof globalThis !== 'undefined') {
+      globalThis.__gasketConfigPromise = undefined; // Clear promise on error
+    }
+    
+    // Re-throw the error instead of using fallback
+    throw error;
   });
 
   if (typeof globalThis !== 'undefined') {
@@ -109,8 +133,9 @@ export async function getGasketConfig(): Promise<GasketConfig> {
   return configPromise;
 }
 
-// Synchronous access to configuration (uses static config as fallback)
-export const gasketConfig = staticGasketConfig;
+// Synchronous access to configuration is no longer supported
+// Use getGasketConfig() async function instead
+export const gasketConfig = null;
 
 // Auth configuration options for different parts of the app
 export const authConfigs = {
@@ -177,14 +202,9 @@ export async function isAuthDisabled(): Promise<boolean> {
   return disabled;
 }
 
-// Helper function to use appropriate fetch method
+// Helper function for authenticated API calls
+// Note: This is deprecated - use authFetch from @godaddy/gasket-auth directly
 export async function appFetch(url: string, options?: RequestInit): Promise<Response> {
-  // Use regular fetch when auth is disabled in development
-  if (await isAuthDisabled()) {
-    return fetch(url, options);
-  }
-
-  // Use authenticated fetch for production
   const { authFetch } = await import('@godaddy/gasket-auth');
   return authFetch(url, options);
 }

@@ -599,7 +599,6 @@ function AppsPageContent() {
 export default function Apps() {
   return (
     <ProtectedRoute 
-      requiredAccess="user"
       loadingMessage="Loading Your Apps"
       unauthorizedMessage="You need to be signed in to view your apps."
     >

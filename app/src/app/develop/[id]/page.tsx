@@ -500,7 +500,6 @@ function DevelopPageContent() {
 export default function Develop() {
   return (
     <ProtectedRoute
-      requiredAccess="user"
       loadingMessage="Loading Development Environment"
       unauthorizedMessage="You need to be signed in to access the development environment."
     >

@@ -11,4 +11,12 @@ export default gasket.actions.getNextConfig({
   typescript: {
     ignoreBuildErrors: false, // Keep TypeScript checks for critical errors
   },
+  allowedDevOrigins: [
+    'localhost:3000',
+    'localhost:8443',
+    'local.gasket.dev-godaddy.com:8443',
+    'local.gasket.dev-godaddy.com',
+    'airo-builder.dev-godaddy.com',
+    'airo-builder-local.dev-godaddy.com'
+  ],
 });

@@ -391,12 +391,8 @@ AUTH_TYPE=${config.authConfig.authType}
 		if (config.authConfig.authType === "jwt") {
 			envContent += `
 # SSO Configuration (Used when AUTH_TYPE=jwt)
-NEXT_PUBLIC_SSO_LOGIN_URL=${config.authConfig.ssoLoginUrl}
-NEXT_PUBLIC_SSO_LOGOUT_URL=${config.authConfig.ssoLogoutUrl}
-
-# Auth Configuration
-NEXT_PUBLIC_AUTH_REALM=${config.authConfig.authRealm}
-NEXT_PUBLIC_AUTH_RISK=${config.authConfig.authRisk}
+SSO_LOGIN_URL=${config.authConfig.ssoLoginUrl}
+SSO_LOGOUT_URL=${config.authConfig.ssoLogoutUrl}
 `;
 		}
 

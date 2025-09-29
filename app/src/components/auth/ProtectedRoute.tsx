@@ -1,49 +1,65 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AuthRealmType, AuthRequired } from '@godaddy/gasket-auth';
+import { AuthRequired, AuthRealmType, AuthRiskType, AuthIdpType } from '@godaddy/gasket-auth';
 import { SparklesIcon } from '@heroicons/react/24/outline';
-import { authConfigs } from '@/lib/gasket-config';
-import { useGasketConfig } from '@/hooks/useGasketConfig';
-import { isFeatureEnabled } from '@/lib/features';
-import { useMockAuth } from '@/hooks/useMockAuth';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import { text } from '@ux/text';
+import { useGasketConfig } from '@/hooks/useGasketConfig';
+import { useAuth } from '@/hooks/useAuth';
+import { isFeatureEnabled, auth } from '@/lib/features';
 import { MockLoginDialog } from './MockLogin';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  realm?: string;
+  realm?: AuthRealmType;
   groups?: string[];
-  risk?: 'low' | 'medium' | 'high';
-  requiredAccess?: 'user' | 'admin';
+  risk?: AuthRiskType;
+  type?: AuthIdpType[];
   loadingMessage?: string;
   unauthorizedMessage?: string;
 }
 
 export default function ProtectedRoute({
   children,
-  realm = 'idp',
+  realm,
   groups = [],
-  risk = 'low',
-  requiredAccess = 'user',
+  risk,
+  type,
   loadingMessage = 'Checking Authentication',
   unauthorizedMessage = 'You need to be signed in to access this area of Airo App Builder.'
 }: ProtectedRouteProps) {
 
-  // State to track if component has hydrated
+  // State to track if component has hydrated and mock login dialog
   const [isClient, setIsClient] = useState(false);
+  const [showMockLogin, setShowMockLogin] = useState(false);
 
-  // Always call hooks at the top level - never conditionally
-  const isMockLoginEnabled = isFeatureEnabled.mockLogin();
-  const mockAuth = useMockAuth();
+  // Get gasket configuration and auth state
   const { config: gasketConfig, isLoading: configLoading } = useGasketConfig();
+  const { 
+    isAuthenticated, 
+    isLoading: authLoading, 
+    isAuthDisabled, 
+    isMockAuth,
+    mockAuth,
+    handleSignIn 
+  } = useAuth(() => setShowMockLogin(true));
 
   // Set client flag after hydration
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Configure auth parameters based on access level
+  const authParams = {
+    realm: realm || 'idp' as AuthRealmType,
+    risk: risk || 'low' as AuthRiskType,
+    type: type || ['basic'] as AuthIdpType[],
+    groups,
+    allowHeartbeat: true,
+    use12HourExpiration: true
+  };
 
   const LoadingComponent = () => (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center">
@@ -58,100 +74,66 @@ export default function ProtectedRoute({
   );
 
   const UnauthorizedComponent = () => {
-    const [showMockLogin, setShowMockLogin] = useState(false);
-
     return (
-      <>
-        <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center">
-          <div className="text-center max-w-md mx-auto px-6">
-            <text.h2 as="heading" size={ -1 } className="mb-2">Access Required</text.h2>
-            <p className="text-gray-600 mb-12">
-              {unauthorizedMessage}
-            </p>
-
-            {/* Show mock login if feature is enabled */}
-            {isFeatureEnabled.mockLogin() ? (
-              <Box gap="md">
-                <Button
-                  design='primary'
-                  text='🚀 Mock Sign In (Dev Mode)'
-                  onClick={() => setShowMockLogin(true)}
-                />
-                <p className="text-xs text-gray-500">
-                  Development mode - choose a test user to simulate the login experience
-                </p>
-              </Box>
-            ) : (
-              <Button
-                onClick={() => {
-                  if (typeof window !== 'undefined') {
-                    const url = new URL(gasketConfig.sso.loginUrl);
-                    url.searchParams.set('app', 'airo-builder');
-                    url.searchParams.set('redirect', window.location.href);
-                    window.location.href = url.toString();
-                  }
-                }}
-                design='primary'
-                text='Sign In to Continue'
-                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all"
-              />
-            )}
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center">
+        <Box className="bg-white rounded-lg shadow-lg p-8 max-w-md text-center">
+          <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <SparklesIcon className="w-8 h-8 text-white" />
           </div>
-        </div>
-
-        {/* Mock Login Dialog */}
-        {isFeatureEnabled.mockLogin() && (
-          <MockLoginDialog
-            isOpen={showMockLogin}
-            onClose={() => setShowMockLogin(false)}
-            title="Protected Route Access"
-            message="This page requires authentication. Choose a test user to simulate the login experience."
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Authentication Required</h2>
+          <p className={`${text.body} text-gray-600 mb-6`}>
+            {unauthorizedMessage}
+          </p>
+          <Button
+            onClick={() => {
+              const signInResult = handleSignIn();
+              if (signInResult?.showModal) {
+                setShowMockLogin(true);
+              }
+            }}
+            design='primary'
+            text='Sign In to Continue'
+            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white"
           />
-        )}
-      </>
+        </Box>
+      </div>
     );
   };
 
   // Show loading state while config is loading or during hydration
-  if (configLoading || !isClient) {
+  if (configLoading || !isClient || authLoading) {
     return <LoadingComponent />;
   }
 
-  // Check mock authentication first
-  if (isMockLoginEnabled) {
-    if (mockAuth.isLoading) {
-      return <LoadingComponent />;
-    }
-
-    if (!mockAuth.isAuthenticated) {
-      return <UnauthorizedComponent />;
-    }
-
-    // User is authenticated with mock login
-    return <div>{children}</div>;
+  // Handle different authentication modes
+  if (isAuthDisabled) {
+    // No auth required - render children directly
+    return <>{children}</>;
   }
 
-  // Skip authentication if disabled in dev
-  if (gasketConfig.auth.disableInDev) {
-    return <div>{children}</div>;
+  if (isMockAuth) {
+    // Mock auth mode - check mock auth state
+    if (!isAuthenticated) {
+      return (
+        <>
+          <UnauthorizedComponent />
+          {showMockLogin && (
+            <MockLoginDialog 
+              isOpen={showMockLogin}
+              onClose={() => setShowMockLogin(false)}
+            />
+          )}
+        </>
+      );
+    }
+    // Mock user is authenticated
+    return <>{children}</>;
   }
 
-  // Configure auth parameters based on access level with heartbeat enabled
-  const baseConfig = requiredAccess === 'admin' ? authConfigs.admin : authConfigs.user;
-  const authParams = {
-    ...baseConfig,
-    realm: requiredAccess === 'admin' ? 'jomax' : realm,
-    groups: requiredAccess === 'admin' ? ['admin', 'developer', ...groups] : groups,
-    risk: requiredAccess === 'admin' ? 'medium' : risk,
-  };
-
+  // JWT mode - use Gasket AuthRequired
   return (
     <AuthRequired
-      realm={authParams.realm as AuthRealmType}
-      groups={authParams.groups}
-      risk={authParams.risk}
-      allowHeartbeat={authParams.allowHeartbeat}
-      use12HourExpiration={authParams.use12HourExpiration}
+      {...authParams}
       loading={<LoadingComponent />}
       alt={<UnauthorizedComponent />}
     >

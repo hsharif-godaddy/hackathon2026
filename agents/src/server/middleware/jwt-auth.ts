@@ -44,12 +44,12 @@ export class JWTValidationService {
   private readonly MAX_TOKEN_SIZE = 10000; // 10KB token size limit
 
   constructor() {
-    // Parse the domain from NEXT_PUBLIC_SSO_LOGIN_URL environment variable 
+    // Parse the domain from SSO_LOGIN_URL environment variable 
     try {
-      const ssoUrl = process.env.NEXT_PUBLIC_SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
+      const ssoUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
       this.ssoHost = new URL(ssoUrl).hostname;
     } catch (error) {
-      console.warn('Invalid SSO URL format, using fallback', process.env.NEXT_PUBLIC_SSO_LOGIN_URL);
+      console.warn('Invalid SSO URL format, using fallback', process.env.SSO_LOGIN_URL);
       this.ssoHost = 'sso.test-godaddy.com';
     }
 

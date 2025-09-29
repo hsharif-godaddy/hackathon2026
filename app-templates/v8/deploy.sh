@@ -52,6 +52,10 @@ echo "🏗️  Building Docker image..."
 echo "Platform: linux/amd64"
 echo "Context: $(pwd)"
 
+cd ../../dev-supervisor
+docker buildx build --platform linux/amd64 -t $DEV_SUPERVISOR_IMAGE .
+
+cd -
 docker buildx build --platform linux/amd64 --build-arg DEV_SUPERVISOR_IMAGE="$DEV_SUPERVISOR_IMAGE" -t airo-apps:${IMAGE_TAG} .
 
 echo "✅ Successfully built Docker image: airo-apps:${IMAGE_TAG}"

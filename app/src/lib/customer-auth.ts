@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { gdAuthService } from '@/lib/gd-auth-service';
+// Lazy import to avoid initializing gd-auth during module loading
 import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
 import { isAuthDisabled } from '@/lib/gasket-config';
 import { isFeatureEnabled } from '@/lib/features';
@@ -118,7 +118,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       };
     }
 
-    // Extract shopper token using gd-auth service
+    // Extract shopper token using gd-auth service (lazy import)
+    const { gdAuthService } = await import('@/lib/gd-auth-service');
     const token = gdAuthService.extractTokenFromRequest(request);
     if (!token) {
       return {

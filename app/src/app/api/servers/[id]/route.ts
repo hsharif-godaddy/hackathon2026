@@ -8,6 +8,9 @@ import {
   type CustomerAuthContext 
 } from '@/lib/customer-auth'
 
+// Force dynamic rendering to prevent database calls during build
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/servers/[id] - Get specific server details (authenticated)
  */

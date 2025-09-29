@@ -224,3 +224,16 @@ export class AccountService {
     }
   }
 }
+
+// Singleton instance
+let accountServiceInstance: AccountService | null = null;
+
+/**
+ * Get singleton instance of AccountService
+ */
+export function getAccountService(): AccountService {
+  if (!accountServiceInstance) {
+    accountServiceInstance = new AccountService();
+  }
+  return accountServiceInstance;
+}

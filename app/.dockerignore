@@ -66,5 +66,3 @@ test-*.js
 # Development and build artifacts
 dist
 
-# Large lock files (already installed in image)
-pnpm-lock.yaml

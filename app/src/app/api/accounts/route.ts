@@ -9,6 +9,9 @@ import {
 } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 
+// Force dynamic rendering to prevent database calls during build
+export const dynamic = 'force-dynamic';
+
 // GET /api/accounts?shopper_id=xxx - Get authenticated customer's own account only
 export const GET = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {

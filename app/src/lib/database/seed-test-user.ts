@@ -4,8 +4,15 @@ import { logger } from '../request-context';
  * Creates a test account that works with the existing auth system
  */
 
-import { AccountService } from './account-service';
-import { MOCK_USER } from '@/lib/mock-auth';
+import { getAccountService } from './account-service';
+
+// Test user for development environment
+const TEST_USER = {
+  id: 'dev-user-123',
+  email: 'developer@example.com',
+  name: 'Dev User',
+  plan: 'Free'
+};
 
 /**
  * Ensure test user account exists in the database
@@ -13,9 +20,9 @@ import { MOCK_USER } from '@/lib/mock-auth';
  */
 export async function ensureTestUserExists(): Promise<void> {
   try {
-    const accountService = new AccountService(); // Create instance when needed
-    const testShopperId = MOCK_USER.id;
-    const testCustomerId = MOCK_USER.id; // Use same ID for simplicity
+    const accountService = getAccountService(); // Use singleton instance
+    const testShopperId = TEST_USER.id;
+    const testCustomerId = TEST_USER.id; // Use same ID for simplicity
     
     // Check if account already exists
     let account = await accountService.findByShopperId(testShopperId);
@@ -28,7 +35,7 @@ export async function ensureTestUserExists(): Promise<void> {
       } catch (error: any) {
         // Account might already exist due to race condition
         if (error.message.includes('UNIQUE constraint failed')) {
-          account = await accountService.findByCustomerId(testCustomerId);
+          account = await accountService.findByShopperId(testCustomerId);
           if (account) {
             logger.info(`✅ Test user account found: ${account.id}`);
           }

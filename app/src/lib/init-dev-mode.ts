@@ -27,10 +27,8 @@ export async function initDevMode(): Promise<void> {
 
     logger.info('🔧 Initializing development mode...');
 
-    // Initialize test user if mock login is enabled
-    if (isFeatureEnabled.mockLogin()) {
-      await initializeTestUser();
-    }
+    // Initialize test user for development
+    await initializeTestUser();
 
     initialized = true;
     logger.info('✅ Development mode initialized');

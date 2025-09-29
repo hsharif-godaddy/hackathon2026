@@ -50,12 +50,12 @@ function determineAuthType(): AuthType {
       return AuthType.JWT
     case 'development':
       // In development, check legacy environment variables for compatibility
-      if (process.env.NEXT_PUBLIC_USE_MOCK_LOGIN === 'true' || 
-          process.env.NEXT_PUBLIC_AUTH_IN_DEV === 'true') {
+      if (process.env.AUTH_TYPE === 'none') {
         return AuthType.NONE
       }
-      return AuthType.MOCK
-    case 'test':
+      if(process.env.AUTH_TYPE === 'jwt') {
+        return AuthType.JWT
+      }
       return AuthType.MOCK
     default:
       // Unknown environment - default to JWT for security

@@ -18,10 +18,14 @@ import pluginNextjs from '@gasket/plugin-nextjs';
 import pluginIntl from '@gasket/plugin-intl';
 import pluginUxp from '@godaddy/gasket-plugin-uxp';
 import pluginOtel from '@godaddy/gasket-plugin-otel';
-import pluginSwitchboard from '@godaddy/gasket-plugin-switchboard';
+// Conditionally import switchboard plugin to avoid loading native binaries when not needed
+// import pluginSwitchboard from '@godaddy/gasket-plugin-switchboard';
 import gasketData from './gasket-data.js';
 import fs from 'fs';
 
+// Check if we should enable JWT authentication
+const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
+const isJWTMode = authType === 'jwt' || (process.env.NODE_ENV === 'production' && !authType);
 export default makeGasket({
   environments: {
     'local.analyze': {
@@ -37,7 +41,8 @@ export default makeGasket({
     pluginData,
     pluginWebpack,
     pluginWinston,
-    pluginAuth,
+    // Only include auth plugin when using JWT authentication
+    ...(isJWTMode ? [pluginAuth] : []),
     pluginSecurity,
     pluginTraffic,
     pluginVisitor,
@@ -49,7 +54,9 @@ export default makeGasket({
     pluginIntl,
     pluginUxp,
     pluginOtel,
-    pluginSwitchboard
+    // Switchboard plugin temporarily disabled to avoid native binary loading issues
+    // TODO: Re-enable switchboard plugin for JWT mode when binary loading is resolved
+    // ...(isJWTMode ? [pluginSwitchboard] : [])
   ],
   commands: {
     docs: {
@@ -71,8 +78,8 @@ export default makeGasket({
       port: 3000
     },
     ...(process.env.NODE_ENV === 'production' && (() => {
-      const keyPath = process.env.SERVER_KEY_PATH || '/app/certs/server.key';
-      const certPath = process.env.SERVER_CERT_PATH || '/app/certs/server.crt';
+      const keyPath = process.env.SERVER_KEY_PATH || '/workspace/app/certs/server.key';
+      const certPath = process.env.SERVER_CERT_PATH || '/workspace/app/certs/server.crt';
       if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
         return {
           ssl: {
@@ -99,6 +106,20 @@ export default makeGasket({
     useMintl: true,
     externals: false
   },
+  ...(isJWTMode ? {
+    auth: {
+      realm: 'idp',
+      risk: 'low',
+      type: ['basic'],
+      allowHeartbeat: true,
+      use12HourExpiration: true,
+      ssoRedirectOverride: process.env.SSO_LOGIN_URL,
+      ssoLogoutOverride: process.env.SSO_LOGOUT_URL,
+      ssoRedirectSubdomain: false,
+      // Let Gasket handle automatic redirects to SSO
+      alt: undefined // This allows automatic SSO redirects instead of showing alt content
+    }
+  } : {}),
   presentationCentral: {
     params: {
       app: 'airo-app-builder',
@@ -107,9 +128,11 @@ export default makeGasket({
       privateLabelId: 1,
     }
   },
-  switchboard: {
-    app: 'airo-app-builder',
-    enableGasketData: true
-  },
+  ...(isJWTMode ? {
+    switchboard: {
+      app: 'airo-app-builder',
+      enableGasketData: true
+    }
+  } : {}),
   data: gasketData,
 } as GasketConfigDefinition);

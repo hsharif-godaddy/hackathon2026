@@ -69,9 +69,12 @@ export function logStartupConfiguration() {
                            process.env.NODE_ENV === 'development';
   const authDisabled = process.env.DISABLE_AUTH === 'true';
 
+  // Authentication Configuration
   console.log('🔑 Authentication Configuration:');
   console.log(`   Mock Login Enabled: ${mockLoginEnabled}`);
   console.log(`   Auth Disabled: ${authDisabled}`);
+  console.log(`   SSO Login URL: ${process.env.SSO_LOGIN_URL || 'default'}`);
+  console.log(`   SSO Logout URL: ${process.env.SSO_LOGOUT_URL || 'default'}`);
 
   console.log('================================================');
 }

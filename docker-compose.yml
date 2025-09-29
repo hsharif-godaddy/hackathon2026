@@ -3,13 +3,10 @@ services:
   agents:
     platform: linux/amd64 # Force x64 platform for consistent native module compilation
     build:
-      context: ./agents
+      context: .
+      dockerfile: ./agents/Dockerfile
       platforms:
         - linux/amd64
-      cache_from:
-        - type=local,src=.docker-cache/agents
-      cache_to:
-        - type=local,dest=.docker-cache/agents,mode=max
     container_name: airo-agents
     ports:
       - "4000:4000"
@@ -31,13 +28,10 @@ services:
   app:
     platform: linux/amd64 # Force x64 platform for consistent native module compilation
     build:
-      context: ./app
+      context: .
+      dockerfile: ./app/Dockerfile
       platforms:
         - linux/amd64
-      cache_from:
-        - type=local,src=.docker-cache/app
-      cache_to:
-        - type=local,dest=.docker-cache/app,mode=max
     container_name: airo-app
     ports:
       - "8443:8443"
@@ -45,7 +39,11 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HTTPS_PORT=3443
-      - DATABASE_URL=mysql://airo:airopassword@host.internal:3306/airo_app
+      - DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app
+      - SSO_LOGIN_URL=https://sso.dev-godaddy.com/login
+      - SSO_LOGOUT_URL=https://sso.dev-godaddy.com/logout
+      - LOGIN_REDIRECT_URL=https://local.gasket.dev-godaddy.com:8443/
+      - LOGOUT_REDIRECT_URL=https://local.gasket.dev-godaddy.com:8443/
     networks:
       - airo-network
     restart: unless-stopped

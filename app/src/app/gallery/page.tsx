@@ -234,8 +234,7 @@ function GalleryContent() {
 
 export default function GalleryPage() {
   return (
-    <ProtectedRoute 
-      requiredAccess="user"
+    <ProtectedRoute
       loadingMessage="Loading Gallery"
       unauthorizedMessage="You need to be signed in to view the gallery."
     >

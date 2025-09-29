@@ -11,13 +11,19 @@ RUN apk add --no-cache python3 py3-setuptools make g++ git
 
 # Install pnpm
 RUN npm install -g pnpm
-
+ENV CI=true
 # create the group and user
 # hardcoded the GID of the agent group to 790, UID of the agent user to 790 for now
 RUN addgroup -S -g 790 agent
 RUN adduser -S -G agent -u 790 agent
 
-COPY --chown=agent:agent . /app
+COPY --chown=agent:agent ./agents /app
+
+RUN mkdir -p /packages/ && chown -R agent:agent /packages/
+
+COPY --chown=agent:agent ./packages/ai-lib /packages/ai-lib
+
+RUN ls -l /app && ls -l /packages/ai-lib
 
 RUN rm -f /app/management-scripts/*.sh
 
@@ -26,7 +32,7 @@ RUN mkdir -p /management-scripts
 RUN chown agent:agent /management-scripts
 
 # copy management-scripts/ to /management-scripts
-COPY --chown=agent:agent management-scripts/* /management-scripts/
+COPY --chown=agent:agent /agents/management-scripts/* /management-scripts/
 
 RUN chmod +x /management-scripts/*.sh
 
@@ -37,7 +43,8 @@ ENV ARTIFACTORY_NPM_TOKEN=${ARTIFACTORY_NPM_TOKEN}
 # Install dependencies with Artifactory authentication
 RUN echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${ARTIFACTORY_NPM_TOKEN}" >> ~/.npmrc && \
     echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:always-auth=true" >> ~/.npmrc && \
-    pnpm install --frozen-lockfile
+    cd /packages/ai-lib && pnpm install && pnpm build && \
+    cd /app && pnpm install
 
 # Build the application
 RUN pnpm build

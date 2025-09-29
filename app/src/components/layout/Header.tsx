@@ -24,8 +24,8 @@ export default function Header({ actions, className = "", onShowMockLogin, locat
           <Box orientation="horizontal" gap="md">
             {actions && actions}
             <UserMenu 
-              onShowMockLogin={onShowMockLogin} 
-              location={location} 
+              onShowMockLogin={onShowMockLogin}
+              location={location}
             />
           </Box>
         </div>

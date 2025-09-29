@@ -187,6 +187,7 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               ELASTIC_APM_SECRET_TOKEN: process.env.ELASTIC_APM_SECRET_TOKEN || '',
               ELASTIC_APM_SERVER_URL: process.env.ELASTIC_APM_SERVER_URL || '',
               SSO_HOST: process.env.SSO_HOST || 'sso.test-godaddy.com',
+              BYPASS_AUTH_FOR_LOCAL: process.env.BYPASS_AUTH_FOR_LOCAL || 'true',
               PROXY_URL: process.env.PROXY_URL || 'https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net'
             },
             Resources: {

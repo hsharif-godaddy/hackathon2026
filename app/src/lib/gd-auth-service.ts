@@ -3,7 +3,6 @@
  * Handles JWT validation and automatic heartbeat for IDP tokens
  */
 
-const { GdAuth } = require('gd-auth');
 import { logger } from '@/lib/request-context';
 
 export class GdAuthService {
@@ -11,14 +10,22 @@ export class GdAuthService {
   private ssoHost: string;
 
   constructor() {
-    // parse the domain from NEXT_PUBLIC_SSO_LOGIN_URL environment variable using robust URL parsing
+    // Add stack trace to see where this is being called from
+    logger.info('🔍 GdAuthService.constructor.called', {
+      message: 'GdAuthService constructor called',
+      stack: new Error().stack?.split('\n').slice(1, 6).join('\n'),
+      authType: process.env.AUTH_TYPE,
+      nodeEnv: process.env.NODE_ENV
+    });
+
+    // parse the domain from SSO_LOGIN_URL environment variable using robust URL parsing
     try {
-      const ssoUrl = process.env.NEXT_PUBLIC_SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
+      const ssoUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
       this.ssoHost = new URL(ssoUrl).hostname;
     } catch (error) {
       logger.warn('gd-auth.init.sso-url-error', {
         message: 'Invalid SSO URL format, using fallback',
-        providedUrl: process.env.NEXT_PUBLIC_SSO_LOGIN_URL,
+        providedUrl: process.env.SSO_LOGIN_URL,
         fallbackHost: 'sso.test-godaddy.com'
       });
       this.ssoHost = 'sso.test-godaddy.com';
@@ -27,6 +34,48 @@ export class GdAuthService {
     logger.info('gd-auth.init.sso-host', {
       message: 'Using SSO host',
       ssoHost: this.ssoHost
+    });
+
+    // Only initialize gd-auth if we're using JWT authentication
+    // Check environment variable directly to avoid module loading issues
+    const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
+    const isJWTMode = authType === 'jwt' || (process.env.NODE_ENV === 'production' && !authType);
+    
+    logger.info('🔍 GdAuthService.constructor.auth-check', {
+      message: 'Checking authentication mode',
+      authType: authType,
+      isJWTMode: isJWTMode,
+      nodeEnv: process.env.NODE_ENV,
+      willInitializeGdAuth: isJWTMode
+    });
+    
+    if (isJWTMode) {
+      logger.warn('🚨 GdAuthService.constructor.initializing-gd-auth', {
+        message: 'About to initialize gd-auth library - this will cause AWS token calls',
+        authType: authType,
+        nodeEnv: process.env.NODE_ENV
+      });
+      this.initializeGdAuth();
+    } else {
+      logger.info('✅ GdAuthService.constructor.skipped', {
+        message: 'Skipping gd-auth initialization - no AWS calls will be made',
+        authType: authType,
+        reason: 'Not using JWT authentication'
+      });
+      this.gdAuth = null;
+    }
+  }
+
+  private initializeGdAuth() {
+    logger.warn('🚨 GdAuthService.initializeGdAuth.start', {
+      message: 'Starting gd-auth initialization - AWS token calls will begin',
+      stack: new Error().stack?.split('\n').slice(1, 4).join('\n')
+    });
+    
+    const { GdAuth } = require('gd-auth');
+    
+    logger.warn('🚨 GdAuthService.initializeGdAuth.required', {
+      message: 'gd-auth module loaded - AWS token manager is now active'
     });
 
     // Custom fetchKey with CA certificate for proper SSL validation
@@ -80,6 +129,10 @@ export class GdAuthService {
       allowHeartbeat: true,          // Enable automatic heartbeat
       fetchKey: customFetchKey       // Custom SSL handling for key fetch
     });
+
+    logger.info('gd-auth.init.complete', {
+      message: 'GdAuth initialized successfully'
+    });
   }
 
   /**
@@ -87,6 +140,29 @@ export class GdAuthService {
    */
   async authenticate(token: string): Promise<{ valid: boolean; payload?: any; reason?: string }> {
     try {
+      // If auth is disabled or not JWT mode, return mock success
+      const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
+      const isJWTMode = authType === 'jwt' || (process.env.NODE_ENV === 'production' && !authType);
+      
+      if (!isJWTMode || !this.gdAuth) {
+        logger.info('gd-auth.authenticate.bypass', {
+          message: 'Authentication bypassed',
+          authType: authType,
+          reason: 'Not using JWT authentication'
+        });
+        
+        return {
+          valid: true,
+          payload: {
+            shopperId: 'dev-user',
+            cid: 'dev-customer',
+            exp: Math.floor(Date.now() / 1000) + 3600,
+            iat: Math.floor(Date.now() / 1000)
+          },
+          reason: `Authentication bypassed (${authType} mode)`
+        };
+      }
+
       logger.info('gd-auth.authenticate.start', 'Authenticating token');
 
       // Use gd-auth for authentication - it handles heartbeat automatically
@@ -153,4 +229,28 @@ export class GdAuthService {
   }
 }
 
-export const gdAuthService = new GdAuthService();
+// Lazy singleton - only create when first accessed at runtime
+let _gdAuthService: GdAuthService | null = null;
+
+export const gdAuthService = {
+  get instance(): GdAuthService {
+    if (!_gdAuthService) {
+      console.log('🔍 gd-auth-service.ts: Creating gdAuthService singleton (lazy)', {
+        authType: process.env.AUTH_TYPE,
+        nodeEnv: process.env.NODE_ENV,
+        stack: new Error().stack?.split('\n').slice(1, 6).join('\n')
+      });
+      _gdAuthService = new GdAuthService();
+    }
+    return _gdAuthService;
+  },
+  
+  // Delegate methods for backward compatibility
+  extractTokenFromRequest(request: any): string | null {
+    return this.instance.extractTokenFromRequest(request);
+  },
+  
+  async authenticate(token: string) {
+    return this.instance.authenticate(token);
+  }
+};
