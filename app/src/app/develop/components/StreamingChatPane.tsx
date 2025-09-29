@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useEffect } from 'react'
 import PlanTracker from './PlanTracker'
 import ChatInput from './ChatInput'
 import StreamingChatTabs from './StreamingChatTabs'
@@ -100,6 +100,22 @@ export default function StreamingChatPane({
       sendMessage(inputValue, safeAiEditContext)
     }
   }
+  
+  // Listen for error fix requests from PreviewPaneSimple
+  useEffect(() => {
+    const handleErrorFixEvent = (event: CustomEvent) => {     
+      if (event.detail.appId === appId && inputValue?.trim()) {
+        // Use the actual sendMessage function from WebSocket hook
+        sendMessage(inputValue, safeAiEditContext)
+      }
+    }
+    
+    window.addEventListener('airo-error-fix', handleErrorFixEvent as EventListener)
+    
+    return () => {
+      window.removeEventListener('airo-error-fix', handleErrorFixEvent as EventListener)
+    }
+  }, [appId, inputValue, sendMessage, safeAiEditContext])
 
   return (
     <div className="flex-1 flex flex-col min-h-0">

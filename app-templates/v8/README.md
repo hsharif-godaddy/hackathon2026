@@ -42,7 +42,6 @@ v8-app-template/
 ├── src/
 │   ├── components/        # React components
 │   │   ├── ui/           # shadcn/ui base components (40+ components)
-│   │   ├── ErrorBoundary.tsx
 │   │   └── GeometricSpinner.tsx
 │   ├── layouts/          # Layout systems
 │   │   ├── Website.tsx   # Main website layout

@@ -4,6 +4,7 @@ import path from "path";
 import sourceMapperPlugin from "./source-mapper/src/index";
 import { devToolsPlugin } from "./dev-tools/src/vite-plugin";
 import { fullStoryPlugin } from "./fullstory-plugin";
+import { errorInterceptorPlugin } from "./dev-tools/src/vite-error-interceptor";
 
 let allowedHosts: string[] = [];
 if (process.env.FRONTEND_DOMAIN) {
@@ -64,12 +65,14 @@ export default defineConfig(({ mode }) => ({
 		apiPlugin(),
 		...(mode === "development" ? [
 			devToolsPlugin() as Plugin,
-			fullStoryPlugin()
+			fullStoryPlugin(),
+			errorInterceptorPlugin()
 		] : []),
 	],
 
 	resolve: {
 		alias: {
+			nothing: "/src/fallbacks/missingModule.ts",
 			"@/": path.resolve(__dirname, "./src/"),
 			"@/components": path.resolve(__dirname, "./src/components"),
 			"@/lib": path.resolve(__dirname, "./src/lib"),

@@ -65,6 +65,9 @@ dev-tools/
 │   │   └── useDevelopmentMode.ts  # Core selection and state logic
 │   ├── plugins/
 │   │   └── source-mapper.ts       # Babel plugin for source mapping
+│   ├── utils/
+│   │   └── postMessage.ts         # Secure postMessage utilities
+│   ├── ErrorBoundary.tsx          # Error boundary component
 │   ├── DevToolsProvider.tsx       # App wrapper component
 │   └── index.ts                   # Main exports
 ├── package.json

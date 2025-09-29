@@ -1,6 +1,6 @@
 import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
 import { Suspense } from 'react';
-import ErrorBoundary from './components/ErrorBoundary';
+import CompileErrorCatcher from '../dev-tools/src/CompileErrorCatcher';
 import { routes } from './routes';
 import GeometricSpinner from './components/GeometricSpinner';
 
@@ -9,11 +9,11 @@ const router = createBrowserRouter([
   {
     path: '/',
     element: (
-      <ErrorBoundary>
+      <CompileErrorCatcher>
         <Suspense fallback={<div className="flex justify-center py-8"><GeometricSpinner /></div>}>
           <Outlet />
         </Suspense>
-      </ErrorBoundary>
+      </CompileErrorCatcher>
     ),
     children: routes,
   },

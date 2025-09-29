@@ -9,6 +9,7 @@ import {
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useDevelopPageStore, OptionsSheetTab } from '@/stores/useDevelopPageStore'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { postMessageToIframe } from '@/utils/postMessage'
 import Button from '@ux/button'
 import { logger } from '@/lib/request-context'
@@ -16,6 +17,13 @@ import { logger } from '@/lib/request-context'
 // Timing constants for iframe lifecycle management
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
 const STATE_RESTORE_FALLBACK_MS = 3000 // Fallback timeout if iframe doesn't send ready signal
+
+// Declare global property for error message tracking
+declare global {
+  interface Window {
+    processedErrorMessages?: string[]
+  }
+}
 
 interface PreviewPaneProps {
   appId: string
@@ -276,6 +284,56 @@ export default function PreviewPane({ appId, onRetry, viewMode = 'desktop', sele
       if (event.data.type === 'IFRAME_READY' && isWaitingForIframeReady) {
         logger.debug('preview-pane.iframe.ready', { message: 'Iframe ready signal received, restoring state immediately' })
         attemptStateRestoration()
+        return
+      }
+      
+      // Handle error-fix-request from ErrorBoundary in the preview iframe
+      if (event.data.type === 'error-fix-request') {
+        console.log('Received error-fix-request:', event.data.errorMessage)
+        
+        const errorPrompt = `Fix error: ${event.data.errorMessage}`
+        console.log('Automatically sending message to Airo:', errorPrompt)
+        
+        const messageId = `error-${Date.now()}`
+        
+        // Track duplicates to prevent spam
+        const processedMessages = window.processedErrorMessages || []
+        if (processedMessages.includes(event.data.errorMessage)) {
+          console.log('Skipping duplicate error message:', event.data.errorMessage)
+          return
+        }
+        
+        // Add to processed list with expiry
+        window.processedErrorMessages = [...processedMessages, event.data.errorMessage]
+        setTimeout(() => {
+          if (window.processedErrorMessages) {
+            window.processedErrorMessages = window.processedErrorMessages
+              .filter(msg => msg !== event.data.errorMessage)
+          }
+        }, 5000)
+
+        // Use the store directly  
+        const store = useStreamingConversationStore.getState()
+        
+        // Set the current app ID and input value
+        if (appId) {
+          store.setCurrentAppId(appId)
+        }
+        store.setInputValue(errorPrompt)
+        
+        // Create custom event for StreamingChatPane to handle the actual sending
+        setTimeout(() => {
+          const errorEvent = new CustomEvent('airo-error-fix', {
+            detail: {
+              errorMessage: errorPrompt,
+              appId: appId,
+              messageId: messageId
+            }
+          })
+          
+          window.dispatchEvent(errorEvent)
+          console.log('Dispatched airo-error-fix event with message:', errorPrompt)
+        }, 100)
         return
       }
       

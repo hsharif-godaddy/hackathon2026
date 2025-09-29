@@ -12,8 +12,8 @@ interface ChatInputProps {
   isDisabled?: boolean
   onInputChange: (value: string) => void
   onSendMessage: () => void
-  onKeyDown: (e: React.KeyboardEvent) => void
   onToggleSelectMode: () => void
+  onKeyDown?: (e: React.KeyboardEvent<Element>) => void;
 }
 
 export default function ChatInput({
