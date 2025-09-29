@@ -1,14 +1,13 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
-import { dirname, join, resolve, relative } from 'path';
+import { dirname, resolve, relative } from 'path';
 import { diffLines, createPatch } from 'diff';
 import { existsSync } from 'fs';
 import { TokenUsageRepository, AppRepository } from '../database/index.js';
 import { GitTool } from './git-tool.js';
-import { exec } from 'child_process';
 import axios from 'axios';
 import { translateDockerPath } from '../utils/path-helper.js';
 import { logger } from '../logging/index.js';
-import { toolFileEditEvents, toolBuildEvents, toolServerHealthEvents } from '../logging/events/index.js';
+import { toolFileEditEvents, toolServerHealthEvents } from '../logging/events/index.js';
 import { ServerManagementTool } from './server-management-tool.js';
 
 // Constants for consistent text truncation
@@ -38,8 +37,6 @@ export interface FileEditOptions {
   autoCommit?: boolean;
   /** Custom commit message for auto-commit (if not provided, a default message will be generated) */
   commitMessage?: string;
-  /** Automatically run build after changes */
-  autoBuild?: boolean;
 }
 
 export interface FileEditResult {
@@ -79,62 +76,6 @@ export class FileEditTool {
   }
   private gitTool = new GitTool();
   
-  /**
-   * Run safe build validation after file changes without breaking dev server
-   */
-  private async runBuildCommand(appPath: string, appId?: string): Promise<void> {
-    try {
-      toolBuildEvents.begin(logger, {
-        toolName: 'FileEditTool',
-        appPath,
-        ...(appId && { appId }),
-      });
-      
-      // Detect which build strategy to use based on the template
-      const buildCommand = await this.getSafeBuildCommand(appPath);
-      
-      return new Promise<void>((resolve) => {
-        exec(buildCommand, { cwd: appPath }, (error, _stdout, _stderr) => {
-          if (error) {
-            toolBuildEvents.failure(logger, error, {
-              toolName: 'FileEditTool',
-              appPath,
-              buildCommand,
-              ...(appId && { appId }),
-            });
-            // Don't reject as we don't want to fail the file edit operation
-            // just because the validation failed
-            resolve();
-            return;
-          }
-          
-          toolBuildEvents.success(logger, {
-            toolName: 'FileEditTool',
-            appPath,
-            buildCommand,
-            buildType: 'validation',
-            ...(appId && { appId }),
-          });
-          
-          // After successful validation, ensure dev server is still healthy
-          if (appId) {
-            // Use a separate async function to handle the health check
-            this.ensureDevServerHealth(appId).finally(() => resolve());
-          } else {
-            resolve();
-          }
-        });
-      });
-    } catch (error) {
-      toolBuildEvents.failure(logger, error as Error, {
-        toolName: 'FileEditTool',
-        appPath,
-        ...(appId && { appId }),
-      });
-      // Don't throw as we don't want to fail the file edit operation
-      // just because the validation failed
-    }
-  }
 
   /**
    * Ensure the development server is healthy after file changes
@@ -219,43 +160,6 @@ export class FileEditTool {
     }
   }
 
-  /**
-   * Determine the appropriate safe build command based on template type
-   */
-  private async getSafeBuildCommand(appPath: string): Promise<string> {
-    // Check if safe build script exists
-    const checkBuildScript = join(appPath, 'check-build.sh');
-    if (existsSync(checkBuildScript)) {
-      return './check-build.sh';
-    }
-
-    // Check package.json to determine template type
-    try {
-      const packageJsonPath = join(appPath, 'package.json');
-      if (existsSync(packageJsonPath)) {
-        const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
-        const buildScript = packageJson.scripts?.build;
-        
-        // V1 template: build = "npm run check" (safe)
-        if (buildScript === 'npm run check') {
-          return 'npm run build';
-        }
-        
-        // V2/V3 templates: production builds (unsafe), use type-check + lint instead
-        if (buildScript === 'next build' || buildScript === 'vite build') {
-          return 'npx tsc --noEmit && npm run lint';
-        }
-      }
-    } catch (error) {
-      logger.warn('Could not parse package.json, using default safe command', {
-        appPath,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    // Default safe command: just type check and lint
-    return 'npx tsc --noEmit';
-  }
   
   /**
    * Execute a file edit operation
@@ -305,7 +209,6 @@ export class FileEditTool {
           ...(options.edits?.length !== undefined && { editsCount: options.edits.length }),
           ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
           ...(options.autoCommit !== undefined && { autoCommit: options.autoCommit }),
-          ...(options.autoBuild !== undefined && { autoBuild: options.autoBuild }),
         });
       } else {
         toolFileEditEvents.failure(logger, new Error(result.error || 'Unknown error'), {
@@ -431,10 +334,6 @@ export class FileEditTool {
       await this.autoCommitChanges(appPath, filePath, options, result);
     }
 
-    // Auto-build if enabled
-    if (options.autoBuild !== false && !options.dryRun) {
-      await this.runBuildCommand(appPath, context?.appId);
-    }
 
     return result;
   }
@@ -508,10 +407,6 @@ export class FileEditTool {
       await this.autoCommitChanges(appPath, filePath, options, result);
     }
 
-    // Auto-build if enabled
-    if (options.autoBuild !== false && !options.dryRun) {
-      await this.runBuildCommand(appPath, context?.appId);
-    }
 
     return result;
   }
@@ -640,10 +535,6 @@ export class FileEditTool {
       await this.autoCommitChanges(appPath, filePath, options, result);
     }
 
-    // Auto-build if enabled
-    if (options.autoBuild !== false && !options.dryRun) {
-      await this.runBuildCommand(appPath, context?.appId);
-    }
     
     return result;
   }

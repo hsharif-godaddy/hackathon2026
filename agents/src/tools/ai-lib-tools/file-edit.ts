@@ -26,11 +26,9 @@ export const fileEditAITool = createTool(
     })).optional().describe('Array of search-and-replace operations for partial edits'),
     content: z.string().optional().describe('Full content for rewrite or create operations'),
     createDirs: z.boolean().default(true).describe('Create parent directories if they don\'t exist'),
-    dryRun: z.boolean().default(false).describe('Preview changes without applying them'),
     fuzzyMatch: z.boolean().default(true).describe('Use fuzzy matching for search text if exact match fails'),
     autoCommit: z.boolean().default(false).describe('Automatically commit changes using git after file operation'),
-    commitMessage: z.string().optional().describe('Custom commit message for auto-commit (if not provided, a default message will be generated)'),
-    autoBuild: z.boolean().default(true).describe('Automatically run build after file changes')
+    commitMessage: z.string().optional().describe('Custom commit message for auto-commit (if not provided, a default message will be generated)')
   }),
   async (input, context) => {
     const appId = context?.metadata?.appId as string

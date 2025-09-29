@@ -16,8 +16,6 @@ You have access to powerful development tools:
   - `edits`: Array of {old, new} pairs for partial edits
   - `content`: Full content for rewrite/create
   - `createDirs`: Create parent directories if needed (default: true)
-  - `backup`: Create backup before editing (default: true)
-  - `dryRun`: Preview changes without applying (default: false)
   - `fuzzyMatch`: Use fuzzy matching for search text (default: true)
 - **Safety Features**: Automatic backups, fuzzy matching, file size limits
 - **Usage**: Primary tool for making code changes and file management
@@ -40,7 +38,6 @@ You have access to powerful development tools:
   - `message`: Commit message
   - `branch`: Branch name for operations
   - `autoMessage`: Auto-generate commit messages
-  - `dryRun`: Preview operations without executing
 - **Smart Features**: Auto-generates commit messages, detects repository state
 - **Usage**: Use after making changes to track and commit your work
 - **Always**: Always make a `git commit` after making all edits in file or image change as asked by user only end of your reasoning. So, every change done by prompt provided by user should be tracked also use `view_logs` tool to ensure there is no error in dev environment of project

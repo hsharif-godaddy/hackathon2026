@@ -6,7 +6,16 @@
 
 - For errors that are only reported in the UI and don't make it to the logs, add a fix this in Airo button
 
+### Internal Changes
+
+- **Security Enhancement**: Removed unsafe command execution from file-edit tool to enforce proper container isolation
+  - Removed `runBuildCommand()` and `getSafeBuildCommand()` methods that executed commands in agent container via unsafe `exec()` calls
+  - Removed `autoBuild` and `dryRun` parameters from FileEditTool interface and ai-lib-tools wrapper
+  - All tool command execution now properly routes through dev-supervisor API for security compliance
+  - Updated documentation to remove references to removed functionality
+
 ## Release 2025-09-29
+
 ### Public Facing Changes
 
 - Added Daily Limit of default value $10 for usage
@@ -41,3 +50,4 @@
 - Created an internal-only ai-playground app, for testing websocket/ui interactions and prototyping new features.
 - Added feature class for managing ENV centrally in agents directory
 - Added/Enabled ElasticSearch APM to agents to capture stats in ESSP
+
