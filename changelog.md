@@ -1,7 +1,12 @@
 # Changelog
 
-## Next Release target 2025-09-16
+## Next Release target 2025-10-01
 
+### Public Facing Changes
+
+- For errors that are only reported in the UI and don't make it to the logs, add a fix this in Airo button
+
+## Release 2025-09-29
 ### Public Facing Changes
 
 - Added Daily Limit of default value $10 for usage
