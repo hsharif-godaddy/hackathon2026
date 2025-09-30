@@ -17,6 +17,7 @@ export { autoAPIGeneratorAITool } from './auto-api-generator.js'
 export { iconsValidatorAITool } from './icons-validator.js'
 export { viewLogsAITool } from './view-logs.js'
 export { appPlanAITool } from './app-plan.js'
+export { todoListAITool } from './todo-list.js'
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js'
@@ -32,6 +33,7 @@ import { autoAPIGeneratorAITool } from './auto-api-generator.js'
 import { iconsValidatorAITool } from './icons-validator.js'
 import { viewLogsAITool } from './view-logs.js'
 import { appPlanAITool } from './app-plan.js'
+import { todoListAITool } from './todo-list.js'
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -53,6 +55,7 @@ export const allAILibTools = {
   iconsValidator: iconsValidatorAITool,
   viewLogs: viewLogsAITool,
   appPlan: appPlanAITool,
+  todoList: todoListAITool,
 }
 
 /**
@@ -98,6 +101,7 @@ export const toolGroups = {
   // Planning and project management
   planning: {
     appPlan: appPlanAITool,
+    todoList: todoListAITool,
     directoryListing: directoryListingAITool,
   }
 }

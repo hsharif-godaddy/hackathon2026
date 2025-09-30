@@ -5,6 +5,10 @@
 ### Public Facing Changes
 
 - For errors that are only reported in the UI and don't make it to the logs, add a fix this in Airo button
+- **Todo List Tool**: Added a todo list tool the agent
+  - Agent will create a todo-list when creating a site
+  - Lists are currently rendered as standard tool calls, updates to the ui will happen later
+
 
 ### Internal Changes
 

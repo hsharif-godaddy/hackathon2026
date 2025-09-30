@@ -193,10 +193,10 @@ const afterToolExecution: AfterToolExecutionHook = async (
  * Build the comprehensive system prompt for the Develop Agent
  */
 async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
-  const promptBuilder = createPromptBuilder()
+  const promptBuilder = createPromptBuilder();
 
   // Get modular prompt paths using helper utility
-  const paths = getModularPromptPaths(import.meta.url)
+  const paths = getModularPromptPaths(import.meta.url);
 
   // Load all modular prompt sections in order
   promptBuilder
@@ -210,12 +210,13 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'visual-context.md'))
     .file(paths.getAgentFile('develop', 'validation.md'))
     .file(paths.getAgentFile('develop', 'design.md'))
-    .file(paths.getSharedFile('security.md'))
+    .file(paths.getAgentFile('develop', 'planning.md'))
+    .file(paths.getSharedFile('security.md'));
 
   // Template descriptions are now dynamically injected during conversation execution
   // via AILibContextManager.buildContextMessages() based on app context
 
-  return await promptBuilder.build()
+  return await promptBuilder.build();
 }
 
 /**
@@ -295,6 +296,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       gitOperation: allAILibTools.gitOperation,
       readFile: allAILibTools.readFile,
       grepSearch: allAILibTools.grepSearch,
+
+      // Planning tools
+      todoList: allAILibTools.todoList,
 
       // Server management
       serverRestart: allAILibTools.serverRestart,

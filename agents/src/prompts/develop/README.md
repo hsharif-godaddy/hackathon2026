@@ -47,18 +47,24 @@ The complete prompt is assembled from these files in order:
 - User-centric development principles
 - Supported project types
 
-### 6. `visual-context.md` - Visual Context Awareness
+### 6. `planning.md` - Task Planning and Management
+- Todo List Tool usage and best practices
+- When and how to use systematic task tracking
+- Planning workflows and organization strategies
+- Progress tracking and project management principles
+
+### 7. `visual-context.md` - Visual Context Awareness
 - Visual context capabilities
 - Effective usage patterns
 - Element targeting strategies
 - Best practices for contextual development
 
-### 7. `../shared/communication.md` - Communication Style *(shared)*
+### 8. `../shared/communication.md` - Communication Style *(shared)*
 - Interaction guidelines
 - Communication principles
 - Response formatting expectations
 
-### 8. `design.md` - Design & Styling Guidelines
+### 9. `design.md` - Design & Styling Guidelines
 - Design approach and principles
 - Color system usage (semantic vs arbitrary)
 - Image handling procedures
