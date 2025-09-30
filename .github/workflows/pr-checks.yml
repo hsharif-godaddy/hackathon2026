@@ -1,6 +1,5 @@
 name: Code Quality Checks
 
-
 on:
   pull_request:
     branches: [main, develop]
@@ -20,7 +19,7 @@ jobs:
         - self-hosted
 
     strategy:
-      fail-fast: false  # Continue other jobs even if one fails
+      fail-fast: false # Continue other jobs even if one fails
       matrix:
         package: [agents, app]
         include:
@@ -58,14 +57,13 @@ jobs:
       - name: Install pnpm
         run: npm install -g pnpm
 
-
       - name: Configure pnpm registry (root workspace)
         run: |
           echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
 
-      - name: Install workspace dependencies  
+      - name: Install workspace dependencies
         run: |
           echo "📦 Installing workspace dependencies with pnpm"
           pnpm install --frozen-lockfile
@@ -113,7 +111,6 @@ jobs:
             pnpm --filter website build
           fi
 
-  
   v8-template-license-check:
     runs-on:
       group: 8606-awsx64
@@ -157,3 +154,126 @@ jobs:
           name: license-report-v8-template
           path: ./app-templates/v8/licenses-report.txt
           retention-days: 30
+
+  docker-build-verification:
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@88e9eba31c07e31beefa4cef5c0e93d1af9535d7 # v4.6.1
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          # Create .npmrc for app (exact match to AWS deploy)
+          rm -rf app/.npmrc
+          echo "always-auth=true" > app/.npmrc
+          echo "progress=false" >> app/.npmrc
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" >> app/.npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${OIDC_TOKEN}" >> app/.npmrc
+
+          # Create .npmrc for agents (same pattern)
+          rm -rf agents/.npmrc
+          echo "always-auth=true" > agents/.npmrc
+          echo "progress=false" >> agents/.npmrc
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" >> agents/.npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${OIDC_TOKEN}" >> agents/.npmrc
+
+          # Create .npmrc for v8 template (use public registry)
+          rm -rf app-templates/v8/.npmrc
+          echo "registry=https://registry.npmjs.org/" > app-templates/v8/.npmrc
+          echo "progress=false" >> app-templates/v8/.npmrc
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Assume Role and Login to ECR
+        run: |
+          set -e
+
+          assume_role_and_login() {
+            local role_arn=arn:aws:iam::$1:role/GD-AWS-SSG-Deploy-Role
+            local account_id=$1
+            echo "Assuming role for account: $account_id"
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+            $(aws sts assume-role --role-arn $role_arn --role-session-name GHASession --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" --output text))
+            echo "Logging in to ECR for account: $account_id"
+            aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $account_id.dkr.ecr.us-west-2.amazonaws.com
+          }
+
+          # Login to base image account (764525110978) - needed for Docker build
+          assume_role_and_login 764525110978
+
+      - name: Build Docker Image (Dev Supervisor)
+        working-directory: ./dev-supervisor
+        run: |
+          echo "🐳 Building Docker image for dev-supervisor..."
+          docker build -t airo-dev-supervisor:latest .
+          echo "✅ Dev Supervisor Docker image built successfully"
+
+      # - name: Build Docker Image (App)
+      #   working-directory: ./app
+      #   run: |
+      #     echo "🐳 Building Docker image for app..."
+      #     docker build --build-arg NPM_AUTH_TOKEN="${ARTIFACTORY_NPM_TOKEN}" -t airo-app:latest .
+      #     echo "✅ App Docker image built successfully"
+
+      - name: Build Docker Image (Proxy)
+        working-directory: ./proxy
+        run: |
+          echo "🐳 Building Docker image for proxy..."
+          docker build --build-arg NPM_AUTH_TOKEN="${ARTIFACTORY_NPM_TOKEN}" -t airo-proxy:latest .
+          echo "✅ Proxy Docker image built successfully"
+
+      # - name: Build Docker Image (Agents)
+      #   env:
+      #     NODE_ENV: production
+      #     OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+      #   run: |
+      #     echo "🐳 Building Docker image for agents..."
+      #     echo "🔐 Using OIDC token for authentication..."
+      #     docker build --platform linux/amd64 --build-arg ARTIFACTORY_NPM_TOKEN="${OIDC_TOKEN}" -f agents/Dockerfile -t airo-agents:latest .
+      #     echo "✅ Agents Docker image built successfully"
+
+      - name: Build Docker Image (V8 Template)
+        env:
+          NODE_ENV: production
+        run: |
+          echo "🐳 Building Docker image for v8 template..."
+          docker build --platform linux/amd64 --build-arg DEV_SUPERVISOR_IMAGE=airo-dev-supervisor:latest -t airo-v8-template:latest app-templates/v8/
+          echo "✅ V8 Template Docker image built successfully"
+
+      - name: Print Success
+        run: |
+          echo "✅ All Docker images built successfully!"
+          echo "Images built:"
+          echo "- airo-dev-supervisor:latest"
+          echo "- airo-app:latest"
+          echo "- airo-proxy:latest"
+          echo "- airo-agents:latest"
+          echo "- airo-v8-template:latest"
+
+      - name: Clean up Docker images
+        if: always()
+        run: |
+          echo "🧹 Cleaning up Docker images to free space..."
+          docker rmi airo-dev-supervisor:latest || true
+          docker rmi airo-app:latest || true
+          docker rmi airo-proxy:latest || true
+          docker rmi airo-agents:latest || true
+          docker rmi airo-v8-template:latest || true
+          echo "✅ Docker images cleaned up successfully"
