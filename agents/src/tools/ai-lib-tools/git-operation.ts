@@ -2,9 +2,9 @@ import { createTool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { GitTool, GitToolOptions } from '../git-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js'
 
 // Initialize tool instances
-const gitTool = new GitTool()
 const appRepo = new AppRepository()
 
 /**
@@ -42,6 +42,10 @@ export const gitOperationAITool = createTool(
       throw new Error(`App '${appId}' not found`)
     }
 
+    // Create git tool with dev-supervisor for this specific app
+    const devSupervisor = DevSupervisorClientFactory.createForApp(appId)
+    const gitTool = new GitTool(devSupervisor || undefined)
+    
     const result = await gitTool.executeGitOperation(app.path, input as GitToolOptions)
     return gitTool.formatResult(result)
   }

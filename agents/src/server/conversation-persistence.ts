@@ -19,12 +19,11 @@ import { GitTool } from '../tools/git-tool.js'
 import { GitUtils } from '../utils/git.js'
 import { logger } from '../logging/index.js'
 import { toolGitEvents } from '../logging/events/index.js'
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 
 export class AgentsMessagePersistence implements ConversationPersistenceWithCleanup {
   private conversationBridge: ConversationBridge
   private appRepository: AppRepository
-  private gitTool: GitTool
-  private gitUtils: GitUtils
   
   // Track conversations for cleanup
   private activeConversations = new Map<string, {
@@ -40,8 +39,6 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   constructor() {
     this.conversationBridge = new ConversationBridge()
     this.appRepository = new AppRepository()
-    this.gitTool = new GitTool()
-    this.gitUtils = new GitUtils()
   }
 
   async continueConversation(
@@ -284,7 +281,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         return;
       }
       
-      const status = await this.gitTool.executeGitOperation(app.path, { operation: 'status' });
+      // Create git tools with dev-supervisor for this specific app
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const gitTool = new GitTool(devSupervisor || undefined);
+      const gitUtils = new GitUtils(devSupervisor || undefined);
+      
+      const status = await gitTool.executeGitOperation(app.path, { operation: 'status' });
       
       if (status.success && status.status && !status.status.isClean) {
         toolGitEvents.begin(logger, {
@@ -297,7 +299,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           }
         });
 
-        await this.gitTool.executeGitOperation(app.path, { 
+        await gitTool.executeGitOperation(app.path, { 
           operation: 'add', 
           options: { all: true } 
         });
@@ -313,7 +315,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           commitMessage = `Saving changes after ${reason.replace('_', ' ')}`;
         }
         
-        const result = await this.gitTool.executeGitOperation(app.path, {
+        const result = await gitTool.executeGitOperation(app.path, {
           operation: 'commit',
           message: commitMessage
         });
@@ -325,7 +327,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           let filesAffected = 0;
           try {
             if (!status.status?.isClean) {
-              const detailedStatus = await this.gitUtils.getStatus(app.path);
+              const detailedStatus = await gitUtils.getStatus(app.path);
               filesAffected = (detailedStatus.stagedFiles || 0) + 
                              (detailedStatus.modifiedFiles || 0) + 
                              (detailedStatus.untrackedFiles || 0);

@@ -3,7 +3,6 @@ import {
   validateHost, 
   validatePort, 
   validateHostPort, 
-  escapeShellArg,
   NetworkValidationError 
 } from '../network-validation.js';
 
@@ -183,36 +182,6 @@ describe('network-validation', function networkValidationTests() {
     });
   });
 
-  describe('#escapeShellArg', function escapeShellArgTests() {
-    it('should wrap simple arguments in single quotes', function wrapSimple() {
-      expect(escapeShellArg('localhost')).toBe("'localhost'");
-      expect(escapeShellArg('127.0.0.1')).toBe("'127.0.0.1'");
-      expect(escapeShellArg('8080')).toBe("'8080'");
-    });
-
-    it('should escape single quotes in arguments', function escapeSingleQuotes() {
-      expect(escapeShellArg("host'name")).toBe("'host'\\''name'");
-      expect(escapeShellArg("host'test'name")).toBe("'host'\\''test'\\''name'");
-    });
-
-    it('should handle arguments with dangerous characters safely', function handleDangerous() {
-      expect(escapeShellArg('host; rm -rf /')).toBe("'host; rm -rf /'");
-      expect(escapeShellArg('host$(evil)')).toBe("'host$(evil)'");
-      expect(escapeShellArg('host`evil`')).toBe("'host`evil`'");
-      expect(escapeShellArg('host && evil')).toBe("'host && evil'");
-    });
-
-    it('should handle empty and whitespace arguments', function handleEmpty() {
-      expect(escapeShellArg('')).toBe("''");
-      expect(escapeShellArg('  ')).toBe("'  '");
-      expect(escapeShellArg('\t\n')).toBe("'\t\n'");
-    });
-
-    it('should reject non-string inputs', function rejectNonString() {
-      expect(() => escapeShellArg(123 as any)).toThrow(/must be a string/);
-      expect(() => escapeShellArg(null as any)).toThrow(/must be a string/);
-    });
-  });
 
   describe('#NetworkValidationError', function networkValidationErrorTests() {
     it('should create error with parameter and value info', function createWithInfo() {

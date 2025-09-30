@@ -14,6 +14,16 @@
   - All tool command execution now properly routes through dev-supervisor API for security compliance
   - Updated documentation to remove references to removed functionality
 
+- **Git Tools Security & Integration**: Complete overhaul of git command execution with dev-supervisor integration and security hardening
+  - Added `shell-utils.ts` with secure shell command building using proper argument escaping and command validation
+  - Updated all git tools to use dev-supervisor for command execution in containerized environments
+  - Fixed critical shell command injection vulnerability by replacing unsafe `args.join(' ')` with `buildShellCommand()`
+  - Added comprehensive 18-test integration suite for git tool validation with dev-supervisor
+  - Fixed DevSupervisorClient success field bug and git log command validation issues
+  - Updated Docker configuration to include git package and aligned dev/prod git initialization processes
+  - Converted all console.log statements in develop-agent to structured logging following project standards
+  - Enhanced git branch safety checks with proper error handling and logging
+
 ## Release 2025-09-29
 
 ### Public Facing Changes

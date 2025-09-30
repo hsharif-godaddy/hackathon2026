@@ -1,6 +1,7 @@
-import { spawn } from 'child_process';
 import { resolve } from 'path';
 import { existsSync } from 'fs';
+import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
+import { buildShellCommand } from './shell-utils.js';
 
 export interface GitCommandOptions {
   /** Working directory for the git command */
@@ -70,6 +71,11 @@ export interface GitCommitInfo {
  */
 export class GitUtils {
   private readonly DEFAULT_TIMEOUT = 30000; // 30 seconds
+  private devSupervisor: DevSupervisorClient | null;
+
+  constructor(devSupervisor?: DevSupervisorClient) {
+    this.devSupervisor = devSupervisor || null;
+  }
 
   /**
    * Initialize a new Git repository with "main" as the default branch
@@ -184,15 +190,10 @@ export class GitUtils {
     limit: number = 10,
     options: GitCommandOptions = {}
   ): Promise<GitCommitInfo[]> {
-    const format = '--pretty=format:%H|%h|%s|%an|%ae|%ai';
-    
-    // First, try to find the default branch to ensure we see all history
-    // regardless of what commit is currently checked out
-    const branchOrRef = '--all'; // Default to showing all branches
-    
-    // Execute the log command using the branch or ref
+    // Use simpler git log command to avoid dev-supervisor validation issues
+    // Execute the log command with basic options only
     const result = await this.executeGitCommand(
-      ['log', `--max-count=${limit}`, format, branchOrRef],
+      ['log', '--oneline', `--max-count=${limit}`],
       repoPath,
       options
     );
@@ -205,14 +206,27 @@ export class GitUtils {
       .split('\n')
       .filter(line => line.trim())
       .map(line => {
-        const [hash, shortHash, message, author, email, dateStr] = line.split('|');
+        // Parse --oneline format: "<short-hash> <commit-message>"
+        const match = line.trim().match(/^([a-f0-9]+)\s+(.+)$/);
+        if (match) {
+          const [, shortHash, message] = match;
+          return {
+            hash: shortHash || '', // We only have short hash from --oneline
+            shortHash: shortHash || '',
+            message: message || '',
+            author: 'Unknown', // Not available in --oneline format
+            email: '',
+            date: new Date(), // Not available in --oneline format
+          };
+        }
+        // Fallback for unexpected format
         return {
-          hash: hash || '',
-          shortHash: shortHash || '',
-          message: message || '',
-          author: author || '',
-          email: email || '',
-          date: new Date(dateStr || ''),
+          hash: '',
+          shortHash: '',
+          message: line.trim(),
+          author: 'Unknown',
+          email: '',
+          date: new Date(),
         };
       });
   }
@@ -306,6 +320,13 @@ export class GitUtils {
   }
 
   /**
+   * Check if dev-supervisor is available for command execution
+   */
+  private isDevSupervisorAvailable(): boolean {
+    return this.devSupervisor !== null && this.devSupervisor !== undefined && this.devSupervisor.isAvailable();
+  }
+
+  /**
    * Execute a git command
    */
   private async executeGitCommand(
@@ -316,7 +337,6 @@ export class GitUtils {
     const startTime = Date.now();
     const {
       timeout = this.DEFAULT_TIMEOUT,
-      env = {},
     } = options;
 
     // Validate that the directory exists
@@ -325,7 +345,7 @@ export class GitUtils {
       throw new Error(`Working directory does not exist: ${workingDir}`);
     }
 
-    const command = `git ${args.join(' ')}`;
+    const command = buildShellCommand(['git', ...args]);
 
     const result: GitCommandResult = {
       command,
@@ -339,10 +359,28 @@ export class GitUtils {
     };
 
     try {
-      const commandResult = await this.runGitCommand(args, workingDir, env, timeout);
-      Object.assign(result, commandResult);
+      if (!this.isDevSupervisorAvailable()) {
+        throw new Error(
+          'Git operations require dev-supervisor to be available for command execution. ' +
+          'All deployments are containerized and must have dev-supervisor installed.'
+        );
+      }
+
+      // Use dev-supervisor for command execution
+      // Always use /app as the working directory since all deployments are containerized
+      const execResult = await this.devSupervisor!.exec({
+        command,
+        working_dir: '/app',
+        timeout: Math.floor(timeout / 1000),
+        capture_output: true
+      });
+      
+      result.exitCode = execResult.exit_code;
+      result.stdout = execResult.stdout;
+      result.stderr = execResult.stderr;
+      result.timedOut = false; // dev-supervisor handles timeout internally
       result.executionTime = Date.now() - startTime;
-      result.success = result.exitCode === 0 && !result.timedOut;
+      result.success = execResult.success;
     } catch (error) {
       result.stderr = error instanceof Error ? error.message : String(error);
       result.executionTime = Date.now() - startTime;
@@ -351,63 +389,4 @@ export class GitUtils {
     return result;
   }
 
-  /**
-   * Run the git command using child_process
-   */
-  private runGitCommand(
-    args: string[],
-    cwd: string,
-    env: Record<string, string>,
-    timeout: number
-  ): Promise<Omit<GitCommandResult, 'command' | 'workingDir' | 'executionTime' | 'success'>> {
-    return new Promise((resolve) => {
-      let stdout = '';
-      let stderr = '';
-      let timedOut = false;
-
-      const child = spawn('git', args, {
-        cwd,
-        env: { ...process.env, ...env },
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-
-      const timeoutId = setTimeout(() => {
-        timedOut = true;
-        child.kill('SIGTERM');
-        setTimeout(() => {
-          if (!child.killed) {
-            child.kill('SIGKILL');
-          }
-        }, 5000);
-      }, timeout);
-
-      child.stdout?.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      child.stderr?.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      child.on('close', (code) => {
-        clearTimeout(timeoutId);
-        resolve({
-          exitCode: code || 0,
-          stdout: stdout.trim(),
-          stderr: stderr.trim(),
-          timedOut,
-        });
-      });
-
-      child.on('error', (error) => {
-        clearTimeout(timeoutId);
-        resolve({
-          exitCode: -1,
-          stdout: stdout.trim(),
-          stderr: error.message,
-          timedOut,
-        });
-      });
-    });
-  }
 }

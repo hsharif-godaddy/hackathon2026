@@ -1,10 +1,9 @@
 import http from 'http';
 import { existsSync } from 'fs';
-import net from 'net';
 import { execSync } from 'child_process';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
-import { validateHostPort, escapeShellArg } from '../utils/network-validation.js';
+import { validateHostPort } from '../utils/network-validation.js';
 import { buildCurlCommand } from '../utils/command-builder.js';
 
 export interface ExecOptions {
@@ -224,7 +223,17 @@ export class DevSupervisorClient {
         execution_time: response.execution_time
       });
 
-      return response;
+      // Ensure success field is properly set based on exit code
+      const result: ExecResult = {
+        command: response.command || options.command,
+        exit_code: response.exit_code || 0,
+        stdout: response.stdout || '',
+        stderr: response.stderr || '',
+        execution_time: response.execution_time || 0,
+        success: response.success ?? (response.exit_code === 0)
+      };
+
+      return result;
     } catch (error) {
       this.logger.error('dev_supervisor.exec.failure', {
         command: options.command,

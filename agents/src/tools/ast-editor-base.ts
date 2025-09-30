@@ -8,6 +8,7 @@ import { GitTool } from './git-tool.js';
 import { translateDockerPath } from '../utils/path-helper.js';
 import { logger } from '../logging/index.js';
 import { toolAstEditEvents } from '../logging/events/index.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 
 // @ts-expect-error - Handle ES module default exports
 const traverse = _traverse.default || _traverse;
@@ -28,10 +29,17 @@ export interface BaseEditResult {
 }
 
 export abstract class ASTEditorBase {
-  protected gitTool = new GitTool();
   protected traverse = traverse;
   protected generate = generate;
   protected t = t;
+
+  /**
+   * Create a GitTool instance for the specified app
+   */
+  protected createGitTool(appId: string): GitTool {
+    const devSupervisor = DevSupervisorClientFactory.createForApp(appId)
+    return new GitTool(devSupervisor || undefined)
+  }
 
   /**
    * Parse a CSS selector into tagName and className
@@ -269,11 +277,12 @@ export abstract class ASTEditorBase {
       
       // Optionally commit changes
       let commitHash: string | undefined;
-      if (shouldCommit) {
+      if (shouldCommit && appId) {
         commitHash = await this.commitChanges(
           appPath,
           filePath,
-          this.generateCommitMessage(processResult.changes, request)
+          this.generateCommitMessage(processResult.changes, request),
+          appId
         );
       }
 
@@ -319,7 +328,8 @@ export abstract class ASTEditorBase {
   protected async commitChanges(
     appPath: string,
     filePath: string,
-    commitMessage: string
+    commitMessage: string,
+    appId: string
   ): Promise<string | undefined> {
     const { relative } = await import('path');
     const relativePath = relative(appPath, filePath);
@@ -332,8 +342,11 @@ export abstract class ASTEditorBase {
         commitMessage
       });
       
+      // Create git tool with dev-supervisor for this specific app
+      const gitTool = this.createGitTool(appId)
+      
       // Add the file to git
-      const addResult = await this.gitTool.executeGitOperation(appPath, {
+      const addResult = await gitTool.executeGitOperation(appPath, {
         operation: 'add',
         files: [relativePath]
       });
@@ -348,7 +361,7 @@ export abstract class ASTEditorBase {
       }
       
       // Commit the changes
-      const commitResult = await this.gitTool.executeGitOperation(appPath, {
+      const commitResult = await gitTool.executeGitOperation(appPath, {
         operation: 'commit',
         message: commitMessage
       });
@@ -364,7 +377,7 @@ export abstract class ASTEditorBase {
       }
       
       // Get the last commit to retrieve the hash
-      const logResult = await this.gitTool.executeGitOperation(appPath, {
+      const logResult = await gitTool.executeGitOperation(appPath, {
         operation: 'log',
         options: { count: 1 }
       });

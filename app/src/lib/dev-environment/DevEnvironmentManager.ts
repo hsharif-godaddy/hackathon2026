@@ -139,8 +139,12 @@ export class DevEnvironmentManager {
       // Set up the app using the template copy service
       await this.setupAppFromTemplate(siteId, appPath, name, templateVersion);
 
-      // Initialize Git repository
-      await this.initializeGitRepository(siteId, appPath, name);
+      // Initialize Git repository (skip for Docker mode - container handles it via script)
+      if (this.adapter?.getCapabilities().supportsProcessOperations) {
+        await this.initializeGitRepository(siteId, appPath, name);
+      } else {
+        logger.info(`🐳 Skipping git initialization for ${siteId} - Docker container will handle it`);
+      }
 
       // Update status to created
       this.devDb.updateDevAppStatus(siteId, 'created');
@@ -307,6 +311,15 @@ export class DevEnvironmentManager {
 
       if (result.success) {
         logger.info(`✅ Template setup completed for app ${appId}`);
+        
+        // Create .is_ready file for Docker mode to signal template is ready
+        if (!this.adapter?.getCapabilities().supportsProcessOperations) {
+          const fs = await import('fs');
+          const path = await import('path');
+          const readyFilePath = path.join(appPath, '.is_ready');
+          fs.writeFileSync(readyFilePath, '');
+          logger.info(`📄 Created .is_ready file for Docker container: ${readyFilePath}`);
+        }
       } else {
         throw new Error('Template copy failed');
       }

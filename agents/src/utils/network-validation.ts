@@ -254,27 +254,3 @@ export function validateHostPort(host: string, port: string | number): [string, 
   return [validatedHost, validatedPort];
 }
 
-/**
- * Escape shell arguments for safe use in commands
- * 
- * Additional utility for cases where parameters need to be used in shell commands.
- * This follows shell escaping best practices to prevent injection.
- * 
- * @param arg - The argument to escape
- * @returns Shell-escaped argument
- * 
- * @example
- * ```typescript
- * const escapedHost = escapeShellArg('my-host.com');
- * const command = `curl ${escapedHost}:8080/health`;
- * ```
- */
-export function escapeShellArg(arg: string): string {
-  if (typeof arg !== 'string') {
-    throw new NetworkValidationError('Argument must be a string', 'arg', String(arg));
-  }
-
-  // Single quotes prevent all shell interpretation
-  // Replace any existing single quotes with '\''
-  return `'${arg.replace(/'/g, "'\\''")}'`;
-}

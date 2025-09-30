@@ -9,6 +9,7 @@ import { translateDockerPath } from '../utils/path-helper.js';
 import { logger } from '../logging/index.js';
 import { toolFileEditEvents, toolServerHealthEvents } from '../logging/events/index.js';
 import { ServerManagementTool } from './server-management-tool.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 
 // Constants for consistent text truncation
 const EDIT_RESULT_TRUNCATION_LENGTH = 50;
@@ -74,7 +75,6 @@ export class FileEditTool {
     this.tokenUsageRepo = new TokenUsageRepository();
     this.appRepo = new AppRepository();
   }
-  private gitTool = new GitTool();
   
 
   /**
@@ -331,7 +331,7 @@ export class FileEditTool {
 
     // Auto-commit if enabled
     if (options.autoCommit && !options.dryRun) {
-      await this.autoCommitChanges(appPath, filePath, options, result);
+      await this.autoCommitChanges(appPath, filePath, options, result, context);
     }
 
 
@@ -404,7 +404,7 @@ export class FileEditTool {
 
     // Auto-commit if enabled
     if (options.autoCommit && !options.dryRun) {
-      await this.autoCommitChanges(appPath, filePath, options, result);
+      await this.autoCommitChanges(appPath, filePath, options, result, context);
     }
 
 
@@ -532,7 +532,7 @@ export class FileEditTool {
     
     // Auto-commit if enabled
     if (options.autoCommit && !options.dryRun) {
-      await this.autoCommitChanges(appPath, filePath, options, result);
+      await this.autoCommitChanges(appPath, filePath, options, result, context);
     }
 
     
@@ -656,17 +656,21 @@ export class FileEditTool {
   /**
    * Automatically commit changes using git
    */
-  private async autoCommitChanges(appPath: string, filePath: string, options: FileEditOptions, result: FileEditResult): Promise<void> {
+  private async autoCommitChanges(appPath: string, filePath: string, options: FileEditOptions, result: FileEditResult, context?: { appId?: string }): Promise<void> {
     // Only proceed if auto-commit is enabled and the operation was successful
-    if (!options.autoCommit || !result.success || options.dryRun) {
+    if (!options.autoCommit || !result.success || options.dryRun || !context?.appId) {
       return;
     }
 
     const relativePath = relative(appPath, filePath);
     
     try {
+      // Create git tool with dev-supervisor for this specific app
+      const devSupervisor = DevSupervisorClientFactory.createForApp(context.appId)
+      const gitTool = new GitTool(devSupervisor || undefined)
+      
       // First, add the changed file to git
-      await this.gitTool.executeGitOperation(appPath, {
+      await gitTool.executeGitOperation(appPath, {
         operation: 'add',
         files: [relativePath]
       });
@@ -688,7 +692,7 @@ export class FileEditTool {
       }
 
       // Commit the changes
-      await this.gitTool.executeGitOperation(appPath, {
+      await gitTool.executeGitOperation(appPath, {
         operation: 'commit',
         message: commitMessage
       });

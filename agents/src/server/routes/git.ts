@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { GitTool } from '../../tools/git-tool.js';
 import { logger } from '../../logging/index.js';
+import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 
 const router: Router = Router();
-const gitTool = new GitTool();
 const appRepository = new AppRepository();
 
 /**
@@ -21,6 +21,10 @@ router.get('/apps/:id/git/history', async (req, res) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
+    // Create git tool with dev-supervisor for this specific app
+    const devSupervisor = DevSupervisorClientFactory.createForApp(id)
+    const gitTool = new GitTool(devSupervisor || undefined)
+    
     // Get commit history - always get all commits
     const result = await gitTool.executeGitOperation(app.path, {
       operation: 'log',
@@ -74,6 +78,10 @@ router.post('/apps/:id/git/checkout', async (req, res) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
+    // Create git tool with dev-supervisor for this specific app
+    const devSupervisor = DevSupervisorClientFactory.createForApp(id)
+    const gitTool = new GitTool(devSupervisor || undefined)
+    
     // First save the current HEAD position
     const currentBranchResult = await gitTool.executeGitOperation(app.path, {
       operation: 'branch'
@@ -143,6 +151,10 @@ router.post('/apps/:id/git/return', async (req, res) => {
       return res.status(404).json({ error: 'App not found' });
     }
     
+    // Create git tool with dev-supervisor for this specific app
+    const devSupervisor = DevSupervisorClientFactory.createForApp(id)
+    const gitTool = new GitTool(devSupervisor || undefined)
+    
     // First, check current branch status
     const statusResult = await gitTool.executeGitOperation(app.path, {
       operation: 'branch'
@@ -208,6 +220,10 @@ router.post('/apps/:id/git/restore', async (req, res) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
+    // Create git tool with dev-supervisor for this specific app
+    const devSupervisor = DevSupervisorClientFactory.createForApp(id)
+    const gitTool = new GitTool(devSupervisor || undefined)
+    
     // First check current branch status
     const statusResult = await gitTool.executeGitOperation(app.path, {
       operation: 'branch'

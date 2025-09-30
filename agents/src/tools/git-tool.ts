@@ -1,8 +1,9 @@
 import { GitUtils, GitStatus as GitUtilsStatus } from '../utils/git.js';
 import { logger } from '../logging/index.js';
 import { toolGitEvents } from '../logging/events/index.js';
-import { spawn } from 'child_process';
+import { DevSupervisorClient } from '../services/DevSupervisorClient.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
+import { buildShellCommand } from '../utils/shell-utils.js';
 
 // Constants for business logic clarity
 const MAX_COMMITS_FOR_INITIAL_BUILD = 2; // Allow for initial + first real commit
@@ -96,7 +97,13 @@ export interface GitToolResult {
  * Provides comprehensive Git operations with intelligent features
  */
 export class GitTool {
-  private gitUtils = new GitUtils();
+  private gitUtils: GitUtils;
+  private devSupervisor: DevSupervisorClient | null;
+
+  constructor(devSupervisor?: DevSupervisorClient) {
+    this.devSupervisor = devSupervisor || null;
+    this.gitUtils = new GitUtils(devSupervisor);
+  }
   
   // Per-repository operation queues to prevent concurrent git operations
   private static operationQueues = new Map<string, Promise<any>>();
@@ -434,8 +441,17 @@ export class GitTool {
    */
   private async handleDiff(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
-      // Build git diff arguments array to avoid shell injection
-      const args = ['diff'];
+      // Check if dev-supervisor is available
+      if (!this.devSupervisor?.isAvailable()) {
+        throw new Error(
+          'Git diff requires dev-supervisor to be available for command execution. ' +
+          'This typically means the system is not running in a containerized environment with dev-supervisor installed, ' +
+          'or the dev-supervisor socket is not accessible.'
+        );
+      }
+
+      // Build git diff command
+      const args = ['git', 'diff'];
       
       if (options.options?.verbose) {
         args.push('--staged');
@@ -445,31 +461,20 @@ export class GitTool {
         args.push(...options.files);
       }
 
-      // Execute using child_process with direct git command
-      const result = await new Promise<{ success: boolean; stdout: string; stderr: string }>(
-        (resolve) => {
-          let stdout = '';
-          let stderr = '';
+      // Execute using dev-supervisor with properly escaped command
+      // Always use /app as the working directory since all deployments are containerized
+      const execResult = await this.devSupervisor!.exec({
+        command: buildShellCommand(args),
+        working_dir: '/app',
+        timeout: 30,
+        capture_output: true
+      });
 
-          const child = spawn('git', args, { cwd: appPath });
-
-          child.stdout?.on('data', (data) => {
-            stdout += data.toString();
-          });
-
-          child.stderr?.on('data', (data) => {
-            stderr += data.toString();
-          });
-
-          child.on('close', (code) => {
-            resolve({
-              success: code === 0,
-              stdout: stdout.trim(),
-              stderr: stderr.trim(),
-            });
-          });
-        }
-      );
+      const result = {
+        success: execResult.success,
+        stdout: execResult.stdout,
+        stderr: execResult.stderr,
+      };
 
       const toolResult: GitToolResult = {
         success: result.success,
@@ -672,36 +677,35 @@ export class GitTool {
         };
       }
 
+      // Check if dev-supervisor is available
+      if (!this.devSupervisor?.isAvailable()) {
+        throw new Error(
+          'Git revert requires dev-supervisor to be available for command execution. ' +
+          'This typically means the system is not running in a containerized environment with dev-supervisor installed, ' +
+          'or the dev-supervisor socket is not accessible.'
+        );
+      }
+
       // Create git revert command with appropriate options
-      const args = ['revert', '--no-edit'];
+      const args = ['git', 'revert', '--no-edit'];
       if (options.options?.force) {
         args.push('--no-gpg-sign');
       }
       args.push(commitHash);
-      const result = await new Promise<{ success: boolean; stdout: string; stderr: string }>(
-        (resolve) => {
-          let stdout = '';
-          let stderr = '';
+      
+      // Always use /app as the working directory since all deployments are containerized
+      const execResult = await this.devSupervisor!.exec({
+        command: buildShellCommand(args),
+        working_dir: '/app',
+        timeout: 30,
+        capture_output: true
+      });
 
-          const child = spawn('git', args, { cwd: appPath });
-
-          child.stdout?.on('data', (data) => {
-            stdout += data.toString();
-          });
-
-          child.stderr?.on('data', (data) => {
-            stderr += data.toString();
-          });
-
-          child.on('close', (code) => {
-            resolve({
-              success: code === 0,
-              stdout: stdout.trim(),
-              stderr: stderr.trim(),
-            });
-          });
-        }
-      );
+      const result = {
+        success: execResult.success,
+        stdout: execResult.stdout,
+        stderr: execResult.stderr,
+      };
 
       // Get updated status after revert
       const status = result.success ? await this.gitUtils.getStatus(appPath) : null;
@@ -750,58 +754,32 @@ export class GitTool {
         };
       }
 
+      // Check if dev-supervisor is available
+      if (!this.devSupervisor?.isAvailable()) {
+        throw new Error(
+          'Git restore requires dev-supervisor to be available for command execution. ' +
+          'This typically means the system is not running in a containerized environment with dev-supervisor installed, ' +
+          'or the dev-supervisor socket is not accessible.'
+        );
+      }
+
       // First, checkout main branch to ensure we're not on a detached HEAD
-      const checkoutResult = await new Promise<{ success: boolean; stdout: string; stderr: string }>(
-        (resolve) => {
-          let stdout = '';
-          let stderr = '';
-
-          const child = spawn('git', ['checkout', 'main'], { cwd: appPath });
-
-          child.stdout?.on('data', (data) => {
-            stdout += data.toString();
-          });
-
-          child.stderr?.on('data', (data) => {
-            stderr += data.toString();
-          });
-
-          child.on('close', (code) => {
-            resolve({
-              success: code === 0,
-              stdout: stdout.trim(),
-              stderr: stderr.trim(),
-            });
-          });
-        }
-      );
+      // Always use /app as the working directory since all deployments are containerized
+      const checkoutResult = await this.devSupervisor!.exec({
+        command: 'git checkout main',
+        working_dir: '/app',
+        timeout: 30,
+        capture_output: true
+      });
 
       // If main branch doesn't exist, try master
       if (!checkoutResult.success && checkoutResult.stderr.includes('did not match any file(s)')) {
-        const masterCheckoutResult = await new Promise<{ success: boolean; stdout: string; stderr: string }>(
-          (resolve) => {
-            let stdout = '';
-            let stderr = '';
-
-            const child = spawn('git', ['checkout', 'main'], { cwd: appPath });
-
-            child.stdout?.on('data', (data) => {
-              stdout += data.toString();
-            });
-
-            child.stderr?.on('data', (data) => {
-              stderr += data.toString();
-            });
-
-            child.on('close', (code) => {
-              resolve({
-                success: code === 0,
-                stdout: stdout.trim(),
-                stderr: stderr.trim(),
-              });
-            });
-          }
-        );
+        const masterCheckoutResult = await this.devSupervisor!.exec({
+          command: 'git checkout master',
+          working_dir: '/app',
+          timeout: 30,
+          capture_output: true
+        });
 
         if (!masterCheckoutResult.success) {
           return {
@@ -819,33 +797,16 @@ export class GitTool {
       }
 
       // Create git restore command with appropriate options
-      const args = ['restore', `--source=${commitHash}`, '--staged', '--worktree', '.'];
+      const args = ['git', 'restore', `--source=${commitHash}`, '--staged', '--worktree', '.'];
       
       // Execute the git restore command
-      const result = await new Promise<{ success: boolean; stdout: string; stderr: string }>(
-        (resolve) => {
-          let stdout = '';
-          let stderr = '';
-
-          const child = spawn('git', args, { cwd: appPath });
-
-          child.stdout?.on('data', (data) => {
-            stdout += data.toString();
-          });
-
-          child.stderr?.on('data', (data) => {
-            stderr += data.toString();
-          });
-
-          child.on('close', (code) => {
-            resolve({
-              success: code === 0,
-              stdout: stdout.trim(),
-              stderr: stderr.trim(),
-            });
-          });
-        }
-      );
+      // Always use /app as the working directory since all deployments are containerized
+      const result = await this.devSupervisor!.exec({
+        command: buildShellCommand(args),
+        working_dir: '/app',
+        timeout: 30,
+        capture_output: true
+      });
 
       if (!result.success) {
         return {

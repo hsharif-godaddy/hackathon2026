@@ -12,85 +12,133 @@ import { GitTool } from '../tools/git-tool.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { AILibContextManager } from './ai-lib-agents/context-manager.js'
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
+import { logger } from '../logging/index.js'
 
 /**
  * Develop Agent - AI developer for building web applications
  */
 
 
-// Initialize git tool and app repository for branch safety checks
-const gitTool = new GitTool()
-const appRepo = new AppRepository()
+// Initialize app repository for branch safety checks
+const appRepo = new AppRepository();
+
+// Helper function to create git tool with dev-supervisor for specific app
+function createGitToolForApp(appId: string): GitTool {
+  const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+  return new GitTool(devSupervisor || undefined);
+}
 
 /**
  * Git branch safety hook (from original develop-agent)
  */
 const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, args: unknown, context?: AgentContext): Promise<unknown> => {
-  console.log(`🔧 Develop Agent executing tool: ${toolName}`)
+  logger.info('develop_agent.tool.execution.start', {
+    toolName,
+    appId: context?.metadata?.appId
+  });
 
   // File-modifying tools that need git branch check
   const fileModifyingTools = ['fileEdit', 'terminalCommand', 'gitOperation']
 
   if (fileModifyingTools.includes(toolName)) {
-    console.log(`⚠️  File-modifying tool detected: ${toolName}`)
-    console.log(`🔍 Checking git branch state...`)
+    logger.info('develop_agent.git.branch_check.start', {
+      toolName,
+      reason: 'file_modifying_tool_detected'
+    });
 
+    // Extract appId from execution context
+    const appId = context?.metadata?.appId as string
+    
     try {
-      // Extract appId from execution context
-      const appId = context?.metadata?.appId as string
       if (!appId) {
-        console.warn(`⚠️  No appId found in execution context, skipping git branch check for ${toolName}`)
+        logger.warn('develop_agent.git.branch_check.skipped', {
+          toolName,
+          reason: 'no_app_id'
+        });
         return args
       }
 
       // Look up app path using AppRepository
       const app = appRepo.findById(appId)
       if (!app) {
-        console.error(`❌ App '${appId}' not found in repository, skipping git branch check for ${toolName}`)
+        logger.error('develop_agent.git.branch_check.app_not_found', {
+          toolName,
+          appId
+        });
         return args
       }
 
-      const appPath = app.path
-      console.log(`📁 Using app path: ${appPath}`)
+      const appPath = app.path;
+      logger.info('develop_agent.git.branch_check.app_path', {
+        toolName,
+        appId,
+        appPath
+      });
 
-      // Check current git branch using the actual git tool
+      // Check current git branch using the actual git tool with dev-supervisor
+      const gitTool = createGitToolForApp(appId);
       const branchResult = await gitTool.executeGitOperation(appPath, {
         operation: 'branch'
-      })
+      });
 
       if (branchResult.success && branchResult.currentBranch) {
-        const currentBranch = branchResult.currentBranch
+        const currentBranch = branchResult.currentBranch;
 
         if (currentBranch !== 'main') {
-          console.log(`⚠️  Before executing ${toolName}: Not on main branch (currently on: ${currentBranch}), attempting to return to main`)
-          console.log(`🔄 Switching from '${currentBranch}' to 'main'`)
+          logger.warn('develop_agent.git.branch_check.not_on_main', {
+            toolName,
+            appId,
+            currentBranch,
+            targetBranch: 'main'
+          });
 
           // Execute git checkout main
           const checkoutResult = await gitTool.executeGitOperation(appPath, {
             operation: 'checkout',
             branch: 'main'
-          })
+          });
 
           if (checkoutResult.success) {
-            console.log(`✅ Successfully switched to main branch`)
+            logger.info('develop_agent.git.branch_check.switch_success', {
+              toolName,
+              appId,
+              fromBranch: currentBranch,
+              toBranch: 'main'
+            });
           } else {
-            console.warn(`⚠️  Failed to switch to main branch: ${checkoutResult.error}`)
-            console.log(`🔄 Continuing with execution on ${currentBranch}`)
+            logger.warn('develop_agent.git.branch_check.switch_failed', {
+              toolName,
+              appId,
+              currentBranch,
+              targetBranch: 'main',
+              error: checkoutResult.error
+            });
           }
         } else {
-          console.log(`✅ Already on main branch, proceeding with ${toolName}`)
+          logger.info('develop_agent.git.branch_check.on_main', {
+            toolName,
+            appId,
+            currentBranch: 'main'
+          });
         }
       } else {
-        console.warn(`⚠️  Could not determine current branch: ${branchResult.error || 'Unknown error'}`)
-        console.log(`🔄 Continuing with execution despite error`)
+        logger.warn('develop_agent.git.branch_check.branch_unknown', {
+          toolName,
+          appId,
+          error: branchResult.error || 'Unknown error'
+        });
       }
     } catch (error) {
-      console.warn(`⚠️  Error checking git branch state before ${toolName} execution:`, error)
-      console.log(`🔄 Continuing with execution despite error`)
+      logger.error('develop_agent.git.branch_check.error', {
+        toolName,
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 
-  return args
+  return args;
 }
 
 /**
@@ -102,25 +150,40 @@ const afterToolExecution: AfterToolExecutionHook = async (
   result: unknown,
   context?: AgentContext
 ): Promise<unknown> => {
-  console.log(`✅ Develop Agent completed: ${toolName}`)
+  logger.info('develop_agent.tool.execution.complete', {
+    toolName,
+    appId: context?.metadata?.appId
+  });
 
   const resultObj = result as any
 
   // Track specific development operations
   if (toolName === 'fileEdit' && resultObj?.success) {
-    console.log(`📊 File operation completed: ${resultObj.filePath || 'unknown'} (${resultObj.operation || 'edit'})`)
+    logger.info('develop_agent.tool.file_edit.success', {
+      filePath: resultObj.filePath || 'unknown',
+      operation: resultObj.operation || 'edit',
+      appId: context?.metadata?.appId
+    });
   }
 
   if (toolName === 'autoAPIGenerator' && resultObj?.success) {
-    console.log(`📊 API generation completed: ${resultObj.endpointsGenerated || 0} endpoints`)
+    logger.info('develop_agent.tool.api_generator.success', {
+      endpointsGenerated: resultObj.endpointsGenerated || 0,
+      appId: context?.metadata?.appId
+    });
   }
 
   if (toolName === 'terminalCommand' && resultObj?.success) {
-    console.log(`📊 Terminal command completed: ${resultObj.command || 'unknown'}`)
+    logger.info('develop_agent.tool.terminal.success', {
+      command: resultObj.command || 'unknown',
+      appId: context?.metadata?.appId
+    });
   }
 
   if (toolName === 'serverRestart' && resultObj?.success) {
-    console.log(`📊 Development server restarted successfully`)
+    logger.info('develop_agent.tool.server_restart.success', {
+      appId: context?.metadata?.appId
+    });
   }
 
   return result
@@ -159,18 +222,20 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
  * Build dynamic system prompt with context enrichment
  */
 async function buildDynamicSystemPrompt(context?: AgentContext): Promise<string> {
-  console.log('🎯 Building dynamic system prompt with context:', {
+  logger.info('develop_agent.system_prompt.build.start', {
     hasContext: !!context,
     contextKeys: context ? Object.keys(context) : [],
     hasMetadata: !!(context?.metadata),
     appId: context?.metadata?.appId
-  })
+  });
 
   // Get the base static system prompt
   const baseSystemPrompt = await buildDevelopSystemPrompt()
 
   if (!context?.metadata?.appId) {
-    console.log('⚠️ No appId in context, returning static system prompt')
+    logger.warn('develop_agent.system_prompt.build.no_app_id', {
+      reason: 'no_context_enrichment'
+    });
     return baseSystemPrompt
   }
 
@@ -190,16 +255,21 @@ async function buildDynamicSystemPrompt(context?: AgentContext): Promise<string>
     const enrichedSystemPrompt = contextMessages ?
       `${baseSystemPrompt}\n\n${contextMessages}` : baseSystemPrompt
 
-    console.log('✅ Dynamic system prompt built:', {
+    logger.info('develop_agent.system_prompt.build.success', {
       baseLength: baseSystemPrompt.length,
       contextMessagesCount: contextResult.contextMessages.length,
       totalLength: enrichedSystemPrompt.length,
-      enriched: contextResult.contextMessages.length > 0
-    })
+      enriched: contextResult.contextMessages.length > 0,
+      appId: context?.metadata?.appId
+    });
 
     return enrichedSystemPrompt
   } catch (error) {
-    console.error('❌ Failed to build dynamic system prompt, falling back to static:', error)
+    logger.error('develop_agent.system_prompt.build.failure', {
+      error: error instanceof Error ? error.message : String(error),
+      appId: context?.metadata?.appId,
+      fallback: 'static_prompt'
+    });
     return baseSystemPrompt
   }
 }
@@ -295,9 +365,13 @@ export class DevelopAgent {
    * Initialize the agent
    */
   async initialize(): Promise<void> {
-    console.log('Initializing Develop Agent...')
+    logger.info('develop_agent.initialization.start', {
+      appPath: this.appPath
+    });
     this.factory = await createDevelopAgentFactory({ appPath: this.appPath })
-    console.log('Develop Agent ready!')
+    logger.info('develop_agent.initialization.complete', {
+      appPath: this.appPath
+    });
   }
 
   /**
@@ -326,7 +400,11 @@ export class DevelopAgent {
   async handoffToDatabase(params: { userId: string; databaseName: string }): Promise<any> {
     const factory = this.getFactory()
 
-    console.log('🔄 Handing off to Database Agent for MySQL setup...')
+    logger.info('develop_agent.handoff.database.start', {
+      targetAgent: 'database',
+      userId: params.userId,
+      databaseName: params.databaseName
+    });
 
     const handoffResult = await factory.executeHandoff(
       'develop',
@@ -372,8 +450,12 @@ Please complete all database setup tasks and provide the integration details for
     )
 
     if (handoffResult.success) {
-      console.log('✅ Database Agent handoff completed successfully')
-      console.log('🔗 Backend integration ready for frontend development')
+      logger.info('develop_agent.handoff.database.success', {
+        targetAgent: 'database',
+        userId: params.userId,
+        databaseName: params.databaseName,
+        backendPort: handoffResult.result?.backendPort || 3000
+      });
 
       return {
         success: handoffResult.result?.success || true,
@@ -387,7 +469,12 @@ Please complete all database setup tasks and provide the integration details for
         handoffDetails: handoffResult.handoffDetails
       }
     } else {
-      console.log('❌ Database Agent handoff failed')
+      logger.error('develop_agent.handoff.database.failure', {
+        targetAgent: 'database',
+        userId: params.userId,
+        databaseName: params.databaseName,
+        error: handoffResult.error
+      });
       throw new Error(`Database handoff failed: ${handoffResult.error}`)
     }
   }
@@ -450,6 +537,8 @@ export default defineConfig({
    * Cleanup resources
    */
   async cleanup(): Promise<void> {
-    console.log('🧹 Development Agent cleanup completed')
+    logger.info('develop_agent.cleanup.complete', {
+      appPath: this.appPath
+    });
   }
 }

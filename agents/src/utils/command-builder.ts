@@ -1,4 +1,5 @@
-import { validateHostPort, escapeShellArg } from './network-validation.js';
+import { validateHostPort } from './network-validation.js';
+import { escapeShellArg } from './shell-utils.js';
 
 /**
  * Error thrown when command building fails validation
