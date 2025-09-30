@@ -44,6 +44,9 @@ import type {
   ConversationContextBuildData,
   ConversationHistoryProcessData,
   ConversationTokenLimitData,
+  AppContextGenerationData,
+  AppContextPackageData,
+  AppContextDirectoryData,
 } from './app.js';
 
 /**
@@ -821,6 +824,42 @@ export const conversationContextEvents = {
 
   buildFailure: (logger: ILogger, error: Error, data: Pick<ConversationContextBuildData, 'conversationId' | 'systemPromptLength' | 'currentMessageLength'>) => {
     log.error(logger, AppEvents.conversation.context.build.failure, error, data);
+  },
+};
+
+/**
+ * App Context logging helpers
+ */
+export const appContextEvents = {
+  generateBegin: (logger: ILogger, data: Pick<AppContextGenerationData, 'appId' | 'directoryPath'>) => {
+    logger.debug(AppEvents.app.context.generate.begin, data);
+  },
+  generateSuccess: (logger: ILogger, data: AppContextGenerationData) => {
+    logger.info(AppEvents.app.context.generate.success, data);
+  },
+  generateFailure: (logger: ILogger, error: Error, data: Pick<AppContextGenerationData, 'appId' | 'directoryPath'>) => {
+    log.error(logger, AppEvents.app.context.generate.failure, error, data);
+  },
+  packageBegin: (logger: ILogger, data: Pick<AppContextPackageData, 'appId'> & { packageJsonFound?: boolean }) => {
+    logger.debug(AppEvents.app.context.package.begin, {
+      ...data,
+      packageJsonFound: data.packageJsonFound ?? false,
+    });
+  },
+  packageSuccess: (logger: ILogger, data: AppContextPackageData) => {
+    logger.debug(AppEvents.app.context.package.success, data);
+  },
+  packageFailure: (logger: ILogger, error: Error, data: Pick<AppContextPackageData, 'appId'> & { packageJsonFound?: boolean }) => {
+    log.error(logger, AppEvents.app.context.package.failure, error, data);
+  },
+  directoryBegin: (logger: ILogger, data: Pick<AppContextDirectoryData, 'appId' | 'path' | 'maxDepth'>) => {
+    logger.debug(AppEvents.app.context.directory.begin, data);
+  },
+  directorySuccess: (logger: ILogger, data: AppContextDirectoryData) => {
+    logger.debug(AppEvents.app.context.directory.success, data);
+  },
+  directoryFailure: (logger: ILogger, error: Error, data: Pick<AppContextDirectoryData, 'appId' | 'path' | 'maxDepth'>) => {
+    log.error(logger, AppEvents.app.context.directory.failure, error, data);
   },
 };
 

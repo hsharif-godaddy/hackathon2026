@@ -502,6 +502,38 @@ export interface ConversationContextBuildData {
   filteredMessages?: number;
 }
 
+// App Context Events
+export interface AppContextGenerationData extends AppEventData {
+  directoryPath: string;
+  fileCount?: number;
+  directoryCount?: number;
+  packageName?: string;
+  packageVersion?: string;
+  dependencyCount?: number;
+  scriptCount?: number;
+  dependenciesInstalled?: boolean;
+  contextSize?: number;
+}
+
+export interface AppContextPackageData extends AppEventData {
+  packageJsonFound: boolean;
+  packageName?: string;
+  packageVersion?: string;
+  dependencyCount?: number;
+  devDependencyCount?: number;
+  scriptCount?: number;
+  dependenciesInstalled?: boolean;
+  installationCheckMethod?: 'lockfile' | 'timestamps' | 'none';
+}
+
+export interface AppContextDirectoryData extends AppEventData, FileEventData {
+  maxDepth: number;
+  fileCount?: number;
+  directoryCount?: number;
+  treeLines?: number;
+  truncated?: boolean;
+}
+
 export interface ConversationHistoryProcessData {
   conversationId: string;
   totalDbMessages: number;
@@ -851,6 +883,26 @@ export const AppEvents = {
         begin: 'conversation.token_limit.load.begin' as const,
         success: 'conversation.token_limit.load.success' as const,
         failure: 'conversation.token_limit.load.failure' as const,
+      },
+    },
+  },
+  // App Context events: app.context.{generate|package|directory}.{begin|success|failure}
+  app: {
+    context: {
+      generate: {
+        begin: 'app.context.generate.begin' as const,
+        success: 'app.context.generate.success' as const,
+        failure: 'app.context.generate.failure' as const,
+      },
+      package: {
+        begin: 'app.context.package.begin' as const,
+        success: 'app.context.package.success' as const,
+        failure: 'app.context.package.failure' as const,
+      },
+      directory: {
+        begin: 'app.context.directory.begin' as const,
+        success: 'app.context.directory.success' as const,
+        failure: 'app.context.directory.failure' as const,
       },
     },
   },

@@ -48,4 +48,5 @@ export {
   conversationContextEvents,
   conversationHistoryEvents,
   conversationTokenLimitEvents,
+  appContextEvents,
 } from './helpers.js';

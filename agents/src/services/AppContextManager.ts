@@ -1,6 +1,8 @@
 import type { AgentExecutionContext } from '../base/agent.interface.js';
 import { DirectoryListingTool } from '../tools/directory-listing.js';
 import { ReadFileTool } from '../tools/read-file.js';
+import { logger } from '../logging/index.js';
+import { appContextEvents } from '../logging/events/index.js';
 
 /**
  * Service for managing app context information that should be injected into LLM conversations
@@ -24,13 +26,16 @@ export class AppContextManager {
    * @returns Promise<string | null> - Formatted context message or null if no context needed
    */
   async generateContextMessage(context: AgentExecutionContext): Promise<string | null> {
+    const appId = context.metadata?.appId as string;
+    const appPath = context.metadata?.appPath as string;
+
     try {
       // Only generate context if we have an app context
-      if (!context.metadata?.appId || !context.metadata?.appPath) {
+      if (!appId || !appPath) {
         return null;
       }
 
-      const appPath = context.metadata.appPath as string;
+      appContextEvents.generateBegin(logger, { appId, directoryPath: appPath });
 
       // Get directory listing with max depth of 3
       const directoryResult = await this.directoryTool.listDirectory(appPath, {
@@ -41,6 +46,11 @@ export class AppContextManager {
       });
 
       if (!directoryResult) {
+        appContextEvents.directoryFailure(logger, new Error('Directory listing returned null/undefined'), {
+          appId,
+          path: appPath,
+          maxDepth: 4
+        });
         return null;
       }
 
@@ -48,6 +58,11 @@ export class AppContextManager {
       const directoryListing = this.directoryTool.formatAsTree(directoryResult);
 
       if (!directoryListing || typeof directoryListing !== 'string') {
+        appContextEvents.directoryFailure(logger, new Error(`Directory tree formatting failed - type: ${typeof directoryListing}, length: ${directoryListing?.length || 0}`), {
+          appId,
+          path: appPath,
+          maxDepth: 4
+        });
         return null;
       }
 
@@ -55,16 +70,36 @@ export class AppContextManager {
       const packageInfo = await this.getPackageInfo(context);
 
       // Format both directory listing and package info into context message
-      const formattedContext = this.formatAppContext(directoryListing, packageInfo)
+      const formattedContext = this.formatAppContext(directoryListing, packageInfo);
       
-      // Always show concise summary
-      console.log(`🏗️ AppContext: Generated for ${packageInfo?.name || 'unknown'} (${directoryResult.fileCount} files, ${directoryResult.directoryCount} dirs)`)
+      // Log successful generation
+      const generateData: any = {
+        appId,
+        directoryPath: appPath,
+        fileCount: directoryResult.fileCount,
+        directoryCount: directoryResult.directoryCount,
+        dependencyCount: (packageInfo?.dependencies.length || 0) + (packageInfo?.devDependencies.length || 0),
+        scriptCount: packageInfo?.scripts.length || 0,
+        contextSize: formattedContext.length
+      };
+
+      if (packageInfo?.name) {
+        generateData.packageName = packageInfo.name;
+      }
+      if (packageInfo?.version) {
+        generateData.packageVersion = packageInfo.version;
+      }
+      if (packageInfo?.dependenciesInstalled !== undefined) {
+        generateData.dependenciesInstalled = packageInfo.dependenciesInstalled;
+      }
+
+      appContextEvents.generateSuccess(logger, generateData);
 
       return formattedContext;
       
     } catch (error) {
-      console.warn('AppContextManager: Failed to generate context message:', error);
-      console.warn('AppContextManager: Error stack:', error instanceof Error ? error.stack : 'No stack');
+      const err = error instanceof Error ? error : new Error(String(error));
+      appContextEvents.generateFailure(logger, err, { appId, directoryPath: appPath });
       return null;
     }
   }
@@ -83,33 +118,37 @@ export class AppContextManager {
     scripts: string[];
     dependenciesInstalled: boolean;
   } | null> {
+    const appId = context.metadata?.appId as string;
+    const appPath = context.metadata?.appPath as string;
     let packageContent: unknown = null;
     
-    try {
-      // Get app path from context
-      const appPath = context.metadata?.appPath as string;
-      
-      if (!appPath) {
-        return null;
-      }
+    if (!appPath || !appId) {
+      return null;
+    }
 
+    appContextEvents.packageBegin(logger, { appId });
+    
+    try {
       // Try to read package.json using the read_file tool
       const readResult = await this.readFileTool.readFile({ path: 'package.json' }, appPath);
       packageContent = readResult.success ? readResult.content : null;
 
       if (!packageContent || typeof packageContent !== 'string') {
-        console.warn('AppContextManager: package.json read returned unexpected type:', typeof packageContent);
+        appContextEvents.packageFailure(logger, new Error(`package.json read returned unexpected type: ${typeof packageContent}`), {
+          appId,
+          packageJsonFound: false
+        });
         return null;
       }
 
-      // The read_file tool returns formatted content with headers, extract just the JSON content
-      // Format is: "File: path\nTotal lines: X\nFile size: Y bytes\n\n{actual content}"
-      const lines = packageContent.split('\n');
-      const contentStartIndex = lines.findIndex(line => line.trim() === '') + 1;
-      const jsonContent = lines.slice(contentStartIndex).join('\n').trim();
+      // The ReadFileTool returns the raw JSON content directly (no headers)
+      const jsonContent = packageContent.trim();
 
       if (!jsonContent) {
-        console.warn('AppContextManager: No JSON content found in package.json');
+        appContextEvents.packageFailure(logger, new Error('No JSON content found in package.json'), {
+          appId,
+          packageJsonFound: true
+        });
         return null;
       }
 
@@ -118,7 +157,7 @@ export class AppContextManager {
       // Check if dependencies are installed by comparing lock file modification time
       const dependenciesInstalled = await this.checkDependenciesInstalled(context);
       
-      return {
+      const result = {
         name: packageJson.name,
         version: packageJson.version,
         description: packageJson.description,
@@ -127,13 +166,26 @@ export class AppContextManager {
         scripts: Object.keys(packageJson.scripts || {}),
         dependenciesInstalled
       };
+
+      appContextEvents.packageSuccess(logger, {
+        appId,
+        packageJsonFound: true,
+        packageName: result.name,
+        packageVersion: result.version,
+        dependencyCount: result.dependencies.length,
+        devDependencyCount: result.devDependencies.length,
+        scriptCount: result.scripts.length,
+        dependenciesInstalled: result.dependenciesInstalled,
+        installationCheckMethod: 'timestamps'
+      });
+      
+      return result;
     } catch (error) {
-      console.warn('AppContextManager: Failed to read package.json:', error);
-      if (typeof packageContent === 'string') {
-        console.warn('AppContextManager: Raw package content preview:', packageContent.substring(0, 300));
-      } else {
-        console.warn('AppContextManager: Package content type:', typeof packageContent);
-      }
+      const err = error instanceof Error ? error : new Error(String(error));
+      appContextEvents.packageFailure(logger, err, {
+        appId,
+        packageJsonFound: typeof packageContent === 'string'
+      });
       return null;
     }
   }
@@ -185,11 +237,23 @@ export class AppContextManager {
       // consider dependencies installed
       const isInstalled = pnpmLockTime >= packageJsonTime || timeDiffSeconds <= 5;
       
-      console.log(`AppContextManager: Package.json time: ${packageJsonTime.toISOString()}, pnpm-lock time: ${pnpmLockTime.toISOString()}, diff: ${timeDiffSeconds.toFixed(2)}s, installed: ${isInstalled}`);
+      logger.debug('app.context.dependencies.check', {
+        appId: context.metadata?.appId as string,
+        packageJsonTime: packageJsonTime.toISOString(),
+        pnpmLockTime: pnpmLockTime.toISOString(),
+        timeDifferenceSeconds: Number(timeDiffSeconds.toFixed(2)),
+        dependenciesInstalled: isInstalled,
+        toleranceSeconds: 5
+      });
       
       return isInstalled;
     } catch (error) {
-      console.warn('AppContextManager: Failed to check dependency installation status:', error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.warn('app.context.dependencies.check.failure', {
+        appId: context.metadata?.appId as string,
+        error: err.message,
+        reason: 'Failed to check dependency installation status'
+      });
       return false;
     }
   }

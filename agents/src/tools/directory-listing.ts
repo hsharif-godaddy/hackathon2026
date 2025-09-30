@@ -114,7 +114,15 @@ export class DirectoryListingTool {
     'venv',
     'env',
     '.env.local',
-    '.env.*.local'
+    '.env.*.local',
+
+    // things in the template we want to hide for now
+    'dev-supervisor',
+    'dev-tools', 
+    'source-mapper',
+    'fullstory-plugin.ts',
+    'nomad_setup_and_serve.sh',
+    'dev_setup_and_serve.sh',
   ];
   
   /**
