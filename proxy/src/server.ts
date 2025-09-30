@@ -2,7 +2,6 @@ import express, { Application } from 'express';
 import https from 'https';
 import fs from 'fs';
 import helmet from 'helmet';
-import compression from 'compression';
 
 import { config, validateConfig } from './config';
 import logger from './utils/logger';
@@ -34,33 +33,8 @@ if (!fs.existsSync(config.getty.certs.certPath) || !fs.existsSync(config.getty.c
 
 const app: Application = express();
 
-// Security middleware
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ['\'self\''],
-      styleSrc: ['\'self\'', '\'unsafe-inline\''],
-      scriptSrc: ['\'self\''],
-      imgSrc: ['\'self\'', 'data:', 'https:']
-    }
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true
-  }
-}));
-
-// Compression middleware
-app.use(compression({
-  threshold: 1024,
-  filter: (req, res) => {
-    if (req.headers['x-no-compression']) {
-      return false;
-    }
-    return compression.filter(req, res);
-  }
-}));
+// Security middleware with default settings
+app.use(helmet());
 
 // Basic middleware
 app.use(express.json({ limit: '10mb' }));
@@ -72,28 +46,17 @@ app.set('trust proxy', true);
 // Request logging middleware
 app.use(logger.middleware());
 
-// CORS middleware
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
-});
-
 // Routes
 app.use('/', routes);
 
 // Global error handling middleware
-app.use((err: Error, req: express.Request & { id?: string }, res: express.Response, _next: express.NextFunction) => {
-  logger.error('Unhandled error', { 
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const requestId = (req as any).id ? String((req as any).id) : 'unknown';
+
+  logger.error('Unhandled error', {
     error: err.message,
     stack: err.stack,
-    requestId: req.id,
+    requestId,
     method: req.method,
     path: req.path
   });
@@ -102,7 +65,7 @@ app.use((err: Error, req: express.Request & { id?: string }, res: express.Respon
     error: {
       message: 'Internal Server Error',
       type: 'internal_error',
-      requestId: req.id
+      requestId
     }
   });
 });
@@ -117,7 +80,7 @@ const sslOptions = {
 const server = https.createServer(sslOptions, app);
 
 server.listen(config.server.port, config.server.host, () => {
-  logger.info('Getty API Proxy started', {
+  logger.info('Airo App Builder Proxy started', {
     port: config.server.port,
     host: config.server.host,
     environment: process.env.NODE_ENV ?? 'development',

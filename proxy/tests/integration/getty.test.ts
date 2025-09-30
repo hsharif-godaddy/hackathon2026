@@ -45,18 +45,4 @@ describe('Getty Images API Integration', () => {
     // In a real environment, you'd mock the SSO client
   });
 
-  describe('Rate Limiting', () => {
-    it('should enforce rate limits', async () => {
-      const requests = Array.from({ length: 52 }, (_, i) => 
-        request(app)
-          .get('/img/search?phrase=test')
-          .set('Authorization', validToken)
-      );
-
-      const responses = await Promise.all(requests);
-      const rateLimited = responses.filter(r => r.status === 429);
-      
-      expect(rateLimited.length).toBeGreaterThan(0);
-    }, 30000);
-  });
 });

@@ -1,14 +1,14 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { config } from '../config';
 import logger from '../utils/logger';
-import { AuthenticatedRequest, RateLimitOptions } from '../types';
+import { AuthenticatedRequest } from '../types';
 
 /**
  * Authentication middleware for validating tokens against exact match list
  */
 function validateGdToken(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
-  const requestId = req.id ?? 'unknown';
+  const requestId = String(req.id ?? 'unknown');
 
   if (!authHeader) {
     logger.warn('Missing authorization header', { requestId, path: req.path });
@@ -84,60 +84,6 @@ function validateGdToken(req: AuthenticatedRequest, res: Response, next: NextFun
   
   next();
 }
-
-/**
- * Rate limiting middleware (simple in-memory implementation)
- */
-const rateLimitStore = new Map<string, number[]>();
-
-function rateLimit(options: RateLimitOptions = {}) {
-  const {
-    windowMs = 60000, // 1 minute
-    max = 100, // requests per window
-    keyGenerator = (req: Request) => req.ip ?? 'unknown'
-  } = options;
-
-  return (req: Request, res: Response, next: NextFunction): void => {
-    const key = keyGenerator(req);
-    const now = Date.now();
-    const windowStart = now - windowMs;
-
-    // Clean old entries
-    if (Math.random() < 0.1) { // Clean 10% of the time
-      for (const [k, requests] of rateLimitStore.entries()) {
-        const filtered = requests.filter(time => time > windowStart);
-        if (filtered.length === 0) {
-          rateLimitStore.delete(k);
-        } else {
-          rateLimitStore.set(k, filtered);
-        }
-      }
-    }
-
-    // Get current requests for this key
-    const requests = rateLimitStore.get(key) ?? [];
-    const recentRequests = requests.filter(time => time > windowStart);
-
-    if (recentRequests.length >= max) {
-      logger.warn('Rate limit exceeded', { key, requests: recentRequests.length, max });
-      res.status(429).json({
-        error: {
-          message: 'Too many requests',
-          type: 'rate_limit_error'
-        }
-      });
-      return;
-    }
-
-    // Add current request
-    recentRequests.push(now);
-    rateLimitStore.set(key, recentRequests);
-
-    next();
-  };
-}
-
 export {
-  validateGdToken,
-  rateLimit
+  validateGdToken
 };

@@ -1,103 +1,84 @@
-import { Response, NextFunction } from 'express';
+import pino from 'pino';
+import { pinoHttp } from 'pino-http';
 import { config } from '../config';
-import { LogLevel, LogMeta, AuthenticatedRequest } from '../types';
+import { LogMeta } from '../types';
 
-class Logger {
-  private level: LogLevel;
-  private format: 'json' | 'text';
-  private levels: Record<LogLevel, number>;
-
-  constructor() {
-    this.level = config.logging.level;
-    this.format = config.logging.format;
-    this.levels = {
-      error: 0,
-      warn: 1,
-      info: 2,
-      debug: 3
-    };
-  }
-
-  private _shouldLog(level: LogLevel): boolean {
-    return this.levels[level] <= this.levels[this.level];
-  }
-
-  private _formatMessage(level: LogLevel, message: string, meta: LogMeta = {}): string {
-    const timestamp = new Date().toISOString();
-    
-    if (this.format === 'json') {
-      return JSON.stringify({
-        timestamp,
-        level: level.toUpperCase(),
-        message,
-        ...meta
-      });
-    } else {
-      const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
-      return `[${timestamp}] ${level.toUpperCase()}: ${message}${metaStr}`;
+/**
+ * Configure pino logger with appropriate settings based on environment
+ */
+const pinoLogger = pino({
+  level: config.logging.level,
+  formatters: {
+    level: (label) => {
+      return { level: label.toUpperCase() };
     }
-  }
-
-  private _log(level: LogLevel, message: string, meta: LogMeta): void {
-    if (!this._shouldLog(level)) {
-      return;
+  },
+  timestamp: pino.stdTimeFunctions.isoTime,
+  ...(config.logging.format === 'text' && {
+    transport: {
+      target: 'pino-pretty',
+      options: {
+        colorize: true,
+        translateTime: 'HH:MM:ss Z',
+        ignore: 'pid,hostname'
+      }
     }
-    
-    const formatted = this._formatMessage(level, message, meta);
-    
-    if (level === 'error') {
-      console.error(formatted);
-    } else if (level === 'warn') {
-      console.warn(formatted);
-    } else {
-      console.log(formatted);
-    }
-  }
+  })
+});
 
-  error(message: string, meta: LogMeta = {}): void {
-    this._log('error', message, meta);
-  }
+/**
+ * Wrapper around pino logger to match our previous API signature
+ */
+const logger = {
+  error: (message: string, meta: LogMeta = {}) => pinoLogger.error(meta, message),
+  warn: (message: string, meta: LogMeta = {}) => pinoLogger.warn(meta, message),
+  info: (message: string, meta: LogMeta = {}) => pinoLogger.info(meta, message),
+  debug: (message: string, meta: LogMeta = {}) => pinoLogger.debug(meta, message),
 
-  warn(message: string, meta: LogMeta = {}): void {
-    this._log('warn', message, meta);
-  }
-
-  info(message: string, meta: LogMeta = {}): void {
-    this._log('info', message, meta);
-  }
-
-  debug(message: string, meta: LogMeta = {}): void {
-    this._log('debug', message, meta);
-  }
-
-  // Express middleware for request logging
-  middleware() {
-    return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-      const start = Date.now();
-      req.id = Math.random().toString(36).substring(7);
-      req.startTime = start;
-      
-      // Only log completion, not start (to reduce verbosity)
-      res.on('finish', () => {
-        const duration = Date.now() - start;
-        
-        // Only log non-health and non-Getty endpoints to reduce noise (Getty endpoints have their own detailed logs)
-        if (!req.path.startsWith('/health') && !req.path.startsWith('/metrics') && !req.path.startsWith('/img/search')) {
-          this.info('Request completed', {
-            requestId: req.id,
-            method: req.method,
-            path: req.path,
-            statusCode: res.statusCode,
-            duration: `${duration}ms`,
-            userAgent: req.get('User-Agent'),
-            ip: req.ip
-          });
+  /**
+   * Create express middleware for request logging
+   *
+   * @returns Express middleware function for HTTP request logging
+   */
+  middleware: () => {
+    return pinoHttp({
+      logger: pinoLogger,
+      genReqId: () => Math.random().toString(36).substring(7),
+      customLogLevel: (_req, res, err) => {
+        if (res.statusCode >= 500 || err) {
+          return 'error';
+        } else if (res.statusCode >= 400) {
+          return 'warn';
         }
-      });
-
-      next();
-    };
+        return 'info';
+      },
+      autoLogging: {
+        ignore: (req) => {
+          // Skip logging for health checks and Getty search (Getty has its own detailed logs)
+          return Boolean(req.url?.startsWith('/health') ?? req.url?.startsWith('/metrics') ?? req.url?.startsWith('/img/search'));
+        }
+      },
+      customErrorMessage: (_req, _res, err) => {
+        return `Request failed: ${err.message}`;
+      },
+      customAttributeKeys: {
+        req: 'request',
+        res: 'response',
+        err: 'error',
+        responseTime: 'duration'
+      },
+      serializers: {
+        req: (req) => ({
+          id: req.id,
+          method: req.method,
+          path: req.url
+        }),
+        res: (res) => ({
+          statusCode: res.statusCode
+        })
+      }
+    });
   }
-}
+};
 
-export default new Logger();
+export default logger;

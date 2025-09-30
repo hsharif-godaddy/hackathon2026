@@ -1,16 +1,16 @@
 /**
  * JWT Authentication Middleware for Agents
  * Validates customer JWTs by fetching public keys from SSO (like app does)
- * For dev/test environments where SSO isn't reachable, uses proxy
  */
 
 import { Request, Response, NextFunction } from 'express';
+import { createRequire } from 'module';
+import getPem from 'rsa-pem-from-mod-exp';
 // JWT imported via createRequire to work in ES modules
 import fetch from 'node-fetch';
 
 export interface CustomerContext {
   customerId: string;
-  shopperId: string;
   accountId?: string;
   siteId: string;
   exp: number;
@@ -21,7 +21,6 @@ export interface AuthenticatedRequest extends Request {
   customerContext?: CustomerContext;
   authDetails?: {
     customerId?: string;
-    shopperId?: string;
     siteId?: string;
     authenticationBypass?: boolean;
     bypassReason?: string;
@@ -36,51 +35,20 @@ interface CachedPublicKey {
 
 export class JWTValidationService {
   private ssoHost: string;
-  private proxyUrl: string;
-  private isProduction: boolean;
   private publicKeyCache: Map<string, CachedPublicKey> = new Map();
-  private readonly PUBLIC_KEY_TTL = 900000; // 15 minutes in milliseconds
-  private readonly MAX_CACHE_SIZE = 100; // Prevent memory exhaustion
-  private readonly MAX_TOKEN_SIZE = 10000; // 10KB token size limit
+  private readonly PUBLIC_KEY_TTL_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
 
   constructor() {
-    // Parse the domain from SSO_LOGIN_URL environment variable 
-    try {
-      const ssoUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
-      this.ssoHost = new URL(ssoUrl).hostname;
-    } catch (error) {
-      console.warn('Invalid SSO URL format, using fallback', process.env.SSO_LOGIN_URL);
-      this.ssoHost = 'sso.test-godaddy.com';
-    }
-
-    this.proxyUrl = process.env.PROXY_URL || 'http://localhost:8888';
-    this.isProduction = process.env.NODE_ENV === 'production';
-
+    this.ssoHost = process.env.AGENT_SSO_HOST || 'sso.test-godaddy.com';
     console.log('JWT Validation Service initialized:', {
-      ssoHost: this.ssoHost,
-      proxyUrl: this.proxyUrl,
-      environment: process.env.NODE_ENV,
-      useProxy: !this.isProduction
+      ssoHost: this.ssoHost
     });
   }
 
-  /**
-   * Authenticate JWT token - use direct SSO for production, proxy for dev/test
-   */
   async authenticate(token: string): Promise<{ valid: boolean; payload?: any; reason?: string }> {
-    
-    if (this.isProduction) {
-      // Production: Fetch public key and validate locally (like app does)
-      return await this.validateJWTWithPublicKey(token);
-    } else {
-      // Dev/Test: Use proxy since SSO isn't reachable
-      return await this.validateJWTViaProxy(token);
-    }
+    return await this.validateJWTWithPublicKey(token);
   }
 
-  /**
-   * Validate JWT by fetching public key from SSO (production)
-   */
   private async validateJWTWithPublicKey(token: string): Promise<{ valid: boolean; payload?: any; reason?: string }> {
     try {
       // Load JWT using createRequire for ES modules compatibility
@@ -120,9 +88,6 @@ export class JWTValidationService {
     }
   }
 
-  /**
-   * Get public key from SSO for JWT validation
-   */
   private async getPublicKey(kid: string): Promise<string | null> {
     try {
       // Check cache first (with TTL validation)
@@ -134,14 +99,6 @@ export class JWTValidationService {
       // Remove expired entry if exists
       if (cached) {
         this.publicKeyCache.delete(kid);
-      }
-
-      // Clean up cache if it gets too large (prevent memory exhaustion)
-      if (this.publicKeyCache.size >= this.MAX_CACHE_SIZE) {
-        const entries = Array.from(this.publicKeyCache.entries());
-        const sortedEntries = entries.sort((a, b) => a[1].expiresAt - b[1].expiresAt);
-        const toRemove = sortedEntries.slice(0, Math.floor(this.MAX_CACHE_SIZE / 2));
-        toRemove.forEach(([key]) => this.publicKeyCache.delete(key));
       }
 
       // Fetch public key from SSO (direct API call)
@@ -163,9 +120,7 @@ export class JWTValidationService {
         const keyData = JSON.parse(publicKeyResponse);
         if (keyData.data && keyData.data.n && keyData.data.e) {
           // Convert JWK to PEM format - using createRequire for ES modules
-          const { createRequire } = await import('module');
           const require = createRequire(import.meta.url);
-          const getPem = require('rsa-pem-from-mod-exp');
           pemKey = getPem(keyData.data.n, keyData.data.e);
         } else {
           return null;
@@ -177,51 +132,13 @@ export class JWTValidationService {
       // Cache the PEM key with TTL
       this.publicKeyCache.set(kid, {
         key: pemKey,
-        expiresAt: Date.now() + this.PUBLIC_KEY_TTL
+        expiresAt: Date.now() + this.PUBLIC_KEY_TTL_MS
       });
 
       return pemKey;
 
     } catch (error: any) {
       return null;
-    }
-  }
-
-  /**
-   * Validate JWT via proxy (dev/test environments)
-   */
-  private async validateJWTViaProxy(token: string): Promise<{ valid: boolean; payload?: any; reason?: string }> {
-    try {
-      console.log('Validating JWT via proxy');
-
-      const response = await fetch(`${this.proxyUrl}/sso/validate-jwt`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const result = await response.json() as any;
-
-      if (response.ok && result.valid) {
-        console.log('JWT validation via proxy successful');
-        return {
-          valid: true,
-          payload: result.payload
-        };
-      } else {
-        return {
-          valid: false,
-          reason: result.error || 'Token validation via proxy failed'
-        };
-      }
-
-    } catch (error: any) {
-      return {
-        valid: false,
-        reason: 'Proxy validation failed'
-      };
     }
   }
 
@@ -272,7 +189,6 @@ export class JWTAuthMiddleware {
         // Add mock customer context for local development
         const customerContext: CustomerContext = {
           customerId: 'local-dev-customer',
-          shopperId: 'local-dev-shopper',
           accountId: 'local-dev-account',
           siteId: process.env.SITE_ID || 'local-dev-site',
           exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
@@ -284,7 +200,6 @@ export class JWTAuthMiddleware {
         // Add auth details for request logging
         (req as AuthenticatedRequest).authDetails = {
           customerId: customerContext.customerId,
-          shopperId: customerContext.shopperId,
           siteId: customerContext.siteId,
           authenticationBypass: true,
           bypassReason: 'BYPASS_AUTH_FOR_LOCAL enabled for development'
@@ -329,7 +244,6 @@ export class JWTAuthMiddleware {
       const payload = validationResult.payload!;
       const customerContext: CustomerContext = {
         customerId: payload.cid,
-        shopperId: payload.shopperId,
         accountId: payload.accountId,
         siteId: this.extractSiteId(req),
         exp: payload.exp,
@@ -353,7 +267,6 @@ export class JWTAuthMiddleware {
       // Add auth details for request logging
       (req as AuthenticatedRequest).authDetails = {
         customerId: customerContext.customerId,
-        shopperId: customerContext.shopperId,
         siteId: customerContext.siteId,
         authenticationBypass: false
       };

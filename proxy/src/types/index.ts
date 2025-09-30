@@ -73,9 +73,9 @@ export interface SSOResponse {
   expires_in?: number;
 }
 
-// Request types
+// Request types - ReqId can be string, number, or object depending on pino-http config
 export interface AuthenticatedRequest extends Request {
-  id?: string;
+  id: string | number | object;
   userToken?: string;
   startTime?: number;
 }
@@ -96,13 +96,6 @@ export interface GettyAPIResponse {
   duration?: number;
 }
 
-export interface GettyMetrics {
-  requests: number;
-  successes: number;
-  errors: number;
-  avgResponseTime: number;
-}
-
 // Health check types
 export interface HealthStatus {
   status: 'healthy' | 'unhealthy' | 'degraded';
@@ -110,14 +103,6 @@ export interface HealthStatus {
   uptime: number;
   memory: NodeJS.MemoryUsage;
   version: string;
-}
-
-
-// Rate limiting types
-export interface RateLimitOptions {
-  windowMs?: number;
-  max?: number;
-  keyGenerator?: (req: Request) => string;
 }
 
 // Error types

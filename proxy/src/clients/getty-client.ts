@@ -2,23 +2,11 @@ import https from 'https';
 import { config } from '../config';
 import ssoClient from '../auth/sso-client';
 import logger from '../utils/logger';
-import { GettyMetrics, GettySearchParams, GettyAPIResponse } from '../types';
+import { GettySearchParams, GettyAPIResponse } from '../types';
 
 class GettyClient {
-  private metrics: GettyMetrics;
-
-  constructor() {
-    this.metrics = {
-      requests: 0,
-      successes: 0,
-      errors: 0,
-      avgResponseTime: 0
-    };
-  }
-
   async search(params: GettySearchParams, requestId: string = 'unknown'): Promise<GettyAPIResponse> {
     const startTime = Date.now();
-    this.metrics.requests++;
 
     try {
       // Get SSO JWT token
@@ -29,10 +17,8 @@ class GettyClient {
       const gettyUrl = `${config.getty.upstream}/v1/search?${queryString}`;
 
       const response = await this._makeRequest(gettyUrl, jwtToken, requestId);
-      
+
       const duration = Date.now() - startTime;
-      this.metrics.successes++;
-      this.metrics.avgResponseTime = (this.metrics.avgResponseTime + duration) / 2;
 
       // Add timing info to response
       response.duration = duration;
@@ -40,10 +26,11 @@ class GettyClient {
 
     } catch (error) {
       const duration = Date.now() - startTime;
-      this.metrics.errors++;
-      
+
       // Add error info for consolidated logging
-      (error as any).duration = duration;
+      if (error instanceof Error) {
+        (error as Error & { duration?: number }).duration = duration;
+      }
       throw error;
     }
   }
@@ -139,12 +126,6 @@ class GettyClient {
     });
   }
 
-  private _sanitizeParams(params: GettySearchParams): GettySearchParams {
-    // Remove sensitive data from logs
-    const sanitized = { ...params };
-    return sanitized;
-  }
-
   private _sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
     // Remove sensitive data from logs
     const sanitized = { ...headers };
@@ -152,19 +133,6 @@ class GettyClient {
       sanitized.Authorization = sanitized.Authorization.substring(0, 20) + '...';
     }
     return sanitized;
-  }
-
-  getMetrics(): GettyMetrics {
-    return { ...this.metrics };
-  }
-
-  resetMetrics(): void {
-    this.metrics = {
-      requests: 0,
-      successes: 0,
-      errors: 0,
-      avgResponseTime: 0
-    };
   }
 }
 

@@ -1,14 +1,18 @@
 import express, { Request, Response, Router } from 'express';
-import { validateGdToken, rateLimit } from '../auth/middleware';
+import { validateGdToken } from '../auth/middleware';
 import gettyClient from '../clients/getty-client';
+import ssoValidationRoutes from './sso-validation';
 import logger from '../utils/logger';
-import { 
-  AuthenticatedRequest, 
-  HealthStatus, 
-  GettySearchParams 
+import {
+  AuthenticatedRequest,
+  HealthStatus,
+  GettySearchParams
 } from '../types';
 
 const router: Router = express.Router();
+
+// SSO public key proxy routes (no auth required - agents will validate)
+router.use('/', ssoValidationRoutes);
 
 // Health check endpoint
 router.get('/health', (req: Request, res: Response) => {
@@ -24,12 +28,11 @@ router.get('/health', (req: Request, res: Response) => {
 });
 
 
-// Getty Images search endpoint with rate limiting
-router.get('/img/search', 
-  rateLimit({ max: 50, windowMs: 60000 }), // 50 requests per minute
-  validateGdToken, 
+// Getty Images search endpoint
+router.get('/img/search',
+  validateGdToken,
   async (req: AuthenticatedRequest, res: Response) => {
-    const requestId = req.id;
+    const requestId = String(req.id ?? 'unknown');
     const startTime = req.startTime ?? Date.now();
     
     try {
@@ -56,7 +59,7 @@ router.get('/img/search',
       delete params.callback;
       delete params.jsonp;
 
-      const response = await gettyClient.search(params, requestId ?? 'unknown');
+      const response = await gettyClient.search(params, requestId);
       const totalDuration = Date.now() - startTime;
 
       // Single comprehensive log statement

@@ -59,7 +59,7 @@
       "bash -c 'cd ai-playground && MATRIX_PACKAGE=ai-playground ../../scripts/license-check.sh'"
     ],
     "proxy/package.json": [
-      "bash -c 'cd proxy && MATRIX_PACKAGE=proxy ../../scripts/license-check.sh'"
+      "bash -c 'cd proxy && MATRIX_PACKAGE=proxy ../scripts/license-check.sh'"
     ],
     "packages/ai-lib/package.json": [
       "bash -c 'cd packages/ai-lib && MATRIX_PACKAGE=ai-lib ../../../scripts/license-check.sh'"

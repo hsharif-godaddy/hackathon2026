@@ -1,4 +1,4 @@
-import { validateGdToken, rateLimit } from '../../src/auth/middleware';
+import { validateGdToken } from '../../src/auth/middleware';
 import { Request, Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../../src/types';
 
@@ -62,46 +62,4 @@ describe('Authentication Middleware', () => {
     });
   });
 
-  describe('rateLimit', () => {
-    it('should allow requests under the limit', () => {
-      const middleware = rateLimit({ max: 5, windowMs: 60000 });
-      
-      for (let i = 0; i < 5; i++) {
-        middleware(req as Request, res as Response, next);
-      }
-
-      expect(next).toHaveBeenCalledTimes(5);
-      expect(res.status).not.toHaveBeenCalled();
-    });
-
-    it('should block requests over the limit', () => {
-      const middleware = rateLimit({ max: 2, windowMs: 60000 });
-      
-      // First two requests should pass
-      middleware(req as Request, res as Response, next);
-      middleware(req as Request, res as Response, next);
-      
-      // Third request should be blocked
-      middleware(req as Request, res as Response, next);
-
-      expect(next).toHaveBeenCalledTimes(2);
-      expect(res.status).toHaveBeenCalledWith(429);
-    });
-
-    it('should use custom key generator', () => {
-      const middleware = rateLimit({ 
-        max: 1, 
-        windowMs: 60000,
-        keyGenerator: (req: Request) => req.headers['x-user-id'] as string || req.ip || 'unknown'
-      });
-
-      req.headers!['x-user-id'] = 'user1';
-      middleware(req as Request, res as Response, next);
-
-      req.headers!['x-user-id'] = 'user2';
-      middleware(req as Request, res as Response, next);
-
-      expect(next).toHaveBeenCalledTimes(2); // Different users, both should pass
-    });
-  });
 });
