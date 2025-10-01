@@ -4,6 +4,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import './styles/globals.css';
 
+// Add robots meta tag only in development mode
+if (import.meta.env.DEV) {
+  const meta = document.createElement('meta');
+  meta.name = 'robots';
+  meta.content = 'noindex, nofollow';
+  document.head.appendChild(meta);
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
