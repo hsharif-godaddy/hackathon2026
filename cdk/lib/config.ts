@@ -56,11 +56,7 @@ const testConfig: Config = {
   serverlessV2MinCapacity: 0.5,
   serverlessV2MaxCapacity: 8,
   mysqlReadersCount: 0,
-  bedrockAssumeRoleArns: [
-    'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
-    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
-    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
-  ],
+  bedrockAssumeRoleArns: [],
   gocodeAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
@@ -74,15 +70,13 @@ const prodConfig: Config = {
   account: '644094189644',
   region: 'us-west-2',
   envName: 'prod',
-  v2CellAccount: '',  // FIXME : Update with actual prod V2 Cell account when available
+  v2CellAccount: '506695300582',
   databases: ['prod'],
   backupRetentionDays: 30,
   serverlessV2MinCapacity: 2,
   serverlessV2MaxCapacity: 16,
   mysqlReadersCount: 1,
-  bedrockAssumeRoleArns: [
-    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
-  ],
+  bedrockAssumeRoleArns: [],
   gocodeAssumeRoleArns: [
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
   ],
