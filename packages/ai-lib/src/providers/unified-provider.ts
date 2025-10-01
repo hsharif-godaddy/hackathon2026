@@ -16,6 +16,7 @@ import {
   isModelSupported as isModelSupportedFromNormalization,
   getFullModelName as getFullModelNameFromNormalization
 } from '../utils/model-normalization.js'
+import { getS2SProviderConfig, isS2SAuthEnabled, getDefaultAnthropicProxyEndpoint, type S2SAuthConfig } from '../utils/s2s-auth.js'
 
 /**
  * Claude models that can be routed through OpenAI proxy
@@ -56,12 +57,20 @@ export interface ProviderConfig {
   anthropicApiKey?: string
   /** Anthropic base URL override (for proxy) */
   anthropicBaseUrl?: string
+  /** S2S authentication configuration */
+  s2sAuth?: S2SAuthConfig
 }
 
 /**
  * Validate OpenAI configuration
+ * Skips API key validation when S2S authentication is enabled
  */
 function validateOpenAIConfig(config?: ProviderConfig): void {
+  // Skip API key validation if S2S authentication is enabled
+  if (isS2SAuthEnabled()) {
+    return;
+  }
+  
   const apiKey = config?.openaiApiKey || process.env.OPENAI_API_KEY
   
   if (!apiKey) {
@@ -106,6 +115,11 @@ function getClaudeProxyType(modelName: string, config?: ProviderConfig): 'openai
   const isClaudeProxyModel = modelName in CLAUDE_PROXY_MODELS
   if (!isClaudeProxyModel) {
     return null
+  }
+  
+  // If S2S auth is enabled, prefer Anthropic proxy (since we have GoCode endpoints)
+  if (isS2SAuthEnabled()) {
+    return 'anthropic'
   }
   
   // If AWS is available, use Bedrock directly (no proxy needed)
@@ -200,19 +214,39 @@ function getProviderType(modelName: string, config?: ProviderConfig): 'openai' |
 
 /**
  * Create OpenAI provider with configuration
+ * Now supports S2S authentication when GOCODE_USE_S2S_AUTH is enabled
  */
-function createOpenAIProvider(config?: ProviderConfig) {
-  const openaiConfig: any = {
-    apiKey: config?.openaiApiKey || process.env.OPENAI_API_KEY || ''
-  }
+async function createOpenAIProvider(config?: ProviderConfig) {
+  // Check if S2S authentication is enabled and get config
+  const s2sConfig = await getS2SProviderConfig(config?.s2sAuth)
   
-  // Add base URL if provided (for proxy support)
-  const baseURL = config?.openaiBaseUrl || process.env.OPENAI_BASE_URL
-  if (baseURL) {
-    openaiConfig.baseURL = baseURL
+  if (s2sConfig) {
+    // Use S2S authentication with GoCode endpoint
+    const openaiConfig: any = {
+      apiKey: s2sConfig.apiKey, // Placeholder API key
+      baseURL: s2sConfig.baseURL, // GoCode endpoint
+      headers: s2sConfig.headers   // Authorization: Bearer JWT
+    }
+    
+    console.log(`🔐 Using S2S authentication with GoCode endpoint: ${s2sConfig.baseURL}`)
+    return createOpenAI(openaiConfig)
+    
+  } else {
+    // Use regular OpenAI authentication
+    const fallbackApiKey = config?.openaiApiKey || process.env.OPENAI_API_KEY || ''
+    
+    const openaiConfig: any = {
+      apiKey: fallbackApiKey
+    }
+    
+    // Add base URL if provided (for proxy support)
+    const baseURL = config?.openaiBaseUrl || process.env.OPENAI_BASE_URL
+    if (baseURL) {
+      openaiConfig.baseURL = baseURL
+    }
+    
+    return createOpenAI(openaiConfig)
   }
-  
-  return createOpenAI(openaiConfig)
 }
 
 /**
@@ -339,7 +373,7 @@ export async function getModel(
       }
       
       // Create OpenAI provider
-      const provider = createOpenAIProvider(config)
+      const provider = await createOpenAIProvider(config)
       return provider(modelNameToUse)
       
     } else if (providerType === 'bedrock') {
@@ -370,7 +404,7 @@ export async function getModel(
       }
       
       // Create Anthropic provider
-      const provider = createAnthropicProvider(config)
+      const provider = await createAnthropicProvider(config)
       return provider(modelNameToUse)
       
     } else {
@@ -424,8 +458,14 @@ export function validateModelEnvironment(modelName: string, config?: ProviderCon
 
 /**
  * Validate Anthropic configuration
+ * Skips API key validation when S2S authentication is enabled
  */
 function validateAnthropicConfig(config?: ProviderConfig): void {
+  // Skip API key validation if S2S authentication is enabled
+  if (isS2SAuthEnabled()) {
+    return;
+  }
+  
   const apiKey = config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     throw new Error('Anthropic API key is required. Set ANTHROPIC_API_KEY environment variable or pass anthropicApiKey in config.')
@@ -434,19 +474,40 @@ function validateAnthropicConfig(config?: ProviderConfig): void {
 
 /**
  * Create Anthropic provider with configuration
+ * Now supports S2S authentication when GOCODE_USE_S2S_AUTH is enabled
  */
-function createAnthropicProvider(config?: ProviderConfig) {
-  const anthropicConfig: any = {
-    apiKey: config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || ''
-  }
+async function createAnthropicProvider(config?: ProviderConfig) {
+  // Check if S2S authentication is enabled and get config
+  const s2sConfig = await getS2SProviderConfig(config?.s2sAuth)
   
-  // Add base URL if provided (for proxy support)
-  const baseURL = config?.anthropicBaseUrl || process.env.ANTHROPIC_BASE_URL
-  if (baseURL) {
-    anthropicConfig.baseURL = baseURL
+  if (s2sConfig) {
+    // Use S2S authentication with GoCode endpoint
+    const anthropicConfig: any = {
+      apiKey: s2sConfig.apiKey, // Placeholder API key
+      baseURL: s2sConfig.baseURL.endsWith('/v1') ? s2sConfig.baseURL : s2sConfig.baseURL + '/v1', // Ensure /v1 suffix
+      headers: s2sConfig.headers // Authorization: Bearer JWT
+    }
+    
+    console.log(`🔐 Using S2S authentication with GoCode endpoint (Anthropic): ${anthropicConfig.baseURL}`)
+    return createAnthropic(anthropicConfig)
+    
+  } else {
+    // Use regular Anthropic authentication
+    const fallbackApiKey = config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || ''
+    
+    const anthropicConfig: any = {
+      apiKey: fallbackApiKey
+    }
+    
+    // Add base URL - use GoCode Anthropic proxy endpoint if no explicit override
+    const baseURL = config?.anthropicBaseUrl || process.env.ANTHROPIC_BASE_URL || getDefaultAnthropicProxyEndpoint()
+    if (baseURL) {
+      anthropicConfig.baseURL = baseURL
+      console.log(`🔗 Using Anthropic proxy endpoint: ${baseURL}`)
+    }
+    
+    return createAnthropic(anthropicConfig)
   }
-  
-  return createAnthropic(anthropicConfig)
 }
 
 

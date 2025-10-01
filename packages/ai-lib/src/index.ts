@@ -21,6 +21,7 @@ export * from './websocket/index.js'
 export * from './utils/env-config.js'
 export * from './utils/file-processor.js'
 export * from './utils/token-counter.js'
+export * from './utils/s2s-auth.js'
 
 // Convenience re-exports
 export { Agent } from './core/agent.js'

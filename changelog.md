@@ -12,6 +12,15 @@
 
 ### Internal Changes
 
+- **AI-Lib S2S Authentication**: Complete Service-to-Service authentication implementation for ai-lib using AWS IAM credentials and JWT tokens
+  - Added optional S2S authentication via `GOCODE_USE_S2S_AUTH=true` environment variable
+  - Integrated gd-auth-client for JWT token generation from AWS IAM credentials with 24-hour token lifespan
+  - Environment-specific configuration supporting dev/test/prod SSO hosts and GoCode endpoints
+  - Intelligent JWT token caching with 60-second refresh buffer for optimal performance (reduces SSO calls from every request to once per 24 hours)
+  - Full support for both OpenAI and Anthropic providers through GoCode proxy endpoints
+  - AWS identity debugging capabilities and comprehensive concurrency testing (15 simultaneous requests verified)
+  - Backward compatible implementation with zero breaking changes to existing API key authentication
+
 - **Security Enhancement**: Removed unsafe command execution from file-edit tool to enforce proper container isolation
   - Removed `runBuildCommand()` and `getSafeBuildCommand()` methods that executed commands in agent container via unsafe `exec()` calls
   - Removed `autoBuild` and `dryRun` parameters from FileEditTool interface and ai-lib-tools wrapper
