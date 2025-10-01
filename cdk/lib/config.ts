@@ -6,7 +6,9 @@ interface Config {
   databases: string[];
   vpnIps: any;
   backupRetentionDays: number;
+  serverlessV2MinCapacity: number;
   serverlessV2MaxCapacity: number;
+  mysqlReadersCount: number;
   bedrockAssumeRoleArns: string[];
 }
 
@@ -17,7 +19,9 @@ const devConfig: Config = {
   v2CellAccount: '418549769352',
   databases: ['pre-dev', 'dev', 'test'],
   backupRetentionDays: 7,
+  serverlessV2MinCapacity: 0.5,
   serverlessV2MaxCapacity: 4,
+  mysqlReadersCount: 0,
   bedrockAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
@@ -41,7 +45,9 @@ const testConfig: Config = {
   v2CellAccount: '418549769352',
   databases: ['test'],
   backupRetentionDays: 15,
+  serverlessV2MinCapacity: 0.5,
   serverlessV2MaxCapacity: 8,
+  mysqlReadersCount: 0,
   bedrockAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
@@ -51,13 +57,15 @@ const testConfig: Config = {
 };
 
 const prodConfig: Config = {
-  account: 'NOT_DEFINED', // FIXME : Update with actual prod account when available
+  account: '644094189644',
   region: 'us-west-2',
   envName: 'prod',
-  v2CellAccount: 'NOT_DEFINED',
+  v2CellAccount: '',  // FIXME : Update with actual prod V2 Cell account when available
   databases: ['prod'],
   backupRetentionDays: 30,
+  serverlessV2MinCapacity: 2,
   serverlessV2MaxCapacity: 16,
+  mysqlReadersCount: 1,
   bedrockAssumeRoleArns: [
     // FIXME: Update with actual prod role ARNs when available
   ],

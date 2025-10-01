@@ -4,32 +4,31 @@ on:
   workflow_dispatch:
     inputs:
       ENV_NAME:
-        description: 'Environment to deploy the CDK stack'
+        description: "Environment to deploy the CDK stack"
         required: true
         type: choice
         options:
-          - 'dev'
-          - 'test'
-          - 'prod'
-        default: 'dev'
+          - "dev"
+          - "test"
+          - "prod"
+        default: "dev"
       STACK_NAME:
-        description: 'Stack to deploy'
+        description: "Stack to deploy"
         required: true
         type: choice
         options:
-          - '--all'
-          - 'AiroBuilderHostedZoneStack'
-          - 'AiroBuilderStack'
-          - 'MySQLV2Stack'
-        default: '--all'
+          - "--all"
+          - "AiroBuilderStack"
+          - "MySQLV2Stack"
+        default: "--all"
       DEFAULT_ACTION:
-        description: 'Default action to take'
+        description: "Default action to take"
         required: true
         type: choice
         options:
-          - 'diff'
-          - 'deploy'
-        default: 'diff'
+          - "diff"
+          - "deploy"
+        default: "diff"
 
 permissions:
   id-token: write # required for artifactory token login
@@ -73,7 +72,7 @@ jobs:
           case "${{ inputs.ENV_NAME || github.event.inputs.ENV_NAME || 'dev' }}" in
           'dev') ACCOUNT_ID='694282668781' ;;
           'test') ACCOUNT_ID='269423819739' ;;
-          'prod') ACCOUNT_ID='NOT_DEFINED' ;;
+          'prod') ACCOUNT_ID='644094189644' ;;
           esac
           echo "CDK_AWS_ACCOUNT_ID=${ACCOUNT_ID}" >> $GITHUB_ENV
           echo "DEFAULT_ACTION=${{ inputs.DEFAULT_ACTION || github.event.inputs.DEFAULT_ACTION || 'diff' }}" >> $GITHUB_ENV
@@ -86,22 +85,23 @@ jobs:
           echo "DEFAULT_ACTION=${{ env.DEFAULT_ACTION }}"
 
       - name: Run Build & Deploy
+        working-directory: ./cdk
         env:
-            ENV_NAME: ${{ env.ENV_NAME }}
-            CDK_AWS_ACCOUNT_ID: ${{ env.CDK_AWS_ACCOUNT_ID }}
-            STACK_NAME: ${{ env.STACK_NAME }}
-            DEFAULT_ACTION: ${{ env.DEFAULT_ACTION }}
+          ENV_NAME: ${{ env.ENV_NAME }}
+          CDK_AWS_ACCOUNT_ID: ${{ env.CDK_AWS_ACCOUNT_ID }}
+          STACK_NAME: ${{ env.STACK_NAME }}
+          DEFAULT_ACTION: ${{ env.DEFAULT_ACTION }}
         run: |
           # Create .npmrc file for workspace
           echo "always-auth=true" > .npmrc
           echo "progress=false" >> .npmrc
-          echo registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> .npmrc
+          echo @godaddy:registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ >> .npmrc
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
 
           npm install -g pnpm
 
           # Install workspace dependencies (includes CDK)
-          pnpm install --frozen-lockfile
+          pnpm --filter airo-builder-cdk install --frozen-lockfile
 
           # npx --verbose cdk synth
 

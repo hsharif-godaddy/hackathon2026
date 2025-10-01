@@ -15,7 +15,7 @@ export class MySQLV2Stack extends GDStack {
 
     const vpc = ec2.Vpc.fromLookup(this, 'VPC', { vpcId: this.gdTrustedLandingZone.networking.vpcId });
 
-    if (config.envName === 'dev') {
+    if (['dev', 'prod'].includes(config.envName)) {
       config.databases.forEach(database => {
         // Create security group for MySQL
         const mysqlSecurityGroup = new ec2.SecurityGroup(this, `${database}-MySQLSecurityGroup`, {
@@ -73,10 +73,18 @@ export class MySQLV2Stack extends GDStack {
             publiclyAccessible: false,
             parameterGroup: instanceParameterGroup,
           }),
-          serverlessV2MinCapacity: 0.5,
-          serverlessV2MaxCapacity: 16,
+          readers: Array.from({ length: config.mysqlReadersCount }, (n, i) => i).map(i => rds.ClusterInstance.serverlessV2(`reader-${i + 1}`, {
+            publiclyAccessible: false,
+            enablePerformanceInsights: true,
+            performanceInsightRetention: rds.PerformanceInsightRetention.DEFAULT,
+            instanceIdentifier: `${database}-mysql-v2-reader-${i + 1}`,
+            scaleWithWriter: i === 0,
+            parameterGroup: instanceParameterGroup
+        })),
+          serverlessV2MinCapacity: config.serverlessV2MinCapacity,
+          serverlessV2MaxCapacity: config.serverlessV2MaxCapacity,
           backup: {
-            retention: cdk.Duration.days(7),
+            retention: cdk.Duration.days(config.backupRetentionDays),
             preferredWindow: '03:00-04:00',
           },
           clusterIdentifier: `${database}-mysql-v2-cluster`,
@@ -89,6 +97,11 @@ export class MySQLV2Stack extends GDStack {
           securityGroups: [mysqlSecurityGroup],
           removalPolicy: cdk.RemovalPolicy.RETAIN,
         });
+
+        cluster.node.addDependency(parameterGroup);
+        cluster.node.addDependency(instanceParameterGroup);
+        cluster.node.addDependency(subnetGroup);
+        cluster.node.addDependency(mysqlSecurityGroup);
 
         this.clusters.push(cluster);
         cdk.Tags.of(cluster).add('allowShutdownForCostOptimization', 'false');
