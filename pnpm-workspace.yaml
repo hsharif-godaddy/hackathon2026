@@ -3,8 +3,6 @@ packages:
   - "app"
   - "packages/*"
   - "setup"
-  - "ai-playground"
   - "cdk"
   - "proxy"
   - "bedrock-log-viewer"
-

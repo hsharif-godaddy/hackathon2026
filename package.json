@@ -8,7 +8,6 @@
     "dev:agents": "pnpm --filter @airo/agents dev",
     "dev:app": "pnpm --filter website dev",
     "dev:setup": "pnpm --filter airo-setup dev",
-    "dev:playground": "pnpm --filter ai-playground dev",
     "build": "pnpm --filter \"@airo/*\" build && pnpm --filter website build",
     "build:all": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
@@ -31,9 +30,6 @@
     "app/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter app lint"
     ],
-    "ai-playground/**/*.{ts,tsx,js,jsx}": [
-      "pnpm --filter ai-playground lint"
-    ],
     "proxy/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter proxy lint:fix"
     ],
@@ -54,9 +50,6 @@
     ],
     "app/package.json": [
       "bash -c 'cd app && MATRIX_PACKAGE=app ../../scripts/license-check.sh'"
-    ],
-    "ai-playground/package.json": [
-      "bash -c 'cd ai-playground && MATRIX_PACKAGE=ai-playground ../../scripts/license-check.sh'"
     ],
     "proxy/package.json": [
       "bash -c 'cd proxy && MATRIX_PACKAGE=proxy ../scripts/license-check.sh'"
