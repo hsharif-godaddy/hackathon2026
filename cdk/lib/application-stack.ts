@@ -55,7 +55,22 @@ export class AiroBuilderStack extends GDStack {
         ...config.gocodeAssumeRoleArns.map(arn => new iam.ArnPrincipal(arn)),
         // Add current account ops role
         new iam.ArnPrincipal(`arn:aws:iam::${cdk.Aws.ACCOUNT_ID}:role/GD-AWS-USA-GD-AiroBuilde-Ops`)
-      )
+      ),
+      inlinePolicies: {
+        iamJwtAccess: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                "execute-api:Invoke"
+              ],
+              resources: [
+                `arn:aws:execute-api:*:${config.awsIamJwtAccount}:*`
+              ]
+            })
+          ]
+        })
+      },
     });
 
     // Output GoCode role ARN

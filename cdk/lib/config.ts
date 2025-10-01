@@ -11,6 +11,7 @@ interface Config {
   mysqlReadersCount: number;
   bedrockAssumeRoleArns: string[];
   gocodeAssumeRoleArns: string[];
+  awsIamJwtAccount: string;
 }
 
 const devConfig: Config = {
@@ -41,7 +42,8 @@ const devConfig: Config = {
     "166.62.16.244/30": "Prisma NAT",
     "132.148.54.234/32": "Prisma NAT",
     "132.148.54.244/30": "Prisma NAT"
-  }
+  },
+  awsIamJwtAccount: '847636408845'
 };
 
 const testConfig: Config = {
@@ -64,7 +66,8 @@ const testConfig: Config = {
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
   ],
-  vpnIps: {}
+  vpnIps: {},
+  awsIamJwtAccount: '333184933228'
 };
 
 const prodConfig: Config = {
@@ -83,7 +86,8 @@ const prodConfig: Config = {
   gocodeAssumeRoleArns: [
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
   ],
-  vpnIps: {}
+  vpnIps: {},
+  awsIamJwtAccount: '377100941779'
 };
 
 
