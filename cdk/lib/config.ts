@@ -10,6 +10,7 @@ interface Config {
   serverlessV2MaxCapacity: number;
   mysqlReadersCount: number;
   bedrockAssumeRoleArns: string[];
+  gocodeAssumeRoleArns: string[];
 }
 
 const devConfig: Config = {
@@ -23,6 +24,11 @@ const devConfig: Config = {
   serverlessV2MaxCapacity: 4,
   mysqlReadersCount: 0,
   bedrockAssumeRoleArns: [
+    'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
+    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
+    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
+  ],
+  gocodeAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
@@ -53,6 +59,11 @@ const testConfig: Config = {
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
   ],
+  gocodeAssumeRoleArns: [
+    'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
+    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
+    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
+  ],
   vpnIps: {}
 };
 
@@ -67,7 +78,10 @@ const prodConfig: Config = {
   serverlessV2MaxCapacity: 16,
   mysqlReadersCount: 1,
   bedrockAssumeRoleArns: [
-    // FIXME: Update with actual prod role ARNs when available
+    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
+  ],
+  gocodeAssumeRoleArns: [
+    'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
   ],
   vpnIps: {}
 };
