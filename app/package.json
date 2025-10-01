@@ -12,7 +12,7 @@
     "build": "npm run build:tsc && next build",
     "build:tsc": "tsc -p ./tsconfig.server.json",
     "build:tsc:watch": "tsc -p ./tsconfig.server.json --watch",
-    "start": "NODE_OPTIONS='--import @godaddy/gasket-otel/register' NEXT_OTEL_VERBOSE=1 npm run start:https & next start",
+    "start": "NODE_OPTIONS='--import ./otel-setup.js' NEXT_OTEL_VERBOSE=1 npm run start:https & next start",
     "start:https": "node dist/server.js",
     "preview": "npm run build && npm run start",
     "start:mysql": "node scripts/setup-database-url.js next start",
