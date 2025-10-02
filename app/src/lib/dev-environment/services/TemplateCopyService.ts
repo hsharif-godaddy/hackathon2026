@@ -12,8 +12,9 @@ import { logger } from '../../request-context';
 
 import { cpSync, existsSync, rmSync } from 'fs';
 import path from 'path';
+import { execa } from 'execa';
 import { extractTemplateVersion } from '../utils/template-version';
-import { safeJoinWithOptions, safeResolve, createSafePathBuilder } from '../utils/safe-path';
+import { safeJoinWithOptions, safeResolve, createSafePathBuilder, isSafePath } from '../utils/safe-path';
 
 /** Default template directory when none is specified in environment or parameters */
 const DEFAULT_TEMPLATE_DIR = 'app-templates/v8';
@@ -65,7 +66,7 @@ export class TemplateCopyService {
 
       try {
         // Create app directory if it doesn't exist
-        this.ensureAppDirectory(appPath);
+        await this.ensureAppDirectory(appPath);
 
         // Perform the actual copy
         this.performTemplateCopy(templatePath, appPath);
@@ -144,19 +145,36 @@ export class TemplateCopyService {
   /**
    * Force remove directory with permission fixing
    */
-  private forceRemoveDirectory(dirPath: string): void {
-    const { execSync } = require('child_process');
+  private async forceRemoveDirectory(dirPath: string): Promise<void> {
+    // Validate path to prevent directory traversal attacks
+    // dirPath should be an absolute path within /tmp/apps
+    const normalizedPath = path.resolve(dirPath);
+    const appsBaseDir = path.resolve('/tmp/apps');
+    
+    // Check if path is safe - must be within /tmp/apps and not contain traversal sequences
+    if (!isSafePath(normalizedPath, appsBaseDir, { allowTraversal: false })) {
+      const error = new Error(`Invalid directory path: ${dirPath} is outside allowed base directory ${appsBaseDir}`);
+      logger.error(`❌ Path validation failed for directory removal: ${error.message}`);
+      throw error;
+    }
+    
+    // Additional check: ensure the normalized path doesn't contain .. sequences
+    if (normalizedPath.includes('..')) {
+      const error = new Error(`Invalid directory path: ${dirPath} contains directory traversal sequences`);
+      logger.error(`❌ Path validation failed: ${error.message}`);
+      throw error;
+    }
     
     try {
       // Use system commands for more robust removal
       // This handles Git objects and other stubborn files better
       if (process.platform === 'win32') {
         // Windows: Use rmdir /s /q and handle readonly files
-        execSync(`rmdir /s /q "${dirPath}"`, { stdio: 'ignore' });
+        await execa('rmdir', ['/s', '/q', normalizedPath], { reject: false });
       } else {
         // Unix/Linux: Use chmod to fix permissions, then rm
-        execSync(`chmod -R 755 "${dirPath}" 2>/dev/null || true`, { stdio: 'ignore' });
-        execSync(`rm -rf "${dirPath}"`, { stdio: 'ignore' });
+        await execa('chmod', ['-R', '755', normalizedPath], { reject: false });
+        await execa('rm', ['-rf', normalizedPath], { reject: false });
       }
       
       logger.info(`🧹 Force cleanup succeeded for: ${dirPath}`);
@@ -169,7 +187,7 @@ export class TemplateCopyService {
   /**
    * Ensure app directory exists
    */
-  private ensureAppDirectory(appPath: string): void {
+  private async ensureAppDirectory(appPath: string): Promise<void> {
     if (existsSync(appPath)) {
       logger.info(`📁 App directory already exists, removing: ${appPath}`);
       
@@ -181,7 +199,7 @@ export class TemplateCopyService {
         
         try {
           // Second attempt: Try to fix permissions first, then remove
-          this.forceRemoveDirectory(appPath);
+          await this.forceRemoveDirectory(appPath);
         } catch (forceError: any) {
           logger.error(`❌ Force cleanup also failed: ${forceError.message}`);
           throw new Error(`Cannot remove existing app directory: ${appPath}. ${forceError.message}`);

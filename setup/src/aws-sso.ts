@@ -1,12 +1,9 @@
-import { exec, execSync } from 'child_process';
-import { promisify } from 'util';
+import { execa } from 'execa';
 import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
-
-const execAsync = promisify(exec);
 
 interface SSOConfig {
   startUrl: string;
@@ -36,7 +33,7 @@ export class AWSSSoSetup {
 
     try {
       // Check if AWS CLI exists
-      await execAsync('aws --version');
+      await execa('aws', ['--version']);
     } catch (error) {
       console.log(chalk.red('❌ AWS CLI not found'));
       console.log('Please install AWS CLI v2: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html');
@@ -45,7 +42,7 @@ export class AWSSSoSetup {
 
     try {
       // Check AWS CLI version (SSO requires v2)
-      const { stdout } = await execAsync('aws --version');
+      const { stdout } = await execa('aws', ['--version']);
       const version = stdout.match(/aws-cli\/(\d+\.\d+\.\d+)/)?.[1];
       
       if (version) {
@@ -104,7 +101,7 @@ sso_registration_scopes = sso:account:access
 
     try {
       // Check if profile already exists
-      const { stdout: profiles } = await execAsync('aws configure list-profiles');
+      const { stdout: profiles } = await execa('aws', ['configure', 'list-profiles']);
       if (profiles.includes(this.config.profileName)) {
         console.log(chalk.yellow(`⚠️  Profile '${this.config.profileName}' already exists`));
         
@@ -124,17 +121,11 @@ sso_registration_scopes = sso:account:access
       }
 
       // Configure the profile using AWS CLI commands
-      const commands = [
-        `aws configure set sso_session "${this.config.sessionName}" --profile "${this.config.profileName}"`,
-        `aws configure set sso_account_id "${this.config.accountId}" --profile "${this.config.profileName}"`,
-        `aws configure set sso_role_name "${this.config.roleName}" --profile "${this.config.profileName}"`,
-        `aws configure set region "${this.config.awsRegion}" --profile "${this.config.profileName}"`,
-        `aws configure set output "json" --profile "${this.config.profileName}"`
-      ];
-
-      for (const command of commands) {
-        await execAsync(command);
-      }
+      await execa('aws', ['configure', 'set', 'sso_session', this.config.sessionName, '--profile', this.config.profileName]);
+      await execa('aws', ['configure', 'set', 'sso_account_id', this.config.accountId, '--profile', this.config.profileName]);
+      await execa('aws', ['configure', 'set', 'sso_role_name', this.config.roleName, '--profile', this.config.profileName]);
+      await execa('aws', ['configure', 'set', 'region', this.config.awsRegion, '--profile', this.config.profileName]);
+      await execa('aws', ['configure', 'set', 'output', 'json', '--profile', this.config.profileName]);
 
       console.log(chalk.green(`✅ Profile '${this.config.profileName}' configured`));
       console.log('');
@@ -173,15 +164,18 @@ sso_registration_scopes = sso:account:access
     }
 
     try {
-      await execAsync(`aws sso login --profile "${this.config.profileName}"`);
+      await execa('aws', ['sso', 'login', '--profile', this.config.profileName]);
 
       console.log(chalk.green('✅ SSO login successful'));
 
       // Test the credentials
       console.log(chalk.blue('🧪 Testing credentials...'));
-      const { stdout: identity } = await execAsync(
-        `aws sts get-caller-identity --profile "${this.config.profileName}" --query "Arn" --output text`
-      );
+      const { stdout: identity } = await execa('aws', [
+        'sts', 'get-caller-identity',
+        '--profile', this.config.profileName,
+        '--query', 'Arn',
+        '--output', 'text'
+      ]);
 
       console.log(chalk.green('✅ Credentials working'));
       console.log(`   Identity: ${identity.trim()}`);
@@ -198,7 +192,7 @@ sso_registration_scopes = sso:account:access
     console.log(chalk.blue('🔍 Checking SSO configuration...'));
 
     try {
-      const { stdout: profiles } = await execAsync('aws configure list-profiles');
+      const { stdout: profiles } = await execa('aws', ['configure', 'list-profiles']);
       
       if (!profiles.includes(this.config.profileName)) {
         console.log(chalk.red(`❌ Profile '${this.config.profileName}' not found`));
@@ -208,19 +202,19 @@ sso_registration_scopes = sso:account:access
       console.log(chalk.green(`✅ Profile '${this.config.profileName}' exists`));
 
       // Check profile configuration
-      const configCommands = [
-        ['SSO Session', `aws configure get sso_session --profile "${this.config.profileName}"`],
-        ['Account ID', `aws configure get sso_account_id --profile "${this.config.profileName}"`],
-        ['Role Name', `aws configure get sso_role_name --profile "${this.config.profileName}"`],
-        ['Region', `aws configure get region --profile "${this.config.profileName}"`]
+      const configCommands: Array<[string, string, string[]]> = [
+        ['SSO Session', 'sso_session', ['configure', 'get', 'sso_session', '--profile', this.config.profileName]],
+        ['Account ID', 'sso_account_id', ['configure', 'get', 'sso_account_id', '--profile', this.config.profileName]],
+        ['Role Name', 'sso_role_name', ['configure', 'get', 'sso_role_name', '--profile', this.config.profileName]],
+        ['Region', 'region', ['configure', 'get', 'region', '--profile', this.config.profileName]]
       ];
 
       console.log('');
       console.log('Profile configuration:');
       
-      for (const [label, command] of configCommands) {
+      for (const [label, , args] of configCommands) {
         try {
-          const { stdout } = await execAsync(command);
+          const { stdout } = await execa('aws', args);
           console.log(`  ${label}: ${stdout.trim() || 'Not set'}`);
         } catch {
           console.log(`  ${label}: Not set`);
@@ -229,9 +223,12 @@ sso_registration_scopes = sso:account:access
 
       // Check if logged in
       try {
-        const { stdout: identity } = await execAsync(
-          `aws sts get-caller-identity --profile "${this.config.profileName}" --query "Arn" --output text`
-        );
+        const { stdout: identity } = await execa('aws', [
+          'sts', 'get-caller-identity',
+          '--profile', this.config.profileName,
+          '--query', 'Arn',
+          '--output', 'text'
+        ]);
         console.log(`  Status: ✅ Logged in`);
         console.log(`  Identity: ${identity.trim()}`);
         return true;

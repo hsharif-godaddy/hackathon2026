@@ -58,15 +58,17 @@ export class EnvGenerator {
 
 	private async checkExistingAWSProfile(): Promise<string | null> {
 		try {
-			const { execSync } = await import("child_process");
+			const { execa } = await import("execa");
 			
 			// First check if the SSO profile exists and is logged in
 			const ssoProfileName = await this.awsSSO.getProfile();
 			try {
-				execSync(`aws sts get-caller-identity --profile ${ssoProfileName} --query "Arn" --output text`, {
-					encoding: 'utf8',
-					stdio: 'pipe'
-				});
+				await execa('aws', [
+					'sts', 'get-caller-identity',
+					'--profile', ssoProfileName,
+					'--query', 'Arn',
+					'--output', 'text'
+				]);
 				return ssoProfileName;
 			} catch {
 				// SSO profile exists but not logged in or doesn't work
@@ -74,10 +76,11 @@ export class EnvGenerator {
 
 			// Check if any default credentials work
 			try {
-				execSync('aws sts get-caller-identity --query "Arn" --output text', {
-					encoding: 'utf8',
-					stdio: 'pipe'
-				});
+				await execa('aws', [
+					'sts', 'get-caller-identity',
+					'--query', 'Arn',
+					'--output', 'text'
+				]);
 				return process.env.AWS_PROFILE || 'default';
 			} catch {
 				// No working default credentials
@@ -671,16 +674,24 @@ SSO_JWT=${config.ssoJwt}
 		console.log(chalk.blue("🔍 Checking MySQL container availability..."));
 
 		try {
-			const { execSync } = await import("child_process");
-			execSync(
-				'docker ps --filter "name=airo-app-mysql" --format "{{.Names}}" | grep "airo-app-mysql"',
-				{
-					encoding: "utf8",
-					stdio: "pipe",
-				},
+			const { execa } = await import("execa");
+			const { stdout } = await execa('docker', [
+				'ps',
+				'--filter', 'name=airo-app-mysql',
+				'--format', '{{.Names}}'
+			]);
+			
+			if (stdout.includes('airo-app-mysql')) {
+				console.log(chalk.green("✅ MySQL container is running"));
+				return true;
+			}
+			
+			console.log(
+				chalk.yellow(
+					"!  MySQL container not running. Start it with: docker compose up app-mysql -d",
+				),
 			);
-			console.log(chalk.green("✅ MySQL container is running"));
-			return true;
+			return false;
 		} catch (error) {
 			console.log(
 				chalk.yellow(
@@ -693,11 +704,8 @@ SSO_JWT=${config.ssoJwt}
 
 	async checkSsoJwtBinary(): Promise<boolean> {
 		try {
-			const { execSync } = await import("child_process");
-			execSync("ssojwt --version", {
-				encoding: "utf8",
-				stdio: "pipe",
-			});
+			const { execa } = await import("execa");
+			await execa('ssojwt', ['--version']);
 			return true;
 		} catch (error) {
 			return false;
@@ -706,12 +714,9 @@ SSO_JWT=${config.ssoJwt}
 
 	async getSsoJwtToken(): Promise<string | null> {
 		try {
-			const { execSync } = await import("child_process");
-			const token = execSync("ssojwt", {
-				encoding: "utf8",
-				stdio: "pipe",
-			}).trim();
-			return token;
+			const { execa } = await import("execa");
+			const { stdout: token } = await execa('ssojwt');
+			return token.trim();
 		} catch (error) {
 			console.log(chalk.red("❌ Failed to generate SSO JWT token"));
 			return null;

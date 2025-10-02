@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { execa } from 'execa';
 import fs from 'fs-extra';
 import { DependencyChecker } from './deps-checker.js';
 import { EnvGenerator } from './env-generator.js';
@@ -162,7 +162,7 @@ async function startMySQLContainer(): Promise<void> {
   
   try {
     console.log(chalk.blue('🚀 Starting MySQL container...'));
-    execSync('docker compose up app-mysql -d', { 
+    await execa('docker', ['compose', 'up', 'app-mysql', '-d'], { 
       cwd: projectRoot,
       stdio: 'inherit' 
     });
@@ -325,7 +325,7 @@ async function fullSetup(): Promise<void> {
     if (startMySQL) {
       try {
         console.log(chalk.blue('🚀 Starting MySQL container...'));
-        execSync('docker compose up app-mysql -d', { 
+        await execa('docker', ['compose', 'up', 'app-mysql', '-d'], { 
           cwd: projectRoot,
           stdio: 'inherit' 
         });

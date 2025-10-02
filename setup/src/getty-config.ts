@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execa } from 'execa';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { AWSSSoSetup } from './aws-sso.js';
@@ -26,13 +26,15 @@ export class GettyConfigSetup {
     
     try {
       // Try the setup tool profile first
-      const identity = execSync(`aws sts get-caller-identity --profile ${setupToolProfile} --query "Arn" --output text`, {
-        encoding: 'utf-8',
-        stdio: 'pipe'
-      }).trim();
+      const { stdout: identity } = await execa('aws', [
+        'sts', 'get-caller-identity',
+        '--profile', setupToolProfile,
+        '--query', 'Arn',
+        '--output', 'text'
+      ]);
       
       console.log(chalk.green(`✅ AWS credentials found using profile: ${setupToolProfile}`));
-      console.log(chalk.gray(`   Identity: ${identity}`));
+      console.log(chalk.gray(`   Identity: ${identity.trim()}`));
       return setupToolProfile;
 
     } catch (setupProfileError) {
@@ -40,13 +42,14 @@ export class GettyConfigSetup {
       
       // Fall back to checking current/default credentials
       try {
-        const identity = execSync('aws sts get-caller-identity --query "Arn" --output text', {
-          encoding: 'utf-8',
-          stdio: 'pipe'
-        }).trim();
+        const { stdout: identity } = await execa('aws', [
+          'sts', 'get-caller-identity',
+          '--query', 'Arn',
+          '--output', 'text'
+        ]);
         
         console.log(chalk.green('✅ AWS credentials found using current/default profile'));
-        console.log(chalk.gray(`   Identity: ${identity}`));
+        console.log(chalk.gray(`   Identity: ${identity.trim()}`));
         
         // Get the current profile being used
         const profile = process.env.AWS_PROFILE || 'default';
@@ -94,20 +97,26 @@ export class GettyConfigSetup {
     console.log(chalk.blue('🔐 Fetching Getty token from AWS Secrets Manager...'));
 
     try {
-      const profileFlag = awsProfile ? `--profile ${awsProfile}` : '';
-      const command = `aws secretsmanager get-secret-value --secret-id "${this.config.secretPath}" --region ${this.config.region} --query "SecretString" --output text ${profileFlag}`.trim();
-      
       console.log(chalk.gray(`   Running: aws secretsmanager get-secret-value --secret-id "${this.config.secretPath}" --region ${this.config.region}`));
       
-      const token = execSync(command, {
-        encoding: 'utf-8',
-        stdio: 'pipe'
-      }).trim();
+      const args = [
+        'secretsmanager', 'get-secret-value',
+        '--secret-id', this.config.secretPath,
+        '--region', this.config.region,
+        '--query', 'SecretString',
+        '--output', 'text'
+      ];
+      
+      if (awsProfile) {
+        args.push('--profile', awsProfile);
+      }
+      
+      const { stdout: token } = await execa('aws', args);
 
-      if (token && token !== 'null' && !token.startsWith('An error occurred')) {
+      if (token && token.trim() !== 'null' && !token.startsWith('An error occurred')) {
         console.log(chalk.green('✅ Getty token retrieved successfully'));
         console.log(chalk.gray(`   Token: ${token.substring(0, 20)}...`));
-        return token;
+        return token.trim();
       } else {
         throw new Error('Invalid token received from Secrets Manager');
       }

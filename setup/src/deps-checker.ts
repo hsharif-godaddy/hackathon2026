@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execa } from 'execa';
 import chalk from 'chalk';
 
 export interface DependencyCheckResult {
@@ -15,7 +15,7 @@ export class DependencyChecker {
     console.log(chalk.blue('🔍 Checking Docker installation...'));
     
     try {
-      const version = execSync('docker --version', { encoding: 'utf8', stdio: 'pipe' }).trim();
+      const { stdout: version } = await execa('docker', ['--version']);
       const result: DependencyCheckResult = {
         name: 'Docker',
         installed: true,
@@ -43,7 +43,7 @@ export class DependencyChecker {
     console.log(chalk.blue('🔍 Checking Docker Compose...'));
     
     try {
-      const version = execSync('docker compose version', { encoding: 'utf8', stdio: 'pipe' }).trim();
+      const { stdout: version } = await execa('docker', ['compose', 'version']);
       const result: DependencyCheckResult = {
         name: 'Docker Compose',
         installed: true,
@@ -71,7 +71,7 @@ export class DependencyChecker {
     console.log(chalk.blue('🔍 Checking if Docker daemon is running...'));
     
     try {
-      execSync('docker info', { encoding: 'utf8', stdio: 'pipe' });
+      await execa('docker', ['info']);
       const result: DependencyCheckResult = {
         name: 'Docker Daemon',
         installed: true,
