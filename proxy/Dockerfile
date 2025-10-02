@@ -2,45 +2,46 @@ FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:22-alpine
 
 USER root
 
-# Install pnpm and necessary packages
-RUN apk add --no-cache openssl && \
-    npm install -g pnpm
+RUN apk add --no-cache openssl
+RUN npm install -g pnpm
 
-# Set working directory
-WORKDIR /app
+# Use existing node user from base image (UID 1001)
+RUN mkdir -p /workspace && chown node:node /workspace
 
-# Create SSL directory and generate self-signed certificate
-RUN mkdir -p /app/ssl && \
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /app/ssl/server.key \
-    -out /app/ssl/server.crt \
-    -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
-
-# Copy package files
-COPY --chown=node:node package.json pnpm-lock.yaml* ./
-
-# Install all dependencies (including dev dependencies for building)
-RUN pnpm install --frozen-lockfile
-
-# Copy source code and configuration
-COPY --chown=node:node src/ ./src/
-COPY --chown=node:node tsconfig.json ./
-COPY --chown=node:node setup-certs.sh ./
-
-# Build TypeScript
-RUN pnpm run build
-
-# Make setup script executable
-RUN chmod +x setup-certs.sh
-
-# Change ownership of the app directory  
-RUN chown -R node:node /app
-
-# Expose port
-EXPOSE 8888
-
-# Switch to non-root user
 USER node
 
-# Start the application with certificate setup
+WORKDIR /workspace
+
+RUN mkdir -p /workspace/proxy
+
+# Copy workspace config for proper pnpm install
+COPY --chown=node:node ./package.json ./pnpm-lock.yaml ./pnpm-workspace.yaml /workspace/
+COPY --chown=node:node ./proxy/package.json /workspace/proxy/
+
+# Install workspace dependencies with Artifactory authentication
+RUN --mount=type=secret,id=npm_token,uid=1001 \
+  printf "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=%s\n//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:always-auth=true\nregistry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/\n" "$(cat /run/secrets/npm_token)" > ~/.npmrc && \
+  pnpm install --frozen-lockfile && \
+  rm -f ~/.npmrc
+
+# Copy proxy source
+COPY --chown=node:node ./proxy /workspace/proxy
+
+# Build TypeScript
+RUN cd /workspace/proxy && pnpm run build
+
+# Create SSL directory and generate self-signed certificate
+RUN mkdir -p /workspace/proxy/ssl && \
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /workspace/proxy/ssl/server.key \
+    -out /workspace/proxy/ssl/server.crt \
+    -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
+
+# Make setup script executable
+RUN chmod +x /workspace/proxy/setup-certs.sh
+
+WORKDIR /workspace/proxy
+
+EXPOSE 8888
+
 CMD ["sh", "-c", "./setup-certs.sh && pnpm start"]

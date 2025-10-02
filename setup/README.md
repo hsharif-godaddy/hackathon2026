@@ -13,9 +13,11 @@ Run from the project root:
 ### Option 2: Selective Configuration
 For individual component setup or reconfiguration:
 ```bash
-cd setup
-pnpm install
-pnpm start
+# From project root
+pnpm --filter airo-setup start
+
+# Or navigate to setup directory (dependencies already installed via workspace)
+cd setup && pnpm start
 ```
 
 Choose "Selective Configuration" to:
@@ -127,8 +129,12 @@ The setup can automatically configure Getty Images integration:
 ### Use the Status Check
 First, run the configuration status check:
 ```bash
-cd setup && pnpm start
+# From project root
+pnpm --filter airo-setup start
 # Choose "Selective Configuration" → "Check Current Configuration Status"
+
+# Or from setup directory
+cd setup && pnpm start
 ```
 
 ### Common Issues
@@ -144,8 +150,12 @@ cd setup && pnpm start
 
 To modify any component after initial setup:
 ```bash
-cd setup && pnpm start
+# From project root
+pnpm --filter airo-setup start
 # Choose "Selective Configuration"
+
+# Or from setup directory
+cd setup && pnpm start
 ```
 
 This allows you to:

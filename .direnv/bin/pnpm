@@ -1,0 +1,34 @@
+#!/bin/bash
+cmd="$1"
+current_dir="$(pwd)"
+relative_path="${current_dir#$WORKSPACE_ROOT/}"
+
+# Check if we're in a non-workspace directory
+is_non_workspace=false
+for dir in $NON_WORKSPACE_DIRS; do
+  if [[ "$relative_path" == "$dir"* ]]; then
+    is_non_workspace=true
+    break
+  fi
+done
+
+# Handle install/i commands
+if [ "$cmd" = "install" ] || [ "$cmd" = "i" ]; then
+  if [ "$is_non_workspace" = true ]; then
+    # In non-workspace dir: auto-add --ignore-workspace
+    echo "Auto-adding --ignore-workspace for $relative_path" >&2
+    shift  # Remove 'install' or 'i' from arguments
+    exec "$REAL_PNPM" "$cmd" --ignore-workspace "$@"
+  elif [ "$current_dir" != "$WORKSPACE_ROOT" ]; then
+    # In workspace subdir: block with error
+    echo "Error: pnpm install must be run from the workspace root" >&2
+    echo "Current directory: $current_dir" >&2
+    echo "Workspace root: $WORKSPACE_ROOT" >&2
+    echo "" >&2
+    echo "Please run: cd $WORKSPACE_ROOT && pnpm install" >&2
+    exit 1
+  fi
+fi
+
+# For all other commands, allow execution anywhere
+exec "$REAL_PNPM" "$@"

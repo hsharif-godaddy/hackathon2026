@@ -33,6 +33,10 @@ The setup utility will guide you through:
 
 For selective configuration or reconfiguration:
 ```bash
+# From project root (recommended)
+pnpm --filter airo-setup start
+
+# Or from setup directory
 cd setup && pnpm start
 ```
 

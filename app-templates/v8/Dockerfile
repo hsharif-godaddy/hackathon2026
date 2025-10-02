@@ -66,7 +66,9 @@ RUN if [ -f pnpm-lock.yaml ]; then \
     fi
 
 # Install dependencies as the agent user
-RUN pnpm install --registry=https://registry.npmjs.org/
+# Note: v8 template maintains its own lockfile separate from workspace
+# The lockfile should be kept up-to-date via CI automation
+RUN pnpm install --frozen-lockfile --registry=https://registry.npmjs.org/
 
 # Set development environment variables
 ENV NODE_ENV=development

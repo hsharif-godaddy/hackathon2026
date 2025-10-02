@@ -12,6 +12,21 @@
 
 ### Internal Changes
 
+- **Workspace Configuration & Docker Build Improvements**: Fixed pnpm workspace issues and modernized Docker builds with security enhancements
+  - Removed problematic `postinstall` script from agents/package.json (workspace root handles better-sqlite3 compilation)
+  - Updated all documentation to show correct workspace commands: `pnpm --filter <package> <command>`
+  - Added direnv protection: blocks `pnpm install` in workspace subdirectories with helpful error messages
+  - Smart direnv wrapper auto-adds `--ignore-workspace` for standalone templates (app-templates/v8)
+  - Auto-installs pnpm when direnv switches Node versions
+  - Migrated agents and proxy Dockerfiles to use proper workspace structure with frozen lockfiles
+  - Implemented Docker build secrets for NPM tokens (eliminates security warnings, prevents token exposure in process listings)
+  - Switch to non-root users early in Docker builds to avoid expensive `chown -R` operations (massive performance improvement)
+  - Enhanced deploy.sh with `--dry-run` flag for local testing without AWS, auto-detects workspace root, supports multiple token env vars
+  - Added test-docker.sh helper script for testing built images locally
+  - Fixed unified-provider.ts AWS credential detection to prevent false positives when only AWS_REGION is set
+  - Enforced frozen lockfile for v8 template with CI verification to meet security requirements while keeping template standalone
+  - Added CI automation to verify v8 template lockfile stays current with clear error messages
+
 - **AI-Lib S2S Authentication**: Complete Service-to-Service authentication implementation for ai-lib using AWS IAM credentials and JWT tokens
   - Added optional S2S authentication via `GOCODE_USE_S2S_AUTH=true` environment variable
   - Integrated gd-auth-client for JWT token generation from AWS IAM credentials with 24-hour token lifespan

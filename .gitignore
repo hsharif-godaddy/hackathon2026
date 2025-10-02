@@ -25,3 +25,6 @@ packages/design-extractor/output/
 
 .env
 .env.local
+
+# License reports
+licenses-report.txt

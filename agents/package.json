@@ -24,8 +24,7 @@
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write src",
-    "format:check": "prettier --check src",
-    "postinstall": "cd node_modules/better-sqlite3 && npm run install"
+    "format:check": "prettier --check src"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^3.0.21",

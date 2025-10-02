@@ -89,14 +89,11 @@ function hasAWSCredentials(config?: ProviderConfig): boolean {
   // Check for AWS profile
   const hasProfile = !!(config?.awsProfile || process.env.AWS_PROFILE)
   
-  // Check for any AWS environment variables that indicate AWS setup
-  const hasAWSEnvVars = !!(process.env.AWS_REGION || 
-                          process.env.AWS_DEFAULT_REGION ||
-                          process.env.AWS_SESSION_TOKEN ||
-                          process.env.AWS_ROLE_ARN ||
-                          process.env.AWS_WEB_IDENTITY_TOKEN_FILE)
+  // Check for IAM role or web identity token (ECS/EKS environments)
+  const hasIAMRole = !!(process.env.AWS_ROLE_ARN || process.env.AWS_WEB_IDENTITY_TOKEN_FILE)
   
-  return hasExplicitCredentials || hasProfile || hasAWSEnvVars
+  // Only return true if we have actual credentials or a profile, not just AWS_REGION
+  return hasExplicitCredentials || hasProfile || hasIAMRole
 }
 
 /**

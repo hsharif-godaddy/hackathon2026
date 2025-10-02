@@ -129,16 +129,26 @@ jobs:
       - name: Install pnpm
         run: npm install -g pnpm
 
+      - name: Verify v8 template lockfile is up-to-date
+        working-directory: ./app-templates/v8
+        run: |
+          echo "Checking if v8 template lockfile is current..."
+          pnpm install --ignore-workspace
+          if ! git diff --quiet pnpm-lock.yaml; then
+            echo "ERROR: v8 template pnpm-lock.yaml is out of date"
+            echo "Please run: cd app-templates/v8 && pnpm install --ignore-workspace"
+            echo ""
+            echo "Changes detected:"
+            git diff pnpm-lock.yaml
+            exit 1
+          fi
+          echo "v8 template lockfile is up-to-date"
+
       - name: Install v8 template dependencies
         working-directory: ./app-templates/v8
         run: |
-          if [ -f pnpm-lock.yaml ]; then
-            echo "📦 Installing v8 template with pnpm (lock file present)"
-            pnpm install --frozen-lockfile --ignore-workspace
-          else
-            echo "📦 Installing v8 template with pnpm (no lock file)"
-            pnpm install --ignore-workspace
-          fi
+          echo "Installing v8 template with frozen lockfile"
+          pnpm install --frozen-lockfile --ignore-workspace
 
       - name: Check v8 template license compliance
         working-directory: ./app-templates/v8
@@ -233,11 +243,12 @@ jobs:
       #     echo "✅ App Docker image built successfully"
 
       - name: Build Docker Image (Proxy)
-        working-directory: ./proxy
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
         run: |
-          echo "🐳 Building Docker image for proxy..."
-          docker build --build-arg NPM_AUTH_TOKEN="${ARTIFACTORY_NPM_TOKEN}" -t airo-proxy:latest .
-          echo "✅ Proxy Docker image built successfully"
+          echo "Building Docker image for proxy..."
+          docker build -f proxy/Dockerfile --secret id=npm_token,env=OIDC_TOKEN -t airo-proxy:latest .
+          echo "Proxy Docker image built successfully"
 
       # - name: Build Docker Image (Agents)
       #   env:

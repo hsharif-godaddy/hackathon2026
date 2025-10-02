@@ -29,8 +29,8 @@ Airo App Builder is an AI-powered application development platform that combines
 # Run the automated setup utility
 ./setup.sh
 
-# Or for selective configuration
-cd setup && pnpm start
+# Or for selective configuration (from project root)
+pnpm --filter airo-setup start
 ```
 
 **Manual Setup:**

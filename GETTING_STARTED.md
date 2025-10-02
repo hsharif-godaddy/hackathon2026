@@ -27,6 +27,10 @@ This will:
 ### Option 2: Selective Configuration
 For individual component setup or reconfiguration:
 ```bash
+# From project root (recommended)
+pnpm --filter airo-setup start
+
+# Or from setup directory
 cd setup && pnpm start
 ```
 
@@ -154,22 +158,34 @@ curl -X POST http://localhost:4000/agent/example-agent/chat \
 ### Reconfigure Components
 Use the selective configuration tool to modify specific settings:
 ```bash
-cd setup && pnpm start
+# From project root (recommended)
+pnpm --filter airo-setup start
 # Choose "Selective Configuration"
+
+# Or from setup directory
+cd setup && pnpm start
 ```
 
 ### Check System Status
 Get an overview of your current configuration:
-```bash  
-cd setup && pnpm start
+```bash
+# From project root (recommended)
+pnpm --filter airo-setup start
 # Choose "Selective Configuration" → "Check Current Configuration Status"
+
+# Or from setup directory
+cd setup && pnpm start
 ```
 
 ### Getty Images Setup
 If Getty Images isn't working, reconfigure it:
 ```bash
-cd setup && pnpm start
+# From project root (recommended)
+pnpm --filter airo-setup start
 # Choose "Selective Configuration" → "Configure Getty Images Proxy"
+
+# Or from setup directory
+cd setup && pnpm start
 ```
 
 This will:
@@ -182,8 +198,12 @@ This will:
 ### Configuration Issues
 **Recommended**: Use the setup utility to diagnose and fix configuration problems:
 ```bash
-cd setup && pnpm start
+# From project root (recommended)
+pnpm --filter airo-setup start
 # Choose "Selective Configuration" → "Check Current Configuration Status"
+
+# Or from setup directory
+cd setup && pnpm start
 ```
 
 ### "Starting Development Server" gets stuck or fails
@@ -209,9 +229,13 @@ APP_TEMPLATE_DIR=app-templates/v8
 **Issue**: Getty Images search returns errors or no results  
 **Cause**: Missing or expired AWS credentials, incorrect token  
 **Solution**: Use the setup utility:
-```bash  
-cd setup && pnpm start
+```bash
+# From project root (recommended)
+pnpm --filter airo-setup start
 # Choose "Selective Configuration" → "Configure Getty Images Proxy"
+
+# Or from setup directory
+cd setup && pnpm start
 ```
 
 ### Database connection errors
@@ -220,9 +244,12 @@ cd setup && pnpm start
 **Cause**: MySQL container not running or wrong credentials  
 **Solution**: Use the setup utility or manually start container:
 ```bash
-# Via setup utility
-cd setup && pnpm start
+# Via setup utility (from project root)
+pnpm --filter airo-setup start
 # Choose "Start MySQL Container"
+
+# Or from setup directory
+cd setup && pnpm start
 
 # Manual alternative  
 docker compose up app-mysql -d
@@ -239,6 +266,6 @@ lsof -ti:5001 | xargs kill -9
 ---
 
 Need help? 
-- 🛠️ Use the setup utility: `./setup.sh` or `cd setup && pnpm start`  
+- 🛠️ Use the setup utility: `./setup.sh` or `pnpm --filter airo-setup start`  
 - 📖 Check the full [README.md](./README.md) 
 - 📚 Browse [documentation](./docs/)
