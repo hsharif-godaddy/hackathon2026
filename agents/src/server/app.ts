@@ -42,7 +42,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
 import { getDatabase } from '../database/index.js';
@@ -124,6 +124,7 @@ app.get('/', (req, res) => {
 app.use('/agents', jwtAuthMiddleware.authenticate, agentsRouter);
 app.use('/apps', jwtAuthMiddleware.authenticate, appsRouter);
 app.use('/agent', jwtAuthMiddleware.authenticate, chatRouter);
+app.use('/debug', jwtAuthMiddleware.authenticate, debugRouter);
 app.use('/', jwtAuthMiddleware.authenticate, gitRouter);
 
 // Error handling
