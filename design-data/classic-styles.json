@@ -1,0 +1,517 @@
+[
+  {
+    "styleName": "Swiss/International Style",
+    "description": "The Swiss/International Style, emerging in the 1950s, represents the pinnacle of modernist design philosophy through its systematic approach to visual communication. Characterized by mathematical grid systems, objective sans-serif typography (particularly Helvetica and Univers), asymmetrical layouts, and the elimination of decorative elements, this style prioritizes clarity, functionality, and universal communication. The movement emphasized rational design decisions, clean geometric forms, high contrast photography, and the strategic use of white space as an active design element. Its core principle of 'form follows function' created a design language that transcended cultural boundaries and established the foundation for modern graphic design.",
+    "relatedTrends": [
+      "Bento Blocks",
+      "Type Minimalism",
+      "Floating Minimalism",
+      "Outlined Play"
+    ],
+    "visualCharacteristics": [
+      "Mathematical grid systems as the foundation for all layout decisions",
+      "Asymmetrical compositions balanced through systematic proportions",
+      "High contrast between elements using stark black and white relationships",
+      "Clean geometric forms with precise edges and mathematical relationships",
+      "Objective, documentary-style photography without artistic manipulation",
+      "Strategic use of white space as an active compositional element",
+      "Elimination of decorative elements in favor of functional clarity",
+      "Systematic approach to visual hierarchy through scale and positioning",
+      "Universal design language that transcends cultural boundaries",
+      "Rational, logical design decisions based on function rather than aesthetics"
+    ],
+    "typographyGuidance": "Typography in Swiss/International Style should prioritize absolute clarity and objectivity. Use sans-serif typefaces exclusively, with Helvetica, Univers, and Akzidenz-Grotesk being the canonical choices. Establish clear hierarchical relationships through systematic size variations (often following mathematical ratios like 8pt, 12pt, 18pt, 24pt). Maintain consistent line spacing (typically 120-140% of font size) and use flush-left, ragged-right alignment for optimal readability. Avoid decorative typefaces, scripts, or serif fonts entirely. Typography should be treated as information architecture - each typographic decision must serve the communication goal. Use bold weights sparingly and only for emphasis. Letter spacing should remain optically even, and word spacing should be consistent. The typography should feel invisible - perfectly legible without drawing attention to itself as a design element.",
+    "colorPaletteGuidance": "The Swiss/International Style color palette is fundamentally restrained and systematic. Primary palette consists of black, white, and carefully selected grays (typically 10%, 25%, 50%, 75% black). When color is introduced, use pure, saturated hues sparingly and with specific functional purpose - red for emphasis, blue for information, yellow for warnings. Avoid gradients, textures, or color mixing. Each color choice must be justified by its communicative function rather than aesthetic preference. Maintain high contrast ratios for accessibility and clarity. Use color systematically across all applications - if red indicates action in one context, it should maintain that meaning throughout the entire system. The overall approach should feel clinical and objective, with color serving information hierarchy rather than emotional appeal.",
+    "layoutPrinciples": [
+      "Establish mathematical grid systems with consistent modules and proportional relationships",
+      "Use asymmetrical balance achieved through systematic weight distribution",
+      "Maintain consistent margins and gutters based on the underlying grid structure",
+      "Employ the rule of thirds and golden ratio for proportional relationships",
+      "Create clear visual hierarchy through scale, position, and contrast rather than decoration",
+      "Use white space actively as a compositional element, not merely empty space",
+      "Align all elements to the grid system - no arbitrary positioning allowed",
+      "Establish clear reading patterns through logical information flow",
+      "Maintain consistent spacing relationships throughout all design elements",
+      "Prioritize function over form in all compositional decisions"
+    ],
+    "modernApplications": [
+      "Digital interface design using modular grid systems like Bento Blocks for organized content presentation",
+      "Typography-focused web design that emphasizes content clarity and systematic hierarchy",
+      "Corporate identity systems that require universal recognition and functional clarity",
+      "Data visualization and infographic design where objective information presentation is crucial",
+      "Mobile app interfaces that prioritize usability and clear navigation patterns",
+      "Editorial design for publications requiring systematic information architecture",
+      "Signage and wayfinding systems in complex environments like airports or hospitals",
+      "E-commerce platforms where clear product presentation and navigation are essential",
+      "Educational materials and technical documentation requiring maximum clarity",
+      "Brand systems for technology companies emphasizing precision and reliability"
+    ],
+    "exampleUseCases": [
+      "Corporate websites requiring professional credibility and clear information hierarchy",
+      "Software interfaces where functionality and usability are paramount",
+      "Annual reports and financial documents requiring objective data presentation",
+      "Healthcare and pharmaceutical communications demanding clarity and trust",
+      "Educational platforms and e-learning interfaces prioritizing content accessibility",
+      "Government and institutional websites requiring universal accessibility",
+      "Technical documentation and user manuals where clarity prevents errors",
+      "News and media websites emphasizing objective information delivery",
+      "B2B marketing materials requiring professional authority and clear messaging",
+      "Architectural and engineering presentations where precision and clarity are essential"
+    ],
+    "generatedAt": "2025-10-01T23:43:44.952Z"
+  },
+  {
+    "styleName": "Brutalism",
+    "description": "Brutalism is a bold, uncompromising design philosophy that celebrates raw, unpolished materials and honest construction. Originating from architectural movements of the 1950s-70s, it emphasizes functionality over ornamentation, featuring exposed concrete textures, monolithic forms, and stark geometric compositions. In graphic design, Brutalism manifests through heavy, blocky typography, high contrast layouts, industrial color palettes, and a deliberate rejection of refined aesthetics in favor of powerful, direct communication. The style embodies authenticity through its embrace of imperfection and rawness.",
+    "relatedTrends": [
+      "The Pixel Effect",
+      "Type Minimalism",
+      "Power of Gaia",
+      "Retro Luxe Rebellion"
+    ],
+    "visualCharacteristics": [
+      "Raw, unrefined textures reminiscent of concrete and industrial materials",
+      "Monolithic, blocky forms with heavy visual weight",
+      "High contrast compositions with stark black and white elements",
+      "Asymmetrical layouts that break traditional grid systems",
+      "Exposed structural elements as design features",
+      "Minimal color palettes dominated by grays, blacks, and industrial tones",
+      "Geometric shapes with hard edges and angular forms",
+      "Large-scale typography that dominates the composition",
+      "Functional hierarchy that prioritizes content over decoration"
+    ],
+    "typographyGuidance": "Brutalist typography should be bold, uncompromising, and functional. Use heavy, sans-serif typefaces with strong geometric forms such as Helvetica Bold, Futura Black, or custom blocky letterforms. Typography should dominate the composition with large scale and high contrast. Avoid decorative flourishes - instead embrace raw, industrial letterforms that feel carved from stone. Mix condensed and extended weights for dramatic contrast. Consider bitmap or pixel-inspired fonts that echo digital brutalism. Text should be set with generous leading and minimal tracking to maintain the monolithic feel.",
+    "colorPaletteGuidance": "Brutalist color palettes should be stark and industrial. Primary palette: raw concrete gray (#8C8C8C), deep charcoal black (#2C2C2C), stark white (#FFFFFF), and weathered steel (#5A5A5A). Accent colors should be used sparingly: industrial orange (#FF6B35), safety yellow (#FFD23F), or rust red (#B7410E). Avoid gradients and soft transitions - colors should meet with hard edges. Consider monochromatic schemes that emphasize texture over color variation. When using color, apply it boldly in large blocks rather than subtle applications.",
+    "layoutPrinciples": [
+      "Embrace asymmetrical compositions that feel structurally sound",
+      "Use generous negative space as a functional element, not decoration",
+      "Create visual hierarchy through scale and weight rather than color",
+      "Break traditional grid systems while maintaining structural integrity",
+      "Position elements with intentional imbalance that creates tension",
+      "Layer elements to show 'construction' and process",
+      "Use repetition of geometric forms to create rhythm",
+      "Prioritize function over aesthetic refinement in all layout decisions"
+    ],
+    "modernApplications": [
+      "Digital interfaces that prioritize usability over polish, similar to Type Minimalism's content-first approach",
+      "Web design with blocky, modular layouts inspired by Bento Blocks structure but with harder edges",
+      "Brand identities for tech companies, architectural firms, and industrial businesses",
+      "Editorial design for art, architecture, and social commentary publications",
+      "Packaging design for utilitarian or craft products that emphasize authenticity",
+      "Social media graphics that cut through digital noise with bold, unrefined aesthetics",
+      "Environmental graphics and wayfinding systems that prioritize clarity and function",
+      "Digital art and experimental typography that embraces glitch aesthetics like The Pixel Effect"
+    ],
+    "exampleUseCases": [
+      "Architectural firm websites with concrete textures and bold typography",
+      "Art gallery exhibitions featuring contemporary or industrial art",
+      "Tech startup branding that emphasizes functionality over aesthetics",
+      "Music industry graphics for electronic, industrial, or experimental genres",
+      "Editorial layouts for design magazines and cultural criticism publications",
+      "Social impact campaigns that require direct, uncompromising messaging",
+      "Product packaging for craft beer, industrial tools, or artisanal goods",
+      "Digital installations and interactive media that celebrate raw digital aesthetics"
+    ],
+    "generatedAt": "2025-10-01T23:44:15.869Z"
+  },
+  {
+    "styleName": "Bauhaus",
+    "description": "Bauhaus is a revolutionary design movement that emerged in 1919 Germany, founded on the principle that 'form follows function.' This modernist approach emphasizes geometric simplicity, clean lines, and the integration of art, craft, and industrial production. Bauhaus design strips away decorative elements in favor of pure functionality, utilizing basic geometric shapes (circles, squares, triangles), primary colors (red, blue, yellow) plus black and white, and sans-serif typography. The movement champions rational design thinking, mass production aesthetics, and the belief that good design should be accessible to all. Its influence extends far beyond its historical context, establishing foundational principles for modern graphic design, architecture, and industrial design.",
+    "relatedTrends": [
+      "Type Minimalism",
+      "Bento Blocks",
+      "The Pixel Effect",
+      "Floating Minimalism"
+    ],
+    "visualCharacteristics": [
+      "Geometric shapes as primary compositional elements (circles, squares, triangles)",
+      "Asymmetrical yet balanced grid-based layouts",
+      "Primary color palette (red, blue, yellow) with black, white, and gray",
+      "Clean, unadorned surfaces with emphasis on material honesty",
+      "Strong horizontal and vertical lines creating structural clarity",
+      "Functional typography integrated as design element",
+      "High contrast between elements for maximum legibility",
+      "Modular, systematic approach to composition",
+      "Emphasis on negative space as active design component",
+      "Industrial materials and production-inspired aesthetics"
+    ],
+    "typographyGuidance": "Bauhaus typography should embody functional clarity and geometric precision. Use clean, sans-serif typefaces with strong geometric foundations such as Futura, Helvetica, or custom geometric fonts. Typography should be treated as both informational tool and visual element, often integrated directly into compositions. Employ asymmetrical text placement that follows grid systems while creating dynamic visual tension. Utilize varying font weights and sizes to establish clear hierarchy without decorative flourishes. Text should align with geometric elements and maintain consistent spacing based on mathematical relationships. Consider typography as architectural element - each letter and word placement should serve both functional and compositional purposes.",
+    "colorPaletteGuidance": "The Bauhaus color approach centers on the primary triad of red, blue, and yellow, supplemented by black, white, and neutral grays. Use these colors in their purest, most saturated forms to create maximum visual impact and clarity. Red should convey energy and attention, blue represents stability and logic, yellow brings optimism and warmth. Black and white serve as structural elements for contrast and definition. Apply colors in geometric blocks rather than gradients, maintaining sharp edges and clear boundaries. Consider the psychological and functional impact of each color choice - every hue should serve a purpose beyond mere decoration. Modern applications can expand this palette slightly with secondary colors (orange, green, purple) but should maintain the same principles of purity and intentionality.",
+    "layoutPrinciples": [
+      "Asymmetrical balance using mathematical proportions and golden ratio",
+      "Grid-based systems that provide structure while allowing dynamic composition",
+      "Functional hierarchy that guides user experience through clear visual pathways",
+      "Integration of text and image as unified compositional elements",
+      "Generous use of white space to create breathing room and focus",
+      "Modular design thinking that allows for systematic scalability",
+      "Emphasis on horizontal and vertical alignments with occasional diagonal tension",
+      "Content organization that prioritizes function over decoration"
+    ],
+    "modernApplications": [
+      "Digital interfaces that emphasize usability and clear navigation through geometric organization",
+      "Brand identity systems that communicate efficiency and reliability through systematic design",
+      "Web design utilizing modular blocks and grid systems for responsive, functional layouts",
+      "Editorial design that treats typography as primary visual element with minimal supporting graphics",
+      "Packaging design that emphasizes product function and honest material representation",
+      "Environmental graphics and wayfinding systems that prioritize clarity and accessibility",
+      "Mobile app interfaces that use geometric elements and primary colors for intuitive user experience",
+      "Corporate communications that convey professionalism through clean, systematic design approaches"
+    ],
+    "exampleUseCases": [
+      "Technology companies seeking to communicate innovation and reliability through clean, functional design",
+      "Educational institutions that need clear, accessible information design and wayfinding systems",
+      "Healthcare organizations requiring trustworthy, easy-to-navigate digital interfaces and printed materials",
+      "Financial services that want to convey stability and transparency through systematic brand design",
+      "Manufacturing companies that need to showcase product functionality and industrial heritage",
+      "Architectural firms that want to demonstrate design thinking and structural clarity in their communications",
+      "Software applications that prioritize user experience and functional interface design",
+      "Cultural institutions that need to balance artistic expression with clear information hierarchy"
+    ],
+    "generatedAt": "2025-10-01T23:44:44.877Z"
+  },
+  {
+    "styleName": "Art Deco",
+    "description": "Art Deco is a luxurious design movement from the 1920s-1930s characterized by bold geometric patterns, symmetrical compositions, and opulent materials. This style celebrates modernity, progress, and glamour through angular forms, stepped patterns, sunburst motifs, and metallic accents. Art Deco combines machine-age precision with handcrafted luxury, featuring strong vertical lines, zigzag patterns, and stylized natural forms. The movement represents the intersection of fine art and mass production, emphasizing both functionality and decorative beauty through rich textures, bold contrasts, and sophisticated color palettes.",
+    "relatedTrends": [
+      "Neo-Nostalgic Patterns",
+      "Retro Luxe Rebellion",
+      "Playful Classicism",
+      "Socie(tea)",
+      "The Pixel Effect",
+      "Outlined Play"
+    ],
+    "visualCharacteristics": [
+      "Bold geometric patterns including chevrons, zigzags, and stepped forms",
+      "Symmetrical and balanced compositions with strong central focal points",
+      "Angular typography with sharp, clean lines and geometric letterforms",
+      "Metallic accents in gold, silver, bronze, and copper",
+      "Sunburst and radiating line motifs",
+      "Stylized natural forms including flowers, animals, and human figures",
+      "Strong vertical emphasis with skyscraper-inspired elements",
+      "High contrast between light and dark elements",
+      "Luxurious textures suggesting marble, chrome, and precious materials",
+      "Repetitive pattern work with mathematical precision"
+    ],
+    "typographyGuidance": "Art Deco typography should emphasize geometric precision and luxury. Use display fonts with sharp angles, clean lines, and consistent stroke weights. Incorporate condensed sans-serif typefaces with strong vertical emphasis, reminiscent of skyscraper architecture. Consider custom lettering with stepped edges, inline details, and metallic effects. Typography should be bold and confident, often arranged in symmetrical layouts with generous letter spacing. Combine different weights and sizes to create hierarchy while maintaining geometric harmony. Avoid overly ornate scripts in favor of streamlined, machine-age inspired letterforms that convey both elegance and modernity.",
+    "colorPaletteGuidance": "Art Deco color palettes should balance luxury with boldness. Primary colors include deep jewel tones (emerald green, sapphire blue, ruby red) paired with metallic accents (gold, silver, bronze, copper). Use high contrast combinations like black and gold, navy and silver, or deep burgundy and cream. Incorporate rich earth tones such as burnt orange, deep brown, and warm amber. Add sophisticated neutrals like ivory, pearl gray, and charcoal black as foundation colors. Consider monochromatic schemes with metallic highlights for maximum elegance. Colors should feel opulent and substantial, avoiding pastels in favor of saturated, confident hues that convey prosperity and glamour.",
+    "layoutPrinciples": [
+      "Embrace perfect symmetry and balanced compositions with central focal points",
+      "Use strong geometric grids based on mathematical proportions and golden ratio",
+      "Create visual hierarchy through scale, contrast, and strategic use of metallic accents",
+      "Implement repetitive pattern systems that create rhythm and movement",
+      "Balance ornate decorative elements with clean, uncluttered negative space",
+      "Organize content in stepped or tiered arrangements mimicking architectural forms",
+      "Use strong vertical and horizontal lines to create structural framework",
+      "Apply the rule of thirds while maintaining overall symmetrical balance"
+    ],
+    "modernApplications": [
+      "Digital interfaces with geometric navigation elements and metallic UI components",
+      "Brand identity systems for luxury goods, high-end hospitality, and premium services",
+      "Website headers and hero sections with bold geometric patterns and metallic gradients",
+      "Social media templates featuring symmetrical layouts and Art Deco-inspired frames",
+      "Packaging design for premium products using geometric patterns and foil stamping effects",
+      "Event design and invitations with stepped borders and sunburst motifs",
+      "Interior design graphics and wall treatments with geometric wallpaper patterns",
+      "Fashion and beauty campaigns emphasizing glamour and sophisticated geometry"
+    ],
+    "exampleUseCases": [
+      "Luxury hotel branding with geometric logos and metallic color schemes",
+      "High-end restaurant menus featuring Art Deco typography and ornamental borders",
+      "Premium cosmetics packaging with stepped geometric patterns and gold accents",
+      "Wedding invitation suites with symmetrical layouts and sunburst motifs",
+      "Corporate identity for financial institutions emphasizing stability and prosperity",
+      "Museum exhibition graphics celebrating the machine age and modernist design",
+      "Nightclub and entertainment venue branding capturing 1920s glamour",
+      "Jewelry brand campaigns featuring geometric settings and luxurious presentations"
+    ],
+    "generatedAt": "2025-10-01T23:45:13.165Z"
+  },
+  {
+    "styleName": "Memphis Design",
+    "description": "Memphis Design emerged in the 1980s as a radical postmodern movement that rejected minimalism and functionalism in favor of bold experimentation. Characterized by its fearless use of bright, clashing colors, geometric shapes arranged in seemingly chaotic compositions, and pattern mixing that defied conventional design rules, Memphis Design celebrated anti-functional aesthetics. The movement embraced asymmetrical layouts, primary and neon color palettes, laminate textures, and playful forms that prioritized visual impact over traditional harmony. This rebellious design philosophy created a distinctive visual language that was both sophisticated and deliberately naive, combining high art concepts with pop culture sensibilities.",
+    "relatedTrends": [
+      "The Pixel Effect",
+      "Neo-Nostalgic Patterns",
+      "Outlined Play",
+      "Playful Classicism",
+      "Retro Luxe Rebellion"
+    ],
+    "visualCharacteristics": [
+      "Bold geometric shapes including triangles, circles, and irregular polygons",
+      "Bright, saturated color palettes featuring primary colors, neons, and unexpected combinations",
+      "Pattern chaos with stripes, dots, squiggles, and abstract motifs layered together",
+      "Asymmetrical compositions that reject traditional balance",
+      "High contrast color blocking and graphic elements",
+      "Laminate and plastic-inspired surface treatments",
+      "Playful, anti-functional forms and structures",
+      "Collage-like layering of disparate visual elements",
+      "Bold outlines and graphic borders",
+      "Experimental typography integrated as visual elements"
+    ],
+    "typographyGuidance": "Memphis typography should be bold, experimental, and treated as a graphic element rather than mere text. Use display fonts with strong geometric characteristics, including condensed sans-serifs, bold slab serifs, and custom lettering. Typography can be distorted, outlined, or integrated with geometric shapes. Consider bitmap fonts and pixel-inspired letterforms for digital applications. Text should compete for attention with other visual elements, often appearing in contrasting colors against busy backgrounds. Hierarchy is created through scale, color, and positioning rather than subtle weight variations.",
+    "colorPaletteGuidance": "Embrace fearless color combinations that would traditionally clash: hot pink with electric blue, lime green with orange, purple with yellow. Use primary colors (red, blue, yellow) as foundation, then add neon accents (electric pink, acid green, bright orange). Include black and white for contrast and grounding. Colors should be highly saturated and used in large blocks or geometric shapes. Avoid gradients in favor of flat, solid colors. Consider using 6-8 colors in a single composition, arranged in unexpected combinations that create visual tension and energy.",
+    "layoutPrinciples": [
+      "Embrace asymmetrical compositions that feel intentionally unbalanced",
+      "Layer geometric shapes and patterns without regard for traditional harmony",
+      "Use collision and overlap of elements to create visual tension",
+      "Reject grid systems in favor of intuitive, experimental placement",
+      "Create focal points through scale contrast and color intensity",
+      "Allow elements to extend beyond boundaries and break containment",
+      "Use repetition of shapes and patterns to create rhythm without predictability",
+      "Balance chaos with strategic negative space",
+      "Integrate typography as a compositional element rather than separate text layer"
+    ],
+    "modernApplications": [
+      "Digital interfaces with bold, playful personality for creative brands",
+      "Social media graphics that demand attention in crowded feeds",
+      "Event branding and festival graphics that celebrate fun and rebellion",
+      "Fashion and beauty campaigns targeting Gen Z and millennial audiences",
+      "Music industry graphics, album covers, and concert promotions",
+      "Restaurant and hospitality branding for trendy, experimental venues",
+      "Tech startup branding that wants to appear innovative and disruptive",
+      "Art gallery and museum exhibitions focusing on contemporary culture",
+      "Retail environments and packaging for lifestyle and creative products",
+      "Website designs for creative agencies and artistic portfolios"
+    ],
+    "exampleUseCases": [
+      "Music festival posters combining pixelated effects with Memphis geometric shapes",
+      "Fashion e-commerce sites using outlined play elements with Memphis color blocking",
+      "Restaurant branding featuring neo-nostalgic patterns in Memphis-inspired layouts",
+      "Social media campaigns mixing retro scrapbook elements with bold Memphis typography",
+      "Tech product launches using pixel effects and Memphis geometric compositions",
+      "Beauty brand packaging combining playful classicism with Memphis pattern chaos",
+      "Art exhibition graphics featuring floating minimalism with Memphis color palettes",
+      "Creative agency websites using bento block layouts with Memphis visual elements",
+      "Fitness brand identity mixing retro luxe rebellion with Memphis bold graphics",
+      "Food and beverage branding combining butter yellow trends with Memphis playfulness"
+    ],
+    "generatedAt": "2025-10-01T23:45:36.394Z"
+  },
+  {
+    "styleName": "Flat Design",
+    "description": "Flat Design is a minimalist design approach that emphasizes simplicity, functionality, and clarity through the elimination of three-dimensional elements like drop shadows, gradients, and textures. Originating in the early 2010s as a reaction against skeuomorphic design, it features clean lines, bright colors, simple typography, and two-dimensional illustrations. The style prioritizes content over decoration, creating interfaces and designs that are both visually appealing and highly functional. Flat design embraces the digital medium rather than mimicking real-world materials, resulting in designs that load quickly, scale well across devices, and provide clear visual hierarchy through color, typography, and spacing rather than dimensional effects.",
+    "relatedTrends": [
+      "Type Minimalism",
+      "Bento Blocks",
+      "Outlined Play",
+      "Playful Classicism",
+      "Butter Yellow"
+    ],
+    "visualCharacteristics": [
+      "Complete absence of three-dimensional effects like shadows, gradients, and bevels",
+      "Bold, saturated color palettes with high contrast combinations",
+      "Simple geometric shapes and clean vector illustrations",
+      "Minimal iconography with clear, recognizable symbols",
+      "Strong emphasis on typography as a primary design element",
+      "Grid-based layouts with clear visual hierarchy",
+      "Generous use of white space for breathing room",
+      "Two-dimensional illustrations and graphics",
+      "Clean, crisp edges on all elements",
+      "Focus on functionality and user experience over decorative elements"
+    ],
+    "typographyGuidance": "Flat design typography should prioritize clarity and readability above all else. Use clean, modern sans-serif fonts like Helvetica, Open Sans, or Roboto for body text and interface elements. For headlines, consider bold, geometric typefaces or simple serif fonts that maintain the clean aesthetic. Avoid ornate or decorative fonts that conflict with the minimalist approach. Create clear hierarchy through font weight, size, and color rather than effects. Ensure adequate contrast between text and background colors for accessibility. Typography should feel integrated with the overall design, not competing for attention but serving as a functional element that guides users through the content.",
+    "colorPaletteGuidance": "Embrace bold, saturated colors that create strong visual impact and clear differentiation between elements. Use bright primary and secondary colors like vibrant blues (#3498db), energetic oranges (#e67e22), fresh greens (#2ecc71), and clean whites (#ffffff) paired with dark grays (#2c3e50) for text. Create color systems with 3-5 primary colors that work harmoniously together. Avoid gradients, color overlays, or complex color transitions. Each color should serve a specific purpose in the interface hierarchy. Consider accessibility by ensuring sufficient contrast ratios between text and background colors. Modern flat design can incorporate softer pastels or muted tones while maintaining the core principle of solid, uniform color application.",
+    "layoutPrinciples": [
+      "Grid-based organization with clear alignment and consistent spacing",
+      "Generous white space usage to create breathing room and focus",
+      "Clear visual hierarchy established through size, color, and positioning",
+      "Modular design approach with distinct content blocks",
+      "Consistent padding and margins throughout the design",
+      "Logical content flow that guides user attention naturally",
+      "Responsive design considerations with scalable elements",
+      "Functional navigation that prioritizes usability over decoration"
+    ],
+    "modernApplications": [
+      "Combine flat design principles with subtle micro-interactions and animations",
+      "Integrate with modular grid systems like Bento Blocks for organized content presentation",
+      "Apply outlined elements from Outlined Play trend while maintaining flat aesthetic",
+      "Use bold typography as the primary visual element following Type Minimalism principles",
+      "Incorporate playful color schemes like Butter Yellow while keeping forms simple",
+      "Create card-based layouts that maintain flat design's clean separation of content",
+      "Develop design systems that scale across multiple platforms and devices",
+      "Balance minimalism with personality through strategic use of color and typography"
+    ],
+    "exampleUseCases": [
+      "Mobile app interfaces requiring clear navigation and fast loading times",
+      "Web dashboards and admin panels where functionality takes priority",
+      "E-commerce websites needing clean product presentation and easy checkout flows",
+      "Corporate websites emphasizing professionalism and clarity",
+      "Educational platforms requiring accessible and distraction-free learning environments",
+      "SaaS applications where user experience and efficiency are paramount",
+      "Brand identity systems requiring versatile and scalable design elements",
+      "Digital marketing materials that need to perform well across various screen sizes"
+    ],
+    "generatedAt": "2025-10-01T23:46:01.481Z"
+  },
+  {
+    "styleName": "Skeuomorphism",
+    "description": "Skeuomorphism is a design philosophy that creates digital interfaces mimicking real-world objects through realistic textures, materials, shadows, and three-dimensional depth. This approach uses familiar physical metaphors to make digital experiences intuitive, incorporating elements like leather textures, wood grains, metal surfaces, beveled edges, drop shadows, and tactile button designs. The style emphasizes craftsmanship and attention to detail, creating interfaces that users can immediately understand through their resemblance to physical counterparts.",
+    "relatedTrends": [
+      "Newstalgia",
+      "Scroll Stopping Scrapbook",
+      "Power of Gaia",
+      "Retro Luxe Rebellion",
+      "Socie(tea)"
+    ],
+    "visualCharacteristics": [
+      "Realistic material textures including leather, wood, metal, fabric, and paper",
+      "Three-dimensional depth through layered shadows and highlights",
+      "Beveled edges and raised button effects",
+      "Gradient overlays that simulate lighting and form",
+      "Tactile surface treatments that invite interaction",
+      "Rich, saturated colors that enhance material authenticity",
+      "Detailed iconography with dimensional qualities",
+      "Embossed and debossed text effects",
+      "Realistic reflections and surface imperfections",
+      "Layered compositions that create spatial hierarchy"
+    ],
+    "typographyGuidance": "Typography in skeuomorphic design should complement the tactile aesthetic through dimensional treatments and material-inspired effects. Use serif fonts with carved or embossed appearances, incorporating subtle shadows and highlights to create depth. Sans-serif fonts work well when given dimensional qualities through gradients and beveled edges. Avoid flat, minimal typography in favor of text that appears to exist in physical space. Consider letterpress effects, engraved appearances, and typography that reflects the material context of the interface. Hierarchy should be established through varying levels of dimensional treatment rather than just size and weight.",
+    "colorPaletteGuidance": "Skeuomorphic color palettes should reflect natural materials and realistic lighting conditions. Use rich, saturated colors that enhance the believability of textures - deep browns for leather, warm wood tones, metallic silvers and golds, and muted earth tones. Incorporate subtle color variations within surfaces to simulate natural material inconsistencies. Gradients are essential for creating form and depth, moving from highlights to shadows. Consider the interplay of ambient and direct lighting on surfaces, using cooler tones for shadows and warmer tones for highlights. Avoid overly bright or artificial colors that would break the illusion of physical materials.",
+    "layoutPrinciples": [
+      "Create clear spatial relationships through layered depth and shadow hierarchy",
+      "Use realistic lighting models with consistent light sources throughout the design",
+      "Establish tactile zones where users expect to interact with dimensional elements",
+      "Balance detailed textural areas with simpler supporting elements",
+      "Organize content within realistic containers and frames",
+      "Maintain consistent material logic throughout the interface",
+      "Use perspective and depth to guide user attention and create focal points",
+      "Ensure interactive elements have clear affordances through dimensional cues"
+    ],
+    "modernApplications": [
+      "Luxury brand interfaces that emphasize craftsmanship and premium materials",
+      "Gaming applications and entertainment platforms seeking immersive experiences",
+      "Educational apps that benefit from familiar, tangible metaphors",
+      "Creative tools and design applications where tactile feedback enhances usability",
+      "Heritage brand websites that want to convey tradition and authenticity",
+      "Mobile apps for traditional industries like woodworking, crafts, or vintage collecting",
+      "E-commerce platforms selling physical goods where material representation is crucial",
+      "Nostalgic social platforms and memory-keeping applications"
+    ],
+    "exampleUseCases": [
+      "Luxury watch brand websites with detailed material showcases and interactive product exploration",
+      "Craft brewery applications featuring wood, metal, and paper textures that reflect traditional brewing",
+      "High-end furniture e-commerce sites with realistic material swatches and dimensional product displays",
+      "Music production software interfaces that simulate analog equipment and physical controls",
+      "Artisan marketplace platforms where handmade quality and material authenticity are key selling points",
+      "Heritage fashion brand websites emphasizing traditional craftsmanship and premium materials",
+      "Educational apps for children that use familiar objects and textures to aid learning",
+      "Photography portfolio sites that simulate physical photo albums and darkroom aesthetics"
+    ],
+    "generatedAt": "2025-10-01T23:46:22.314Z"
+  },
+  {
+    "styleName": "Neumorphism",
+    "description": "Neumorphism, also known as 'Soft UI', is a design approach that creates the illusion of extruded shapes emerging from or receding into the background through subtle shadows and highlights. This style mimics physical objects by using soft, diffused shadows and gentle gradients to create depth and tactility. Elements appear to be carved from or molded into the interface surface, creating a cohesive, monochromatic aesthetic that feels both digital and tangible. The style emphasizes minimalism, subtle contrast, and a unified color palette to achieve its characteristic soft, three-dimensional appearance.",
+    "relatedTrends": [
+      "Diffused Worlds",
+      "Ethereal Reverie",
+      "Floating Minimalism",
+      "Type Minimalism",
+      "Bento Blocks"
+    ],
+    "visualCharacteristics": [
+      "Soft, subtle drop shadows that create depth without harsh contrast",
+      "Gentle highlights and lowlights that simulate light interaction",
+      "Monochromatic or near-monochromatic color schemes",
+      "Extruded elements that appear to emerge from or sink into backgrounds",
+      "Minimal visual noise with clean, uncluttered compositions",
+      "Soft corner radii on all interactive elements",
+      "Subtle gradients that enhance the three-dimensional illusion",
+      "Low contrast between elements and backgrounds",
+      "Tactile appearance that invites interaction",
+      "Unified surface treatment across all interface components"
+    ],
+    "typographyGuidance": "Typography in neumorphism should maintain the soft, unified aesthetic while ensuring readability. Use clean, modern sans-serif fonts with medium to regular weights to avoid competing with the subtle shadow effects. Typography can be treated with the same neumorphic principles - text can appear slightly embossed or debossed using subtle text shadows and highlights. Maintain sufficient contrast for accessibility while staying within the monochromatic palette. Consider using slightly larger font sizes to compensate for the reduced contrast. Hierarchy should be established through size and spacing rather than dramatic weight or color changes.",
+    "colorPaletteGuidance": "Neumorphism relies heavily on monochromatic or analogous color schemes to achieve its signature look. Start with a base color (often light grays, soft blues, or warm beiges) and create variations through tints and shades. Use colors that are close in value to maintain the soft contrast essential to the style. Shadow colors should be slightly darker versions of the base, while highlights should be slightly lighter. Avoid high contrast or vibrant colors that would break the cohesive surface illusion. Consider using colors like #E0E5EC for light themes or #2D3748 for dark themes as base colors, with shadows and highlights derived from these foundations.",
+    "layoutPrinciples": [
+      "Generous use of negative space to allow neumorphic elements to breathe",
+      "Modular, card-based layouts that work well with the extruded aesthetic",
+      "Consistent spacing and padding to maintain visual harmony",
+      "Asymmetrical balance that feels natural and organic",
+      "Layered depth through varying shadow intensities",
+      "Clean grid systems that support the minimalist approach",
+      "Floating elements with ample breathing room",
+      "Subtle visual hierarchy through elevation rather than color contrast"
+    ],
+    "modernApplications": [
+      "Mobile app interfaces with tactile, touch-friendly controls",
+      "Dashboard designs that need to feel approachable and intuitive",
+      "Smart home interfaces that blend digital and physical aesthetics",
+      "Wellness and meditation apps that require calming, soft visuals",
+      "Financial apps where trust and stability are conveyed through subtle sophistication",
+      "E-commerce product cards that feel tangible and interactive",
+      "Form designs that reduce visual friction and feel welcoming",
+      "Music players and audio interfaces that emphasize tactile control",
+      "Minimalist portfolio websites that showcase work without distraction",
+      "Corporate websites that need to appear modern yet approachable"
+    ],
+    "exampleUseCases": [
+      "Fitness tracking apps with soft, rounded progress indicators and buttons",
+      "Banking applications where subtle depth creates trust and professionalism",
+      "Smart thermostat interfaces that mimic physical control panels",
+      "Meditation and wellness apps requiring calming, non-stimulating visuals",
+      "Music streaming platforms with tactile playback controls",
+      "E-commerce checkout processes that feel secure and intuitive",
+      "Corporate dashboards that need to display data without overwhelming users",
+      "Portfolio websites for designers wanting to showcase work with minimal distraction",
+      "Educational apps where soft UI reduces cognitive load",
+      "Home automation interfaces that bridge digital and physical interaction"
+    ],
+    "generatedAt": "2025-10-01T23:46:49.924Z"
+  },
+  {
+    "styleName": "Glassmorphism",
+    "description": "Glassmorphism is a contemporary design aesthetic that mimics the appearance of frosted glass through the use of transparency, blur effects, and layered visual elements. This style creates depth and hierarchy through semi-transparent surfaces that appear to float above backgrounds, utilizing backdrop filters, subtle borders, and soft shadows to achieve a sophisticated, ethereal quality. The technique emphasizes clarity through obscurity, where content remains legible while creating an immersive, tactile experience that bridges the digital and physical worlds.",
+    "relatedTrends": [
+      "Diffused Worlds",
+      "Ethereal Reverie",
+      "Floating Minimalism",
+      "Bento Blocks"
+    ],
+    "visualCharacteristics": [
+      "Semi-transparent surfaces with 10-40% opacity overlays",
+      "Backdrop blur filters creating frosted glass effects",
+      "Subtle border highlights using 1-2px white or light-colored strokes",
+      "Soft drop shadows with 20-40px blur radius for depth",
+      "Layered composition with floating elements at different z-levels",
+      "Gradient backgrounds transitioning between 2-3 complementary colors",
+      "Refined use of negative space to enhance glass panel visibility",
+      "Smooth corner radius of 8-20px on glass elements",
+      "Light refraction effects through subtle color shifts",
+      "Hierarchical transparency levels to establish visual importance"
+    ],
+    "typographyGuidance": "Typography in glassmorphism should maintain high contrast against blurred backgrounds while complementing the ethereal aesthetic. Use clean, modern sans-serif fonts like Inter, SF Pro, or Poppins for primary text, ensuring sufficient weight (medium to semibold) for readability through glass surfaces. Implement proper text shadows or background overlays when placing text directly on glass elements. For headings, consider elegant serif fonts like Playfair Display or modern geometric fonts that echo the clean lines of glass panels. Maintain generous line spacing (1.4-1.6) and ensure color contrast ratios meet accessibility standards, typically using dark text on light glass or white text on darker glass surfaces.",
+    "colorPaletteGuidance": "Glassmorphism thrives on sophisticated, muted color palettes that enhance the glass effect without overwhelming the transparency. Primary backgrounds should feature soft gradients using colors like deep blues (#1a1a2e to #16213e), purples (#2d1b69 to #11998e), or warm neutrals (#f7f7f7 to #e8e8e8). Glass elements work best with subtle tints - light blues (#ffffff20), soft purples (#8b5cf620), or warm whites (#ffffff15) with low opacity. Accent colors should be vibrant but used sparingly - electric blues (#00d4ff), soft corals (#ff6b6b), or mint greens (#4ecdc4). Border highlights typically use white (#ffffff40) or light colors with 20-40% opacity to simulate light reflection on glass surfaces.",
+    "layoutPrinciples": [
+      "Establish clear visual hierarchy through varying transparency levels and blur intensities",
+      "Create depth using multiple z-index layers with glass panels floating at different elevations",
+      "Maintain generous spacing between glass elements to prevent visual confusion",
+      "Use asymmetrical layouts that feel balanced through careful weight distribution",
+      "Implement modular grid systems that allow glass panels to break free from rigid constraints",
+      "Ensure glass elements don't obscure critical content or navigation elements",
+      "Apply consistent border radius and shadow properties across all glass components",
+      "Balance transparency with readability by providing sufficient contrast for text elements"
+    ],
+    "modernApplications": [
+      "Dashboard interfaces with floating glass panels containing widgets and data visualizations",
+      "Mobile app interfaces featuring glass navigation bars and modal overlays",
+      "Website hero sections with glass cards displaying key information over gradient backgrounds",
+      "E-commerce product showcases using glass frames to highlight featured items",
+      "Portfolio websites with glass galleries that create depth without overwhelming content",
+      "Landing pages for SaaS products using glass elements to demonstrate transparency and trust",
+      "Social media interfaces with glass comment bubbles and notification panels",
+      "Corporate websites using glass sections to create sophisticated, professional aesthetics"
+    ],
+    "exampleUseCases": [
+      "Fintech applications requiring trust and transparency through glass interface elements",
+      "Creative portfolios showcasing work through elegant glass gallery systems",
+      "Wellness and meditation apps using soft glass elements to create calming experiences",
+      "Technology company websites demonstrating innovation through modern glass aesthetics",
+      "Fashion e-commerce sites using glass overlays to highlight products without distraction",
+      "Music streaming platforms with glass player controls and playlist interfaces",
+      "Real estate websites featuring glass property cards over scenic background imagery",
+      "Educational platforms using glass modules to organize course content hierarchically"
+    ],
+    "generatedAt": "2025-10-01T23:47:19.571Z"
+  }
+]

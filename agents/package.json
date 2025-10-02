@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server/app.ts",
-    "prebuild": "cd ../packages/ai-lib && npm run build",
+    "prebuild": "cd ../packages/ai-lib && pnpm run build",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/server/app.js",
@@ -31,7 +31,7 @@
     "@ai-sdk/amazon-bedrock": "^3.0.21",
     "@ai-sdk/anthropic": "^2.0.17",
     "@ai-sdk/openai": "^2.0.30",
-    "@airo/ai-lib": "file:../packages/ai-lib",
+    "@airo/ai-lib": "workspace:*",
     "@anthropic-ai/tokenizer": "^0.0.4",
     "@aws-sdk/credential-providers": "^3.888.0",
     "@babel/generator": "^7.28.0",

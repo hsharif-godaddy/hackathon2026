@@ -20,3 +20,8 @@ playwright-report/
 app/test-results/
 app/playwright-report/
 
+# Design Extractor Output
+packages/design-extractor/output/
+
+.env
+.env.local
