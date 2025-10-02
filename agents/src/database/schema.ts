@@ -121,6 +121,17 @@ export interface TokenUsage {
   createdAt: Date;
 }
 
+export interface Memory {
+  id: string;
+  appId: string;
+  key: string;
+  value: string; // JSON-serialized value
+  valueType: 'string' | 'number' | 'boolean' | 'object' | 'array' | 'null';
+  searchText?: string | undefined; // Extracted searchable text for vector database
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ==================================================================================
 // Database Schema Management Functions
 // ==================================================================================
@@ -139,6 +150,7 @@ export function initializeSchema(db: Database): void {
   createConversationMessagesTable(db);
   createTokenUsageTable(db);
   createFileContextTable(db);
+  createMemoryTable(db);
   
   // Create all indexes
   createIndexes(db);
@@ -289,6 +301,26 @@ function createFileContextTable(db: Database): void {
 }
 
 /**
+ * Create the memory table for hierarchical key-value storage
+ */
+function createMemoryTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS memory (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      value_type TEXT NOT NULL CHECK(value_type IN ('string', 'number', 'boolean', 'object', 'array', 'null')),
+      search_text TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(app_id, key),
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
  * Create all database indexes for efficient queries
  */
 function createIndexes(db: Database): void {
@@ -339,6 +371,23 @@ function createIndexes(db: Database): void {
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_token_usage_conversation_id ON token_usage(conversation_id)
+  `);
+
+  // Memory table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_memory_app_id ON memory(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_memory_key ON memory(key)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_memory_created_at ON memory(created_at)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_memory_updated_at ON memory(updated_at)
   `);
 
 }
@@ -399,6 +448,16 @@ function createTriggers(db: Database): void {
     FOR EACH ROW
     BEGIN
       UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.conversation_id;
+    END
+  `);
+
+  // Trigger to automatically update updated_at on memory
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS update_memory_updated_at 
+    AFTER UPDATE ON memory
+    FOR EACH ROW
+    BEGIN
+      UPDATE memory SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END
   `);
 }

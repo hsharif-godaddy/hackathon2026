@@ -543,3 +543,58 @@ export function getModelInfo(modelName: string, config?: ProviderConfig) {
     ...(usingProxy && { proxyReason })
   }
 }
+
+/**
+ * Embedding model mappings
+ */
+const EMBEDDING_MODEL_MAPPINGS = {
+  'titan-embed-v1': 'amazon.titan-embed-text-v1',
+  'titan-embed-v2': 'amazon.titan-embed-text-v2:0',
+  'titan-embed': 'amazon.titan-embed-text-v2:0',
+  'cohere-embed-english': 'cohere.embed-english-v3',
+  'cohere-embed-multilingual': 'cohere.embed-multilingual-v3',
+  'text-embedding-ada-002': 'text-embedding-ada-002',
+  'text-embedding-3-small': 'text-embedding-3-small',
+  'text-embedding-3-large': 'text-embedding-3-large'
+} as const
+
+type EmbeddingModelShortName = keyof typeof EMBEDDING_MODEL_MAPPINGS
+
+/**
+ * Get an embedding model instance
+ * 
+ * @param modelName - Short model name or full model identifier
+ * @param config - Optional configuration overrides
+ * @returns Embedding model instance compatible with AI SDK
+ * 
+ * @example
+ * ```typescript
+ * // Get Titan embedding model (Bedrock)
+ * const titanModel = await getEmbeddingModel('titan-embed-v2')
+ * 
+ * // Get OpenAI embedding model
+ * const openaiModel = await getEmbeddingModel('text-embedding-3-small')
+ * 
+ * // Use with embeddings utility
+ * import { generateEmbeddings } from '@airo/ai-lib'
+ * const result = await generateEmbeddings(['text to embed'], titanModel)
+ * ```
+ */
+export async function getEmbeddingModel(
+  modelName: string,
+  config?: ProviderConfig
+): Promise<any> {
+  const fullModelName = EMBEDDING_MODEL_MAPPINGS[modelName as EmbeddingModelShortName] || modelName
+  
+  if (fullModelName.startsWith('amazon.') || fullModelName.startsWith('cohere.')) {
+    validateBedrockConfig(config)
+    const provider = await createBedrockProvider(config)
+    return provider.textEmbeddingModel(fullModelName)
+  } else if (fullModelName.startsWith('text-embedding')) {
+    validateOpenAIConfig(config)
+    const provider = await createOpenAIProvider(config)
+    return provider.textEmbeddingModel(fullModelName)
+  } else {
+    throw new Error(`Unsupported embedding model: ${modelName}`)
+  }
+}

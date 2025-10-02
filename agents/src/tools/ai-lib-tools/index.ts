@@ -18,6 +18,7 @@ export { iconsValidatorAITool } from './icons-validator.js'
 export { viewLogsAITool } from './view-logs.js'
 export { appPlanAITool } from './app-plan.js'
 export { todoListAITool } from './todo-list.js'
+export { memorySetAITool, memoryReadAITool, memorySearchAITool, memoryListKeysAITool } from './memory-tool.js'
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js'
@@ -34,6 +35,7 @@ import { iconsValidatorAITool } from './icons-validator.js'
 import { viewLogsAITool } from './view-logs.js'
 import { appPlanAITool } from './app-plan.js'
 import { todoListAITool } from './todo-list.js'
+import { memorySetAITool, memoryReadAITool, memorySearchAITool, memoryListKeysAITool } from './memory-tool.js'
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -56,6 +58,10 @@ export const allAILibTools = {
   viewLogs: viewLogsAITool,
   appPlan: appPlanAITool,
   todoList: todoListAITool,
+  memorySet: memorySetAITool,
+  memoryRead: memoryReadAITool,
+  memorySearch: memorySearchAITool,
+  memoryListKeys: memoryListKeysAITool,
 }
 
 /**
@@ -68,6 +74,10 @@ export const toolGroups = {
     directoryListing: directoryListingAITool,
     readFile: readFileAITool,
     grepSearch: grepSearchAITool,
+    memorySet: memorySetAITool,
+    memoryRead: memoryReadAITool,
+    memorySearch: memorySearchAITool,
+    memoryListKeys: memoryListKeysAITool,
   },
   
   // System and server tools

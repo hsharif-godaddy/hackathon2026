@@ -150,6 +150,34 @@ export class AppRepository {
   }
 
   /**
+   * Find an app by path
+   */
+  findByPath(path: string): App | null {
+    const stmt = this.db.prepare(`
+      SELECT id, name, path, port, socket_path, initial_prompt, template_version, status, initial_build_complete, created_at, updated_at
+      FROM apps
+      WHERE path = ?
+    `);
+
+    const row = stmt.get(path) as any;
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      name: row.name,
+      path: row.path,
+      port: row.port,
+      socketPath: row.socket_path,
+      initialPrompt: row.initial_prompt,
+      templateVersion: row.template_version,
+      status: row.status,
+      initialBuildComplete: !!row.initial_build_complete,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
+  /**
    * List all apps with optional pagination
    */
   findAll(limit = 50, offset = 0): App[] {

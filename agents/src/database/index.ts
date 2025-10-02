@@ -4,3 +4,4 @@ export * from './repositories/AppRepository.js';
 export * from './repositories/ConversationRepository.js';
 export * from './repositories/TokenUsageRepository.js';
 export * from './repositories/FileContextRepository.js';
+export * from './repositories/MemoryRepository.js';

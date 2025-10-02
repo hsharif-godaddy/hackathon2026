@@ -363,6 +363,28 @@ export interface ToolLogReaderData {
   };
 }
 
+// Tool Memory Operations Data
+export interface ToolMemoryOperationData {
+  toolName: string;
+  appId?: string;
+  key?: string;
+  query?: string;
+  operation: 'set' | 'read' | 'list' | 'search';
+  valueType?: 'string' | 'object' | 'array' | 'number' | 'boolean' | 'null';
+  memoryPath?: string;
+  keyExists?: boolean;
+  limit?: number;
+  scoreThreshold?: number;
+  prefix?: string;
+  resultStats?: {
+    keyCount?: number;
+    resultCount?: number;
+    fileSize?: number;
+    success: boolean;
+    executionTime?: number;
+  };
+}
+
 // HTTP Request Events
 export interface HttpRequestData {
   method: string;
@@ -790,6 +812,28 @@ export const AppEvents = {
       begin: 'tool.mysql.operation.begin' as const,
       success: 'tool.mysql.operation.success' as const,
       failure: 'tool.mysql.operation.failure' as const,
+    },
+    memory: {
+      set: {
+        begin: 'tool.memory.set.begin' as const,
+        success: 'tool.memory.set.success' as const,
+        failure: 'tool.memory.set.failure' as const,
+      },
+      read: {
+        begin: 'tool.memory.read.begin' as const,
+        success: 'tool.memory.read.success' as const,
+        failure: 'tool.memory.read.failure' as const,
+      },
+      list: {
+        begin: 'tool.memory.list.begin' as const,
+        success: 'tool.memory.list.success' as const,
+        failure: 'tool.memory.list.failure' as const,
+      },
+      search: {
+        begin: 'tool.memory.search.begin' as const,
+        success: 'tool.memory.search.success' as const,
+        failure: 'tool.memory.search.failure' as const,
+      },
     },
     logReader: {
       read: {

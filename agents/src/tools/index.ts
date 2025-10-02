@@ -19,6 +19,7 @@ export { AppPlanTool, appPlanTool } from './app-plan-tool.js';
 export { validateLucideIcons } from './icons-validator.js';
 export { DevSupervisorLogClient } from './dev-supervisor-log-client.js';
 export { ViewLogsTool } from './view-logs-tool.js';
+export { MemoryTool } from './memory-tool.js';
 // Tool definitions and execution now handled by ai-lib agents
 export type { 
   DirectoryListingOptions, 
@@ -132,3 +133,10 @@ export type {
   DevLogsOptions,
   DevLogsResult
 } from './view-logs-tool.js';
+
+export type {
+  MemorySetOptions,
+  MemoryReadOptions,
+  MemorySetResult,
+  MemoryReadResult
+} from './memory-tool.js';

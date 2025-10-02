@@ -9,10 +9,10 @@ npm install -g license-checker
 
 # Package-specific configurations
 if [ "$MATRIX_PACKAGE" = "root" ]; then
-  EXCLUSIONS="airo-app-builder-root@1.0.0"
+  EXCLUSIONS="airo-app-builder-root@1.0.0;gd-auth-client@2.1.1"
   ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0"
 elif [ "$MATRIX_PACKAGE" = "agents" ]; then
-  EXCLUSIONS="argparse@2.0.1;tslib@2.8.1"
+  EXCLUSIONS="argparse@2.0.1;tslib@2.8.1;gd-auth-client@2.1.1"
   ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0"
 elif [ "$MATRIX_PACKAGE" = "app" ]; then
   # Dynamically generate exclusions for all GoDaddy-owned packages
@@ -42,7 +42,7 @@ elif [ "$MATRIX_PACKAGE" = "app" ]; then
     EXCLUSIONS="$MANUAL_EXCLUSIONS"
   fi
 else
-  EXCLUSIONS=""
+  EXCLUSIONS="gd-auth-client@2.1.1"
   ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC"
 fi
 

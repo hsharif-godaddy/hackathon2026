@@ -41,6 +41,7 @@
     "@openai/agents": "^0.0.17",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/socket.io": "^3.0.2",
+    "@qdrant/js-client-rest": "^1.15.1",
     "ai": "^5.0.44",
     "axios": "^1.12.0",
     "better-sqlite3": "^12.2.0",

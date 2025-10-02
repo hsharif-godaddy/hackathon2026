@@ -32,6 +32,7 @@ import type {
   ToolAstEditData,
   ToolMySqlData,
   ToolLogReaderData,
+  ToolMemoryOperationData,
   HttpRequestData,
 
   WebSocketChatData,
@@ -648,6 +649,68 @@ export const toolLogReaderEvents = {
 
   summaryFailure: (logger: ILogger, error: Error, data: { toolName: string; appId?: string; operation: 'summary' }) => {
     log.error(logger, AppEvents.tool.logReader.summary.failure, error, data);
+  },
+};
+
+/**
+ * Tool Memory logging helpers
+ */
+export const toolMemoryEvents = {
+  setBegin: (logger: ILogger, data: { toolName: string; appId?: string; key: string; valueType?: string }) => {
+    logger.info(AppEvents.tool.memory.set.begin, {
+      ...data,
+      operation: 'set' as const,
+    });
+  },
+
+  setSuccess: (logger: ILogger, data: ToolMemoryOperationData) => {
+    logger.info(AppEvents.tool.memory.set.success, data);
+  },
+
+  setFailure: (logger: ILogger, error: Error, data: { toolName: string; appId?: string; key: string; operation: 'set' }) => {
+    log.error(logger, AppEvents.tool.memory.set.failure, error, data);
+  },
+
+  readBegin: (logger: ILogger, data: { toolName: string; appId?: string; key: string }) => {
+    logger.info(AppEvents.tool.memory.read.begin, {
+      ...data,
+      operation: 'read' as const,
+    });
+  },
+
+  readSuccess: (logger: ILogger, data: ToolMemoryOperationData) => {
+    logger.info(AppEvents.tool.memory.read.success, data);
+  },
+
+  readFailure: (logger: ILogger, error: Error, data: { toolName: string; appId?: string; key: string; operation: 'read' }) => {
+    log.error(logger, AppEvents.tool.memory.read.failure, error, data);
+  },
+
+  listBegin: (logger: ILogger, data: { toolName: string; appId?: string; prefix?: string }) => {
+    logger.info(AppEvents.tool.memory.list.begin, {
+      ...data,
+      operation: 'list' as const,
+    });
+  },
+
+  listSuccess: (logger: ILogger, data: ToolMemoryOperationData) => {
+    logger.info(AppEvents.tool.memory.list.success, data);
+  },
+
+  listFailure: (logger: ILogger, error: Error, data: { toolName: string; appId?: string; prefix?: string; operation: 'list' }) => {
+    log.error(logger, AppEvents.tool.memory.list.failure, error, data);
+  },
+  searchBegin: (logger: ILogger, data: { toolName: string; appId?: string; query: string; limit?: number; scoreThreshold?: number }) => {
+    logger.info(AppEvents.tool.memory.search.begin, {
+      ...data,
+      operation: 'search' as const,
+    });
+  },
+  searchSuccess: (logger: ILogger, data: ToolMemoryOperationData) => {
+    logger.info(AppEvents.tool.memory.search.success, data);
+  },
+  searchFailure: (logger: ILogger, error: Error, data: { toolName: string; appId?: string; query: string; operation: 'search' }) => {
+    log.error(logger, AppEvents.tool.memory.search.failure, error, data);
   },
 };
 

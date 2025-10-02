@@ -39,6 +39,7 @@ export {
   toolAstEditEvents,
   toolMySqlEvents,
   toolLogReaderEvents,
+  toolMemoryEvents,
   httpRequestEvents,
   webSocketConnectionEvents,
   webSocketChatEvents,
