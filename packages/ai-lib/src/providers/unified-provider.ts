@@ -499,8 +499,9 @@ async function createAnthropicProvider(config?: ProviderConfig) {
     // Add base URL - use GoCode Anthropic proxy endpoint if no explicit override
     const baseURL = config?.anthropicBaseUrl || process.env.ANTHROPIC_BASE_URL || getDefaultAnthropicProxyEndpoint()
     if (baseURL) {
-      anthropicConfig.baseURL = baseURL
-      console.log(`🔗 Using Anthropic proxy endpoint: ${baseURL}`)
+      // Ensure URL ends with /v1 for Anthropic API compatibility
+      anthropicConfig.baseURL = baseURL.endsWith('/v1') ? baseURL : baseURL + '/v1'
+      console.log(`🔗 Using Anthropic proxy endpoint: ${anthropicConfig.baseURL}`)
     }
     
     return createAnthropic(anthropicConfig)

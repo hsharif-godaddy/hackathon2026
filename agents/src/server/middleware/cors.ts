@@ -3,6 +3,13 @@ import type { CorsOptions } from 'cors';
 
 const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
+    // No origin header means not a browser request (server-to-server, curl, etc.)
+    // Allow these requests without CORS checks
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    
     const isDevelopment = process.env.NODE_ENV === 'development';
     let allowedOrigins: string[] = [];
     
@@ -12,10 +19,10 @@ const corsOptions: CorsOptions = {
       allowedOrigins = ['http://localhost:3000', 'http://localhost:3001'];
     }
     
-    if (origin && allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error(`Origin ${origin || 'undefined'} not allowed by CORS`));
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
