@@ -1,0 +1,262 @@
+import {
+  createExperimentalAgentFactory,
+  type ExperimentalAgentConfig,
+  type AfterToolExecutionHook,
+  type AgentContext,
+  createPromptBuilder
+} from '@airo/ai-lib'
+import { getAgentModelWithName } from '../utils/model-selection.js'
+import { allAILibTools } from '../tools/ai-lib-tools/index.js'
+import { getModularPromptPaths } from '../utils/prompt-utils.js'
+import { logger } from '../logging/index.js'
+
+/**
+ * Design Agent - Creates concise design documentation for applications
+ * Generates 8 design sections stored in memory: Brand Personality, Color Palette,
+ * Typography, Iconography, Layout, Voice & Messaging, Features, Site Map
+ */
+
+/**
+ * Track design section updates for logging
+ */
+const afterToolExecution: AfterToolExecutionHook = async (
+  toolName: string,
+  args: unknown,
+  result: unknown,
+  context?: AgentContext
+): Promise<unknown> => {
+  logger.info('design_agent.tool.execution.complete', {
+    toolName,
+    appId: context?.metadata?.appId
+  });
+
+  const resultObj = result as any;
+
+  // Track design section updates
+  if (toolName === 'memorySet' && resultObj?.success) {
+    const setArgs = args as { key: string };
+    if (setArgs.key.startsWith('design.')) {
+      logger.info('design_agent.section.updated', {
+        section: setArgs.key,
+        appId: context?.metadata?.appId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // Track design searches
+  if (toolName === 'memorySearch' && resultObj?.success) {
+    logger.info('design_agent.inspiration.search', {
+      resultsCount: resultObj.results?.length || 0,
+      appId: context?.metadata?.appId
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Build the system prompt for the Design Agent
+ */
+async function buildDesignSystemPrompt(): Promise<string> {
+  const promptBuilder = createPromptBuilder();
+
+  // Get modular prompt paths using helper utility
+  const paths = getModularPromptPaths(import.meta.url);
+
+  // Load all modular prompt sections in order
+  promptBuilder
+    .file(paths.getAgentFile('design', 'core.md'))
+    .file(paths.getAgentFile('design', 'sections.md'))
+    .file(paths.getAgentFile('design', 'memory-usage.md'))
+    .file(paths.getAgentFile('design', 'workflow.md'))
+    .file(paths.getSharedFile('communication.md'));
+
+  return await promptBuilder.build();
+}
+
+/**
+ * Create the Design Agent configuration
+ */
+export async function createDesignAgent(): Promise<ExperimentalAgentConfig> {
+  const systemPrompt = await buildDesignSystemPrompt();
+  const { model, modelName } = await getAgentModelWithName('full'); // Use full model for comprehensive design work
+
+  return {
+    name: 'Design System Creator',
+    system: systemPrompt,
+    model,
+    modelName,
+    tools: {
+      // Memory operations for storing/retrieving design sections
+      memorySet: allAILibTools.memorySet,
+      memoryRead: allAILibTools.memoryRead,
+      memorySearch: allAILibTools.memorySearch,
+      memoryListKeys: allAILibTools.memoryListKeys,
+
+      // File operations for reading existing design files
+      readFile: allAILibTools.readFile,
+      directoryListing: allAILibTools.directoryListing,
+    },
+
+    // Tool execution hooks
+    afterToolExecution,
+
+    // Handoff configuration
+    handoffs: [
+      {
+        agentName: 'develop',
+        description: 'Hand off to development agent to implement design system in code',
+      },
+    ],
+
+    maxSteps: 20,
+    temperature: 0.7, // Higher temperature for creative design work
+    maxOutputTokens: 4000
+  };
+}
+
+/**
+ * Create Design Agent factory
+ */
+export async function createDesignAgentFactory() {
+  const factory = createExperimentalAgentFactory();
+
+  const agents = factory.defineAgents({
+    design: await createDesignAgent()
+  });
+
+  return {
+    factory,
+    agents,
+    getAgent: () => agents.get('design')
+  };
+}
+
+/**
+ * Design Agent class wrapper for backward compatibility
+ */
+export class DesignAgent {
+  private factory: Awaited<ReturnType<typeof createDesignAgentFactory>>
+
+  constructor() {
+    this.factory = null as any;
+  }
+
+  /**
+   * Initialize the agent
+   */
+  async initialize(): Promise<void> {
+    logger.info('design_agent.initialization.start');
+    this.factory = await createDesignAgentFactory();
+    logger.info('design_agent.initialization.complete');
+  }
+
+  /**
+   * Get the agent instance
+   */
+  getAgent() {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.');
+    }
+    return this.factory.getAgent();
+  }
+
+  /**
+   * Get agent factory for advanced usage
+   */
+  getFactory() {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.');
+    }
+    return this.factory.factory;
+  }
+
+  /**
+   * Get agent configuration
+   */
+  getConfig(): ExperimentalAgentConfig {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.');
+    }
+    return this.factory.agents.getConfig('design');
+  }
+
+  /**
+   * Stream generate response
+   */
+  async streamGenerate(prompt: string, options?: any) {
+    const agent = this.getAgent();
+    return agent.streamGenerate(prompt, options);
+  }
+
+  /**
+   * Generate response (non-streaming)
+   */
+  async generate(prompt: string, options?: any) {
+    const agent = this.getAgent();
+    return agent.generate(prompt, options);
+  }
+
+  /**
+   * Get agent name
+   */
+  getName(): string {
+    return this.getAgent().getName();
+  }
+
+  /**
+   * Hand off to development agent
+   */
+  async handoffToDevelop(designSystem: any): Promise<any> {
+    const factory = this.getFactory();
+
+    logger.info('design_agent.handoff.develop.start', {
+      targetAgent: 'develop'
+    });
+
+    const handoffResult = await factory.executeHandoff(
+      'design',
+      'develop',
+      {
+        task: 'Implement the design system in the application code',
+        context: {
+          designSystem,
+          implementationNotes: 'Apply design sections to CSS variables, components, and page structure'
+        },
+        parameters: { designSystem },
+        metadata: {
+          sourceAgent: 'design',
+          timestamp: new Date().toISOString(),
+          reason: 'Design system completed, ready for implementation'
+        }
+      }
+    );
+
+    if (handoffResult.success) {
+      logger.info('design_agent.handoff.develop.success', {
+        targetAgent: 'develop'
+      });
+
+      return {
+        success: true,
+        message: 'Design system handed off to development agent',
+        handoffDetails: handoffResult.handoffDetails
+      };
+    } else {
+      logger.error('design_agent.handoff.develop.failure', {
+        targetAgent: 'develop',
+        error: handoffResult.error
+      });
+      throw new Error(`Development handoff failed: ${handoffResult.error}`);
+    }
+  }
+
+  /**
+   * Cleanup resources
+   */
+  async cleanup(): Promise<void> {
+    logger.info('design_agent.cleanup.complete');
+  }
+}
+
