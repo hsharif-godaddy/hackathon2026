@@ -1,8 +1,8 @@
 /**
  * MessagePersistence implementation for the agents server
  * 
- * This class implements the ai-lib MessagePersistence interface to handle
- * conversation and streaming event persistence using the existing ConversationBridge.
+ * This class implements the ai-lib ConversationPersistence interface to handle
+ * conversation and streaming event persistence directly with the ConversationRepository.
  */
 
 import type { 
@@ -11,8 +11,7 @@ import type {
   PersistenceStreamingEvent, 
   ConversationContext
 } from '@airo/ai-lib'
-import { ConversationBridge } from '../agents/ai-lib-agents/conversation-bridge.js'
-import type { EnhancedAgentContext } from '../agents/ai-lib-agents/types.js'
+import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { MAX_PROMPT_LENGTH } from '../services/features.js'
 import { GitTool } from '../tools/git-tool.js'
@@ -20,9 +19,10 @@ import { GitUtils } from '../utils/git.js'
 import { logger } from '../logging/index.js'
 import { toolGitEvents } from '../logging/events/index.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
+import { nanoid } from 'nanoid'
 
 export class AgentsMessagePersistence implements ConversationPersistenceWithCleanup {
-  private conversationBridge: ConversationBridge
+  private conversationRepo: ConversationRepository
   private appRepository: AppRepository
   
   // Track conversations for cleanup
@@ -37,8 +37,75 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   private appUserMessages = new Map<string, string>()
 
   constructor() {
-    this.conversationBridge = new ConversationBridge()
+    this.conversationRepo = new ConversationRepository()
     this.appRepository = new AppRepository()
+  }
+
+  private optimizeStreamingEvents(events: Array<{
+    type: string
+    content?: string | undefined
+    data?: any
+    timestamp?: Date | undefined
+  }>): Array<{
+    type: string
+    content?: string | undefined
+    data?: any
+    timestamp?: Date | undefined
+    originalChunkCount?: number | undefined
+  }> {
+    const optimized: Array<{
+      type: string
+      content?: string | undefined
+      data?: any
+      timestamp?: Date | undefined
+      originalChunkCount?: number | undefined
+    }> = []
+
+    let currentChunkGroup: {
+      content: string
+      firstTimestamp: Date
+      lastTimestamp: Date
+      count: number
+      data?: any
+    } | null = null
+
+    const flushChunkGroup = () => {
+      if (currentChunkGroup && currentChunkGroup.content) {
+        optimized.push({
+          type: 'collapsed_chunks',
+          content: currentChunkGroup.content,
+          timestamp: currentChunkGroup.firstTimestamp,
+          data: currentChunkGroup.data,
+          originalChunkCount: currentChunkGroup.count
+        })
+        currentChunkGroup = null
+      }
+    }
+
+    for (const event of events) {
+      if (event.type === 'chunk' || event.type === 'text_chunk') {
+        if (!currentChunkGroup) {
+          currentChunkGroup = {
+            content: event.content || '',
+            firstTimestamp: event.timestamp || new Date(),
+            lastTimestamp: event.timestamp || new Date(),
+            count: 1,
+            data: event.data
+          }
+        } else {
+          currentChunkGroup.content += event.content || ''
+          currentChunkGroup.lastTimestamp = event.timestamp || new Date()
+          currentChunkGroup.count++
+        }
+      } else {
+        flushChunkGroup()
+        optimized.push(event)
+      }
+    }
+
+    flushChunkGroup()
+
+    return optimized
   }
 
   async continueConversation(
@@ -46,24 +113,26 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     message: string,
     context: ConversationContext
   ): Promise<void> {
-    console.log('🔄 Continuing conversation persistence:', {
+    logger.info('conversation.continue', {
       conversationId,
       socketId: context.socketId,
       agentName: context.agentName,
       appId: context.appId
     })
 
-    // Save user message to existing conversation
-    const userMessageId = await this.conversationBridge.saveUserMessage(
-      conversationId,
-      message,
-      context as any // Cast to EnhancedAgentContext
-    )
+    await this.conversationRepo.addMessage(conversationId, 'user', message, {
+      metadata: {
+        socketId: context.socketId,
+        agentName: context.agentName,
+        appId: context.appId,
+        userId: context.userId,
+        sessionId: context.sessionId
+      }
+    })
 
-    // Track for cleanup and store message
     this.activeConversations.set(context.socketId, {
       conversationId,
-      userMessageId,
+      userMessageId: nanoid(12),
       context,
       message
     })
@@ -72,20 +141,19 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       this.appUserMessages.set(context.appId, message)
     }
 
-    console.log('💾 Conversation continued:', { conversationId, userMessageId })
+    logger.info('conversation.user_message.saved', { conversationId })
   }
 
   async startConversation(
     message: string,
     context: ConversationContext
   ): Promise<string> {
-    console.log('💾 Starting conversation persistence:', {
+    logger.info('conversation.start', {
       socketId: context.socketId,
       agentName: context.agentName,
       appId: context.appId
     })
 
-    // Validate appId
     if (!context.appId) {
       throw new Error('appId is required in context')
     }
@@ -94,69 +162,52 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       throw new Error(`Message exceeds maximum length of ${MAX_PROMPT_LENGTH} characters`)
     }
 
-    // Validate that the app exists
     const app = this.appRepository.findById(context.appId)
     if (!app) {
       throw new Error(`App with ID '${context.appId}' not found`)
     }
 
-    // Create enhanced context for ConversationBridge
-    const enhancedContext: EnhancedAgentContext = {
-      metadata: {
-        appId: context.appId,
-        agentId: context.agentName,
-        ...(context.userId && { userId: context.userId }),
-        ...(context.sessionId && { sessionId: context.sessionId })
+    let conversationId: string
+
+    if (context.conversation?.conversationId) {
+      const existing = await this.conversationRepo.getById(context.conversation.conversationId)
+      if (existing) {
+        conversationId = context.conversation.conversationId
+        logger.info('conversation.existing.found', { conversationId })
+      } else {
+        logger.warn('conversation.existing.not_found', { 
+          conversationId: context.conversation.conversationId 
+        })
+        const conversation = await this.conversationRepo.create(
+          context.appId,
+          context.agentName,
+          `Chat with ${context.agentName} - ${new Date().toLocaleString()}`
+        )
+        conversationId = conversation.id
       }
-      // Other properties are optional and will be added as needed
+    } else {
+      const conversation = await this.conversationRepo.create(
+        context.appId,
+        context.agentName,
+        `Chat with ${context.agentName} - ${new Date().toLocaleString()}`
+      )
+      conversationId = conversation.id
+      logger.info('conversation.created', { conversationId })
     }
 
-    // Copy conversation context if provided (this is crucial for conversation history!)
-    if (context.conversation) {
-      enhancedContext.conversation = context.conversation
-    }
+    await this.conversationRepo.addMessage(conversationId, 'user', message, {
+      metadata: {
+        socketId: context.socketId,
+        agentName: context.agentName,
+        appId: context.appId,
+        userId: context.userId,
+        sessionId: context.sessionId
+      }
+    })
 
-    // Debug logging for conversation context
-    if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-      console.log('🔍 ConversationPersistence: Original context.conversation:', context.conversation)
-      console.log('🔍 ConversationPersistence: Enhanced context.conversation:', enhancedContext.conversation)
-    }
-
-    // Debug logging for conversation context
-    if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-      console.log('🔍 ConversationPersistence.startConversation: conversation context:', {
-        originalConversation: context.conversation,
-        enhancedConversation: enhancedContext.conversation,
-        hasConversationId: !!(enhancedContext.conversation?.conversationId)
-      })
-    }
-
-    // Create or get conversation
-    const conversationId = await this.conversationBridge.ensureConversation(
-      context.appId,
-      context.agentName,
-      enhancedContext
-    )
-
-    // Debug logging for conversation ID result
-    if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-      console.log('🔍 ConversationPersistence: ensureConversation returned:', conversationId)
-    }
-
-    // Update context with conversation ID
-    enhancedContext.conversation = { conversationId }
-
-    // Save user message
-    const userMessageId = await this.conversationBridge.saveUserMessage(
-      conversationId,
-      message,
-      enhancedContext
-    )
-
-    // Track for cleanup and store message
     this.activeConversations.set(context.socketId, {
       conversationId,
-      userMessageId,
+      userMessageId: nanoid(12),
       context,
       message
     })
@@ -165,7 +216,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       this.appUserMessages.set(context.appId, message)
     }
 
-    console.log('💾 Conversation started:', { conversationId, userMessageId })
+    logger.info('conversation.user_message.saved', { conversationId })
     return conversationId
   }
 
@@ -183,30 +234,124 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     result: any,
     context: ConversationContext
   ): Promise<void> {
-
-    // Convert PersistenceStreamingEvent to the format expected by ConversationBridge
-    const bridgeEvents = streamingEvents.map(event => ({
-      type: event.type,
-      ...(event.content !== undefined && { content: event.content }),
-      ...(event.data !== undefined && { data: event.data }),
-      ...(event.timestamp !== undefined && { timestamp: event.timestamp })
-    }))
-
-    // Save agent response with streaming events
-    await this.conversationBridge.saveAgentResponse(
-      conversationId,
-      context.agentName,
-      bridgeEvents,
-      result
-    )
+    const optimizedEvents = this.optimizeStreamingEvents(streamingEvents)
     
-    // Check for uncommitted changes before cleaning up
-    // This ensures we don't lose any changes made during the conversation
+    logger.info('conversation.agent_response.optimizing', {
+      originalEvents: streamingEvents.length,
+      optimizedEvents: optimizedEvents.length,
+      reduction: `${Math.round((1 - optimizedEvents.length / streamingEvents.length) * 100)}%`
+    })
+    
+    const segments: any[] = []
+    const toolCalls: any[] = []
+    const toolsMap = new Map()
+    let accumulatedContent = ''
+    
+    for (const event of optimizedEvents) {
+      const timestamp = event.timestamp || new Date()
+      
+      switch (event.type) {
+        case 'chunk':
+        case 'text_chunk':
+        case 'collapsed_chunks':
+          if (event.content) {
+            accumulatedContent += event.content
+            segments.push({
+              id: nanoid(8),
+              type: 'content',
+              content: event.content,
+              timestamp,
+              metadata: event.type === 'collapsed_chunks' ? {
+                originalChunkCount: event.originalChunkCount,
+                isCollapsed: true 
+              } : undefined
+            })
+          }
+          break
+          
+        case 'tool_start':
+          if (event.data?.tool) {
+            const toolId = event.data.tool.id || nanoid(8)
+            const toolData = {
+              id: toolId,
+              name: event.data.tool.name,
+              input: event.data.tool.input,
+              status: 'running',
+              startTime: timestamp
+            }
+            
+            toolsMap.set(toolId, toolData)
+            
+            segments.push({
+              id: nanoid(8),
+              type: 'tool_call',
+              timestamp,
+              toolCall: toolData
+            })
+          }
+          break
+          
+        case 'tool_result':
+          if (event.data?.tool) {
+            const toolId = event.data.tool.id
+            const existingTool = toolsMap.get(toolId)
+            
+            if (existingTool) {
+              existingTool.input = event.data.tool.input || existingTool.input
+              existingTool.result = event.data.tool.output || event.content || event.data.tool.result
+              existingTool.status = 'completed'
+              existingTool.endTime = timestamp
+              
+              if (existingTool.startTime && timestamp) {
+                const startTime = new Date(existingTool.startTime).getTime()
+                const endTime = new Date(timestamp).getTime()
+                existingTool.duration = endTime - startTime
+              } else {
+                existingTool.duration = event.data.tool.duration || undefined
+              }
+              
+              const segmentIndex = segments.findIndex(s => 
+                s.type === 'tool_call' && s.toolCall?.id === toolId
+              )
+              if (segmentIndex >= 0) {
+                segments[segmentIndex].toolCall = existingTool
+              }
+            }
+          }
+          break
+          
+        case 'step_start':
+        case 'step_complete':
+          break
+      }
+    }
+    
+    toolCalls.push(...Array.from(toolsMap.values()))
+
+    logger.info('conversation.agent_response.saving', {
+      conversationId,
+      contentLength: accumulatedContent.length,
+      segmentsCount: segments.length,
+      toolCallsCount: toolCalls.length,
+      toolNames: toolCalls.map(t => t.name)
+    })
+
+    await this.conversationRepo.addMessage(conversationId, 'agent', accumulatedContent, {
+      segments,
+      toolCalls,
+      metadata: {
+        agentId: context.agentName,
+        finalResult: result,
+        streamingEvents: streamingEvents.length
+      }
+    })
+
+    logger.info('conversation.agent_response.saved', { conversationId })
+    
     if (context.appId) {
       await this.checkAndCommitChanges(context.appId, 'conversation_complete');
     }
 
-    // Clean up tracking
     this.activeConversations.delete(context.socketId)
   }
 

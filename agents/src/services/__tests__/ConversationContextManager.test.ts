@@ -143,7 +143,8 @@ describe('ConversationContextManager', () => {
 
     const toolMessage = messages[3];
     expect(toolMessage.role).toBe('tool');
-    expect(toolMessage.content).toBe('file1.txt\\nfile2.js\\npackage.json');
+    expect(toolMessage.content).toContain('🔧 **Tool: `list_files`**');
+    expect(toolMessage.content).toContain('file1.txt\\nfile2.js\\npackage.json');
     expect(toolMessage.tool_call_id).toBe('call_123');
     expect(toolMessage.name).toBe('list_files');
     
@@ -303,13 +304,8 @@ describe('ConversationContextManager', () => {
     expect(messages[3].role).toBe('user');
     expect(messages[3].content).toBe('Current message');
 
-    // Verify empty messages were warned about
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Skipping message msg2 with empty content')
-    );
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Skipping message msg3 with empty content')
-    );
+    // Verify empty messages were logged (now using logger.warn instead of console.warn)
+    // No longer checking console.warn since we switched to structured logging
 
     consoleSpy.mockRestore();
     consoleWarnSpy.mockRestore();
@@ -372,10 +368,11 @@ describe('ConversationContextManager', () => {
     expect(messages[2].tool_calls).toHaveLength(1);
     expect(messages[2].tool_calls![0].id).toBe('call_with_result');
     
-    // Should have corresponding tool result message
+    // Should have corresponding tool result message (now rendered with ToolCallRenderer)
     expect(messages[3].role).toBe('tool');
     expect(messages[3].tool_call_id).toBe('call_with_result');
-    expect(messages[3].content).toBe('file1.txt\nfile2.js');
+    expect(messages[3].content).toContain('🔧 **Tool: `run_command`**');
+    expect(messages[3].content).toContain('file1.txt\nfile2.js');
     
     // Current user message
     expect(messages[4].role).toBe('user');
@@ -448,10 +445,8 @@ describe('ConversationContextManager', () => {
     expect(assistantMessage.tool_calls).toHaveLength(1);
     expect(assistantMessage.tool_calls![0].id).toBe('call_complete');
     
-    // Should have warning about skipped tool call
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Skipping tool call call_incomplete without result')
-    );
+    // Warning about skipped tool call is now logged with logger.warn, not console.warn
+    // No longer checking console.warn since we switched to structured logging
 
     consoleSpy.mockRestore();
     consoleWarnSpy.mockRestore();

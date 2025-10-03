@@ -121,7 +121,11 @@ export class ConversationContextManager {
     // Final validation - ensure no message has empty content
     const validatedMessages = messages.filter(msg => {
       if (!msg.content || msg.content.trim() === '') {
-        console.warn(`Filtering out message with empty content: ${JSON.stringify(msg)}`);
+        logger.warn('conversation.context.empty_message_filtered', {
+          role: msg.role,
+          hasToolCalls: !!(msg as any).tool_calls,
+          hasToolCallId: !!(msg as any).tool_call_id
+        });
         return false;
       }
       return true;
@@ -185,12 +189,10 @@ export class ConversationContextManager {
             content: message.content.trim()
           });
         } else {
-          if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-            conversationHistoryEvents.processBegin(logger, {
-              conversationId,
-              totalDbMessages: allMessages.length,
-            });
-          }
+          logger.warn('conversation.history.empty_user_message', {
+            conversationId,
+            messageId: message.id
+          });
         }
       } else if (message.sender === 'agent') {
         // For agent messages, reconstruct from segments if available, fallback to old format

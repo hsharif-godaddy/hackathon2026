@@ -6,22 +6,19 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js'
 import { ConversationContextManager } from '../ConversationContextManager.js'
-import { ConversationBridge } from '../../agents/ai-lib-agents/conversation-bridge.js'
 import { EnhancedAgentContext } from '../../agents/ai-lib-agents/types.js'
 import { getDatabase, closeDatabase } from '../../database/connection.js'
+import { nanoid } from 'nanoid'
 
 describe('Conversation History Integration', () => {
   let conversationRepo: ConversationRepository
   let contextManager: ConversationContextManager
-  let conversationBridge: ConversationBridge
   let testAppId: string
   let testConversationId: string
 
   beforeEach(async () => {
-    // Initialize repositories (getDatabase() will initialize schema automatically)
     conversationRepo = new ConversationRepository()
-    contextManager = new ConversationContextManager(conversationRepo, 5) // Limit to 5 messages for testing
-    conversationBridge = new ConversationBridge()
+    contextManager = new ConversationContextManager(conversationRepo, 5)
     
     testAppId = 'test-app-123'
     
@@ -58,19 +55,19 @@ describe('Conversation History Integration', () => {
     }
 
     // Step 2: Add some conversation history
-    await conversationBridge.saveUserMessage(testConversationId, 'Hello, I need help with my React app', enhancedContext)
-    await conversationBridge.saveAgentResponse(
-      testConversationId,
-      'develop',
-      [{ type: 'chunk', content: 'I can help you with your React app! What specific issue are you facing?' }]
-    )
+    await conversationRepo.addMessage(testConversationId, 'user', 'Hello, I need help with my React app', {
+      metadata: enhancedContext.metadata
+    })
+    await conversationRepo.addMessage(testConversationId, 'agent', 'I can help you with your React app! What specific issue are you facing?', {
+      metadata: { agentId: 'develop' }
+    })
     
-    await conversationBridge.saveUserMessage(testConversationId, 'I want to add a dark mode toggle', enhancedContext)
-    await conversationBridge.saveAgentResponse(
-      testConversationId,
-      'develop',
-      [{ type: 'chunk', content: 'Great! I can help you implement a dark mode toggle. Let me create the necessary components and state management.' }]
-    )
+    await conversationRepo.addMessage(testConversationId, 'user', 'I want to add a dark mode toggle', {
+      metadata: enhancedContext.metadata
+    })
+    await conversationRepo.addMessage(testConversationId, 'agent', 'Great! I can help you implement a dark mode toggle. Let me create the necessary components and state management.', {
+      metadata: { agentId: 'develop' }
+    })
 
     // Step 3: Simulate new message with conversation context (as done by WebSocket handler)
     const systemPrompt = 'You are a helpful development assistant.'
@@ -184,8 +181,12 @@ describe('Conversation History Integration', () => {
 
     // Add more messages than the limit (5 pairs = 10 messages)
     for (let i = 1; i <= 7; i++) {
-      await conversationBridge.saveUserMessage(testConversationId, `User message ${i}`, enhancedContext)
-      await conversationBridge.saveAgentResponse(testConversationId, 'develop', [{ type: 'chunk', content: `Agent response ${i}` }])
+      await conversationRepo.addMessage(testConversationId, 'user', `User message ${i}`, {
+        metadata: enhancedContext.metadata
+      })
+      await conversationRepo.addMessage(testConversationId, 'agent', `Agent response ${i}`, {
+        metadata: { agentId: 'develop' }
+      })
     }
 
     const systemPrompt = 'You are a helpful assistant.'
@@ -207,28 +208,17 @@ describe('Conversation History Integration', () => {
   })
 
   it('should handle conversation creation when no conversationId provided', async () => {
-    const enhancedContext: EnhancedAgentContext = {
-      metadata: {
-        appId: testAppId,
-        agentId: 'develop',
-        userId: 'test-user',
-        sessionId: 'test-session'
-      }
-    }
-
-    // Simulate ensureConversation without existing conversation ID
-    const newConversationId = await conversationBridge.ensureConversation(testAppId, 'develop', enhancedContext)
+    const newConversation = await conversationRepo.create(testAppId, 'develop', 'New Test Conversation')
+    const newConversationId = newConversation.id
     
     expect(newConversationId).toBeDefined()
     expect(typeof newConversationId).toBe('string')
     
-    // Verify conversation was created
     const conversation = await conversationRepo.getById(newConversationId)
     expect(conversation).not.toBeNull()
     expect(conversation!.appId).toBe(testAppId)
     expect(conversation!.agentId).toBe('develop')
     
-    // Clean up
     await conversationRepo.delete(newConversationId)
   })
 })
