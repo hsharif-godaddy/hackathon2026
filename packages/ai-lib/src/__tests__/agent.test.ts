@@ -86,9 +86,9 @@ describe('Agent', () => {
       expect(config.tools).toEqual([])
     })
 
-    it('should accept tools array', () => {
-      const { tool } = require('ai')
-      const { z } = require('zod')
+    it('should accept tools array', async () => {
+      const { tool } = await import('ai')
+      const { z } = await import('zod')
       
       const tools = [
         tool({

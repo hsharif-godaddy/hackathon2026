@@ -92,7 +92,7 @@ async function processTextFile(
         }
       }
       
-    case 'text/csv':
+    case 'text/csv': {
       // Basic CSV parsing - in production you might want to use a proper CSV library
       const lines = text.split('\n').filter(line => line.trim())
       if (lines.length > 0) {
@@ -112,6 +112,7 @@ async function processTextFile(
         }
       }
       return { textContent: text }
+    }
       
     default:
       return { textContent: text }

@@ -272,10 +272,21 @@ async function generateGenericEmbeddings(
     const result = await embedMany(embedOptions)
     
     // Transform AI SDK result to our format
-    const transformedEmbeddings = result.embeddings.map((embeddingResult: any) => ({
-      embedding: embeddingResult.embedding,
-      dimensions: embeddingResult.embedding.length
-    }))
+    const transformedEmbeddings = result.embeddings.map((embeddingResult: any, idx: number) => {
+      const embedding = embeddingResult.embedding || embeddingResult
+      if (
+        !Array.isArray(embedding) ||
+        !embedding.every((v: any) => typeof v === 'number')
+      ) {
+        throw new Error(
+          `Invalid embedding at index ${idx}: expected array of numbers, got ${JSON.stringify(embedding)}`
+        )
+      }
+      return {
+        embedding,
+        dimensions: embedding.length
+      }
+    })
     
     return {
       embeddings: transformedEmbeddings,

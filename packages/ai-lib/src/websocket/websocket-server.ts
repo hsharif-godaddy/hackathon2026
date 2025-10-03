@@ -301,7 +301,8 @@ export class WebSocketServer {
           let generatorResult: IteratorResult<string, any>
           
           // Handle generator properly - it yields strings and returns the final result
-          while (true) {
+          // eslint-disable-next-line no-constant-condition
+          while (true) { // Intentional infinite loop until generator is done
             generatorResult = await generator.next()
             
             if (generatorResult.done) {

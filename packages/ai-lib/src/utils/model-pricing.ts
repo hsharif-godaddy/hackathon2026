@@ -177,7 +177,7 @@ export function calculateCostEstimate(
   
   // Calculate cached input cost if applicable
   let cachedInputCost = 0
-  let regularCost = inputCost + outputCost
+  const regularCost = inputCost + outputCost
   
   const totalCachedInputTokens = (usage.cachedInputTokensRead || 0) + (usage.cachedInputTokensWrite || 0)
   

@@ -15,7 +15,7 @@ interface TokenCache {
 }
 
 // Normal import - much simpler than dynamic import
-// @ts-ignore - gd-auth-client is a CommonJS module without TypeScript definitions  
+// @ts-expect-error - gd-auth-client is a CommonJS module without TypeScript definitions  
 import { IamTokenClient } from 'gd-auth-client'
 
 let cachedToken: TokenCache | null = null;

@@ -62,7 +62,7 @@ export class StreamingAgenticRunner {
       try {
         // Use the agent's streaming method
         let stepContent = ''
-        let stepToolCalls: any[] = []
+        const stepToolCalls: any[] = []
         
         // Get the streaming generator
         const streamGenerator = this.agent.generateStream(currentInput, context)

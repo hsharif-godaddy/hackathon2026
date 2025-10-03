@@ -260,11 +260,12 @@ export class ExperimentalWebSocketServer {
 
     try {
       const reader = baseStream.getReader()
-      let accumulatedToolInput = new Map<string, string>() // Track tool input deltas
+      const accumulatedToolInput = new Map<string, string>() // Track tool input deltas
       let eventCount = 0
       let toolEventCount = 0
 
-      while (true) {
+      // eslint-disable-next-line no-constant-condition
+      while (true) { // Intentional infinite loop until stream is done
         const { done, value } = await reader.read()
 
         if (done) {
@@ -282,7 +283,7 @@ export class ExperimentalWebSocketServer {
           }
 
           switch (part.type) {
-            case 'text-delta':
+            case 'text-delta': {
               // Handle text chunks
               const textData = {
                 step: currentStep,
@@ -297,8 +298,9 @@ export class ExperimentalWebSocketServer {
 
               await this.captureStreamingEvent(socket.id, 'chunk', part.text, textData)
               break
+            }
 
-            case 'tool-input-start':
+            case 'tool-input-start': {
               // Tool call is starting
               accumulatedToolInput.set(part.id, '')
 
@@ -319,18 +321,20 @@ export class ExperimentalWebSocketServer {
 
               await this.captureStreamingEvent(socket.id, 'tool_start', `Using ${part.toolName}...`, toolStartData)
               break
+            }
 
-            case 'tool-input-delta':
+            case 'tool-input-delta': {
               // Accumulate tool input
               const currentInput = accumulatedToolInput.get(part.id) || ''
               accumulatedToolInput.set(part.id, currentInput + part.delta)
               break
+            }
 
             case 'tool-call':
               // Tool call is complete with full input
               break
 
-            case 'tool-result':
+            case 'tool-result': {
               // Tool execution completed with result
 
               const toolResultData = {
@@ -351,8 +355,9 @@ export class ExperimentalWebSocketServer {
 
               await this.captureStreamingEvent(socket.id, 'tool_result', `${part.toolName} completed`, toolResultData)
               break
+            }
 
-            case 'tool-error':
+            case 'tool-error': {
               // Tool execution completed with error (but we'll treat it as completed)
 
               const toolErrorData = {
@@ -374,6 +379,7 @@ export class ExperimentalWebSocketServer {
 
               await this.captureStreamingEvent(socket.id, 'tool_result', `${part.toolName} completed`, toolErrorData)
               break
+            }
 
             default:
               // Unhandled tool event
@@ -758,7 +764,7 @@ Please try again with corrected formatting.`
       }
     }
 
-    let fullContent = ''
+    const fullContent = ''
 
     // Emit step start (currentStep was already incremented in error handler if needed)
     const stepStartData = {
