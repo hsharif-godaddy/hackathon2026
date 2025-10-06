@@ -321,7 +321,7 @@ export class QdrantService {
     const startTime = Date.now();
     const collection = options.collection || this.defaultCollection;
     const limit = options.limit || 10;
-    const scoreThreshold = options.score_threshold || 0.7;
+    const scoreThreshold = options.score_threshold ?? 0.5;
 
     this.logger.info('qdrant.vector.search.begin', {
       query: options.query,
