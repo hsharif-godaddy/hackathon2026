@@ -226,7 +226,8 @@ class CompileErrorCatcher extends Component<CompileErrorCatcherProps, CompileErr
             whiteSpace: 'pre-wrap',
             textAlign: 'left',
             maxWidth: '100%',
-            overflow: 'auto',
+            maxHeight: '400px',
+            overflowY: 'scroll',
             fontFamily: 'monospace'
           }}>
             {this.formatCompileError(this.state.compileError || '', null)}

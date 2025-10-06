@@ -78,7 +78,9 @@ const DefaultErrorFallback = ({ error, reset }: { error: Error; reset: () => voi
         </h1>
         <p style={{ 
           color: '#6b7280', 
-          marginBottom: '1.5rem' 
+          marginBottom: '1.5rem',
+          maxHeight: '400px',
+        overflowY: 'scroll'
         }}>
           {error.message}
         </p>

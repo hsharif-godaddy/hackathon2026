@@ -8,12 +8,16 @@ import GeometricSpinner from './components/GeometricSpinner';
 const router = createBrowserRouter([
   {
     path: '/',
-    element: (
+    element: import.meta.env.DEV ? (
       <CompileErrorCatcher>
         <Suspense fallback={<div className="flex justify-center py-8"><GeometricSpinner /></div>}>
           <Outlet />
         </Suspense>
       </CompileErrorCatcher>
+    ) : (
+      <Suspense fallback={<div className="flex justify-center py-8"><GeometricSpinner /></div>}>
+        <Outlet />
+      </Suspense>
     ),
     children: routes,
   },
