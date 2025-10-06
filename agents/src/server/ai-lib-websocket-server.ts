@@ -32,6 +32,7 @@ import { AgentsMessagePersistence } from './conversation-persistence.js'
 import { ConversationContextManager } from '../services/ConversationContextManager.js'
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { fileContextRegistry } from '../services/FileContextRegistry.js'
+import { fileUploadService } from '../services/FileUploadService.js'
 import { logger } from '../logging/index.js'
 import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
 import { MAX_PROMPT_LENGTH, getAgentConfig } from '../services/features.js'
@@ -284,6 +285,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       
       // Context provider for app context and templates
       contextProvider,
+      
+      // File path resolver for uploaded files
+      filePathResolver: (appId: string, uploadId: string, filename: string) => {
+        return fileUploadService.getFilePath(appId, uploadId, filename)
+      },
       
       // Context extractor to validate appId
       contextExtractor: (rawContext: Record<string, unknown>, socketContext?: any) => {

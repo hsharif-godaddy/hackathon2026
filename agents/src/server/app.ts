@@ -42,12 +42,13 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter, filesRouter } from './routes/index.js';
 import { auth } from '../services/features.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
 import { getDatabase } from '../database/index.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
+import { fileCleanupService } from '../services/FileCleanupService.js';
 
 const app: Express = express();
 const port = process.env.PORT || 4000;
@@ -126,6 +127,7 @@ app.get('/', (req, res) => {
 app.use('/agents', jwtAuthMiddleware.authenticate, agentsRouter);
 app.use('/apps', jwtAuthMiddleware.authenticate, appsRouter);
 app.use('/agent', jwtAuthMiddleware.authenticate, chatRouter);
+app.use('/files', jwtAuthMiddleware.authenticate, filesRouter);
 app.use('/debug', jwtAuthMiddleware.authenticate, debugRouter);
 app.use('/', jwtAuthMiddleware.authenticate, gitRouter);
 
@@ -155,6 +157,11 @@ async function initialize() {
     console.log('🚀 Phase 3: Setting up AI-Lib WebSocket Server...');
     const wsServer = await setupAILibWebSocketServer(server);
     console.log('✅ AI-Lib WebSocket server initialized with multi-agent support');
+    
+    // Start file cleanup service
+    console.log('🧹 Starting file cleanup service...');
+    fileCleanupService.start();
+    console.log('✅ File cleanup service started');
     
     // Get WebSocket server info for health checks
     const wsInfo = getWebSocketServerInfo();

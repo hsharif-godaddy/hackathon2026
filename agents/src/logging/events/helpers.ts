@@ -48,6 +48,11 @@ import type {
   AppContextGenerationData,
   AppContextPackageData,
   AppContextDirectoryData,
+  FileUploadProcessData,
+  FileUploadValidationData,
+  FileUploadRetrievalData,
+  FileUploadCleanupData,
+  FileUploadDirectoryData,
 } from './app.js';
 
 /**
@@ -968,5 +973,89 @@ export const conversationTokenLimitEvents = {
 
   loadFailure: (logger: ILogger, error: Error, data: Pick<ConversationTokenLimitData, 'appId' | 'agentId' | 'maxTokens'>) => {
     log.error(logger, AppEvents.conversation.tokenLimit.load.failure, error, data);
+  },
+};
+
+/**
+ * File Upload logging helpers
+ */
+export const fileUploadEvents = {
+  processStart: (logger: ILogger, data: Pick<FileUploadProcessData, 'appId' | 'fileCount'>) => {
+    logger.info(AppEvents.fileUpload.process.start, {
+      ...data,
+      uploadId: '',
+      totalSize: 0,
+    });
+  },
+
+  processSuccess: (logger: ILogger, data: FileUploadProcessData) => {
+    logger.info(AppEvents.fileUpload.process.success, data);
+  },
+
+  processFailure: (logger: ILogger, error: Error, data: Pick<FileUploadProcessData, 'appId'>) => {
+    log.error(logger, AppEvents.fileUpload.process.failure, error, data);
+  },
+
+  validateFile: (logger: ILogger, data: FileUploadValidationData) => {
+    logger.debug(AppEvents.fileUpload.validate.file, data);
+  },
+
+  validateUpload: (logger: ILogger, data: FileUploadValidationData) => {
+    logger.debug(AppEvents.fileUpload.validate.upload, data);
+  },
+
+  retrieveSuccess: (logger: ILogger, data: FileUploadRetrievalData) => {
+    logger.debug(AppEvents.fileUpload.retrieve.success, data);
+  },
+
+  retrieveNotFound: (logger: ILogger, data: Pick<FileUploadRetrievalData, 'appId' | 'uploadId'>) => {
+    logger.warn(AppEvents.fileUpload.retrieve.notFound, {
+      ...data,
+      metadataExists: false,
+    });
+  },
+
+  retrieveFailure: (logger: ILogger, error: Error, data: Pick<FileUploadRetrievalData, 'appId' | 'uploadId'>) => {
+    log.error(logger, AppEvents.fileUpload.retrieve.failure, error, data);
+  },
+
+  cleanupDeleted: (logger: ILogger, data: FileUploadCleanupData) => {
+    logger.info(AppEvents.fileUpload.cleanup.deleted, data);
+  },
+
+  cleanupExpired: (logger: ILogger, data: FileUploadCleanupData) => {
+    logger.info(AppEvents.fileUpload.cleanup.expired, data);
+  },
+
+  cleanupComplete: (logger: ILogger, data: FileUploadCleanupData) => {
+    logger.info(AppEvents.fileUpload.cleanup.complete, data);
+  },
+
+  cleanupAppComplete: (logger: ILogger, data: FileUploadCleanupData) => {
+    logger.info(AppEvents.fileUpload.cleanup.appComplete, data);
+  },
+
+  cleanupFailure: (logger: ILogger, error: Error, data: Partial<FileUploadCleanupData>) => {
+    log.error(logger, AppEvents.fileUpload.cleanup.failure, error, data);
+  },
+
+  directoryCreated: (logger: ILogger, data: FileUploadDirectoryData) => {
+    logger.info(AppEvents.fileUpload.directory.created, data);
+  },
+
+  uploadDirectoryCreated: (logger: ILogger, data: FileUploadDirectoryData) => {
+    logger.debug(AppEvents.fileUpload.directory.uploadCreated, data);
+  },
+
+  appDirectoryCreated: (logger: ILogger, data: FileUploadDirectoryData) => {
+    logger.debug(AppEvents.fileUpload.directory.appCreated, data);
+  },
+
+  directoryFailure: (logger: ILogger, error: Error, data: Pick<FileUploadDirectoryData, 'appId' | 'path'>) => {
+    log.error(logger, AppEvents.fileUpload.directory.failure, error, data);
+  },
+
+  fileSaved: (logger: ILogger, data: FileUploadProcessData & { originalName: string; size: number; mimeType: string }) => {
+    logger.debug(AppEvents.fileUpload.file.saved, data);
   },
 };

@@ -283,9 +283,23 @@ export class WebSocketServer {
           // Import file processing utilities
           const { createFileInput } = await import('../index.js')
           
-          // Convert uploaded files to FileInput format
+          // Extract context for building file paths
+          const context = messageContext as any
+          const appId = context?.appId
+          const uploadId = context?.uploadedFiles?.uploadId
+          
+          if (!appId || !uploadId) {
+            throw new Error('Missing appId or uploadId in context for file processing')
+          }
+          
+          if (!this.config.filePathResolver) {
+            throw new Error('filePathResolver not configured in WebSocketServerConfig')
+          }
+          
+          // Convert uploaded files to FileInput format using provided path resolver
           const fileInputs = files.map(file => {
-            const fileInput = createFileInput(file.filepath)
+            const fullPath = this.config.filePathResolver!(appId, uploadId, file.filename)
+            const fileInput = createFileInput(fullPath)
             fileInput.description = `User uploaded file: ${file.originalName}`
             return fileInput
           })

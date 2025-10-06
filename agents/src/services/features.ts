@@ -38,6 +38,9 @@ interface AgentFeatureConfig {
   mysqlRootUser: string
   mysqlRootPass: string
 
+  // File upload configuration
+  uploadDir: string
+
   // Context logging configuration
   contextLogging: {
     detailed: boolean
@@ -110,6 +113,9 @@ function parseEnvironmentFeatures(): AgentFeatureConfig {
     mysqlRootUser: process.env.MYSQL_ROOT_USER || 'root',
     mysqlRootPass: process.env.MYSQL_ROOT_PASS || 'airo',
     
+    // File upload configuration
+    uploadDir: process.env.UPLOAD_DIR || 'data/uploads',
+    
     // Context logging configuration
     contextLogging: {
       detailed: process.env.DEBUG_CONTEXT_DETAILED === 'true',
@@ -157,6 +163,7 @@ export const getAgentConfig = {
       password: features.mysqlRootPass,
     };
   },
+  uploadDir: () => getAgentFeatures().uploadDir,
   contextLogging: () => getAgentFeatures().contextLogging,
 } as const
 

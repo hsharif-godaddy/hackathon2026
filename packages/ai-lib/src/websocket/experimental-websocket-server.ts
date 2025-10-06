@@ -31,6 +31,9 @@ export interface ExperimentalWebSocketConfig {
   /** Context extractor function for processing custom context */
   contextExtractor?: (rawContext: Record<string, unknown>) => Record<string, unknown>
 
+  /** File path resolver for uploaded files */
+  filePathResolver?: (appId: string, uploadId: string, filename: string) => string
+
   /** CORS configuration */
   cors?: {
     origin?: string | string[] | boolean

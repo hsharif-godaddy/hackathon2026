@@ -55,6 +55,19 @@ export interface AgentsAppContext {
     timestamp?: number
   }
   
+  // Image upload context
+  uploadedFiles?: {
+    uploadId: string
+    files: Array<{
+      id: string
+      originalName: string
+      filename: string
+      size: number
+      mimeType: string | null
+      uploadedAt: string
+    }>
+  }
+  
   // Extensibility for future context types
   [key: string]: unknown
 }

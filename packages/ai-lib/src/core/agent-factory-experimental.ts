@@ -6,7 +6,8 @@
  */
 
 import { Experimental_Agent, stepCountIs, hasToolCall, type LanguageModel } from 'ai'
-import type { GlobalAgentConfig, AgentContext } from './types.js'
+import type { GlobalAgentConfig, AgentContext, ProcessedFile } from './types.js'
+import { buildHybridContent } from '../utils/image-content-builder.js'
 
 /**
  * Tool execution hook function types
@@ -280,6 +281,7 @@ export class ExperimentalAgentWrapper {
   async generate(prompt: string, options?: {
     messages?: Array<{ role: 'user' | 'assistant', content: string }>
     context?: Record<string, any>
+    files?: ProcessedFile[]
   }): Promise<{
     content: string
     usage: any
@@ -293,14 +295,15 @@ export class ExperimentalAgentWrapper {
       messages.push(...options.messages)
     }
     
-    // Add the main prompt
-    messages.push({ role: 'user' as const, content: prompt })
+    // Add the main prompt (with vision support if files provided)
+    if (options?.files && options.files.length > 0) {
+      const visionMessage = buildHybridContent(prompt, options.files)
+      messages.push(visionMessage as any)
+    } else {
+      messages.push({ role: 'user' as const, content: prompt })
+    }
 
-    const result = await this.agent.generate(
-      messages.length > 1 
-        ? { messages } 
-        : { prompt }
-    )
+    const result = await this.agent.generate({ messages })
 
     // Await all promises from Experimental_Agent
     const [usage, finishReason, toolCalls] = await Promise.all([
@@ -327,6 +330,8 @@ export class ExperimentalAgentWrapper {
     context?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
     /** Execution context for tools (appId, userId, etc.) */
     executionContext?: Record<string, unknown>
+    /** Files to include in the request (for vision/document analysis) */
+    files?: ProcessedFile[]
   }): Promise<{
     textStream: AsyncIterable<string>
     baseStream?: any
@@ -379,13 +384,19 @@ export class ExperimentalAgentWrapper {
       )
     }
     
-    // Add the main prompt
-    messages.push({ role: 'user' as const, content: prompt })
+    // Add the main prompt (with vision support if files provided)
+    if (options?.files && options.files.length > 0) {
+      const visionMessage = buildHybridContent(prompt, options.files)
+      messages.push(visionMessage as any)
+    } else {
+      messages.push({ role: 'user' as const, content: prompt })
+    }
 
     let streamResult
     try {
+      // Always use messages format when files are present to preserve vision content
       streamResult = this.agent.stream(
-        messages.length > 1 
+        messages.length > 1 || (options?.files && options.files.length > 0)
           ? { messages } 
           : { prompt }
       )

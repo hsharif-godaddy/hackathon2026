@@ -144,6 +144,42 @@ export interface AppTransactionData extends AppEventData {
   itemsAffected?: number;
 }
 
+// File Upload Events
+export interface FileUploadProcessData extends AppEventData {
+  uploadId: string;
+  fileCount: number;
+  totalSize: number;
+}
+
+export interface FileUploadValidationData extends AppEventData {
+  uploadId?: string;
+  fileCount?: number;
+  mimeType?: string;
+  fileSize?: number;
+  maxFileSize?: number;
+  maxFiles?: number;
+  allowedTypes?: string[];
+}
+
+export interface FileUploadRetrievalData extends AppEventData {
+  uploadId: string;
+  fileCount?: number;
+  metadataExists: boolean;
+}
+
+export interface FileUploadCleanupData extends AppEventData {
+  uploadId?: string;
+  deletedCount?: number;
+  expiredCount?: number;
+  operation: 'delete' | 'expired' | 'app-cleanup';
+}
+
+export interface FileUploadDirectoryData extends AppEventData {
+  uploadId?: string;
+  path: string;
+  operation: 'create' | 'ensure';
+}
+
 // Tool Events
 export interface ToolImageSearchData {
   toolName: string;
@@ -930,6 +966,42 @@ export const AppEvents = {
       },
     },
   },
+
+  // File Upload events: fileUpload.{process|validate|retrieve|cleanup|directory}.{begin|success|failure}
+  fileUpload: {
+    process: {
+      start: 'file-upload.process.start' as const,
+      success: 'file-upload.process.success' as const,
+      failure: 'file-upload.process.failure' as const,
+    },
+    validate: {
+      file: 'file-upload.validation.file' as const,
+      upload: 'file-upload.validation.upload' as const,
+      failure: 'file-upload.validation.failure' as const,
+    },
+    retrieve: {
+      success: 'file-upload.get.success' as const,
+      notFound: 'file-upload.get.not-found' as const,
+      failure: 'file-upload.metadata.read-error' as const,
+    },
+    cleanup: {
+      deleted: 'file-upload.upload.deleted' as const,
+      expired: 'file-upload.cleanup.expired' as const,
+      complete: 'file-upload.cleanup.complete' as const,
+      appComplete: 'file-upload.app-cleanup.complete' as const,
+      failure: 'file-upload.cleanup.failed' as const,
+    },
+    directory: {
+      created: 'file-upload.directory.created' as const,
+      uploadCreated: 'file-upload.upload-directory.created' as const,
+      appCreated: 'file-upload.app-directory.created' as const,
+      failure: 'file-upload.directory.creation-failed' as const,
+    },
+    file: {
+      saved: 'file-upload.file.saved' as const,
+    },
+  },
+
   // App Context events: app.context.{generate|package|directory}.{begin|success|failure}
   app: {
     context: {

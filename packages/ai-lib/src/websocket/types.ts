@@ -22,7 +22,6 @@ export interface ChatMessageData {
     id: string
     originalName: string
     filename: string
-    filepath: string
     size: number
     mimeType: string | null
     uploadedAt: string
@@ -38,6 +37,7 @@ export interface WebSocketServerConfig {
   
   // Context processing
   contextExtractor?: (rawContext: Record<string, unknown>) => Record<string, unknown> // Extract app-specific context
+  filePathResolver?: (appId: string, uploadId: string, filename: string) => string // Resolve file paths for uploaded files
   
   // Server configuration
   cors?: {

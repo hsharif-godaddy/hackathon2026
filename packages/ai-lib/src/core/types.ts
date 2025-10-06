@@ -45,6 +45,8 @@ export interface AgentConfig {
   maxTokens?: number
   /** Enable agentic loop control */
   enableLoopControl?: boolean
+  /** Indicates this agent supports vision/file content (informational) */
+  visionEnabled?: boolean
   /** Provider-specific options */
   providerOptions?: {
     anthropic?: {
@@ -79,6 +81,8 @@ export interface AgentContext {
   metadata?: Record<string, unknown>
   /** Request timestamp */
   timestamp?: Date
+  /** Files to include in the request (for vision/document analysis) */
+  files?: ProcessedFile[]
 }
 
 /**

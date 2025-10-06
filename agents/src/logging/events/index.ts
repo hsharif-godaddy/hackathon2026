@@ -50,4 +50,5 @@ export {
   conversationHistoryEvents,
   conversationTokenLimitEvents,
   appContextEvents,
+  fileUploadEvents,
 } from './helpers.js';
