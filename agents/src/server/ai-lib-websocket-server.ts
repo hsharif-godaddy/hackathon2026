@@ -13,6 +13,7 @@ import {
   type PersistenceStreamingEvent,
   type ConversationContext
 } from '@airo/ai-lib'
+import { auth, AuthType } from '../services/features.js'
 // Define ContextMessage interface locally (extends ConversationMessage with required insertionOrder)
 interface ContextMessage {
   role: 'user' | 'assistant' | 'system'
@@ -300,53 +301,21 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           throw new Error(`Message exceeds maximum length of ${MAX_PROMPT_LENGTH} characters`)
         }
         
-        // Extract pre-validated customer data from Socket.IO middleware
-        if (socketContext && socketContext.socket && socketContext.socket.handshake.auth) {
-          const { customerContext } = socketContext.socket.handshake.auth;
+        // Authentication already validated at WebSocket handshake
+        // Just return the raw context - no need for customer context
+        logger.debug('websocket.context.validated', {
+          message: 'Context validated - authentication passed at handshake',
+          appId,
+          contextKeys: Object.keys(rawContext),
+          hasMetadata: !!rawContext.metadata,
+          hasAppContext: !!rawContext.appContext,
+          hasVisualContext: !!rawContext.visualContext,
+          hasAiEditContext: !!rawContext.aiEditContext,
+          hasConversation: !!rawContext.conversation,
+          messageLength: message?.length || 0
+        });
 
-          logger.debug('websocket.context.app_id.validated', {
-            message: 'Validated appId',
-            appId
-          })
-        
-          // DEBUG: Log the raw context being received
-          logger.debug('websocket.context.raw_received', {
-            message: 'Raw context received',
-            contextKeys: Object.keys(rawContext),
-            hasMetadata: !!rawContext.metadata,
-            hasAppContext: !!rawContext.appContext,
-            hasVisualContext: !!rawContext.visualContext,
-            hasAiEditContext: !!rawContext.aiEditContext,
-            hasConversation: !!rawContext.conversation,
-            messageLength: message?.length || 0,
-            appId
-          })
-          
-          // Log the full context for debugging (but don't modify it)
-          logger.debug('websocket.context.full_raw_data', {
-            message: 'Full raw context data',
-            rawContext
-          })
-
-          return {
-            ...rawContext,
-            customerContext // Use cached customer context (no more auth needed!)
-          };
-        }
-        
-        // Handle bypass for local development
-        if (process.env.BYPASS_AUTH_FOR_LOCAL === 'true') {
-          return {
-            ...rawContext,
-            customerContext: {
-              customerId: 'local-dev-customer',
-              shopperId: 'local-dev-shopper',
-              siteId: appId
-            }
-          };
-        }
-        
-        throw new Error('No customer context found - authentication may have failed at handshake');
+        return rawContext;
       },
       
       // Connection handler
@@ -359,19 +328,30 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       
       // Optional event handlers (persistence is now handled automatically)
       onMessageStart: async (socketId: string, message: string, agentName?: string, context?: Record<string, unknown>) => {
-        // Authentication already done at handshake - just log the message start
-        if (context && context.customerContext) {
-          const customerContext = context.customerContext as any;
-          logger.info('websocket.message.start', {
-            message: 'WebSocket message from customer',
-            customerId: customerContext.customerId,
-            shopperId: customerContext.shopperId,
-            messagePreview: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
-            agentName
-          });
-        } else if (process.env.BYPASS_AUTH_FOR_LOCAL !== 'true') {
-          throw new Error('Missing customer context - authentication may have failed');
+        // Extract siteId from context metadata (which comes from the client)
+        const typedContext = context as AgentsAppContext;
+        const siteId = typedContext?.metadata?.appId;
+        
+        if (!siteId) {
+          throw new Error('siteId is required in context.metadata.appId but was not provided');
         }
+        
+        // Debug: Log what context we received
+        logger.debug('websocket.message.context_debug', {
+          message: 'Message start context debug',
+          hasContext: !!context,
+          contextKeys: context ? Object.keys(context) : [],
+          siteId
+        });
+        
+        // Authentication already done at handshake - just log the message start
+        
+        logger.info('websocket.message.start', {
+          message: 'WebSocket message from site',
+          siteId,
+          messagePreview: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
+          agentName
+        });
       },
       
       onMessageComplete: async (socketId: string, result: any, context?: Record<string, unknown>) => {
@@ -387,15 +367,22 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           agentId
         });
         
-        // Log customer context if available (for audit purposes)
-        if (context?.customerContext) {
-          const customerContext = context.customerContext as any;
-          logger.info('websocket.request.customer_completed', {
-            message: 'WebSocket request completed for customer',
-            customerId: customerContext.customerId,
-            shopperId: customerContext.shopperId
+        // Log site context if available (for audit purposes)
+        const typedContext = context as AgentsAppContext;
+        const siteId = typedContext?.metadata?.appId;
+        
+        if (!siteId) {
+          logger.warn('websocket.message.completion.no_siteid', {
+            message: 'No siteId found in context.metadata.appId for completion logging',
+            hasContext: !!context,
+            contextKeys: context ? Object.keys(context) : []
           });
+          return; // Skip completion logging if no siteId
         }
+        logger.info('websocket.request.site_completed', {
+          message: 'WebSocket request completed for site',
+          siteId
+        });
       },
       
       onDisconnection: (socketId: string) => {
@@ -444,27 +431,82 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     // Add Socket.IO authentication middleware
     wsServer.getIO().use(async (socket, next) => {
       try {
-        // Skip authentication for local development when explicitly disabled
-        if (process.env.BYPASS_AUTH_FOR_LOCAL === 'true') {
+        // Handle different authentication types via centralized feature system
+        const authType = auth.getType();
+        
+        if (authType === AuthType.NONE) {
+          // No authentication required (local development)
+          socket.handshake.auth = { 
+            siteId: auth.getSiteId(AuthType.NONE)
+          };
+          next();
+          return;
+        }
+        
+        if (authType === AuthType.MOCK) {
+          // Mock authentication for testing
+          socket.handshake.auth = { 
+            siteId: auth.getSiteId(AuthType.MOCK)
+          };
+          next();
+          return;
+        }
+        
+        // Handle JWT_PUBLIC_KEY bypass for existing containers (legacy compatibility)
+        // TODO: Remove this once we have a proper JWT implementation
+        if (!auth.hasJWTPublicKey()) {
+          socket.handshake.auth = { 
+            siteId: auth.getSiteId(AuthType.JWT)
+          };
           next();
           return;
         }
 
-        // Extract JWT token from handshake
-        const authHeader = socket.handshake.headers.authorization;
+        // Debug: Log handshake details
+        logger.info('websocket.auth.handshake_debug', {
+          message: 'WebSocket handshake details',
+          hasAuth: !!socket.handshake.auth,
+          authKeys: socket.handshake.auth ? Object.keys(socket.handshake.auth) : [],
+          hasAuthHeader: !!socket.handshake.headers.authorization,
+          authHeaderPreview: socket.handshake.headers.authorization ? 
+            socket.handshake.headers.authorization.substring(0, 20) + '...' : 'none',
+          allHeaders: Object.keys(socket.handshake.headers),
+          url: socket.handshake.url,
+          query: socket.handshake.query
+        });
+
+        // Extract JWT token from handshake (check auth object and headers only)
+        let token = null;
         
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        // First try Socket.IO auth object (this should work for WebSocket transport)
+        if (socket.handshake.auth && socket.handshake.auth.token) {
+          token = socket.handshake.auth.token;
+          logger.info('websocket.auth.token_source', { message: 'JWT token found in handshake.auth.token' });
+        }
+        // Fallback to Authorization header (works for polling transport)
+        else if (socket.handshake.headers.authorization) {
+          const authHeader = socket.handshake.headers.authorization;
+          if (authHeader.startsWith('Bearer ')) {
+            token = authHeader.substring(7);
+            logger.info('websocket.auth.token_source', { message: 'JWT token found in Authorization header' });
+          }
+        }
+        
+        if (!token) {
+          logger.error('websocket.auth.no_token', {
+            message: 'No JWT token found in handshake',
+            hasAuth: !!socket.handshake.auth,
+            hasAuthHeader: !!socket.handshake.headers.authorization
+          });
           throw new Error('Missing or invalid Authorization header');
         }
         
-        const token = authHeader.substring(7);
-        
-        // Do FULL JWT validation at handshake (including signature verification)
+        // Validate JWT using public key
         logger.info('websocket.auth.jwt_validation.start', {
-          message: 'Performing full JWT validation with SSO at handshake'
+          message: 'Validating JWT token using public key'
         });
         
-        const validationResult = await jwtAuthMiddleware.jwtValidationService.authenticate(token);
+        const validationResult = await jwtAuthMiddleware.jwtValidator.validateToken(token);
         
         if (!validationResult.valid) {
           logger.warn('websocket.auth.connection_rejected', {
@@ -475,18 +517,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
         
         logger.info('websocket.auth.connection_approved', {
-          message: 'Connection approved: Full JWT validation passed',
-          customerId: validationResult.payload?.cid
+          message: 'Connection approved: JWT validation passed',
+          siteId: validationResult.claims?.siteId
         });
         
-        // Store validated user data in socket for reuse (no more SSO calls needed!)
+        // Store validated context in socket for reuse
         socket.handshake.auth = { 
           token, 
-          decoded: validationResult.payload,
-          customerContext: {
-            customerId: validationResult.payload?.cid,
-            shopperId: validationResult.payload?.shopperId,
-            tokenExp: validationResult.payload?.exp
+          decoded: validationResult.claims,
+          agentContext: {
+            siteId: validationResult.claims?.siteId,
+            exp: validationResult.claims?.exp,
+            iat: validationResult.claims?.iat
           }
         };
         
@@ -495,10 +537,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           try {
             logger.info('websocket.auth.token_refresh.requested', {
               message: 'Token refresh requested',
-              customerId: socket.handshake.auth.customerContext.customerId
+              siteId: socket.handshake.auth.siteId
             });
             
-            const refreshResult = await jwtAuthMiddleware.jwtValidationService.authenticate(data.newToken);
+            const refreshResult = await jwtAuthMiddleware.jwtValidator.validateToken(data.newToken);
             
             if (!refreshResult.valid) {
               logger.warn('websocket.auth.token_refresh.failed', {
@@ -512,22 +554,17 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             // Update socket auth data with new token
             socket.handshake.auth = {
               token: data.newToken,
-              decoded: refreshResult.payload,
-              customerContext: {
-                customerId: refreshResult.payload?.cid,
-                shopperId: refreshResult.payload?.shopperId,
-                tokenExp: refreshResult.payload?.exp
-              }
+              siteId: refreshResult.claims?.siteId
             };
             
             logger.info('websocket.auth.token_refresh.success', {
-              message: 'Token refreshed for customer',
-              customerId: refreshResult.payload?.cid,
-              expiryTime: new Date(refreshResult.payload?.exp * 1000).toISOString()
+              message: 'Token refreshed successfully',
+              siteId: refreshResult.claims?.siteId,
+              expiryTime: new Date((refreshResult.claims?.exp || 0) * 1000).toISOString()
             });
             socket.emit('tokenRefreshSuccess', { 
-              newExpiry: refreshResult.payload?.exp,
-              customerId: refreshResult.payload?.cid 
+              newExpiry: refreshResult.claims?.exp,
+              siteId: refreshResult.claims?.siteId 
             });
             
           } catch (error) {

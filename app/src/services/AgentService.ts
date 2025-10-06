@@ -1,4 +1,5 @@
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 
 export interface Conversation {
@@ -37,7 +38,7 @@ export class AgentService {
     const baseAgentUrl = config.agentUrl.replace(`/apps/${appId}`, '')
     const apiUrl = `${baseAgentUrl}/agent/conversations/${appId}`
     
-    const response = await fetch(apiUrl)
+    const response = await agentFetch(apiUrl, { siteId: appId })
     
     if (!response.ok) {
       throw new Error(`Failed to fetch conversations: ${response.status}`)
@@ -83,7 +84,7 @@ export class AgentService {
     const baseAgentUrl = config.agentUrl.replace(`/apps/${appId}`, '')
     const apiUrl = `${baseAgentUrl}/agent/conversations/${appId}/${conversationId}`
     
-    const response = await fetch(apiUrl)
+    const response = await agentFetch(apiUrl, { siteId: appId })
     
     if (!response.ok) {
       throw new Error(`Failed to fetch conversation: ${response.status}`)
@@ -98,7 +99,8 @@ export class AgentService {
   async deleteConversation(appId: string, conversationId: string): Promise<{ success: boolean; message?: string }> {
     const apiUrl = await buildDynamicApiUrl(`agent/conversations/${conversationId}`, appId);
     
-    const response = await fetch(apiUrl, {
+    const response = await agentFetch(apiUrl, {
+      siteId: appId,
       method: 'DELETE'
     })
     

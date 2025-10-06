@@ -182,13 +182,13 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               BEDROCK_AWS_ROLE_ARN: process.env.BEDROCK_AWS_ROLE_ARN || 'arn:aws:iam::694282668781:role/airobuilde-custom-dev-airo-builder-bedrock-access',
               BEDROCK_AWS_REGION: process.env.BEDROCK_AWS_REGION || 'us-west-2',
               GETTY_API_URL: process.env.GETTY_API_URL || 'https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net/img/search',
-              GETTY_APP_KEY: process.env.GETTY_APP_KEY || 'airo-app-builder',
+              GETTY_APP_KEY: process.env.GETTY_APP_KEY || '',
               GETTY_TOKEN: process.env.GETTY_TOKEN || '',
               ELASTIC_APM_SECRET_TOKEN: process.env.ELASTIC_APM_SECRET_TOKEN || '',
               ELASTIC_APM_SERVER_URL: process.env.ELASTIC_APM_SERVER_URL || '',
-              SSO_HOST: process.env.SSO_HOST || 'sso.test-godaddy.com',
-              BYPASS_AUTH_FOR_LOCAL: process.env.BYPASS_AUTH_FOR_LOCAL || 'true',
-              PROXY_URL: process.env.PROXY_URL || 'https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net'
+              AGENT_SSO_HOST: process.env.AGENT_SSO_HOST || 'sso.godaddy.com',
+              BYPASS_AUTH_FOR_LOCAL: process.env.BYPASS_AUTH_FOR_LOCAL || 'false',
+              JWT_PUBLIC_KEY: process.env.JWT_PUBLIC_KEY || '',
             },
             Resources: {
               CPU: 32,

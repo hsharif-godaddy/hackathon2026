@@ -7,7 +7,7 @@
  * Authentication types supported by the agents service
  */
 export enum AuthType {
-  /** Full JWT authentication with SSO (production) */
+  /** Custom JWT authentication using JWKS (production) */
   JWT = 'jwt',
   /** Mock authentication for development/testing */
   MOCK = 'mock',
@@ -22,6 +22,10 @@ interface AgentFeatureConfig {
   // Server configuration
   nodeEnv: string
   authType: AuthType
+  
+  // JWT configuration
+  jwtPublicKey: string | undefined
+  siteId: string
   
   // OpenAI configuration
   openaiApiKey: string | undefined
@@ -90,6 +94,10 @@ function parseEnvironmentFeatures(): AgentFeatureConfig {
     // Server configuration
     nodeEnv: process.env.NODE_ENV || 'development',
     authType: determineAuthType(),
+    
+    // JWT configuration
+    jwtPublicKey: process.env.JWT_PUBLIC_KEY,
+    siteId: process.env.SITE_ID || 'default-site',
         
     // OpenAI configuration
     openaiApiKey: process.env.OPENAI_API_KEY,
@@ -165,7 +173,34 @@ export const auth = {
   /** Check if using full JWT authentication */
   isJWT: () => getAgentFeatures().authType === AuthType.JWT,
   /** Check if authentication is required (not NONE) */
-  isRequired: () => getAgentFeatures().authType !== AuthType.NONE
+  isRequired: () => getAgentFeatures().authType !== AuthType.NONE,
+  
+  /** Get JWT public key (undefined if not set or empty) */
+  getJWTPublicKey: () => {
+    const key = getAgentFeatures().jwtPublicKey;
+    return key && key.trim() !== '' ? key : undefined;
+  },
+  /** Check if JWT public key is available and not empty */
+  hasJWTPublicKey: () => {
+    const key = getAgentFeatures().jwtPublicKey;
+    return key !== undefined && key.trim() !== '';
+  },
+  /** Get site ID for authentication context */
+  getSiteId: (authType?: AuthType) => {
+    const features = getAgentFeatures();
+    const currentAuthType = authType || features.authType;
+    
+    switch (currentAuthType) {
+      case AuthType.NONE:
+        return features.siteId || 'local-dev-site';
+      case AuthType.MOCK:
+        return features.siteId || 'mock-site-id';
+      case AuthType.JWT:
+        return features.siteId || 'bypass-site';
+      default:
+        return features.siteId || 'unknown-site';
+    }
+  }
 } as const
 
 /**

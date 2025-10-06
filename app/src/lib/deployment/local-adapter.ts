@@ -400,7 +400,7 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await agentFetch(`${this.agentsServiceUrl}/health`, {
+      const response = await fetch(`${this.agentsServiceUrl}/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000) // 5 second timeout
       });
@@ -428,6 +428,7 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
       this.log('info', 'Creating app record in agents service', { siteId, name });
 
       const response = await agentFetch(`${this.agentsServiceUrl}/apps/register`, {
+        siteId,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

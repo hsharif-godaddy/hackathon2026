@@ -308,6 +308,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         logger.info('site.verification.endpoint_url', { message: 'Constructed endpoint URL', url: endpointUrl })
 
         const response = await agentFetch(endpointUrl, {
+          siteId,
           method: 'POST',
           signal: AbortSignal.timeout(15000) // 15 second timeout (same as integration test)
         })
@@ -356,6 +357,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         // Call the agents service to get a name suggestion
         logger.info('site.name_update.api_call', { message: 'Calling suggest-name endpoint' })
         const agentResponse = await agentFetch(`${agentUrl}/apps/suggest-name`, {
+          siteId,
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

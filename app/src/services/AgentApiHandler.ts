@@ -34,22 +34,32 @@ export class AgentApiHandler {
    * Make a GET request to an agent API
    */
   async get(endpoint: string, siteId?: string): Promise<Response> {
+    if (!siteId) {
+      throw new Error('siteId is required for agent API calls')
+    }
     const url = await this.buildAgentUrl(endpoint, siteId)
-    return await agentFetch(url)
+    return await agentFetch(url, {
+      siteId,
+      method: 'GET'
+    })
   }
 
   /**
    * Make a POST request to an agent API
    */
   async post(endpoint: string, body?: unknown, siteId?: string): Promise<Response> {
+    if (!siteId) {
+      throw new Error('siteId is required for agent API calls')
+    }
     const url = await this.buildAgentUrl(endpoint, siteId)
     
-    const requestOptions: RequestInit = {
+    const requestOptions = {
+      siteId,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-    }
+    } as any
 
     if (body) {
       requestOptions.body = JSON.stringify(body)
@@ -62,14 +72,18 @@ export class AgentApiHandler {
    * Make a PUT request to an agent API
    */
   async put(endpoint: string, body?: unknown, siteId?: string): Promise<Response> {
+    if (!siteId) {
+      throw new Error('siteId is required for agent API calls')
+    }
     const url = await this.buildAgentUrl(endpoint, siteId)
     
-    const requestOptions: RequestInit = {
+    const requestOptions = {
+      siteId,
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-    }
+    } as any
 
     if (body) {
       requestOptions.body = JSON.stringify(body)
@@ -82,9 +96,13 @@ export class AgentApiHandler {
    * Make a DELETE request to an agent API
    */
   async delete(endpoint: string, siteId?: string): Promise<Response> {
+    if (!siteId) {
+      throw new Error('siteId is required for agent API calls')
+    }
     const url = await this.buildAgentUrl(endpoint, siteId)
     
-    const requestOptions: RequestInit = {
+    const requestOptions = {
+      siteId,
       method: 'DELETE'
     }
 

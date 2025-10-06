@@ -589,9 +589,12 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       const conversationsUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}?limit=1&offset=0`, appId)
       logger.debug('streaming-store.load-history.fetch', { message: 'Fetching conversations from URL', url: conversationsUrl })
       
+      // Import agentFetch dynamically to avoid circular imports
+      const { agentFetch } = await import('../lib/agent-fetch')
+      
       // Fetch conversations for this app with timeout protection
       const response = await Promise.race([
-        fetch(conversationsUrl),
+        agentFetch(conversationsUrl, { siteId: appId }),
         timeoutPromise
       ]) as Response
       if (!response.ok) {
@@ -627,7 +630,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       logger.debug('streaming-store.load-history.fetch-messages', { message: 'Fetching messages from URL', url: messagesUrl })
       
       // Fetch messages for the latest conversation
-      const messagesResponse = await fetch(messagesUrl)
+      const messagesResponse = await agentFetch(messagesUrl, { siteId: appId })
       if (!messagesResponse.ok) {
         throw new Error(`Failed to fetch messages: ${messagesResponse.status}`)
       }
@@ -740,11 +743,14 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       const offset = state.conversationPagination.loaded
       const limit = 5 // Load 5 more conversations at a time
       
+      // Import agentFetch dynamically to avoid circular imports
+      const { agentFetch } = await import('../lib/agent-fetch')
+      
       // Fetch older conversations
       const conversationsUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}?limit=${limit}&offset=${offset}`, appId)
       logger.debug('streaming-store.load-more.fetch', { message: 'Fetching more conversations from URL', url: conversationsUrl })
       
-      const response = await fetch(conversationsUrl)
+      const response = await agentFetch(conversationsUrl, { siteId: appId })
       if (!response.ok) {
         throw new Error(`Failed to fetch more conversations: ${response.status}`)
       }
@@ -775,7 +781,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       const conversationIds = newConversations.map((conv: any) => conv.id).join(',')
       const messagesUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}/messages?conversationIds=${conversationIds}`, appId)
       
-      const messagesResponse = await fetch(messagesUrl)
+      const messagesResponse = await agentFetch(messagesUrl, { siteId: appId })
       if (!messagesResponse.ok) {
         throw new Error(`Failed to fetch conversation messages: ${messagesResponse.status}`)
       }

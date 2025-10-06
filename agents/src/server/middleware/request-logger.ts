@@ -15,7 +15,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
   const authorization = req.get('Authorization');
   
   // Get auth details if available (set by JWT auth middleware)
-  const authDetails = (req as AuthenticatedRequest).authDetails;
+  const authDetails = (req as AuthenticatedRequest).agentContext;
   
   const requestData = {
     method: req.method,

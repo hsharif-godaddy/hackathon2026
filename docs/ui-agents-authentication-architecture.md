@@ -7,29 +7,30 @@
 3. [HTTPS Authentication Flow](#https-authentication-flow)
 4. [WebSocket Authentication Flow](#websocket-authentication-flow)
 5. [Data Flow Diagrams](#data-flow-diagrams)
-6. [Test Environment with Proxy SSO Validation](#test-environment-with-proxy-sso-validation)
+6. [JWT Key Management](#jwt-key-management)
 7. [Service Integration Details](#service-integration-details)
 
 ## System Overview
 
-The Airo AI Builder authentication system provides secure communication between the Next.js UI application and the AI Agents Service using both HTTPS REST API calls and WebSocket connections. The system uses JWT-based authentication with GoDaddy SSO integration.
+The Airo AI Builder authentication system provides secure communication between the Next.js UI application and the AI Agents Service using both HTTPS REST API calls and WebSocket connections. The system uses a custom JWT-based authentication with RSA-256 signing.
 
 ### Core Components
 
-- **UI Application (Next.js)**: Frontend application with JWT authentication
-- **Agents Service (Express)**: Backend API with JWT validation
-- **GoDaddy SSO Service**: GoDaddy SSO service for JWT token validation
+- **UI Application (Next.js)**: Frontend application that generates and signs JWT tokens
+- **Agents Service (Express)**: Backend API with JWT validation using public key
+- **RSA Key Pair**: Private key for signing (app), public key for validation (agents)
 - **Edge gateway**: Content delivery and SSL termination
 
 ### Authentication Architecture
 
-The system uses JWT (JSON Web Token) authentication:
+The system uses custom JWT (JSON Web Token) authentication:
 
-- **Token Source**: GoDaddy SSO service
-- **Token Storage**: Secure HTTP-only cookies (`auth_idp`)
-- **Token Validation**: Full signature verification with SSO service
-- **Token Refresh**: Automatic heartbeat and refresh mechanism
-- **User Context**: Authenticated user identity and permissions
+- **Token Source**: Airo App (Next.js application)
+- **Token Generation**: RSA-256 signing with private key
+- **Token Validation**: RSA-256 verification with public key
+- **Token Storage**: In-memory cache on client side
+- **Token Refresh**: 12-hour lifetime with 10-hour refresh cycle
+- **Site Context**: `siteId` for app-specific authorization
 
 ## Architecture Diagrams
 
@@ -40,9 +41,9 @@ graph TB
     User[👤 User Browser] --> LB[Edge gateway]
     LB --> UI[Next.js UI App]
 
-    UI --> JWTAuth[JWT Auth Service]
-    JWTAuth --> SSO[GoDaddy SSO Service]
-    JWTAuth --> Cookies[Secure HTTP Cookies]
+    UI --> JWTService[JWT Service]
+    JWTService --> PrivateKey[RSA Private Key]
+    JWTService --> TokenCache[Token Cache]
 
     UI --> AgentHTTPS[Agent HTTPS API]
     UI --> AgentWS[Agent WebSocket]
@@ -53,11 +54,12 @@ graph TB
     Agents --> JWTValidator[JWT Validation Service]
     Agents --> WSAuth[WebSocket Auth Middleware]
 
-    JWTValidator --> SSO
-    WSAuth --> SSO
+    JWTValidator --> PublicKey[RSA Public Key]
+    WSAuth --> PublicKey
 
-    style JWTAuth fill:#e1f5fe
-    style SSO fill:#f3e5f5
+    style JWTService fill:#e1f5fe
+    style PublicKey fill:#f3e5f5
+    style PrivateKey fill:#f3e5f5
     style Agents fill:#e8f5e8
 ```
 
@@ -70,32 +72,33 @@ sequenceDiagram
     participant Browser
     participant CDN as Edge gateway
     participant UI as Next.js UI
-    participant AuthService as JWT Auth Service
+    participant JWTService as JWT Service
     participant AgentFetch as Agent Fetch
     participant Agents as AI Agents Service
     participant JWTValidator as JWT Validator
-    participant SSO as GoDaddy SSO
 
     Browser->>CDN: HTTPS Request
     CDN->>UI: Forward to UI Instance
-    UI->>AuthService: authenticate()
 
-    AuthService->>Browser: Extract 'auth_idp' cookie
-    Browser-->>AuthService: JWT Token
+    UI->>AgentFetch: agentFetch(agent_url, { siteId })
+    AgentFetch->>JWTService: getAgentToken(siteId)
 
-    UI->>AgentFetch: agentFetch(agent_url, options)
-    AgentFetch->>AuthService: getAuthHeaders()
-    AuthService-->>AgentFetch: Authorization: Bearer {token}
+    alt Token Cached
+        JWTService-->>AgentFetch: Cached JWT Token
+    else Token Expired/Missing
+        JWTService->>JWTService: Generate JWT with RSA Private Key
+        Note over JWTService: Claims: { iss, aud, exp, iat, siteId }
+        JWTService-->>AgentFetch: New JWT Token
+    end
 
-    AgentFetch->>Agents: HTTPS Request + JWT Header
+    AgentFetch->>Agents: HTTPS Request + Authorization: Bearer JWT
 
     Agents->>JWTValidator: validateToken(jwt)
-    JWTValidator->>SSO: Authenticate JWT with SSO
-    SSO-->>JWTValidator: Validation Result + User Profile
-    JWTValidator-->>Agents: User Context + Permissions
+    JWTValidator->>JWTValidator: Verify JWT with RSA Public Key
+    JWTValidator-->>Agents: Validation Result + siteId
 
     alt Authentication Success
-        Agents->>Agents: Process Request with User Context from JWT
+        Agents->>Agents: Process Request with siteId from JWT
         Agents-->>AgentFetch: API Response
         AgentFetch-->>UI: Response Data
         UI-->>CDN: Updated UI
@@ -104,8 +107,7 @@ sequenceDiagram
         JWTValidator-->>Agents: Invalid Token
         Agents-->>AgentFetch: 401 Unauthorized
         AgentFetch-->>UI: Authentication Error
-        UI->>SSO: Redirect to SSO Login
-        SSO-->>Browser: Login Page
+        UI-->>Browser: Error Message
     end
 ```
 
@@ -122,37 +124,42 @@ sequenceDiagram
     participant SocketIO as Socket.IO Client
     participant Agents as AI Agents Service
     participant WSAuth as WS Auth Middleware
-    participant SSO as GoDaddy SSO
 
     Browser->>CDN: Initiate WebSocket Connection
     CDN->>UI: Route to UI Instance
-    UI->>WSHook: useStreamingWebSocket()
-    WSHook->>Browser: getAuthTokenFromCookie()
-    Browser-->>WSHook: 'auth_idp' secure cookie
+    UI->>WSHook: useStreamingWebSocket(appId)
+    WSHook->>WSHook: getAgentJWTToken(siteId)
+
+    alt Token Cached
+        WSHook-->>WSHook: Use Cached JWT
+    else Generate New Token
+        WSHook->>WSHook: Generate JWT with RSA Private Key
+        Note over WSHook: Claims: { iss, aud, exp, iat, siteId }
+    end
 
     WSHook->>SocketIO: Create connection with JWT
-    Note over SocketIO: extraHeaders: {Authorization: Bearer {token}}
+    Note over SocketIO: auth: { token: JWT }, extraHeaders: { Authorization: Bearer JWT }
 
     SocketIO->>Agents: WebSocket Handshake + JWT
     Agents->>WSAuth: Socket Authentication Middleware
-    WSAuth->>WSAuth: Extract Bearer token from headers
+    WSAuth->>WSAuth: Extract JWT from handshake.auth.token or Authorization header
 
-    WSAuth->>SSO: Full JWT Signature Validation
-    SSO-->>WSAuth: Validation Result + User Profile
+    WSAuth->>WSAuth: Validate JWT with RSA Public Key
+    WSAuth->>WSAuth: Extract siteId from JWT payload
 
     alt Authentication Success
-        WSAuth->>WSAuth: Store user context in socket session (from JWT)
-        WSAuth-->>Agents: Connection Approved with User Context
+        WSAuth->>WSAuth: Store validated context in socket session
+        WSAuth-->>Agents: Connection Approved with siteId
         Agents-->>SocketIO: WebSocket Connected
         SocketIO-->>WSHook: 'connect' event
         WSHook-->>UI: WebSocket Ready
         UI-->>Browser: Real-time connection active
 
-        Note over Browser,SSO: Subsequent messages use cached JWT context
+        Note over Browser,Agents: Subsequent messages use validated siteId context
         Browser->>UI: Send AI Message
-        UI->>SocketIO: emit('ai-stream', message)
-        SocketIO->>Agents: Forward message
-        Agents->>Agents: Process with cached user context from JWT
+        UI->>SocketIO: emit('ai-stream', { message, context: { metadata: { appId: siteId } } })
+        SocketIO->>Agents: Forward message with context
+        Agents->>Agents: Process with siteId from context.metadata.appId
         Agents-->>SocketIO: AI Response Stream
         SocketIO-->>UI: Real-time AI updates
         UI-->>Browser: Live UI updates
@@ -162,8 +169,7 @@ sequenceDiagram
         Agents-->>SocketIO: Connection Failed
         SocketIO-->>WSHook: 'connect_error' event
         WSHook-->>UI: Authentication Error
-        UI->>SSO: Redirect to SSO Login
-        SSO-->>Browser: Login Page
+        UI-->>Browser: Error Message
     end
 ```
 
@@ -174,26 +180,24 @@ sequenceDiagram
     participant UI as Next.js UI
     participant SocketIO as Socket.IO Client
     participant Agents as AI Agents Service
-    participant SSO as GoDaddy SSO
 
-    Note over UI,SSO: Active connection, JWT nearing expiration
+    Note over UI,Agents: Active connection, JWT nearing expiration
 
-    Agents->>Agents: Detect token expiration (5min before exp)
+    Agents->>Agents: Detect token expiration (configurable threshold)
     Agents->>SocketIO: emit('token-refresh-required')
     SocketIO->>UI: Token refresh event
 
-    UI->>UI: Get fresh token from JWT auth service
+    UI->>UI: Generate fresh JWT with RSA private key
+    Note over UI: New token with updated exp/iat, same siteId
     UI->>SocketIO: emit('refresh-token', {newJWT})
     SocketIO->>Agents: Forward new token
 
-    Agents->>SSO: Validate new JWT token
-    SSO-->>Agents: New token valid + updated profile
-
-    Agents->>Agents: Update cached user context with new token
+    Agents->>Agents: Validate new JWT with RSA public key
+    Agents->>Agents: Update cached context with new token
     Agents->>SocketIO: emit('token-refreshed', {success: true})
     SocketIO->>UI: Token refresh confirmed
 
-    Note over UI,SSO: Connection continues with fresh token
+    Note over UI,Agents: Connection continues with fresh token
     Note over Agents: Automatic refresh continues every token cycle
 ```
 
@@ -205,185 +209,184 @@ sequenceDiagram
 flowchart TD
     A[User Browser] -->|1. HTTPS Request| B[Edge gateway]
     B -->|2. Route| C[Next.js UI Instance]
-    C -->|3. Get Auth Service| D[JWT Auth Service]
+    C -->|3. Get JWT Service| D[JWT Service]
 
-    D -->|4. Extract Token| E[Secure HTTP Cookies]
-    E -->|5. auth_idp JWT| D
+    D -->|4. Check Token Cache| E[Token Cache]
+    E -->|5. Token Cached?| F{Token Valid & Fresh?}
+    F -->|No| G[Generate New JWT]
+    F -->|Yes| H[Use Cached Token]
 
-    D -->|6. Validate Format| F{JWT Format Valid?}
-    F -->|No| G[Return Auth Error]
-    F -->|Yes| H[Add Authorization Header]
+    G -->|6. Sign with Private Key| I[RSA Private Key]
+    I -->|7. JWT Token| D
+    D -->|8. Cache Token| E
 
-    C -->|7. Agent Request + JWT| I[AI Agents Service]
-    I -->|8. Route| J[AI Agents Service Instance]
-    J -->|9. Extract JWT| K[JWT Auth Middleware]
+    C -->|9. Agent Request + JWT| J[AI Agents Service]
+    J -->|10. Route| K[AI Agents Service Instance]
+    K -->|11. Extract JWT| L[JWT Auth Middleware]
 
-    K -->|10. Validate with SSO| L[GoDaddy SSO Service]
-    L -->|11. User Profile + Permissions| K
+    L -->|12. Validate with Public Key| M[RSA Public Key]
+    M -->|13. Validation Result + siteId| L
 
-    K -->|12. User Context from JWT| N[Request Handler]
-    N -->|13. Process Request| O[AI Agent Instance]
-    O -->|14. Response| I
-    I -->|15. Forward| C
-    C -->|16. Update UI| B
-    B -->|17. HTTPS Response| A
+    L -->|14. Site Context from JWT| N[Request Handler]
+    N -->|15. Process Request| O[AI Agent Instance]
+    O -->|16. Response| J
+    J -->|17. Forward| C
+    C -->|18. Update UI| B
+    B -->|19. HTTPS Response| A
 
     style D fill:#e3f2fd
-    style K fill:#e8f5e8
-    style L fill:#fce4ec
+    style L fill:#e8f5e8
+    style I fill:#fce4ec
+    style M fill:#fce4ec
 ```
 
-## Test Environment with Proxy SSO Validation
+## JWT Key Management
 
-In test and development environments, as GoDaddy SSO API is not reachable, the AI Agents Service uses a proxy service for SSO validation instead of connecting directly to SSO.
+The system uses RSA-256 key pairs for JWT signing and validation, eliminating the need for external service dependencies.
 
-### Proxy Service Architecture
+### Key Generation and Distribution
 
 ```mermaid
 graph TB
-    UIProxy[Next.js UI] --> AgentsProxy[AI Agents Service]
-    AgentsProxy -->|JWT Validation| ProxyService[Proxy Service]
+    KeyGen[Key Generation Script] -->|Generates| KeyPair[RSA 2048-bit Key Pair]
+    KeyPair --> PrivateKey[Private Key]
+    KeyPair --> PublicKey[Public Key]
 
-    ProxyService -->|Fetch Public Keys| SSOProxy[GoDaddy SSO Service]
-    ProxyService -->|Cache Keys| KeyCache[(Public Key Cache)]
+    PrivateKey -->|Environment Variable| AppEnv[App Environment]
+    PublicKey -->|Environment Variable| AppEnv
+    PublicKey -->|Environment Variable| AgentEnv[Agent Environment]
 
-    UIProxy -->|Browser Auth| SSOProxy
+    AppEnv -->|JWT Signing| JWTService[JWT Service]
+    AgentEnv -->|JWT Validation| JWTValidator[JWT Validator]
 
-    subgraph "Test Environment"
-        AgentsProxy
-        ProxyService
-        KeyCache
-    end
-
-    subgraph "External"
-        SSOProxy
-    end
-
-    style ProxyService fill:#e8f5e8
-    style KeyCache fill:#fff3e0
-    style SSOProxy fill:#f3e5f5
+    style KeyGen fill:#e3f2fd
+    style PrivateKey fill:#fce4ec
+    style PublicKey fill:#fce4ec
+    style JWTService fill:#e8f5e8
+    style JWTValidator fill:#e8f5e8
 ```
 
-### Proxy SSO Validation Flow
+### Key Management Flow
 
 ```mermaid
 sequenceDiagram
-    participant Browser
-    participant UI as Next.js UI
-    participant Agents as AI Agents Service
-    participant ProxySvc as Proxy Service
-    participant SSO as GoDaddy SSO
-    participant Cache as Public Key Cache
+    participant Admin
+    participant KeyScript as Key Generation Script
+    participant AppEnv as App Environment
+    participant AgentEnv as Agent Environment
+    participant App as Next.js App
+    participant Agent as Agents Service
 
-    Note over Browser,Cache: Test Environment JWT Validation
+    Admin->>KeyScript: Run scripts/generate-jwt-keys.js
+    KeyScript->>KeyScript: Generate RSA 2048-bit key pair
+    KeyScript-->>Admin: Private Key (PEM format)
+    KeyScript-->>Admin: Public Key (PEM format)
 
-    Browser->>UI: API Request with JWT Cookie
-    UI->>Agents: Forward request + JWT Header
+    Admin->>AppEnv: Set JWT_PRIVATE_KEY
+    Admin->>AppEnv: Set JWT_PUBLIC_KEY
+    Admin->>AgentEnv: Set JWT_PUBLIC_KEY
 
-    Agents->>Agents: Check NODE_ENV (non-production)
-    Agents->>ProxySvc: POST /validate-jwt + Bearer Token
+    Note over App,Agent: Runtime JWT operations
 
-    ProxySvc->>ProxySvc: Extract JWT and decode header (kid)
+    App->>App: Load private key from JWT_PRIVATE_KEY
+    App->>App: Sign JWT tokens with private key
 
-    alt Public Key Cached
-        ProxySvc->>Cache: Get cached public key
-        Cache-->>ProxySvc: Return cached PEM key
-    else Public Key Not Cached/Expired
-        ProxySvc->>SSO: GET /v1/api/key/{kid}
-        SSO-->>ProxySvc: Return JWK public key
-        ProxySvc->>ProxySvc: Convert JWK to PEM format
-        ProxySvc->>Cache: Cache PEM key (15min TTL)
-    end
-
-    ProxySvc->>ProxySvc: Validate JWT signature with PEM key
-
-    alt JWT Valid
-        ProxySvc-->>Agents: 200 + User payload
-        Agents->>Agents: Process request with user context
-        Agents-->>UI: API Response
-        UI-->>Browser: Response
-    else JWT Invalid
-        ProxySvc-->>Agents: 401 + Error reason
-        Agents-->>UI: Authentication Error
-        UI->>SSO: Redirect to login
-    end
+    Agent->>Agent: Load public key from JWT_PUBLIC_KEY
+    Agent->>Agent: Validate JWT tokens with public key
 ```
 
 ### Environment Configuration
 
-The agents service automatically selects validation method based on environment:
+**App Environment Variables:**
 
-**Environment Variables:**
-
-- `NODE_ENV`: When set to `production`, uses direct SSO validation
-- `PROXY_URL`: URL of the proxy service
-- `SSO_LOGIN_URL`: SSO endpoint URL for public key fetching
-
-**Validation Strategy:**
-
-```typescript
-// Production environment
-if (NODE_ENV === "production") {
-  // Direct SSO validation - fetch public keys directly
-  validateJWTWithPublicKey(token);
-} else {
-  // Test/Dev environment - use proxy service
-  validateJWTViaProxy(token);
-}
+```bash
+# Required for JWT token generation
+JWT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC..."
+JWT_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtK..."
 ```
 
-### Proxy Service Features
+**Agent Environment Variables:**
 
-**Public Key Caching:**
+```bash
+# Required for JWT token validation
+JWT_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtK..."
 
-- 15-minute TTL for public keys
-- Automatic cache cleanup when size limit reached
-- Prevents repeated SSO calls for same key IDs
+# Optional: Empty string bypasses authentication (for existing containers)
+JWT_PUBLIC_KEY=""
+```
 
-**Security Features:**
+### Key Format Handling
 
-- Token size limits (10KB max) to prevent DoS attacks
-- SSL/TLS encryption for all communications
+**PEM Key Normalization:**
+
+```typescript
+// Handle escaped newlines from environment variables
+function normalizePEMKey(key: string): string {
+  return key.replace(/\\n/g, "\n");
+}
+
+// Usage in both app and agent
+const publicKey = normalizePEMKey(process.env.JWT_PUBLIC_KEY);
+const privateKey = normalizePEMKey(process.env.JWT_PRIVATE_KEY);
+```
+
+### Security Features
+
+**Key Security:**
+
+- RSA 2048-bit keys (industry standard)
+- Private key never leaves app environment
+- Public key distributed to agents only
+- PEM format with proper encoding
+
+**Bypass Mode:**
+
+- Empty `JWT_PUBLIC_KEY` bypasses authentication
+- Useful for existing containers during migration
+- Returns `{ valid: true }` for all tokens
 
 ## Service Integration Details
 
 ### 1. JWT Authentication Service
 
-The system uses a dedicated JWT authentication service for all authentication operations.
+The system uses a custom JWT authentication service for all authentication operations.
 
 **Key Features**:
 
-- Full GoDaddy SSO integration with certificate validation
-- Automatic token heartbeat and refresh
+- RSA-256 JWT token generation and validation
+- In-memory token caching with expiration
+- Automatic token refresh (12-hour lifetime, 10-hour refresh cycle)
 - Comprehensive error handling and logging
 
 ### 2. Agent API Client
 
-HTTP client for authenticated requests to agents.
+HTTP client for authenticated requests to agents using `agentFetch`.
 
 **Key Integration Points**:
 
 - Used by all UI components for agent API calls
-- Automatic JWT header injection
+- Automatic JWT token generation and header injection
+- Token caching per `siteId` with expiration handling
 - Request ID generation for tracing across services
 - Comprehensive error logging for monitoring
-- Token refresh handling for expired JWTs
 
 ### 3. WebSocket Authentication Manager
 
-WebSocket manager with high availability and failover support.
+WebSocket manager with JWT authentication support.
 
 **Key Features**:
 
-- Site-specific agent URL configuration
-- Secure JWT extraction from HTTP-only cookies
+- Site-specific JWT token generation
+- Socket.IO auth object and header-based authentication
+- Automatic token refresh for long-lived connections
 
 ### 4. Agents Service JWT Validation
 
-Server-side JWT validation for both HTTP and WebSocket with performance optimization.
+Server-side JWT validation for both HTTP and WebSocket using RSA public key.
 
 **Middleware Integration**:
 
-- HTTP requests: Express middleware
-- WebSocket: Socket.IO handshake middleware with sticky sessions
-- Token caching for performance
+- HTTP requests: Express middleware with JWT validation
+- WebSocket: Socket.IO handshake middleware with auth object support
+- Direct public key validation (no external dependencies)
+- Bypass mode for existing containers

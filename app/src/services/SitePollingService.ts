@@ -227,6 +227,7 @@ export class SitePollingService {
       logger.info('🔍 Checking if app already exists for site:', siteId);
 
       const response = await agentFetch(`${agentUrl}/apps/${siteId}`, {
+        siteId,
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -391,6 +392,7 @@ export class SitePollingService {
       try {
         logger.info('📝 Registering app with agent service:', siteId);
         const registerResponse = await agentFetch(`${site.agent_url}/apps/register`, {
+          siteId,
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

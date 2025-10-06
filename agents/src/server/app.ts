@@ -43,6 +43,7 @@ import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter } from './routes/index.js';
+import { auth } from '../services/features.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
 import { getDatabase } from '../database/index.js';
@@ -83,8 +84,9 @@ if (isApmEnabled) {
       transaction.setLabel('url', req.url);
       
       // Add site_id label for distinguishing transactions
-      if (process.env.SITE_ID) {
-        transaction.setLabel('site_id', process.env.SITE_ID);
+      const siteId = auth.getSiteId();
+      if (siteId) {
+        transaction.setLabel('site_id', siteId);
       }
       
       res.on('finish', () => {

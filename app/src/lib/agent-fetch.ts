@@ -1,73 +1,82 @@
 /**
- * Authenticated fetch for agent API calls using injected auth service
+ * Agent Fetch Utility
+ * Simple client-side utility for making authenticated requests to agents
  */
 
-import { NextRequest } from 'next/server';
-import { getAuthService } from './auth';
-
-
-/**
- * Authenticated fetch for agent API calls (client-side)
- * Uses injected auth service based on configuration
- */
-export async function agentFetch(url: string, options?: RequestInit): Promise<Response> {
-  try {
-    //const authService = getAuthService();
-    
-    const authResult =  { success: true, headers: {}, error: null }; //await authService.authenticate();
-    
-    if (!authResult.success) {
-      throw new Error(authResult.error || 'Authentication failed');
-    }
-    
-    // Make request with auth headers
-    const requestOptions: RequestInit = {
-      ...options,
-      headers: {
-        ...options?.headers,
-        ...authResult.headers
-      }
-    };
-    
-    return fetch(url, requestOptions);
-  } catch (error) {
-    throw error;
-  }
+export interface AgentFetchOptions extends RequestInit {
+  siteId: string;
 }
 
 /**
- * Authenticated fetch for agent API calls (server-side)
- * Uses injected auth service based on configuration
+ * Simple token cache
  */
-export async function serverAgentFetch(url: string, request: NextRequest, options?: RequestInit): Promise<Response> {
-  try {
-    //const authService = getAuthService();
-    
-    // Use JWT service's special server-side method if available
-    //let authResult;
-    //if (authService.authenticateWithRequest) {
-    //  authResult = await authService.authenticateWithRequest(request);
-    //} else {
-    //  authResult = await authService.authenticate();
-    //}
-    const authResult = { success: true, headers: {}, error: null };
-    
-    if (!authResult.success) {
-      throw new Error(authResult.error || 'Authentication failed');
-    }
-    
-    // Make request with auth headers
-    const requestOptions: RequestInit = {
-      ...options,
-      headers: {
-        ...options?.headers,
-        ...authResult.headers
-      }
-    };
-    
-    return fetch(url, requestOptions);
-  } catch (error) {
-    throw error;
+const tokenCache = new Map<string, { token: string; expires: Date }>();
+
+/**
+ * Get JWT token for agent communication (with caching)
+ */
+async function getAgentToken(siteId: string): Promise<string> {
+  // Check cache first
+  const cached = tokenCache.get(siteId);
+  if (cached && cached.expires.getTime() > (Date.now() + 2 * 60 * 60 * 1000)) {
+    return cached.token;
   }
+  
+  // Get new token from server
+  const response = await fetch('/api/auth/agent-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siteId })
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to get agent token: ${response.status}`);
+  }
+  
+  const data = await response.json();
+  
+  // Cache token
+  tokenCache.set(siteId, {
+    token: data.token,
+    expires: new Date(data.expires)
+  });
+  
+  return data.token;
 }
 
+/**
+ * Authenticated fetch for agent API calls
+ */
+export async function agentFetch(url: string, options: AgentFetchOptions): Promise<Response> {
+  const { siteId, ...fetchOptions } = options;
+  
+  // Get JWT token
+  const token = await getAgentToken(siteId);
+  
+  // Make request to agent
+  const response = await fetch(url, {
+    ...fetchOptions,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...fetchOptions.headers
+    }
+  });
+  
+  // Handle token expiration by retrying once
+  if (response.status === 401) {
+    tokenCache.delete(siteId);
+    const freshToken = await getAgentToken(siteId);
+    
+    return fetch(url, {
+      ...fetchOptions,
+      headers: {
+        'Authorization': `Bearer ${freshToken}`,
+        'Content-Type': 'application/json',
+        ...fetchOptions.headers
+      }
+    });
+  }
+  
+  return response;
+}

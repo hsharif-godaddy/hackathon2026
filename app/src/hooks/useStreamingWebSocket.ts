@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { buildDynamicApiUrl } from '../config/dynamic-api'
+import { agentFetch } from '../lib/agent-fetch'
 import {
   useWebSocketState,
   useCurrentAppId,
@@ -29,19 +30,50 @@ import { logImpressionEvent } from '@/utils/instrumentation'
 import { logger } from '@/lib/request-context'
 
 /**
- * Get JWT token from browser cookies for Socket.IO authentication
+ * Get JWT token for Socket.IO authentication using our new JWT system
  */
-const getAuthTokenFromCookie = (): string | null => {
+const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
   if (typeof document === 'undefined') return null;
   
-  const cookies = document.cookie.split(';');
-  for (const cookie of cookies) {
-    const [name, value] = cookie.trim().split('=');
-    if (name === 'auth_idp') {
-      return decodeURIComponent(value);
+  try {
+    const response = await fetch('/api/auth/agent-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ siteId })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('websocket.token.request_failed', {
+        message: 'Failed to get WebSocket agent token',
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+        siteId
+      });
+      return null;
     }
+    
+    const data = await response.json();
+    const token = data.token;
+    
+    if (!token) {
+      logger.error('websocket.token.missing_field', {
+        message: 'WebSocket agent token response missing token field',
+        responseData: data
+      });
+      return null;
+    }
+    
+    return token;
+  } catch (error) {
+    logger.error('websocket.token.exception', {
+      message: 'Failed to get WebSocket auth token',
+      error: error instanceof Error ? error.message : String(error),
+      siteId
+    });
+    return null;
   }
-  return null;
 };
 
 export function useStreamingWebSocket() {
@@ -67,7 +99,8 @@ export function useStreamingWebSocket() {
   const ensureLatestCommit = useCallback(async (appId: string) => {
     try {
       const apiUrl = await buildDynamicApiUrl(`/api/apps/${appId}/git/return`, appId)
-      const response = await fetch(apiUrl, {
+      const response = await agentFetch(apiUrl, {
+        siteId: appId,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
@@ -93,15 +126,41 @@ export function useStreamingWebSocket() {
       const socketUrl = config.baseUrl
       logger.info('websocket.connection.create', { message: 'Creating Socket.IO connection', url: socketUrl })
       
-      // Get JWT token for authentication (aligned with new agents service)
+      // Get JWT token for WebSocket authentication using our new system
       let authToken = null;
       try {
-        const { isAuthDisabled } = await import('../lib/gasket-config');
-        if (!(await isAuthDisabled())) {
-          authToken = getAuthTokenFromCookie();
+        // Use appId parameter directly - it comes from the URL params and is always available
+        if (!appId) {
+          throw new Error('Unable to determine appId for WebSocket authentication - appId is required');
+        }
+        
+        logger.info('websocket.token.request', { 
+          message: 'Requesting JWT token for WebSocket connection',
+          appId,
+          currentAppId,
+          appIdFromParams: appId
+        });
+        
+        authToken = await getAgentJWTToken(appId);
+        
+        if (!authToken) {
+          logger.error('websocket.token.missing', { 
+            message: 'No JWT token received - WebSocket connection will fail',
+            appId 
+          });
+        } else {
+          logger.info('websocket.token.success', { 
+            message: 'JWT token received successfully for WebSocket',
+            tokenLength: authToken.length,
+            tokenPreview: authToken.substring(0, 20) + '...',
+            appId
+          });
         }
       } catch (error) {
-        logger.warn('websocket.connection.auth', { message: 'Could not determine auth status', error: error instanceof Error ? error.message : String(error) });
+        logger.error('websocket.token.error', { 
+          message: 'Failed to get WebSocket JWT token - connection will fail', 
+          error: error instanceof Error ? error.message : String(error)
+        });
       }
       
       // Create Socket.IO connection with JWT authentication
@@ -111,12 +170,29 @@ export function useStreamingWebSocket() {
         autoConnect: true
       };
       
-      // Add JWT authentication headers (required by new agents service)
+      // Add JWT authentication (Socket.IO specific way)
       if (authToken) {
+        // Use auth object - Socket.IO will send this in handshake.auth
+        // The agent-side middleware needs to check handshake.auth.token
+        socketOptions.auth = {
+          token: authToken
+        };
+        
+        // Also try extraHeaders for polling transport fallback
         socketOptions.extraHeaders = {
           'Authorization': `Bearer ${authToken}`
         };
-        logger.info('websocket.connection.jwt', { message: 'Socket.IO connection will include JWT authentication' });
+        
+        logger.info('websocket.connection.jwt', { 
+          message: 'Socket.IO connection configured with JWT authentication via auth object and extraHeaders',
+          tokenLength: authToken.length,
+          socketUrl,
+          authMethods: ['auth.token', 'extraHeaders.Authorization']
+        });
+      } else {
+        logger.error('websocket.connection.no-auth', { 
+          message: 'Socket.IO connection will proceed without JWT authentication - connection will fail' 
+        });
       }
       
       const socket = io(socketUrl, socketOptions)

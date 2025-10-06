@@ -100,8 +100,6 @@ export interface GettyAPIResponse {
 export interface HealthStatus {
   status: 'healthy' | 'unhealthy' | 'degraded';
   timestamp: string;
-  uptime: number;
-  memory: NodeJS.MemoryUsage;
   version: string;
 }
 

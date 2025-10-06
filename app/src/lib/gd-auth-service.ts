@@ -22,6 +22,10 @@ export class GdAuthService {
     try {
       const ssoUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
       this.ssoHost = new URL(ssoUrl).hostname;
+      logger.info('gd-auth.init.sso-host', {
+        message: 'Using SSO host',
+        ssoHost: this.ssoHost
+      });
     } catch (error) {
       logger.warn('gd-auth.init.sso-url-error', {
         message: 'Invalid SSO URL format, using fallback',
@@ -78,48 +82,6 @@ export class GdAuthService {
       message: 'gd-auth module loaded - AWS token manager is now active'
     });
 
-    // Custom fetchKey with CA certificate for proper SSL validation
-    const customFetchKey = (useragent: string, host: string, kid: string) => {
-      const fetchKey = require('gd-auth/src/fetch-key');
-      const fs = require('fs');
-      const path = require('path');
-
-      let httpsOptions = {};
-
-      // Use committed SSO CA certificate
-      try {
-        const certPath = path.join(process.cwd(), 'certs', 'sso.crt');
-        logger.debug('gd-auth.cert.loading', {
-          message: 'Attempting to load CA certificate',
-          certPath,
-          workingDirectory: process.cwd()
-        });
-
-        // Check if file exists before reading
-        if (!fs.existsSync(certPath)) {
-          throw new Error(`Certificate file does not exist: ${certPath}`);
-        }
-
-        const certContent = fs.readFileSync(certPath, 'utf8');
-        logger.info('gd-auth.cert.loaded', {
-          message: 'Certificate loaded successfully',
-          certPath,
-          contentLength: certContent.length
-        });
-
-        httpsOptions = {
-          ca: certContent
-        };
-      } catch (error) {
-        logger.error('gd-auth.cert.failed', {
-          message: 'Failed to load CA certificate - SSL verification may fail',
-          errorMessage: error instanceof Error ? error.message : 'Unknown error'
-        });
-        // Fallback: continue without CA cert (will use system CA store)
-      }
-
-      return fetchKey(useragent, host, kid, httpsOptions);
-    };
 
     // Initialize gd-auth with correct parameters for IDP basic auth + heartbeat
     this.gdAuth = new GdAuth({
@@ -127,7 +89,7 @@ export class GdAuthService {
       type: 'idp',                   // IDP token type
       auths: ['basic'],              // Allowed auth types
       allowHeartbeat: true,          // Enable automatic heartbeat
-      fetchKey: customFetchKey       // Custom SSL handling for key fetch
+      fetchKey: require('gd-auth/src/fetch-key')
     });
 
     logger.info('gd-auth.init.complete', {

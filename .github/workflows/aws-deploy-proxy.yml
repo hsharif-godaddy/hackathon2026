@@ -2,7 +2,16 @@ name: AWS Deploy Proxy
 
 on:
   workflow_dispatch:
-
+    inputs:
+      DEPLOY_TO_ENV:
+        description: "Environment to deploy the artifact"
+        required: true
+        default: "pre-dev"
+        type: choice
+        options:
+          - "pre-dev"
+          - "dev-private-ecs"
+          - "test"
 
 permissions:
   id-token: write # required for artifactory token login
@@ -16,7 +25,6 @@ jobs:
         - self-hosted
 
     steps:
-
       - name: Checkout Codebase
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -27,6 +35,14 @@ jobs:
         with:
           path: /proxy
 
+      - name: Get Artifactory Token # This action retrieves the Artifactory token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@88e9eba31c07e31beefa4cef5c0e93d1af9535d7 # v4.6.1
+        env:
+          JF_URL: ${{ vars.JF_URL }} # Stored at the org level so you don't have to worry about it
+        with:
+          oidc-provider-name: github
+
       # Sets up authentication with Amazon ECR in the chosen region. Note that the URL can be obtained from GoDaddy's Golden Containers Registry at `https://gcr.katana.int.gdcorp.tools/`.
       - name: Golden Container Registry Login
         run: |
@@ -34,8 +50,10 @@ jobs:
 
       # Execute the necessary commands to build your application's Docker container image. Place any further build commands under `run:`
       - name: Build Container
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
         run: |
-          docker build --platform linux/amd64 -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} proxy/
+          docker build --platform linux/amd64 -f proxy/Dockerfile --build-arg ARTIFACTORY_NPM_TOKEN="$OIDC_TOKEN" -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} .
 
       # Publish the built container image to Katana with the katana-publish-artifact GitHub Action
       - id: katana-publish
@@ -54,11 +72,10 @@ jobs:
             }
 
       # Promote the published artifact to the `dev` environment with the katana-promote-artifact GitHub Action
-      - name: Promote to dev Environment
+      - name: Promote to ${{ inputs.DEPLOY_TO_ENV }} Environment
         uses: gdcorp-actions/katana-promote-artifact@v1
         with:
           namespace: ${{ steps.katana-app.outputs.namespace }}
           app: ${{ steps.katana-app.outputs.app }}
-          environment: dev-private-ecs
+          environment: ${{ inputs.DEPLOY_TO_ENV }}
           artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
-

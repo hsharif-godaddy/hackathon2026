@@ -237,7 +237,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
    */
   private async checkAgentsService(): Promise<boolean> {
     try {
-      const response = await agentFetch(`${this.agentsServiceUrl}/health`, {
+      const response = await fetch(`${this.agentsServiceUrl}/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000)
       });
@@ -255,6 +255,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       this.log('info', 'Registering app with agents service', { siteId, name });
 
       const response = await agentFetch(`${this.agentsServiceUrl}/apps/register`, {
+        siteId,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

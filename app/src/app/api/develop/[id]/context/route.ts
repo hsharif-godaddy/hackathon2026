@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { agentFetch } from '@/lib/agent-fetch'
 import { features } from '@/lib/features'
 
 interface ContextSection {
@@ -38,11 +39,11 @@ export async function GET(
 
     // Forward request to agents service
     const agentsUrl = process.env.NEXT_PUBLIC_AGENTS_URL || 'http://localhost:4000'
-    const agentsResponse = await fetch(`${agentsUrl}/debug/context/${appId}?` + new URLSearchParams({
+    const agentsResponse = await agentFetch(`${agentsUrl}/debug/context/${appId}?` + new URLSearchParams({
       injectFakeVisual: injectFakeVisual.toString(),
       injectFakeAiEdit: injectFakeAiEdit.toString(),
       userInput
-    }))
+    }), { siteId: appId })
 
     if (!agentsResponse.ok) {
       const error = await agentsResponse.text()

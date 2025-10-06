@@ -49,7 +49,7 @@
       "bash -c 'MATRIX_PACKAGE=root ./scripts/license-check.sh'"
     ],
     "app/package.json": [
-      "bash -c 'cd app && MATRIX_PACKAGE=app ../../scripts/license-check.sh'"
+      "bash -c 'cd app && MATRIX_PACKAGE=app ../scripts/license-check.sh'"
     ],
     "proxy/package.json": [
       "bash -c 'cd proxy && MATRIX_PACKAGE=proxy ../scripts/license-check.sh'"

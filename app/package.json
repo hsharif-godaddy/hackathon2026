@@ -90,6 +90,7 @@
     "framer-motion": "^12.23.18",
     "gd-auth": "1.4.1",
     "immer": "^10.1.3",
+    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.540.0",
     "magic-string": "0.30.17",
     "monaco-editor": "^0.52.2",
@@ -111,6 +112,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@tailwindcss/postcss": "^4.1.12",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.19.11",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
