@@ -22,30 +22,26 @@ export abstract class BaseDeploymentAdapter implements DeploymentAdapter {
    */
   protected generateUrls(siteId: string): {
     agent?: string;
-    backend?: string;
     preview?: string;
   } {
     switch (this.environment.mode) {
       case 'local':
         return {
           agent: `http://localhost:4000/api/apps/${siteId}`,
-          backend: `http://localhost:3001`, // Will be assigned dynamically
           preview: `http://localhost:3000`  // Will be assigned dynamically
         };
 
       case 'docker':
         return {
           agent: `http://localhost:4000/api/apps/${siteId}`,
-          backend: `http://localhost:3001`, // Will be assigned dynamically
           preview: `http://localhost:3000`  // Will be assigned dynamically
         };
 
       case 'production':
-        const domain = this.environment.domain || 'ab.sxb1.test-secureserver.net';
+        const domain = this.environment.domain || 'c4.dev-airoapp.ai';
         return {
-          agent: `https://agent-${siteId}.${domain}`,
-          backend: `https://backend-${siteId}.${domain}`,
-          preview: `https://preview-${siteId}.${domain}`
+          agent: `https://${siteId}.agent.${domain}`,
+          preview: `https://${siteId}.preview.${domain}`
         };
 
       default:

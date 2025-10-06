@@ -15,7 +15,7 @@ export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
   constructor() {
     super({
       mode: 'production',
-      domain: process.env.PRODUCTION_DOMAIN || 'ab.sxb1.test-secureserver.net'
+      domain: process.env.PRODUCTION_DOMAIN || 'c4.dev-airoapp.ai'
     });
 
     this.siteService = new PrismaSiteService();

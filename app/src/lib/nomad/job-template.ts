@@ -24,8 +24,9 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
     appImage = '418549769352.dkr.ecr.eu-central-1.amazonaws.com/airo-builder/apps:latest'
   } = config;
 
-  const agentsDomain = `agent-${siteId}.ab.sxb1.test-secureserver.net`;
-  const frontendDomain = `preview-${siteId}.ab.sxb1.test-secureserver.net`;
+  const domain = process.env.PRODUCTION_DOMAIN || 'c4.dev-airoapp.ai';
+  const agentsDomain = `${siteId}.agent.${domain}`;
+  const frontendDomain = `${siteId}.preview.${domain}`;
   const agentsServiceName = `${siteId}-agents`;
   const frontendServiceName = `${siteId}-dev-frontend`;
   const customerAppDir = `\${NOMAD_ALLOC_DIR}/customer-app/${siteId}`;
@@ -173,13 +174,15 @@ export function generateNomadJobSpec(config: NomadJobConfig): { Job: { ID: strin
               APPS_BASE_DIR: "${NOMAD_ALLOC_DIR}/customer-app",
               APP_TEMPLATE_DIR: '/app/app-templates/v8',
               GIT_REPO_DIR: `/ceph-storage/${siteId}/git-repo`,
-              OPENAI_BASE_URL: process.env.OPENAI_BASE_URL || 'https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net',
+              GOCODE_USE_S2S_AUTH: process.env.GOCODE_USE_S2S_AUTH || true,
+              OPENAI_BASE_URL: process.env.OPENAI_BASE_URL || 'https://api.gocode.caas.dev-gdcorp.tools',
+              ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || 'https://api.gocode.caas.dev-gdcorp.tools',
               OPENAI_MODEL: process.env.OPENAI_MODEL || 'claude-sonnet-4',
               ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS_FOR_AGENTS || '',
               AWS_SHARED_CREDENTIALS_FILE: "/data/.aws/credential_process",
               SSM_CREDENTIALS_FILE: "/data/.aws/credentials",
               BEDROCK_AWS_PROFILE: "bedrock",
-              BEDROCK_AWS_ROLE_ARN: process.env.BEDROCK_AWS_ROLE_ARN || 'arn:aws:iam::694282668781:role/airobuilde-custom-dev-airo-builder-bedrock-access',
+              BEDROCK_AWS_ROLE_ARN: process.env.BEDROCK_AWS_ROLE_ARN || 'arn:aws:iam::694282668781:role/airobuilde-custom-dev-airo-builder-gocode-access',
               BEDROCK_AWS_REGION: process.env.BEDROCK_AWS_REGION || 'us-west-2',
               GETTY_API_URL: process.env.GETTY_API_URL || 'https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net/img/search',
               GETTY_APP_KEY: process.env.GETTY_APP_KEY || '',
@@ -340,7 +343,6 @@ export function extractAllocationInfo(jobStatus: { Allocations?: Array<{
 }> }, siteId?: string): {
   allocId?: string;
   agentUrl?: string;
-  backendUrl?: string;
   previewUrl?: string;
   status: 'pending' | 'running' | 'failed' | 'stopped';
 } {
@@ -376,20 +378,18 @@ export function extractAllocationInfo(jobStatus: { Allocations?: Array<{
 
   // Construct URLs using domain-based routing (Traefik setup)
   let agentUrl: string | undefined;
-  let backendUrl: string | undefined;
   let previewUrl: string | undefined;
 
   if (status === 'running' && siteId) {
+    const domain = process.env.PRODUCTION_DOMAIN || 'c4.dev-airoapp.ai';
     // Use new domain format for agents, backend, and preview
-    agentUrl = `https://agent-${siteId}.ab.sxb1.test-secureserver.net`;
-    backendUrl = `https://backend-${siteId}.ab.sxb1.test-secureserver.net`;
-    previewUrl = `https://preview-${siteId}.ab.sxb1.test-secureserver.net`;
+    agentUrl = `https://${siteId}.agent.${domain}`;
+    previewUrl = `https://${siteId}.preview.${domain}`;
   }
 
   return {
     allocId,
     agentUrl,
-    backendUrl,
     previewUrl,
     status
   };
