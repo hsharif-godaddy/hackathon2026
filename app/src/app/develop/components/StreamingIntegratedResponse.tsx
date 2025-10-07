@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import clsx from 'clsx'
 import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
 import ToolCallMessage from '@/app/develop/components/ToolCallMessage'
@@ -15,14 +16,14 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   const [showThinkingIndicator, setShowThinkingIndicator] = useState(false)
   const lastUpdateTimeRef = useRef<number>(Date.now())
   const thinkingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  
+
   const hasSegments = message.segments && message.segments.length > 0
   const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
   const hasContent = Boolean(message.content)
   const isComplete = 'isComplete' in message ? message.isComplete : true
-  
+
   // Create chronological content blocks from segments
-  const chronologicalContent = hasSegments 
+  const chronologicalContent = hasSegments
     ? (() => {
         const blocks: Array<{
           type: 'text' | 'tool'
@@ -30,13 +31,13 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
           toolCall?: any
           order: number
         }> = []
-        
+
         let currentTextBlock = ''
         let order = 0
-        
+
         // Track tool calls to combine start/result
         const toolCallsMap = new Map<string, any>()
-        
+
         message.segments?.forEach((segment, index) => {
           if (segment.type === 'text' || segment.type === 'content') {
             // Accumulate text content
@@ -51,10 +52,10 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
               })
               currentTextBlock = ''
             }
-            
+
             if (segment.toolCall) {
               const toolId = segment.toolCall.id
-              
+
               if (segment.type === 'tool_call') {
                 // For persisted tool_call segments, we have complete tool information
                 const toolCall = {
@@ -69,7 +70,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                   duration: segment.toolCall.duration,
                   order: order++
                 }
-                
+
                 blocks.push({
                   type: 'tool',
                   toolCall,
@@ -91,7 +92,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                     order: order++
                   }
                   toolCallsMap.set(toolId, toolCall)
-                  
+
                   blocks.push({
                     type: 'tool',
                     toolCall,
@@ -111,7 +112,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
             }
           }
         })
-        
+
         // Flush any remaining text
         if (currentTextBlock.trim()) {
           blocks.push({
@@ -120,11 +121,11 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
             order: order++
           })
         }
-        
+
         return blocks.sort((a, b) => a.order - b.order)
       })()
     : []
-  
+
   // Track content changes to show thinking indicator
   useEffect(() => {
     if (isComplete || !isActiveStream) {
@@ -138,17 +139,17 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
 
     // Update last update time when content changes
     lastUpdateTimeRef.current = Date.now()
-    
+
     // Clear existing timeout
     if (thinkingTimeoutRef.current) {
       clearTimeout(thinkingTimeoutRef.current)
     }
-    
-    // Set thinking indicator after brief delay
+
+    // Set thinking indicator after brief delay - reduced for smoother UX
     thinkingTimeoutRef.current = setTimeout(() => {
       setShowThinkingIndicator(true)
-    }, 800) // Show thinking after 800ms of no updates
-    
+    }, 400) // Show thinking after 400ms of no updates (reduced from 800ms)
+
     return () => {
       if (thinkingTimeoutRef.current) {
         clearTimeout(thinkingTimeoutRef.current)
@@ -157,13 +158,13 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   }, [chronologicalContent, isComplete, isActiveStream])
 
   const thinkingIndicator = () => (
-    <div className="flex items-center space-x-2 text-gray-500 text-sm my-2">
+    <div className="flex items-center gap-4 text-sm mt-4">
+      <div className="bg-ai-light/40 rounded-sm px-2 py-1">AI Developer is thinking</div>
       <div className="flex space-x-1">
         <div className="w-2 h-2 bg-ai-light rounded-full animate-bounce"></div>
         <div className="w-2 h-2 bg-ai rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
         <div className="w-2 h-2 bg-ai-dark rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
       </div>
-      <span>AI Developer is thinking...</span>
     </div>
   )
 
@@ -181,12 +182,12 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
               {chronologicalContent.map((block, index) => (
                 <div key={`block-${index}`}>
                   {block.type === 'text' && block.content && (
-                    <MarkdownRenderer 
+                    <MarkdownRenderer
                       content={block.content}
                       className="text-sm leading-relaxed break-words"
                     />
                   )}
-                  
+
                   {block.type === 'tool' && block.toolCall && (
                     <ToolCallMessage
                       toolName={block.toolCall.name}
@@ -201,9 +202,9 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                           : undefined
                       }
                       toolResult={
-                        typeof block.toolCall.result === 'string' 
-                          ? block.toolCall.result 
-                          : block.toolCall.result 
+                        typeof block.toolCall.result === 'string'
+                          ? block.toolCall.result
+                          : block.toolCall.result
                             ? JSON.stringify(block.toolCall.result, null, 2)
                             : undefined
                       }
@@ -223,7 +224,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
             <>
               {/* Main content */}
               {hasContent && (
-                <MarkdownRenderer 
+                <MarkdownRenderer
                   content={message.content}
                   className="text-sm leading-relaxed break-words"
                 />
@@ -246,7 +247,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                           {toolCall.status}
                         </span>
                       </div>
-                      
+
                       {/* Tool input */}
                       {toolCall.input && Object.keys(toolCall.input).length > 0 && (
                         <div className="mb-2">
@@ -296,12 +297,17 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
         {message.maxStepsReached && (
           <StreamingAlertMessage
             title="Maximum reasoning steps reached"
-            message="Content generation stopped here to maintain quick responses, but more steps are needed to complete this task. Continue with a follow-up question or break down your request into smaller parts." 
+            message="Content generation stopped here to maintain quick responses, but more steps are needed to complete this task. Continue with a follow-up question or break down your request into smaller parts."
           />
         )}
 
-        {/* Thinking indicator for active streams */}
-        {isActiveStream && !isComplete && showThinkingIndicator && thinkingIndicator()}
+        {/* Thinking indicator for active streams - reserve space to prevent layout shifts */}
+        <div className={clsx("transition-all duration-200", {
+          "h-8 opacity-100": isActiveStream && !isComplete && showThinkingIndicator,
+          "h-0 opacity-0 overflow-hidden": !(isActiveStream && !isComplete && showThinkingIndicator)
+        })}>
+          {isActiveStream && !isComplete && showThinkingIndicator && thinkingIndicator()}
+        </div>
       </div>
     </div>
   )

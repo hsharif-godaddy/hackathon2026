@@ -24,6 +24,8 @@ export function getToolDisplayName(toolName: string): string {
     case 'grepSearch':
       return 'Text Search'
     case 'terminal':
+    case 'terminal_command':
+    case 'terminalCommand':
     case 'run_command':
     case 'runCommand':
     case 'run_terminal_cmd':
@@ -56,6 +58,9 @@ export function getToolDisplayName(toolName: string): string {
     case 'icons_validator':
     case 'iconsValidator':
       return 'Icons Validator'
+    case 'todo_list':
+    case 'todoList':
+      return 'Todo List'
     default:
       return toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }

@@ -17,6 +17,10 @@
 - The best animations are the ones improving on the general UX
 - Avoid having boncing icons and elements all over the page
 
+### Tailwind rules
+
+- When dealing with space between elements in a grid or flex container **USE** `gap` property, **DO NOT** use `space-x` or `space-y` properties
+
 ### Color System
 
 - Always work with tailwind and shadcn colors

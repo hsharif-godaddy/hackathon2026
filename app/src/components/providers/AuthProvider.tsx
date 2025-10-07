@@ -20,10 +20,10 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [featureFlags, setFeatureFlags] = useState<any>({});
   const [isFeatureFlagsLoading, setIsFeatureFlagsLoading] = useState(true);
-  
+
   // State for server-side auth config
   const [serverAuthConfig, setServerAuthConfig] = useState<any>(null);
-  
+
   // Load server-side auth configuration
   useEffect(() => {
     async function loadServerAuthConfig() {
@@ -46,7 +46,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     }
     loadServerAuthConfig();
   }, []);
-  
+
   // Use server config if available, fallback to client-side detection
   const authType = serverAuthConfig?.authType || auth.getType();
   const isJWTMode = serverAuthConfig?.isJWT || auth.isJWT();
@@ -81,14 +81,14 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       setIsFeatureFlagsLoading(false);
     }
   }, [shouldUseSwitchboard]);
-  
+
   const isAppbuilderAccessEnabled = featureFlags['appbuilder-access'] ?? false;
 
   // Load auth provider conditionally (wait for server config)
   useEffect(() => {
     // Don't load auth provider until we have server config or confirmed it failed
     if (serverAuthConfig === null) return;
-    
+
     async function loadAuthProvider() {
       try {
         const currentAuthType = auth.getType();
@@ -96,7 +96,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
           message: 'Loading auth provider',
           authType: currentAuthType
         });
-        
+
         if (isJWTMode) {
           // Only import and initialize Gasket auth for JWT mode
           const { withAuthProvider } = await import('@godaddy/gasket-auth');

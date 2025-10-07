@@ -2,8 +2,9 @@
 
 import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect } from 'react';
-import Button from '@ux/button';
 import { generateClickEID } from '@/utils/instrumentation';
+import { Menu, MenuButton, MenuList, MenuItem, MenuSeparator } from '@ux/menu';
+import UserIcon from '@ux/icon/user';
 
 interface UserMenuProps {
   onShowMockLogin?: () => void;
@@ -11,10 +12,10 @@ interface UserMenuProps {
 }
 
 export default function UserMenu({ onShowMockLogin, location = 'unknown' }: UserMenuProps = {}) {
-  const { 
-    isAuthenticated, 
-    isLoading: configLoading, 
-    isAuthDisabled, 
+  const {
+    isAuthenticated,
+    isLoading: configLoading,
+    isAuthDisabled,
     handleSignOut,
     handleSignIn
   } = useAuth(onShowMockLogin);
@@ -25,51 +26,58 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
     setHasMounted(true);
   }, []);
 
-  // Handle sign in - the modal will be handled by the page component
-  const handleSignInClick = () => {
-    handleSignIn();
-  };
-
   // Prevent hydration mismatch by showing loading until mounted
   if (!hasMounted || configLoading) {
     return (
       <div className="flex items-center space-x-3">
-        <div className="animate-pulse w-20 h-8 bg-gray-200 rounded"></div>
+        <div className="animate-pulse w-20 h-8 rounded"></div>
       </div>
     );
   }
 
-  // If auth is disabled, show dev mode indicator
-  if (isAuthDisabled) {
-    return (
-      <Button
-        text='Auth Disabled'
-        design='primary'
-        disabled={true}
-      />
-    );
-  }
-
-  // If not authenticated, show Sign In button
-  if (!isAuthenticated) {
-    return (
-      <>
-        <Button
-          data-eid={ generateClickEID(`${location}.header.sign_in`) }
-          text='Sign In'
-          design='tertiary'
-          onClick={handleSignInClick}
-        />
-      </>
-    );
-  }
-
   return (
-    <Button
-      data-eid={ generateClickEID(`${location}.header.sign_out`) }
-      text='Sign Out'
-      design='tertiary'
-      onClick={handleSignOut}
-    />
+    <Menu
+      closeOnSelect
+      id="user-menu"
+    >
+      <MenuButton
+        aria-label="open"
+        data-partial="dark1"
+        icon={<UserIcon />}
+        size="small"
+        data-eid={generateClickEID(`${location}.header.user_menu`)}
+      />
+      <MenuList placement="bottom-start">
+        { (isAuthDisabled || isAuthenticated) && (
+          <>
+            <MenuItem href="/sites">
+              My Sites
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        ) }
+        { isAuthDisabled && (
+          <MenuItem>
+            Auth Disabled
+          </MenuItem>
+        ) }
+        { !isAuthenticated && (
+          <MenuItem
+            onSelect={handleSignIn}
+            data-eid={generateClickEID(`${location}.header.sign_in`)}
+          >
+            Sign In
+          </MenuItem>
+        ) }
+        { isAuthenticated && !isAuthDisabled && (
+          <MenuItem
+            onSelect={handleSignOut}
+            data-eid={generateClickEID(`${location}.header.sign_out`)}
+          >
+            Sign Out
+          </MenuItem>
+        ) }
+      </MenuList>
+    </Menu>
   )
 }

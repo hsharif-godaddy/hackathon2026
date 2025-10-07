@@ -4,18 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 interface ResizableDividerProps {
   onResize: (leftWidth: number) => void
-  initialLeftWidth?: number
   minLeftWidth?: number
   minRightWidth?: number
-  className?: string
 }
 
 export default function ResizableDivider({
   onResize,
-  initialLeftWidth = 400,
   minLeftWidth = 300,
   minRightWidth = 400,
-  className = ''
 }: ResizableDividerProps) {
   const [isDragging, setIsDragging] = useState(false)
   const dividerRef = useRef<HTMLDivElement>(null)
@@ -36,7 +32,7 @@ export default function ResizableDivider({
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
     document.body.style.pointerEvents = 'none'
-    
+
     // Enable pointer events only on the body for dragging
     if (dividerRef.current) {
       dividerRef.current.style.pointerEvents = 'auto'
@@ -80,7 +76,7 @@ export default function ResizableDivider({
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
     document.body.style.pointerEvents = ''
-    
+
     if (dividerRef.current) {
       dividerRef.current.style.pointerEvents = ''
     }
@@ -98,11 +94,11 @@ export default function ResizableDivider({
       // Use passive: false to allow preventDefault if needed
       document.addEventListener('mousemove', handleMouseMove, { passive: true })
       document.addEventListener('mouseup', handleMouseUp, { passive: true })
-      
+
       // Prevent context menu during drag
       const preventContextMenu = (e: Event) => e.preventDefault()
       document.addEventListener('contextmenu', preventContextMenu)
-      
+
       return () => {
         document.removeEventListener('mousemove', handleMouseMove)
         document.removeEventListener('mouseup', handleMouseUp)
@@ -128,7 +124,7 @@ export default function ResizableDivider({
         const containerRect = containerRef.current.getBoundingClientRect()
         const containerWidth = containerRect.width
         const maxLeftWidth = containerWidth - minRightWidth
-        
+
         // Get current left panel width
         const leftPanel = containerRef.current.firstElementChild as HTMLElement
         if (leftPanel) {
@@ -156,42 +152,10 @@ export default function ResizableDivider({
   return (
     <div
       ref={dividerRef}
-      className={`
-        relative w-2 bg-transparent cursor-col-resize group flex-shrink-0 z-10
-        ${className}
-      `}
+      className="relative w-2 bg-transparent cursor-col-resize flex-shrink-0 z-10 group"
       onMouseDown={handleMouseDown}
     >
-      {/* Visual divider line */}
-      <div 
-        className={`
-          absolute inset-y-0 left-1/2 w-px transform -translate-x-1/2
-          transition-colors duration-200
-          ${isDragging ? 'bg-blue-500' : 'bg-gray-300 group-hover:bg-gray-400'}
-        `} 
-      />
-      
-      {/* Extended hover area */}
-      <div className="absolute inset-0 -mx-1" />
-      
-      {/* Drag indicator */}
-      <div 
-        className={`
-          absolute top-1/2 left-1/2 w-6 h-6 -translate-x-1/2 -translate-y-1/2
-          bg-white border rounded shadow-sm
-          flex items-center justify-center transition-all duration-200
-          ${isDragging 
-            ? 'opacity-100 border-blue-400 shadow-md scale-110' 
-            : 'opacity-0 group-hover:opacity-100 border-gray-300 scale-100'
-          }
-          pointer-events-none
-        `}
-      >
-        <div className="flex space-x-0.5">
-          <div className={`w-0.5 h-2 rounded-full transition-colors ${isDragging ? 'bg-blue-500' : 'bg-gray-400'}`} />
-          <div className={`w-0.5 h-2 rounded-full transition-colors ${isDragging ? 'bg-blue-500' : 'bg-gray-400'}`} />
-        </div>
-      </div>
+      <div className="absolute inset-y-0 left-1/2 w-px transform -translate-x-1/2 transition-colors duration-400 group-hover:bg-intents-ux-actionPrimary-backgroundColor" />
     </div>
   )
 }

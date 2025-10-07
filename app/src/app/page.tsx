@@ -2,21 +2,25 @@
 
 import { useState, useCallback, useEffect, Suspense, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Box from '@ux/box'
+import Spinner from '@ux/spinner'
 import { isFeatureEnabled } from '@/lib/features'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { useAuth } from '@/hooks/useAuth'
-import Header from '@/components/layout/Header'
-import HeroSection from './components/HeroSection'
-import ExamplesSection from './components/ExamplesSection'
-import BuiltWithSection from './components/BuiltWithSection'
-import { Example, BuiltWithItem, HeroSectionRef } from './components/types'
-import Footer from './components/Footer'
+import BuiltWithSection from '@/app/components/BuiltWithSection'
+import DiscoverSection from '@/app/components/DiscoverSection'
+import ExpressSection from '@/app/components/ExpressSection'
+import StartSection from '@/app/components/StartSection'
+import InfraSection from '@/app/components/InfraSection'
+import HelpSection from '@/app/components/HelpSection'
+import TestimonialsSection from '@/app/components/TestimonialsSection'
+import FeaturesSection from '@/components/layout/Features'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
-import Box from '@ux/box'
-import Button from '@ux/button'
-import Spinner from '@ux/spinner'
-import { logImpressionEvent, generateClickEID } from '@/utils/instrumentation'
+import Header from '@/components/layout/Header'
+import { logImpressionEvent } from '@/utils/instrumentation'
+import HeroSection from './components/HeroSection'
+import { HeroSectionRef } from './components/types'
 
 function HomeContent() {
   const [promptText, setPromptText] = useState("")
@@ -33,86 +37,6 @@ function HomeContent() {
   useEffect(() => {
     logImpressionEvent({ eid: 'homepage.page' })();
   }, [])
-
-  const examples: Example[] = [
-    {
-      title: "Fitness Studio Website",
-      prompt: "I need a modern website for my local fitness studio. We offer personal training, group classes, and nutrition coaching. I want members to be able to book classes online, view schedules, and access workout plans.",
-      slug: "fitness_studio"
-    },
-    {
-      title: "Local Food Truck Landing Page",
-      prompt: "Create a landing page for a food truck. I need to showcase our menu, display our hours and show a map with our current location.",
-      slug: "food_truck"
-    },
-    {
-      title: "Freelancer Portfolio Site",
-      prompt: "Build a professional portfolio website for my graphic design services. I need a homepage, portfolio gallery, about page, services overview, and contact form. Make it clean and modern to showcase my work.",
-      slug: "freelancer_portfolio"
-    },
-    {
-      title: "Small Business Directory",
-      prompt: "Create a simple directory website for local businesses in my town. Users should be able to browse by category, search businesses, view business profiles with contact info, and submit new business listings.",
-      slug: "business_directory"
-    }
-  ]
-
-  const builtWithItems: BuiltWithItem[] = [
-    {
-      id: "1",
-      slug: "web_agency",
-      title: "Web Agency Website",
-      description: "Comprehensive business directory with search filters, business profiles, reviews, and submission forms for new listings.",
-      thumbnailPath: "/images/craft-code.png",
-      category: "Business",
-      prompt: "Website about a web agency specialized in creating beautiful handcrafted websites. Dark theme with vibrant color accent. Keep it low on images, rely on one impactful image and then use icons. Never use emojis"
-    },
-    {
-      id: "2",
-      slug: "ancient_mariners",
-      title: "Ancient Mariners",
-      description: "Interactive food truck website featuring live location tracking, digital menu with ordering system, and customer reviews.",
-      thumbnailPath: "/images/ancient-mariners.png",
-      category: "Education",
-      prompt: "Minimalistic site about whales. Use marine colors, make it short but worth reading."
-    },
-    {
-      id: "3",
-      slug: "creative_canvas",
-      title: "Creative Canvas Portfolio",
-      description: "Stunning portfolio site for a graphic designer with image galleries, client testimonials, and project case studies.",
-      thumbnailPath: "/images/creative-portfolio.png",
-      category: "Portfolio",
-      prompt: "Stunning portfolio site for a graphic designer with image galleries, client testimonials, and project case studies."
-    },
-    {
-      id: "4",
-      slug: "fitflow_studio",
-      title: "FitFlow Studio",
-      description: "Modern fitness studio dashboard with online class booking, member portal, and trainer profiles.",
-      thumbnailPath: "/images/fit-studio.png",
-      category: "Health & Fitness",
-      prompt: "Modern fitness studio dashboard with online class booking, member portal, and trainer profiles."
-    },
-    {
-      id: "5",
-      slug: "pepito_nachos",
-      title: "Pepito Nachos",
-      description: "Event venue booking platform with calendar integration, space galleries, pricing calculator, and vendor coordination.",
-      thumbnailPath: "/images/pepito-nachos.png",
-      category: "Food",
-      prompt: "I need a website for my local Food Truck : Pepito Nachos, focused on offering mexican street food. We use avocado-styled colors with the food truck being all black."
-    },
-    {
-      id: "6",
-      slug: "eco_shop",
-      title: "EcoShop Marketplace",
-      description: "Sustainable products e-commerce site with eco-friendly badges, carbon footprint tracking, and subscription boxes. Focus should be on displaying products.",
-      thumbnailPath: "/images/eco-mart.png",
-      category: "E-commerce",
-      prompt: "Sustainable products e-commerce site with eco-friendly badges, carbon footprint tracking, and subscription boxes. Focus should be on displaying products."
-    }
-  ]
 
   // Check for URL parameter and prefill prompt text
   useEffect(() => {
@@ -181,14 +105,14 @@ function HomeContent() {
       const redirectUrl = siteData.type === 'job'
         ? `/create/${siteData.id}?type=job`
         : `/create/${siteData.id}`
-      
-      logger.info('page.site.redirect', { 
+
+      logger.info('page.site.redirect', {
         message: 'Redirecting to create page',
         siteId: siteData.id,
         idType: siteData.type,
         redirectUrl
       })
-      
+
       router.push(redirectUrl)
     } catch (error) {
       console.error('❌ Error in start building flow:', error)
@@ -230,39 +154,16 @@ function HomeContent() {
   }
 
   return (
-    <div className="w-full overflow-hidden">
-      <div className="airo-sentinel-background">
-        <div className="orbs-group">
-          <div className="orb orb1"></div>
-          <div className="orb orb2"></div>
-          <div className="orb orb3"></div>
-          <div className="orb orb4"></div>
-        </div>
-      </div>
+    <div className="relative w-full overflow-hidden header-bg bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
+      <div className="footer-bg" />
 
-      <Header
-        actions={
-          isAuthenticated ? (
-            <Button
-              data-eid={generateClickEID('homepage.header.my_sites')}
-              onClick={handleStartBuilding}
-              data-partial="componentAiro"
-              design='primary'
-              text='My Sites'
-              href='/sites'
-            />
-          ) : undefined
-        }
-        className="absolute top-0 left-0 w-full border-0!"
-        onShowMockLogin={() => setShowMockLogin(true)}
-        location='homepage'
-      />
+      <div className="w-full h-full relative z-1">
+        <Header
+          className="absolute top-0 left-0 w-full border-0! z-20"
+          onShowMockLogin={() => setShowMockLogin(true)}
+          location='homepage'
+        />
 
-      <Box
-        className="mx-auto px-4 sm:px-6 lg:px-8 pt-24 min-h-screen"
-        inlineAlignChildren='center'
-        blockAlignChildren='center'
-      >
         <HeroSection
           ref={heroSectionRef}
           promptText={promptText}
@@ -272,30 +173,67 @@ function HomeContent() {
           error={error}
           setError={setError}
           onShowMockLogin={() => setShowMockLogin(true)}
+          onExampleClick={handleExampleClick}
         />
 
-        { isAuthenticated && (
-          <ExamplesSection
-            examples={examples}
-            onExampleClick={handleExampleClick}
+        { /* <BuiltWithSection /> */ }
+
+        <InfraSection />
+
+        <FeaturesSection
+          features={[
+            {
+              title: "Pro-grade hosting",
+              description: "Global edge, fast caching, and sensible defaults for speed and reliability. Hit publish and serve worldwide without extra setup.",
+            },
+            {
+              title: "Security by default",
+              description: "Automatic SSL, DDoS protection, backups, and best-practice hardening—quietly working so you can focus on the build.",
+            },
+            {
+              title: "Future-proof",
+              description: "Keep control of your code and content, plug in the tools you love, and scale from “hello world” to high-traffic without switching stacks.",
+            }
+          ]}
+        />
+
+        <StartSection />
+
+        <FeaturesSection
+          features={[
+            {
+              title: "Idea to first draft",
+              description: "Describe it and skip the blank canvas—Airo lays out pages, sections, and starter copy in seconds.",
+            },
+            {
+              title: "Guided editing",
+              description: "Tune layout, tone, and visuals with friendly controls. Code when you want, not when you have to.",
+            },
+            {
+              title: "Publish and done",
+              description: "One-click deploy on GoDaddy with SSL, forms, and analytics baked in. Export your code anytime.",
+            }
+          ]}
+        />
+
+        { /*
+        <ExpressSection />
+
+        <DiscoverSection />
+
+        <TestimonialsSection />
+        */ }
+
+        <HelpSection />
+
+        {/* Mock Login Modal - available throughout the entire page */}
+        {isFeatureEnabled.mockLogin() && (
+          <MockLoginDialog
+            isOpen={showMockLogin}
+            onClose={() => setShowMockLogin(false)}
           />
         )}
-      </Box>
-
-      <BuiltWithSection
-        items={builtWithItems}
-        onExampleClick={handleExampleClick}
-      />
-
-      <Footer />
-
-      {/* Mock Login Modal - available throughout the entire page */}
-      {isFeatureEnabled.mockLogin() && (
-        <MockLoginDialog
-          isOpen={showMockLogin}
-          onClose={() => setShowMockLogin(false)}
-        />
-      )}
+      </div>
     </div>
   )
 }

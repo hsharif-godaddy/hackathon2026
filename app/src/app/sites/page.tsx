@@ -2,20 +2,20 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { 
-  CodeBracketIcon, 
-  PlusIcon, 
+import {
+  CodeBracketIcon,
+  PlusIcon,
   PlayIcon,
   EyeIcon,
   TrashIcon,
   ClockIcon
 } from '@heroicons/react/24/outline'
-import { appFetch } from '@/lib/gasket-config'
 import { ProtectedRoute } from '@/components/auth'
 import Header from '@/components/layout/Header'
 import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { DevelopmentAdminSection } from '@/components/development'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
+import { useSites } from '@/stores/useSitesStore'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
@@ -28,37 +28,25 @@ interface AlertState {
 }
 
 function SitesPageContent() {
-  const [sites, setSites] = useState<SiteInfo[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [alertState, setAlertState] = useState<AlertState>({ siteId: null, type: null, message: '' })
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
   const router = useRouter()
 
+  // Use the sites store (automatically loads sites on first use)
+  const {
+    sites,
+    isLoading,
+    error,
+    deleteSite,
+    stopAllSites,
+    deleteAllSites,
+    totalSites,
+    runningCount
+  } = useSites()
+
   useEffect(() => {
     logImpressionEvent({ eid: 'sites.page' })();
-  }, [])
-
-  useEffect(() => {
-    const fetchSites = async () => {
-      try {
-        const response = await appFetch('/api/sites')
-        if (!response.ok) {
-          throw new Error('Failed to fetch sites')
-        }
-        
-        const sitesData = await response.json()
-        setSites(Array.isArray(sitesData) ? sitesData : [])
-      } catch (error) {
-        console.error('Error fetching sites:', error)
-        setError('Failed to connect to server')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchSites()
   }, [])
 
   const handleCreateNew = () => {
@@ -94,20 +82,12 @@ function SitesPageContent() {
   const handleDeleteSite = async (siteId: string) => {
     setActionLoading(siteId)
     try {
-      const response = await appFetch(`/api/sites/${siteId}`, {
-        method: 'DELETE'
-      })
-      
-      if (response.ok) {
-        setSites(sites.filter(site => site.id !== siteId))
+      const success = await deleteSite(siteId)
+      if (success) {
         setAlertState({ siteId: null, type: null, message: '' })
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || 'Failed to delete site')
       }
     } catch (error) {
       console.error('Error deleting site:', error)
-      setError('Failed to delete site')
     } finally {
       setActionLoading(null)
     }
@@ -126,47 +106,26 @@ function SitesPageContent() {
   }
 
   const handleAdminStopAll = async () => {
-    const runningSites = sites.filter(site => site.status === 'running')
-    if (runningSites.length === 0) return
+    if (runningCount === 0) return
 
     setAdminActionLoading('stop-all')
     try {
-      // Stop all running sites in parallel
-      const stopPromises = runningSites.map(site => 
-        appFetch(`/api/sites/${site.id}/stop`, { method: 'POST' })
-      )
-      
-      await Promise.all(stopPromises)
-      
-      // Update site statuses to stopped
-      setSites(sites.map(site => 
-        site.status === 'running' ? { ...site, status: 'stopped' as SiteInfo['status'] } : site
-      ))
+      await stopAllSites()
     } catch (error) {
       console.error('Error stopping all sites:', error)
-      setError('Failed to stop all sites')
     } finally {
       setAdminActionLoading(null)
     }
   }
 
   const handleAdminDeleteAll = async () => {
-    if (sites.length === 0) return
+    if (totalSites === 0) return
 
     setAdminActionLoading('delete-all')
     try {
-      // Delete all sites in parallel
-      const deletePromises = sites.map(site => 
-        appFetch(`/api/sites/${site.id}`, { method: 'DELETE' })
-      )
-      
-      await Promise.all(deletePromises)
-      
-      // Clear all sites
-      setSites([])
+      await deleteAllSites()
     } catch (error) {
       console.error('Error deleting all sites:', error)
-      setError('Failed to delete all sites')
     } finally {
       setAdminActionLoading(null)
     }
@@ -211,24 +170,12 @@ function SitesPageContent() {
 
   return (
     <div className="min-h-screen">
-      <Header 
-        actions={
-          <Button
-            onClick={handleCreateNew}
-            data-eid={generateClickEID('sites.header.new')}
-            data-partial="componentAiro"
-            design="primary"
-            icon={<PlusIcon className="w-4 h-4" />}
-            text="New Site"
-          />
-        }
-        location='sites'
-      />
+      <Header location='sites' />
 
       {/* Development Admin Section */}
       <DevelopmentAdminSection
-        totalItems={sites.length}
-        runningItems={sites.filter(site => site.status === 'running').length}
+        totalItems={totalSites}
+        runningItems={runningCount}
         itemType="sites"
         onStopAll={handleAdminStopAll}
         onDeleteAll={handleAdminDeleteAll}
@@ -242,7 +189,7 @@ function SitesPageContent() {
           <Box orientation="horizontal" gap="md">
             Manage your AI-powered websites and applications
             <Tag emphasis="info">
-              {`${sites.length} ${sites.length === 1 ? 'site' : 'sites'} total`}
+              {`${totalSites} ${totalSites === 1 ? 'site' : 'sites'} total`}
             </Tag>
           </Box>
         </div>
@@ -259,7 +206,7 @@ function SitesPageContent() {
           </div>
         )}
 
-        {sites.length === 0 ? (
+        {totalSites === 0 ? (
           <div className="text-center py-12">
             <CodeBracketIcon className="w-16 h-16 mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">No Sites Yet</h2>
@@ -288,9 +235,9 @@ function SitesPageContent() {
                     onCancel={clearAlert}
                   />
                 )}
-                
+
                 <div className="flex items-start justify-between mb-4">
-                  <Box 
+                  <Box
                     className="w-12 h-12 p-1 flex items-center justify-center"
                     rounding="reduced"
                     data-partial="gradientAiro"
@@ -304,7 +251,7 @@ function SitesPageContent() {
                     {getStatusLabel(site.status)}
                   </div>
                 </div>
-                
+
                 <div className="flex-1">
                   <h3 className="font-semibold mb-1">
                     {site.name || 'Untitled Site'}
@@ -321,7 +268,7 @@ function SitesPageContent() {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center justify-between pt-4 mt-4 border-t">
                   <div className="flex space-x-2">
                     {site.preview_url && site.status === 'running' && (
@@ -335,7 +282,7 @@ function SitesPageContent() {
                         external
                       />
                     )}
-                    
+
                     {site.status === 'running' && (
                       <Button
                         onClick={() => router.push(`/develop/${site.id}?siteId=${site.id}`)}
@@ -348,7 +295,7 @@ function SitesPageContent() {
                       />
                     )}
                   </div>
-                  
+
                   <Button
                     onClick={() => showDeleteAlert(site.id, site.name || 'Untitled Site')}
                     data-eid={generateClickEID('sites.site.delete')}

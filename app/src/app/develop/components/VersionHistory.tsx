@@ -6,6 +6,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import Tag from '@ux/tag'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
 import { logger } from '@/lib/request-context'
+import { getAppIdFromParams } from './utils'
 
 interface Commit {
   hash: string
@@ -15,19 +16,9 @@ interface Commit {
   date: string
 }
 
-interface VersionHistoryProps {
-  appId: string
-  isOpen: boolean
-}
-
-export default function VersionHistory({ 
-  appId, 
-  isOpen,
-}: VersionHistoryProps) {
+export default function VersionHistory() {
   const commitsListRef = useRef<HTMLUListElement>(null)
 
-  
-  // Use Git history store
   const {
     getCommits,
     isLoading,
@@ -35,8 +26,13 @@ export default function VersionHistory({
     loadGitHistory
   } = useGitHistoryStore()
 
-  // Use develop page store for selected commit
-  const { selectedCommit, selectCommit, isSelectingCommit } = useDevelopPageStore()
+  const {
+    selectedCommit,
+    selectCommit,
+    isSelectingCommit
+  } = useDevelopPageStore()
+
+  const appId = getAppIdFromParams()
 
   const commits = getCommits(appId)
   const loading = isLoading(appId)
@@ -44,10 +40,10 @@ export default function VersionHistory({
 
   // Load commits when component opens or appId changes
   useEffect(() => {
-    if (appId && isOpen) {
+    if (appId) {
       loadGitHistory(appId)
     }
-  }, [appId, isOpen, loadGitHistory])
+  }, [appId, loadGitHistory])
 
   // Auto-select the latest commit when commits load and no commit is selected
   useEffect(() => {
@@ -63,7 +59,7 @@ export default function VersionHistory({
       logger.debug('version-history.commit.selection-busy', { message: 'Commit selection already in progress, ignoring click' });
       return;
     }
-    
+
     if (selectedCommit?.hash === commit.hash) {
       // Deselect current commit (return to latest)
       await selectCommit(appId, null)
@@ -85,36 +81,34 @@ export default function VersionHistory({
     }).format(date)
   }
 
-  if (!isOpen) return null
-
-  const renderCommitItem = ({ 
-    key, 
-    message, 
-    description, 
-    isSelected, 
+  const renderCommitItem = ({
+    key,
+    message,
+    description,
+    isSelected,
     onClick
-  }: { 
-    key: string, 
-    message: string, 
-    description?: string | React.ReactNode, 
-    isSelected: boolean, 
+  }: {
+    key: string,
+    message: string,
+    description?: string | React.ReactNode,
+    isSelected: boolean,
     onClick: () => void
   }) => (
     <li
       key={key}
       className={`rounded-md overflow-auto border transition-colors duration-200 ${
         isSelected
-          ? 'border-intents-ux-boxHighContrast-borderColor' 
+          ? 'border-intents-ux-boxHighContrast-borderColor'
           : 'border-intents-ux-boxLowContrast-borderColor'
       }`}
     >
       <div className="flex flex-col">
         <button
-          onClick={onClick} 
+          onClick={onClick}
           disabled={isSelectingCommit}
           className={`relative pl-4 py-3 pr-8 text-left w-full transition-colors duration-200 ${
-            isSelectingCommit 
-              ? 'opacity-50 cursor-not-allowed' 
+            isSelectingCommit
+              ? 'opacity-50 cursor-not-allowed'
               : 'hover:bg-intents-ux-boxLowContrastOverlay-backgroundColor hover:cursor-pointer'
           }`}
         >
@@ -150,10 +144,10 @@ export default function VersionHistory({
 
         <ul ref={commitsListRef} className="space-y-2 max-h-full">
           { commits.map((commit) => {
-            return renderCommitItem({ 
+            return renderCommitItem({
               key: commit.hash,
               onClick: () => handleSelectCommit(commit),
-              message: commit.message, 
+              message: commit.message,
               description: (
                 <div className="flex items-center gap-2">
                   <Tag type="info">{commit.shortHash}</Tag>
@@ -167,7 +161,7 @@ export default function VersionHistory({
           })}
         </ul>
       </div>
-      
+
     </div>
   )
 }

@@ -26,7 +26,7 @@ interface AppConfig {
 
 /**
  * Auth hook supporting multiple authentication modes
- * 
+ *
  * Supports JWT (production), MOCK (development), and NONE (local dev) authentication.
  * Uses Gasket Auth for JWT mode and custom mock auth for development.
  */
@@ -38,7 +38,7 @@ export function useAuth(onShowMockLogin?: () => void) {
   // Check authentication mode (prefer server config if available)
   const authType = config?.auth?.authType || auth.getType();
   const isMockAuth = config?.auth?.isMock ?? auth.isMock();
-  const isAuthDisabled = config?.auth?.isDisabled ?? auth.isDisabled();
+  const isAuthDisabled = false; //config?.auth?.isDisabled ?? auth.isDisabled();
 
   // Mock auth integration
   const mockAuth = useMockAuth();
@@ -71,7 +71,7 @@ export function useAuth(onShowMockLogin?: () => void) {
 
   // Determine if we should use JWT auth based on config
   const shouldUseJWT = config?.auth?.isJWT ?? auth.isJWT();
-  
+
   // Use Gasket's useAuthState only for JWT mode - use server config if available
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const authState = shouldUseJWT ? useAuthState({
@@ -114,7 +114,7 @@ export function useAuth(onShowMockLogin?: () => void) {
     // No auth mode
     return {
       customerId: 'dev-customer',
-      shopperId: 'dev-shopper', 
+      shopperId: 'dev-shopper',
       accountName: 'Dev User',
       email: 'dev@example.com',
     };
@@ -131,7 +131,7 @@ export function useAuth(onShowMockLogin?: () => void) {
       mockAuth.logout();
       return;
     }
-    
+
     if (isAuthDisabled) {
       // No auth mode - nothing to do
       return;
@@ -164,7 +164,7 @@ export function useAuth(onShowMockLogin?: () => void) {
       }
       return { showModal: !onShowMockLogin };
     }
-    
+
     if (isAuthDisabled) {
       // No auth mode - nothing to do
       return { showModal: false };
@@ -198,15 +198,15 @@ export function useAuth(onShowMockLogin?: () => void) {
       return { isAuthenticated: true, isLoading: false }; // No auth required
     }
     if (isMockAuth) {
-      return { 
-        isAuthenticated: mockAuth.isAuthenticated, 
-        isLoading: mockAuth.isLoading 
+      return {
+        isAuthenticated: mockAuth.isAuthenticated,
+        isLoading: mockAuth.isLoading
       };
     }
     // JWT mode
-    return { 
-      isAuthenticated: authState.valid, 
-      isLoading: authState.status === 'loading' || configLoading 
+    return {
+      isAuthenticated: authState.valid,
+      isLoading: authState.status === 'loading' || configLoading
     };
   };
 
@@ -217,27 +217,27 @@ export function useAuth(onShowMockLogin?: () => void) {
     isAuthenticated,
     isLoading,
     authState: shouldUseJWT ? authState : null,
-    
+
     // Configuration
     config,
     gasketConfig: config, // Backward compatibility alias
     configLoading,
     configError,
-    
+
     // User information
     getUserEmail,
     getUserInfo,
-    
+
     // Auth actions
     handleSignIn,
     handleSignOut,
     authenticatedFetch,
-    
+
     // Auth status and mode
     isAuthDisabled,
     authType,
     isMockAuth,
-    
+
     // Mock auth state (for components that need it)
     mockAuth: isMockAuth ? mockAuth : null,
   };

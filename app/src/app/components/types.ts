@@ -22,14 +22,14 @@ export interface HeroSectionProps {
   error: string | null
   setError: (error: string | null) => void
   onShowMockLogin?: () => void
+  onExampleClick?: (prompt: string) => void
 }
 
 export interface HeroSectionRef {
   typeText: (text: string) => void
 }
 
-export interface ExamplesSectionProps {
-  examples: Example[]
+export interface HeroExamplesProps {
   onExampleClick: (prompt: string) => void
 }
 

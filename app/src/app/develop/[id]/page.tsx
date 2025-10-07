@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
-import { useParams, useSearchParams, useRouter } from 'next/navigation'
-import StreamingChatPane from '@/app/develop/components/StreamingChatPane'
-import PreviewPane from '@/app/develop/components/PreviewPaneSimple'
-import CodeEditor from '@/app/develop/components/CodeEditor'
+import { useSearchParams, useRouter } from 'next/navigation'
+import Header from '@/components/layout/Header'
+import ChatPane from '@/app/develop/components/chat/ChatPane'
+import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
-import Header, { HeaderRef } from './header'
-// Legacy messageService cleanup removed - now using streaming architecture
+import { getAppIdFromParams } from '@/app/develop/components/utils'
 import { ProtectedRoute } from '@/components/auth'
+import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { appService } from '@/services/AppService'
 import {
   useConversations,
@@ -20,19 +20,17 @@ import {
   useLoadConversationHistory,
   useStreamingConversationStore
 } from '@/stores/useStreamingConversationStore'
-import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
-import { postMessageToIframe } from '@/utils/postMessage'
 import { logImpressionEvent } from '@/utils/instrumentation'
+import { handlePreviewRefresh } from '@/app/develop/components/utils'
 
 function DevelopPageContent() {
-  const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const appId = params.id as string
+  const appId = getAppIdFromParams()
 
   // App store - for app lifecycle operations
   const { restartApp: appStoreRestartApp } = useAppStore()
@@ -51,15 +49,10 @@ function DevelopPageContent() {
 
   // Develop page store - for UI state and coordination
   const {
-    viewMode,
-    previewViewMode,
-    isSelectMode,
-    expandedPlan,
     chatPaneWidth,
     hasUnsavedChanges,
-    selectedCommit,
-    setHasUnsavedChanges,
-    toggleSelectMode,
+    isChatPaneCollapsed,
+    isMobile,
     toggleExpandedPlan,
     restartApp: restartAppFromStore,
     setChatPaneWidth,
@@ -67,7 +60,8 @@ function DevelopPageContent() {
     loadingPhase,
     app,
     site,
-    initializePage
+    initializePage,
+    initializeMobileDetection
   } = useDevelopPageStore()
 
   // Git history store - handles loading with smart retry logic
@@ -85,14 +79,18 @@ function DevelopPageContent() {
     scrollPosition?: { x: number; y: number }
   }>({})
 
-  const headerRef = useRef<HeaderRef>(null)
-
   // Streaming store state
   const isLoading = useIsLoading()
 
   useEffect(() => {
     logImpressionEvent({ eid: 'develop.page' })();
   }, [])
+
+  // Initialize mobile detection
+  useEffect(() => {
+    const cleanup = initializeMobileDetection()
+    return cleanup
+  }, [initializeMobileDetection])
 
   // Main initialization - orchestrated through store
   useEffect(() => {
@@ -103,14 +101,6 @@ function DevelopPageContent() {
       })
     }
   }, [appId, initializePage])
-
-
-  // MESSAGE HANDLER - Uses store for message handling
-  const handleSendMessage = useCallback(async (messageContent?: string) => {
-    // Message sending is now handled directly by ChatPane via useWebSocketWithConversationStore
-    // Just refresh token usage for now
-    headerRef.current?.refreshTokenUsage()
-  }, [])
 
   // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
@@ -283,8 +273,19 @@ function DevelopPageContent() {
         case 'MESSAGE_COMPLETE':
           // Handle message completion - refresh preview with state preservation
           setTimeout(() => {
-            handlePreviewRefresh()
+            handlePreviewRefresh({ lastIframeState })
           }, 500) // Small delay to ensure any file changes are processed
+          break
+        case 'error-fix-request':
+          // Handle error fix requests from the iframe error boundary
+          if (event.data.errorMessage) {
+            console.log('Error fix request received:', event.data.errorMessage)
+            setInputValue(`Please fix this error: ${event.data.errorMessage}`)
+            // Auto-send the error fix request
+            setTimeout(() => {
+              sendMessage(`Please fix this error: ${event.data.errorMessage}`, null)
+            }, 500)
+          }
           break
       }
     }
@@ -318,13 +319,12 @@ function DevelopPageContent() {
 
       // Auto-send and clear URL
       setTimeout(() => {
-        handleSendMessage(decodedMessage)
         const url = new URL(window.location.href)
         url.searchParams.delete('message')
         router.replace(url.pathname + url.search, { scroll: false })
       }, 500)
     }
-  }, [loadingPhase, searchParams, conversations.length, router, setInputValue, handleSendMessage])
+  }, [loadingPhase, searchParams, conversations.length, router, setInputValue])
 
   // Handle auto-send initial message for new apps (after conversation history is loaded)
   useEffect(() => {
@@ -357,7 +357,7 @@ function DevelopPageContent() {
     }, 500) // Wait 500ms for conversation history to load
 
     return () => clearTimeout(timer)
-  }, [loadingPhase, appId, site, app, conversations.length, searchParams, autoSendInitialMessage, handleSendMessage, isLoading])
+  }, [loadingPhase, appId, site, app, conversations.length, searchParams, autoSendInitialMessage, isLoading])
 
   // Load git history when page is ready
   useEffect(() => {
@@ -378,7 +378,7 @@ function DevelopPageContent() {
 
       // Refresh the preview after successful restart
       setTimeout(() => {
-        handlePreviewRefresh()
+        handlePreviewRefresh({ lastIframeState })
       }, 1000)
 
     } catch (error) {
@@ -398,101 +398,52 @@ function DevelopPageContent() {
     setChatPaneWidth(newWidth)
   }, [setChatPaneWidth])
 
-  const handlePreviewRefresh = () => {
-    // First request current visual context to capture scroll position
-    const iframe = document.querySelector('#preview-iframe') as HTMLIFrameElement
-    if (iframe && iframe.contentWindow) {
-      try {
-        postMessageToIframe(iframe, { type: 'REQUEST_VISUAL_CONTEXT' })
-      } catch (error) {
-        console.error('Cannot request visual context:', error)
-      }
-
-      // Wait a bit for the response, then refresh with whatever state we have
-      setTimeout(() => {
-        window.postMessage({
-          type: 'preview-refresh',
-          preserveState: lastIframeState.current
-        }, window.location.origin)
-      }, 100) // Short delay to allow visual context response
-    } else {
-      // No iframe available, just refresh
-      window.postMessage({ type: 'preview-refresh' }, window.location.origin)
-    }
-  }
-
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <Header
-        ref={headerRef}
-        app={{
-          ...app,
-          name: site?.name || app?.name || `App ${appId}` // Prioritize site name over app name
-        }}
-        showUsageCost={showUsageCost}
-        onPreviewRefresh={handlePreviewRefresh}
-        onRestartServer={handleRestartServer}
-      />
+    <div className="h-screen flex flex-col">
+      <Header location="develop" />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Chat Panel */}
-        <div
-          className="flex flex-col border-r flex-shrink-0"
-          style={{
-            width: `${chatPaneWidth}px`,
-            minWidth: `${chatPaneWidth}px`,
-            maxWidth: `${chatPaneWidth}px`
-          }}
-
-        >
-          <StreamingChatPane
-            expandedPlan={expandedPlan}
-            isSelectMode={isSelectMode}
-            onKeyPress={() => {}}
-            onToggleSelectMode={toggleSelectMode}
-            onToggleExpandedPlan={toggleExpandedPlan}
-            appId={appId}
-          />
+      {isMobile ? (
+        // Mobile layout with tabs
+        <div className="flex-1 flex flex-col min-h-0 relative">
+          <ChatPane />
         </div>
-
-        {/* Resizable Divider */}
-        <ResizableDivider
-          onResize={handlePanelResize}
-          initialLeftWidth={chatPaneWidth}
-          minLeftWidth={300}
-          minRightWidth={400}
-        />
-
-        {/* Code/Preview Panel */}
-        <div className="flex-1 bg-white flex flex-col">
-          {/* Code/Preview Area - Keep both mounted to preserve state */}
-          <div className="flex-1 overflow-hidden relative">
-            {/* Preview Pane */}
-            <div className={`absolute inset-0 ${viewMode === 'preview' ? 'block' : 'hidden'}`}>
-              <PreviewPane
-                appId={appId}
-                viewMode={previewViewMode}
-                selectedCommit={selectedCommit || undefined}
-                onRetry={() => {
-                  // Refresh app data when retrying
-                  // App data refreshing is now handled by the store
-                }}
+      ) : (
+        // Desktop layout with resizable panels
+        <div className="flex-1 min-h-0 overflow-hidden p-4 flex">
+          {!isChatPaneCollapsed && (
+            <div
+              className="flex flex-col flex-shrink-0"
+              style={{
+                width: `${chatPaneWidth}px`,
+                minWidth: `${chatPaneWidth}px`,
+                maxWidth: `${chatPaneWidth}px`
+              }}
+            >
+              <ChatPane
+                onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
               />
-
             </div>
+          )}
 
-            {/* Code Editor */}
-            <div className={`absolute inset-0 ${viewMode === 'code' ? 'block' : 'hidden'}`}>
-              <CodeEditor
-                appId={appId}
-                onUnsavedChanges={setHasUnsavedChanges}
-              />
+          {!isChatPaneCollapsed && (
+            <ResizableDivider
+              onResize={handlePanelResize}
+              minLeftWidth={380}
+              minRightWidth={400}
+            />
+          )}
+
+          <div className="flex-1 flex flex-col">
+            <div className="flex-1 overflow-hidden relative">
+              <div className="absolute inset-0">
+                <PreviewPane
+                  onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

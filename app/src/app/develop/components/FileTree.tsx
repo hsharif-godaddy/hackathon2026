@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import clsx from 'clsx'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -40,22 +41,7 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
     if (item.type === 'folder') {
       return expandedFolders.has(item.path) ? FolderOpenIcon : FolderIcon
     }
-    
-    // File icons based on extension
-    const ext = item.extension?.toLowerCase()
-    switch (ext) {
-      case 'tsx':
-      case 'jsx':
-      case 'ts':
-      case 'js':
-      case 'json':
-      case 'md':
-      case 'css':
-      case 'scss':
-      case 'html':
-      default:
-        return DocumentIcon
-    }
+    return DocumentIcon
   }
 
   const getDepthPadding = (depth: number) => `${depth * 12 + 8}px`
@@ -68,9 +54,13 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
     return (
       <div key={item.path}>
         <div
-          className={`flex items-center px-2 py-1 hover:bg-gray-100 cursor-pointer text-sm ${
-            isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
-          }`}
+          className={clsx(
+            "flex items-center pr-2 py-1 hover:bg-intents-ux-box-backgroundColor cursor-pointer text-sm",
+            {
+              "bg-intents-ux-box-backgroundColor text-intents-ux-box-foregroundColor": isSelected,
+              "opacity-75": !isSelected
+            }
+          )}
           style={{ paddingLeft: getDepthPadding(depth) }}
           onClick={() => {
             if (item.type === 'folder') {
@@ -82,27 +72,13 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
         >
           {item.type === 'folder' && (
             isExpanded ? (
-              <ChevronDownIcon className="w-4 h-4 mr-1 text-gray-400" />
+              <ChevronDownIcon className="w-4 h-4 mr-1" />
             ) : (
-              <ChevronRightIcon className="w-4 h-4 mr-1 text-gray-400" />
+              <ChevronRightIcon className="w-4 h-4 mr-1" />
             )
           )}
           {item.type === 'file' && <div className="w-4 h-4 mr-1" />}
-          
-          <Icon className={`w-4 h-4 mr-2 ${
-            item.type === 'folder' 
-              ? isExpanded ? 'text-blue-500' : 'text-gray-500'
-              : item.extension === 'tsx' || item.extension === 'jsx'
-                ? 'text-blue-600'
-                : item.extension === 'ts' || item.extension === 'js'
-                ? 'text-yellow-600'
-                : item.extension === 'json'
-                ? 'text-green-600'
-                : item.extension === 'css' || item.extension === 'scss'
-                ? 'text-pink-600'
-                : 'text-gray-500'
-          }`} />
-          
+          <Icon className="w-4 h-4 mr-2" />
           <span className="truncate flex-1">{item.name}</span>
         </div>
 
@@ -117,10 +93,7 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
   }
 
   return (
-    <div className="h-full overflow-auto bg-gray-50 border-r border-gray-200">
-      <div className="p-3 border-b border-gray-200 bg-white">
-        <h3 className="text-sm font-medium text-gray-900">Project Files</h3>
-      </div>
+    <div className="h-full overflow-auto ">
       <div className="py-2">
         {files.map(file => renderFileItem(file))}
       </div>

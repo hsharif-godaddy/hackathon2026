@@ -1,5 +1,5 @@
 export { default as HeroSection } from './HeroSection'
-export { default as ExamplesSection } from './ExamplesSection'
+export { default as ExamplesSection } from './HeroExamples'
 export { default as BuiltWithSection } from './BuiltWithSection'
 export { default as Footer } from './Footer'
 export * from './color'

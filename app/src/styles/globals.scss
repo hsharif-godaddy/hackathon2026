@@ -1,7 +1,6 @@
 @use "tailwindcss";
 
 @use "./godaddy.scss";
-@use "./uxcore-intents.css";
 @use "./uxcore-icons.css";
 @use "./uxcore-components.css";
 
@@ -11,8 +10,11 @@
   --color-ai: #613EA3;
   --color-ai-light: #744BC4;
   --color-ai-dark: #462A72;
+  --color-ai-dark-transparent: #37294E80;
   --color-ring-ai: #613EA3;
-  
+
+  --color-light-purple: #37294E33;
+
   /* Shadcn color mappings */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -33,6 +35,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  --radius-xxl: 2rem;
 }
 
 @layer base {
@@ -40,7 +44,7 @@
     /* GoDaddy Airo Theme */
     --ref-orb-w: 1000;
     --ref-orb-h: 694;
-  
+
     /* Shadcn Light Theme */
     --radius: 0.65rem;
     --background: oklch(1 0 0);
@@ -74,8 +78,11 @@
     --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
     --sidebar-border: oklch(0.92 0.004 286.32);
     --sidebar-ring: oklch(0.606 0.25 292.717);
+
+    --card-height: 65vh;
+    --card-width: calc(var(--card-height) / 1.5);
   }
-  
+
   /* Shadcn Dark Theme */
   .dark {
     --background: oklch(0.141 0.005 285.823);
@@ -114,11 +121,14 @@
   * {
     @apply border-border;
   }
-  
+
   body {
-    font-family: gdsherpa, "gdsherpaVF4 fallback", Helvetica, Arial, sans-serif;
     background-color: var(--ux-cao06b, white);
     color: var(--ux-1leynsm, black);
+  }
+
+  .gd-sage {
+    font-family: "GD Sage", gdsherpa, "gdsherpaVF4 fallback", Helvetica, Arial, sans-serif !important;
   }
 
   /* AI text gradient */
@@ -136,6 +146,72 @@
       background: linear-gradient(135deg, #E9E4F2 0%, #D3C1F7 100%);
     }
   }
+
+  .header-bg {
+    background: radial-gradient(167.97% 140.89% at 100% 0%, rgba(118, 65, 237, 0.15) 0%, rgba(0, 0, 0, 0) 100%), #111;
+  }
+
+  .footer-bg {
+    background: conic-gradient(from -49deg at 47.65% 36.14%, #8EF9FF 75deg, #B375FF 193deg, #FF75BC 267deg, #C290FF 335deg);
+    opacity: .4;
+    filter: blur(400px);
+    width: 3600px;
+    height: 3780px;
+    position: absolute;
+    bottom: -2600px;
+    left: 50%;
+    transform: translateX(-40%);
+    z-index: 1;
+  }
+
+  .feature-icon {
+    opacity: 0.75;
+  }
+
+  .feature:nth-child(1) {
+    .feature-icon {
+      color: #FF75BC;
+      background-color: #FF75BC33;
+    }
+  }
+  .feature:nth-child(2) {
+    .feature-icon {
+      color: #C290FF;
+      background-color: #C290FF33;
+    }
+  }
+  .feature:nth-child(3) {
+    .feature-icon {
+      color: #8EF9FF;
+      background-color: #8EF9FF33;
+    }
+  }
+
+  .glowing-input {
+    position: relative;
+  }
+
+  .glowing-input::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    right: -4px;
+    bottom: -4px;
+    border-radius: 2rem;
+    background: linear-gradient(45deg, #FF75BC, #C290FF, #8EF9FF, #B375FF, #FF75BC);
+    background-size: 400% 400%;
+    animation: gradientShift 5s ease infinite;
+    filter: blur(12px);
+    opacity: 1;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  .glowing-input .ux-box {
+    position: relative;
+    z-index: 1;
+  }
 }
 
 @layer utilities {
@@ -143,75 +219,75 @@
   .animate-in {
     animation-fill-mode: both;
   }
-  
+
   .animate-out {
     animation-fill-mode: both;
   }
-  
+
   .duration-150 {
     animation-duration: 150ms;
   }
-  
+
   .duration-300 {
     animation-duration: 300ms;
   }
-  
+
   .duration-500 {
     animation-duration: 500ms;
   }
-  
+
   .fade-in-0 {
     animation-name: fade-in;
     animation-duration: 0ms;
   }
-  
+
   .fade-out-0 {
     animation-name: fade-out;
     animation-duration: 0ms;
   }
-  
+
   .slide-in-from-top {
     animation-name: slide-in-from-top;
     animation-timing-function: ease-out;
     animation-fill-mode: both;
   }
-  
+
   .slide-in-from-right {
     animation-name: slide-in-from-right;
     animation-timing-function: ease-out;
     animation-fill-mode: both;
   }
-  
+
   .slide-in-from-bottom {
     animation-name: slide-in-from-bottom;
     animation-timing-function: ease-out;
     animation-fill-mode: both;
   }
-  
+
   .slide-in-from-left {
     animation-name: slide-in-from-left;
     animation-timing-function: ease-out;
     animation-fill-mode: both;
   }
-  
+
   .slide-out-to-top {
     animation-name: slide-out-to-top;
     animation-timing-function: ease-in;
     animation-fill-mode: both;
   }
-  
+
   .slide-out-to-right {
     animation-name: slide-out-to-right;
     animation-timing-function: ease-in;
     animation-fill-mode: both;
   }
-  
+
   .slide-out-to-bottom {
     animation-name: slide-out-to-bottom;
     animation-timing-function: ease-in;
     animation-fill-mode: both;
   }
-  
+
   .slide-out-to-left {
     animation-name: slide-out-to-left;
     animation-timing-function: ease-in;
@@ -223,55 +299,55 @@
   .data-\[state\=open\]\:animate-in[data-state="open"] {
     animation-fill-mode: both;
   }
-  
+
   [data-state="closed"].animate-out,
   .data-\[state\=closed\]\:animate-out[data-state="closed"] {
     animation-fill-mode: both;
   }
-  
+
   [data-state="open"].duration-300,
   .data-\[state\=open\]\:duration-300[data-state="open"] {
     animation-duration: 300ms;
   }
-  
+
   [data-state="closed"].duration-300,
   .data-\[state\=closed\]\:duration-300[data-state="closed"] {
     animation-duration: 300ms;
   }
-  
+
   [data-state="open"].slide-in-from-right,
   .data-\[state\=open\]\:slide-in-from-right[data-state="open"] {
     animation-name: slide-in-from-right;
     animation-timing-function: ease-out;
     animation-fill-mode: both;
   }
-  
+
   [data-state="closed"].slide-out-to-right,
   .data-\[state\=closed\]\:slide-out-to-right[data-state="closed"] {
     animation-name: slide-out-to-right;
     animation-timing-function: ease-in;
     animation-fill-mode: both;
   }
-  
+
   [data-state="open"].fade-in-0,
   .data-\[state\=open\]\:fade-in-0[data-state="open"] {
     animation-name: fade-in;
     animation-duration: 0ms;
   }
-  
+
   [data-state="closed"].fade-out-0,
   .data-\[state\=closed\]\:fade-out-0[data-state="closed"] {
     animation-name: fade-out;
     animation-duration: 0ms;
   }
-  
+
   [data-state="open"].slide-in-from-left,
   .data-\[state\=open\]\:slide-in-from-left[data-state="open"] {
     animation-name: slide-in-from-left;
     animation-timing-function: ease-out;
     animation-fill-mode: both;
   }
-  
+
   [data-state="closed"].slide-out-to-left,
   .data-\[state\=closed\]\:slide-out-to-left[data-state="closed"] {
     animation-name: slide-out-to-left;
@@ -284,52 +360,52 @@
     from { opacity: 0; }
     to { opacity: 1; }
   }
-  
+
   @keyframes fade-out {
     from { opacity: 1; }
     to { opacity: 0; }
   }
-  
+
   @keyframes slide-in-from-top {
     from { transform: translateY(-100%); }
     to { transform: translateY(0); }
   }
-  
+
   @keyframes slide-in-from-right {
     from { transform: translateX(100%); }
     to { transform: translateX(0); }
   }
-  
+
   @keyframes slide-in-from-bottom {
     from { transform: translateY(100%); }
     to { transform: translateY(0); }
   }
-  
+
   @keyframes slide-in-from-left {
     from { transform: translateX(-100%); }
     to { transform: translateX(0); }
   }
-  
+
   @keyframes slide-out-to-top {
     from { transform: translateY(0); }
     to { transform: translateY(-100%); }
   }
-  
+
   @keyframes slide-out-to-right {
     from { transform: translateX(0); }
     to { transform: translateX(100%); }
   }
-  
+
   @keyframes slide-out-to-bottom {
     from { transform: translateY(0); }
     to { transform: translateY(100%); }
   }
-  
+
   @keyframes slide-out-to-left {
     from { transform: translateX(0); }
     to { transform: translateX(-100%); }
   }
-  
+
   @keyframes reverse-spin {
     from {
       transform: rotate(360deg);
@@ -339,8 +415,31 @@
     }
   }
 
+  @keyframes gradient {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
   .animate-reverse-spin {
     animation: reverse-spin 1s linear infinite;
+  }
+
+  .animate-gradient {
+    animation: gradient 8s linear infinite;
+  }
+
+  /* Screen reader only utility */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 }
 

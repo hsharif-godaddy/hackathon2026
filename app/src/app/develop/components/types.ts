@@ -1,7 +1,7 @@
 export interface ToolCall {
   id: string
   tool_name: string
-  tool_args?: string | object // Can be JSON string or object
+  tool_args?: string | object
   tool_result?: string
   error?: string
   start_time?: number
@@ -34,17 +34,14 @@ export interface Message {
   tool_name?: string
   tool_result?: string
   message?: string
-  // Tool call specific fields (legacy - keeping for compatibility)
   tool_call_id?: string
-  tool_args?: string | object // Can be JSON string or object
+  tool_args?: string | object
   start_time?: number
   end_time?: number
   duration_ms?: number
   tool_status?: 'running' | 'success' | 'error'
   error?: string
-  // New integrated response structure
   tool_calls?: ToolCall[]
-  // New segmented structure for interleaved content and tools
   segments?: MessageSegment[]
   response_start_time?: number
   response_end_time?: number
@@ -90,6 +87,25 @@ export interface AiEditContext {
   devContext: DevContext
 }
 
-// Re-export VisualContext from its proper location
-export type { VisualContext } from './visualContextCapture'
+export enum ViewMode {
+  PREVIEW = 'preview',
+  CODE = 'code'
+}
 
+export enum PreviewViewMode {
+  DESKTOP = 'desktop',
+  MOBILE = 'mobile'
+}
+
+export enum ChatTab {
+  APPS = 'apps',
+  PREVIEW = 'preview',
+  CHAT = 'chat',
+  STYLES = 'styles',
+  MEDIAS = 'medias',
+  TODO = 'todo',
+  HISTORY = 'history',
+  SETTINGS = 'settings'
+}
+
+export type { VisualContext } from './visualContextCapture'

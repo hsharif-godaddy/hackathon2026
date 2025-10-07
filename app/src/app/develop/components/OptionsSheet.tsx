@@ -21,7 +21,7 @@ export default function OptionsSheet({
 }: OptionsSheetProps) {
   const { selectedCommit } = useDevelopPageStore()
   const { isRestoring, restoreCommit, refreshGitHistory, getCommits } = useGitHistoryStore()
-  
+
   const restoring = isRestoring(appId)
   const commits = getCommits(appId)
   const latestCommit = commits.length > 0 ? commits[0] : null
@@ -29,10 +29,10 @@ export default function OptionsSheet({
 
   const handleRestoreConfirm = async () => {
     if (!selectedCommit) return
-    
+
     // Execute restore operation
     const success = await restoreCommit(appId, selectedCommit.hash)
-    
+
     if (success) {
       refreshGitHistory(appId)
     }
@@ -49,10 +49,7 @@ export default function OptionsSheet({
     switch (isOpenTab) {
       case OptionsSheetTab.HISTORY:
         return (
-          <VersionHistory
-            appId={appId}
-            isOpen={true}
-          />
+          <VersionHistory />
         )
       default:
         return <div>Content not found</div>
@@ -67,11 +64,11 @@ export default function OptionsSheet({
         <SheetHeader>
           <SheetTitle>{renderTitle()}</SheetTitle>
         </SheetHeader>
-        
+
         <div className="mt-4 flex-1 overflow-hidden">
           {renderContent()}
         </div>
-        
+
         {isOpenTab === OptionsSheetTab.HISTORY && isViewingHistoricalCommit && (
           <div className="border-t border-gray-200 p-4 mt-auto">
             <Button
@@ -86,7 +83,7 @@ export default function OptionsSheet({
             </Button>
           </div>
         )}
-        
+
       </SheetContent>
     </Sheet>
   )
