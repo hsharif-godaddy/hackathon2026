@@ -1,11 +1,11 @@
 import { logger } from '@/lib/request-context';
 import { NextRequest, NextResponse } from 'next/server'
-import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory'
-import { 
-  withCustomerAuth, 
+import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane/adapter-factory'
+import {
+  withCustomerAuth,
   customerHasAccount,
   createCustomerAuthError,
-  type CustomerAuthContext 
+  type CustomerAuthContext
 } from '@/lib/customer-auth'
 
 // Force dynamic rendering to prevent database calls during build
@@ -18,6 +18,53 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
   try {
     const { user } = authContext
     const { id: serverId } = await params
+    const isV2 = isV2ControlPlaneEnabled()
+
+    // For V2, get site directly from control plane adapter
+    if (isV2) {
+      const adapter = getControlPlaneAdapter()
+      const jwt = authContext.jwt || ''
+
+      // In V2, serverId IS the siteId (same as appId) - there are no separate "servers"
+      // V2 apps run in the agent service, not as standalone dev servers
+      const site = await adapter.getSite(serverId, jwt)
+
+      if (!site) {
+        return NextResponse.json({ error: 'Server not found' }, { status: 404 })
+      }
+
+      // In V2, return the preview URL even if status is 'creating' (optimistic URL construction)
+      // The URL is constructed early so the iframe can start loading
+      if (site.preview_url || site.agent_url) {
+        const containerUrl = site.preview_url || site.agent_url
+        const url = new URL(containerUrl)
+        const port = parseInt(url.port) || (site.preview_url ? 5000 : 4000)
+
+        const server = {
+          appId: site.id,
+          port: port,
+          url: containerUrl,
+          status: site.status === 'running' ? ('running' as const) : ('starting' as const),
+          lastActivity: site.updated_at
+        }
+
+        return NextResponse.json({ server })
+      } else {
+        // No URL yet (early in creation process)
+        return NextResponse.json({
+          server: {
+            appId: site.id,
+            port: null,
+            url: null,
+            status: site.status,
+            lastActivity: site.updated_at
+          }
+        })
+      }
+    }
+
+    // Legacy: Use SiteAdapterFactory
+    const { SiteAdapterFactory } = await import('@/lib/site-adapters/SiteAdapterFactory')
     const siteAdapter = SiteAdapterFactory.getInstance()
 
     // Check auth requirements
@@ -28,15 +75,15 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
     // First check if there's a specific running dev server for this app
     const servers = await siteAdapter.getRunningServers()
     const runningServer = servers.find(server => server.appId === serverId)
-    
+
     if (runningServer) {
       // Found a dedicated dev server (traditional development mode)
       return NextResponse.json({ server: runningServer })
     }
-    
+
     // Fallback: check if there's a site with agent URL (agent-based mode)
     const site = await siteAdapter.getSiteById(serverId)
-    
+
     if (!site) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 })
     }
@@ -55,7 +102,7 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
       }
       const url = new URL(containerUrl)
       const port = parseInt(url.port) || (site.preview_url ? 5000 : 4000)
-      
+
       const server = {
         appId: site.id,
         port: port,
@@ -63,11 +110,11 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
         status: 'running' as const,
         lastActivity: site.updated_at
       }
-      
+
       return NextResponse.json({ server })
     } else {
       // Site exists but is not running
-      return NextResponse.json({ 
+      return NextResponse.json({
         server: {
           appId: site.id,
           port: null,

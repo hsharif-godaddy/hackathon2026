@@ -1,0 +1,34 @@
+import { IControlPlaneAdapter } from './types';
+import { V2ControlPlaneAdapter } from './v2-control-plane-adapter';
+import { LegacyControlPlaneAdapter } from './legacy-control-plane-adapter';
+import { logger } from '@/lib/request-context';
+
+/**
+ * Control Plane Adapter Factory
+ *
+ * Determines which control plane adapter to use based on feature flag.
+ * Enables gradual migration from legacy (database + Nomad/SQS) to V2 (mgmt-airo).
+ *
+ * Feature Flag: USE_V2_CONTROL_PLANE
+ * - true: Use V2ControlPlaneAdapter (mgmt-airo + mgmt-hosting)
+ * - false: Use LegacyControlPlaneAdapter (database + Nomad/SQS)
+ */
+export function getControlPlaneAdapter(): IControlPlaneAdapter {
+  const useV2 = process.env.USE_V2_CONTROL_PLANE === 'true';
+
+  if (useV2) {
+    logger.info('control-plane.factory', { adapter: 'v2-mgmt-airo' });
+    return new V2ControlPlaneAdapter();
+  }
+
+  logger.info('control-plane.factory', { adapter: 'legacy-database' });
+  return new LegacyControlPlaneAdapter();
+}
+
+/**
+ * Check if V2 control plane is enabled
+ */
+export function isV2ControlPlaneEnabled(): boolean {
+  return process.env.USE_V2_CONTROL_PLANE === 'true';
+}
+

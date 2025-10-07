@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { postMessageToIframe } from '@/utils/postMessage'
 import { appService, type App } from '@/services/AppService'
@@ -84,7 +85,8 @@ interface DevelopPageStore {
 }
 
 export const useDevelopPageStore = create<DevelopPageStore>()(
-  immer((set, get) => ({
+  devtools(
+    immer((set, get) => ({
     // Initial UI state
     viewMode: 'preview',
     previewViewMode: 'desktop',
@@ -148,6 +150,30 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
 
       logger.info('develop-store.init.start', { message: 'Starting page initialization', appId })
+      
+      // Stop any ongoing site creation polling to prevent overlapping requests
+      const { useSiteCreationStore } = await import('./useSiteCreationStore')
+      const creationStore = useSiteCreationStore.getState()
+      if (creationStore.siteId === appId || creationStore.realAppId === appId) {
+        logger.info('develop-store.init.cleanup-creation-polling', { 
+          message: 'Stopping site creation polling to prevent overlapping requests',
+          creationSiteId: creationStore.siteId,
+          creationRealAppId: creationStore.realAppId,
+          developAppId: appId
+        })
+        creationStore.cleanup()
+      }
+      
+      // Reset streaming conversation store before mounting components
+      const { useStreamingConversationStore } = await import('./useStreamingConversationStore')
+      const streamingStore = useStreamingConversationStore.getState()
+      logger.debug('develop-store.init.reset-streaming', { 
+        message: 'Resetting streaming store for new app',
+        oldAppId: streamingStore.currentAppId,
+        newAppId: appId
+      })
+      streamingStore.setCurrentAppId(appId)
+      
       get().resetForNewApp(appId)
 
       try {
@@ -155,7 +181,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         set((state) => { state.loadingPhase = 'loading-app' })
         logger.debug('develop-store.init.loading-app', { message: 'Loading app data' })
         
-        const [appData, configData] = await Promise.all([
+        const [appData] = await Promise.all([
           appService.getApp(appId),
           appService.getConfig(appId)
         ])
@@ -396,5 +422,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       
       set((state) => { state.viewMode = newMode })
     }
-  }))
+  })),
+    { name: 'DevelopPageStore' }
+  )
 )

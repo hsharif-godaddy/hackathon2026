@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import { appFetch } from '@/lib/gasket-config'
@@ -59,7 +60,8 @@ const MAX_POLLS = {
 }
 
 export const useServerPollingStore = create<ServerPollingStore>()(
-  immer((set, get) => ({
+  devtools(
+    immer((set, get) => ({
     servers: new Map(),
     
     startPollingForServer: (appId: string) => {
@@ -121,7 +123,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
       const { servers } = get()
       
       // Stop all polling
-      for (const [appId, pollingState] of servers) {
+      for (const [_appId, pollingState] of servers) {
         if (pollingState.timeoutId) {
           clearTimeout(pollingState.timeoutId)
         }
@@ -245,7 +247,9 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         return POLLING_INTERVALS.slowest
       }
     }
-  }))
+  })),
+    { name: 'ServerPollingStore' }
+  )
 )
 
 // Cleanup function for use in components

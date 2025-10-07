@@ -1,0 +1,651 @@
+/**
+ * AiroMgmtClient Tests
+ * 
+ * Tests the low-level HTTP client for mgmt-airo API.
+ * Focuses on HTTP concerns, retry logic, and error handling.
+ */
+
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { AiroMgmtClient } from '../client';
+import type { 
+  AiroMgmtClientConfig,
+  AiroSubscription,
+  AiroSystem,
+  AiroApp,
+  AiroAppDetails,
+  AiroJobStatus,
+  AiroSignupPayload,
+  AiroCreateAppPayload,
+  AiroUpdateAppPayload
+} from '../types';
+
+/**
+ * Mock fetch globally
+ */
+const mockFetch = vi.fn();
+global.fetch = mockFetch as any;
+
+/**
+ * Mock logger to avoid console noise
+ */
+vi.mock('@/lib/request-context', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  }
+}));
+
+/**
+ * Mock jwt-utils to return test customer ID
+ */
+vi.mock('@/lib/utils/jwt-utils', () => ({
+  extractCustomerId: vi.fn(() => 'customer-123'),
+  decodeJWT: vi.fn(() => ({ cid: 'customer-123' }))
+}));
+
+/**
+ * Test fixtures
+ */
+const MOCK_CONFIG: AiroMgmtClientConfig = {
+  baseUrl: 'https://mgmt.test.com',
+  jwt: 'fake-jwt-for-testing-only',
+  maxRetries: 3,
+  retryDelayMs: 100
+};
+
+const MOCK_SUBSCRIPTION: AiroSubscription = {
+  id: 'sub-123',
+  productId: 'aab-v1',
+  customerId: 'customer-123',
+  status: 'active',
+  isTrial: true,
+  entitlementId: 'ent-456',
+  createdAt: '2025-01-01T00:00:00Z',
+  updatedAt: '2025-01-01T00:00:00Z'
+};
+
+const MOCK_SYSTEM: AiroSystem = {
+  subscriptionId: 'sub-123',
+  systemId: 'sys-456',
+  datacenter: 'sxb1',
+  createdAt: '2025-01-01T00:00:00Z',
+  updatedAt: '2025-01-01T00:00:00Z'
+};
+
+const MOCK_APP: AiroApp = {
+  id: 'app-789',
+  systemId: 'sys-456',
+  subscriptionId: 'sub-123',
+  appTemplateName: 'default',
+  status: 'active',
+  createdAt: '2025-01-01T00:00:00Z',
+  updatedAt: '2025-01-01T00:00:00Z',
+  urls: {
+    agent: 'https://agent-app789.ab.sxb1.test-secureserver.net',
+    preview: 'https://preview-app789.ab.sxb1.test-secureserver.net'
+  },
+  variables: {
+    title: 'Test App',
+    initialPrompt: 'Create a test app'
+  }
+};
+
+const MOCK_APP_DETAILS: AiroAppDetails = {
+  ...MOCK_APP,
+  variables: {
+    title: 'Test App',
+    initialPrompt: 'Create a test app',
+    customVar: 'custom value'
+  }
+};
+
+const MOCK_JOB_STATUS: AiroJobStatus = {
+  statusJobId: 'job-123',
+  status: 'completed',
+  apps: [MOCK_APP]
+};
+
+describe('AiroMgmtClient', () => {
+  let client: AiroMgmtClient;
+
+  beforeEach(() => {
+    client = new AiroMgmtClient(MOCK_CONFIG);
+    mockFetch.mockClear();
+  });
+
+  afterEach(() => {
+    mockFetch.mockReset();
+  });
+
+  describe('constructor', () => {
+    it('should initialize with provided config', () => {
+      expect(client).toBeInstanceOf(AiroMgmtClient);
+    });
+
+    it('should use default values for optional config', () => {
+      const minimalConfig = {
+        baseUrl: 'https://test.com',
+        jwt: 'test-jwt'
+      };
+      const minimalClient = new AiroMgmtClient(minimalConfig);
+      expect(minimalClient).toBeInstanceOf(AiroMgmtClient);
+    });
+  });
+
+  describe('checkCustomer', () => {
+    it('should return customer exists when API returns 200', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ customerId: 'customer-123' })
+      });
+
+      const result = await client.checkCustomer();
+
+      expect(result.exists).toBe(true);
+      expect(result.customerId).toBe('customer-123');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/customers/me',
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({
+            'Authorization': `sso-jwt ${MOCK_CONFIG.jwt}`
+          })
+        })
+      );
+    });
+
+    it('should return customer does not exist when API returns 404', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => 'Not Found'
+      });
+
+      const result = await client.checkCustomer();
+
+      expect(result.exists).toBe(false);
+      expect(result.customerId).toBe('customer-123'); // Extracted from JWT
+    });
+
+    it('should handle network errors gracefully', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      const result = await client.checkCustomer();
+
+      expect(result.exists).toBe(false);
+    });
+  });
+
+  describe('getSubscriptions', () => {
+    it('should return subscriptions array when API returns array', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [MOCK_SUBSCRIPTION]
+      });
+
+      const result = await client.getSubscriptions();
+
+      expect(result).toEqual([MOCK_SUBSCRIPTION]);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+
+    it('should return subscriptions array when API returns object with subscriptions key', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ subscriptions: [MOCK_SUBSCRIPTION] })
+      });
+
+      const result = await client.getSubscriptions();
+
+      expect(result).toEqual([MOCK_SUBSCRIPTION]);
+    });
+
+    it('should return empty array when API returns empty response', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({})
+      });
+
+      const result = await client.getSubscriptions();
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('getActiveSubscription', () => {
+    it('should return first subscription when subscriptions exist', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [MOCK_SUBSCRIPTION]
+      });
+
+      const result = await client.getActiveSubscription();
+
+      expect(result).toEqual(MOCK_SUBSCRIPTION);
+    });
+
+    it('should return null when no subscriptions exist', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => []
+      });
+
+      const result = await client.getActiveSubscription();
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getSystems', () => {
+    it('should return systems with mapped id field', async () => {
+      const systemsResponse = [{
+        ...MOCK_SYSTEM,
+        systemId: 'sys-456'
+      }];
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => systemsResponse
+      });
+
+      const result = await client.getSystems('sub-123');
+
+      expect(result).toEqual([{
+        ...MOCK_SYSTEM,
+        id: 'sys-456'
+      }]);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+
+    it('should handle systems wrapped in object', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ systems: [MOCK_SYSTEM] })
+      });
+
+      const result = await client.getSystems('sub-123');
+
+      expect(result).toEqual([{
+        ...MOCK_SYSTEM,
+        id: MOCK_SYSTEM.systemId
+      }]);
+    });
+  });
+
+  describe('getAppsForSystem', () => {
+    it('should return apps for specific system', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ apps: [MOCK_APP] })
+      });
+
+      const result = await client.getAppsForSystem('sub-123', 'sys-456');
+
+      expect(result).toEqual([MOCK_APP]);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+
+    it('should return empty array when no apps exist', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ apps: [] })
+      });
+
+      const result = await client.getAppsForSystem('sub-123', 'sys-456');
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('getAllAppsForCustomer', () => {
+    it('should return all apps from bulk endpoint', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ apps: [MOCK_APP] })
+      });
+
+      const result = await client.getAllAppsForCustomer();
+
+      expect(result).toEqual([MOCK_APP]);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/customers/me/apps',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+
+    it('should return empty array when no apps exist', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ apps: [] })
+      });
+
+      const result = await client.getAllAppsForCustomer();
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('getApp', () => {
+    it('should return app details with retry on 404', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_APP_DETAILS
+      });
+
+      const result = await client.getApp('sub-123', 'sys-456', 'app-789');
+
+      expect(result).toEqual(MOCK_APP_DETAILS);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+  });
+
+  describe('getAiroJobApps', () => {
+    it('should return job status with apps', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_JOB_STATUS
+      });
+
+      const result = await client.getAiroJobApps('job-123');
+
+      expect(result).toEqual(MOCK_JOB_STATUS);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/jobs/job-123/apps',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+  });
+
+  describe('signup', () => {
+    it('should create new subscription with app', async () => {
+      const signupPayload: AiroSignupPayload = {
+        datacenter: 'sxb1',
+        isTrial: true,
+        productId: 'aab-v1',
+        initialPrompt: 'Create a test app',
+        appConfigs: [{
+          templateName: 'default',
+          environments: ['dev'],
+          variables: {
+            title: 'Test App',
+            initialPrompt: 'Create a test app'
+          }
+        }]
+      };
+
+      const signupResponse = { statusJobId: 'job-123' };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => signupResponse
+      });
+
+      const result = await client.signup(signupPayload);
+
+      expect(result).toEqual(signupResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/signup',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json'
+          }),
+          body: JSON.stringify(signupPayload)
+        })
+      );
+    });
+  });
+
+  describe('createApp', () => {
+    it('should add app to existing subscription', async () => {
+      const createAppPayload: AiroCreateAppPayload = {
+        appTemplateName: 'default',
+        environments: ['dev'],
+        variables: {
+          title: 'Test App',
+          initialPrompt: 'Create a test app'
+        }
+      };
+
+      const createAppResponse = { statusJobId: 'job-456' };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => createAppResponse
+      });
+
+      const result = await client.createApp('sub-123', 'sys-456', createAppPayload);
+
+      expect(result).toEqual(createAppResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(createAppPayload)
+        })
+      );
+    });
+  });
+
+  describe('updateApp', () => {
+    it('should update app details', async () => {
+      const updatePayload: AiroUpdateAppPayload = {
+        status: 'active',
+        variables: {
+          title: 'Updated App'
+        }
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_APP_DETAILS
+      });
+
+      const result = await client.updateApp('sub-123', 'sys-456', 'app-789', updatePayload);
+
+      expect(result).toEqual(MOCK_APP_DETAILS);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify(updatePayload)
+        })
+      );
+    });
+  });
+
+  describe('deployApp', () => {
+    it('should deploy app', async () => {
+      const deployResponse = { success: true, message: 'Deployment started' };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => deployResponse
+      });
+
+      const result = await client.deployApp('sub-123', 'sys-456', 'app-789');
+
+      expect(result).toEqual(deployResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789/deploy',
+        expect.objectContaining({
+          method: 'PUT'
+        })
+      );
+    });
+  });
+
+  describe('deleteApp', () => {
+    it('should delete app', async () => {
+      const deleteResponse = { success: true, message: 'App deleted' };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => deleteResponse
+      });
+
+      const result = await client.deleteApp('sub-123', 'sys-456', 'app-789');
+
+      expect(result).toEqual(deleteResponse);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789',
+        expect.objectContaining({
+          method: 'DELETE'
+        })
+      );
+    });
+  });
+
+  describe('error handling', () => {
+    it('should throw error on HTTP error response', async () => {
+      // Mock all 3 retry attempts with the same error response
+      const errorResponse = {
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        url: 'https://mgmt.test.com/api/airo/v1/subscriptions',
+        text: async () => 'Server error'
+      } as Response;
+      
+      mockFetch
+        .mockResolvedValueOnce(errorResponse)
+        .mockResolvedValueOnce(errorResponse)
+        .mockResolvedValueOnce(errorResponse);
+
+      await expect(client.getSubscriptions()).rejects.toThrow(
+        'API request failed: 500 Internal Server Error - Server error'
+      );
+    });
+
+    it('should parse JSON error response', async () => {
+      // Mock all 3 retry attempts with the same error response
+      const errorResponse = {
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        url: 'https://mgmt.test.com/api/airo/v1/subscriptions',
+        text: async () => JSON.stringify({ message: 'Invalid request', error: 'VALIDATION_ERROR' })
+      } as Response;
+      
+      mockFetch
+        .mockResolvedValueOnce(errorResponse)
+        .mockResolvedValueOnce(errorResponse)
+        .mockResolvedValueOnce(errorResponse);
+
+      await expect(client.getSubscriptions()).rejects.toThrow(
+        'API request failed: 400 Bad Request'
+      );
+    });
+
+    it('should retry on network error', async () => {
+      mockFetch
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ customerId: 'customer-123' })
+        });
+
+      const result = await client.checkCustomer();
+
+      expect(result.exists).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('should retry on 404 when retryOn404 is enabled', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          text: async () => 'Not Found'
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => MOCK_APP_DETAILS
+        });
+
+      const result = await client.getApp('sub-123', 'sys-456', 'app-789');
+
+      expect(result).toEqual(MOCK_APP_DETAILS);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should fail after max retries', async () => {
+      mockFetch
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'));
+
+      await expect(client.getSubscriptions()).rejects.toThrow('Network error');
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('authentication', () => {
+    it('should include JWT in Authorization header', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [MOCK_SUBSCRIPTION]
+      });
+
+      await client.getSubscriptions();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Authorization': `sso-jwt ${MOCK_CONFIG.jwt}`
+          })
+        })
+      );
+    });
+
+    it('should include Content-Type header for POST requests', async () => {
+      const payload = { test: 'data' };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ statusJobId: 'job-123' })
+      });
+
+      await client.signup(payload as any);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Authorization': `sso-jwt ${MOCK_CONFIG.jwt}`,
+            'Content-Type': 'application/json'
+          })
+        })
+      );
+    });
+  });
+});

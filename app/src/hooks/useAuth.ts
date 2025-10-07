@@ -39,7 +39,7 @@ export function useAuth(onShowMockLogin?: () => void) {
   const authType = config?.auth?.authType || auth.getType();
   const isMockAuth = config?.auth?.isMock ?? auth.isMock();
   const isAuthDisabled = config?.auth?.isDisabled ?? auth.isDisabled();
-  
+
   // Mock auth integration
   const mockAuth = useMockAuth();
 
@@ -69,15 +69,18 @@ export function useAuth(onShowMockLogin?: () => void) {
     loadConfig();
   }, []);
 
-  // Use Gasket's useAuthState only for JWT mode
+  // Determine if we should use JWT auth based on config
+  const shouldUseJWT = config?.auth?.isJWT ?? auth.isJWT();
+  
+  // Use Gasket's useAuthState only for JWT mode - use server config if available
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const authState = auth.isJWT() ? useAuthState({
-    realm: (config?.auth.realm || 'idp') as AuthRealmType,
-    risk: (config?.auth.risk || 'low') as AuthRiskType,
-    type: (config?.auth.type || ['basic']) as AuthIdpType[],
+  const authState = shouldUseJWT ? useAuthState({
+    realm: (config?.auth?.realm || 'idp') as AuthRealmType,
+    risk: (config?.auth?.risk || 'low') as AuthRiskType,
+    type: (config?.auth?.type || ['basic']) as AuthIdpType[],
     allowHeartbeat: true,
     use12HourExpiration: true,
-  }) : { valid: false, status: 'loading', details: null };
+  }) : { valid: false, status: 'loading' as const, details: null };
 
   // Helper function to get user email from auth details
   const getUserEmail = () => {
@@ -213,7 +216,7 @@ export function useAuth(onShowMockLogin?: () => void) {
     // Core auth state
     isAuthenticated,
     isLoading,
-    authState: auth.isJWT() ? authState : null,
+    authState: shouldUseJWT ? authState : null,
     
     // Configuration
     config,

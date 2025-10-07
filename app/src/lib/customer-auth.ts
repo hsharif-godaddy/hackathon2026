@@ -11,6 +11,7 @@ import { isFeatureEnabled } from '@/lib/features';
 import { MOCK_USER } from '@/lib/mock-auth';
 import { RequestContextService, type RequestContext, logger } from '@/lib/request-context';
 import { randomUUID } from 'crypto';
+import { isTokenTooOld, getTokenAgeMinutes } from '@/lib/auth/token-refresh';
 
 // Use account adapter factory to get the appropriate service for the environment
 function getAccountService() {
@@ -28,6 +29,7 @@ export interface CustomerUser {
 export interface CustomerAuthContext {
   user: CustomerUser;
   isAuthenticated: true;
+  jwt?: string; // Raw JWT token for downstream API calls
 }
 
 export interface UnauthenticatedCustomerContext {
@@ -76,7 +78,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
           accountId: mockAccount?.id,
           exp: Math.floor(Date.now() / 1000) + 3600,
           iat: Math.floor(Date.now() / 1000)
-        }
+        },
+        jwt: 'mock-jwt-token' // Mock JWT for development
       };
     }
 
@@ -114,7 +117,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
           accountId: devAccount?.id, // Use actual account ID from database
           exp: Math.floor(Date.now() / 1000) + 3600,
           iat: Math.floor(Date.now() / 1000)
-        }
+        },
+        jwt: 'dev-jwt-token' // Dev JWT for development
       };
     }
 
@@ -185,9 +189,35 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       iat: result.payload.iat
     };
 
+    // Check if token is too old for gateway
+    if (isTokenTooOld(token)) {
+      const tokenAge = getTokenAgeMinutes(token);
+      logger.warn('auth.token.too-old', {
+        message: 'JWT token too old for gateway, will likely be rejected',
+        tokenAge,
+        customerId,
+        shopperId,
+        recommendation: 'Client should refresh token'
+      });
+      
+      // Still return the token, but log the warning
+      // The client-side code should handle refresh
+    }
+    
+    // Debug: Log JWT token info for troubleshooting mgmt-airo auth issues
+    logger.info('auth.jwt.debug', {
+      message: 'JWT token extracted for mgmt-airo calls',
+      tokenLength: token?.length || 0,
+      tokenPrefix: token?.substring(0, 20) + '...',
+      tokenAge: getTokenAgeMinutes(token),
+      customerId,
+      shopperId
+    });
+
     return {
       isAuthenticated: true,
-      user
+      user,
+      jwt: token // Include raw JWT for downstream API calls (e.g., mgmt-airo)
     };
 
   } catch (error) {

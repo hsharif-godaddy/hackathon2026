@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { 
   withCustomerAuth, 
   customerHasAccount,
@@ -11,44 +11,36 @@ import { logger } from '@/lib/request-context';
 // Force dynamic rendering to prevent database calls during build
 export const dynamic = 'force-dynamic';
 
-// GET /api/sites - Get sites using site adapter
-async function handleGetSites(request: NextRequest, accountId?: string) {
+// GET /api/sites - Get sites using control plane adapter
+async function handleGetSites(request: NextRequest, jwt: string) {
   const { searchParams } = new URL(request.url);
   const siteId = searchParams.get('site_id');
-  const siteAdapter = SiteAdapterFactory.getInstance();
+
+  const adapter = getControlPlaneAdapter();
 
   if (siteId) {
     // Get specific site
-    const site = await siteAdapter.getSiteById(siteId);
+    const site = await adapter.getSite(siteId, jwt);
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
-
-    // Check ownership if adapter requires auth
-    if (siteAdapter.requiresAuth() && accountId && site.account_id !== accountId) {
-      return createCustomerAuthError('You can only access your own sites', 403);
-    }
-
     return NextResponse.json(site);
   }
 
-  // Get all sites for account (dev mode uses dummy account)
-  const sites = await siteAdapter.getSitesByAccountId(accountId || 'dev-account');
+  // List all sites
+  const sites = await adapter.listSites(jwt);
   return NextResponse.json(sites);
 }
 
 // Authenticated GET for production
 export const GET = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
-    const { user } = authContext;
-    const siteAdapter = SiteAdapterFactory.getInstance();
-
-    // Check auth requirements
-    if (siteAdapter.requiresAuth() && !customerHasAccount(user)) {
-      return createCustomerAuthError('You must have an account to access sites', 403);
+    // JWT token required
+    if (!authContext.jwt) {
+      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
-    return await handleGetSites(request, user.accountId);
+    return await handleGetSites(request, authContext.jwt);
   } catch (error) {
     logger.error('sites.fetch.error', { message: 'Error fetching sites', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
     return NextResponse.json(
@@ -62,12 +54,17 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const body = await request.json();
-    const { prompt, initialPrompt } = body; // Extract prompt from request body
+    const { prompt, initialPrompt } = body;
     const { user } = authContext;
 
     // Customer must have an account to create sites
     if (!customerHasAccount(user)) {
       return createCustomerAuthError('You must have an account to create sites. Please create an account first.', 403);
+    }
+
+    // JWT required
+    if (!authContext.jwt) {
+      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
     // Accept either prompt or initialPrompt
@@ -82,42 +79,31 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Use authenticated user's account ID
     const account_id = user.accountId!;
 
-    // Check site limits using adapter
-    const siteAdapter = SiteAdapterFactory.getInstance();
-    const limitCheck = await siteAdapter.checkSiteLimit(account_id);
-    if (!limitCheck.canCreate) {
-      return NextResponse.json(
-        {
-          error: 'Site limit exceeded',
-          current: limitCheck.currentCount,
-          limit: limitCheck.limit
-        },
-        { status: 403 }
-      );
+    // Create site using control plane adapter
+    const adapter = getControlPlaneAdapter();
+    const result = await adapter.createSite({
+      accountId: account_id,
+      prompt: projectPrompt,
+      jwt: authContext.jwt
+    });
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to create site');
     }
 
-    // Create site using adapter (handles both data persistence and deployment)
-    try {
-      const site = await siteAdapter.createSite({
-        accountId: account_id,
-        initialPrompt: projectPrompt
-      });
+    return NextResponse.json({
+      id: result.siteId,
+      status: result.status,
+      created_at: result.created_at?.toISOString() || new Date().toISOString()
+    }, { status: 201 });
 
-      return NextResponse.json(site, { status: 201 });
-    } catch (error) {
-      logger.error('sites.create.error', { message: 'Site creation failed', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
-      return NextResponse.json(
-        {
-          error: 'Site creation failed',
-          details: error instanceof Error ? error.message : 'Unknown error'
-        },
-        { status: 500 }
-      );
-    }
   } catch (error) {
     logger.error('sites.create.error', { message: 'Error creating site', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
     return NextResponse.json(
-      { error: 'Failed to create site' },
+      { 
+        error: 'Failed to create site',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
@@ -142,24 +128,24 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
       );
     }
 
-    // Get site adapter and check site exists and ownership
-    const siteAdapter = SiteAdapterFactory.getInstance();
-    const site = await siteAdapter.getSiteById(siteId);
+    // JWT required
+    if (!authContext.jwt) {
+      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
+    }
+
+    const adapter = getControlPlaneAdapter();
     
+    // Get site to verify ownership
+    const site = await adapter.getSite(siteId, authContext.jwt);
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
-    // Customer can only delete sites from their own account
-    if (siteAdapter.requiresAuth() && site.account_id !== user.accountId) {
-      return createCustomerAuthError('You can only delete your own sites', 403);
-    }
-
-    // Destroy site using adapter (handles both infrastructure cleanup and database deletion)
-    const destroyed = await siteAdapter.destroySite(siteId);
+    // Delete site, passing system_id and subscription_id to avoid redundant getSite call
+    const result = await adapter.deleteSite(siteId, authContext.jwt, site.system_id, site.subscription_id);
     
-    if (!destroyed) {
-      return NextResponse.json({ error: 'Failed to delete site' }, { status: 500 });
+    if (!result.success) {
+      return NextResponse.json({ error: result.error || 'Failed to delete site' }, { status: 500 });
     }
 
     logger.info('sites.delete.success', {

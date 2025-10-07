@@ -173,10 +173,23 @@ function HomeContent() {
       }
 
       const siteData = await createSiteResponse.json()
-      logger.info('page.site.quick-create.success', { message: 'Site record created instantly', siteId: siteData.id })
+      logger.info('page.site.quick-create.success', { message: 'Site record created instantly', siteId: siteData.id, type: siteData.type })
 
       // Immediately redirect to /create/{siteId} - deployment will happen there
-      router.push(`/create/${siteData.id}`)
+      // If the response includes type='job', add query param to indicate this is a temporary job ID
+      // The create page will poll until it gets the real app ID
+      const redirectUrl = siteData.type === 'job'
+        ? `/create/${siteData.id}?type=job`
+        : `/create/${siteData.id}`
+      
+      logger.info('page.site.redirect', { 
+        message: 'Redirecting to create page',
+        siteId: siteData.id,
+        idType: siteData.type,
+        redirectUrl
+      })
+      
+      router.push(redirectUrl)
     } catch (error) {
       console.error('❌ Error in start building flow:', error)
 

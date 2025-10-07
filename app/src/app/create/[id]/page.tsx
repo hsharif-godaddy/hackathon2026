@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSiteCreationStore, cleanupSiteCreationStore, type SiteCreationPhase } from '@/stores/useSiteCreationStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
@@ -11,16 +11,23 @@ import Button from '@ux/button'
 export default function CreateAppStatus() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const siteId = params.id as string
+  const isJobId = searchParams.get('type') === 'job'
 
   const {
     phase,
     error,
     retryCount,
     maxRetries,
+    siteId: currentSiteId,
+    realAppId,
     initializeSite,
     retry,
   } = useSiteCreationStore()
+  
+  // Track if we've updated the URL with the real app ID
+  const [urlUpdated, setUrlUpdated] = useState(false)
 
   // Track phases as they occur
   const [seenPhases, setSeenPhases] = useState<SiteCreationPhase[]>(['initializing'])
@@ -68,29 +75,92 @@ export default function CreateAppStatus() {
     }
   }, [phaseQueue])
 
+  // Update URL when we get the real app ID (if we started with a job ID)
+  // Flow: /create/6p19q4p?type=job → /create/nxOMNRQOtCBBHG7e3CI8R
+  // This ensures the URL shows the real app ID for refresh/bookmark functionality
+  useEffect(() => {
+    // Only update if:
+    // 1. We started with a job ID (?type=job in URL)
+    // 2. We haven't already updated the URL
+    // 3. We have a real app ID from polling
+    // 4. The real app ID is different from the job ID
+    const startedWithJobId = isJobId;
+    const urlNotYetUpdated = !urlUpdated;
+    const hasRealAppId = !!realAppId;
+    const realAppIdIsDifferent = realAppId !== siteId;
+    const shouldUpdateUrl = startedWithJobId && urlNotYetUpdated && hasRealAppId && realAppIdIsDifferent;
+    
+    if (!shouldUpdateUrl) return
+    
+    // Log URL transition for debugging (client-side only)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📝 [CREATE] Updating URL with real app ID:', { 
+        jobId: siteId, 
+        realAppId,
+        currentUrl: window.location.href
+      })
+    }
+    
+    // Update URL without triggering a full page reload
+    // Remove the ?type=job query param since we now have the real app ID
+    router.replace(`/create/${realAppId}`, { scroll: false })
+    setUrlUpdated(true)
+  }, [isJobId, realAppId, siteId, urlUpdated, router])
+
   // Handle redirect when complete phase is visible
   useEffect(() => {
-    if (!seenPhases.includes('complete') || !siteId) return
+    if (!seenPhases.includes('complete')) return
 
+    // Use the real app ID if available, otherwise fall back to the original siteId
+    const targetId = realAppId || siteId
+    
+    if (!targetId) {
+      console.error('[CREATE] No target ID available for redirect', { realAppId, siteId })
+      return
+    }
+    
+    // CRITICAL SAFETY CHECK: Never redirect with a job ID (7-8 chars)
+    // V2 app IDs are always 10 characters
+    if (targetId.length <= 8) {
+      console.error('[CREATE] ❌ BLOCKED: Attempted redirect with job ID - waiting for real app ID:', {
+        targetId,
+        length: targetId.length,
+        realAppId,
+        siteId,
+        phase
+      })
+      return
+    }
+    
+    // Log redirect for debugging (client-side only)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[CREATE] 🚀 Redirecting to develop page with ${realAppId ? 'real app ID' : 'original ID'}: ${targetId}`)
+    }
+    
     const redirectTimer = setTimeout(() => {
-      router.replace(`/develop/${siteId}`)
-    }, 3000)
+      // Stop polling before redirect to prevent overlapping requests
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[CREATE] 🛑 Stopping site creation polling before redirect')
+      }
+      cleanupSiteCreationStore()
+      
+      router.replace(`/develop/${targetId}`)
+    }, 1000) // Reduced from 3000ms to 1000ms - develop page shows loading state anyway
 
     return () => clearTimeout(redirectTimer)
-  }, [seenPhases, siteId, router])
+  }, [seenPhases, siteId, realAppId, router, phase])
 
   // Initialize the creation flow
   useEffect(() => {
     if (!siteId) return
 
-    console.log('🚀 Starting site creation flow for:', siteId)
     initializeSite(siteId)
 
-    // Cleanup on unmount
+    // Cleanup ONLY on unmount - don't include initializeSite in deps to avoid re-running
     return () => {
       cleanupSiteCreationStore()
     }
-  }, [siteId, initializeSite])
+  }, [siteId])
 
   useEffect(() => {
     logImpressionEvent({ eid: 'create.page' })();

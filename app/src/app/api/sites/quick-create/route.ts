@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaSiteService } from '@/lib/database/prisma-site-service';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { 
   withCustomerAuth, 
   customerHasAccount,
@@ -8,7 +8,8 @@ import {
 } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 
-// POST /api/sites/quick-create - Fast site creation (database record only)
+// POST /api/sites/quick-create - Fast site creation
+// Uses control plane adapter (V2 or Legacy)
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const body = await request.json();
@@ -29,27 +30,38 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       );
     }
 
+    // JWT required for authentication
+    if (!authContext.jwt) {
+      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
+    }
+
     // Use authenticated user's account ID
     const account_id = user.accountId!;
 
-    logger.info('sites.quick-create.start', { message: 'Quick creating site record', account_id });
+    logger.info('sites.quick-create.start', { accountId: account_id });
 
-    // Create ONLY the database record - no deployment
-    const siteService = new PrismaSiteService();
-    const site = await siteService.createSiteSimple({
-      account_id,
-      initial_prompt: projectPrompt.trim()
+    // Use control plane adapter (automatically handles V2 vs Legacy)
+    const adapter = getControlPlaneAdapter();
+    const result = await adapter.createSite({
+      accountId: account_id,
+      prompt: projectPrompt.trim(),
+      jwt: authContext.jwt
     });
 
-    logger.info('sites.quick-create.success', { message: 'Site record created quickly', siteId: site.id });
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to create site');
+    }
+
+    logger.info('sites.quick-create.success', { siteId: result.siteId });
 
     return NextResponse.json({
-      id: site.id,
-      name: site.title,
-      status: site.status,
-      account_id: site.account_id,
-      created_at: site.created_at,
-      updated_at: site.updated_at
+      id: result.siteId,
+      name: result.name,
+      status: result.status,
+      account_id: result.account_id,
+      created_at: result.created_at?.toISOString() || new Date().toISOString(),
+      updated_at: result.updated_at?.toISOString() || new Date().toISOString(),
+      type: result.type // 'job' for V2 job IDs, 'site' for real site IDs
     }, { status: 201 });
 
   } catch (error) {

@@ -1,21 +1,43 @@
 import { logger } from '../request-context';
 import { DevSiteAdapter } from './DevSiteAdapter';
 import { ProdSiteAdapter } from './ProdSiteAdapter';
+import { isV2ControlPlaneEnabled } from '../control-plane/adapter-factory';
 import type { ISiteAdapter } from './interfaces/ISiteAdapter';
 
 /**
  * Site Adapter Factory
  *
  * Determines which site adapter to use based on environment
+ * 
+ * IMPORTANT: This factory should NOT be used in V2 mode.
+ * V2 mode uses control plane adapters directly from API routes.
+ * Only Legacy mode (ProdSiteAdapter, DevSiteAdapter) uses this factory.
  */
 export class SiteAdapterFactory {
   private static _instance: ISiteAdapter | null = null;
 
   /**
    * Get the appropriate site adapter for the current environment
+   * 
+   * @throws {Error} If called in V2 mode - use control plane adapters directly instead
    */
   static getInstance(): ISiteAdapter {
     if (!this._instance) {
+      // V2 mode should NOT use site adapters - throw error to catch misuse
+      if (isV2ControlPlaneEnabled()) {
+        const error = new Error(
+          '🚨 SiteAdapterFactory should not be used in V2 mode! ' +
+          'V2 mode uses control plane adapters directly. ' +
+          'Use getControlPlaneAdapter() instead from API routes.'
+        );
+        logger.error('site-adapter-factory.v2-mode-error', {
+          error: error.message,
+          message: 'API route is trying to use SiteAdapterFactory in V2 mode',
+          recommendation: 'Update the API route to call getControlPlaneAdapter() directly with real JWT'
+        });
+        throw error;
+      }
+
       const isProduction = this.isProductionMode();
 
       // DOUBLE SAFETY CHECK: Additional validation before creating dev adapter

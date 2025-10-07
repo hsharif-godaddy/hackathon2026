@@ -176,6 +176,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const existingApp = appRepo.findById(siteId);
     if (existingApp) {
       console.log(`ℹ️ App ${siteId} already registered`);
+      
       return res.json({
         success: true,
         message: 'App already registered',

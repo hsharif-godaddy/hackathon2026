@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
+import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
 import { logger } from '@/lib/request-context';
 import { 
   withCustomerAuth, 
@@ -12,39 +12,35 @@ import {
 export const dynamic = 'force-dynamic';
 
 // GET /api/sites/[id] - Get specific site
-async function handleGetSite(request: NextRequest, siteId: string, authContext?: CustomerAuthContext) {
-  const siteAdapter = SiteAdapterFactory.getInstance();
+async function handleGetSite(request: NextRequest, siteId: string, authContext: CustomerAuthContext) {
+  const adapter = getControlPlaneAdapter();
+  const site = await adapter.getSite(siteId, authContext.jwt);
   
-  // Handle authentication if required by the adapter
-  if (siteAdapter.requiresAuth() && authContext) {
-    const { user } = authContext;
-    
-    if (!customerHasAccount(user)) {
-      return createCustomerAuthError('You must have an account to access sites', 403);
-    }
-  }
-
-  const site = await siteAdapter.getSiteById(siteId);
   if (!site) {
     return NextResponse.json({ error: 'Site not found' }, { status: 404 });
   }
-
-  // Check ownership for production sites
-  if (siteAdapter.requiresAuth() && authContext && site.account_id !== authContext.user.accountId) {
-    return createCustomerAuthError('You can only access your own sites', 403);
-  }
-
-  return NextResponse.json(site);
+  
+  // Add control plane type to response so client knows whether to skip deploy
+  const siteWithMetadata = {
+    ...site,
+    controlPlane: isV2ControlPlaneEnabled() ? 'v2' : 'legacy'
+  };
+  
+  return NextResponse.json(siteWithMetadata);
 }
 
 // GET /api/sites/[id] - Get specific site (authenticated)
 export const GET = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }): Promise<NextResponse> => {
   try {
     const { id: siteId } = await params;
-    const { user } = authContext;
 
     if (!siteId) {
       return NextResponse.json({ error: 'Site ID is required' }, { status: 400 });
+    }
+
+    // JWT required
+    if (!authContext.jwt) {
+      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
     // Use the centralized handler with auth context
@@ -74,24 +70,24 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
       return NextResponse.json({ error: 'Site ID is required' }, { status: 400 });
     }
 
-    // Get site adapter and check site exists and ownership
-    const siteAdapter = SiteAdapterFactory.getInstance();
-    const existingSite = await siteAdapter.getSiteById(siteId);
+    // JWT required
+    if (!authContext.jwt) {
+      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
+    }
+
+    const adapter = getControlPlaneAdapter();
     
-    if (!existingSite) {
+    // Get site first to verify existence and get system_id (only one expensive search)
+    const site = await adapter.getSite(siteId, authContext.jwt);
+    if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
-
-    // Customer can only delete sites from their own account
-    if (siteAdapter.requiresAuth() && existingSite.account_id !== user.accountId) {
-      return createCustomerAuthError('You can only delete your own sites', 403);
-    }
-
-    // Destroy site using adapter (handles both infrastructure cleanup and database deletion)
-    const destroyed = await siteAdapter.destroySite(siteId);
     
-    if (!destroyed) {
-      return NextResponse.json({ error: 'Failed to delete site' }, { status: 500 });
+    // Delete via adapter, passing system_id and subscription_id to avoid redundant getSite call
+    const result = await adapter.deleteSite(siteId, authContext.jwt, site.system_id, site.subscription_id);
+    
+    if (!result.success) {
+      return NextResponse.json({ error: result.error || 'Failed to delete site' }, { status: 500 });
     }
 
     logger.info('sites.delete.success', {
@@ -130,22 +126,25 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
       return NextResponse.json({ error: 'Site ID is required' }, { status: 400 });
     }
 
-    // Get site adapter and check site exists and ownership
-    const siteAdapter = SiteAdapterFactory.getInstance();
-    const existingSite = await siteAdapter.getSiteById(siteId);
+    // JWT required
+    if (!authContext.jwt) {
+      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
+    }
+
+    const adapter = getControlPlaneAdapter();
+    
+    // Check site exists and ownership
+    const existingSite = await adapter.getSite(siteId, authContext.jwt);
     
     if (!existingSite) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
-    // Customer can only update sites from their own account
-    if (siteAdapter.requiresAuth() && existingSite.account_id !== user.accountId) {
-      return createCustomerAuthError('You can only update your own sites', 403);
-    }
-
-    const updatedSite = await siteAdapter.updateSite(siteId, updateData);
+    // Update site via adapter
+    const updatedSite = await adapter.updateSite(siteId, updateData, authContext.jwt);
+    
     if (!updatedSite) {
-      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Failed to update site' }, { status: 404 });
     }
 
     logger.info('sites.update.success', {

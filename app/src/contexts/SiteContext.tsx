@@ -10,6 +10,24 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { dynamicApiConfigService, type DynamicApiConfig } from '@/config/dynamic-api'
 import { sitePollingService } from '@/services/SitePollingService'
+import { useSubscriptionCache } from '@/hooks/useSubscriptionCache'
+import { useAuth } from '@/hooks/useAuth'
+
+/**
+ * Get JWT token from browser cookies for API authentication
+ */
+const getAuthTokenFromCookie = (): string | null => {
+  if (typeof document === 'undefined') return null;
+  
+  const cookies = document.cookie.split(';');
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === 'auth_idp') {
+      return decodeURIComponent(value);
+    }
+  }
+  return null;
+};
 
 interface SiteContextValue {
   // Current site ID
@@ -45,6 +63,10 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
   const [siteId, setSiteIdState] = useState<string | null>(initialSiteId || null)
   const [apiConfig, setApiConfig] = useState<DynamicApiConfig | null>(null)
   const [isSiteReady, setIsSiteReady] = useState(false)
+  
+  // Initialize subscription cache for performance optimization
+  const jwt = getAuthTokenFromCookie()
+  const cacheStatus = useSubscriptionCache(jwt)
 
   // Update API configuration when site ID changes
   const updateConfig = useCallback(async (newSiteId: string | null) => {
@@ -148,6 +170,19 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
       console.log('🧹 SiteContext cleanup (no polling cancellation needed)')
     }
   }, [])
+
+  // Log cache performance metrics periodically
+  useEffect(() => {
+    if (cacheStatus.hitRate > 0) {
+      console.log('📊 Subscription Cache Performance:', {
+        hitRate: `${cacheStatus.hitRate}%`,
+        hits: cacheStatus.cacheHits,
+        misses: cacheStatus.cacheMisses,
+        lastRefresh: cacheStatus.lastRefresh ? new Date(cacheStatus.lastRefresh).toLocaleTimeString() : 'Never',
+        isRefreshing: cacheStatus.isRefreshing
+      })
+    }
+  }, [cacheStatus.cacheHits, cacheStatus.cacheMisses])
 
   const contextValue: SiteContextValue = {
     siteId,

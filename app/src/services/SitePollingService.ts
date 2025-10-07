@@ -4,11 +4,13 @@ import { logger } from '@/lib/request-context';
 
 export interface SiteStatus {
   siteId: string;
-  status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped';
+  status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
   agent_url: string | null;
   backend_url: string | null;
   preview_url: string | null;
   ready: boolean;
+  registrationComplete: boolean; // Tracks if app successfully registered with agent service
+  registrationAttempted: boolean; // Tracks if we've tried to register (may have failed)
   message?: string;
 }
 
@@ -50,17 +52,14 @@ export class SitePollingService {
           attempts++;
           logger.info(`🔄 Polling services health (${attempts}/${this.maxAttempts}):`, siteId);
 
-          // Get site data from database to get URLs
-          const siteResponse = await appFetch(`/api/sites/${siteId}`);
+          // Get site data using centralized store to prevent duplicate requests
+          const { useSiteStore } = await import('@/stores/useSiteStore');
+          const siteStore = useSiteStore.getState();
+          const site = await siteStore.fetchSite(siteId);
 
-          if (!siteResponse.ok) {
-            if (siteResponse.status === 404) {
-              return reject(new Error('Site not found'));
-            }
-            throw new Error(`HTTP ${siteResponse.status}: ${siteResponse.statusText}`);
+          if (!site) {
+            return reject(new Error('Site not found'));
           }
-
-          const site = await siteResponse.json();
 
           if (!site.agent_url) {
             logger.info('🔄 Agent URL not available yet:', { agent_url: site.agent_url });
@@ -74,25 +73,27 @@ export class SitePollingService {
             return;
           }
 
-          // Check health of all services
-          const agentHealthy = site.agent_url ?
-            await this.checkUrlHealth(`${site.agent_url}/health`, 'Agent') : false;
+        // Check health of all services
+        const agentHealthy = site.agent_url ?
+          await this.checkUrlHealth(`${site.agent_url}/health`, 'Agent') : false;
 
-          const frontendHealthy = site.preview_url ?
-            await this.checkUrlHealth(`${site.preview_url}`, 'Frontend') : false;
+        const frontendHealthy = site.preview_url ?
+          await this.checkUrlHealth(`${site.preview_url}`, 'Frontend') : false;
 
-          // All services must be healthy to proceed
-          const allServicesReady = agentHealthy && frontendHealthy;
+        // All services must be healthy to proceed
+        const allServicesReady = agentHealthy && frontendHealthy;
 
-          const siteStatus: SiteStatus = {
-            siteId: site.id,
-            status: site.status, // Keep existing status from database
-            agent_url: site.agent_url,
-            backend_url: site.backend_url,
-            preview_url: site.preview_url,
-            ready: allServicesReady,
-            message: `Agent: ${agentHealthy ? '✅' : '❌'}, Frontend: ${frontendHealthy ? '✅' : '❌'}`
-          };
+        const siteStatus: SiteStatus = {
+          siteId: site.id,
+          status: site.status, // Keep existing status from database
+          agent_url: site.agent_url,
+          backend_url: site.backend_url,
+          preview_url: site.preview_url,
+          ready: allServicesReady,
+          registrationComplete: false,
+          registrationAttempted: false,
+          message: `Agent: ${agentHealthy ? '✅' : '❌'}, Frontend: ${frontendHealthy ? '✅' : '❌'}`
+        };
 
           logger.info('🐛 DEBUG: All services health check:', {
             siteId,
@@ -278,7 +279,7 @@ export class SitePollingService {
   private async createAppViaAgent(
     siteId: string,
     initialPrompt: string,
-    agentUrl: string
+    _agentUrl: string
   ): Promise<CreateAppResult> {
     try {
       logger.info('🤖 Creating app via local API:', { siteId });
@@ -338,6 +339,10 @@ export class SitePollingService {
         logger.warn('⚠️ Failed to update site status:', response.statusText);
       } else {
         logger.info(`✅ Site status updated to: ${status}`);
+        
+        // Update the global site store cache to reflect status change in the UI
+        const { useSiteStore } = await import('@/stores/useSiteStore');
+        useSiteStore.getState().updateSite(siteId, { status: status as any });
       }
     } catch (error) {
       logger.warn('⚠️ Error updating site status:', error);
@@ -348,14 +353,14 @@ export class SitePollingService {
    * Check site status once (no polling) - directly checks agent URL from UI
    */
   async checkSiteStatus(siteId: string): Promise<SiteStatus> {
-    // Get site data from database
-    const siteResponse = await appFetch(`/api/sites/${siteId}`);
+    // Get site data using centralized store to prevent duplicate requests
+    const { useSiteStore } = await import('@/stores/useSiteStore');
+    const siteStore = useSiteStore.getState();
+    const site = await siteStore.fetchSite(siteId);
 
-    if (!siteResponse.ok) {
-      throw new Error(`HTTP ${siteResponse.status}: ${siteResponse.statusText}`);
+    if (!site) {
+      throw new Error(`Failed to get site status: Site not found`);
     }
-
-    const site = await siteResponse.json();
 
     if (!site.agent_url) {
       return {
@@ -365,6 +370,8 @@ export class SitePollingService {
         backend_url: site.backend_url,
         preview_url: site.preview_url,
         ready: false,
+        registrationComplete: false,
+        registrationAttempted: false,
         message: 'Agent URL not available yet'
       };
     }
@@ -378,39 +385,84 @@ export class SitePollingService {
 
     const allServicesReady = agentHealthy && frontendHealthy;
 
-    // Auto-update status from "created" to "running" if services are ready
-    if (site.status === 'created' && allServicesReady && site.agent_url && site.preview_url) {
-      logger.info('🎉 Both services are healthy! Updating status to running:', {
+    // Track registration status
+    let registrationComplete = false;
+    let registrationAttempted = false;
+
+    // Register app with agent service if agent is ready
+    // We only need the agent to be healthy for registration - frontend can still be loading
+    // In Legacy mode: status is 'created' when ready
+    // In V2 mode: status is 'running' immediately when active
+    const shouldRegister = agentHealthy && site.agent_url && 
+      (site.status === 'created' || site.status === 'running');
+    
+    if (shouldRegister) {
+      registrationAttempted = true;
+      
+      logger.info('📝 Attempting to register app with agent service:', {
         siteId: site.id,
-        agentUrl: site.agent_url,
-        previewUrl: site.preview_url,
-        agentHealthy,
-        frontendHealthy
+        status: site.status,
+        mode: site.status === 'created' ? 'Legacy' : 'V2',
+        hasInitialPrompt: !!site.initial_prompt,
+        initialPromptValue: site.initial_prompt,
+        siteKeys: Object.keys(site)
       });
 
-      // Register app with agent service before updating status
+      // Register app with agent service
       try {
-        logger.info('📝 Registering app with agent service:', siteId);
+        const registerPayload = {
+          siteId: site.id,
+          name: site.name || `App ${site.id}`,
+          initialPrompt: site.initial_prompt
+        };
+        
+        logger.info('📝 Registration payload:', {
+          payload: registerPayload,
+          initialPromptType: typeof registerPayload.initialPrompt,
+          initialPromptLength: registerPayload.initialPrompt?.length
+        });
+        
         const registerResponse = await agentFetch(`${site.agent_url}/apps/register`, {
           siteId,
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            siteId: site.id,
-            name: site.title || `App ${site.id}`,
-            initialPrompt: site.initial_prompt
-          })
+          body: JSON.stringify(registerPayload)
         });
 
         if (registerResponse.ok) {
           const registerData = await registerResponse.json();
-          logger.info('✅ App registered successfully:', registerData.message);
+          registrationComplete = true;
+          logger.info('✅ App registered successfully:', {
+            siteId: site.id,
+            message: registerData.message,
+            hadInitialPrompt: !!site.initial_prompt,
+            registrationComplete: true
+          });
         } else {
-          logger.warn('⚠️ App registration failed, but continuing:', registerResponse.status);
+          const errorText = await registerResponse.text().catch(() => 'Unknown error');
+          logger.warn('⚠️ App registration failed:', {
+            siteId: site.id,
+            status: registerResponse.status,
+            error: errorText,
+            registrationComplete: false
+          });
         }
       } catch (error) {
-        logger.warn('⚠️ App registration error, but continuing:', error);
+        logger.warn('⚠️ App registration error:', {
+          siteId: site.id,
+          error: error instanceof Error ? error.message : String(error),
+          registrationComplete: false
+        });
       }
+    }
+
+    // Auto-update status from "created" to "running" if services are ready (Legacy mode only)
+    if (site.status === 'created' && allServicesReady && site.agent_url && site.preview_url) {
+      logger.info('🎉 Both services are healthy! Updating status to running (Legacy mode):', {
+        siteId: site.id,
+        agentUrl: site.agent_url,
+        previewUrl: site.preview_url
+      });
 
       await this.updateSiteStatus(siteId, 'running');
       site.status = 'running'; // Update local object for return
@@ -423,7 +475,9 @@ export class SitePollingService {
       backend_url: site.backend_url,
       preview_url: site.preview_url,
       ready: allServicesReady,
-      message: `Agent: ${agentHealthy ? '✅' : '❌'}, Frontend: ${frontendHealthy ? '✅' : '❌'}`
+      registrationComplete,
+      registrationAttempted,
+      message: `Agent: ${agentHealthy ? '✅' : '❌'}, Frontend: ${frontendHealthy ? '✅' : '❌'}, Registration: ${registrationComplete ? '✅' : registrationAttempted ? '❌ Failed' : '⏳ Pending'}`
     };
   }
 }

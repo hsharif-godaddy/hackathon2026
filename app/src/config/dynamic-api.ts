@@ -34,17 +34,16 @@ export class DynamicApiConfigService {
     }
 
     try {
-      // Use API route to fetch site configuration
-      // Handle both client-side and server-side calls
-      const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:3000'
-      const response = await fetch(`${baseUrl}/api/sites/${siteId}`)
+      // Use centralized site store to prevent duplicate requests
+      const { useSiteStore } = await import('@/stores/useSiteStore')
+      const siteStore = useSiteStore.getState()
+      const site = await siteStore.fetchSite(siteId)
 
-      if (response.ok) {
-        const site = await response.json()
-
-        if (site?.agent_url && site.status === 'running') {
-          // Site has agent URL and is running, use dynamic configuration
-          // WebSocket needs base URL without the /apps/{id} suffix
+      if (site) {
+        // Accept 'running' or 'creating' status (V2 apps have agent URLs even while creating)
+        if (site?.agent_url && (site.status === 'running' || site.status === 'creating')) {
+          // Site has agent URL, use dynamic configuration
+          // WebSocket/Socket.IO connects to base agent URL
           const config: DynamicApiConfig = {
             baseUrl: site.agent_url,
             wsUrl: this.transformToWebSocketUrl(site.agent_url),
@@ -83,7 +82,7 @@ export class DynamicApiConfigService {
           throw new Error(`Site ${siteId} agent is not ready yet. Status: ${status}, Has agent URL: ${hasAgentUrl}. Please wait for deployment to complete.`)
         }
       } else {
-        throw new Error(`Failed to fetch site ${siteId}: ${response.status} ${response.statusText}`)
+        throw new Error(`Failed to fetch site ${siteId}: Site not found`)
       }
     } catch (error) {
       logger.warn('dynamic-api.config.fetch-failure', { message: 'Failed to fetch dynamic config for site', siteId, error: error instanceof Error ? error.message : String(error) })
@@ -125,13 +124,12 @@ export class DynamicApiConfigService {
         attempts++
 
         try {
-          // Use API route to check site status
-          // Handle both client-side and server-side calls
-          const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:3000'
-          const response = await fetch(`${baseUrl}/api/sites/${siteId}`)
+          // Use centralized site store to prevent duplicate requests
+          const { useSiteStore } = await import('@/stores/useSiteStore')
+          const siteStore = useSiteStore.getState()
+          const site = await siteStore.fetchSite(siteId)
 
-          if (response.ok) {
-            const site = await response.json()
+          if (site) {
 
             if (site?.agent_url && site.status === 'running') {
               const config = await this.getConfigForSite(siteId)
