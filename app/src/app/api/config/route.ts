@@ -18,7 +18,9 @@ const getServerConfig = () => {
       authType: auth.getType(),
       isDisabled: auth.isDisabled(),
       isMock: auth.isMock(),
-      isJWT: auth.isJWT()
+      isJWT: auth.isJWT(),
+      allowHeartbeat: true,
+      use12HourExpiration: true
     },
     sso: {
       loginUrl: loginUrl || 'https://sso.test-godaddy.com/login',
