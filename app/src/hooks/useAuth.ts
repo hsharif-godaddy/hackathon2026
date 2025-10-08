@@ -38,7 +38,7 @@ export function useAuth(onShowMockLogin?: () => void) {
   // Check authentication mode (prefer server config if available)
   const authType = config?.auth?.authType || auth.getType();
   const isMockAuth = config?.auth?.isMock ?? auth.isMock();
-  const isAuthDisabled = false; //config?.auth?.isDisabled ?? auth.isDisabled();
+  const isAuthDisabled = config?.auth?.isDisabled ?? auth.isDisabled();
 
   // Mock auth integration
   const mockAuth = useMockAuth();
