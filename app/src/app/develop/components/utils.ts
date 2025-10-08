@@ -26,7 +26,7 @@ export function serializeToolArgs(toolArgs: string | object | undefined): string
   return String(toolArgs)
 }
 
-export function getAppIdFromParams() {
+export function useAppIdFromParams() {
   const params = useParams()
   return params?.id as string || ''
 }

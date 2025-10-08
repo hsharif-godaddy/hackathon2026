@@ -6,7 +6,7 @@ import Header from '@/components/layout/Header'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
-import { getAppIdFromParams } from '@/app/develop/components/utils'
+import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { ProtectedRoute } from '@/components/auth'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { appService } from '@/services/AppService'
@@ -30,7 +30,7 @@ import { handlePreviewRefresh } from '@/app/develop/components/utils'
 function DevelopPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const appId = getAppIdFromParams()
+  const appId = useAppIdFromParams()
 
   // App store - for app lifecycle operations
   const { restartApp: appStoreRestartApp } = useAppStore()

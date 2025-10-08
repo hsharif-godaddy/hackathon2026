@@ -24,7 +24,7 @@ import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { ChatTab } from '@/app/develop/components/types'
-import { getAppIdFromParams } from '@/app/develop/components/utils'
+import { useAppIdFromParams } from '@/app/develop/components/utils'
 import PreviewPane from '../preview/PreviewPane'
 
 interface ChatPaneProps {
@@ -55,7 +55,7 @@ export default function ChatPane({
     isMobile
   } = useDevelopPageStore()
 
-  const appId = getAppIdFromParams()
+  const appId = useAppIdFromParams()
 
   // Combine messages and activeStream with useMemo to prevent infinite loops
   const allMessages = useMemo(() => {

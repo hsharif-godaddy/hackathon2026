@@ -6,7 +6,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import Tag from '@ux/tag'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
 import { logger } from '@/lib/request-context'
-import { getAppIdFromParams } from './utils'
+import { useAppIdFromParams } from './utils'
 
 interface Commit {
   hash: string
@@ -32,7 +32,7 @@ export default function VersionHistory() {
     isSelectingCommit
   } = useDevelopPageStore()
 
-  const appId = getAppIdFromParams()
+  const appId = useAppIdFromParams()
 
   const commits = getCommits(appId)
   const loading = isLoading(appId)

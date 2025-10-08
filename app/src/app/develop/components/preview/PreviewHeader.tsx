@@ -3,7 +3,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { generateClickEID } from '@/utils/instrumentation'
 import IconButton from '../IconButton'
-import { getAppIdFromParams } from '@/app/develop/components/utils'
+import { useAppIdFromParams } from '@/app/develop/components/utils'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import CodeIcon from '@ux/icon/code'
 import DesktopIcon from '@ux/icon/desktop'
@@ -17,7 +17,7 @@ import WindowNewIcon from '@ux/icon/window-new'
 import { ViewMode, PreviewViewMode } from '../types'
 
 export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
-  const appId = getAppIdFromParams()
+  const appId = useAppIdFromParams()
 
   const {
     viewMode,

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import clsx from 'clsx'
 import { ClockIcon } from '@heroicons/react/24/outline'
-import { getAppIdFromParams } from '@/app/develop/components/utils'
+import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useDevelopPageStore, OptionsSheetTab } from '@/stores/useDevelopPageStore'
@@ -41,7 +41,7 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
     selectedCommit
   } = useDevelopPageStore()
 
-  const appId = getAppIdFromParams()
+  const appId = useAppIdFromParams()
 
   useEffect(() => {
     if (isMobile) {
