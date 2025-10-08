@@ -18,8 +18,7 @@ import pluginNextjs from '@gasket/plugin-nextjs';
 import pluginIntl from '@gasket/plugin-intl';
 import pluginUxp from '@godaddy/gasket-plugin-uxp';
 import pluginOtel from '@godaddy/gasket-plugin-otel';
-// Conditionally import switchboard plugin to avoid loading native binaries when not needed
-// import pluginSwitchboard from '@godaddy/gasket-plugin-switchboard';
+import pluginSwitchboard from '@godaddy/gasket-plugin-switchboard';
 import gasketData from './gasket-data.js';
 import fs from 'fs';
 
@@ -54,9 +53,7 @@ export default makeGasket({
     pluginIntl,
     pluginUxp,
     pluginOtel,
-    // Switchboard plugin temporarily disabled to avoid native binary loading issues
-    // TODO: Re-enable switchboard plugin for JWT mode when binary loading is resolved
-    // ...(isJWTMode ? [pluginSwitchboard] : [])
+    ...(isJWTMode ? [pluginSwitchboard] : []),
   ],
   commands: {
     docs: {

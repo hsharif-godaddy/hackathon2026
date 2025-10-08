@@ -55,23 +55,20 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   // Conditionally load Switchboard data
   useEffect(() => {
     if (shouldUseSwitchboard) {
-      // For JWT mode, try to load Switchboard data
-      // But if it fails, just assume access is enabled
       try {
         // Try to access window.gasketData if it exists (set by Gasket)
         if (typeof window !== 'undefined' && window.gasketData) {
           const data = window.gasketData;
-          setFeatureFlags(data?.switchboard || { 'appbuilder-access': true });
+          setFeatureFlags(data?.switchboard || { 'appbuilder-access': false });
         } else {
-          // Fallback: assume access is enabled
-          setFeatureFlags({ 'appbuilder-access': true });
+          setFeatureFlags({ 'appbuilder-access': false });
         }
       } catch (error) {
         logger.warn('auth.provider.switchboard.error', {
           message: 'Failed to load Switchboard data',
           error: error as Error
         });
-        setFeatureFlags({ 'appbuilder-access': true });
+        setFeatureFlags({ 'appbuilder-access': false });
       }
       setIsFeatureFlagsLoading(false);
     } else {
