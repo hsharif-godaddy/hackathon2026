@@ -1,7 +1,6 @@
 'use client';
 
 import { useAuth } from '@/hooks/useAuth';
-import { useState, useEffect } from 'react';
 import { generateClickEID } from '@/utils/instrumentation';
 import { Menu, MenuButton, MenuList, MenuItem, MenuSeparator } from '@ux/menu';
 import UserIcon from '@ux/icon/user';
@@ -14,26 +13,10 @@ interface UserMenuProps {
 export default function UserMenu({ onShowMockLogin, location = 'unknown' }: UserMenuProps = {}) {
   const {
     isAuthenticated,
-    isLoading: configLoading,
     isAuthDisabled,
     handleSignOut,
     handleSignIn
   } = useAuth(onShowMockLogin);
-
-  const [hasMounted, setHasMounted] = useState(false);
-
-  useEffect(() => {
-    setHasMounted(true);
-  }, []);
-
-  // Prevent hydration mismatch by showing loading until mounted
-  if (!hasMounted || configLoading) {
-    return (
-      <div className="flex items-center space-x-3">
-        <div className="animate-pulse w-20 h-8 rounded"></div>
-      </div>
-    );
-  }
 
   return (
     <Menu

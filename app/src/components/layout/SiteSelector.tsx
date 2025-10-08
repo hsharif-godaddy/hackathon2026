@@ -26,12 +26,13 @@ export default function SiteSelector() {
   const {
     sites,
     isLoading: isLoadingSites,
-  } = useSites()
+  } = useSites({ enabled: isAuthenticated })
 
   const [open, setOpen] = useState(false);
 
   const isLoading = isLoadingAuth || isLoadingSites;
-  if (!isAuthenticated || isLoading) {
+
+  if (!isAuthenticated) {
     return null;
   }
 
@@ -42,38 +43,46 @@ export default function SiteSelector() {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="hover:cursor-pointer">
+      <PopoverTrigger
+        className="hover:cursor-pointer"
+        onClick={() => (sites.length < 1 || isLoading) ? router.push('/sites') : null}
+      >
         <Box orientation="horizontal" gap="sm">
           <text.p className="truncate max-w-[150px]">{displayTitle}</text.p>
-          <ChevronDownIcon
-            className={clsx(
-              "transition-transform duration-300", {
-                "scale-y-[-1]": open,
-              }
-            )} />
-        </Box>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-[300px] p-2">
-        <div className="flex flex-col gap-2">
-          {sites.map((site) => (
-            <button
-              key={site.id}
-              onClick={() => router.push(`/develop/${site.id}?siteId=${site.id}`)}
-              data-eid={generateClickEID('sites.site.edit')}
+          {sites.length > 0 && (
+            <ChevronDownIcon
               className={clsx(
-                "w-full text-left group rounded-sm hover:cursor-pointer transition-all duration-300", {
-                  "bg-intents-ux-boxLowContrast-backgroundColor": site.id === currentSiteId,
+                "transition-transform duration-300", {
+                  "scale-y-[-1]": open,
                 }
               )}
-            >
-              <Box orientation="horizontal" gap="md" inlineAlignChildren="center" className="rounded-md leading-tight group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300">
-                <div className="size-12 shrink-0 rounded-md bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300" />
-                <div className="flex flex-wrap">{site.name}</div>
-              </Box>
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
+            />
+          )}
+        </Box>
+      </PopoverTrigger>
+      {sites.length > 0 && (
+        <PopoverContent align="end" className="w-[300px] p-2">
+          <div className="flex flex-col gap-2">
+            {sites.map((site) => (
+              <button
+                key={site.id}
+                onClick={() => router.push(`/develop/${site.id}?siteId=${site.id}`)}
+                data-eid={generateClickEID('sites.site.edit')}
+                className={clsx(
+                  "w-full text-left group rounded-sm hover:cursor-pointer transition-all duration-300", {
+                    "bg-intents-ux-boxLowContrast-backgroundColor": site.id === currentSiteId,
+                  }
+                )}
+              >
+                <Box orientation="horizontal" gap="md" inlineAlignChildren="center" className="rounded-md leading-tight group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300">
+                  <div className="size-12 shrink-0 rounded-md bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300" />
+                  <div className="flex flex-wrap">{site.name}</div>
+                </Box>
+              </button>
+            ))}
+          </div>
+        </PopoverContent>
+      )}
     </Popover>
   )
 }

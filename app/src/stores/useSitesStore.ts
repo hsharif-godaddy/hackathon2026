@@ -410,7 +410,7 @@ export const useSitesStore = create<SitesStore>()(
 )
 
 // Helper hook to get all sites data (replaces useSites hook)
-export const useSites = () => {
+export const useSites = (options?: { enabled?: boolean }) => {
   const {
     allSites,
     isLoadingAll,
@@ -426,12 +426,14 @@ export const useSites = () => {
     lastFetchedAll
   } = useSitesStore()
 
-  // Auto-fetch sites on first use (if never fetched and not loading)
+  const enabled = options?.enabled ?? true
+
+  // Auto-fetch sites on first use (if never fetched and not loading and enabled)
   React.useEffect(() => {
-    if (!lastFetchedAll && !isLoadingAll) {
+    if (enabled && !lastFetchedAll && !isLoadingAll) {
       fetchAllSites()
     }
-  }, [lastFetchedAll, isLoadingAll, fetchAllSites])
+  }, [enabled, lastFetchedAll, isLoadingAll, fetchAllSites])
 
   return {
     // Data
