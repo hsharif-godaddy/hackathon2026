@@ -106,7 +106,7 @@ export default makeGasket({
   ...(isJWTMode ? {
     auth: {
       realm: 'idp',
-      risk: 'low',
+      risk: 'high',
       type: ['basic'],
       allowHeartbeat: true,
       use12HourExpiration: true,
