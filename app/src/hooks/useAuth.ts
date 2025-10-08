@@ -1,6 +1,6 @@
 import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType, authFetch } from '@godaddy/gasket-auth';
 import { useState, useEffect } from 'react';
-import { isFeatureEnabled, auth } from '@/lib/features';
+import { auth } from '@/lib/features';
 import { useMockAuth } from '@/hooks/useMockAuth';
 import { logger } from '@/lib/request-context';
 
@@ -72,15 +72,14 @@ export function useAuth(onShowMockLogin?: () => void) {
   // Determine if we should use JWT auth based on config
   const shouldUseJWT = config?.auth?.isJWT ?? auth.isJWT();
 
-  // Use Gasket's useAuthState only for JWT mode - use server config if available
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const authState = shouldUseJWT ? useAuthState({
+  // Always call useAuthState to maintain hook order, but only use result for JWT mode
+  const authState = useAuthState({
     realm: (config?.auth?.realm || 'idp') as AuthRealmType,
     risk: (config?.auth?.risk || 'low') as AuthRiskType,
     type: (config?.auth?.type || ['basic']) as AuthIdpType[],
     allowHeartbeat: true,
     use12HourExpiration: true,
-  }) : { valid: false, status: 'loading' as const, details: null };
+  });
 
   // Helper function to get user email from auth details
   const getUserEmail = () => {
@@ -205,8 +204,8 @@ export function useAuth(onShowMockLogin?: () => void) {
     }
     // JWT mode
     return {
-      isAuthenticated: authState.valid,
-      isLoading: authState.status === 'loading' || configLoading
+      isAuthenticated: shouldUseJWT ? authState.valid : false,
+      isLoading: shouldUseJWT ? (authState.status === 'loading' || configLoading) : configLoading
     };
   };
 

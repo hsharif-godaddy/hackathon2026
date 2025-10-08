@@ -5,7 +5,7 @@ import Box from '@ux/box';
 import Spinner from '@ux/spinner';
 import { logger } from '@/lib/request-context';
 import { auth } from '@/lib/features';
-import { useSwitchboard } from '@/hooks/useSwitchboard';
+//import { useSwitchboard } from '@/hooks/useSwitchboard';
 
 // Simple component that just renders children
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -19,13 +19,13 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [authProvider, setAuthProvider] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [featureFlags, setFeatureFlags] = useState<any>({});
-  const [isFeatureFlagsLoading, setIsFeatureFlagsLoading] = useState(true);
+  const [isFeatureFlagsLoading, setIsFeatureFlagsLoading] = useState(false);
   const [serverAuthConfig, setServerAuthConfig] = useState<any>(null);
 
-  const {
+  /*const {
     featureFlags: switchboardFeatureFlags,
     isLoading: isSwitchboardFeatureFlagsLoading
-  } = useSwitchboard();
+  } = useSwitchboard();*/
 
   // Load server-side auth configuration
   useEffect(() => {
@@ -55,7 +55,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const shouldUseSwitchboard = isJWTMode;
 
   // Conditionally load Switchboard data
-  useEffect(() => {
+  /*useEffect(() => {
     setIsFeatureFlagsLoading(true);
     if (shouldUseSwitchboard) {
       try {
@@ -76,9 +76,9 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       setFeatureFlags({ 'appbuilder-access': true });
     }
     setIsFeatureFlagsLoading(false);
-  }, [shouldUseSwitchboard, switchboardFeatureFlags, isSwitchboardFeatureFlagsLoading]);
+  }, [shouldUseSwitchboard, switchboardFeatureFlags, isSwitchboardFeatureFlagsLoading]);*/
 
-  const isAppbuilderAccessEnabled = featureFlags['appbuilder-access'] ?? false;
+  const isAppbuilderAccessEnabled = true; //featureFlags['appbuilder-access'] ?? false;
 
   // Load auth provider conditionally (wait for server config)
   useEffect(() => {
@@ -120,7 +120,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }, [serverAuthConfig, isJWTMode]);
 
   // Show loading while feature flags or auth provider are loading
-  if (isFeatureFlagsLoading || isAuthLoading || isSwitchboardFeatureFlagsLoading) {
+  if (isFeatureFlagsLoading || isAuthLoading) {
     return (
       <Box
         className="min-h-screen"
