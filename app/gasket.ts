@@ -119,7 +119,7 @@ export default makeGasket({
   } : {}),
   presentationCentral: {
     params: {
-      app: 'airo-app-builder',
+      app: 'airo-builder',
       manifest: 'no-header',
       theme: 'godaddy:site',
       privateLabel: 1,
