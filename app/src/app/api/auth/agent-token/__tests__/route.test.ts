@@ -12,7 +12,7 @@ import { NextRequest } from 'next/server';
 /**
  * Mock dependencies using vi.hoisted to avoid hoisting issues
  */
-const { mockJWTService, mockSiteAdapter, mockAuthenticateCustomer } = vi.hoisted(function setup() {
+const { mockJWTService, mockSiteAdapter, mockAuthenticateCustomer, mockControlPlaneAdapter, mockIsV2ControlPlaneEnabled } = vi.hoisted(function setup() {
   return {
     mockJWTService: {
       getToken: vi.fn()
@@ -21,6 +21,10 @@ const { mockJWTService, mockSiteAdapter, mockAuthenticateCustomer } = vi.hoisted
       requiresAuth: vi.fn(),
       getSiteById: vi.fn()
     },
+    mockControlPlaneAdapter: {
+      getSite: vi.fn()
+    },
+    mockIsV2ControlPlaneEnabled: vi.fn(),
     mockAuthenticateCustomer: vi.fn()
   };
 });
@@ -42,6 +46,16 @@ vi.mock('@/lib/site-adapters/SiteAdapterFactory', function mockSiteAdapterModule
     SiteAdapterFactory: {
       getInstance: vi.fn().mockReturnValue(mockSiteAdapter)
     }
+  };
+});
+
+/**
+ * Mock control plane adapter
+ */
+vi.mock('@/lib/control-plane', function mockControlPlaneModule() {
+  return {
+    getControlPlaneAdapter: vi.fn().mockReturnValue(mockControlPlaneAdapter),
+    isV2ControlPlaneEnabled: mockIsV2ControlPlaneEnabled
   };
 });
 
@@ -126,7 +140,8 @@ describe('agent-token', function packageTests() {
     beforeEach(function resetMocks() {
       vi.clearAllMocks();
       
-      // Default mock implementations
+      // Default mock implementations - use legacy mode by default
+      mockIsV2ControlPlaneEnabled.mockReturnValue(false);
       mockSiteAdapter.requiresAuth.mockReturnValue(true);
       mockJWTService.getToken.mockResolvedValue({
         token: MOCK_JWT_TOKEN,
@@ -383,6 +398,115 @@ describe('agent-token', function packageTests() {
       const data = await response.json();
 
       expect(data.expires).toBe(customExpires.toISOString());
+    });
+
+    describe('V2 control plane mode', function v2Tests() {
+      beforeEach(function setupV2() {
+        mockIsV2ControlPlaneEnabled.mockReturnValue(true);
+      });
+
+      it('should create agent token using control plane adapter in V2 mode', async function createV2Token() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        
+        mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_SITE);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data).toEqual({
+          token: MOCK_JWT_TOKEN,
+          expires: MOCK_TOKEN_EXPIRES.toISOString(),
+          siteId: MOCK_SITE_ID,
+          type: 'jwt'
+        });
+        expect(mockControlPlaneAdapter.getSite).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token');
+        expect(mockJWTService.getToken).toHaveBeenCalledWith({
+          siteId: MOCK_SITE_ID
+        });
+      });
+
+      it('should reject when user has no account in V2 mode', async function v2RejectNoAccount() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: {
+            ...MOCK_USER,
+            accountId: undefined
+          },
+          jwt: 'user-jwt-token'
+        });
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(403);
+        expect(data).toEqual({
+          error: 'You must have an account to create agent tokens'
+        });
+        expect(mockControlPlaneAdapter.getSite).not.toHaveBeenCalled();
+      });
+
+      it('should return 404 when site not found in V2 mode', async function v2SiteNotFound() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        
+        mockControlPlaneAdapter.getSite.mockResolvedValue(null);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(404);
+        expect(data).toEqual({
+          error: 'Site not found'
+        });
+      });
+
+      it('should handle control plane adapter errors in V2 mode', async function v2HandleError() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        
+        mockControlPlaneAdapter.getSite.mockRejectedValue(new Error('Control plane connection failed'));
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(500);
+        expect(data).toEqual({
+          error: 'Token creation failed',
+          details: 'Control plane connection failed'
+        });
+      });
+
+      it('should not use SiteAdapterFactory in V2 mode', async function v2NoSiteAdapter() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        
+        mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_SITE);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        await POST(request);
+
+        // Should not call SiteAdapter methods
+        expect(mockSiteAdapter.getSiteById).not.toHaveBeenCalled();
+        expect(mockSiteAdapter.requiresAuth).not.toHaveBeenCalled();
+      });
     });
   });
 });
