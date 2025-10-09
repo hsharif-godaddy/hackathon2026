@@ -122,7 +122,7 @@ export default makeGasket({
       app: 'airo-app-builder',
       manifest: 'no-header',
       theme: 'godaddy:site',
-      privateLabelId: 1,
+      privateLabel: 1,
     }
   },
   ...(isJWTMode ? {
