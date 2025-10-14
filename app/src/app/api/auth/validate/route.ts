@@ -5,6 +5,7 @@ import { isFeatureEnabled } from '@/lib/features';
 import { MOCK_USER } from '@/lib/mock-auth';
 import { logger } from '@/lib/request-context';
 import { ensureTestUserExists } from '@/lib/database/seed-test-user';
+import { isShopperAuthorized } from '@/lib/customer-auth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
             exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
             iat: Math.floor(Date.now() / 1000)
           },
+          authorized: isShopperAuthorized(MOCK_USER.id),
           reason: 'Mock authentication - development mode'
         }, { status: 200 });
       } catch (error) {
@@ -63,6 +65,7 @@ export async function GET(request: NextRequest) {
           exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
           iat: Math.floor(Date.now() / 1000)
         },
+        authorized: isShopperAuthorized("dev-user"),
         reason: 'Development mode - authentication disabled'
       }, { status: 200 });
     }
@@ -84,9 +87,28 @@ export async function GET(request: NextRequest) {
       logger.warn('auth.validate.token.invalid', { message: 'Token is INVALID', reason: result.reason });
     }
 
+    // Check shopper authorization (does not block login, just returns status)
+    let authorized = false;
+    if (result.valid) {
+      const shopperId = result.payload?.shopperId as string;
+      if (shopperId) {
+        authorized = isShopperAuthorized(shopperId);
+        logger.info('auth.validate.shopper.check', { 
+          message: 'Shopper authorization status',
+          shopperId,
+          authorized
+        });
+      } else {
+        logger.warn('auth.validate.shopper.missing', {
+          message: 'Shopper ID missing from token payload'
+        });
+      }
+    }
+
     return NextResponse.json({
       valid: result.valid,
       payload: result.payload,
+      authorized,
       reason: result.reason
     }, {
       status: result.valid ? 200 : 401

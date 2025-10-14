@@ -1,5 +1,6 @@
 import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType, authFetch } from '@godaddy/gasket-auth';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/features';
 import { useMockAuth } from '@/hooks/useMockAuth';
 import { logger } from '@/lib/request-context';
@@ -34,6 +35,8 @@ export function useAuth(onShowMockLogin?: () => void) {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(true);
+  const router = useRouter();
 
   // Check authentication mode (prefer server config if available)
   const authType = config?.auth?.authType || auth.getType();
@@ -42,6 +45,18 @@ export function useAuth(onShowMockLogin?: () => void) {
 
   // Mock auth integration
   const mockAuth = useMockAuth();
+
+  // Determine if we should use JWT auth based on config
+  const shouldUseJWT = config?.auth?.isJWT ?? auth.isJWT();
+
+  // Always call useAuthState to maintain hook order, but only use result for JWT mode
+  const authState = useAuthState({
+    realm: (config?.auth?.realm || 'idp') as AuthRealmType,
+    risk: (config?.auth?.risk || 'low') as AuthRiskType,
+    type: (config?.auth?.type || ['basic']) as AuthIdpType[],
+    allowHeartbeat: true,
+    use12HourExpiration: true,
+  });
 
   // Load configuration from API
   useEffect(() => {
@@ -69,17 +84,40 @@ export function useAuth(onShowMockLogin?: () => void) {
     loadConfig();
   }, []);
 
-  // Determine if we should use JWT auth based on config
-  const shouldUseJWT = config?.auth?.isJWT ?? auth.isJWT();
+  // Check for shopper ID authorization (JWT mode only)
+  useEffect(() => {
+    async function checkShopperAuth() {
+      if (!shouldUseJWT || !authState.valid || isMockAuth || isAuthDisabled) {
+        setIsAuthorized(true);
+        return;
+      }
 
-  // Always call useAuthState to maintain hook order, but only use result for JWT mode
-  const authState = useAuthState({
-    realm: (config?.auth?.realm || 'idp') as AuthRealmType,
-    risk: (config?.auth?.risk || 'low') as AuthRiskType,
-    type: (config?.auth?.type || ['basic']) as AuthIdpType[],
-    allowHeartbeat: true,
-    use12HourExpiration: true,
-  });
+      try {
+        const response = await fetch('/api/auth/validate');
+        if (response.ok) {
+          const data = await response.json();
+          // Check authorization status (login succeeded, but may not be authorized)
+          if (data.valid && data.authorized === false) {
+            logger.info('auth.shopper.unauthorized', {
+              message: 'User authenticated but not authorized',
+              shopperId: data.payload?.shopperId
+            });
+            setIsAuthorized(false);
+          } else {
+            setIsAuthorized(true);
+          }
+        }
+      } catch (error) {
+        logger.error('auth.shopper.check.error', {
+          message: 'Failed to check shopper authorization',
+          error: error as Error
+        });
+        setIsAuthorized(true);
+      }
+    }
+
+    checkShopperAuth();
+  }, [authState.valid, shouldUseJWT, isMockAuth, isAuthDisabled]);
 
   // Helper function to get user email from auth details
   const getUserEmail = () => {
@@ -215,6 +253,7 @@ export function useAuth(onShowMockLogin?: () => void) {
     // Core auth state
     isAuthenticated,
     isLoading,
+    isAuthorized,
     authState: shouldUseJWT ? authState : null,
 
     // Configuration

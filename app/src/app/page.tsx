@@ -93,7 +93,7 @@ function HomeContent() {
 
       if (!createSiteResponse.ok) {
         const errorData = await createSiteResponse.json().catch(() => ({}))
-        throw new Error(errorData.error || 'Failed to create site')
+        throw new Error(errorData.message || errorData.error || 'Failed to create site')
       }
 
       const siteData = await createSiteResponse.json()

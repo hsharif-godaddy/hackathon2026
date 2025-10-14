@@ -4,6 +4,7 @@ import {
   withCustomerAuth, 
   customerHasAccount,
   createCustomerAuthError,
+  isShopperAuthorized,
   type CustomerAuthContext 
 } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
@@ -15,6 +16,22 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     const body = await request.json();
     const { prompt, initialPrompt } = body;
     const { user } = authContext;
+
+    // Check shopper authorization (production only)
+    if (!isShopperAuthorized(user.shopperId)) {
+      logger.warn('sites.quick-create.unauthorized', {
+        message: 'User not authorized to create sites',
+        shopperId: user.shopperId
+      });
+      return NextResponse.json(
+        {
+          error: 'Access restricted',
+          message: 'Your account does not have authorization to create sites at this time.',
+          redirectTo: '/coming-soon'
+        },
+        { status: 403 }
+      );
+    }
 
     // Customer must have an account to create sites
     if (!customerHasAccount(user)) {

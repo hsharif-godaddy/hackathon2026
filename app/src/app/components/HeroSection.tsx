@@ -35,6 +35,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
   const {
     isAuthenticated,
+    isAuthorized,
     handleSignIn
   } = useAuth(onShowMockLogin);
 
@@ -140,42 +141,46 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
   return (
     <Box className="text-center flex flex-col gap-6 px-4 sm:px-6 lg:px-8 pt-24 min-h-[calc(100vh-3rem)] items-center justify-center">
-      <text.h1
-        as='heading'
-        size={5}
-        className="gd-sage !font-bold"
-      >
-        What would you like to{' '}
-        <text.span as='heading' size={5} className='block'>
-          <GradientText
-            colors={["#FF75BC", "#C290FF", "#8EF9FF"]}
-            animationSpeed={3}
-            showBorder={false}
-            className='gd-sage !font-bold'
+      {(!isAuthenticated || isAuthorized) && (
+        <>
+          <text.h1
+            as='heading'
+            size={5}
+            className="gd-sage !font-bold"
           >
-            Build Today?
-          </GradientText>
-        </text.span>
-      </text.h1>
+            What would you like to{' '}
+            <text.span as='heading' size={5} className='block'>
+              <GradientText
+                colors={["#FF75BC", "#C290FF", "#8EF9FF"]}
+                animationSpeed={3}
+                showBorder={false}
+                className='gd-sage !font-bold'
+              >
+                Build Today?
+              </GradientText>
+            </text.span>
+          </text.h1>
 
-      <text.p
-        size={2}
-        className='max-w-xl mx-auto !font-thin'
-      >
-        Tell us what you want and we’ll build with you from idea to live, keeping the boring bits covered and the fun parts easy.
-      </text.p>
-
-      {/* Error Display */}
-      {error && (
-        <div className="w-full max-w-2xl mx-auto mt-12">
-          <Alert
-            emphasis="critical"
-            title="Error"
-            actions={<Button design="inline" text="Dismiss" onClick={() => setError(null)} />}
+          <text.p
+            size={2}
+            className='max-w-xl mx-auto !font-thin'
           >
-            {error}
-          </Alert>
-        </div>
+            Tell us what you want and we&apos;ll build with you from idea to live, keeping the boring bits covered and the fun parts easy.
+          </text.p>
+
+          {/* Error Display */}
+          {error && (
+            <div className="w-full max-w-2xl mx-auto mt-12">
+              <Alert
+                emphasis="critical"
+                title="Error"
+                actions={<Button design="inline" text="Dismiss" onClick={() => setError(null)} />}
+              >
+                {error}
+              </Alert>
+            </div>
+          )}
+        </>
       )}
 
       <div className="w-full max-w-2xl mx-auto my-8">
@@ -188,8 +193,51 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
             data-eid={generateClickEID('homepage.hero.sign_in')}
           />
         )}
-        {/* Display Textarea for authenticated users */}
-        {isAuthenticated && (
+
+        {isAuthenticated && !isAuthorized && (
+          <Box gap="xl" className="py-12">
+            <Box gap="lg">
+              <text.h2
+                as='heading'
+                size={3}
+                className="gd-sage !font-bold"
+              >
+                <GradientText
+                  colors={["#FF75BC", "#C290FF", "#8EF9FF"]}
+                  animationSpeed={3}
+                  showBorder={false}
+                  className='gd-sage !font-bold'
+                >
+                  Coming Soon
+                </GradientText>
+              </text.h2>
+
+              <text.p
+                size={1}
+                className='max-w-xl mx-auto !font-thin'
+              >
+                Access to this application is currently limited. Please check back later or contact support for more information.
+              </text.p>
+            </Box>
+
+            <Box className="mt-8 pt-6 border-t border-opacity-20" style={{ borderColor: 'currentColor' }}>
+              <text.p size={0} className="opacity-60">
+                Need help?{' '}
+                <Button
+                  design="inline"
+                  size="sm"
+                  external
+                  href="https://www.godaddy.com/help"
+                  className="!text-intents-ux-boxHighContrast-foregroundColor font-medium"
+                >
+                  Contact Support
+                </Button>
+              </text.p>
+            </Box>
+          </Box>
+        )}
+
+        {isAuthenticated && isAuthorized && (
           <Box gap="lg">
             <div className="relative transition-all duration-300 ease-out glowing-input">
               <Box

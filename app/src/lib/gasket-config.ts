@@ -1,5 +1,6 @@
 import { logger } from './request-context';
 import { auth } from './features';
+import { SHOPPER_AUTH_FAILURE_MESSAGE } from './customer-auth';
 // Gasket configuration for Airo App Builder authentication
 
 // Extend globalThis interface for auth logging flag and config cache
@@ -204,9 +205,48 @@ export async function isAuthDisabled(): Promise<boolean> {
   return disabled;
 }
 
-// Helper function for authenticated API calls
-// Note: This is deprecated - use authFetch from @godaddy/gasket-auth directly
+/**
+ * Helper function for authenticated API calls
+ * Wraps authFetch and adds access restriction handling
+ * 
+ * @param url - API endpoint URL
+ * @param options - Fetch options
+ * @returns Response from the API
+ * 
+ * @throws {Error} Redirects to coming-soon page if access is restricted
+ */
 export async function appFetch(url: string, options?: RequestInit): Promise<Response> {
   const { authFetch } = await import('@godaddy/gasket-auth');
-  return authFetch(url, options);
+  const response = await authFetch(url, options);
+  
+  // Check specifically for shopper ID authorization failure (403 only)
+  if (response.status === 403) {
+    try {
+      const contentType = response.headers.get('content-type');
+      if (contentType?.includes('application/json')) {
+        const data = await response.clone().json();
+        // Only redirect for the specific shopper ID authorization error message
+        if (data.message && data.message.includes(SHOPPER_AUTH_FAILURE_MESSAGE)) {
+          logger.info('app-fetch.shopper.unauthorized', {
+            message: 'Shopper ID authorization failed, redirecting to coming-soon page',
+            url,
+            status: response.status
+          });
+          
+          // Only redirect on client-side
+          if (typeof window !== 'undefined') {
+            window.location.href = '/coming-soon';
+          }
+        }
+      }
+    } catch (error) {
+      // If we can't parse the response, just return it normally
+      logger.debug('app-fetch.parse.error', {
+        message: 'Could not parse response for access check',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  
+  return response;
 }

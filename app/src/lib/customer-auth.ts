@@ -13,6 +13,12 @@ import { RequestContextService, type RequestContext, logger } from '@/lib/reques
 import { randomUUID } from 'crypto';
 import { isTokenTooOld, getTokenAgeMinutes } from '@/lib/auth/token-refresh';
 
+/**
+ * Error message for shopper ID authorization failure
+ * Used consistently across authentication checks to trigger coming-soon page redirect
+ */
+export const SHOPPER_AUTH_FAILURE_MESSAGE = 'Your account does not have authorization to access this application.';
+
 // Use account adapter factory to get the appropriate service for the environment
 function getAccountService() {
   return AccountAdapterFactory.getInstance();
@@ -159,6 +165,15 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       };
     }
 
+    // NOTE: Shopper ID authorization check removed from authentication
+    // Users are allowed to login regardless of shopper ID criteria
+    // Authorization check happens after login (see isShopperAuthorized function)
+    logger.info('auth.login.success', {
+      message: 'User authenticated successfully',
+      shopperId,
+      environment: process.env.ENVIRONMENT_NAME
+    });
+
     // Get or create account for the authenticated shopper
     let account = await getAccountService().getAccountByShopperId(shopperId);
 
@@ -230,6 +245,34 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
   }
 }
 
+/**
+ * Check if a shopper is authorized to use the application
+ * 
+ * In production, checks if shopper ID meets authorization criteria.
+ * Returns authorization status without blocking authentication.
+ * 
+ * @param shopperId - The shopper ID to check
+ * @returns true if authorized, false otherwise
+ */
+export function isShopperAuthorized(shopperId: string): boolean {
+  // In non-production environments, all shoppers are authorized
+  if (process.env.ENVIRONMENT_NAME !== 'production') {
+    return true;
+  }
+
+  // Production: Check if shopper ID meets criteria (length === 3)
+  const isAuthorized = shopperId.length === 3;
+  
+  logger.info('auth.shopper.authorization-check', {
+    message: 'Shopper authorization check',
+    shopperId,
+    isAuthorized,
+    expectedLength: 3,
+    actualLength: shopperId.length
+  });
+  
+  return isAuthorized;
+}
 
 /**
  * Middleware wrapper for API routes requiring customer authentication
@@ -241,10 +284,12 @@ export function withCustomerAuth<T extends unknown[]>(
     const authContext = await authenticateCustomer(request);
 
     if (!authContext.isAuthenticated) {
+      const errorMessage = (authContext as UnauthenticatedCustomerContext).error;
+      
       return NextResponse.json(
         {
           error: 'Unauthorized',
-          message: (authContext as UnauthenticatedCustomerContext).error,
+          message: errorMessage,
           requiresAuth: true
         },
         { status: 401 }
