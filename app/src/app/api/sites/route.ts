@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
+import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
 import { 
   withCustomerAuth, 
   customerHasAccount,
@@ -43,11 +44,7 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
 
     return await handleGetSites(request, authContext.jwt);
   } catch (error) {
-    logger.error('sites.fetch.error', { message: 'Error fetching sites', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
-    return NextResponse.json(
-      { error: 'Failed to fetch sites' },
-      { status: 500 }
-    );
+    return handleControlPlaneError(error, 'sites.fetch');
   }
 });
 
@@ -115,14 +112,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }, { status: 201 });
 
   } catch (error) {
-    logger.error('sites.create.error', { message: 'Error creating site', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
-    return NextResponse.json(
-      { 
-        error: 'Failed to create site',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    return handleControlPlaneError(error, 'sites.create');
   }
 });
 
@@ -173,10 +163,6 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    logger.error('sites.delete.error', { message: 'Error deleting site', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
-    return NextResponse.json(
-      { error: 'Failed to delete site' },
-      { status: 500 }
-    );
+    return handleControlPlaneError(error, 'sites.delete');
   }
 });

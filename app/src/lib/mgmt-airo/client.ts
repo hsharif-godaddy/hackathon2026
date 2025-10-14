@@ -1,23 +1,24 @@
 import { logger } from '@/lib/request-context';
 import { extractCustomerId as extractCustomerIdFromJWT } from '@/lib/utils/jwt-utils';
-import type {
-  AiroMgmtClientConfig,
-  AiroSubscription,
-  AiroSystem,
-  AiroApp,
-  AiroAppDetails,
-  AiroJobStatus,
-  AiroCustomer,
-  AiroSignupPayload,
-  AiroSignupResponse,
-  AiroCreateAppPayload,
-  AiroCreateAppResponse,
-  AiroUpdateAppPayload,
-  AiroDeployAppResponse,
-  AiroDeleteAppResponse,
-  AiroBulkAppsResponse,
-  CustomerTree,
-  AiroApiError
+import {
+  AiroHttpError,
+  type AiroMgmtClientConfig,
+  type AiroSubscription,
+  type AiroSystem,
+  type AiroApp,
+  type AiroAppDetails,
+  type AiroJobStatus,
+  type AiroCustomer,
+  type AiroSignupPayload,
+  type AiroSignupResponse,
+  type AiroCreateAppPayload,
+  type AiroCreateAppResponse,
+  type AiroUpdateAppPayload,
+  type AiroDeployAppResponse,
+  type AiroDeleteAppResponse,
+  type AiroBulkAppsResponse,
+  type CustomerTree,
+  type AiroApiError
 } from './types';
 
 /**
@@ -128,11 +129,7 @@ export class AiroMgmtClient {
             errorBody
           });
 
-          throw new Error(
-            `API request failed: ${response.status} ${response.statusText} - ${
-              typeof errorBody === 'string' ? errorBody : JSON.stringify(errorBody)
-            }`
-          );
+          throw new AiroHttpError(response.status, response.statusText, errorBody);
         }
 
         // Success - parse and return
@@ -213,6 +210,9 @@ export class AiroMgmtClient {
 
   /**
    * Check if customer exists in mgmt-airo
+   * 
+   * @throws {AiroHttpError} Re-throws 401 errors for authentication redirect
+   * @returns Customer info with exists status
    */
   async checkCustomer(): Promise<AiroCustomer> {
     try {
@@ -223,7 +223,12 @@ export class AiroMgmtClient {
         customerId: this.extractCustomerId() || 'unknown',
         exists: true
       };
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw 401 so it can propagate up for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
+      // 403 or other errors mean customer doesn't exist
       return {
         customerId: this.extractCustomerId() || 'unknown',
         exists: false

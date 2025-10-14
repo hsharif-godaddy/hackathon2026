@@ -182,6 +182,24 @@ export interface AiroApiError {
 }
 
 /**
+ * HTTP error class with status code
+ */
+export class AiroHttpError extends Error {
+  status: number;
+  statusText: string;
+  body: AiroApiError | string;
+
+  constructor(status: number, statusText: string, body: AiroApiError | string) {
+    const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+    super(`API request failed: ${status} ${statusText} - ${bodyStr}`);
+    this.name = 'AiroHttpError';
+    this.status = status;
+    this.statusText = statusText;
+    this.body = body;
+  }
+}
+
+/**
  * Client configuration
  */
 export interface AiroMgmtClientConfig {

@@ -5,6 +5,7 @@
  */
 
 export { AiroMgmtClient } from './client';
+export { AiroHttpError } from './types';
 export type {
   AiroMgmtClientConfig,
   AiroSubscription,

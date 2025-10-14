@@ -3,7 +3,6 @@ import { extractCustomerId, decodeJWT } from '@/lib/utils/jwt-utils';
 import { logger } from '@/lib/request-context';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
 import { useSubscriptionCacheStore, AppLocation } from '@/stores/useSubscriptionCacheStore';
-import { getMgmtAiroToken } from '@/lib/utils/mgmt-airo-auth';
 
 /**
  * ID length constants for distinguishing job IDs from app IDs
@@ -25,44 +24,12 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
   }
 
   private createClient(jwt: string): AiroMgmtClient {
-    // Try to use mgmt-airo specific token first (for dual SSO support)
-    let mgmtAiroJwt = jwt;
-    
-    // Check if we have a mgmt-airo specific token (client-side only)
-    if (typeof window !== 'undefined') {
-      const mgmtAiroToken = getMgmtAiroToken();
-      if (mgmtAiroToken) {
-        logger.info('v2-control-plane.using-mgmt-airo-token', {
-          message: 'Using mgmt-airo specific JWT token',
-          hasMainJwt: !!jwt,
-          hasMgmtAiroJwt: !!mgmtAiroToken
-        });
-        mgmtAiroJwt = mgmtAiroToken;
-      } else {
-        logger.warn('v2-control-plane.no-mgmt-airo-token', {
-          message: 'No mgmt-airo specific token found, using main app JWT',
-          hasMainJwt: !!jwt
-        });
-      }
-    }
-    
     return new AiroMgmtClient({
       baseUrl: this.mgmtAiroBaseUrl,
-      jwt: mgmtAiroJwt,
+      jwt,
       maxRetries: 3,
       retryDelayMs: 1000
     });
-  }
-
-  private logAuthError(operation: string, response: Response, context?: any): void {
-    if (response.status === 401 || response.status === 403) {
-      logger.error(`v2-control-plane.${operation}.auth-error`, {
-        status: response.status,
-        statusText: response.statusText,
-        url: response.url,
-        ...context
-      });
-    }
   }
 
   private generateTitle(prompt: string): string {
@@ -112,11 +79,15 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             // Use active subscription (existing behavior)
             selectedSubscription = await client.getActiveSubscription();
           }
-        } catch (error) {
-          // If we get 401, customer doesn't exist in mgmt-airo yet - proceed to signup
-          if (error instanceof Error && error.message.includes('401')) {
+        } catch (error: any) {
+          // Re-throw 401 for auth redirect
+          if (error.status === 401) {
+            throw error;
+          }
+          // If we get 403, customer doesn't exist in mgmt-airo yet - proceed to signup
+          if (error.status === 403) {
             logger.info('v2-control-plane.create-site.customer-not-found', {
-              message: 'Customer not found in mgmt-airo (401), proceeding to signup',
+              message: 'Customer not found in mgmt-airo (403), proceeding to signup',
               customerId: jwtPayload?.cid
             });
             selectedSubscription = null;
@@ -215,7 +186,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         updated_at: createdAt,
         type: 'job'
       };
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
       logger.error('v2-control-plane.create-site.error', { error });
       return {
         success: false,
@@ -566,6 +541,10 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       try {
         await client.checkCustomer();
       } catch (error: any) {
+        // Re-throw 401 for auth redirect
+        if (error.status === 401) {
+          throw error;
+        }
         if (error.message?.includes('Rate limited')) {
           throw error;
         }
@@ -630,7 +609,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       return null;
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
       logger.error('v2-control-plane.get-site.error', {
         siteId,
         error,
@@ -650,16 +633,13 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       const client = this.createClient(jwt);
-
-      try {
-        await client.checkCustomer();
-      } catch (error) {
-        return [];
-      }
-
       const apps = await client.getAllAppsForCustomer();
       return apps.map(app => this.mapAppToSiteInfo(app));
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
       logger.error('v2-control-plane.list-sites.error', { error });
       return [];
     }
@@ -736,6 +716,10 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       try {
         await client.checkCustomer();
       } catch (error: any) {
+        // Re-throw 401 for auth redirect
+        if (error.status === 401) {
+          throw error;
+        }
         if (error.message?.includes('Rate limited')) {
           throw error;
         }
@@ -783,7 +767,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
       logger.warn('v2-control-plane.find-app-metadata.not-found', { appId });
       return null;
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
       logger.error('v2-control-plane.find-app-metadata.error', {
         appId,
         error,
@@ -824,7 +812,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       });
       
       return { success: true };
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
       logger.error('v2-control-plane.delete-site.error', {
         siteId,
         error,
@@ -928,7 +920,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         site: updatedSite || site,
         message: 'Deployment triggered successfully'
       };
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect (preserve original error with status)
+      if (error.status === 401) {
+        throw error;
+      }
       logger.error('v2-control-plane.deploy-site.error', { siteId, error });
       throw new Error(`Deploy failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -1057,7 +1053,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       });
 
       return this.mapAppToSiteInfo(updatedApp);
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
       logger.error('v2-control-plane.update-site.error', { siteId, error });
       return null;
     }
@@ -1103,7 +1103,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
       const updatedApp = await client.getApp(site.subscription_id, site.system_id, siteId);
       return this.mapAppToSiteInfo(updatedApp);
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
       logger.error('v2-control-plane.update-site-variables.error', { siteId, error });
       return null;
     }
