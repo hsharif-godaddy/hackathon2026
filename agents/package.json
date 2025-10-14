@@ -7,11 +7,11 @@
   "types": "dist/index.d.ts",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server/app.ts",
+    "dev": "tsx watch --env-file=.env src/server/app.ts",
     "prebuild": "cd ../packages/ai-lib && pnpm run build",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "start": "node dist/server/app.js",
+    "start": "node --env-file=.env dist/server/app.js",
     "test": "vitest run",
     "test:unit": "vitest run --exclude='**/*.integration.test.ts'",
     "test:integration": "vitest run 'src/**/*.integration.test.ts'",
@@ -48,7 +48,6 @@
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "diff": "^8.0.2",
-    "dotenv": "^16.3.1",
     "elastic-apm-node": "^4.13.0",
     "execa": "^9.6.0",
     "express": "^4.18.2",
@@ -98,6 +97,6 @@
     "vitest": "^3.2.4"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.10.0"
   }
 }

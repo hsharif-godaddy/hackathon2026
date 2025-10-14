@@ -28,3 +28,6 @@ packages/design-extractor/output/
 
 # License reports
 licenses-report.txt
+.direnv/CACHEDIR.TAG
+keys/jwt-private.pem
+keys/jwt-public.pem

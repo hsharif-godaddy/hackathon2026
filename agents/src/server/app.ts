@@ -1,7 +1,3 @@
-// Load environment variables first
-import dotenv from 'dotenv';
-dotenv.config();
-
 // Initialize Elastic APM first - must be before any other imports
 import apmAgent from 'elastic-apm-node';
 
@@ -83,13 +79,13 @@ if (isApmEnabled) {
       transaction.setLabel('method', req.method);
       transaction.setLabel('path', req.path);
       transaction.setLabel('url', req.url);
-      
+
       // Add site_id label for distinguishing transactions
       const siteId = auth.getSiteId();
       if (siteId) {
         transaction.setLabel('site_id', siteId);
       }
-      
+
       res.on('finish', () => {
         transaction.result = `HTTP ${res.statusCode}`;
         transaction.setOutcome(res.statusCode >= 400 ? 'failure' : 'success');
@@ -123,7 +119,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// Protected routes requiring authentication  
+// Protected routes requiring authentication
 app.use('/agents', jwtAuthMiddleware.authenticate, agentsRouter);
 app.use('/apps', jwtAuthMiddleware.authenticate, appsRouter);
 app.use('/agent', jwtAuthMiddleware.authenticate, chatRouter);
@@ -157,12 +153,12 @@ async function initialize() {
     console.log('🚀 Phase 3: Setting up AI-Lib WebSocket Server...');
     const wsServer = await setupAILibWebSocketServer(server);
     console.log('✅ AI-Lib WebSocket server initialized with multi-agent support');
-    
+
     // Start file cleanup service
     console.log('🧹 Starting file cleanup service...');
     fileCleanupService.start();
     console.log('✅ File cleanup service started');
-    
+
     // Get WebSocket server info for health checks
     const wsInfo = getWebSocketServerInfo();
     console.log(`📊 WebSocket server info:`, {
@@ -170,7 +166,7 @@ async function initialize() {
       defaultAgent: wsInfo.defaultAgent,
       availableAgents: wsInfo.agentIds
     });
-    
+
     console.log('📌 WebSocket Connection Info:');
     console.log('  - Socket.IO: Available on default path for ai-playground compatibility');
     console.log('  - Frontend: Use Socket.IO client to connect (not native WebSocket)');
