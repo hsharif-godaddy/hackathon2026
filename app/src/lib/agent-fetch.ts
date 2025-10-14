@@ -22,26 +22,37 @@ async function getAgentToken(siteId: string): Promise<string> {
     return cached.token;
   }
   
-  // Get new token from server
-  const response = await fetch('/api/auth/agent-token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ siteId })
-  });
+  // Get token based on environment
+  const isServer = typeof window === 'undefined';
+  let token: string;
+  let expires: Date;
   
-  if (!response.ok) {
-    throw new Error(`Failed to get agent token: ${response.status}`);
+  if (isServer) {
+    // Server: Use JWT service directly
+    const { getJWTService } = await import('./jwt-service');
+    const result = await getJWTService().getToken({ siteId });
+    token = result.token;
+    expires = result.expires;
+  } else {
+    // Browser: Call API endpoint
+    const response = await fetch('/api/auth/agent-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ siteId })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get agent token: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    token = data.token;
+    expires = new Date(data.expires);
   }
   
-  const data = await response.json();
-  
-  // Cache token
-  tokenCache.set(siteId, {
-    token: data.token,
-    expires: new Date(data.expires)
-  });
-  
-  return data.token;
+  // Cache and return token
+  tokenCache.set(siteId, { token, expires });
+  return token;
 }
 
 /**

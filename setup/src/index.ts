@@ -9,6 +9,7 @@ import fs from 'fs-extra';
 import { DependencyChecker } from './deps-checker.js';
 import { EnvGenerator } from './env-generator.js';
 import { GettyConfigSetup } from './getty-config.js';
+import { JWTKeysGenerator } from './jwt-keys-generator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');
@@ -60,6 +61,7 @@ async function selectiveConfiguration(): Promise<void> {
   const depChecker = new DependencyChecker();
   const envGenerator = new EnvGenerator(projectRoot);
   const gettySetup = new GettyConfigSetup();
+  const jwtGenerator = new JWTKeysGenerator(projectRoot);
 
   while (true) {
     printSelectiveHeader();
@@ -71,6 +73,7 @@ async function selectiveConfiguration(): Promise<void> {
       { name: '🔍 Check Docker Dependencies', value: 'docker-deps' },
       { name: '📱 Configure App Environment (.env)', value: 'app-env' },
       { name: '🤖 Configure Agents Environment (.env)', value: 'agents-env' },
+      { name: '🔐 Generate JWT Keys', value: 'jwt-keys' },
       { name: '🖼️  Configure Getty Images Proxy', value: 'getty-config' },
       { name: '🗄️  Check MySQL Container Status', value: 'mysql-check' },
       { name: '🐳 Start MySQL Container', value: 'mysql-start' },
@@ -107,6 +110,9 @@ async function selectiveConfiguration(): Promise<void> {
         case 'agents-env':
           await envGenerator.generateAgentsEnv();
           break;
+        case 'jwt-keys':
+          await jwtGenerator.generateAndConfigureKeys();
+          break;
         case 'getty-config':
           await gettySetup.setup();
           break;
@@ -117,7 +123,7 @@ async function selectiveConfiguration(): Promise<void> {
           await startMySQLContainer();
           break;
         case 'status-check':
-          await checkCurrentStatus(envGenerator, gettySetup);
+          await checkCurrentStatus(envGenerator, gettySetup, jwtGenerator);
           break;
       }
     } catch (error) {
@@ -174,7 +180,7 @@ async function startMySQLContainer(): Promise<void> {
   }
 }
 
-async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup): Promise<void> {
+async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, jwtGenerator: JWTKeysGenerator): Promise<void> {
   console.log(chalk.cyan('🔍 Current Configuration Status'));
   console.log('');
 
@@ -194,6 +200,11 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
   } else {
     console.log(chalk.red('  ❌ agents/.env missing'));
   }
+
+  console.log('');
+  
+  // Check JWT keys
+  await jwtGenerator.displayStatus();
 
   console.log('');
   
@@ -232,6 +243,7 @@ async function fullSetup(): Promise<void> {
   console.log('• Verify Docker daemon is running');
   console.log('• Configure app/.env file with AI and database settings');
   console.log('• Configure agents/.env file with AI and MySQL settings');
+  console.log('• Generate JWT keys for secure agent communication');
   console.log('• Set up Getty Images proxy with AWS Secrets Manager token');
   console.log('• Generate SSO JWT tokens automatically if available');
   console.log('');
@@ -304,6 +316,48 @@ async function fullSetup(): Promise<void> {
 
   if (configureAgents) {
     await envGenerator.generateAgentsEnv();
+  }
+
+  printSeparator();
+
+  // Step 2.5: JWT Keys Generation
+  console.log(chalk.cyan('🔐 JWT Keys Configuration'));
+  console.log('JWT keys are required for secure communication between app and agents.\n');
+
+  const jwtGenerator = new JWTKeysGenerator(projectRoot);
+  const jwtStatus = await jwtGenerator.checkKeysConfigured();
+  
+  if (jwtStatus.app && jwtStatus.agents) {
+    console.log(chalk.green('✅ JWT keys already configured'));
+    
+    const { regenerateKeys } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'regenerateKeys',
+        message: 'Regenerate JWT keys?',
+        default: false
+      }
+    ]);
+
+    if (regenerateKeys) {
+      await jwtGenerator.generateAndConfigureKeys();
+    }
+  } else {
+    const { generateKeys } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'generateKeys',
+        message: 'Generate JWT keys now?',
+        default: true
+      }
+    ]);
+
+    if (generateKeys) {
+      await jwtGenerator.generateAndConfigureKeys();
+    } else {
+      console.log(chalk.yellow('⚠️  Skipping JWT keys generation'));
+      console.log(chalk.gray('   You can generate them later with: node scripts/generate-jwt-keys.js'));
+    }
   }
 
   printSeparator();
