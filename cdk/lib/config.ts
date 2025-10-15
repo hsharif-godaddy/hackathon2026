@@ -1,3 +1,37 @@
+/**
+ * Monitoring configuration for CloudWatch alarms
+ */
+interface MonitoringConfig {
+  /** ECS cluster name to monitor */
+  ecsClusterName: string;
+  /** ECS service name to monitor (optional) */
+  ecsServiceName?: string;
+  /** ALB ARN for the app/frontend load balancer (optional) */
+  appAlbArn?: string;
+  /** ALB ARN for the proxy/backend load balancer (optional) */
+  proxyAlbArn?: string;
+  /** RDS cluster identifier to monitor */
+  rdsClusterIdentifier: string;
+  /** Thresholds for various alarm metrics */
+  alarmThresholds: {
+    /** ALB 5xx error count threshold (per 5 minutes) */
+    alb5xxThreshold: number;
+    /** ALB 4xx error count threshold (per 5 minutes) */
+    alb4xxThreshold: number;
+    /** ALB high traffic threshold (requests per minute) */
+    albHighTpsThreshold: number;
+    /** ECS maximum CPU/memory utilization percentage */
+    ecsMaxUtilization: number;
+    /** RDS maximum utilization percentage */
+    rdsMaxUtilization: number;
+    /** RDS maximum database connections */
+    rdsMaxConnections: number;
+  };
+}
+
+/**
+ * Main configuration interface for Airo Builder CDK stacks
+ */
 interface Config {
   account: string;
   region: string;
@@ -12,6 +46,7 @@ interface Config {
   bedrockAssumeRoleArns: string[];
   gocodeAssumeRoleArns: string[];
   awsIamJwtAccount: string;
+  monitoring: MonitoringConfig;
 }
 
 const devConfig: Config = {
@@ -43,7 +78,21 @@ const devConfig: Config = {
     "132.148.54.234/32": "Prisma NAT",
     "132.148.54.244/30": "Prisma NAT"
   },
-  awsIamJwtAccount: '847636408845'
+  awsIamJwtAccount: '847636408845',
+  monitoring: {
+    ecsClusterName: 'katanaRuntime',
+    rdsClusterIdentifier: 'dev-mysql-v2-cluster',
+    proxyAlbArn: 'arn:aws:elasticloadbalancing:us-west-2:694282668781:loadbalancer/app/airobuildeproxydevprivatc822c546/f5995fa15ce542e9',
+    appAlbArn: 'arn:aws:elasticloadbalancing:us-west-2:694282668781:loadbalancer/app/airobuildeappdevprivatee66716e84/34f28f40a512e6fa',
+    alarmThresholds: {
+      alb5xxThreshold: 10,
+      alb4xxThreshold: 50,
+      albHighTpsThreshold: 1000,
+      ecsMaxUtilization: 90,
+      rdsMaxUtilization: 80,
+      rdsMaxConnections: 100,
+    },
+  },
 };
 
 const testConfig: Config = {
@@ -63,7 +112,21 @@ const testConfig: Config = {
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
   ],
   vpnIps: {},
-  awsIamJwtAccount: '333184933228'
+  awsIamJwtAccount: '333184933228',
+  monitoring: {
+    ecsClusterName: 'katanaRuntime',
+    rdsClusterIdentifier: 'test-mysql-v2-cluster',
+    proxyAlbArn: 'arn:aws:elasticloadbalancing:us-west-2:694282668781:loadbalancer/app/airobuildeproxytestpubli81c42a37/c783043b3e0df23b',
+    appAlbArn: 'arn:aws:elasticloadbalancing:us-west-2:694282668781:loadbalancer/app/airobuildeapptestdirectc6743dcfc/239795c4eebe32af',
+    alarmThresholds: {
+      alb5xxThreshold: 15,
+      alb4xxThreshold: 75,
+      albHighTpsThreshold: 1500,
+      ecsMaxUtilization: 90,
+      rdsMaxUtilization: 80,
+      rdsMaxConnections: 200,
+    },
+  },
 };
 
 const prodConfig: Config = {
@@ -81,7 +144,19 @@ const prodConfig: Config = {
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
   ],
   vpnIps: {},
-  awsIamJwtAccount: '377100941779'
+  awsIamJwtAccount: '377100941779',
+  monitoring: {
+    ecsClusterName: 'katanaRuntime',
+    rdsClusterIdentifier: 'prod-mysql-v2-cluster',
+    alarmThresholds: {
+      alb5xxThreshold: 20,
+      alb4xxThreshold: 100,
+      albHighTpsThreshold: 5000,
+      ecsMaxUtilization: 85,
+      rdsMaxUtilization: 80,
+      rdsMaxConnections: 300,
+    },
+  },
 };
 
 
