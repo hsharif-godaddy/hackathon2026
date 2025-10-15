@@ -23,10 +23,10 @@ export async function ensureTestUserExists(): Promise<void> {
     const accountService = getAccountService(); // Use singleton instance
     const testShopperId = TEST_USER.id;
     const testCustomerId = TEST_USER.id; // Use same ID for simplicity
-    
+
     // Check if account already exists
     let account = await accountService.findByShopperId(testShopperId);
-    
+
     if (!account) {
       logger.info('🌱 Seeding test user account...');
       try {

@@ -20,15 +20,13 @@ export async function GET(request: NextRequest) {
     // Handle mock authentication
     if (isFeatureEnabled.mockLogin()) {
       logger.info('auth.validate.mock.enabled', { message: 'Mock auth validation - feature enabled' });
-      
+
       try {
         // Ensure test user account exists in database
         await ensureTestUserExists();
-        logger.info('auth.validate.mock.user-ensured', { message: 'Test user ensured in database' });
-        
+
         // In mock mode, we check for a header or assume user is authenticated
         // The client-side should have already validated the user is logged in
-        logger.info('auth.validate.mock.using-test-user', { message: 'Mock auth validation - using test user' });
         return NextResponse.json({
           valid: true,
           payload: {
@@ -45,15 +43,15 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         logger.error('❌ Mock auth validation error:', error);
         return NextResponse.json(
-          { 
-            valid: false, 
-            reason: `Mock authentication setup failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
+          {
+            valid: false,
+            reason: `Mock authentication setup failed: ${error instanceof Error ? error.message : 'Unknown error'}`
           },
           { status: 500 }
         );
       }
     }
-    
+
     // Skip JWT validation if auth is disabled in development
     if (await isAuthDisabled()) {
       logger.info('auth.validate.dev.bypassed', { message: 'Auth validation bypassed - development mode' });
@@ -72,7 +70,7 @@ export async function GET(request: NextRequest) {
     // Extract token using gd-auth service (lazy import)
     const { gdAuthService } = await import('@/lib/gd-auth-service');
     const token = gdAuthService.extractTokenFromRequest(request);
-    
+
     if (!token) {
       return NextResponse.json({ valid: false, reason: 'No token provided' }, { status: 401 });
     }
@@ -93,7 +91,7 @@ export async function GET(request: NextRequest) {
       const shopperId = result.payload?.shopperId as string;
       if (shopperId) {
         authorized = isShopperAuthorized(shopperId);
-        logger.info('auth.validate.shopper.check', { 
+        logger.info('auth.validate.shopper.check', {
           message: 'Shopper authorization status',
           shopperId,
           authorized

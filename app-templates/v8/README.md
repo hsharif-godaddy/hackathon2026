@@ -15,6 +15,7 @@ A modern, production-ready web application template built with Vite, React, and 
 ## 🛠️ Tech Stack
 
 ### Frontend
+
 - **React 18+** - Modern React with hooks and concurrent features
 - **TypeScript 5** - Full type safety across the application
 - **Vite 5** - Fast build tool and dev server with HMR
@@ -24,10 +25,12 @@ A modern, production-ready web application template built with Vite, React, and 
 - **Framer Motion** - Smooth animations and transitions
 
 ### Backend
+
 - **Node.js API** - Simple health check and utilities
 - **TypeScript** - Type-safe backend development
 
 ### Development Tools
+
 - **ESLint 9** - Code linting
 - **Prettier** - Code formatting
 - **Vitest** - Fast unit testing
@@ -40,9 +43,9 @@ A modern, production-ready web application template built with Vite, React, and 
 ```
 v8-app-template/
 ├── src/
-│   ├── components/        # React components
+│   ├── components/       # React components
 │   │   ├── ui/           # shadcn/ui base components (40+ components)
-│   │   └── GeometricSpinner.tsx
+│   │   └── Spinner.tsx
 │   ├── layouts/          # Layout systems
 │   │   ├── Website.tsx   # Main website layout
 │   │   ├── Dashboard.tsx # Dashboard layout
@@ -85,12 +88,14 @@ v8-app-template/
 ## 🎨 UI Components
 
 This template includes shadcn/ui components that are:
+
 - **Accessible** - Built with Radix UI primitives
 - **Customizable** - Easy to modify and extend
 - **Consistent** - Design system with CSS variables
 - **Copy-paste friendly** - Own your components
 
 The template includes 40+ pre-configured shadcn/ui components:
+
 - **Layout**: Card, Separator, Tabs, Sheet, Dialog
 - **Forms**: Button, Input, Textarea, Select, Checkbox, Switch
 - **Navigation**: Navigation Menu, Breadcrumb, Pagination
@@ -100,6 +105,7 @@ The template includes 40+ pre-configured shadcn/ui components:
 - **Interactive**: Accordion, Collapsible, Command, Context Menu
 
 To add new components:
+
 ```bash
 npx shadcn-ui@latest add component-name
 ```
@@ -111,9 +117,11 @@ npx shadcn-ui@latest add component-name
 The custom source-mapper plugin adds metadata to components in development:
 
 ```html
-<div data-source-file="/src/components/Button.tsx" 
-     data-source-line="15" 
-     data-source-component="Button">
+<div
+  data-source-file="/src/components/Button.tsx"
+  data-source-line="15"
+  data-source-component="Button"
+>
   Click Me
 </div>
 ```
@@ -121,6 +129,7 @@ The custom source-mapper plugin adds metadata to components in development:
 ### Development Mode Integration
 
 The dev-tools package provides:
+
 - **Element selection**: Click to identify components
 - **Live editing**: Modify component props in real-time
 - **Source mapping**: Navigate directly to component source
@@ -136,20 +145,25 @@ The dev-tools package provides:
 ## 🗃️ API & Layouts
 
 ### API Routes
+
 The template includes:
+
 - `GET /api/health` - Health check endpoint
 - Extensible API client setup in `src/lib/api-client.ts`
 
 ### Layout System
+
 Two pre-built layout options:
 
 **Website Layout** (`src/layouts/Website.tsx`):
+
 - Configurable header with navigation and actions
 - Optional footer with multiple variants
 - Responsive design with mobile menu
 - Perfect for marketing sites and applications
 
 **Dashboard Layout** (`src/layouts/Dashboard.tsx`):
+
 - Sidebar navigation
 - Header with user actions
 - Content area with proper spacing
@@ -160,11 +174,13 @@ See `src/layouts/*.md` for detailed usage documentation.
 ## 🧪 Testing
 
 Run tests with:
+
 ```bash
 npm run test
 ```
 
 The template includes:
+
 - **Vitest** - Fast unit testing framework
 - **React Testing Library** - Component testing utilities
 - **Jest DOM** - Custom Jest matchers
@@ -172,11 +188,13 @@ The template includes:
 ## 📦 Deployment
 
 ### Build for production:
+
 ```bash
 npm run build
 ```
 
 ### Deploy options:
+
 - **Vercel/Netlify** - Frontend deployment
 - **Railway/Render** - Full-stack deployment
 - **Docker** - Containerized deployment
@@ -203,33 +221,33 @@ PORT=5173
 Configure in `vite.config.ts`:
 
 ```typescript
-import { defineConfig } from 'vite'
-import { sourceMapperPlugin } from './source-mapper'
-import { devToolsPlugin } from './dev-tools'
+import { defineConfig } from "vite";
+import { sourceMapperPlugin } from "./source-mapper";
+import { devToolsPlugin } from "./dev-tools";
 
 export default defineConfig({
-  plugins: [
-    sourceMapperPlugin(),
-    devToolsPlugin(),
-  ]
-})
+  plugins: [sourceMapperPlugin(), devToolsPlugin()],
+});
 ```
 
 ## 🎯 Best Practices
 
 ### Component Architecture
+
 - Keep components small and focused
 - Use composition over inheritance
 - Extract reusable logic into hooks
 - Prefer function components with hooks
 
 ### State Management
+
 - Keep local state in components with useState/useReducer
 - Use React Context for app-wide state (theme, auth)
 - Consider external libraries (Zustand, Redux Toolkit) for complex state
 - Leverage layout props for shared configuration
 
 ### Layout Usage
+
 - Always use Website or Dashboard layout as page wrapper
 - Configure layouts via props, not custom implementations
 - Follow layout documentation in `src/layouts/*.md`
@@ -251,6 +269,7 @@ MIT License - feel free to use this template for any project.
 ## 🙏 Acknowledgments
 
 Built with amazing open-source tools:
+
 - [Vite](https://vitejs.dev/)
 - [React](https://react.dev/)
 - [shadcn/ui](https://ui.shadcn.com/)
