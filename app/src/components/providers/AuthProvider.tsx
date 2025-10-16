@@ -1,11 +1,11 @@
 'use client';
 
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode, useState, useEffect, useMemo } from 'react';
 import Box from '@ux/box';
 import Spinner from '@ux/spinner';
 import { logger } from '@/lib/request-context';
 import { auth } from '@/lib/features';
-//import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 
 // Simple component that just renders children
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -19,13 +19,16 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [authProvider, setAuthProvider] = useState<any>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [featureFlags, setFeatureFlags] = useState<any>({});
-  const [isFeatureFlagsLoading, setIsFeatureFlagsLoading] = useState(false);
   const [serverAuthConfig, setServerAuthConfig] = useState<any>(null);
 
-  /*const {
+  const {
     featureFlags: switchboardFeatureFlags,
     isLoading: isSwitchboardFeatureFlagsLoading
-  } = useSwitchboard();*/
+  } = useSwitchboard();
+
+  const stableSwitchboardFlags = useMemo(() => switchboardFeatureFlags, [
+    JSON.stringify(switchboardFeatureFlags)
+  ]);
 
   // Load server-side auth configuration
   useEffect(() => {
@@ -52,33 +55,23 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   // Use server config if available, fallback to client-side detection
   const isJWTMode = serverAuthConfig?.isJWT || auth.isJWT();
-  const shouldUseSwitchboard = isJWTMode;
 
   // Conditionally load Switchboard data
-  /*useEffect(() => {
-    setIsFeatureFlagsLoading(true);
-    if (shouldUseSwitchboard) {
+  useEffect(() => {
+    if (!isSwitchboardFeatureFlagsLoading) {
       try {
-        if (switchboardFeatureFlags && !isSwitchboardFeatureFlagsLoading) {
-          setFeatureFlags(switchboardFeatureFlags || {});
-        } else {
-          setFeatureFlags({});
-        }
+        setFeatureFlags(stableSwitchboardFlags || {});
       } catch (error) {
         logger.warn('auth.provider.switchboard.error', {
           message: 'Failed to load Switchboard data',
           error: error as Error
         });
+        setFeatureFlags({});
       }
-    } else {
-      // For non-JWT modes, bypass Switchboard entirely and assume access is enabled
-      logger.info('auth.provider.switchboard.bypass', 'Bypassing Switchboard for non-JWT mode');
-      setFeatureFlags({ 'appbuilder-access': true });
     }
-    setIsFeatureFlagsLoading(false);
-  }, [shouldUseSwitchboard, switchboardFeatureFlags, isSwitchboardFeatureFlagsLoading]);*/
+  }, [stableSwitchboardFlags, isSwitchboardFeatureFlagsLoading]);
 
-  const isAppbuilderAccessEnabled = true; //featureFlags['appbuilder-access'] ?? false;
+  const isAppbuilderAccessEnabled = featureFlags['appbuilder-access'] ?? false;
 
   // Load auth provider conditionally (wait for server config)
   useEffect(() => {
@@ -120,7 +113,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }, [serverAuthConfig, isJWTMode]);
 
   // Show loading while feature flags or auth provider are loading
-  if (isFeatureFlagsLoading || isAuthLoading) {
+  if (isSwitchboardFeatureFlagsLoading || isAuthLoading) {
     return (
       <Box
         className="min-h-screen"

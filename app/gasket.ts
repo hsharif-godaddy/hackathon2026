@@ -18,7 +18,7 @@ import pluginNextjs from '@gasket/plugin-nextjs';
 import pluginIntl from '@gasket/plugin-intl';
 import pluginUxp from '@godaddy/gasket-plugin-uxp';
 import pluginOtel from '@godaddy/gasket-plugin-otel';
-//import pluginSwitchboard from '@godaddy/gasket-plugin-switchboard';
+import pluginSwitchboard from '@godaddy/gasket-plugin-switchboard';
 import gasketData from './gasket-data.js';
 import fs from 'fs';
 
@@ -53,7 +53,7 @@ export default makeGasket({
     pluginIntl,
     pluginUxp,
     pluginOtel,
-    //...(isJWTMode ? [pluginSwitchboard] : []),
+    pluginSwitchboard,
   ],
   commands: {
     docs: {
@@ -125,11 +125,9 @@ export default makeGasket({
       privateLabel: 1,
     }
   },
-  ...(isJWTMode ? {
-    switchboard: {
-      app: 'airo-app-builder',
-      enableGasketData: true
-    }
-  } : {}),
+  switchboard: {
+    app: 'airo-app-builder',
+    enableGasketData: true
+  },
   data: gasketData,
 } as GasketConfigDefinition);
