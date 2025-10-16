@@ -59,7 +59,7 @@ export class EnvGenerator {
 	private async checkExistingAWSProfile(): Promise<string | null> {
 		try {
 			const { execa } = await import("execa");
-			
+
 			// First check if the SSO profile exists and is logged in
 			const ssoProfileName = await this.awsSSO.getProfile();
 			try {
@@ -256,18 +256,18 @@ export class EnvGenerator {
 				name: "authType",
 				message: "Which authentication type would you like to use?",
 				choices: [
-					{ 
-						name: "None - No authentication required (Local Development)", 
+					{
+						name: "None - No authentication required (Local Development)",
 						value: "none",
 						short: "None"
 					},
-					{ 
-						name: "Mock - Fake authentication with test users (Development/Testing)", 
+					{
+						name: "Mock - Fake authentication with test users (Development/Testing)",
 						value: "mock",
 						short: "Mock"
 					},
-					{ 
-						name: "JWT - Full authentication with SSO (Production)", 
+					{
+						name: "JWT - Full authentication with SSO (Production)",
 						value: "jwt",
 						short: "JWT"
 					},
@@ -365,12 +365,12 @@ DATABASE_URL=${config.databaseUrl}
 			envContent += `# AWS Bedrock Configuration
 AI_PROVIDER=aws-bedrock
 AWS_REGION=${config.modelConfig.awsRegion}`;
-			
+
 			if (config.modelConfig.awsProfile) {
 				envContent += `
 AWS_PROFILE=${config.modelConfig.awsProfile}`;
 			}
-			
+
 			envContent += `
 BEDROCK_MODEL_ID=anthropic.claude-3-sonnet-20240229-v1:0
 `;
@@ -435,14 +435,15 @@ AWS_REGION=${config.modelConfig.awsRegion}`;
 				envContent += `
 AWS_PROFILE=${config.modelConfig.awsProfile}`;
 			}
-			
+
 			envContent += `
 `;
 		} else {
-			envContent += `# GoCode Configuration
-OPENAI_API_KEY="${config.modelConfig.gocodeApiKey}"
-OPENAI_BASE_URL="${config.modelConfig.gocodeBaseUrl}"
-OPENAI_MODEL="claude-sonnet-4"
+			envContent += `# GoCode Configuration (Anthropic API compatibility)
+DEFAULT_PROVIDER="anthropic"
+ANTHROPIC_API_KEY="${config.modelConfig.gocodeApiKey}"
+ANTHROPIC_BASE_URL="${config.modelConfig.gocodeBaseUrl}"
+ANTHROPIC_MODEL="claude-sonnet-4"
 `;
 		}
 
@@ -577,7 +578,7 @@ SSO_JWT=${config.ssoJwt}
 
 		// Getty Images Configuration
 		console.log(chalk.cyan("\n🖼️  Getty Images Configuration"));
-		
+
 		const { configureGetty } = await inquirer.prompt([
 			{
 				type: "list",
@@ -599,7 +600,7 @@ SSO_JWT=${config.ssoJwt}
 			// Use Getty proxy setup
 			const gettySetup = new GettyConfigSetup();
 			const result = await gettySetup.setup();
-			
+
 			if (result.success && result.envConfig) {
 				gettyConfig = result.envConfig;
 			} else {
@@ -660,7 +661,7 @@ SSO_JWT=${config.ssoJwt}
 		console.log(`Template Directory: ${config.appTemplateDir}`);
 		console.log(`MySQL Host: ${config.mysqlRootHost}:${config.mysqlRootPort}`);
 		console.log(`MySQL User: ${config.mysqlRootUser}`);
-		
+
 		let gettyStatus = "Not configured";
 		if (gettyConfig) {
 			gettyStatus = "AWS Proxy configured";
@@ -680,12 +681,12 @@ SSO_JWT=${config.ssoJwt}
 				'--filter', 'name=airo-app-mysql',
 				'--format', '{{.Names}}'
 			]);
-			
+
 			if (stdout.includes('airo-app-mysql')) {
 				console.log(chalk.green("✅ MySQL container is running"));
 				return true;
 			}
-			
+
 			console.log(
 				chalk.yellow(
 					"!  MySQL container not running. Start it with: docker compose up app-mysql -d",

@@ -19,7 +19,15 @@ You must handoff to the **Database Agent** for ALL database-related requests:
 When user requests database operations:
 
 1. **Recognize database requests** using keywords: database, mysql, db, sql, schema, table, database setup
-2. **Use the handoffToDatabase() method** with user requirements
+2. **Use the `handoff` tool** with the following parameters:
+   ```json
+   {
+     "targetAgent": "database",
+     "task": "Clear description of what the database agent should do",
+     "context": { "userId": "user-id", "databaseName": "db-name" },
+     "reason": "User requested database setup"
+   }
+   ```
 3. **Let Database Agent handle** all database operations using its mysql_operation tool
 4. **Receive results** and continue with frontend integration
 

@@ -107,10 +107,28 @@ export class PrismaSiteService {
    */
   async updateSite(siteId: string, updates: Partial<Omit<Site, 'id' | 'created_at' | 'updated_at'>>): Promise<Site | null> {
     try {
+      // Map SiteInfo fields to Prisma schema fields
+      const prismaUpdates: any = {};
+
+      // Map 'name' to 'title' for Prisma schema
+      if ('name' in updates) {
+        prismaUpdates.title = updates.name;
+      }
+
+      // Copy other fields that match the schema
+      const allowedFields = ['title', 'initial_prompt', 'domain', 'agent_url', 'backend_url',
+                             'preview_url', 'ceph_mount_id', 'ceph_dir_number', 'status', 'account_id'];
+
+      for (const field of allowedFields) {
+        if (field in updates && field !== 'title') { // Skip title since we handled 'name' above
+          prismaUpdates[field] = (updates as any)[field];
+        }
+      }
+
       const site = await this.client.sites.update({
         where: { id: siteId },
         data: {
-          ...updates,
+          ...prismaUpdates,
           updated_at: new Date(),
         },
       });
@@ -215,10 +233,10 @@ export class PrismaSiteService {
    */
   async checkSiteLimit(accountId: string): Promise<{ canCreate: boolean; currentCount: number; limit: number }> {
     const currentCount = await this.getSiteCountByAccountId(accountId);
-    
+
     // For now, return high limits - can be enhanced with plan-based limits later
     const limit = 999; // Default limit
-    
+
     return {
       canCreate: currentCount < limit,
       currentCount,

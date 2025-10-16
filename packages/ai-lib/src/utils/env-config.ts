@@ -1,16 +1,3 @@
-import { config } from 'dotenv'
-import { join } from 'path'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
-
-// Get the directory of this file
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-
-// Load .env file from the package root
-const packageRoot = join(__dirname, '..', '..')
-config({ path: join(packageRoot, '.env') })
-
 /**
  * Environment configuration helper
  */
@@ -82,7 +69,7 @@ export class EnvConfig {
    */
   static getDefaultConfig() {
     const provider = this.getDefaultProvider()
-    
+
     switch (provider) {
       case 'openai':
         return { provider, ...this.getOpenAIConfig() }
@@ -101,7 +88,7 @@ export class EnvConfig {
     console.log(`   Default Provider: ${this.getDefaultProvider()}`)
     console.log(`   OpenAI: ${this.validateProvider('openai') ? '✅' : '❌'} ${process.env.OPENAI_API_KEY ? '(API key set)' : '(no API key)'}`)
     console.log(`   Anthropic: ${this.validateProvider('anthropic') ? '✅' : '❌'} ${process.env.ANTHROPIC_API_KEY ? '(API key set)' : '(no API key)'}`)
-    
+
     // Better Bedrock status detection
     const awsCredsInfo = []
     if (process.env.AWS_ACCESS_KEY_ID) awsCredsInfo.push('env vars')
@@ -109,7 +96,7 @@ export class EnvConfig {
     if (process.env.AWS_ROLE_ARN) awsCredsInfo.push('role')
     const region = process.env.AWS_REGION || 'us-west-2'
     const awsStatus = awsCredsInfo.length > 0 ? `(${awsCredsInfo.join(', ')}, region: ${region})` : `(region: ${region}, using default credential chain)`
-    
+
     console.log(`   Bedrock: ${this.validateProvider('bedrock') ? '✅' : '❌'} ${awsStatus}`)
     console.log()
   }
