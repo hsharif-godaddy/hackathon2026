@@ -6,7 +6,7 @@ import { ClockIcon } from '@heroicons/react/24/outline'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
-import { useDevelopPageStore, OptionsSheetTab } from '@/stores/useDevelopPageStore'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { postMessageToIframe } from '@/utils/postMessage'
 import PreviewError from './PreviewError'
 import Button from '@ux/button'
@@ -32,9 +32,14 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
     isPollingServer
   } = useServerPollingStore()
 
-  const { getCommits } = useGitHistoryStore()
   const {
-    setOpenOptionsSheet,
+    isRestoring,
+    restoreCommit,
+    refreshGitHistory,
+    getCommits
+  } = useGitHistoryStore()
+
+  const {
     previewViewMode,
     viewMode,
     setPreviewViewMode,
@@ -42,6 +47,7 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
   } = useDevelopPageStore()
 
   const appId = useAppIdFromParams()
+  const restoring = isRestoring(appId)
 
   useEffect(() => {
     if (isMobile) {
@@ -208,6 +214,16 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
     setIframeKey(prev => prev + 1)
   }
 
+  const handleRestoreConfirm = async () => {
+    if (!selectedCommit) return
+
+    const success = await restoreCommit(appId, selectedCommit.hash)
+
+    if (success) {
+      refreshGitHistory(appId)
+    }
+  }
+
   const handleIframeError = () => {
     logger.warn('preview-pane.iframe.error', { message: 'Iframe error', appId })
     setIframeError(true)
@@ -262,18 +278,20 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
     return (
       <div className="h-full flex flex-col">
         {isViewingHistoricalCommit && (
-          <div className="bg-intents-ux-feedbackHighContrastWarning-feedbackColor border-b px-4 py-2">
+          <div className="bg-intents-ux-feedbackInfo-feedbackColor rounded p-2 mx-4">
             <div className="flex items-center items-space-between w-full">
-              <span className="font-mono px-2 text-sm py-1 rounded mr-2">
+              <span className="font-mono px-2 text-sm py-1 rounded mr-2 grow">
                 This is a preview of a previous version of the app.
               </span>
               <Button
-                size="sm"
-                className="ml-auto!"
                 design="control"
-                text="View History"
-                onClick={() => setOpenOptionsSheet(OptionsSheetTab.HISTORY)}
-              />
+                size="sm"
+                onClick={handleRestoreConfirm}
+                disabled={restoring}
+                title="Restore files from this commit"
+              >
+                {restoring ? 'Restoring...' : `Restore to ${selectedCommit?.shortHash || 'this commit'}`}
+              </Button>
             </div>
           </div>
         )}
