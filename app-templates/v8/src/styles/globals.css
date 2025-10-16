@@ -90,3 +90,8 @@
     }
   }
 }
+
+/* Unless told otherwise, keep it for smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}

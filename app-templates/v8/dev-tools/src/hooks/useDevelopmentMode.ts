@@ -76,9 +76,9 @@ export function useDevelopmentMode() {
     if (element.id) {
       return `#${element.id}`
     }
-    
+
     let selector = element.tagName.toLowerCase()
-    
+
     if (element.className) {
       // Filter out pseudo-class prefixes and only keep valid CSS class names
       const classes = element.className.split(' ')
@@ -86,12 +86,12 @@ export function useDevelopmentMode() {
         .filter(c => !c.includes(':')) // Remove Tailwind pseudo-classes like hover:, focus:, etc.
         .map(c => c.replace(/[^\w-]/g, '')) // Remove any invalid characters
         .filter(c => c.length > 0)
-      
+
       if (classes.length > 0) {
         selector += '.' + classes.join('.')
       }
     }
-    
+
     // Add position if needed to make it unique
     const parent = element.parentElement
     if (parent) {
@@ -103,7 +103,7 @@ export function useDevelopmentMode() {
         selector += `:nth-of-type(${index})`
       }
     }
-    
+
     return selector
   }
 
@@ -116,23 +116,23 @@ export function useDevelopmentMode() {
       'display', 'position', 'top', 'left', 'right', 'bottom',
       'flexDirection', 'justifyContent', 'alignItems', 'gap'
     ]
-    
+
     const styles: Record<string, string> = {}
     relevantProps.forEach(prop => {
       styles[prop] = computed.getPropertyValue(prop)
     })
-    
+
     return styles
   }
 
   // Create element info from DOM element
   const createElementInfo = useCallback((element: HTMLElement): SelectedElement => {
     const rect = element.getBoundingClientRect()
-    
+
     // Add a unique data attribute for reliable tracking
     const uniqueId = `dev-selected-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     element.setAttribute('data-dev-selected', uniqueId)
-    
+
     // Extract development context from compile-time injected data attributes
     let devContext = element.hasAttribute('data-dev-file') ? {
       fileName: element.getAttribute('data-dev-file') || 'unknown',
@@ -166,7 +166,7 @@ export function useDevelopmentMode() {
       }
       console.log('⚠️ Using fallback dev context for element:', element.tagName, element.className, devContext)
     }
-    
+
     const elementInfo = {
       tagName: element.tagName.toLowerCase(),
       className: element.className,
@@ -183,7 +183,7 @@ export function useDevelopmentMode() {
       dataId: uniqueId, // Store the unique ID for reliable element finding
       devContext // Include development context for saving changes back to disk
     }
-    
+
     return elementInfo
   }, [])
 
@@ -192,7 +192,7 @@ export function useDevelopmentMode() {
     if (!overlay) return
 
     const rect = element.getBoundingClientRect()
-    
+
     const borderColor = type === 'hover' ? '#3b82f6' : '#000000'
     const backgroundColor = type === 'hover' ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
     const borderStyle = type === 'select' ? 'dashed' : 'solid'
@@ -238,30 +238,30 @@ export function useDevelopmentMode() {
     const viewportWidth = window.innerWidth
     const editorHeight = 60 // Approximate editor height
     const editorWidth = 400 // Approximate editor width
-    
+
     let top = rect.bottom + 10 // Default: below element (viewport relative)
     let left = rect.left // Align with element left (viewport relative)
-    
+
     // If editor would go below viewport, place above element
     if (top + editorHeight > viewportHeight) {
       top = rect.top - editorHeight - 10
     }
-    
+
     // Ensure editor doesn't go off the right edge
     if (left + editorWidth > viewportWidth) {
       left = viewportWidth - editorWidth - 10
     }
-    
+
     // Ensure editor doesn't go off the left edge
     if (left < 10) {
       left = 10
     }
-    
+
     // Ensure editor doesn't go above viewport
     if (top < 10) {
       top = 10
     }
-    
+
     return { top, left }
   }, [])
 
@@ -272,13 +272,13 @@ export function useDevelopmentMode() {
       const element = document.querySelector(`[data-dev-selected="${elementInfo.dataId}"]`) as HTMLElement
       if (element) return element
     }
-    
+
     // Fallback to ID
     if (elementInfo.id) {
       const element = document.getElementById(elementInfo.id)
       if (element) return element
     }
-    
+
     // Fallback to clean selector
     try {
       if (elementInfo.selector) {
@@ -288,7 +288,7 @@ export function useDevelopmentMode() {
     } catch (_e) {
       console.warn('Invalid selector:', elementInfo.selector)
     }
-    
+
     // Last resort: find by tag and clean classes
     if (elementInfo.className) {
       const cleanClasses = elementInfo.className.split(' ')
@@ -303,7 +303,7 @@ export function useDevelopmentMode() {
         }
       }
     }
-    
+
     return null
   }
 
@@ -311,17 +311,17 @@ export function useDevelopmentMode() {
   const handleMouseOver = useCallback((e: MouseEvent) => {
     // Don't highlight during text editing or when not in select mode
     if (!state.isSelectMode || state.isInlineEditing) return
-    
+
     const target = e.target as HTMLElement
-    
+
     // Ignore dev tools elements
-    if (target.id === 'dev-mode-overlay' || 
+    if (target.id === 'dev-mode-overlay' ||
         target.closest('#dev-mode-overlay') ||
         target.closest('[data-dev-tools]') ||
         target.hasAttribute('data-dev-tools')) {
       return
     }
-    
+
     setState(prev => ({ ...prev, hoveredElement: target }))
     highlightElement(target, 'hover')
   }, [state.isSelectMode, state.isInlineEditing, highlightElement])
@@ -330,33 +330,33 @@ export function useDevelopmentMode() {
   const handleClick = useCallback((e: MouseEvent) => {
     // Don't handle clicks during text editing or when not in select mode
     if (!state.isSelectMode || state.isInlineEditing) return
-    
+
     const target = e.target as HTMLElement
-    
+
     // Ignore dev tools elements
-    if (target.id === 'dev-mode-overlay' || 
+    if (target.id === 'dev-mode-overlay' ||
         target.closest('#dev-mode-overlay') ||
         target.closest('[data-dev-tools]') ||
         target.hasAttribute('data-dev-tools')) {
       return
     }
-    
+
     e.preventDefault()
     e.stopPropagation()
-    
+
     const elementInfo = createElementInfo(target)
     const editorPosition = calculateEditorPosition(target)
-    
-    setState(prev => ({ 
-      ...prev, 
+
+    setState(prev => ({
+      ...prev,
       selectedElement: elementInfo,
       isSelectMode: false, // Auto-disable select mode after selection
       showEditor: true,
       editorPosition
     }))
-    
+
     highlightElement(target, 'select')
-    
+
     // Send selection to parent (for iframe context)
     if (window.parent !== window) {
       window.parent.postMessage({
@@ -387,12 +387,12 @@ export function useDevelopmentMode() {
       const element = findElement(state.selectedElement)
       if (element) {
         highlightElement(element, 'select')
-        
+
         // Also update editor position if it's showing
         if (state.showEditor) {
           const newEditorPosition = calculateEditorPosition(element)
-          setState(prev => ({ 
-            ...prev, 
+          setState(prev => ({
+            ...prev,
             editorPosition: newEditorPosition
           }))
         }
@@ -402,15 +402,12 @@ export function useDevelopmentMode() {
 
   // Setup event listeners
   useEffect(() => {
-    if (!state.isSelectMode && !state.selectedElement) {
-      document.removeEventListener('mouseover', handleMouseOver)
-      document.removeEventListener('click', handleClick)
-      document.removeEventListener('mouseleave', handleMouseLeave)
-      window.removeEventListener('scroll', handleScroll)
-      clearHighlight()
-      return
-    }
-    
+    // Always clean up existing listeners first
+    document.removeEventListener('mouseover', handleMouseOver)
+    document.removeEventListener('click', handleClick)
+    document.removeEventListener('mouseleave', handleMouseLeave)
+    window.removeEventListener('scroll', handleScroll)
+
     // Keep highlighting the selected element even when not in select mode
     // BUT NOT when inline editing is active (to avoid double boundary)
     if (state.selectedElement && !state.isSelectMode && !state.isInlineEditing) {
@@ -418,27 +415,31 @@ export function useDevelopmentMode() {
       if (element) {
         highlightElement(element, 'select')
       }
-      // Add scroll listener for selected element
+      // Add scroll listener for selected element only
       window.addEventListener('scroll', handleScroll)
       return () => {
         window.removeEventListener('scroll', handleScroll)
       }
     }
 
-    if (!state.isSelectMode) {
-      return
+    // Only add interactive event listeners when actively in select mode
+    if (state.isSelectMode) {
+      document.addEventListener('mouseover', handleMouseOver)
+      document.addEventListener('click', handleClick)
+      document.addEventListener('mouseleave', handleMouseLeave)
+      window.addEventListener('scroll', handleScroll)
+
+      return () => {
+        document.removeEventListener('mouseover', handleMouseOver)
+        document.removeEventListener('click', handleClick)
+        document.removeEventListener('mouseleave', handleMouseLeave)
+        window.removeEventListener('scroll', handleScroll)
+      }
     }
 
-    document.addEventListener('mouseover', handleMouseOver)
-    document.addEventListener('click', handleClick)
-    document.addEventListener('mouseleave', handleMouseLeave)
-    window.addEventListener('scroll', handleScroll)
-
-    return () => {
-      document.removeEventListener('mouseover', handleMouseOver)
-      document.removeEventListener('click', handleClick)
-      document.removeEventListener('mouseleave', handleMouseLeave)
-      window.removeEventListener('scroll', handleScroll)
+    // If not in select mode and no selected element, clear highlighting
+    if (!state.selectedElement) {
+      clearHighlight()
     }
   }, [state.isSelectMode, state.selectedElement, clearHighlight, handleMouseOver, handleClick, handleMouseLeave, handleScroll, highlightElement])
 
@@ -448,10 +449,10 @@ export function useDevelopmentMode() {
   }, [])
 
   const disableDevelopmentMode = useCallback(() => {
-    setState(prev => ({ 
-      ...prev, 
-      isEnabled: false, 
-      isSelectMode: false, 
+    setState(prev => ({
+      ...prev,
+      isEnabled: false,
+      isSelectMode: false,
       selectedElement: null,
       hoveredElement: null,
       showEditor: false,
@@ -463,8 +464,8 @@ export function useDevelopmentMode() {
   }, [clearHighlight])
 
   const toggleSelectMode = useCallback(() => {
-    setState(prev => ({ 
-      ...prev, 
+    setState(prev => ({
+      ...prev,
       isSelectMode: !prev.isSelectMode,
       isEnabled: true,
       showEditor: false // Hide editor when entering select mode
@@ -482,29 +483,29 @@ export function useDevelopmentMode() {
         element.removeAttribute('data-dev-selected')
       }
     }
-    
+
     // Stop inline editing if active
     if (state.isInlineEditing && state.editingElement) {
       const element = state.editingElement
       const originalText = element.getAttribute('data-original-text') || ''
-      
+
       // Restore original text
       element.textContent = originalText
-      
+
       // Remove editing styles and attributes
       element.contentEditable = 'false'
       element.style.outline = ''
       element.style.backgroundColor = ''
       element.removeAttribute('data-original-text')
       element.removeAttribute('data-inline-editing')
-      
+
       // Remove event listeners by cloning the element
       const newElement = element.cloneNode(true) as HTMLElement
       element.parentNode?.replaceChild(newElement, element)
     }
-    
-    setState(prev => ({ 
-      ...prev, 
+
+    setState(prev => ({
+      ...prev,
       selectedElement: null,
       showEditor: false,
       editorPosition: null,
@@ -518,42 +519,42 @@ export function useDevelopmentMode() {
   const isTextEditable = useCallback((element: HTMLElement): boolean => {
     const tagName = element.tagName.toLowerCase()
     const textContent = element.textContent?.trim() || ''
-    
+
     // Suitable elements: text containers with actual text content
     const textTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'div', 'a', 'button', 'label']
     const hasText = textContent.length > 0
-    const hasOnlyText = element.children.length === 0 || 
-      Array.from(element.children).every(child => 
-        child.tagName.toLowerCase() === 'br' || 
+    const hasOnlyText = element.children.length === 0 ||
+      Array.from(element.children).every(child =>
+        child.tagName.toLowerCase() === 'br' ||
         child.tagName.toLowerCase() === 'span'
       )
-    
+
     return textTags.includes(tagName) && hasText && hasOnlyText
   }, [])
 
   // Start inline editing
   const startInlineEditing = useCallback(() => {
     if (!state.selectedElement) return
-    
+
     const element = findElement(state.selectedElement)
     if (!element || !isTextEditable(element)) return
-    
+
     console.log('🖊️ Starting inline editing for element:', element.tagName, element.textContent?.slice(0, 50))
-    
+
     // Clear the selection highlight immediately and ensure it stays cleared
     clearHighlight()
-    
+
     // Remove any existing selection highlighting from the element
     const devHighlight = document.getElementById('dev-highlight')
     if (devHighlight) {
       devHighlight.style.display = 'none'
     }
-    
+
     // Store original text content
     const originalText = element.textContent || ''
     element.setAttribute('data-original-text', originalText)
     element.setAttribute('data-inline-editing', 'true')
-    
+
     // Make element editable with distinct styling (no boundary overlap)
     element.contentEditable = 'true'
     element.style.outline = '2px solid #10b981'  // Green outline for text editing
@@ -561,30 +562,30 @@ export function useDevelopmentMode() {
     element.style.borderRadius = '6px'
     element.style.padding = '6px 12px'
     element.style.boxShadow = '0 0 0 1px rgba(16, 185, 129, 0.2)'
-    
+
     // Focus and select all text
     element.focus()
-    
+
     // Select all text content
     const range = document.createRange()
     range.selectNodeContents(element)
     const selection = window.getSelection()
     selection?.removeAllRanges()
     selection?.addRange(range)
-    
+
     setState(prev => ({
       ...prev,
       isInlineEditing: true,
       editingElement: element,
       showEditor: false // Hide style editor during text editing
     }))
-    
+
     // Define inline save function to avoid circular dependencies
     const saveInlineEdit = () => {
       console.log('💾 Saving inline edit changes')
       const currentText = element.textContent || ''
       const originalTextAttr = element.getAttribute('data-original-text') || ''
-      
+
       // Remove all editing styles and attributes completely
       element.contentEditable = 'false'
       element.style.outline = ''
@@ -594,18 +595,18 @@ export function useDevelopmentMode() {
       element.style.boxShadow = ''
       element.removeAttribute('data-original-text')
       element.removeAttribute('data-inline-editing')
-      
+
       // Clear any remaining inline styles to avoid JSX syntax issues
       if (element.style.cssText.trim()) {
         console.log('🧹 Clearing remaining inline styles to avoid JSX issues:', element.style.cssText)
         element.removeAttribute('style')
       }
-      
+
       // Send text change message to parent if text actually changed
       if (currentText !== originalTextAttr) {
         console.log('📝 Text changed from:', originalTextAttr, 'to:', currentText)
         console.log('📤 Sending TEXT_UPDATED message with devContext:', state.selectedElement?.devContext)
-        
+
         if (window.parent !== window) {
           window.parent.postMessage({
             type: 'TEXT_UPDATED',
@@ -623,14 +624,14 @@ export function useDevelopmentMode() {
       } else {
         console.log('📝 No text changes detected')
       }
-      
+
       setState(prev => ({
         ...prev,
         isInlineEditing: false,
         editingElement: null,
         showEditor: true // Show style editor again
       }))
-      
+
       // Re-highlight the element after a brief delay to ensure clean transition
       setTimeout(() => {
         if (state.selectedElement) {
@@ -641,15 +642,15 @@ export function useDevelopmentMode() {
         }
       }, 150)
     }
-    
+
     // Define inline cancel function
     const cancelInlineEdit = () => {
       console.log('❌ Cancelling inline edit')
       const originalTextAttr = element.getAttribute('data-original-text') || ''
-      
+
       // Restore original text
       element.textContent = originalTextAttr
-      
+
       // Remove all editing styles and attributes completely
       element.contentEditable = 'false'
       element.style.outline = ''
@@ -659,20 +660,20 @@ export function useDevelopmentMode() {
       element.style.boxShadow = ''
       element.removeAttribute('data-original-text')
       element.removeAttribute('data-inline-editing')
-      
+
       // Clear any remaining inline styles to avoid JSX syntax issues
       if (element.style.cssText.trim()) {
         console.log('🧹 Clearing remaining inline styles to avoid JSX issues:', element.style.cssText)
         element.removeAttribute('style')
       }
-      
+
       setState(prev => ({
         ...prev,
         isInlineEditing: false,
         editingElement: null,
         showEditor: true // Show style editor again
       }))
-      
+
       // Re-highlight the element after a brief delay to ensure clean transition
       setTimeout(() => {
         if (state.selectedElement) {
@@ -683,7 +684,7 @@ export function useDevelopmentMode() {
         }
       }, 150)
     }
-    
+
     // Add event listeners for saving changes
     const handleKeyDown = (e: KeyboardEvent) => {
       console.log('⌨️ Key pressed during inline editing:', e.key, 'Shift:', e.shiftKey)
@@ -701,23 +702,23 @@ export function useDevelopmentMode() {
         cancelInlineEdit()
       }
     }
-    
+
     const handleBlur = (e: FocusEvent) => {
       // Don't save on blur if user clicked on another dev tool element
       const relatedTarget = e.relatedTarget as HTMLElement
       if (relatedTarget && relatedTarget.closest('[data-dev-tools]')) {
         return
       }
-      
+
       console.log('👁️ Element blurred, saving changes')
       element.removeEventListener('keydown', handleKeyDown)
       element.removeEventListener('blur', handleBlur)
       saveInlineEdit()
     }
-    
+
     element.addEventListener('keydown', handleKeyDown)
     element.addEventListener('blur', handleBlur)
-    
+
     // Store event listeners for cleanup
     element.setAttribute('data-inline-editing', 'true')
   }, [state.selectedElement, isTextEditable, highlightElement])
@@ -726,7 +727,7 @@ export function useDevelopmentMode() {
   const stopInlineEditing = useCallback(() => {
     console.log('⚠️ Legacy stopInlineEditing called - this should not happen in normal flow')
     if (!state.isInlineEditing || !state.editingElement) return
-    
+
     setState(prev => ({
       ...prev,
       isInlineEditing: false,
@@ -739,7 +740,7 @@ export function useDevelopmentMode() {
   const cancelInlineEditing = useCallback(() => {
     console.log('⚠️ Legacy cancelInlineEditing called - this should not happen in normal flow')
     if (!state.isInlineEditing || !state.editingElement) return
-    
+
     setState(prev => ({
       ...prev,
       isInlineEditing: false,
@@ -753,11 +754,11 @@ export function useDevelopmentMode() {
     const handleMessage = (event: MessageEvent) => {
       // Only accept messages from parent window in iframe context
       if (window.parent === window) return
-      
+
       switch (event.data.type) {
         case 'TOGGLE_SELECT_MODE':
-          setState(prev => ({ 
-            ...prev, 
+          setState(prev => ({
+            ...prev,
             isSelectMode: !prev.isSelectMode,
             isEnabled: true,
             showEditor: false // Hide editor when entering select mode
@@ -766,16 +767,16 @@ export function useDevelopmentMode() {
             clearHighlight()
           }
           break
-          
+
         case 'ENABLE_DEV_MODE':
           setState(prev => ({ ...prev, isEnabled: true }))
           break
-          
+
         case 'DISABLE_DEV_MODE':
-          setState(prev => ({ 
-            ...prev, 
-            isEnabled: false, 
-            isSelectMode: false, 
+          setState(prev => ({
+            ...prev,
+            isEnabled: false,
+            isSelectMode: false,
             selectedElement: null,
             hoveredElement: null,
             showEditor: false,
@@ -785,7 +786,7 @@ export function useDevelopmentMode() {
           }))
           clearHighlight()
           break
-          
+
         case 'CLEAR_SELECTION':
           // Remove data attribute from previously selected element
           if (state.selectedElement?.dataId) {
@@ -794,9 +795,9 @@ export function useDevelopmentMode() {
               element.removeAttribute('data-dev-selected')
             }
           }
-          
-          setState(prev => ({ 
-            ...prev, 
+
+          setState(prev => ({
+            ...prev,
             selectedElement: null,
             showEditor: false,
             editorPosition: null,
@@ -815,7 +816,7 @@ export function useDevelopmentMode() {
 
     window.addEventListener('message', handleMessage)
     window.addEventListener('toggleDevSelectMode', handleToggleSelectMode)
-    
+
     return () => {
       window.removeEventListener('message', handleMessage)
       window.removeEventListener('toggleDevSelectMode', handleToggleSelectMode)

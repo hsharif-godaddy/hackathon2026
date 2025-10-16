@@ -4,11 +4,11 @@ import ElementEditor from './ElementEditor'
 import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
 
 export default function DevelopmentMode() {
-  const { 
-    isEnabled, 
-    isSelectMode, 
-    selectedElement, 
-    showEditor, 
+  const {
+    isEnabled,
+    isSelectMode,
+    selectedElement,
+    showEditor,
     editorPosition,
     isInlineEditing,
     clearSelection,
@@ -41,40 +41,40 @@ export default function DevelopmentMode() {
           '[class*="section"]', '[class*="hero"]', '[class*="about"]',
           '[class*="contact"]', '[class*="education"]', '[class*="experience"]'
         ].join(', ')
-        
+
         // Single query with compound selector to reduce DOM traversal
         const sections = Array.from(new Set(document.querySelectorAll(compoundSelector)))
-        
+
         console.log('Visual context: Found', sections.length, 'sections for observation')
-        
+
         if (sections.length === 0) {
           activeSection = 'main-content'
           isScriptReady = true
           return
         }
-        
+
         sectionsObserver = new IntersectionObserver((entries) => {
           let bestMatch: Element | null = null
           let bestRatio = 0
-          
+
           entries.forEach(entry => {
             if (entry.isIntersecting && entry.intersectionRatio > bestRatio) {
               bestRatio = entry.intersectionRatio
               bestMatch = entry.target
             }
           })
-          
+
           if (bestMatch && bestRatio > 0.3) {
             const element = bestMatch as HTMLElement
-            const sectionName = 
+            const sectionName =
               element.getAttribute('data-section') ||
               element.getAttribute('id') ||
-              element.className.split(' ').find((c: string) => 
+              element.className.split(' ').find((c: string) =>
                 c.includes('section') || c.includes('hero') || c.includes('about') ||
                 c.includes('contact') || c.includes('education') || c.includes('experience')
               ) ||
               element.tagName.toLowerCase()
-            
+
             if (sectionName && sectionName !== activeSection) {
               activeSection = sectionName
               console.log('Visual context: Active section changed to:', activeSection)
@@ -84,11 +84,11 @@ export default function DevelopmentMode() {
           threshold: [0, 0.1, 0.3, 0.5, 0.7, 1],
           rootMargin: '-10% 0px -10% 0px'
         })
-        
+
         sections.forEach(section => sectionsObserver?.observe(section))
         isScriptReady = true
         console.log('Visual context: Section observer setup complete')
-        
+
       } catch (error) {
         console.warn('Visual context: Error setting up section observer:', error)
         activeSection = 'content'
@@ -128,7 +128,7 @@ export default function DevelopmentMode() {
               try {
                 // Use history API to navigate without full page reload
                 window.history.pushState(null, '', event.data.url)
-                
+
                 // Dispatch a popstate event to notify React Router of the navigation
                 const popStateEvent = new PopStateEvent('popstate', { state: null })
                 window.dispatchEvent(popStateEvent)
@@ -137,7 +137,7 @@ export default function DevelopmentMode() {
               }
             }
           }
-          
+
           // Then restore scroll position after a delay to ensure page has updated
           if (event.data.scrollPosition) {
             setTimeout(() => {
@@ -150,7 +150,7 @@ export default function DevelopmentMode() {
           }
         } else if (event.data && event.data.type === 'REQUEST_VISUAL_CONTEXT') {
           console.log('Visual context: Request received, script ready:', isScriptReady)
-          
+
           const context = {
             page: window.location.pathname + window.location.search,
             scroll_position: {
@@ -165,9 +165,9 @@ export default function DevelopmentMode() {
             timestamp: Date.now(),
             script_ready: isScriptReady
           }
-          
+
           console.log('Visual context: Sending response:', context)
-          
+
           // Send response back to parent
           if (window.parent !== window) {
             safePostMessage(window.parent, {
@@ -178,7 +178,7 @@ export default function DevelopmentMode() {
         }
       } catch (error) {
         console.error('Visual context: Error handling request:', error)
-        
+
         // Send error response
         if (window.parent !== window) {
           safePostMessage(window.parent, {
@@ -198,7 +198,7 @@ export default function DevelopmentMode() {
 
     window.addEventListener('message', handleMessage)
     console.log('Visual context: Script loaded and ready')
-    
+
     // Notify parent that iframe is ready for state restoration
     if (window.parent !== window) {
       safePostMessage(window.parent, {
@@ -213,7 +213,7 @@ export default function DevelopmentMode() {
       window.removeEventListener('message', handleMessage)
     }
   }, [])
-  
+
   if (!isEnabled) {
     return null
   }
@@ -234,8 +234,8 @@ export default function DevelopmentMode() {
           width: '60px',
           height: '60px',
           borderRadius: '50%',
-          background: isSelectMode 
-            ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
+          background: isSelectMode
+            ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
             : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
           color: 'white',
           border: '3px solid rgba(255, 255, 255, 0.2)',
@@ -264,7 +264,7 @@ export default function DevelopmentMode() {
 
       {/* Development Mode Indicator */}
       {(isSelectMode || isInlineEditing) && (
-        <div 
+        <div
           data-dev-tools="indicator"
           onMouseEnter={() => setIsIndicatorHovered(true)}
           onMouseLeave={() => setIsIndicatorHovered(false)}
@@ -273,8 +273,8 @@ export default function DevelopmentMode() {
             top: '20px',
             left: '50%',
             transform: 'translateX(-50%)',
-            background: isInlineEditing 
-              ? 'rgba(5, 150, 105, 0.95)' 
+            background: isInlineEditing
+              ? 'rgba(5, 150, 105, 0.95)'
               : 'rgba(102, 126, 234, 0.95)',
             backdropFilter: 'blur(10px)',
             color: 'white',

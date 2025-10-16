@@ -52,8 +52,8 @@ export default function HeaderPattern({ config = {}, className }: HeaderPatternP
   } = config;
 
   const renderLogo = () => (
-    <Link 
-      to={logo.href || '/'} 
+    <Link
+      to={logo.href || '/'}
       className={cn(
         "text-xl font-bold text-foreground",
         logo.className
@@ -69,12 +69,12 @@ export default function HeaderPattern({ config = {}, className }: HeaderPatternP
       mobileBehavior === 'hamburger' && "hidden md:flex"
     )}>
       {navItems.map((item) => (
-        item.external ? (
+        item.external || item.href.startsWith('#') ? (
           <a
             key={item.href}
             href={item.href}
-            target="_blank"
-            rel="noopener noreferrer"
+            target={item.external ? "_blank" : undefined}
+            rel={item.external ? "noopener noreferrer" : undefined}
             className={cn(
               "text-sm font-medium transition-colors hover:text-primary",
               location.pathname === item.href
@@ -119,12 +119,12 @@ export default function HeaderPattern({ config = {}, className }: HeaderPatternP
           <div className="absolute top-16 left-0 right-0 bg-background border-b border-border md:hidden">
             <nav className="container mx-auto px-4 py-4 flex flex-col gap-2">
               {navItems.map((item) => (
-                item.external ? (
+                item.external || item.href.startsWith('#') ? (
                   <a
                     key={item.href}
                     href={item.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    target={item.external ? "_blank" : undefined}
+                    rel={item.external ? "noopener noreferrer" : undefined}
                     className={cn(
                       "text-sm font-medium transition-colors hover:text-primary py-2",
                       location.pathname === item.href
@@ -212,7 +212,7 @@ export default function HeaderPattern({ config = {}, className }: HeaderPatternP
   };
 
   return (
-    <header 
+    <header
       className={cn(
         "z-50",
         sticky && "sticky top-0",

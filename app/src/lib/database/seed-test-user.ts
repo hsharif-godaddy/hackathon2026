@@ -44,8 +44,6 @@ export async function ensureTestUserExists(): Promise<void> {
           throw error;
         }
       }
-    } else {
-      logger.info(`✅ Test user account exists: ${account.id}`);
     }
   } catch (error) {
     logger.error('❌ Error ensuring test user exists:', error);

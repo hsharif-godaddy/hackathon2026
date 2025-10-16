@@ -45,6 +45,8 @@ function SitesPageContent() {
     runningCount
   } = useSites()
 
+  console.log('SITES', sites)
+
   useEffect(() => {
     logImpressionEvent({ eid: 'sites.page' })();
   }, [])

@@ -52,10 +52,10 @@ interface FooterPatternProps {
 export default function FooterPattern({ config = {}, className }: FooterPatternProps) {
   const {
     variant = 'simple',
-    copyright = { 
-      text: 'App', 
-      showYear: true, 
-      position: 'center' 
+    copyright = {
+      text: 'App',
+      showYear: true,
+      position: 'center'
     },
     sections = [],
     socialLinks = [],
@@ -91,12 +91,12 @@ export default function FooterPattern({ config = {}, className }: FooterPatternP
       {bottomLinks.length > 0 && (
         <nav className="flex flex-wrap gap-6 justify-center">
           {bottomLinks.map((link) => (
-            link.external ? (
+            link.external || link.href.startsWith('#') ? (
               <a
                 key={link.href}
                 href={link.href}
-                target="_blank"
-                rel="noopener noreferrer"
+                target={link.external ? "_blank" : undefined}
+                rel={link.external ? "noopener noreferrer" : undefined}
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 {link.label}
@@ -146,11 +146,11 @@ export default function FooterPattern({ config = {}, className }: FooterPatternP
             <ul className="space-y-2">
               {section.links.map((link) => (
                 <li key={link.href}>
-                  {link.external ? (
+                  {link.external || link.href.startsWith('#') ? (
                     <a
                       href={link.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      target={link.external ? "_blank" : undefined}
+                      rel={link.external ? "noopener noreferrer" : undefined}
                       className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
                       {link.label}
@@ -329,7 +329,7 @@ export default function FooterPattern({ config = {}, className }: FooterPatternP
   };
 
   return (
-    <footer 
+    <footer
       className={cn(
         "mt-auto",
         border && "border-t border-border",
