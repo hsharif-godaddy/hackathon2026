@@ -98,7 +98,7 @@ export function useStreamingWebSocket() {
    */
   const ensureLatestCommit = useCallback(async (appId: string) => {
     try {
-      const apiUrl = await buildDynamicApiUrl(`/api/apps/${appId}/git/return`, appId)
+      const apiUrl = await buildDynamicApiUrl(`/git/return`, appId)
       const response = await agentFetch(apiUrl, {
         siteId: appId,
         method: 'POST',
