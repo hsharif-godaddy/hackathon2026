@@ -33,9 +33,13 @@ export interface S2SAuthConfig {
 }
 
 /**
- * Get default SSO host based on NODE_ENV
+ * Get default SSO host based on SSO_HOST or NODE_ENV
  */
 function getDefaultSsoHost(): string {
+  if (process.env.SSO_HOST) {
+    return process.env.SSO_HOST;
+  }
+
   const env = process.env.NODE_ENV || 'dev';
   
   switch (env.toLowerCase()) {

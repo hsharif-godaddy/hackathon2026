@@ -24,6 +24,7 @@
  * - NODE_ENV=production: https://api.gocode.caas.gdcorp.tools
  * 
  * Environment Variable Overrides:
+ * - SSO_HOST: Override SSO host for authentication
  * - ANTHROPIC_BASE_URL: Override GoCode endpoint for Anthropic requests
  * - OPENAI_BASE_URL: Fallback override (when ANTHROPIC_BASE_URL not set)
  * 
