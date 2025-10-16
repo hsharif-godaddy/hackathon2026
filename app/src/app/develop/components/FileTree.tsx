@@ -2,13 +2,10 @@
 
 import { useState } from 'react'
 import clsx from 'clsx'
-import {
-  ChevronDownIcon,
-  ChevronRightIcon,
-  DocumentIcon,
-  FolderIcon,
-  FolderOpenIcon
-} from '@heroicons/react/24/outline'
+import ChevronRightIcon from '@ux/icon/chevron-right'
+import FolderIcon from '@ux/icon/folder'
+import FolderOpenIcon from '@ux/icon/folder-open'
+import PageIcon from '@ux/icon/page'
 
 export interface FileItem {
   name: string
@@ -41,10 +38,19 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
     if (item.type === 'folder') {
       return expandedFolders.has(item.path) ? FolderOpenIcon : FolderIcon
     }
-    return DocumentIcon
+    return PageIcon
   }
 
   const getDepthPadding = (depth: number) => `${depth * 12 + 8}px`
+
+  const sortFileItems = (items: FileItem[]): FileItem[] => {
+    return items.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === 'folder' ? -1 : 1
+      }
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    })
+  }
 
   const renderFileItem = (item: FileItem, depth: number = 0): React.ReactNode => {
     const Icon = getFileIcon(item)
@@ -71,11 +77,11 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
           }}
         >
           {item.type === 'folder' && (
-            isExpanded ? (
-              <ChevronDownIcon className="w-4 h-4 mr-1" />
-            ) : (
-              <ChevronRightIcon className="w-4 h-4 mr-1" />
-            )
+            <ChevronRightIcon className={clsx(
+              "w-4 h-4 mr-1 transition-transform duration-100", {
+                "rotate-90": isExpanded
+              }
+            )} />
           )}
           {item.type === 'file' && <div className="w-4 h-4 mr-1" />}
           <Icon className="w-4 h-4 mr-2" />
@@ -85,7 +91,7 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
         {/* Render children if folder is expanded */}
         {item.type === 'folder' && isExpanded && item.children && (
           <div>
-            {item.children.map(child => renderFileItem(child, depth + 1))}
+            {sortFileItems(item.children).map(child => renderFileItem(child, depth + 1))}
           </div>
         )}
       </div>
@@ -95,7 +101,7 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
   return (
     <div className="h-full overflow-auto ">
       <div className="py-2">
-        {files.map(file => renderFileItem(file))}
+        {sortFileItems(files).map(file => renderFileItem(file))}
       </div>
     </div>
   )

@@ -4,17 +4,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { appService } from '@/services/AppService'
 import dynamic from 'next/dynamic'
 import clsx from 'clsx'
-import {
-  XMarkIcon,
-  DocumentDuplicateIcon,
-  CheckIcon,
-  ArrowDownTrayIcon
-} from '@heroicons/react/24/outline'
-import FileTree, { FileItem } from '../FileTree'
-import Spinner from '@ux/spinner'
+import FileTree, { FileItem } from '@/app/develop/components/FileTree'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import Button from '@ux/button'
+import DownloadIcon from '@ux/icon/download'
+import Spinner from '@ux/spinner'
 import PageIcon from '@ux/icon/page'
+import XIcon from '@ux/icon/x'
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -148,8 +145,6 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     }
   }, [appId])
 
-
-
   useEffect(() => {
     // Load real files from backend
     loadFiles()
@@ -250,11 +245,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
 
       // Mark file as saved
       setOpenFiles(prev =>
-        prev.map(f =>
-          f.path === pathToSave
-            ? { ...f, isDirty: false }
-            : f
-        )
+        prev.map(f => f.path === pathToSave ? { ...f, isDirty: false } : f)
       )
 
       // Show save confirmation
@@ -262,10 +253,8 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       setTimeout(() => setRecentlySaved(null), 2000)
 
       // Trigger preview refresh for certain file types
-      if (pathToSave.endsWith('.tsx') || pathToSave.endsWith('.jsx') ||
-          pathToSave.endsWith('.ts') || pathToSave.endsWith('.js') ||
-          pathToSave.endsWith('.css') || pathToSave.endsWith('.scss')) {
-        // Notify parent component about file changes
+      const refreshPreviewExtensions = ['.tsx', '.jsx', '.ts', '.js', '.css', '.scss', '.html'];
+      if (refreshPreviewExtensions.some(ext => pathToSave.endsWith(ext))) {
         window.postMessage({ type: 'file-saved', path: pathToSave }, window.location.origin)
       }
 
@@ -341,52 +330,52 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
               <div
                 key={file.path}
                 className={clsx(
-                  "flex items-center px-3 pb-1 pt-2 border-b-4  border-r cursor-pointer text-sm whitespace-nowrap transition-opacity duration-200", {
-                    "border-b-intents-ux-boxHighContrast-borderColor": activeFile === file.path,
+                  "relative flex items-center gap-1 pl-2 pr-1 py-1 border-b-4 border-r cursor-pointer text-sm whitespace-nowrap transition-opacity duration-200", {
                     "opacity-50 border-b-transparent": activeFile !== file.path
                   }
                 )}
                 onClick={() => setActiveFile(file.path)}
               >
-                <DocumentDuplicateIcon className="w-4 h-4 mr-2 text-gray-400" />
+                <PageIcon className="w-4 h-4" />
                 <span>{file.name}</span>
 
                 {/* Save status indicators */}
-                {saving === file.path ? (
-                  <div className="ml-2 w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" />
-                ) : recentlySaved === file.path ? (
-                  <CheckIcon className="w-4 h-4 ml-2 text-green-500" />
-                ) : file.isDirty ? (
-                  <div className="w-2 h-2 rounded-full ml-2" title="Unsaved changes" />
-                ) : null}
+                {(saving === file.path || recentlySaved === file.path || file.isDirty) && (
+                  <div className={clsx(
+                    "absolute top-1.5 left-2 w-2 h-2 bg-intents-ux-feedbackHighContrastCritical-feedbackColor rounded-full", {
+                      "bg-intents-ux-feedbackHighContrastSuccess-feedbackColor": recentlySaved === file.path,
+                      "bg-intents-ux-feedbackHighContrastCritical-feedbackColor animate-pulse": saving === file.path,
+                      "bg-intents-ux-feedbackHighContrastCritical-feedbackColor": file.isDirty,
+                    }
+                  )} />
+                )}
 
-                <button
+                <Button
                   onClick={(e) => {
                     e.stopPropagation()
                     handleCloseFile(file.path)
                   }}
-                  className="ml-2 p-1 rounded"
+                  className="!p-1"
                   title="Close file"
+                  design="control"
                 >
-                  <XMarkIcon className="w-3 h-3" />
-                </button>
+                  <XIcon className="w-3 h-3" />
+                </Button>
               </div>
             ))}
 
             {/* Save all button */}
             {openFiles.some(f => f.isDirty) && (
-              <button
+              <Button
                 onClick={() => {
                   openFiles.forEach(file => {
                     if (file.isDirty) handleSaveFile(file.path)
                   })
                 }}
-                className="flex items-center px-3 py-2 text-sm whitespace-nowrap"
-                title="Save all files (Ctrl+S / Cmd+S)"
-              >
-                <ArrowDownTrayIcon className="w-4 h-4 mr-1" />
-                Save All
-              </button>
+                icon={<DownloadIcon className="!w-4 !h-4" />}
+                text="Save All"
+                design="control"
+              />
             )}
           </div>
         )}
