@@ -102,3 +102,71 @@ func TestTerminalDetection(t *testing.T) {
 		})
 	}
 }
+
+func TestAppIdLogging(t *testing.T) {
+	tests := []struct {
+		name          string
+		siteId        string
+		setSiteId     bool
+		expectedAppId string
+	}{
+		{
+			name:          "appId included when SITE_ID is set",
+			siteId:        "test-app-123",
+			setSiteId:     true,
+			expectedAppId: "test-app-123",
+		},
+		{
+			name:          "appId is empty when SITE_ID is not set",
+			siteId:        "",
+			setSiteId:     false,
+			expectedAppId: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save and restore original SITE_ID
+			originalSiteId := os.Getenv("SITE_ID")
+			defer func() {
+				if originalSiteId != "" {
+					os.Setenv("SITE_ID", originalSiteId)
+				} else {
+					os.Unsetenv("SITE_ID")
+				}
+			}()
+
+			// Set or unset SITE_ID based on test case
+			if tt.setSiteId {
+				os.Setenv("SITE_ID", tt.siteId)
+			} else {
+				os.Unsetenv("SITE_ID")
+			}
+
+			// Capture output
+			var buf bytes.Buffer
+			handler := slog.NewJSONHandler(&buf, &slog.HandlerOptions{
+				Level: slog.LevelInfo,
+			})
+
+			// Use the production code to create logger
+			logger := newLoggerWithHandler(handler)
+
+			// Log a test message
+			logger.Info("test message")
+
+			output := buf.String()
+
+			// Verify appId field is present
+			if !strings.Contains(output, `"appId"`) {
+				t.Errorf("Expected appId field in output, got: %s", output)
+			}
+
+			// Verify appId value
+			expectedField := `"appId":"` + tt.expectedAppId + `"`
+			if !strings.Contains(output, expectedField) {
+				t.Errorf("Expected %s in output, got: %s", expectedField, output)
+			}
+		})
+	}
+}

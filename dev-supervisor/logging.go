@@ -9,6 +9,13 @@ import (
 
 var logger *slog.Logger
 
+// newLoggerWithHandler creates a new logger with the given handler
+// and includes appId from SITE_ID environment variable as a default field
+func newLoggerWithHandler(handler slog.Handler) *slog.Logger {
+	siteId := os.Getenv("SITE_ID")
+	return slog.New(handler).With("appId", siteId)
+}
+
 // initLogging sets up structured logging with slog
 // Uses JSON format when no terminal is detected, text format otherwise
 func initLogging() {
@@ -27,7 +34,7 @@ func initLogging() {
 		})
 	}
 
-	logger = slog.New(handler)
+	logger = newLoggerWithHandler(handler)
 	slog.SetDefault(logger)
 }
 
