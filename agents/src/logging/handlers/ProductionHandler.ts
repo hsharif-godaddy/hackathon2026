@@ -19,16 +19,45 @@ export class ProductionHandler implements LogHandler {
   handle(event: LogEvent): void {
     // Sanitize sensitive data
     const sanitized = sanitizeLogEvent(event);
-    
+
+    // Transform appId to app_id for log output
+    const transformed = this.transformFieldNames(sanitized);
+
     // Convert to JSON string
-    const jsonLog = JSON.stringify(sanitized);
-    
+    const jsonLog = JSON.stringify(transformed);
+
     // Write to appropriate stream based on log level
     if (event.level === 'error' || event.level === 'fatal') {
       this.errorOutput.write(jsonLog + '\n');
     } else {
       this.output.write(jsonLog + '\n');
     }
+  }
+
+  /**
+   * Transform field names from camelCase to snake_case for log output
+   * Currently transforms: appId -> app_id
+   */
+  private transformFieldNames(event: any): any {
+    if (!event || typeof event !== 'object') {
+      return event;
+    }
+
+    const result: any = Array.isArray(event) ? [] : {};
+
+    for (const [key, value] of Object.entries(event)) {
+      // Transform appId to app_id
+      const newKey = key === 'appId' ? 'app_id' : key;
+
+      // Recursively transform nested objects
+      if (value && typeof value === 'object') {
+        result[newKey] = this.transformFieldNames(value);
+      } else {
+        result[newKey] = value;
+      }
+    }
+
+    return result;
   }
 
   flush(): void {

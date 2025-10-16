@@ -111,13 +111,13 @@ func TestAppIdLogging(t *testing.T) {
 		expectedAppId string
 	}{
 		{
-			name:          "appId included when SITE_ID is set",
+			name:          "app_id included when SITE_ID is set",
 			siteId:        "test-app-123",
 			setSiteId:     true,
 			expectedAppId: "test-app-123",
 		},
 		{
-			name:          "appId is empty when SITE_ID is not set",
+			name:          "app_id is empty when SITE_ID is not set",
 			siteId:        "",
 			setSiteId:     false,
 			expectedAppId: "",
@@ -157,13 +157,13 @@ func TestAppIdLogging(t *testing.T) {
 
 			output := buf.String()
 
-			// Verify appId field is present
-			if !strings.Contains(output, `"appId"`) {
-				t.Errorf("Expected appId field in output, got: %s", output)
+			// Verify app_id field is present
+			if !strings.Contains(output, `"app_id"`) {
+				t.Errorf("Expected app_id field in output, got: %s", output)
 			}
 
-			// Verify appId value
-			expectedField := `"appId":"` + tt.expectedAppId + `"`
+			// Verify app_id value
+			expectedField := `"app_id":"` + tt.expectedAppId + `"`
 			if !strings.Contains(output, expectedField) {
 				t.Errorf("Expected %s in output, got: %s", expectedField, output)
 			}
