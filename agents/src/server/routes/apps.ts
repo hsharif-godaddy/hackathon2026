@@ -9,6 +9,7 @@ import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { TokenUsageRepository } from '../../database/index.js';
 import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
+import { Logger, log } from '../../logging/index.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -18,6 +19,7 @@ const fileEditTool = new FileEditTool();
 const astStyleEditor = new ASTStyleEditor();
 const astTextEditor = new ASTTextEditor();
 const tokenUsageRepo = new TokenUsageRepository();
+const logger = Logger.create({ service: 'apps-routes' });
 
 /**
  * GET /apps - List all apps
@@ -44,7 +46,7 @@ router.get('/', (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error('Error listing apps:', error);
+    log.error(logger, 'route.apps.list.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -71,7 +73,7 @@ router.get('/config', async (req: Request, res: Response) => {
 
     return res.json({ config });
   } catch (error) {
-    console.error('Error getting app config:', error);
+    log.error(logger, 'route.apps.config.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -93,7 +95,8 @@ router.get('/:id', (req: Request, res: Response) => {
 
     return res.json({ app });
   } catch (error) {
-    console.error('Error getting app:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.get.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -121,7 +124,8 @@ router.get('/:id/status', (req: Request, res: Response) => {
       updatedAt: app.updatedAt
     });
   } catch (error) {
-    console.error('Error getting app status:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.status.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -154,7 +158,7 @@ router.post('/create', async (req: Request, res: Response) => {
       message: 'Use the main app API for app creation operations'
     });
   } catch (error) {
-    console.error('Error creating app:', error);
+    log.error(logger, 'route.apps.create.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -170,12 +174,13 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'siteId is required' });
     }
 
-    console.log(`📝 Registering app ${siteId} in agents service`);
+    const contextLogger = log.forApp(siteId);
+    contextLogger.info('route.apps.register.begin', {});
 
     // Check if app already exists
     const existingApp = appRepo.findById(siteId);
     if (existingApp) {
-      console.log(`ℹ️ App ${siteId} already registered`);
+      contextLogger.info('route.apps.register.exists', {});
       
       return res.json({
         success: true,
@@ -213,7 +218,7 @@ router.post('/register', async (req: Request, res: Response) => {
     }
     await appRepo.initGitRepo(siteId);
 
-    console.log(`✅ Registered app ${siteId} in agents service`);
+    contextLogger.info('route.apps.register.success', {});
 
     return res.status(201).json({
       success: true,
@@ -222,7 +227,7 @@ router.post('/register', async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('Error registering app:', error);
+    log.error(logger, 'route.apps.register.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -248,7 +253,7 @@ router.post('/', async (req: Request, res: Response) => {
       message: 'Use the main app API for app creation operations'
     });
   } catch (error) {
-    console.error('Error creating app:', error);
+    log.error(logger, 'route.apps.create.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -280,7 +285,8 @@ router.put('/:id', (req: Request, res: Response) => {
 
     return res.json({ app });
   } catch (error) {
-    console.error('Error updating app:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.update.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -302,7 +308,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
     return res.status(204).send();
   } catch (error) {
-    console.error('Error deleting app:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.delete.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -323,7 +330,8 @@ router.post('/:id/stop', async (req: Request, res: Response) => {
       message: 'Direct server control is no longer available through agents API'
     });
   } catch (error) {
-    console.error('Error stopping server:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.server.stop.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -347,16 +355,17 @@ router.post('/:id/ensure-running', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'App ID is required' });
     }
 
+    const contextLogger = log.forApp(id);
     const app = appRepo.findById(id);
     if (!app) {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    console.log(`🔍 Checking app ${id} status...`);
+    contextLogger.info('route.apps.ensure-running.check', {});
 
     // Get current app status
     const currentStatus = await appRepo.getAppStatus(id);
-    console.log(`📊 App ${id} current status:`, currentStatus?.status);
+    contextLogger.info('route.apps.ensure-running.status', { status: currentStatus?.status });
 
     // Just return the current status - no building or starting
     return res.json({
@@ -371,7 +380,8 @@ router.post('/:id/ensure-running', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('Error ensuring app is running:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.ensure-running.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -408,7 +418,8 @@ router.post('/:id/restart', async (req: Request, res: Response) => {
 
     return res.json({ success: true, message: `Server restarted for app ${id}` });
   } catch (error) {
-    console.error('Error restarting server:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.server.restart.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -440,7 +451,8 @@ router.post('/:id/force-cleanup', async (req: Request, res: Response) => {
       message: 'Use the deployment adapter APIs for app-specific cleanup'
     });
   } catch (error) {
-    console.error('Error force cleaning up app:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.force-cleanup.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -470,7 +482,8 @@ router.get('/:id/files', async (req: Request, res: Response) => {
 
     return res.json(result);
   } catch (error) {
-    console.error('Error listing files:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.files.list.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -504,7 +517,8 @@ router.get('/:id/files/read', async (req: Request, res: Response) => {
 
     return res.json(result);
   } catch (error) {
-    console.error('Error reading file:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.files.read.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -545,7 +559,8 @@ router.post('/:id/files/write', async (req: Request, res: Response) => {
 
     return res.json(result);
   } catch (error) {
-    console.error('Error writing file:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.files.write.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -585,7 +600,8 @@ router.post('/:id/files/edit', async (req: Request, res: Response) => {
 
     return res.json(result);
   } catch (error) {
-    console.error('Error editing file:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.files.edit.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -602,28 +618,30 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'App ID is required' });
     }
 
+    const contextLogger = log.forApp(id);
+
     if (!selector || !oldText || !newText || !devContext) {
-      console.log('❌ Text edit validation failed:', {
+      contextLogger.warn('route.apps.text-edit.validation.failed', {
         hasSelector: !!selector,
         hasOldText: !!oldText,
         hasNewText: !!newText,
         hasDevContext: !!devContext,
-        selector: selector,
+        selector,
         oldText: oldText?.substring(0, 100),
         newText: newText?.substring(0, 100),
-        devContext: devContext
+        devContext,
       });
       return res.status(400).json({ error: 'Selector, oldText, newText, and devContext are required' });
     }
 
     // Validate devContext - required for AST-based editing
     if (!devContext || !devContext.fileName || !devContext.componentName || !devContext.lineNumber) {
-      console.log('❌ DevContext validation failed:', {
+      contextLogger.warn('route.apps.text-edit.devcontext.invalid', {
         hasDevContext: !!devContext,
         hasFileName: !!(devContext && devContext.fileName),
         hasComponentName: !!(devContext && devContext.componentName),
         hasLineNumber: !!(devContext && devContext.lineNumber),
-        devContext
+        devContext,
       });
       return res.status(400).json({
         error: 'Invalid development context',
@@ -637,15 +655,17 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
     }
 
     // Debug logging
-    console.log('Text edit request received:', {
-      id,
+    contextLogger.debug('route.apps.text-edit.request', {
       selector,
       oldText: oldText.substring(0, 50) + (oldText.length > 50 ? '...' : ''),
       newText: newText.substring(0, 50) + (newText.length > 50 ? '...' : ''),
-      devContext
+      devContext,
     });
 
-    console.log(`Text edit: ${id} | ${devContext.fileName}:${devContext.lineNumber} | "${oldText}" → "${newText}"`);
+    contextLogger.info('route.apps.text-edit.begin', {
+      fileName: devContext.fileName,
+      lineNumber: devContext.lineNumber,
+    });
 
     // Use AST text editor to make precise text changes
     const editResult = await astTextEditor.editElementText(app.path, {
@@ -656,14 +676,16 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
     });
 
     if (!editResult.success) {
-      console.log('❌ AST text edit failed:', editResult.error);
+      contextLogger.error('route.apps.text-edit.failed', {
+        error: editResult.error,
+      });
       return res.status(400).json({
         error: 'Failed to edit text',
         details: editResult.error
       });
     }
 
-    console.log('✅ AST text edit completed successfully');
+    contextLogger.info('route.apps.text-edit.success', {});
 
     return res.json({
       success: true,
@@ -678,7 +700,8 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('Error editing text:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.text-edit.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -695,19 +718,21 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'App ID is required' });
     }
 
+    const contextLogger = log.forApp(id);
+
     if (!selector || !property || value === undefined) {
-      console.log('❌ Validation failed: Selector, property, and value are required', {
+      contextLogger.warn('route.apps.style-edit.validation.failed', {
         selector: !!selector,
         property: !!property,
-        value: value !== undefined
+        value: value !== undefined,
       });
       return res.status(400).json({ error: 'Selector, property, and value are required' });
     }
 
     if (!elementInfo || !elementInfo.devContext) {
-      console.log('❌ Validation failed: Element info with dev context is required', {
+      contextLogger.warn('route.apps.style-edit.elementinfo.invalid', {
         hasElementInfo: !!elementInfo,
-        hasDevContext: !!(elementInfo && elementInfo.devContext)
+        hasDevContext: !!(elementInfo && elementInfo.devContext),
       });
       return res.status(400).json({ error: 'Element info with dev context is required' });
     }
@@ -718,17 +743,20 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
     }
 
     // Debug logging
-    console.log('Style edit request received:', {
-      id,
+    contextLogger.debug('route.apps.style-edit.request', {
       selector: selector || 'MISSING',
       property: property || 'MISSING',
       value: value !== undefined ? value : 'UNDEFINED',
       hasElementInfo: !!elementInfo,
       hasDevContext: !!(elementInfo && elementInfo.devContext),
-      devContext: elementInfo?.devContext
+      devContext: elementInfo?.devContext,
     });
 
-    console.log(`Style edit: ${id} | ${elementInfo.devContext.fileName}:${elementInfo.devContext.lineNumber} | ${newClassName.trim() || 'inline-styles'}`);
+    contextLogger.info('route.apps.style-edit.begin', {
+      fileName: elementInfo.devContext.fileName,
+      lineNumber: elementInfo.devContext.lineNumber,
+      className: newClassName?.trim() || 'inline-styles',
+    });
 
     // Use AST-based style editor to make the actual file changes
     const editResult = await astStyleEditor.editElementStyle(app.path, {
@@ -741,7 +769,9 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
     });
 
     if (!editResult.success) {
-      console.log('❌ AST Editor failed:', editResult.error);
+      contextLogger.error('route.apps.style-edit.failed', {
+        error: editResult.error,
+      });
       return res.status(400).json({
         error: 'Failed to edit style',
         details: editResult.error
@@ -761,7 +791,8 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('Error editing styles:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.style-edit.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -785,7 +816,8 @@ router.get('/:id/usage', async (req: Request, res: Response) => {
     const usage = tokenUsageRepo.getUsageInfo(id);
     return res.json({ usage });
   } catch (error) {
-    console.error('Error getting token usage:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.usage.get.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -817,7 +849,8 @@ router.get('/:id/usage/history', async (req: Request, res: Response) => {
 
     return res.json({ history });
   } catch (error) {
-    console.error('Error getting token usage history:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.usage.history.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -847,7 +880,8 @@ router.get('/:id/usage/stats', async (req: Request, res: Response) => {
 
     return res.json({ stats });
   } catch (error) {
-    console.error('Error getting token usage stats:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.usage.stats.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -875,7 +909,8 @@ router.delete('/:id/usage', async (req: Request, res: Response) => {
 
     return res.json({ message: 'Usage records deleted successfully' });
   } catch (error) {
-    console.error('Error deleting token usage:', error);
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.usage.delete.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -891,7 +926,10 @@ router.post('/suggest-name', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Prompt is required and must be a non-empty string' });
     }
 
-    console.log('🏷️ Generating name suggestion for prompt:', prompt.substring(0, 100) + '...');
+    logger.info('route.apps.name-suggest.begin', {
+      promptLength: prompt.length,
+      promptPreview: prompt.substring(0, 100),
+    });
 
     // Use the dedicated name suggestion service
     const nameSuggestionService = getNameSuggestionService();
@@ -901,7 +939,7 @@ router.post('/suggest-name', async (req: Request, res: Response) => {
       throw new Error('Failed to generate name suggestion');
     }
 
-    console.log('✅ Generated name suggestion:', suggestedName);
+    logger.info('route.apps.name-suggest.success', { suggestedName });
 
     return res.json({
       name: suggestedName,
@@ -909,7 +947,7 @@ router.post('/suggest-name', async (req: Request, res: Response) => {
       prompt: prompt.trim()
     });
   } catch (error) {
-    console.error('Error generating name suggestion:', error);
+    log.error(logger, 'route.apps.name-suggest.error', error as Error, {});
     return res.status(500).json({
       error: 'Failed to generate name suggestion',
       details: error instanceof Error ? error.message : 'Unknown error'

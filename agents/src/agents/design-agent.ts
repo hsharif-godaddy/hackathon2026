@@ -8,7 +8,7 @@ import {
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
-import { logger } from '../logging/index.js'
+import { logger, log } from '../logging/index.js'
 
 /**
  * Design Agent - Creates concise design documentation for applications
@@ -25,9 +25,11 @@ const afterToolExecution: AfterToolExecutionHook = async (
   result: unknown,
   context?: AgentContext
 ): Promise<unknown> => {
-  logger.info('design_agent.tool.execution.complete', {
-    toolName,
-    appId: context?.metadata?.appId
+  const appId = context?.metadata?.appId as string
+  const contextLogger = appId ? log.withContext({ appId, agentId: 'design' }) : logger
+
+  contextLogger.info('design_agent.tool.execution.complete', {
+    toolName
   });
 
   const resultObj = result as any;
@@ -36,9 +38,8 @@ const afterToolExecution: AfterToolExecutionHook = async (
   if (toolName === 'memorySet' && resultObj?.success) {
     const setArgs = args as { key: string };
     if (setArgs.key.startsWith('design.')) {
-      logger.info('design_agent.section.updated', {
+      contextLogger.info('design_agent.section.updated', {
         section: setArgs.key,
-        appId: context?.metadata?.appId,
         timestamp: new Date().toISOString()
       });
     }
@@ -46,9 +47,8 @@ const afterToolExecution: AfterToolExecutionHook = async (
 
   // Track design searches
   if (toolName === 'memorySearch' && resultObj?.success) {
-    logger.info('design_agent.inspiration.search', {
-      resultsCount: resultObj.results?.length || 0,
-      appId: context?.metadata?.appId
+    contextLogger.info('design_agent.inspiration.search', {
+      resultsCount: resultObj.results?.length || 0
     });
   }
 

@@ -1,5 +1,8 @@
 import { readFile, writeFile, access } from 'fs/promises';
 import { join } from 'path';
+import { Logger, log } from '../logging/index.js';
+
+const logger = Logger.create({ service: 'env-manager' });
 
 export interface EnvVariable {
   key: string;
@@ -135,13 +138,11 @@ export class EnvManager {
       const content = this.formatEnvContent(currentEnv);
       await writeFile(this.envFilePath, content, 'utf-8');
 
-      console.log(`✅ Environment variables updated in ${this.envFilePath}`);
-      if (added.length > 0) {
-        console.log(`   Added: ${added.join(', ')}`);
-      }
-      if (updated.length > 0) {
-        console.log(`   Updated: ${updated.join(', ')}`);
-      }
+      logger.info('env-manager.update.success', {
+        filePath: this.envFilePath,
+        added,
+        updated,
+      });
 
       const result: EnvUpdateResult = {
         success: true,
@@ -158,7 +159,9 @@ export class EnvManager {
       return result;
 
     } catch (error) {
-      console.error(`❌ Failed to update environment variables:`, error);
+      log.error(logger, 'env-manager.update.error', error as Error, {
+        filePath: this.envFilePath,
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -193,10 +196,14 @@ export class EnvManager {
         const content = this.formatEnvContent(currentEnv);
         await writeFile(this.envFilePath, content, 'utf-8');
 
-        console.log(`✅ Removed environment variables from ${this.envFilePath}`);
-        console.log(`   Removed: ${removed.join(', ')}`);
+        logger.info('env-manager.remove.success', {
+          filePath: this.envFilePath,
+          removed,
+        });
       } else {
-        console.log(`ℹ️ No matching environment variables found to remove`);
+        logger.info('env-manager.remove.no-matches', {
+          filePath: this.envFilePath,
+        });
       }
 
       const result: EnvUpdateResult = {
@@ -211,7 +218,9 @@ export class EnvManager {
       return result;
 
     } catch (error) {
-      console.error(`❌ Failed to remove environment variables:`, error);
+      log.error(logger, 'env-manager.remove.error', error as Error, {
+        filePath: this.envFilePath,
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -312,10 +321,12 @@ export class EnvManager {
     try {
       const content = await readFile(this.envFilePath, 'utf-8');
       await writeFile(backupPath, content, 'utf-8');
-      console.log(`✅ Created .env backup: ${backupPath}`);
+      logger.info('env-manager.backup.created', { backupPath });
       return backupPath;
     } catch (error) {
-      console.error(`❌ Failed to create .env backup:`, error);
+      log.error(logger, 'env-manager.backup.error', error as Error, {
+        backupPath,
+      });
       throw error;
     }
   }

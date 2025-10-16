@@ -1,4 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
+import { Logger } from '../../logging/index.js';
+
+const logger = Logger.create({ service: 'error-handler' });
 
 export interface ApiError extends Error {
   status?: number;
@@ -41,12 +44,13 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): void {
-  console.error('API Error:', {
+  logger.error('middleware.error-handler.error', {
     error: error.message,
     stack: error.stack,
     url: req.url,
     method: req.method,
-    timestamp: new Date().toISOString(),
+    status: error.status || 500,
+    code: error.code || 'INTERNAL_SERVER_ERROR',
   });
 
   const status = error.status || 500;

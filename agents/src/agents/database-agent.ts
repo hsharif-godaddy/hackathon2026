@@ -9,6 +9,9 @@ import {
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
+import { Logger } from '../logging/index.js'
+
+const logger = Logger.create({ service: 'database-agent' })
 
 /**
  * Database Agent - MySQL database operations and management
@@ -18,20 +21,20 @@ import { getModularPromptPaths } from '../utils/prompt-utils.js'
  * Git safety hook for database operations
  */
 const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, args: unknown): Promise<unknown> => {
-  console.log(`🔧 Database Agent executing tool: ${toolName}`)
+  logger.debug('agent.database.tool.before', { toolName })
   
   // File-modifying tools that need git branch check
   const fileModifyingTools = ['fileEdit', 'terminalCommand', 'mysqlOperation']
   
   if (fileModifyingTools.includes(toolName)) {
-    console.log(`⚠️  Database operation detected: ${toolName}`)
-    console.log(`🔍 Ensuring safe database state...`)
+    logger.info('agent.database.operation.detected', { toolName })
+    logger.debug('agent.database.safety-check.begin', {})
     
     // In a real implementation, you might check:
     // - Current git branch
     // - Database connection status
     // - Backup status
-    console.log(`✅ Database operation safety checks passed`)
+    logger.info('agent.database.safety-check.passed', {})
   }
   
   return args
@@ -45,17 +48,19 @@ const afterToolExecution: AfterToolExecutionHook = async (
   args: unknown,
   result: unknown
 ): Promise<unknown> => {
-  console.log(`✅ Database Agent completed: ${toolName}`)
+  logger.debug('agent.database.tool.after', { toolName })
   
   const resultObj = result as any
   
   // Track database operations
   if (toolName === 'mysqlOperation' && resultObj?.success) {
-    console.log(`📊 Database operation completed: ${resultObj.operation || 'unknown'}`)
+    logger.info('agent.database.operation.complete', {
+      operation: resultObj.operation || 'unknown',
+    })
   }
   
   if (toolName === 'serverRestart' && resultObj?.success) {
-    console.log(`📊 Server restart completed after database changes`)
+    logger.info('agent.database.server-restart.complete', {})
   }
   
   return result
@@ -155,9 +160,9 @@ export class DatabaseAgent {
    * Initialize the agent
    */
   async initialize(): Promise<void> {
-    console.log('Initializing Database Agent...')
+    logger.info('agent.database.initialize.begin', { appPath: this.appPath })
     this.factory = await createDatabaseAgentFactory({ appPath: this.appPath })
-    console.log('Database Agent ready!')
+    logger.info('agent.database.initialize.complete', {})
   }
   
   /**
@@ -273,6 +278,6 @@ Please complete all database setup tasks and provide the integration details.`
    * Cleanup resources
    */
   async cleanup(): Promise<void> {
-    console.log('🧹 Database Agent cleanup completed')
+    logger.info('agent.database.cleanup.complete', {})
   }
 }

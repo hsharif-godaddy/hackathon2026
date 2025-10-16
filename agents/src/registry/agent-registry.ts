@@ -1,4 +1,7 @@
 import { IAgent, AgentConfig } from '../base/index.js';
+import { Logger } from '../logging/index.js';
+
+const logger = Logger.create({ service: 'agent-registry' });
 
 /**
  * Interface for agent constructor
@@ -62,7 +65,10 @@ export class AgentRegistry {
       registeredAt: new Date(),
     });
 
-    console.log(`Registered agent: ${config.name} (${config.id})`);
+    logger.info('agent-registry.register', {
+      agentName: config.name,
+      agentId: config.id,
+    });
   }
 
   /**
@@ -78,7 +84,12 @@ export class AgentRegistry {
     if (entry.instance) {
       const cleanup = entry.instance.cleanup();
       if (cleanup instanceof Promise) {
-        cleanup.catch(console.error);
+        cleanup.catch((error: unknown) => {
+          logger.error('agent-registry.unregister.cleanup-error', {
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
       }
     }
 
@@ -168,7 +179,12 @@ export class AgentRegistry {
     if (!enabled && entry.instance) {
       const cleanup = entry.instance.cleanup();
       if (cleanup instanceof Promise) {
-        cleanup.catch(console.error);
+        cleanup.catch((error: unknown) => {
+          logger.error('agent-registry.disable.cleanup-error', {
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
       }
       entry.instance = undefined;
     }
@@ -225,7 +241,9 @@ export class AgentRegistry {
       return;
     }
 
-    console.log(`Initializing ${this._agents.size} registered agents...`);
+    logger.info('agent-registry.initialize.begin', {
+      agentCount: this._agents.size,
+    });
     
     const initPromises: Promise<void>[] = [];
     
@@ -235,7 +253,10 @@ export class AgentRegistry {
           this.getAgent(agentId).then(() => {
             // Successfully initialized
           }).catch(error => {
-            console.error(`Failed to initialize agent '${agentId}':`, error);
+            logger.error('agent-registry.initialize.agent-error', {
+              agentId,
+              error: error instanceof Error ? error.message : String(error),
+            });
           })
         );
       }
@@ -243,14 +264,14 @@ export class AgentRegistry {
 
     await Promise.allSettled(initPromises);
     this._initialized = true;
-    console.log('Agent registry initialization complete');
+    logger.info('agent-registry.initialize.complete', {});
   }
 
   /**
    * Cleanup all agent instances
    */
   async cleanup(): Promise<void> {
-    console.log('Cleaning up agent registry...');
+    logger.info('agent-registry.cleanup.begin', {});
     
     const cleanupPromises: Promise<void>[] = [];
     
@@ -260,7 +281,9 @@ export class AgentRegistry {
         if (cleanup instanceof Promise) {
           cleanupPromises.push(
             cleanup.catch((error: unknown) => {
-              console.error(`Error cleaning up agent:`, error);
+              logger.error('agent-registry.cleanup.agent-error', {
+                error: error instanceof Error ? error.message : String(error),
+              });
             })
           );
         }
@@ -270,7 +293,7 @@ export class AgentRegistry {
 
     await Promise.allSettled(cleanupPromises);
     this._initialized = false;
-    console.log('Agent registry cleanup complete');
+    logger.info('agent-registry.cleanup.complete', {});
   }
 
   /**

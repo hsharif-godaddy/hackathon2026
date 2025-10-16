@@ -6,6 +6,9 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { Logger } from '../logging/index.js';
+
+const logger = Logger.create({ service: 'database-schema' });
 
 // ==================================================================================
 // TypeScript Interface Definitions
@@ -423,7 +426,9 @@ function createFileContextIndexes(db: Database): void {
     }
   } catch (err) {
     // Indexes might fail to create, that's okay for now
-    console.warn('Failed to create file_context indexes:', err);
+    logger.warn('database.schema.index-creation-failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 

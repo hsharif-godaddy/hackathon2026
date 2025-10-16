@@ -3,6 +3,10 @@
  * This module handles all environment variable parsing and feature flags
  */
 
+import { Logger } from '../logging/index.js';
+
+const logger = Logger.create({ service: 'features' });
+
 /**
  * Authentication types supported by the agents service
  */
@@ -217,7 +221,7 @@ export const auth = {
 export function logFeatureState(): void {
   const features = getAgentFeatures();
   if (features.nodeEnv === 'development') {
-    console.log('Agent feature flags and configuration:', {
+    logger.info('features.state.debug', {
       environment: features.nodeEnv,
       pricing: {
         dailyLimit: features.dailyPriceLimit,

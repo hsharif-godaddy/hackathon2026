@@ -5,6 +5,9 @@
 
 import { encoding_for_model, type TiktokenModel } from 'tiktoken'
 import { countTokens as countAnthropicTokens } from '@anthropic-ai/tokenizer'
+import { Logger } from '../logging/index.js'
+
+const logger = Logger.create({ service: 'token-counter' })
 
 /**
  * Model provider type
@@ -93,7 +96,10 @@ function normalizeModelName(modelName: string): { normalizedName: string; provid
   }
   
   // Default to OpenAI if unrecognized (fallback behavior)
-  console.warn('Unknown model "%s", defaulting to OpenAI gpt-4o for token counting', modelName)
+  logger.warn('token-counter.model.unknown', {
+    modelName,
+    fallback: 'gpt-4o',
+  })
   return { normalizedName: 'gpt-4o', provider: 'openai' }
 }
 
@@ -112,7 +118,10 @@ function getTiktokenModelName(normalizedName: string): TiktokenModel {
   
   const tiktokenModel = tiktokenMap[normalizedName]
   if (!tiktokenModel) {
-    console.warn('No tiktoken model found for "%s", defaulting to gpt-4o', normalizedName)
+    logger.warn('token-counter.tiktoken.model-not-found', {
+      normalizedName,
+      fallback: 'gpt-4o',
+    })
     return 'gpt-4o'
   }
   
@@ -130,7 +139,11 @@ function countOpenAITokens(text: string, modelName: string): number {
     encoding.free() // Free memory
     return tokens.length
   } catch (error) {
-    console.error('Error counting tokens for OpenAI model "%s":', modelName, error)
+    logger.error('token-counter.openai.count-error', {
+      modelName,
+      error: error instanceof Error ? error.message : String(error),
+      fallback: 'character approximation',
+    })
     // Fallback to rough approximation: ~4 characters per token
     return Math.ceil(text.length / 4)
   }
@@ -145,7 +158,11 @@ function countAnthropicTokensWrapper(text: string, modelName: string): number {
   try {
     return countAnthropicTokens(text)
   } catch (error) {
-    console.error('Error counting tokens for Anthropic model "%s":', modelName, error)
+    logger.error('token-counter.anthropic.count-error', {
+      modelName,
+      error: error instanceof Error ? error.message : String(error),
+      fallback: 'character approximation',
+    })
     // Fallback to rough approximation: ~4 characters per token
     return Math.ceil(text.length / 4)
   }

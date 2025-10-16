@@ -33,7 +33,7 @@ import { ConversationContextManager } from '../services/ConversationContextManag
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { fileContextRegistry } from '../services/FileContextRegistry.js'
 import { fileUploadService } from '../services/FileUploadService.js'
-import { logger } from '../logging/index.js'
+import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
 import { MAX_PROMPT_LENGTH, getAgentConfig } from '../services/features.js'
 import type { AgentsAppContext } from '../types/websocket-context.js'
@@ -157,9 +157,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           logger.error('websocket.context.provider.failure', {
             message: 'Error loading context',
             error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined
+            stack: error instanceof Error ? error.stack : undefined,
+            details: error,
           })
-          console.error('❌ Context provider error details:', error)
           return []
         }
       }
@@ -186,11 +186,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           return []
         }
         
+        const contextLogger = log.withContext({ appId, agentId: agentName })
+        
         if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-          logger.debug('websocket.message.provider.loading_messages', {
-            message: 'Loading ALL messages',
-            appId,
-            agentName
+          contextLogger.debug('websocket.message.provider.loading_messages', {
+            message: 'Loading ALL messages'
           })
         }
         
@@ -309,9 +309,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         
         // Authentication already validated at WebSocket handshake
         // Just return the raw context - no need for customer context
-        logger.debug('websocket.context.validated', {
+        const contextLogger = log.forApp(appId);
+        contextLogger.debug('websocket.context.validated', {
           message: 'Context validated - authentication passed at handshake',
-          appId,
           contextKeys: Object.keys(rawContext),
           hasMetadata: !!rawContext.metadata,
           hasAppContext: !!rawContext.appContext,
@@ -385,9 +385,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           });
           return; // Skip completion logging if no siteId
         }
-        logger.info('websocket.request.site_completed', {
-          message: 'WebSocket request completed for site',
-          siteId
+        const contextLogger = log.forApp(siteId);
+        contextLogger.info('websocket.request.site_completed', {
+          message: 'WebSocket request completed for site'
         });
       },
       

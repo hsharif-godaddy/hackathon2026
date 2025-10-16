@@ -1,6 +1,9 @@
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { readFileSync, existsSync } from 'fs'
+import { Logger } from '../logging/index.js'
+
+const logger = Logger.create({ service: 'prompt-utils' })
 
 /**
  * Prompt Utilities for Modular Agent System
@@ -53,10 +56,15 @@ export function getValidatedTemplateVersion(appPath: string): TemplateVersion | 
       return versionContent as TemplateVersion
     }
     
-    console.warn(`Invalid template version in .version file: ${versionContent}. Allowed: ${validVersions.join(', ')}`)
+    logger.warn('prompt-utils.version.invalid', {
+      versionContent,
+      validVersions: validVersions.join(', '),
+    })
     return null
   } catch (error) {
-    console.warn('Failed to read .version file:', error)
+    logger.warn('prompt-utils.version.read-error', {
+      error: error instanceof Error ? error.message : String(error),
+    })
     return null
   }
 }

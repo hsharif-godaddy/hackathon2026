@@ -5,6 +5,9 @@ import {
 } from '@airo/ai-lib'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
+import { Logger } from '../logging/index.js'
+
+const logger = Logger.create({ service: 'color-scheme-agent' })
 
 /**
  * Color Scheme Agent - Interactive color palette designer
@@ -92,9 +95,9 @@ export class ColorSchemeAgent {
    * Initialize the agent (required for new system)
    */
   async initialize(): Promise<void> {
-    console.log('Initializing Color Scheme Agent...')
+    logger.info('agent.color-scheme.initialize.begin', {})
     this.factory = await createColorSchemeAgentFactory()
-    console.log('Color Scheme Agent ready!')
+    logger.info('agent.color-scheme.initialize.complete', {})
   }
   
   /**
@@ -179,6 +182,6 @@ export class ColorSchemeAgent {
    * Cleanup resources
    */
   async cleanup(): Promise<void> {
-    console.log('🧹 Color Scheme Agent cleanup completed')
+    logger.info('agent.color-scheme.cleanup.complete', {})
   }
 }

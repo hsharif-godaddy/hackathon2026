@@ -1,5 +1,8 @@
 import { getModel } from '@airo/ai-lib'
 import { generateText } from 'ai'
+import { Logger, log } from '../logging/index.js'
+
+const logger = Logger.create({ service: 'name-suggestion' })
 
 export class NameSuggestionService {
   /**
@@ -10,7 +13,7 @@ export class NameSuggestionService {
   async suggestName(prompt: string): Promise<string | null> {
     try {
       if (!prompt || prompt.trim().length === 0) {
-        console.warn('Empty prompt provided to NameSuggestionService.suggestName()');
+        logger.warn('name-suggestion.empty-prompt', {})
         return null;
       }
 
@@ -43,14 +46,17 @@ export class NameSuggestionService {
           suggestedName = suggestedName.substring(0, 30).trim()
         }
         
-        console.log(`Name suggestion service generated name: "${suggestedName}" from prompt`)
+        logger.info('name-suggestion.generated', {
+          suggestedName,
+          promptLength: prompt.length,
+        })
         return suggestedName
       }
       
-      console.warn('Name suggestion returned empty content')
+      logger.warn('name-suggestion.empty-content', {})
       return null
     } catch (error) {
-      console.error('Error in name suggestion service:', error)
+      log.error(logger, 'name-suggestion.error', error as Error, {})
       return null
     }
   }

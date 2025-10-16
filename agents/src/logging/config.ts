@@ -12,17 +12,17 @@ export interface LoggingEnvironmentConfig {
   format: 'json' | 'pretty' | 'dev';
   domains?: string[];
   disabledDomains?: string[];
-  
+
   // Development options
   expandThreshold?: number;
   showTimestamps?: boolean;
   showDuration?: boolean;
   colorize?: boolean;
-  
+
   // Production options
   outputStream?: NodeJS.WriteStream;
   errorStream?: NodeJS.WriteStream;
-  
+
   // Test options
   maxEvents?: number;
 }
@@ -34,17 +34,17 @@ export function createConfigFromEnvironment(): LoggerConfig {
   const config: LoggingEnvironmentConfig = {
     level: (process.env.LOG_LEVEL as LogLevel) || getDefaultLogLevel(),
     format: (process.env.LOG_FORMAT as any) || getDefaultFormat(),
-    
+
     // Development options
-    expandThreshold: process.env.LOG_DEV_EXPAND_THRESHOLD 
-      ? parseInt(process.env.LOG_DEV_EXPAND_THRESHOLD) 
+    expandThreshold: process.env.LOG_DEV_EXPAND_THRESHOLD
+      ? parseInt(process.env.LOG_DEV_EXPAND_THRESHOLD)
       : 1000,
     showTimestamps: process.env.LOG_DEV_TIMESTAMPS !== 'false',
     showDuration: process.env.LOG_DEV_PERFORMANCE !== 'false',
     colorize: process.env.LOG_DEV_COLORIZE !== 'false' && process.stdout.isTTY,
-    
+
     // Test options
-    maxEvents: process.env.LOG_TEST_MAX_EVENTS 
+    maxEvents: process.env.LOG_TEST_MAX_EVENTS
       ? parseInt(process.env.LOG_TEST_MAX_EVENTS)
       : 1000,
   };
@@ -53,7 +53,7 @@ export function createConfigFromEnvironment(): LoggerConfig {
   if (process.env.LOG_DOMAINS) {
     config.domains = process.env.LOG_DOMAINS.split(',').map(d => d.trim());
   }
-  
+
   if (process.env.LOG_DISABLED_DOMAINS) {
     config.disabledDomains = process.env.LOG_DISABLED_DOMAINS.split(',').map(d => d.trim());
   }
@@ -65,6 +65,7 @@ export function createConfigFromEnvironment(): LoggerConfig {
       service: 'airo-agents',
       version: process.env.npm_package_version || '1.0.0',
       environment: process.env.NODE_ENV || 'development',
+      appId: process.env.SITE_ID || '',
     },
   };
 
@@ -93,14 +94,14 @@ function createHandlers(config: LoggingEnvironmentConfig): LogHandler[] {
       handlers.push(new ProductionHandler(productionOptions));
       break;
     }
-      
+
     case 'dev':
     case 'pretty': {
-      const devOptions: { 
-        expandThreshold?: number; 
-        showTimestamps?: boolean; 
-        showDuration?: boolean; 
-        colorize?: boolean 
+      const devOptions: {
+        expandThreshold?: number;
+        showTimestamps?: boolean;
+        showDuration?: boolean;
+        colorize?: boolean
       } = {};
       if (config.expandThreshold !== undefined) devOptions.expandThreshold = config.expandThreshold;
       if (config.showTimestamps !== undefined) devOptions.showTimestamps = config.showTimestamps;
@@ -109,7 +110,7 @@ function createHandlers(config: LoggingEnvironmentConfig): LogHandler[] {
       handlers.push(new DevelopmentHandler(devOptions));
       break;
     }
-      
+
     default:
       // Auto-detect based on environment
       if (process.env.NODE_ENV === 'production') {
@@ -122,11 +123,11 @@ function createHandlers(config: LoggingEnvironmentConfig): LogHandler[] {
         if (config.maxEvents !== undefined) testOptions.maxEvents = config.maxEvents;
         handlers.push(new TestHandler(testOptions));
       } else {
-        const devOptions: { 
-          expandThreshold?: number; 
-          showTimestamps?: boolean; 
-          showDuration?: boolean; 
-          colorize?: boolean 
+        const devOptions: {
+          expandThreshold?: number;
+          showTimestamps?: boolean;
+          showDuration?: boolean;
+          colorize?: boolean
         } = {};
         if (config.expandThreshold !== undefined) devOptions.expandThreshold = config.expandThreshold;
         if (config.showTimestamps !== undefined) devOptions.showTimestamps = config.showTimestamps;
@@ -281,7 +282,7 @@ export function parseDomainList(domains: string): string[] {
  */
 export function getConfigSummary(config: LoggerConfig): string {
   const handlerTypes = config.handlers.map(h => h.constructor.name).join(', ');
-  const domains = config.enabledDomains 
+  const domains = config.enabledDomains
     ? `enabled: [${config.enabledDomains.join(', ')}]`
     : 'all enabled';
   const disabled = config.disabledDomains?.length

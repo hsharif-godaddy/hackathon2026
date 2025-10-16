@@ -1,4 +1,7 @@
 import fetch from 'node-fetch';
+import { Logger, log } from '../logging/index.js';
+
+const logger = Logger.create({ service: 'getty-image-tool' });
 
 export interface GettyImageOptions {
   phrase: string;
@@ -75,7 +78,9 @@ export class GettyImageTool {
     }
     
     if (!this.ssoJwt) {
-      console.warn('⚠️ Neither GETTY_TOKEN nor SSO_JWT is set. Getty Images API calls will fail.');
+      logger.warn('getty-image.auth.missing', {
+        message: 'Neither GETTY_TOKEN nor SSO_JWT is set',
+      });
     }
   }
 
@@ -114,7 +119,11 @@ export class GettyImageTool {
       
       const url = `${this.apiUrl}?${queryParams.toString()}`;
       
-      console.log(`🔍 Searching Getty Images with phrase: ${phrase}`);
+      logger.info('getty-image.search.begin', {
+        phrase,
+        page,
+        pageSize,
+      });
       
       // Make API request to Getty Images
       const response = await fetch(url, {
@@ -194,7 +203,9 @@ export class GettyImageTool {
       };
       
     } catch (error) {
-      console.error('❌ Getty image search failed:', error);
+      log.error(logger, 'getty-image.search.error', error as Error, {
+        phrase: options.phrase,
+      });
       return {
         success: false,
         error: `Getty image search failed: ${error instanceof Error ? error.message : String(error)}`
@@ -213,7 +224,9 @@ export async function findGettyImage(options: GettyImageOptions): Promise<GettyI
     const gettyImageTool = new GettyImageTool();
     return await gettyImageTool.searchImages(options);
   } catch (error) {
-    console.error('❌ Getty image search failed:', error);
+    log.error(logger, 'getty-image.function.error', error as Error, {
+      phrase: options.phrase,
+    });
     return {
       success: false,
       error: `Getty image search failed: ${error instanceof Error ? error.message : String(error)}`

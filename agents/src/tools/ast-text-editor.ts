@@ -1,5 +1,8 @@
 import * as t from '@babel/types';
 import { ASTEditorBase, BaseEditContext, BaseEditResult } from './ast-editor-base.js';
+import { Logger } from '../logging/index.js';
+
+const logger = Logger.create({ service: 'ast-text-editor' });
 
 export interface TextEditContext extends BaseEditContext {}
 
@@ -52,7 +55,7 @@ export class ASTTextEditor extends ASTEditorBase {
     const normalizedElementText = elementTextContent.replace(/\s+/g, ' ').trim();
     const normalizedTargetText = targetInfo.textContent.replace(/\s+/g, ' ').trim();
     
-    console.log(`🔍 Comparing text content:`, {
+    logger.debug('ast.text-editor.compare-text', {
       elementText: normalizedElementText,
       targetText: normalizedTargetText,
       matches: normalizedElementText === normalizedTargetText
@@ -104,7 +107,7 @@ export class ASTTextEditor extends ASTEditorBase {
   } {
     const { selector, oldText, newText, devContext } = request;
     
-    console.log(`🖊️ Processing AST for text edit:`, {
+    logger.debug('ast.text-editor.process.begin', {
       selector,
       oldText: oldText.slice(0, 50),
       newText: newText.slice(0, 50),
@@ -119,7 +122,10 @@ export class ASTTextEditor extends ASTEditorBase {
     let elementFound = false;
     let actualOldText = '';
     
-    console.log(`🔍 Starting AST traversal looking for ${parsedSelector.tagName} at line ${devContext.lineNumber}`);
+    logger.debug('ast.text-editor.traversal.begin', {
+      tagName: parsedSelector.tagName,
+      lineNumber: devContext.lineNumber,
+    });
     
     this.traverse(ast, {
       JSXElement: (path: any): void => {
@@ -129,7 +135,7 @@ export class ASTTextEditor extends ASTEditorBase {
         
         // Log every JSX element we encounter
         if (tagName) {
-          console.log(`  - Found JSX element: ${tagName} at line ${elementLine}`);
+          logger.debug('ast.text-editor.element.found', { tagName, elementLine });
         }
         
         // Check if this is the target element
@@ -141,14 +147,17 @@ export class ASTTextEditor extends ASTEditorBase {
         };
         
         if (this.isTargetElement(element, targetInfo)) {
-          console.log(`✅ Found target element at line ${elementLine}`);
+          logger.debug('ast.text-editor.target.matched', { elementLine });
           elementFound = true;
           actualOldText = this.extractTextContent(element);
           
           // Update the text content
           this.updateTextContent(element, newText);
           
-          console.log(`📝 Updated text from "${actualOldText}" to "${newText}"`);
+          logger.debug('ast.text-editor.text.updated', {
+            oldText: actualOldText,
+            newText,
+          });
           path.stop(); // Stop traversal once element is found and updated
         }
       }
@@ -156,7 +165,11 @@ export class ASTTextEditor extends ASTEditorBase {
 
     if (!elementFound) {
       const errorMsg = `Element not found. Selector: ${selector}, Line: ${devContext.lineNumber}, Expected text: "${oldText.slice(0, 50)}..."`;
-      console.log(`❌ ${errorMsg}`);
+      logger.warn('ast.text-editor.element.not-found', {
+        selector,
+        lineNumber: devContext.lineNumber,
+        expectedText: oldText.slice(0, 50),
+      });
       return {
         success: false,
         error: errorMsg

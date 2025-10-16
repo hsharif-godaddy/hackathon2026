@@ -34,6 +34,29 @@ export function forConversation(conversationId: string): ILogger {
 }
 
 /**
+ * Create a logger with multiple context values
+ * 
+ * @param context - Object with any combination of context values (appId, agentId, requestId, etc.)
+ * @returns Logger instance with all context values
+ * 
+ * @example
+ * ```typescript
+ * const logger = withContext({ appId: '123', agentId: 'develop' });
+ * logger.info('event', { data: 'value' }); // appId and agentId will be in all logs
+ * ```
+ */
+export function withContext(context: Record<string, any>): ILogger {
+  return Logger.create(context);
+}
+
+/**
+ * Create a logger with app and agent context
+ */
+export function forAppAndAgent(appId: string, agentId: string): ILogger {
+  return Logger.create({ appId, agentId });
+}
+
+/**
  * Create a performance timer with logger
  */
 export function timer(logger: ILogger, event: string) {

@@ -13,7 +13,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { AILibContextManager } from './ai-lib-agents/context-manager.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
-import { logger } from '../logging/index.js'
+import { logger, log } from '../logging/index.js'
 
 /**
  * Develop Agent - AI developer for building web applications
@@ -33,26 +33,25 @@ function createGitToolForApp(appId: string): GitTool {
  * Git branch safety hook (from original develop-agent)
  */
 const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, args: unknown, context?: AgentContext): Promise<unknown> => {
-  logger.info('develop_agent.tool.execution.start', {
-    toolName,
-    appId: context?.metadata?.appId
+  const appId = context?.metadata?.appId as string
+  const contextLogger = appId ? log.withContext({ appId, agentId: 'develop' }) : logger
+
+  contextLogger.info('develop_agent.tool.execution.start', {
+    toolName
   });
 
   // File-modifying tools that need git branch check
   const fileModifyingTools = ['fileEdit', 'terminalCommand', 'gitOperation']
 
   if (fileModifyingTools.includes(toolName)) {
-    logger.info('develop_agent.git.branch_check.start', {
+    contextLogger.info('develop_agent.git.branch_check.start', {
       toolName,
       reason: 'file_modifying_tool_detected'
     });
-
-    // Extract appId from execution context
-    const appId = context?.metadata?.appId as string
     
     try {
       if (!appId) {
-        logger.warn('develop_agent.git.branch_check.skipped', {
+        contextLogger.warn('develop_agent.git.branch_check.skipped', {
           toolName,
           reason: 'no_app_id'
         });
@@ -62,17 +61,15 @@ const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, ar
       // Look up app path using AppRepository
       const app = appRepo.findById(appId)
       if (!app) {
-        logger.error('develop_agent.git.branch_check.app_not_found', {
-          toolName,
-          appId
+        contextLogger.error('develop_agent.git.branch_check.app_not_found', {
+          toolName
         });
         return args
       }
 
       const appPath = app.path;
-      logger.info('develop_agent.git.branch_check.app_path', {
+      contextLogger.info('develop_agent.git.branch_check.app_path', {
         toolName,
-        appId,
         appPath
       });
 
@@ -86,9 +83,8 @@ const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, ar
         const currentBranch = branchResult.currentBranch;
 
         if (currentBranch !== 'main') {
-          logger.warn('develop_agent.git.branch_check.not_on_main', {
+          contextLogger.warn('develop_agent.git.branch_check.not_on_main', {
             toolName,
-            appId,
             currentBranch,
             targetBranch: 'main'
           });
@@ -100,39 +96,34 @@ const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, ar
           });
 
           if (checkoutResult.success) {
-            logger.info('develop_agent.git.branch_check.switch_success', {
+            contextLogger.info('develop_agent.git.branch_check.switch_success', {
               toolName,
-              appId,
               fromBranch: currentBranch,
               toBranch: 'main'
             });
           } else {
-            logger.warn('develop_agent.git.branch_check.switch_failed', {
+            contextLogger.warn('develop_agent.git.branch_check.switch_failed', {
               toolName,
-              appId,
               currentBranch,
               targetBranch: 'main',
               error: checkoutResult.error
             });
           }
         } else {
-          logger.info('develop_agent.git.branch_check.on_main', {
+          contextLogger.info('develop_agent.git.branch_check.on_main', {
             toolName,
-            appId,
             currentBranch: 'main'
           });
         }
       } else {
-        logger.warn('develop_agent.git.branch_check.branch_unknown', {
+        contextLogger.warn('develop_agent.git.branch_check.branch_unknown', {
           toolName,
-          appId,
           error: branchResult.error || 'Unknown error'
         });
       }
     } catch (error) {
-      logger.error('develop_agent.git.branch_check.error', {
+      contextLogger.error('develop_agent.git.branch_check.error', {
         toolName,
-        appId,
         error: error instanceof Error ? error.message : String(error)
       });
     }
@@ -150,40 +141,37 @@ const afterToolExecution: AfterToolExecutionHook = async (
   result: unknown,
   context?: AgentContext
 ): Promise<unknown> => {
-  logger.info('develop_agent.tool.execution.complete', {
-    toolName,
-    appId: context?.metadata?.appId
+  const appId = context?.metadata?.appId as string
+  const contextLogger = appId ? log.withContext({ appId, agentId: 'develop' }) : logger
+
+  contextLogger.info('develop_agent.tool.execution.complete', {
+    toolName
   });
 
   const resultObj = result as any
 
   // Track specific development operations
   if (toolName === 'fileEdit' && resultObj?.success) {
-    logger.info('develop_agent.tool.file_edit.success', {
+    contextLogger.info('develop_agent.tool.file_edit.success', {
       filePath: resultObj.filePath || 'unknown',
-      operation: resultObj.operation || 'edit',
-      appId: context?.metadata?.appId
+      operation: resultObj.operation || 'edit'
     });
   }
 
   if (toolName === 'autoAPIGenerator' && resultObj?.success) {
-    logger.info('develop_agent.tool.api_generator.success', {
-      endpointsGenerated: resultObj.endpointsGenerated || 0,
-      appId: context?.metadata?.appId
+    contextLogger.info('develop_agent.tool.api_generator.success', {
+      endpointsGenerated: resultObj.endpointsGenerated || 0
     });
   }
 
   if (toolName === 'terminalCommand' && resultObj?.success) {
-    logger.info('develop_agent.tool.terminal.success', {
-      command: resultObj.command || 'unknown',
-      appId: context?.metadata?.appId
+    contextLogger.info('develop_agent.tool.terminal.success', {
+      command: resultObj.command || 'unknown'
     });
   }
 
   if (toolName === 'serverRestart' && resultObj?.success) {
-    logger.info('develop_agent.tool.server_restart.success', {
-      appId: context?.metadata?.appId
-    });
+    contextLogger.info('develop_agent.tool.server_restart.success', {});
   }
 
   return result

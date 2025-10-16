@@ -16,7 +16,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js'
 import { MAX_PROMPT_LENGTH } from '../services/features.js'
 import { GitTool } from '../tools/git-tool.js'
 import { GitUtils } from '../utils/git.js'
-import { logger } from '../logging/index.js'
+import { logger, log } from '../logging/index.js'
 import { toolGitEvents } from '../logging/events/index.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 import { nanoid } from 'nanoid'
@@ -113,11 +113,16 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     message: string,
     context: ConversationContext
   ): Promise<void> {
-    logger.info('conversation.continue', {
-      conversationId,
-      socketId: context.socketId,
-      agentName: context.agentName,
-      appId: context.appId
+    const contextLogger = context.appId 
+      ? log.withContext({ 
+          appId: context.appId, 
+          agentId: context.agentName,
+          conversationId 
+        })
+      : logger
+
+    contextLogger.info('conversation.continue', {
+      socketId: context.socketId
     })
 
     await this.conversationRepo.addMessage(conversationId, 'user', message, {
@@ -141,22 +146,25 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       this.appUserMessages.set(context.appId, message)
     }
 
-    logger.info('conversation.user_message.saved', { conversationId })
+    contextLogger.info('conversation.user_message.saved', {})
   }
 
   async startConversation(
     message: string,
     context: ConversationContext
   ): Promise<string> {
-    logger.info('conversation.start', {
-      socketId: context.socketId,
-      agentName: context.agentName,
-      appId: context.appId
-    })
-
     if (!context.appId) {
       throw new Error('appId is required in context')
     }
+
+    const contextLogger = log.withContext({ 
+      appId: context.appId, 
+      agentId: context.agentName 
+    })
+
+    contextLogger.info('conversation.start', {
+      socketId: context.socketId
+    })
     
     if (message && message.length > MAX_PROMPT_LENGTH) {
       throw new Error(`Message exceeds maximum length of ${MAX_PROMPT_LENGTH} characters`)
@@ -173,9 +181,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       const existing = await this.conversationRepo.getById(context.conversation.conversationId)
       if (existing) {
         conversationId = context.conversation.conversationId
-        logger.info('conversation.existing.found', { conversationId })
+        contextLogger.info('conversation.existing.found', { conversationId })
       } else {
-        logger.warn('conversation.existing.not_found', { 
+        contextLogger.warn('conversation.existing.not_found', { 
           conversationId: context.conversation.conversationId 
         })
         const conversation = await this.conversationRepo.create(
@@ -192,7 +200,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         `Chat with ${context.agentName} - ${new Date().toLocaleString()}`
       )
       conversationId = conversation.id
-      logger.info('conversation.created', { conversationId })
+      contextLogger.info('conversation.created', { conversationId })
     }
 
     await this.conversationRepo.addMessage(conversationId, 'user', message, {
@@ -216,7 +224,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       this.appUserMessages.set(context.appId, message)
     }
 
-    logger.info('conversation.user_message.saved', { conversationId })
+    contextLogger.info('conversation.user_message.saved', { conversationId })
     return conversationId
   }
 
@@ -234,9 +242,17 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     result: any,
     context: ConversationContext
   ): Promise<void> {
+    const contextLogger = context.appId 
+      ? log.withContext({ 
+          appId: context.appId, 
+          agentId: context.agentName,
+          conversationId 
+        })
+      : logger
+
     const optimizedEvents = this.optimizeStreamingEvents(streamingEvents)
     
-    logger.info('conversation.agent_response.optimizing', {
+    contextLogger.info('conversation.agent_response.optimizing', {
       originalEvents: streamingEvents.length,
       optimizedEvents: optimizedEvents.length,
       reduction: `${Math.round((1 - optimizedEvents.length / streamingEvents.length) * 100)}%`
@@ -328,8 +344,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     
     toolCalls.push(...Array.from(toolsMap.values()))
 
-    logger.info('conversation.agent_response.saving', {
-      conversationId,
+    contextLogger.info('conversation.agent_response.saving', {
       contentLength: accumulatedContent.length,
       segmentsCount: segments.length,
       toolCallsCount: toolCalls.length,
@@ -346,7 +361,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       }
     })
 
-    logger.info('conversation.agent_response.saved', { conversationId })
+    contextLogger.info('conversation.agent_response.saved', {})
     
     if (context.appId) {
       await this.checkAndCommitChanges(context.appId, 'conversation_complete');
@@ -361,8 +376,15 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     message?: string,
     context?: ConversationContext
   ): Promise<void> {
-    logger.error('websocket.conversation.error', {
-      conversationId,
+    const contextLogger = context?.appId 
+      ? log.withContext({ 
+          appId: context.appId, 
+          agentId: context.agentName,
+          conversationId 
+        })
+      : logger
+
+    contextLogger.error('websocket.conversation.error', {
       error: error.message,
       socketId: context?.socketId
     })
@@ -409,18 +431,17 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
    * This is used as a safety net to prevent lost work when websocket disconnects or errors occur
    */
   private async checkAndCommitChanges(appId: string, reason: string): Promise<void> {
+    const contextLogger = log.forApp(appId)
     const startTime = Date.now();
     
     try {
-      logger.info('git.auto_commit.check', {
-        appId,
+      contextLogger.info('git.auto_commit.check', {
         reason
       })
       
       const app = await this.appRepository.findById(appId);
       if (!app) {
-        logger.warn('git.auto_commit.app_not_found', {
-          appId,
+        contextLogger.warn('git.auto_commit.app_not_found', {
           reason
         })
         return;
@@ -434,13 +455,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       const status = await gitTool.executeGitOperation(app.path, { operation: 'status' });
       
       if (status.success && status.status && !status.status.isClean) {
-        toolGitEvents.begin(logger, {
+        toolGitEvents.begin(contextLogger, {
           toolName: 'git',
           operation: 'commit',
           appPath: app.path,
           options: {
-            reason,
-            appId
+            reason
           }
         });
 
@@ -480,13 +500,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           } catch (error) {
             // Fallback to simple calculation if detailed status fails
             filesAffected = status.status?.isClean ? 0 : 1;
-            logger.warn('git.auto_commit.status_fallback', {
-              appId,
+            contextLogger.warn('git.auto_commit.status_fallback', {
               error: error instanceof Error ? error.message : String(error)
             });
           }
 
-          toolGitEvents.success(logger, {
+          toolGitEvents.success(contextLogger, {
             toolName: 'git',
             operation: 'commit',
             appPath: app.path,
@@ -497,39 +516,34 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             }
           });
           
-          logger.info('git.auto_commit.success', {
-            appId,
+          contextLogger.info('git.auto_commit.success', {
             commitMessage,
             reason,
             filesAffected,
             executionTime
           });
         } else {
-          toolGitEvents.failure(logger, new Error(result.error || 'Auto-commit failed'), {
+          toolGitEvents.failure(contextLogger, new Error(result.error || 'Auto-commit failed'), {
             toolName: 'git',
             operation: 'commit',
-            appPath: app.path,
-            appId
+            appPath: app.path
           });
           
-          logger.error('git.auto_commit.failure', {
-            appId,
+          contextLogger.error('git.auto_commit.failure', {
             error: result.error,
             reason,
             executionTime
           });
         }
       } else {
-        logger.info('git.auto_commit.not_needed', {
-          appId,
+        contextLogger.info('git.auto_commit.not_needed', {
           reason,
           isClean: status.status?.isClean || false
         });
       }
     } catch (error) {
       const executionTime = Date.now() - startTime;
-      logger.error('git.auto_commit.error', {
-        appId,
+      contextLogger.error('git.auto_commit.error', {
         error: error instanceof Error ? error.message : String(error),
         reason,
         executionTime,

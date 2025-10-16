@@ -2,6 +2,10 @@
  * Path utilities for handling Docker path translation
  */
 
+import { Logger } from '../logging/index.js';
+
+const logger = Logger.create({ service: 'path-helper' });
+
 /**
  * Translate Docker container paths to relative paths for the agent environment.
  * Docker containers use /app/ as root, but agents use /tmp/apps/appid/ or similar.
@@ -16,12 +20,18 @@ export function translateDockerPath(path: string): string {
   if (path.startsWith('/app/')) {
     // Strip /app/ prefix to make it relative
     normalizedPath = path.slice(5); // Remove '/app/' (5 characters)
-    console.log(`🔄 Translated Docker path: ${path} → ${normalizedPath}`);
+    logger.debug('path-helper.docker-translation', {
+      originalPath: path,
+      normalizedPath,
+    });
   } else if (path.startsWith('/')) {
     // Handle other absolute paths by making them relative
     // This shouldn't normally happen, but provides a fallback
     normalizedPath = path.slice(1);
-    console.log(`⚠️ Converting absolute path to relative: ${path} → ${normalizedPath}`);
+    logger.warn('path-helper.absolute-to-relative', {
+      originalPath: path,
+      normalizedPath,
+    });
   }
   
   return normalizedPath;

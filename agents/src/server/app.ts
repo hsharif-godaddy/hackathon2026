@@ -1,15 +1,21 @@
 // Initialize Elastic APM first - must be before any other imports
 import apmAgent from 'elastic-apm-node';
+import { Logger } from '../logging/index.js';
 
 const isApmEnabled = !!(process.env.ELASTIC_APM_SECRET_TOKEN && process.env.ELASTIC_APM_SERVER_URL);
 const serviceName = 'airo-agents';
+const logger = Logger.create({ service: 'airo-agents-server' });
 
 if (isApmEnabled) {
-  console.log(`📊 APM Server: ${process.env.ELASTIC_APM_SERVER_URL}`);
-  console.log(`🏷️  Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🎯 Service Name: ${serviceName}`);
+  logger.info('server.apm.enabled', {
+    serverUrl: process.env.ELASTIC_APM_SERVER_URL,
+    environment: process.env.NODE_ENV || 'development',
+    serviceName,
+  });
 } else {
-  console.log('⚠️  Elastic APM disabled - Missing ELASTIC_APM_SECRET_TOKEN or ELASTIC_APM_SERVER_URL');
+  logger.warn('server.apm.disabled', {
+    reason: 'Missing ELASTIC_APM_SECRET_TOKEN or ELASTIC_APM_SERVER_URL',
+  });
 }
 
 const apm = apmAgent.start({
@@ -136,103 +142,120 @@ app.use(errorHandler);
  */
 async function initialize() {
   try {
-    console.log('🚀 Starting @airo/agents server...');
+    logger.info('server.init.begin', {
+      service: serviceName,
+      port,
+    });
 
     // Initialize database
-    console.log('🗄️  Initializing database...');
+    logger.info('server.database.init.begin', {});
     getDatabase();
-    console.log('✅ Database initialized');
+    logger.info('server.database.init.success', {});
 
     // Initialize AppRepository and recover processes
-    console.log('📱 Initializing AppRepository...');
+    logger.info('server.repository.init.begin', {});
     const appRepo = new AppRepository();
     await appRepo.initialize();
-    console.log('✅ AppRepository initialized');
+    logger.info('server.repository.init.success', {});
 
     // Phase 3: Setup AI-Lib WebSocket Server
-    console.log('🚀 Phase 3: Setting up AI-Lib WebSocket Server...');
-    const wsServer = await setupAILibWebSocketServer(server);
-    console.log('✅ AI-Lib WebSocket server initialized with multi-agent support');
+    logger.info('server.websocket.init.begin', { phase: 3 });
+    await setupAILibWebSocketServer(server);
+    logger.info('server.websocket.init.success', { phase: 3 });
 
     // Start file cleanup service
-    console.log('🧹 Starting file cleanup service...');
+    logger.info('server.cleanup.start.begin', {});
     fileCleanupService.start();
-    console.log('✅ File cleanup service started');
+    logger.info('server.cleanup.start.success', {});
 
     // Get WebSocket server info for health checks
     const wsInfo = getWebSocketServerInfo();
-    console.log(`📊 WebSocket server info:`, {
+    logger.info('server.websocket.info', {
       totalAgents: wsInfo.totalAgents,
       defaultAgent: wsInfo.defaultAgent,
-      availableAgents: wsInfo.agentIds
+      availableAgents: wsInfo.agentIds,
     });
 
-    console.log('📌 WebSocket Connection Info:');
-    console.log('  - Socket.IO: Available on default path for ai-playground compatibility');
-    console.log('  - Frontend: Use Socket.IO client to connect (not native WebSocket)');
-    console.log('  - Update frontend from native WebSocket to Socket.IO for ai-lib compatibility');
+    logger.info('server.websocket.connection.info', {
+      socketIO: 'Available on default path for ai-playground compatibility',
+      frontendClient: 'Use Socket.IO client (not native WebSocket)',
+      migrationNote: 'Frontend migrated from native WebSocket to Socket.IO',
+    });
 
     // Start server
     server.listen(port, () => {
-      console.log(`🌐 Server running on http://localhost:${port}`);
-      console.log(`📊 Health check: http://localhost:${port}/health`);
-      console.log(`🤖 Agents list: http://localhost:${port}/agents`);
-      console.log('');
-      console.log('🎉 Phase 3 Migration Complete!');
-      console.log('');
-      console.log('✅ Migration to AI-Lib Successfully Completed:');
-      console.log('  - ✅ Phase 1: All tools converted to ai-lib createTool() format');
-      console.log('  - ✅ Phase 2: BaseAgent replaced with ai-lib Agent composition');
-      console.log('  - ✅ Phase 3: WebSocket integrated with ai-lib multi-agent server');
-      console.log('');
-      console.log('🚀 AI-Lib Features Now Active:');
-      console.log('  - Multi-agent WebSocket server with agent selection');
-      console.log('  - Direct streaming and tool execution through ai-lib');
-      console.log('  - Automatic agent discovery and metadata management');
-      console.log('  - Native ai-lib message formats and events');
-      console.log('  - Complete elimination of legacy agent system');
-      console.log('');
-      console.log('Available endpoints:');
-      console.log('');
-      console.log('🤖 Agent Management:');
-      console.log(`  GET  /agents - List all available AI agents with capabilities`);
-      console.log(`  GET  /agents/{id} - Get specific agent details and configuration`);
-      console.log('');
-      console.log('📱 App Management:');
-      console.log(`  GET  /apps - List all user applications with metadata`);
-      console.log(`  POST /apps - Create new application project`);
-      console.log(`  GET  /apps/{id} - Get application details and status`);
-      console.log(`  PUT  /apps/{id} - Update application configuration`);
-      console.log(`  DELETE /apps/{id} - Delete application and clean up resources`);
-      console.log('');
-      console.log('📁 File Operations:');
-      console.log(`  GET  /apps/{id}/files - List files in app directory tree`);
-      console.log(`  GET  /apps/{id}/files/read - Read file contents with optional line range`);
-      console.log(`  POST /apps/{id}/files/write - Create or edit files with backup support`);
-      console.log(`  POST /apps/{id}/files/edit - Apply search-and-replace operations`);
-      console.log('');
-      console.log('💬 AI Chat & Development:');
-      console.log(`  POST /agent/{id}/chat - Send message to AI agent (non-streaming)`);
-      console.log(`  POST /agent/{id}/chat-streaming - Real-time streaming chat with AI`);
-      console.log(`  WS   /ws/{id} - WebSocket connection for live AI development`);
-      console.log('');
-      console.log('📊 Token Usage & Analytics:');
-      console.log(`  GET  /apps/{id}/usage - Get token usage summary for app`);
-      console.log(`  GET  /apps/{id}/usage/history - Detailed token usage history`);
-      console.log(`  GET  /apps/{id}/usage/stats - Usage statistics by time period`);
-      console.log(`  DELETE /apps/{id}/usage - Reset token usage data for app`);
-      console.log('');
-      console.log('🔧 System:');
-      console.log(`  GET  /health - System health check and status`);
-      console.log(`  GET  /apps/config - Get app configuration (SHOW_USAGE_COST)`);
-      console.log('');
-      console.log('⚙️  Configuration:');
-      console.log(`  SHOW_USAGE_COST: ${process.env.SHOW_USAGE_COST || 'false'} (UI display of token costs)`);
-      console.log(`  📊 Backend tracking: Always enabled (regardless of UI setting)`);
+      logger.info('server.listen.success', {
+        url: `http://localhost:${port}`,
+        port,
+        healthCheck: `http://localhost:${port}/health`,
+        agentsList: `http://localhost:${port}/agents`,
+      });
+
+      logger.info('server.migration.complete', {
+        phase: 3,
+        features: [
+          'All tools converted to ai-lib createTool() format',
+          'BaseAgent replaced with ai-lib Agent composition',
+          'WebSocket integrated with ai-lib multi-agent server',
+        ],
+      });
+
+      logger.info('server.features.active', {
+        features: [
+          'Multi-agent WebSocket server with agent selection',
+          'Direct streaming and tool execution through ai-lib',
+          'Automatic agent discovery and metadata management',
+          'Native ai-lib message formats and events',
+          'Complete elimination of legacy agent system',
+        ],
+      });
+
+      logger.info('server.endpoints.available', {
+        agents: {
+          list: 'GET /agents - List all available AI agents with capabilities',
+          details: 'GET /agents/{id} - Get specific agent details and configuration',
+        },
+        apps: {
+          list: 'GET /apps - List all user applications with metadata',
+          create: 'POST /apps - Create new application project',
+          get: 'GET /apps/{id} - Get application details and status',
+          update: 'PUT /apps/{id} - Update application configuration',
+          delete: 'DELETE /apps/{id} - Delete application and clean up resources',
+        },
+        files: {
+          list: 'GET /apps/{id}/files - List files in app directory tree',
+          read: 'GET /apps/{id}/files/read - Read file contents with optional line range',
+          write: 'POST /apps/{id}/files/write - Create or edit files with backup support',
+          edit: 'POST /apps/{id}/files/edit - Apply search-and-replace operations',
+        },
+        chat: {
+          standard: 'POST /agent/{id}/chat - Send message to AI agent (non-streaming)',
+          streaming: 'POST /agent/{id}/chat-streaming - Real-time streaming chat with AI',
+          websocket: 'WS /ws/{id} - WebSocket connection for live AI development',
+        },
+        usage: {
+          summary: 'GET /apps/{id}/usage - Get token usage summary for app',
+          history: 'GET /apps/{id}/usage/history - Detailed token usage history',
+          stats: 'GET /apps/{id}/usage/stats - Usage statistics by time period',
+          reset: 'DELETE /apps/{id}/usage - Reset token usage data for app',
+        },
+        system: {
+          health: 'GET /health - System health check and status',
+          config: 'GET /apps/config - Get app configuration (SHOW_USAGE_COST)',
+        },
+      });
+
+      logger.info('server.configuration', {
+        showUsageCost: process.env.SHOW_USAGE_COST || 'false',
+        backendTracking: 'Always enabled (regardless of UI setting)',
+      });
     });
 
   } catch (error) {
-    console.error('❌ Failed to initialize application:', error);
+    logger.error('server.init.failure', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     process.exit(1);
   }
 }
@@ -241,14 +264,21 @@ async function initialize() {
  * Graceful shutdown
  */
 async function shutdown() {
-  console.log('🛑 Shutting down gracefully...');
+  logger.info('server.shutdown.begin', {
+    service: serviceName,
+  });
 
   try {
     // Phase 3: AI-Lib WebSocket server handles its own cleanup automatically
-    console.log('✅ Cleanup completed');
+    logger.info('server.shutdown.success', {
+      service: serviceName,
+    });
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error during cleanup:', error);
+    logger.error('server.shutdown.failure', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     process.exit(1);
   }
 }
@@ -261,12 +291,18 @@ process.on('SIGTERM', shutdown);
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
+  logger.error('server.uncaught.exception', {
+    error: error.message,
+    stack: error.stack,
+  });
   shutdown();
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  logger.error('server.unhandled.rejection', {
+    reason: String(reason),
+    promise: String(promise),
+  });
   shutdown();
 });
 

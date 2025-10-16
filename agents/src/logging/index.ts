@@ -55,6 +55,8 @@ export const log = {
   forAgent: logUtils.forAgent,
   forRequest: logUtils.forRequest,
   forConversation: logUtils.forConversation,
+  forAppAndAgent: logUtils.forAppAndAgent,
+  withContext: logUtils.withContext,
   timer: logUtils.timer,
   error: logUtils.error,
   withRequest: logUtils.withRequest,

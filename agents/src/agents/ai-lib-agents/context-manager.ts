@@ -8,7 +8,7 @@ import { AppContextManager } from '../../services/AppContextManager.js'
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js'
 import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig } from './types.js'
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
-import { logger } from '../../logging/index.js'
+import { logger, log } from '../../logging/index.js'
 import { getAgentConfig } from '../../services/features.js'
 
 import type { AgentExecutionContext } from '../../base/agent.interface.js'
@@ -284,11 +284,12 @@ export class AILibContextManager {
                 return null
             }
 
+            const contextLogger = log.forApp(appId)
+
             // Look up app path using AppRepository
             const app = this.appRepository.findById(appId)
             if (!app) {
-                logger.warn('context.hot_files.app_not_found', {
-                    appId,
+                contextLogger.warn('context.hot_files.app_not_found', {
                     reason: 'App not found in repository'
                 })
                 return null
@@ -299,15 +300,14 @@ export class AILibContextManager {
             const hotFilesContext = await fileContextManager.getHotFilesContext()
 
             if (!hotFilesContext) {
-                logger.debug('context.hot_files.build.empty', {
+                contextLogger.debug('context.hot_files.build.empty', {
                     reason: 'FileContextManager returned null'
                 })
                 return null
             }
 
-            logger.info('context.hot_files.build.success', {
-                contentLength: hotFilesContext.length,
-                appId
+            contextLogger.info('context.hot_files.build.success', {
+                contentLength: hotFilesContext.length
             })
 
             return {
@@ -328,39 +328,39 @@ export class AILibContextManager {
      */
     private async buildAppContextMessage(context: EnhancedAgentContext): Promise<ContextMessage | null> {
         try {
-            logger.debug('context.app.build.start', {
+            const appId = context.metadata?.appId as string
+            const contextLogger = appId ? log.forApp(appId) : logger
+
+            contextLogger.debug('context.app.build.start', {
                 hasMetadata: !!context.metadata,
-                appId: context.metadata?.appId,
                 appPath: context.metadata?.appPath,
                 hasAppContext: !!context.appContext
             })
 
             const executionContext = this.buildExecutionContext(context)
             
-            logger.debug('context.execution.built', {
+            contextLogger.debug('context.execution.built', {
                 threadId: executionContext.threadId,
                 hasMetadata: !!executionContext.metadata,
-                metadataAppId: executionContext.metadata?.appId,
                 metadataAppPath: executionContext.metadata?.appPath
             })
 
             const appContextContent = await this.appContextManager.generateContextMessage(executionContext)
 
             if (!appContextContent) {
-                logger.debug('context.app.build.empty', {
+                contextLogger.debug('context.app.build.empty', {
                     reason: 'AppContextManager returned null'
                 })
                 return null
             }
 
-            logger.info('context.app.build.success', {
-                contentLength: appContextContent.length,
-                appId: context.metadata?.appId
+            contextLogger.info('context.app.build.success', {
+                contentLength: appContextContent.length
             })
 
             const contextLogging = getAgentConfig.contextLogging()
             if (contextLogging.appContextContent) {
-                logger.debug('context.app.content', {
+                contextLogger.debug('context.app.content', {
                     content: appContextContent
                 })
             }
@@ -509,12 +509,13 @@ Context Notes: ${contextNotes}`
         const appId = context.metadata?.appId as string
         
         if (appId) {
+            const contextLogger = log.forApp(appId)
             const app = this.appRepository.findById(appId)
             if (app) {
                 appPath = app.path
-                logger.debug('context.app.path.resolved', { appId, appPath })
+                contextLogger.debug('context.app.path.resolved', { appPath })
             } else {
-                logger.warn('context.app.path.not_found', { appId })
+                contextLogger.warn('context.app.path.not_found', {})
             }
         }
 
@@ -620,23 +621,24 @@ Context Notes: ${contextNotes}`
             return null
         }
 
+        const contextLogger = log.forApp(appId)
+
         // Look up app path using AppRepository
         const app = this.appRepository.findById(appId)
         if (!app) {
-            logger.warn('context.template.app_not_found', {
-                appId,
+            contextLogger.warn('context.template.app_not_found', {
                 reason: 'App not found in repository'
             })
             return null
         }
 
         const appPath = app.path
-        logger.debug('context.template.version_check', { appPath })
+        contextLogger.debug('context.template.version_check', { appPath })
 
         // Get validated template version from app directory
         const validatedVersion = getValidatedTemplateVersion(appPath)
         if (!validatedVersion) {
-            logger.debug('context.template.no_version', {
+            contextLogger.debug('context.template.no_version', {
                 reason: 'No valid template version found'
             })
             return null
@@ -654,11 +656,11 @@ Context Notes: ${contextNotes}`
             const sourcePromptsDir = path.resolve(currentDir, '..', '..', '..', 'src', 'prompts')
             templateDescPath = path.join(sourcePromptsDir, 'template-descriptions', `${validatedVersion}.md`)
             
-            logger.debug('context.template.path.fallback', { templateDescPath })
+            contextLogger.debug('context.template.path.fallback', { templateDescPath })
         }
         
         if (!existsSync(templateDescPath)) {
-            logger.warn('context.template.file_not_found', { templateDescPath })
+            contextLogger.warn('context.template.file_not_found', { templateDescPath })
             return null
         }
 
@@ -666,16 +668,15 @@ Context Notes: ${contextNotes}`
             const templateDescription = readFileSync(templateDescPath, 'utf-8')
             const trimmedDescription = templateDescription.trim()
             
-            logger.info('context.template.load.success', {
+            contextLogger.info('context.template.load.success', {
                 templateVersion: validatedVersion,
                 contentLength: trimmedDescription.length,
-                appId: context.metadata?.appId,
                 filePath: templateDescPath
             })
 
             const contextLogging = getAgentConfig.contextLogging()
             if (contextLogging.templateContent) {
-                logger.debug('context.template.content', {
+                contextLogger.debug('context.template.content', {
                     templateVersion: validatedVersion,
                     content: trimmedDescription
                 })
@@ -683,7 +684,7 @@ Context Notes: ${contextNotes}`
             
             return trimmedDescription
         } catch (error) {
-            logger.error('context.template.read.failure', {
+            contextLogger.error('context.template.read.failure', {
                 templateDescPath,
                 error: error instanceof Error ? error.message : String(error)
             })

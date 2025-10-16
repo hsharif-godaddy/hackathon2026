@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { GitTool } from '../../tools/git-tool.js';
-import { logger } from '../../logging/index.js';
+import { Logger, log } from '../../logging/index.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
+const gitLogger = Logger.create({ service: 'git-routes' });
 
 /**
  * Get commit history for an app
@@ -14,6 +15,7 @@ router.get('/apps/:id/git/history', async (req, res) => {
   try {
     const { id } = req.params;
     const { count = 30 } = req.query;
+    const contextLogger = log.forApp(id);
 
     // Get app path from database
     const app = appRepository.findById(id);
@@ -41,14 +43,17 @@ router.get('/apps/:id/git/history', async (req, res) => {
     }
 
     const commits = result.commits || [];
-    console.log(`Git history API returning ${commits.length} commits, showing all commits regardless of checked out commit`);
+    contextLogger.info('route.git.history.success', {
+      commitCount: commits.length,
+    });
     
     return res.json({ 
       success: true, 
       commits: commits
     });
   } catch (error) {
-    console.error('Error getting commit history:', error);
+    const contextLogger = log.forApp(req.params.id);
+    log.error(contextLogger, 'route.git.history.error', error as Error, {});
     return res.status(500).json({ 
       error: 'Failed to get commit history',
       details: error instanceof Error ? error.message : String(error)
@@ -64,17 +69,20 @@ router.post('/apps/:id/git/checkout', async (req, res) => {
   try {
     const { id } = req.params;
     const { commitHash } = req.body;
+    const contextLogger = log.forApp(id);
 
     if (!commitHash) {
       return res.status(400).json({ error: 'Commit hash is required' });
     }
 
-    console.log(`🔎 Git: App ${id} checking out commit ${commitHash.substring(0, 7)}`);
+    contextLogger.info('route.git.checkout.begin', {
+      commitHash: commitHash.substring(0, 7),
+    });
 
     // Get app path from database
     const app = appRepository.findById(id);
     if (!app) {
-      console.error(`❌ Git: App ${id} not found`);
+      contextLogger.error('route.git.checkout.app-not-found', {});
       return res.status(404).json({ error: 'App not found' });
     }
 
@@ -88,7 +96,7 @@ router.post('/apps/:id/git/checkout', async (req, res) => {
     });
 
     if (!currentBranchResult.success) {
-      console.error(`❌ Git: Failed to get current branch for app ${id}`);
+      contextLogger.error('route.git.checkout.branch-check-failed', {});
       return res.status(400).json({ 
         error: 'Failed to get current branch', 
         details: currentBranchResult.error 
@@ -96,7 +104,9 @@ router.post('/apps/:id/git/checkout', async (req, res) => {
     }
 
     const currentBranch = currentBranchResult.currentBranch || 'HEAD';
-    console.log(`ℹ️ Git: App ${id} current branch state before checkout: ${currentBranch}`);
+    contextLogger.info('route.git.checkout.current-branch', {
+      currentBranch,
+    });
     
     // Create a temporary branch at the specified commit (not used currently)
     // const branchName = `temp-view-${commitHash.substring(0, 7)}`;
@@ -108,15 +118,23 @@ router.post('/apps/:id/git/checkout', async (req, res) => {
     });
 
     if (!result.success) {
-      console.error(`❌ Git: Failed to checkout commit ${commitHash.substring(0, 7)} for app ${id}:`, result.error);
+      contextLogger.error('route.git.checkout.failed', {
+        commitHash: commitHash.substring(0, 7),
+        error: result.error,
+      });
       return res.status(400).json({ 
         error: 'Failed to checkout commit', 
         details: result.error 
       });
     }
 
-    console.log(`✅ Git: Successfully checked out commit ${commitHash.substring(0, 7)} for app ${id}. Previous branch: ${currentBranch}`);
-    console.log(`⚠️ Git: App ${id} is now in detached HEAD state. Any changes should be made after returning to main branch.`);
+    contextLogger.info('route.git.checkout.success', {
+      commitHash: commitHash.substring(0, 7),
+      previousBranch: currentBranch,
+    });
+    contextLogger.warn('route.git.checkout.detached-head', {
+      warning: 'App is now in detached HEAD state',
+    });
 
     return res.json({ 
       success: true, 
@@ -125,7 +143,8 @@ router.post('/apps/:id/git/checkout', async (req, res) => {
       isDetachedHead: true
     });
   } catch (error) {
-    console.error(`❌ Git: Error checking out commit for app ${req.params.id}:`, error);
+    const contextLogger = log.forApp(req.params.id);
+    log.error(contextLogger, 'route.git.checkout.error', error as Error, {});
     return res.status(500).json({ 
       error: 'Failed to checkout commit',
       details: error instanceof Error ? error.message : String(error)
@@ -141,13 +160,16 @@ router.post('/apps/:id/git/return', async (req, res) => {
   try {
     const { id } = req.params;
     const { branch = 'main' } = req.body;
+    const contextLogger = log.forApp(id);
 
-    console.log(`🔄 Git: Returning app ${id} to ${branch} branch`);
+    contextLogger.info('route.git.return-to-branch.begin', {
+      branch,
+    });
 
     // Get app path from database
     const app = appRepository.findById(id);
     if (!app) {
-      console.error(`❌ Git: App ${id} not found`);
+      contextLogger.error('route.git.return-to-branch.app-not-found', {});
       return res.status(404).json({ error: 'App not found' });
     }
     
@@ -163,9 +185,11 @@ router.post('/apps/:id/git/return', async (req, res) => {
     // Log current state before attempting checkout
     if (statusResult.success) {
       const currentBranch = statusResult.currentBranch || 'detached HEAD';
-      console.log(`ℹ️ Git: App ${id} current branch state: ${currentBranch}`);
+      contextLogger.info('route.git.return-to-branch.current-state', {
+        currentBranch,
+      });
     } else {
-      console.warn(`⚠️ Git: Could not determine current branch for app ${id}`);
+      contextLogger.warn('route.git.return-to-branch.state-unknown', {});
     }
     
     // Return to the specified branch
@@ -175,14 +199,19 @@ router.post('/apps/:id/git/return', async (req, res) => {
     });
 
     if (!result.success) {
-      console.error(`❌ Git: Failed to return to ${branch} branch:`, result.error);
+      contextLogger.error('route.git.return-to-branch.failed', {
+        branch,
+        error: result.error,
+      });
       return res.status(400).json({ 
         error: `Failed to return to ${branch} branch`, 
         details: result.error 
       });
     }
 
-    console.log(`✅ Git: Successfully returned app ${id} to ${branch} branch`);
+    contextLogger.info('route.git.return-to-branch.success', {
+      branch,
+    });
     
     return res.json({ 
       success: true, 
@@ -190,7 +219,8 @@ router.post('/apps/:id/git/return', async (req, res) => {
       previousState: statusResult.success ? statusResult.currentBranch : 'unknown'
     });
   } catch (error) {
-    console.error(`❌ Git: Error returning app to branch:`, error);
+    const contextLogger = log.forApp(req.params.id);
+    log.error(contextLogger, 'route.git.return-to-branch.error', error as Error, {});
     return res.status(500).json({ 
       error: 'Failed to return to branch',
       details: error instanceof Error ? error.message : String(error)
@@ -206,17 +236,20 @@ router.post('/apps/:id/git/restore', async (req, res) => {
   try {
     const { id } = req.params;
     const { commitHash } = req.body;
+    const contextLogger = log.forApp(id);
 
     if (!commitHash) {
       return res.status(400).json({ error: 'Commit hash is required' });
     }
 
-    console.log(`🔄 Git: App ${id} restoring files from commit ${commitHash.substring(0, 7)}`);
+    contextLogger.info('route.git.restore-files.begin', {
+      commitHash: commitHash.substring(0, 7),
+    });
 
     // Get app path from database
     const app = appRepository.findById(id);
     if (!app) {
-      console.error(`❌ Git: App ${id} not found`);
+      contextLogger.error('route.git.restore-files.app-not-found', {});
       return res.status(404).json({ error: 'App not found' });
     }
 
@@ -232,9 +265,11 @@ router.post('/apps/:id/git/restore', async (req, res) => {
     // Log current state before attempting restore
     if (statusResult.success) {
       const currentBranch = statusResult.currentBranch || 'detached HEAD';
-      console.log(`ℹ️ Git: App ${id} current branch state: ${currentBranch}`);
+      contextLogger.info('route.git.restore-files.current-state', {
+        currentBranch,
+      });
     } else {
-      console.warn(`⚠️ Git: Could not determine current branch for app ${id}`);
+      contextLogger.warn('route.git.restore-files.state-unknown', {});
     }
     
     // Execute the restore operation
@@ -258,6 +293,8 @@ router.post('/apps/:id/git/restore', async (req, res) => {
       previousState: statusResult.success ? statusResult.currentBranch : 'unknown'
     });
   } catch (error) {
+    const contextLogger = log.forApp(req.params.id);
+    log.error(contextLogger, 'route.git.restore-files.error', error as Error, {});
     return res.status(500).json({ 
       error: 'Failed to restore files from commit',
       details: error instanceof Error ? error.message : String(error)

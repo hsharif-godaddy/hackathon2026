@@ -1,4 +1,4 @@
-import { Logger } from '../logging/index.js';
+import { Logger, log } from '../logging/index.js';
 import { DevSupervisorClient, createDevSupervisorClient, HealthCheckConfig, RestartPolicy } from './DevSupervisorClient.js';
 import { getErrorMessage } from '../utils/error.js';
 
@@ -58,15 +58,14 @@ export class HealthMonitoringService {
    * Configure health monitoring for an application
    */
   async configureHealthMonitoring(config: HealthMonitoringConfig): Promise<boolean> {
+    const contextLogger = log.forApp(config.appId);
+
     if (!this.devSupervisor) {
-      this.logger.warn('health.configure.unavailable', {
-        appId: config.appId
-      });
+      contextLogger.warn('health.configure.unavailable', {});
       return false;
     }
 
-    this.logger.info('health.configure.begin', {
-      appId: config.appId,
+    contextLogger.info('health.configure.begin', {
       healthCheckType: config.healthCheck.type,
       restartPolicyEnabled: config.restartPolicy?.enabled
     });
@@ -77,14 +76,11 @@ export class HealthMonitoringService {
         config.restartPolicy
       );
 
-      this.logger.info('health.configure.success', {
-        appId: config.appId
-      });
+      contextLogger.info('health.configure.success', {});
 
       return true;
     } catch (error) {
-      this.logger.error('health.configure.failure', {
-        appId: config.appId,
+      contextLogger.error('health.configure.failure', {
         error: getErrorMessage(error)
       });
       return false;
@@ -99,8 +95,10 @@ export class HealthMonitoringService {
       return null;
     }
 
+    const contextLogger = log.forApp(appId);
+
     try {
-      this.logger.debug('health.status.request', { appId });
+      contextLogger.debug('health.status.request', {});
 
       const [healthStatus, restartStats] = await Promise.all([
         this.devSupervisor.getHealthStatus(),
@@ -121,16 +119,14 @@ export class HealthMonitoringService {
         }
       };
 
-      this.logger.debug('health.status.retrieved', {
-        appId,
+      contextLogger.debug('health.status.retrieved', {
         status: status.status,
         consecutiveFailures: status.consecutiveFailures
       });
 
       return status;
     } catch (error) {
-      this.logger.error('health.status.failure', {
-        appId,
+      contextLogger.error('health.status.failure', {
         error: getErrorMessage(error)
       });
       return null;
@@ -246,17 +242,17 @@ export class HealthMonitoringService {
       return false;
     }
 
-    this.logger.info('health.disable.begin', { appId });
+    const contextLogger = log.forApp(appId);
+    contextLogger.info('health.disable.begin', {});
 
     try {
       // Configure with undefined to disable
       await this.devSupervisor.configureHealthCheck(undefined, undefined);
 
-      this.logger.info('health.disable.success', { appId });
+      contextLogger.info('health.disable.success', {});
       return true;
     } catch (error) {
-      this.logger.error('health.disable.failure', {
-        appId,
+      contextLogger.error('health.disable.failure', {
         error: getErrorMessage(error)
       });
       return false;

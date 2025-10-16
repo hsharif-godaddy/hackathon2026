@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { logger } from '../../logging/index.js'
+import { logger, log } from '../../logging/index.js'
 import { buildDebugContext } from '../../utils/context-builder.js'
 import { countTokens } from '../../utils/token-counter.js'
 import { createPromptBuilder } from '@airo/ai-lib'
@@ -64,10 +64,10 @@ router.get('/context/:appId', async (req: Request, res: Response): Promise<void>
       return
     }
     
+    const contextLogger = log.forApp(appId)
     const { injectFakeVisual, injectFakeAiEdit, userInput } = req.query
 
-    logger.info('debug.context.request', {
-      appId,
+    contextLogger.info('debug.context.request', {
       injectFakeVisual: injectFakeVisual === 'true',
       injectFakeAiEdit: injectFakeAiEdit === 'true',
       hasUserInput: !!userInput
@@ -97,7 +97,7 @@ router.get('/context/:appId', async (req: Request, res: Response): Promise<void>
     // Build conversation history if available, or create fake history for demo
     let conversationHistory: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = []
     
-    logger.info('debug.context.conversation_check', {
+    contextLogger.info('debug.context.conversation_check', {
       hasConversation: !!enhancedContext.conversation,
       conversationId: enhancedContext.conversation?.conversationId,
       hasUserInput: !!userInput

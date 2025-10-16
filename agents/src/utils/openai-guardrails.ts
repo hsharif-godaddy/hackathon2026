@@ -7,6 +7,9 @@
 
 import { Agent } from '@openai/agents';
 import type { AgentExecutionContext } from '../base/index.js';
+import { Logger, log } from '../logging/index.js';
+
+const logger = Logger.create({ service: 'openai-guardrails' });
 
 export interface GuardrailResult {
   outputInfo: Record<string, unknown>;
@@ -85,7 +88,9 @@ export function createInputGuardrail(): GuardrailFunction {
           analysis = JSON.parse(response.content);
         } catch (parseError) {
           // Fallback if response isn't valid JSON
-          console.warn('Guardrail agent response not valid JSON:', response.content);
+          logger.warn('guardrails.security.parse-error', {
+            content: response.content,
+          });
           
           // Simple keyword-based fallback
           const suspiciousContent = input.toLowerCase().includes('prompt') ||
@@ -112,7 +117,7 @@ export function createInputGuardrail(): GuardrailFunction {
         };
 
       } catch (error) {
-        console.error('Error in security guardrail:', error);
+        log.error(logger, 'guardrails.security.error', error as Error, {});
         
         // Fail safe - allow request but log the error
         return {
@@ -176,7 +181,7 @@ export function createOutputGuardrail(): GuardrailFunction {
         };
 
       } catch (error) {
-        console.error('Error in output security guardrail:', error);
+        log.error(logger, 'guardrails.output-security.error', error as Error, {});
         
         // Fail safe - allow response but log the error
         return {
@@ -226,8 +231,7 @@ export async function applyInputGuardrails(
 ): Promise<string> {
   // Temporarily disable guardrails to fix ChatPane message display issue
   // TODO: Fix guardrailAgent.run is not a function error
-  /*console.log('🔒 Input guardrails temporarily disabled for debugging');
-  return message;*/
+  // logger.debug('guardrails.input.disabled', { reason: 'Temporarily disabled for debugging' });
 
   const inputGuardrail = createInputGuardrail();
   
@@ -249,7 +253,10 @@ export async function applyInputGuardrails(
     }
     
     // Log other errors but don't block the request
-    console.warn('Input guardrail error, allowing request:', error);
+    logger.warn('guardrails.input.error-fallthrough', {
+      error: error instanceof Error ? error.message : String(error),
+      allowingRequest: true,
+    });
     return message;
   }
 }
@@ -271,14 +278,20 @@ export async function applyOutputGuardrails(
     
     if (result.tripwireTriggered) {
       const defaultResponse = getDefaultGuardrailResponse(context?.metadata?.agentId as string);
-      console.warn('Output guardrail triggered, replacing response');
+      logger.warn('guardrails.output.tripwire-triggered', {
+        agentId: context?.metadata?.agentId,
+        action: 'replacing response',
+      });
       return defaultResponse;
     }
     
     return response; // Allow the response through
   } catch (error) {
     // Log errors but don't block the response
-    console.warn('Output guardrail error, allowing response:', error);
+    logger.warn('guardrails.output.error-fallthrough', {
+      error: error instanceof Error ? error.message : String(error),
+      allowingResponse: true,
+    });
     return response;
   }
 }

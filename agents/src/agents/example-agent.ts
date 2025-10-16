@@ -8,6 +8,9 @@ import {
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
+import { Logger } from '../logging/index.js'
+
+const logger = Logger.create({ service: 'example-agent' })
 
 /**
  * Example Agent - demonstrates the new ExperimentalAgentFactory architecture
@@ -17,7 +20,7 @@ import { getModularPromptPaths } from '../utils/prompt-utils.js'
  * Example of before tool execution hook
  */
 const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, args: unknown): Promise<unknown> => {
-  console.log(`About to execute tool: ${toolName}`)
+  logger.debug('agent.example.tool.before', { toolName })
   return args
 }
 
@@ -29,7 +32,7 @@ const afterToolExecution: AfterToolExecutionHook = async (
   args: unknown,
   result: unknown
 ): Promise<unknown> => {
-  console.log(`Completed tool execution: ${toolName}`)
+  logger.debug('agent.example.tool.after', { toolName })
   return result
 }
 
@@ -107,9 +110,9 @@ export class ExampleAgent {
    * Initialize the agent (for compatibility)
    */
   async initialize(): Promise<void> {
-    console.log('Initializing Example Agent...')
+    logger.info('agent.example.initialize.begin', {})
     this.factory = await createExampleAgentFactory()
-    console.log('Example Agent ready!')
+    logger.info('agent.example.initialize.complete', {})
   }
   
   /**
@@ -169,6 +172,6 @@ export class ExampleAgent {
    * Cleanup resources
    */
   async cleanup(): Promise<void> {
-    console.log('🧹 Example Agent cleanup completed')
+    logger.info('agent.example.cleanup.complete', {})
   }
 }

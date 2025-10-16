@@ -11,6 +11,9 @@ import {
 } from './agent.interface.js';
 // Template version detection has been moved to the app service
 import { applyOutputGuardrails } from '../utils/openai-guardrails.js';
+import { Logger } from '../logging/index.js';
+
+const logger = Logger.create({ service: 'base-agent' });
 
 /**
  * Abstract base class that provides common functionality for all agents
@@ -103,9 +106,12 @@ export abstract class BaseAgent implements IAgent {
           }
         }
         
-        console.log(`📋 Using template description: ${templateName}`);
+        logger.info('base-agent.template.loaded', { templateName })
       } catch (error) {
-        console.warn(`Failed to load template description '${templateName}': ${error instanceof Error ? error.message : String(error)}`);
+        logger.warn('base-agent.template.load-failed', {
+          templateName,
+          error: error instanceof Error ? error.message : String(error),
+        })
         
         // Fallback to default template if specific template fails
         if (templateName !== 'default') {
@@ -116,9 +122,11 @@ export abstract class BaseAgent implements IAgent {
             if (insertionPoint !== -1) {
               composedContent = composedContent.replace('{{TEMPLATE_DESCRIPTION}}', defaultContent.trim());
             }
-            console.log(`📋 Fallback to default template description`);
+            logger.info('base-agent.template.fallback-to-default', {})
           } catch (defaultError) {
-            console.warn(`Failed to load default template: ${defaultError instanceof Error ? defaultError.message : String(defaultError)}`);
+            logger.warn('base-agent.template.default-load-failed', {
+              error: defaultError instanceof Error ? defaultError.message : String(defaultError),
+            })
           }
         }
       }
@@ -133,7 +141,10 @@ export abstract class BaseAgent implements IAgent {
           const fragmentContent = await fs.readFile(fragmentFile, 'utf-8');
           composedContent += '\n\n' + fragmentContent.trim();
         } catch (error) {
-          console.warn(`Failed to load prompt fragment '${fragmentName}': ${error instanceof Error ? error.message : String(error)}`);
+          logger.warn('base-agent.fragment.load-failed', {
+            fragmentName,
+            error: error instanceof Error ? error.message : String(error),
+          })
         }
       }
     }
@@ -148,14 +159,16 @@ export abstract class BaseAgent implements IAgent {
     // First, check if templates are explicitly configured
     const composition = this._config.promptComposition;
     if (composition?.templates && composition.templates.length > 0 && composition.templates[0]) {
-      console.log(`🎯 Using explicitly configured template: ${composition.templates[0]}`);
+      logger.info('base-agent.template-version.explicit', {
+        template: composition.templates[0],
+      })
       return composition.templates[0];
     }
     
     // Next, check if we have app metadata with template version
     const appTemplateVersion = context?.metadata?.templateVersion as string;
     if (appTemplateVersion) {
-      console.log(`📱 Using app template version: ${appTemplateVersion}`);
+      logger.info('base-agent.template-version.from-app', { appTemplateVersion })
       return appTemplateVersion;
     }
     
@@ -165,11 +178,11 @@ export abstract class BaseAgent implements IAgent {
                            templateDir.includes('v7') ? 'v7' :
                            templateDir.includes('v3') ? 'v3' : 
                            templateDir.includes('v2') ? 'v2' : 'v1';
-    console.log(`🌍 Environment fallback: ${templateVersion}`);
+    logger.info('base-agent.template-version.env-fallback', { templateVersion })
     return templateVersion;
     
     // Final fallback to default
-    console.log(`❓ No template detected, using default`);
+    logger.info('base-agent.template-version.default-fallback', {})
     return 'default';
   }
 
@@ -344,7 +357,9 @@ When the user uses ambiguous references like "this", "here", "that", or "these",
     try {
       return await applyOutputGuardrails(response, context);
     } catch (error) {
-      console.error('Error applying output guardrails:', error);
+      logger.error('base-agent.guardrails.error', {
+        error: error instanceof Error ? error.message : String(error),
+      })
       // Return original response if guardrails fail
       return response;
     }

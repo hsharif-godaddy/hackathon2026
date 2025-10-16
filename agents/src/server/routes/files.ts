@@ -1,7 +1,7 @@
 import { Router, Request, Response, IRouter } from 'express'
 import multer from 'multer'
 import { fileUploadService } from '../../services/FileUploadService.js'
-import { logger } from '../../logging/index.js'
+import { logger, log } from '../../logging/index.js'
 
 const router: IRouter = Router()
 
@@ -26,30 +26,28 @@ router.post('/upload', upload.array('files', 5), async (req: Request, res: Respo
       })
     }
 
+    const contextLogger = log.forApp(appId)
     const files = req.files as Express.Multer.File[]
 
     if (!files || files.length === 0) {
-      logger.warn('file-upload.validation.no-files', {
-        message: 'Upload request has no files',
-        appId
+      contextLogger.warn('file-upload.validation.no-files', {
+        message: 'Upload request has no files'
       })
       return res.status(400).json({
         error: 'No files provided'
       })
     }
 
-    logger.info('file-upload.request.received', {
+    contextLogger.info('file-upload.request.received', {
       message: 'File upload request received',
-      appId,
       fileCount: files.length,
       totalSize: files.reduce((sum, f) => sum + f.size, 0)
     })
 
     const result = await fileUploadService.processUpload(appId, files)
 
-    logger.info('file-upload.request.success', {
+    contextLogger.info('file-upload.request.success', {
       message: 'File upload completed successfully',
-      appId,
       uploadId: result.uploadId,
       fileCount: result.files.length
     })
@@ -86,12 +84,13 @@ router.get('/:appId/:uploadId', async (req: Request, res: Response) => {
       })
     }
 
+    const contextLogger = log.forApp(appId)
+
     const upload = await fileUploadService.getUpload(appId, uploadId)
 
     if (!upload) {
-      logger.warn('file-upload.get.not-found', {
+      contextLogger.warn('file-upload.get.not-found', {
         message: 'Upload not found',
-        appId,
         uploadId
       })
       return res.status(404).json({
@@ -99,17 +98,17 @@ router.get('/:appId/:uploadId', async (req: Request, res: Response) => {
       })
     }
 
-    logger.debug('file-upload.get.success', {
+    contextLogger.debug('file-upload.get.success', {
       message: 'Upload retrieved',
-      appId,
       uploadId
     })
 
     return res.status(200).json(upload)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
+    const contextLogger = req.params.appId ? log.forApp(req.params.appId) : logger
 
-    logger.error('file-upload.get.failed', {
+    contextLogger.error('file-upload.get.failed', {
       message: 'Failed to retrieve upload',
       error: errorMessage
     })
@@ -130,12 +129,13 @@ router.delete('/:appId/:uploadId', async (req: Request, res: Response) => {
       })
     }
 
+    const contextLogger = log.forApp(appId)
+
     const deleted = await fileUploadService.deleteUpload(appId, uploadId)
 
     if (!deleted) {
-      logger.warn('file-upload.delete.not-found', {
+      contextLogger.warn('file-upload.delete.not-found', {
         message: 'Upload not found for deletion',
-        appId,
         uploadId
       })
       return res.status(404).json({
@@ -143,9 +143,8 @@ router.delete('/:appId/:uploadId', async (req: Request, res: Response) => {
       })
     }
 
-    logger.info('file-upload.delete.success', {
+    contextLogger.info('file-upload.delete.success', {
       message: 'Upload deleted',
-      appId,
       uploadId
     })
 
@@ -156,8 +155,9 @@ router.delete('/:appId/:uploadId', async (req: Request, res: Response) => {
     })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
+    const contextLogger = req.params.appId ? log.forApp(req.params.appId) : logger
 
-    logger.error('file-upload.delete.failed', {
+    contextLogger.error('file-upload.delete.failed', {
       message: 'Failed to delete upload',
       error: errorMessage
     })
