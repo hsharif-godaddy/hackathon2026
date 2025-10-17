@@ -12,8 +12,8 @@ var logger *slog.Logger
 // newLoggerWithHandler creates a new logger with the given handler
 // and includes app_id from SITE_ID environment variable as a default field
 func newLoggerWithHandler(handler slog.Handler) *slog.Logger {
-	siteId := os.Getenv("SITE_ID")
-	return slog.New(handler).With("app_id", siteId)
+	siteID := os.Getenv("SITE_ID")
+	return slog.New(handler).With("app_id", siteID)
 }
 
 // initLogging sets up structured logging with slog

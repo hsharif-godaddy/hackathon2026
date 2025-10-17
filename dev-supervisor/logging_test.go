@@ -106,39 +106,39 @@ func TestTerminalDetection(t *testing.T) {
 func TestAppIdLogging(t *testing.T) {
 	tests := []struct {
 		name          string
-		siteId        string
-		setSiteId     bool
-		expectedAppId string
+		siteID        string
+		setSiteID     bool
+		expectedAppID string
 	}{
 		{
 			name:          "app_id included when SITE_ID is set",
-			siteId:        "test-app-123",
-			setSiteId:     true,
-			expectedAppId: "test-app-123",
+			siteID:        "test-app-123",
+			setSiteID:     true,
+			expectedAppID: "test-app-123",
 		},
 		{
 			name:          "app_id is empty when SITE_ID is not set",
-			siteId:        "",
-			setSiteId:     false,
-			expectedAppId: "",
+			siteID:        "",
+			setSiteID:     false,
+			expectedAppID: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Save and restore original SITE_ID
-			originalSiteId := os.Getenv("SITE_ID")
+			originalSiteID := os.Getenv("SITE_ID")
 			defer func() {
-				if originalSiteId != "" {
-					os.Setenv("SITE_ID", originalSiteId)
+				if originalSiteID != "" {
+					os.Setenv("SITE_ID", originalSiteID)
 				} else {
 					os.Unsetenv("SITE_ID")
 				}
 			}()
 
 			// Set or unset SITE_ID based on test case
-			if tt.setSiteId {
-				os.Setenv("SITE_ID", tt.siteId)
+			if tt.setSiteID {
+				os.Setenv("SITE_ID", tt.siteID)
 			} else {
 				os.Unsetenv("SITE_ID")
 			}
@@ -163,7 +163,7 @@ func TestAppIdLogging(t *testing.T) {
 			}
 
 			// Verify app_id value
-			expectedField := `"app_id":"` + tt.expectedAppId + `"`
+			expectedField := `"app_id":"` + tt.expectedAppID + `"`
 			if !strings.Contains(output, expectedField) {
 				t.Errorf("Expected %s in output, got: %s", expectedField, output)
 			}

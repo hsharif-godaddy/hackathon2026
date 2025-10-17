@@ -91,10 +91,10 @@ type HealthResult struct {
 }
 
 type RestartPolicy struct {
-	Enabled           bool    `json:"enabled"`
-	MaxRestarts       int     `json:"max_restarts"`
+	Enabled           bool     `json:"enabled"`
+	MaxRestarts       int      `json:"max_restarts"`
 	RestartWindow     Duration `json:"restart_window"`
-	BackoffMultiplier float64 `json:"backoff_multiplier"`
+	BackoffMultiplier float64  `json:"backoff_multiplier"`
 	MaxBackoff        Duration `json:"max_backoff"`
 	InitialDelay      Duration `json:"initial_delay"`
 }

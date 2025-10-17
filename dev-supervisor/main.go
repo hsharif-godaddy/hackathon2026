@@ -17,20 +17,21 @@ import (
 )
 
 const (
-	Version        = "0.2.0"
-	AppName        = "dev-supervisor"
-	defaultTimeout = 30 * time.Second
+	Version            = "0.2.0"
+	AppName            = "dev-supervisor"
+	defaultTimeout     = 30 * time.Second
+	serverReadyTimeout = 5 * time.Second
 )
 
 type Config struct {
-	SocketPath              string
-	ShowVersion             bool
-	ShowHelp                bool
-	ShutdownTimeout         time.Duration
-	ProcessLogging          bool // Enable/disable child process stdout/stderr logging
-	ProcessLoggingToStdout  bool // Enable/disable outputting child process logs to structured logging (stdout)
-	UseTCP                  bool // Enable TCP mode instead of Unix socket (insecure, dev only)
-	TCPPort                 string // TCP port to listen on when UseTCP is true
+	SocketPath             string
+	ShowVersion            bool
+	ShowHelp               bool
+	ShutdownTimeout        time.Duration
+	ProcessLogging         bool   // Enable/disable child process stdout/stderr logging
+	ProcessLoggingToStdout bool   // Enable/disable outputting child process logs to structured logging (stdout)
+	UseTCP                 bool   // Enable TCP mode instead of Unix socket (insecure, dev only)
+	TCPPort                string // TCP port to listen on when UseTCP is true
 }
 
 func getSocketPath() string {
@@ -50,17 +51,17 @@ func getProcessLoggingToStdout() bool {
 func getTCPConfig() (bool, string) {
 	useTCP := os.Getenv("DEV_SUPERVISOR_USE_TCP")
 	port := os.Getenv("DEV_SUPERVISOR_TCP_PORT")
-	
+
 	// Default to false (Unix socket mode)
 	if useTCP != "true" {
 		return false, ""
 	}
-	
+
 	// Default port if TCP is enabled but no port specified
 	if port == "" {
 		port = "8080"
 	}
-	
+
 	return true, port
 }
 
@@ -92,11 +93,11 @@ func NewServer() *Server {
 	logMgr := NewLogManager(10000)
 	pid1Mgr := NewPID1Manager()
 	procMgr := NewProcessManager(logMgr, pid1Mgr)
-	
+
 	// Set default configuration
-	procMgr.SetProcessLogging(true)                   // Default: enable child process logging
+	procMgr.SetProcessLogging(true)                           // Default: enable child process logging
 	procMgr.SetStructuredLogging(getProcessLoggingToStdout()) // Default: enable structured output, configurable via env
-	
+
 	s := &Server{
 		router:                 mux.NewRouter(),
 		logMgr:                 logMgr,
@@ -105,7 +106,7 @@ func NewServer() *Server {
 		cmdExec:                NewCommandExecutor(),
 		envMgr:                 NewEnvironmentManager(),
 		startTime:              time.Now(),
-		processLogging:         true,                   // Default: enable child process logging
+		processLogging:         true,                        // Default: enable child process logging
 		processLoggingToStdout: getProcessLoggingToStdout(), // Default: enable structured output, configurable via env
 	}
 
@@ -160,8 +161,8 @@ func (s *Server) getConfiguredAddress() string {
 }
 
 // waitForServerReady waits for the server to be ready to accept connections
-func (s *Server) waitForServerReady(address string, useTCP bool, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func (s *Server) waitForServerReady(address string, useTCP bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), serverReadyTimeout)
 	defer cancel()
 
 	network := "unix"
@@ -173,7 +174,7 @@ func (s *Server) waitForServerReady(address string, useTCP bool, timeout time.Du
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("server failed to become ready within %v", timeout)
+			return fmt.Errorf("server failed to become ready within %v", serverReadyTimeout)
 		default:
 			// Try to connect to the socket/port
 			conn, err := net.Dial(network, address)
@@ -193,12 +194,11 @@ func (s *Server) StartWithConfig(config *Config) error {
 	// Configure process manager logging
 	s.procMgr.SetProcessLogging(config.ProcessLogging)
 	s.procMgr.SetStructuredLogging(config.ProcessLoggingToStdout)
-	
+
 	if config.UseTCP {
 		return s.startTCPServer(config.TCPPort, config.ShutdownTimeout)
-	} else {
-		return s.startUnixServer(config.SocketPath, config.ShutdownTimeout)
 	}
+	return s.startUnixServer(config.SocketPath, config.ShutdownTimeout)
 }
 
 func (s *Server) Start() error {
@@ -206,7 +206,7 @@ func (s *Server) Start() error {
 	config := &Config{
 		SocketPath:             getSocketPath(),
 		ShutdownTimeout:        5 * time.Second,
-		ProcessLogging:         true,                   // Default: enable child process logging
+		ProcessLogging:         true,                        // Default: enable child process logging
 		ProcessLoggingToStdout: getProcessLoggingToStdout(), // Default: enable structured output, configurable via env
 		UseTCP:                 useTCP,
 		TCPPort:                tcpPort,
@@ -529,7 +529,7 @@ func parseFlags() *Config {
 	}
 
 	// Set default process logging configuration
-	config.ProcessLogging = true                   // Default: enable child process logging
+	config.ProcessLogging = true                                // Default: enable child process logging
 	config.ProcessLoggingToStdout = getProcessLoggingToStdout() // Default: enable structured output, configurable via env
 
 	return config
@@ -591,7 +591,7 @@ func main() {
 		if config.UseTCP {
 			address = config.TCPPort
 		}
-		if err := server.waitForServerReady(address, config.UseTCP, 5*time.Second); err != nil {
+		if err := server.waitForServerReady(address, config.UseTCP); err != nil {
 			slog.Error("server failed to start", "error", err)
 			os.Exit(1)
 		}

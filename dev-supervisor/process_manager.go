@@ -28,8 +28,8 @@ const (
 )
 
 const (
-	defaultPortWaitTimeout = 3 * time.Second
-	portCheckInterval     = 50 * time.Millisecond
+	defaultPortWaitTimeout = 5 * time.Second
+	portCheckInterval      = 50 * time.Millisecond
 )
 
 type ProcessInfo struct {
@@ -79,35 +79,35 @@ func getProcessPorts(pid int) ([]int, error) {
 	if pid <= 0 {
 		return nil, fmt.Errorf("invalid PID: %d", pid)
 	}
-	
+
 	// Read /proc/net/tcp to find listening ports for this process
 	tcpFile := "/proc/net/tcp"
 	content, err := os.ReadFile(tcpFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %s: %w", tcpFile, err)
 	}
-	
+
 	var ports []int
 	lines := strings.Split(string(content), "\n")
-	
+
 	// Skip header line
 	for i, line := range lines {
 		if i == 0 || strings.TrimSpace(line) == "" {
 			continue
 		}
-		
+
 		fields := strings.Fields(line)
 		if len(fields) < 10 {
 			continue
 		}
-		
+
 		// Check if this entry belongs to our process
 		// Field 9 is the inode, we need to check if our PID has this socket
 		inode := fields[9]
 		if inode == "0" {
 			continue
 		}
-		
+
 		// Check if this process owns this socket by looking in /proc/PID/fd/
 		if processOwnsSocket(pid, inode) {
 			// Parse the local address (field 1: "address:port" in hex)
@@ -120,7 +120,7 @@ func getProcessPorts(pid int) ([]int, error) {
 			}
 		}
 	}
-	
+
 	return ports, nil
 }
 
@@ -131,9 +131,9 @@ func processOwnsSocket(pid int, inode string) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	targetLink := fmt.Sprintf("socket:[%s]", inode)
-	
+
 	for _, entry := range entries {
 		linkPath := filepath.Join(fdDir, entry.Name())
 		if target, err := os.Readlink(linkPath); err == nil {
@@ -142,7 +142,7 @@ func processOwnsSocket(pid int, inode string) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -153,13 +153,13 @@ func isPortAvailable(port int) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	tcpListener, err := net.ListenTCP("tcp", tcpAddr)
 	if err != nil {
 		return false
 	}
 	defer tcpListener.Close()
-	
+
 	return true
 }
 
@@ -168,15 +168,15 @@ func waitForPortsAvailable(ports []int, timeout time.Duration) error {
 	if len(ports) == 0 {
 		return nil // No ports to wait for
 	}
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	
+
 	ticker := time.NewTicker(portCheckInterval)
 	defer ticker.Stop()
-	
+
 	slog.Info("waiting for ports to become available", "ports", ports, "timeout", timeout)
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -199,14 +199,14 @@ func waitForPortsAvailable(ports []int, timeout time.Duration) error {
 
 // ProcessManager manages the current process instance and persistent configuration
 type ProcessManager struct {
-	mu                      sync.RWMutex
-	currentProcess          *ManagedProcess // nil when no process running
-	logMgr                  *LogManager
-	healthMon               *HealthMonitor
-	pid1Mgr                 *PID1Manager
-	restartCount            int
-	enableLogging           bool // Control whether to log child process stdout/stderr
-	outputToStructuredLog   bool // Control whether to output child process logs to structured logging
+	mu                    sync.RWMutex
+	currentProcess        *ManagedProcess // nil when no process running
+	logMgr                *LogManager
+	healthMon             *HealthMonitor
+	pid1Mgr               *PID1Manager
+	restartCount          int
+	enableLogging         bool // Control whether to log child process stdout/stderr
+	outputToStructuredLog bool // Control whether to output child process logs to structured logging
 }
 
 func NewProcessManager(logMgr *LogManager, pid1Mgr *PID1Manager) *ProcessManager {
@@ -214,7 +214,7 @@ func NewProcessManager(logMgr *LogManager, pid1Mgr *PID1Manager) *ProcessManager
 		logMgr:                logMgr,
 		pid1Mgr:               pid1Mgr,
 		healthMon:             NewHealthMonitor(logMgr),
-		enableLogging:         true,                         // Default: enable child process logging
+		enableLogging:         true,                        // Default: enable child process logging
 		outputToStructuredLog: getProcessLoggingToStdout(), // Default: enable structured logging output, configurable via env
 	}
 }
@@ -457,14 +457,14 @@ func (mp *ManagedProcess) streamLogs(logMgr *LogManager, reader io.Reader, sourc
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		line := scanner.Text()
-		
+
 		// Always add to LogManager for API access
 		logMgr.AddLog(LogEntry{
 			Timestamp: time.Now(),
 			Source:    source,
 			Message:   line,
 		})
-		
+
 		// Optionally output to structured logging for Docker logs
 		if outputToStructuredLog {
 			slog.Info("child process output",
@@ -544,7 +544,7 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 
 	// Get ports using the safest approach: explicit config first, then runtime discovery
 	var ports []int
-	
+
 	// Option 1: Use explicitly configured ports (safest)
 	if len(config.Ports) > 0 {
 		ports = config.Ports

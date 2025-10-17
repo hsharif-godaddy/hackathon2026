@@ -248,7 +248,7 @@ func (s *Server) handleHealthConfigGet(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) handleHealthConfigSet(w http.ResponseWriter, r *http.Request) {
 	slog.Info("health config set request received", "method", r.Method, "content_type", r.Header.Get("Content-Type"))
-	
+
 	var req struct {
 		HealthCheck   *HealthCheck   `json:"health_check,omitempty"`
 		RestartPolicy *RestartPolicy `json:"restart_policy,omitempty"`
@@ -262,7 +262,7 @@ func (s *Server) handleHealthConfigSet(w http.ResponseWriter, r *http.Request) {
 
 	// Log the parsed request for debugging
 	if req.HealthCheck != nil {
-		slog.Info("health check config received", 
+		slog.Info("health check config received",
 			"type", req.HealthCheck.Type,
 			"url", req.HealthCheck.URL,
 			"command", req.HealthCheck.Command,
@@ -274,7 +274,7 @@ func (s *Server) handleHealthConfigSet(w http.ResponseWriter, r *http.Request) {
 			"success_threshold", req.HealthCheck.SuccessThreshold,
 			"failure_threshold", req.HealthCheck.FailureThreshold)
 	}
-	
+
 	if req.RestartPolicy != nil {
 		slog.Info("restart policy config received",
 			"enabled", req.RestartPolicy.Enabled,
@@ -292,19 +292,19 @@ func (s *Server) handleHealthConfigSet(w http.ResponseWriter, r *http.Request) {
 			s.sendError(w, http.StatusBadRequest, "invalid_request", "Health check type is required")
 			return
 		}
-		
+
 		if req.HealthCheck.Type == HealthCheckTypeHTTP && req.HealthCheck.URL == "" {
 			slog.Error("health check validation failed", "error", "URL is required for HTTP health check")
 			s.sendError(w, http.StatusBadRequest, "invalid_request", "URL is required for HTTP health check")
 			return
 		}
-		
+
 		if req.HealthCheck.Type == HealthCheckTypeCommand && req.HealthCheck.Command == "" {
 			slog.Error("health check validation failed", "error", "command is required for command health check")
 			s.sendError(w, http.StatusBadRequest, "invalid_request", "Command is required for command health check")
 			return
 		}
-		
+
 		if req.HealthCheck.Type == HealthCheckTypeTCP && req.HealthCheck.Address == "" {
 			slog.Error("health check validation failed", "error", "address is required for TCP health check")
 			s.sendError(w, http.StatusBadRequest, "invalid_request", "Address is required for TCP health check")
@@ -344,7 +344,7 @@ func (s *Server) handleLogsConfigGet(w http.ResponseWriter, _ *http.Request) {
 	response := map[string]interface{}{
 		"process_logging_enabled": enabled,
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		slog.Error("failed to encode JSON response", "error", err)
@@ -355,27 +355,27 @@ func (s *Server) handleLogsConfigSet(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ProcessLoggingEnabled bool `json:"process_logging_enabled"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.sendError(w, http.StatusBadRequest, "invalid_json", "Invalid JSON in request body")
 		return
 	}
-	
+
 	// Update the process manager configuration
 	s.procMgr.SetProcessLogging(req.ProcessLoggingEnabled)
-	
+
 	// Update the server configuration
 	s.processLogging = req.ProcessLoggingEnabled
 	if s.config != nil {
 		s.config.ProcessLogging = req.ProcessLoggingEnabled
 	}
-	
+
 	slog.Info("process logging configuration updated", "enabled", req.ProcessLoggingEnabled)
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "configured",
+		"status":                  "configured",
 		"process_logging_enabled": req.ProcessLoggingEnabled,
 	}); err != nil {
 		slog.Error("failed to encode JSON response", "error", err)
