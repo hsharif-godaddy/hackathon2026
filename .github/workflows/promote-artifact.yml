@@ -1,0 +1,179 @@
+name: Promote Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "Component to promote"
+        required: true
+        default: "app"
+        type: choice
+        options:
+          - "app"
+          - "proxy"
+      environment:
+        description: "Environment to promote to"
+        required: true
+        default: "test"
+        type: choice
+        options:
+          - "pre-dev"
+          - "dev-private-ecs"
+          - "test"
+          - "prod-ecs"
+      artifact_id:
+        description: "Artifact ID to promote (from Katana UI)"
+        required: true
+        type: string
+
+run-name: "Promote ${{ inputs.component }} to ${{ inputs.environment }} | ${{ github.actor }}"
+
+permissions:
+  id-token: write # Required for Katana auth
+
+jobs:
+  promote:
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+
+      # Authenticate with Katana
+      - id: katana-auth
+        name: Authenticate with Katana
+        uses: gdcorp-actions/katana-auth@v1
+
+      # Get Katana app info based on component
+      - id: katana-app
+        name: Get Katana App Info for ${{ inputs.component }}
+        uses: gdcorp-actions/katana-get-app@v1
+        with:
+          path: /${{ inputs.component }}
+
+      # Promote the artifact
+      - name: Promote ${{ inputs.component }} to ${{ inputs.environment }}
+        id: promote
+        uses: gdcorp-actions/katana-promote-artifact@v1
+        with:
+          namespace: ${{ steps.katana-app.outputs.namespace }}
+          app: ${{ steps.katana-app.outputs.app }}
+          environment: ${{ inputs.environment }}
+          artifact_id: ${{ inputs.artifact_id }}
+          retain_previous_count: 1
+
+      - name: Promotion Success
+        if: success()
+        env:
+          COMPONENT: ${{ inputs.component }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          ARTIFACT_ID: ${{ inputs.artifact_id }}
+          NAMESPACE: ${{ steps.katana-app.outputs.namespace }}
+          APP: ${{ steps.katana-app.outputs.app }}
+        run: |
+          echo "✅ Successfully promoted artifact"
+          echo "Component: $COMPONENT"
+          echo "Environment: $ENVIRONMENT"
+          echo "Artifact ID: $ARTIFACT_ID"
+          echo "Namespace: $NAMESPACE"
+          echo "App: $APP"
+
+  slack-notify:
+    name: Send Slack Notification
+    if: always()
+    needs: [promote]
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+    steps:
+      - name: Determine notification config
+        id: config
+        run: |
+          ENV="${{ inputs.environment }}"
+          RESULT="${{ needs.promote.result }}"
+
+          # Determine webhook secret name and environment type
+          if [[ "$ENV" == "prod-ecs" || "$ENV" == "prod" ]]; then
+            echo "secret_name=/Katana/Secrets/airo-app-builder/_katana/SLACK_WEBHOOK_PROD" >> $GITHUB_OUTPUT
+            echo "env_type=Production" >> $GITHUB_OUTPUT
+            echo "is_prod=true" >> $GITHUB_OUTPUT
+          else
+            echo "secret_name=/Katana/Secrets/airo-app-builder/_katana/SLACK_WEBHOOK_NONPROD" >> $GITHUB_OUTPUT
+            echo "env_type=Non-Production" >> $GITHUB_OUTPUT
+            echo "is_prod=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Determine message color and status
+          if [[ "$RESULT" == "success" ]]; then
+            echo "color=good" >> $GITHUB_OUTPUT
+            echo "emoji=:white_check_mark:" >> $GITHUB_OUTPUT
+            echo "status=Success" >> $GITHUB_OUTPUT
+          else
+            echo "color=danger" >> $GITHUB_OUTPUT
+            echo "emoji=:x:" >> $GITHUB_OUTPUT
+            echo "status=Failed" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fetch webhook from AWS Secrets Manager
+        uses: gdcorp-actions/get-aws-secrets@v1
+        with:
+          secret-name: ${{ steps.config.outputs.secret_name }}
+          plaintext: true
+
+      - name: Configure webhook URL securely
+        run: |
+          # Securely set webhook URL without logging it
+          if [[ "${{ steps.config.outputs.is_prod }}" == "true" ]]; then
+            WEBHOOK="${{ env._Katana_Secrets_airo_app_builder__katana_SLACK_WEBHOOK_PROD }}"
+          else
+            WEBHOOK="${{ env._Katana_Secrets_airo_app_builder__katana_SLACK_WEBHOOK_NONPROD }}"
+          fi
+
+          # Mask the webhook URL to prevent exposure in logs
+          echo "::add-mask::$WEBHOOK"
+
+          # Set as environment variable (masked)
+          echo "SLACK_WEBHOOK_URL=$WEBHOOK" >> $GITHUB_ENV
+
+          # Log confirmation without exposing the URL
+          echo "✅ Webhook configured for ${{ steps.config.outputs.env_type }} environment"
+
+      - name: Prepare Slack message
+        id: slack-message
+        env:
+          COMPONENT: ${{ inputs.component }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          ARTIFACT_ID: ${{ inputs.artifact_id }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          # Escape special characters for JSON
+          ESCAPED_ARTIFACT_ID=$(echo "$ARTIFACT_ID" | jq -r .)
+          ESCAPED_ACTOR=$(echo "$ACTOR" | jq -r .)
+
+          # Create message text
+          MESSAGE="*Component:* $COMPONENT\n*Environment:* $ENVIRONMENT\n*Artifact ID:* $ESCAPED_ARTIFACT_ID\n*Actor:* $ESCAPED_ACTOR"
+
+          # Export for next step
+          echo "message=$MESSAGE" >> $GITHUB_OUTPUT
+
+      - name: Send notification to Slack
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {
+              "attachments": [
+                {
+                  "color": "${{ steps.config.outputs.color }}",
+                  "title": "${{ steps.config.outputs.emoji }} Promotion ${{ steps.config.outputs.status }}",
+                  "text": "${{ steps.slack-message.outputs.message }}",
+                  "footer": "airo-app-builder | ${{ steps.config.outputs.env_type }}",
+                  "footer_icon": "https://platform.slack-edge.com/img/default_application_icon.png"
+                }
+              ]
+            }
