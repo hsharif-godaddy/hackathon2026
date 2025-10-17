@@ -43,3 +43,10 @@ cdk.context.json
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# CDK compiled files (exclude config files like jest.config.js)
+/app/*.js
+/app/*.d.ts
+/lib/*.js
+/lib/*.d.ts
+!/lib/*.config.js
