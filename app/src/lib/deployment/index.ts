@@ -6,7 +6,7 @@
 export * from './types';
 export * from './base-adapter';
 export * from './production-adapter';
-export * from './local-adapter';
+export * from './docker-adapter';
 export * from './adapter-factory';
 
 // Convenience exports

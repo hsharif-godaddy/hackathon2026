@@ -5,7 +5,7 @@ import { logger } from '../../../request-context';
 
 import { execSync } from 'child_process';
 
-export type AdapterType = 'docker' | 'process';
+export type AdapterType = 'docker';
 
 export type AppTemplateVersion = 'v1' | 'v2' | 'v3';
 
@@ -48,7 +48,7 @@ export class ContainerError extends AdapterError {
 
 export class ProcessError extends AdapterError {
   constructor(message: string, appId?: string) {
-    super(message, 'PROCESS_ERROR', 'process', appId);
+    super(message, 'PROCESS_ERROR', 'docker', appId);
     this.name = 'ProcessError';
   }
 }
@@ -70,63 +70,20 @@ export class AdapterConfigResolver {
   }
 
   static resolveConfig(): AdapterConfig {
-    const mode = process.env.LOCAL_ENVIRONMENT_MODE?.toLowerCase() || 'auto';
-
-    switch (mode) {
-      case 'docker':
-        // Force docker mode - error if not available
-        if (!this.isDockerAvailable()) {
-          throw new Error('Docker mode explicitly requested but Docker is not available');
-        }
-        logger.info('🟢 Using explicit docker mode');
-        return {
-          type: 'docker',
-          enabled: true,
-          settings: {
-            baseImage: 'node:20-alpine',
-            networkMode: 'bridge',
-            restartPolicy: 'unless-stopped'
-          }
-        };
-
-      case 'process':
-        // Force process mode
-        logger.info('🟡 Using explicit process mode');
-        return {
-          type: 'process',
-          enabled: true,
-          settings: {
-            processTimeout: 30000,
-            maxProcesses: 10
-          }
-        };
-
-      case 'auto':
-      default:
-        // Auto detection - docker if available, else process
-        if (this.isDockerAvailable()) {
-          logger.info('🟢 Auto mode: Docker is available, using docker mode');
-          return {
-            type: 'docker',
-            enabled: true,
-            settings: {
-              baseImage: 'node:20-alpine',
-              networkMode: 'bridge',
-              restartPolicy: 'unless-stopped'
-            }
-          };
-        } else {
-          logger.info('🔴 Auto mode: Docker not available, using process mode');
-          return {
-            type: 'process',
-            enabled: true,
-            settings: {
-              processTimeout: 30000,
-              maxProcesses: 10
-            }
-          };
-        }
+    if (!this.isDockerAvailable()) {
+      throw new Error('Docker is required but not available. Please ensure Docker is installed and running.');
     }
+    
+    logger.info('adapter.config.docker', { message: 'Using Docker mode' });
+    return {
+      type: 'docker',
+      enabled: true,
+      settings: {
+        baseImage: 'node:20-alpine',
+        networkMode: 'bridge',
+        restartPolicy: 'unless-stopped'
+      }
+    };
   }
 
   static getAdapterType(): AdapterType {

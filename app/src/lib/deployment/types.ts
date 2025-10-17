@@ -62,7 +62,7 @@ export interface DeploymentAdapter {
   }>;
 }
 
-export type DeploymentMode = 'local' | 'docker' | 'production';
+export type DeploymentMode = 'docker' | 'production';
 
 export interface DeploymentEnvironment {
   mode: DeploymentMode;

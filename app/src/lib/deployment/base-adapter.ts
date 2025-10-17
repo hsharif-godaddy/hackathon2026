@@ -25,16 +25,10 @@ export abstract class BaseDeploymentAdapter implements DeploymentAdapter {
     preview?: string;
   } {
     switch (this.environment.mode) {
-      case 'local':
-        return {
-          agent: `http://localhost:4000/api/apps/${siteId}`,
-          preview: `http://localhost:3000`  // Will be assigned dynamically
-        };
-
       case 'docker':
         return {
           agent: `http://localhost:4000/api/apps/${siteId}`,
-          preview: `http://localhost:3000`  // Will be assigned dynamically
+          preview: `http://localhost:3000`
         };
 
       case 'production':

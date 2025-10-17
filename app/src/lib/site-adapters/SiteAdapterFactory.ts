@@ -122,9 +122,9 @@ export class SiteAdapterFactory {
   }
 
   /**
-   * Get the local environment mode
+   * Get the deployment mode
    */
-  static getLocalEnvironmentMode(): string {
-    return process.env.LOCAL_ENVIRONMENT_MODE?.toLowerCase() || 'auto';
+  static getDeploymentMode(): string {
+    return this.isProductionMode() ? 'production' : 'docker';
   }
 }

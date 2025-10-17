@@ -6,7 +6,6 @@ import { logger } from '../request-context';
 
 import { DeploymentAdapter, DeploymentMode } from './types';
 import { ProductionDeploymentAdapter } from './production-adapter';
-import { LocalDeploymentAdapter } from './local-adapter';
 import { DockerDeploymentAdapter } from './docker-adapter';
 
 export class DeploymentAdapterFactory {
@@ -36,54 +35,26 @@ export class DeploymentAdapterFactory {
   private static detectDeploymentMode(): DeploymentMode {
     // Explicit override via environment variable
     const modeOverride = process.env.DEPLOYMENT_MODE as DeploymentMode;
-    if (modeOverride && ['local', 'docker', 'production'].includes(modeOverride)) {
-      logger.info(`🔧 Using explicit deployment mode: ${modeOverride}`);
+    if (modeOverride && ['docker', 'production'].includes(modeOverride)) {
+      logger.info(`deployment.mode.explicit`, { mode: modeOverride });
       return modeOverride;
     }
 
     // Production detection (multiple indicators)
     const isProduction =
       process.env.NODE_ENV === 'production' ||
-      !!process.env.MYSQL_DB_USERNAME ||        // MySQL indicates production
-      !!process.env.AWS_REGION_NOMAD ||         // AWS/Nomad indicates production
-      !!process.env.PRODUCTION_DOMAIN;         // Production domain set
+      !!process.env.MYSQL_DB_USERNAME ||
+      !!process.env.AWS_REGION_NOMAD ||
+      !!process.env.PRODUCTION_DOMAIN;
 
     if (isProduction) {
-      logger.info('🏭 Detected production environment - using Nomad + SQS + Ceph');
+      logger.info('deployment.mode.production', { message: 'Detected production environment - using Nomad + SQS + Ceph' });
       return 'production';
     }
 
-    // Development mode detection
-    const isDevelopment = process.env.NODE_ENV === 'development';
-
-    if (isDevelopment) {
-      // Use new LOCAL_ENVIRONMENT_MODE system
-      const localMode = process.env.LOCAL_ENVIRONMENT_MODE?.toLowerCase() || 'auto';
-
-      switch (localMode) {
-        case 'docker':
-          logger.info('🐳 Development mode with explicit Docker containers');
-          return 'docker';
-        case 'process':
-          logger.info('🔧 Development mode with explicit local processes');
-          return 'local';
-        case 'auto':
-        default:
-          // Auto-detect based on Docker availability
-          try {
-            require('child_process').execSync('docker info', { stdio: 'ignore', timeout: 5000 }); // eslint-disable-line @typescript-eslint/no-var-requires
-            logger.info('🐳 Development mode with Docker containers (auto-detected)');
-            return 'docker';
-          } catch {
-            logger.info('🔧 Development mode with local processes (Docker not available)');
-            return 'local';
-          }
-      }
-    }
-
-    // Default fallback
-    logger.info('⚠️ Could not detect deployment mode, defaulting to local');
-    return 'local';
+    // Default to Docker for all development/non-production environments
+    logger.info('deployment.mode.docker', { message: 'Using Docker containers for development' });
+    return 'docker';
   }
 
   /**
@@ -93,15 +64,12 @@ export class DeploymentAdapterFactory {
     switch (mode) {
       case 'production':
         return new ProductionDeploymentAdapter();
-
-      case 'local':
-        return new LocalDeploymentAdapter();
-
+        
       case 'docker':
         return new DockerDeploymentAdapter();
 
       default:
-        throw new Error(`Unknown deployment mode: ${mode}`);
+        throw new Error(`Unknown deployment mode: ${mode}. Only 'docker' and 'production' are supported.`);
     }
   }
 
@@ -128,8 +96,8 @@ export class DeploymentAdapterFactory {
       mode,
       hasAgentsService: !!process.env.AGENTS_SERVICE_URL || mode !== 'production',
       hasProductionInfrastructure: mode === 'production',
-      hasDatabase: true, // Always true with our database manager
-      recommendedForDevelopment: mode === 'local' || mode === 'docker'
+      hasDatabase: true,
+      recommendedForDevelopment: mode === 'docker'
     };
   }
 }
@@ -146,11 +114,10 @@ export function getDeploymentAdapter(): DeploymentAdapter {
  */
 export function getDeploymentEnvironmentInfo() {
   const capabilities = DeploymentAdapterFactory.getEnvironmentCapabilities();
-
-  logger.info('🔍 Deployment Environment Info:', {
+  
+  logger.info('deployment.environment.info', {
     mode: capabilities.mode,
     nodeEnv: process.env.NODE_ENV,
-    localEnvironmentMode: process.env.LOCAL_ENVIRONMENT_MODE || 'auto (default)',
     agentsServiceUrl: process.env.AGENTS_SERVICE_URL || 'http://localhost:4000 (default)',
     hasMySQL: !!process.env.MYSQL_DB_USERNAME,
     hasAWS: !!process.env.AWS_REGION_NOMAD,

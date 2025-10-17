@@ -50,15 +50,13 @@ export function logStartupConfiguration() {
   console.log(`   Certificate Path: certs/sso.crt`);
 
   // Deployment Configuration
-  const localEnvMode = process.env.LOCAL_ENVIRONMENT_MODE?.toLowerCase() || 'auto';
   const deploymentMode = process.env.DEPLOYMENT_MODE ||
-    (process.env.NODE_ENV === 'production' ? 'production' : 'development');
+    (process.env.NODE_ENV === 'production' ? 'production' : 'docker');
 
   console.log('🚀 Deployment Configuration:');
   console.log(`   Mode: ${deploymentMode}`);
-  console.log(`   Local Environment Mode: ${localEnvMode}`);
 
-  if (deploymentMode === 'development') {
+  if (deploymentMode === 'docker') {
     console.log(`   Agents Service URL: ${process.env.AGENTS_SERVICE_URL || 'http://localhost:4000'}`);
     console.log(`   Apps Directory: ${process.env.LOCAL_APPS_DIR || '/tmp/apps'}`);
     console.log(`   Template Directory: ${process.env.APP_TEMPLATE_DIR || 'app-templates/v8'}`);

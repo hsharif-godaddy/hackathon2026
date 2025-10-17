@@ -25,6 +25,7 @@ Airo App Builder is an AI-powered application development platform that combines
 ### Development Setup
 
 **Quick Setup (Recommended):**
+
 ```bash
 # Run the automated setup utility
 ./setup.sh
@@ -34,6 +35,7 @@ pnpm --filter airo-setup start
 ```
 
 **Manual Setup:**
+
 ```bash
 # Install dependencies for all workspace packages
 pnpm install
@@ -71,17 +73,9 @@ pnpm run dev:app            # Main Next.js app (port 3000)
 
 ### Deployment Adapter Pattern
 
-The system supports multiple deployment modes via the adapter pattern:
+The system uses Docker containers for all development and local deployments. Production uses a different adapter for enterprise infrastructure.
 
-```bash
-# Local mode (default) - Node.js processes
-DOC_APPS=false pnpm run dev
-
-# Docker mode - containerized deployment  
-DOC_APPS=true pnpm run dev    # or unset (defaults to true)
-```
-
-Key files: `agents/src/adapters/` containing `LocalAppService.ts` and `DockerAppService.ts`
+Key files: `app/src/lib/dev-environment/adapters/` containing `DockerAppService.ts`
 
 ### AI Agent System
 
@@ -93,14 +87,16 @@ Key files: `agents/src/adapters/` containing `LocalAppService.ts` and `DockerApp
 ### Database Schema
 
 SQLite database with tables for:
+
 - `apps` - Application metadata and lifecycle
-- `running_processes` - Development server tracking  
+- `running_processes` - Development server tracking
 - `token_usage` - AI model usage analytics
 - `conversations` - Chat history and context
 
 ### File Operations & Tools
 
 Comprehensive file system tools in `agents/src/tools/`:
+
 - `file-edit.ts` - File creation and modification
 - `read-file.ts` - File content reading with security
 - `directory-listing.ts` - Directory structure exploration
@@ -117,6 +113,7 @@ Comprehensive file system tools in `agents/src/tools/`:
 ### Development Server Lifecycle
 
 Apps go through states: `creating` → `created` → `running`/`stopped`/`error`
+
 - Asynchronous setup after database insertion
 - Automatic process recovery on restart
 - Graceful cleanup and orphan detection
@@ -133,7 +130,7 @@ Apps go through states: `creating` → `created` → `running`/`stopped`/`error`
 
 - The system maintains backward compatibility between deployment modes
 - Template copying is critical for proper app creation
-- All file operations include security filtering and validation  
+- All file operations include security filtering and validation
 - Process management includes automatic cleanup and orphan recovery
 - Token usage tracking is always enabled regardless of UI settings
 
@@ -155,27 +152,29 @@ This project uses a structured logging system with TypeScript interfaces and con
 
 ```typescript
 // ❌ NEVER DO THIS - Console logging is prohibited
-console.log('Starting app creation for:', appId)
-console.error('Failed to load conversation:', error)
+console.log("Starting app creation for:", appId);
+console.error("Failed to load conversation:", error);
 
 // ✅ ALWAYS DO THIS - Use structured logging with event names
-this.logger.info('app.create.begin', {
-  appId: 'abc123',
-  name: 'my-app',
-  templateVersion: 'v8',
-  baseDir: '/tmp/apps',
-  port: 3000
-})
+this.logger.info("app.create.begin", {
+  appId: "abc123",
+  name: "my-app",
+  templateVersion: "v8",
+  baseDir: "/tmp/apps",
+  port: 3000,
+});
 
-this.logger.error('conversation.load.failure', {
-  appId: 'app123',
-  conversationId: 'conv456',
-  error: getErrorMessage(error)
-})
+this.logger.error("conversation.load.failure", {
+  appId: "app123",
+  conversationId: "conv456",
+  error: getErrorMessage(error),
+});
 ```
 
 ### Available Event Categories
+
 Check `src/logging/events/index.js` for all available helpers:
+
 - `appCreationEvents` - App lifecycle events
 - `appServerEvents` - Server operations
 - `appDockerEvents` - Docker container operations
@@ -192,23 +191,31 @@ Check `src/logging/events/index.js` for all available helpers:
 **NEVER use emojis, symbols, or visual decorations in log messages - this is professional production-grade logging.**
 
 ### ❌ FORBIDDEN - Console logging
+
 ```typescript
 // These are PROHIBITED and will be rejected in code reviews
-console.log('Starting site creation for:', siteId)
-console.error('Failed to load conversation:', error)
-console.warn('Agent endpoint not ready yet')
-console.info('App created successfully')
+console.log("Starting site creation for:", siteId);
+console.error("Failed to load conversation:", error);
+console.warn("Agent endpoint not ready yet");
+console.info("App created successfully");
 ```
 
 ### ✅ REQUIRED - Use logger instead
+
 ```typescript
 // Always use the logger from request context
-import { logger } from '@/lib/request-context'
+import { logger } from "@/lib/request-context";
 
-logger.info('site.creation.start', { siteId, message: 'Starting site creation' })
-logger.error('conversation.load.failed', { error: error.message, conversationId })
-logger.warn('agent.endpoint.not_ready', { agentUrl, waitTime: 5000 })
-logger.info('app.creation.success', { appId, name: 'my-app' })
+logger.info("site.creation.start", {
+  siteId,
+  message: "Starting site creation",
+});
+logger.error("conversation.load.failed", {
+  error: error.message,
+  conversationId,
+});
+logger.warn("agent.endpoint.not_ready", { agentUrl, waitTime: 5000 });
+logger.info("app.creation.success", { appId, name: "my-app" });
 ```
 
 **ALL console.log statements will be rejected in code reviews. Use structured logging exclusively.**
@@ -216,46 +223,57 @@ logger.info('app.creation.success', { appId, name: 'my-app' })
 ## Logging Patterns by Service
 
 ### App Service Logging
+
 The app service uses a **mixed approach** with simple event names and context objects:
 
 ```typescript
 // Current app service pattern
-logger.info('develop-store.init.start', { message: 'Starting page initialization', appId })
-logger.info('services.polling.health', { siteId, message: 'Polling services health' })
-logger.error('app.creation.failed', { error: createError.message, siteId })
+logger.info("develop-store.init.start", {
+  message: "Starting page initialization",
+  appId,
+});
+logger.info("services.polling.health", {
+  siteId,
+  message: "Polling services health",
+});
+logger.error("app.creation.failed", { error: createError.message, siteId });
 ```
 
 **Characteristics:**
+
 - Simple, descriptive event names
 - Mixed context (sometimes rich objects, sometimes simple values)
 - **NO EMOJIS** - Professional production-grade logging only
 - Pattern: `logger.level('event-name', context)`
 
 ### Agents Service Logging
+
 The agents service uses a **more structured approach** with hierarchical event names:
 
 ```typescript
 // Current agents service pattern
-logger.warn('conversation.history.tool_call.skipped', {
+logger.warn("conversation.history.tool_call.skipped", {
   conversationId,
   toolCallId: segment.tool_call.id,
-  reason: 'no_result',
+  reason: "no_result",
 });
 
-logger.info('Initial build marked as complete after first commit', {
+logger.info("Initial build marked as complete after first commit", {
   appId,
   commitMessage: message,
-  commitCount
+  commitCount,
 });
 ```
 
 **Characteristics:**
+
 - Structured, hierarchical event names (`domain.operation.lifecycle`)
 - Always rich, structured context objects
 - **NO EMOJIS** - Professional production-grade logging only
 - More consistent with enterprise logging standards
 
 ### ⚠️ Console Usage Issues (MUST BE FIXED)
+
 The agents service has some console.log usage that **MUST be migrated immediately**:
 
 ```typescript
@@ -268,6 +286,7 @@ console.log('Agent feature flags and configuration:', { ... })
 **These console statements are PROHIBITED and must be replaced with logger calls.**
 
 ### Migration Priority
+
 1. **High Priority**: Migrate console.log statements in agents service
 2. **Medium Priority**: Standardize app service logging to match agents pattern
 3. **Low Priority**: Add structured event helpers for both services
@@ -275,6 +294,7 @@ console.log('Agent feature flags and configuration:', { ... })
 ## Package Management
 
 This project uses **pnpm** as the package manager. All commands should use `pnpm` instead of `npm`:
+
 - `pnpm install` - Install dependencies
 - `pnpm run dev` - Start development server
 - `pnpm test` - Run tests
@@ -289,6 +309,7 @@ This project uses **pnpm** as the package manager. All commands should use `pnpm
 #### When to Add Changelog Entries
 
 Add entries for:
+
 - ✅ **New Features**: Any new functionality, tools, or capabilities
 - ✅ **Breaking Changes**: Changes that affect existing functionality or APIs
 - ✅ **Performance Improvements**: Optimizations, token savings, reduced API calls
@@ -299,10 +320,12 @@ Add entries for:
 #### Changelog Format
 
 Add entries under the appropriate section in `changelog.md`:
+
 - **Public Facing Changes**: User-visible features and improvements
 - **Internal Changes**: Developer and system-level improvements
 
 Use descriptive, actionable language:
+
 ```markdown
 ### Internal Changes
 
@@ -316,6 +339,7 @@ Use descriptive, actionable language:
 #### Examples
 
 **Good changelog entries:**
+
 ```markdown
 - **Conversation History Management System**: Intelligent file context tracking and tool summarization for massive token savings and improved agent performance
   - Added `FileContextManager`: Tracks file access patterns and auto-includes "hot files" in conversation context (30k token limit)
@@ -323,6 +347,7 @@ Use descriptive, actionable language:
 ```
 
 **Poor changelog entries:**
+
 ```markdown
 - Fixed stuff
 - Updated files
@@ -332,6 +357,7 @@ Use descriptive, actionable language:
 ### PR Checklist
 
 Before creating a pull request:
+
 - [ ] Added changelog entry in `changelog.md`
 - [ ] Ran `pnpm typecheck` (no TypeScript errors)
 - [ ] Ran `pnpm lint` (no linting errors)

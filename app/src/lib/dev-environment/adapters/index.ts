@@ -12,13 +12,10 @@ export async function createAppAdapter(devDb: DevDatabase): Promise<IAppAdapter>
   logger.info('adapters.create', { message: `Creating ${adapterType} adapter` });
 
   if (adapterType === 'docker') {
-    // Dynamically import Docker adapter to avoid loading it in process mode
     const { DockerAppService } = await import('./DockerAppService');
     return new DockerAppService(devDb);
   } else {
-    // Dynamically import Process adapter (formerly Local)
-    const { LocalAppService } = await import('./LocalAppService');
-    return new LocalAppService(devDb);
+    throw new Error(`Unsupported adapter type: ${adapterType}. Only 'docker' is supported.`);
   }
 }
 
