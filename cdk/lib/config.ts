@@ -43,7 +43,6 @@ interface Config {
   serverlessV2MinCapacity: number;
   serverlessV2MaxCapacity: number;
   mysqlReadersCount: number;
-  bedrockAssumeRoleArns: string[];
   gocodeAssumeRoleArns: string[];
   awsIamJwtAccount: string;
   monitoring: MonitoringConfig;
@@ -59,11 +58,6 @@ const devConfig: Config = {
   serverlessV2MinCapacity: 0.5,
   serverlessV2MaxCapacity: 4,
   mysqlReadersCount: 0,
-  bedrockAssumeRoleArns: [
-    'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
-    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
-    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
-  ],
   gocodeAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
@@ -105,7 +99,6 @@ const testConfig: Config = {
   serverlessV2MinCapacity: 0.5,
   serverlessV2MaxCapacity: 8,
   mysqlReadersCount: 0,
-  bedrockAssumeRoleArns: [],
   gocodeAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
@@ -139,7 +132,6 @@ const prodConfig: Config = {
   serverlessV2MinCapacity: 2,
   serverlessV2MaxCapacity: 16,
   mysqlReadersCount: 1,
-  bedrockAssumeRoleArns: [],
   gocodeAssumeRoleArns: [
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
   ],

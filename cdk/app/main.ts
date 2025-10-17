@@ -9,7 +9,7 @@ import { App } from 'aws-cdk-lib';
  *
  * Creates and orchestrates the following stacks:
  * - MySQLV2Stack: Aurora RDS database cluster
- * - AiroBuilderStack: IAM roles for Bedrock and GoCode access
+ * - AiroBuilderStack: IAM roles for GoCode access
  * - MonitoringStack: CloudWatch alarms and alert integrations
  */
 async function main() {
