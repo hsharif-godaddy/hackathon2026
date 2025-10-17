@@ -8,13 +8,9 @@ import { isFeatureEnabled } from '@/lib/features'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { useAuth } from '@/hooks/useAuth'
-import BuiltWithSection from '@/app/components/BuiltWithSection'
-import DiscoverSection from '@/app/components/DiscoverSection'
-import ExpressSection from '@/app/components/ExpressSection'
 import StartSection from '@/app/components/StartSection'
 import InfraSection from '@/app/components/InfraSection'
 import HelpSection from '@/app/components/HelpSection'
-import TestimonialsSection from '@/app/components/TestimonialsSection'
 import FeaturesSection from '@/components/layout/Features'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
 import Header from '@/components/layout/Header'
@@ -35,7 +31,7 @@ function HomeContent() {
   const { isAuthenticated, isAuthDisabled, gasketConfig } = useAuth(() => setShowMockLogin(true))
 
   useEffect(() => {
-    logImpressionEvent({ eid: 'homepage.page' })();
+    logImpressionEvent('homepage.page.view')();
   }, [])
 
   // Check for URL parameter and prefill prompt text

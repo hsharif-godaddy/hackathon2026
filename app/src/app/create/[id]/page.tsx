@@ -25,7 +25,7 @@ export default function CreateAppStatus() {
     initializeSite,
     retry,
   } = useSiteCreationStore()
-  
+
   // Track if we've updated the URL with the real app ID
   const [urlUpdated, setUrlUpdated] = useState(false)
 
@@ -89,18 +89,18 @@ export default function CreateAppStatus() {
     const hasRealAppId = !!realAppId;
     const realAppIdIsDifferent = realAppId !== siteId;
     const shouldUpdateUrl = startedWithJobId && urlNotYetUpdated && hasRealAppId && realAppIdIsDifferent;
-    
+
     if (!shouldUpdateUrl) return
-    
+
     // Log URL transition for debugging (client-side only)
     if (process.env.NODE_ENV === 'development') {
-      console.log('📝 [CREATE] Updating URL with real app ID:', { 
-        jobId: siteId, 
+      console.log('📝 [CREATE] Updating URL with real app ID:', {
+        jobId: siteId,
         realAppId,
         currentUrl: window.location.href
       })
     }
-    
+
     // Update URL without triggering a full page reload
     // Remove the ?type=job query param since we now have the real app ID
     router.replace(`/create/${realAppId}`, { scroll: false })
@@ -113,12 +113,12 @@ export default function CreateAppStatus() {
 
     // Use the real app ID if available, otherwise fall back to the original siteId
     const targetId = realAppId || siteId
-    
+
     if (!targetId) {
       console.error('[CREATE] No target ID available for redirect', { realAppId, siteId })
       return
     }
-    
+
     // CRITICAL SAFETY CHECK: Never redirect with a job ID (7-8 chars)
     // V2 app IDs are always 10 characters
     if (targetId.length <= 8) {
@@ -131,19 +131,19 @@ export default function CreateAppStatus() {
       })
       return
     }
-    
+
     // Log redirect for debugging (client-side only)
     if (process.env.NODE_ENV === 'development') {
       console.log(`[CREATE] 🚀 Redirecting to develop page with ${realAppId ? 'real app ID' : 'original ID'}: ${targetId}`)
     }
-    
+
     const redirectTimer = setTimeout(() => {
       // Stop polling before redirect to prevent overlapping requests
       if (process.env.NODE_ENV === 'development') {
         console.log('[CREATE] 🛑 Stopping site creation polling before redirect')
       }
       cleanupSiteCreationStore()
-      
+
       router.replace(`/develop/${targetId}`)
     }, 1000) // Reduced from 3000ms to 1000ms - develop page shows loading state anyway
 
@@ -163,7 +163,7 @@ export default function CreateAppStatus() {
   }, [siteId])
 
   useEffect(() => {
-    logImpressionEvent({ eid: 'create.page' })();
+    logImpressionEvent('create.page.view')();
   }, [])
 
   return (

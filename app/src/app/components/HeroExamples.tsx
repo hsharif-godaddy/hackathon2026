@@ -1,5 +1,5 @@
 import { ArrowRightIcon } from '@heroicons/react/24/outline'
-import { generateClickEID, logMultipleClickEvents } from '@/utils/instrumentation'
+import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 import { HeroExamplesProps, Example } from './types'
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
@@ -65,14 +65,11 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
       <div className="flex flex-wrap justify-center gap-2 max-w-4xl mx-auto">
         {examples.map((example, index) => (
           <button
-            data-eid={ generateClickEID('homepage.examples.example') }
             key={example.title}
             onClick={() => {
               onExampleClick(example.prompt);
-              logMultipleClickEvents([
-                'homepage.examples.example',
-                `homepage.examples.example_${example.slug}`,
-              ]);
+              logClickEvent('homepage.examples.example')();
+              logClickEvent(`homepage.examples.example_${example.slug}`)();
             } }
             className={clsx(
               'group bg-ai-dark-transparent px-4 py-1 rounded-lg hover:shadow-md transition-all duration-300 text-sm cursor-pointer transform',

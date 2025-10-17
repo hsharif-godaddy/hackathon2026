@@ -83,7 +83,7 @@ function DevelopPageContent() {
   const isLoading = useIsLoading()
 
   useEffect(() => {
-    logImpressionEvent({ eid: 'develop.page' })();
+    logImpressionEvent('develop.page.view')();
   }, [])
 
   // Initialize mobile detection

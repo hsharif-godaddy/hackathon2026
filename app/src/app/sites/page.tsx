@@ -48,7 +48,7 @@ function SitesPageContent() {
   console.log('SITES', sites)
 
   useEffect(() => {
-    logImpressionEvent({ eid: 'sites.page' })();
+    logImpressionEvent('sites.page.view')();
   }, [])
 
   const handleCreateNew = () => {
