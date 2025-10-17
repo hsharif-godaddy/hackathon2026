@@ -7,7 +7,7 @@ export { GrepTool } from './grep-tool.js';
 export { MySQLTool } from './mysql-tool.js';
 export { ImageSearchTool, findImage } from './image-search-tool.js';
 export { ImageGenerationTool, generateImage } from './image-generation-tool.js';
-export { GettyImageTool, findGettyImage } from './getty-image-tool.js';
+export { GettyImageTool, findGettyImage } from './image-search-driver/index.js';
 export { ASTEditorBase } from './ast-editor-base.js';
 export { ASTTextEditor } from './ast-text-editor.js';
 export { ServerManagementTool } from './server-management-tool.js';
@@ -68,7 +68,7 @@ export type {
   GettyImageResponse,
   GettyImage,
   DisplaySize
-} from './getty-image-tool.js';
+} from './image-search-driver/index.js';
 export type {
   BaseEditContext,
   BaseEditResult

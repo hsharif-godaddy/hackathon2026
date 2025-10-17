@@ -1,18 +1,26 @@
-# Image Search Drivers
+# Image Search
 
-## Getty Images (`GettyImageSearchDriver`)
+## Getty Images Integration
 
-Getty Images provides professional stock photos and licensed imagery for commercial use, and is the only driver used for production since it serves licensed images.
+The image search tool provides professional stock photos using the Getty Images API for licensed commercial imagery.
 
-## OpenAI Image Search (`OpenAIImageSearchDriver`)
+### Configuration
 
-OpenAI Image Search uses OpenAI's web search capabilities to find images from across the internet, but is experimental with performance issues and concerns about its ability to return images with safe licenses.
+Requires the following environment variables:
 
-## Unsplash (`UnsplashImageSearchDriver`)
+- `SSO_JWT` - JWT token for authentication
+- `GETTY_API_URL` - Getty Images API endpoint
+- `GETTY_APP_KEY` - Getty application key
 
-Unsplash provides stock photos through their API with file-based caching, but is just for use in development and as a comparison point with Getty - it is not planned to be a production driver since we already have a contract with Getty.
+### Implementation
 
-## Getty Image Tool (`GettyImageTool`)
+The `ImageSearchTool` class provides a unified interface for searching images using the Getty Images driver. It supports:
 
-Do not use directly, we are only exposing a single configurable tool to the LLM
+- Single image searches
+- Multiple images per search
+- Parallel searches with multiple prompts
+- Configurable result counts
 
+### Getty Image Tool (`GettyImageTool`)
+
+The underlying Getty API integration is implemented in `GettyImageTool`. This is used internally by `ImageSearchTool` and should not be used directly by LLM agents.

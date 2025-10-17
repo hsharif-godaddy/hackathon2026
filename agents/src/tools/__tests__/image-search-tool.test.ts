@@ -386,9 +386,7 @@ describe('ImageSearchTool', () => {
 
 describe('findImage function', () => {
   beforeEach(() => {
-    // Mock environment to use a driver that doesn't require external API keys
-    vi.stubEnv('IMAGE_SEARCH_DRIVER', 'mock');
-    vi.stubEnv('UNSPLASH_ACCESS_KEY', 'mock-key');
+    // Tests will use real Getty driver but expect failures due to missing credentials
   });
 
   describe('single prompt support', () => {
