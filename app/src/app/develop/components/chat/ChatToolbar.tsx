@@ -42,7 +42,6 @@ export default function ChatToolbar() {
           onClick={() => { setActiveChatTab(ChatTab.APPS) }}
           label="Apps"
           active={activeChatTab === ChatTab.APPS}
-          availableSoon
         />
       )}
       <IconButton

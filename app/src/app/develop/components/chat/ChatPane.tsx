@@ -2,6 +2,7 @@
 
 import { useRef, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import Apps from '@/app/develop/components/Apps'
 import PlanTracker from '@/app/develop/components/PlanTracker'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
@@ -125,7 +126,7 @@ export default function ChatPane({
   const getTabIndex = (tab: ChatTab): number => {
     switch (tab) {
       case ChatTab.PREVIEW: return 0  // First tab on mobile
-      case ChatTab.CHAT: return 1     // Second tab on mobile  
+      case ChatTab.CHAT: return 1     // Second tab on mobile
       case ChatTab.HISTORY: return 2  // Last available tab
       default: return 1 // Default to chat
     }
@@ -134,7 +135,7 @@ export default function ChatPane({
   if (isMobile) {
     const tabIndex = getTabIndex(activeChatTab)
     const transformValue = `-${tabIndex * 100}%`
-    
+
     return (
       <div className="flex-1 flex flex-col min-h-0">
         <PlanTracker
@@ -223,12 +224,16 @@ export default function ChatPane({
 
   // Desktop layout (unchanged)
   return (
-    <div className="flex-1 flex flex-col min-h-0 md:pt-4">
+    <div className="flex-1 flex flex-col h-full md:pt-4 gap-4">
       <PlanTracker
         developmentPlan={developmentPlan}
         expandedPlan={expandedPlan}
         onToggleExpandedPlan={toggleExpandedPlan}
       />
+
+      {activeChatTab === ChatTab.APPS && (
+        <Apps />
+      )}
 
       {activeChatTab === ChatTab.PREVIEW && (
         <PreviewPane

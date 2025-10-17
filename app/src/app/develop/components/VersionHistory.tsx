@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import Tag from '@ux/tag'
+import Spinner from '@ux/spinner'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
 import { logger } from '@/lib/request-context'
 import { useAppIdFromParams } from './utils'
@@ -136,8 +137,14 @@ export default function VersionHistory() {
           </div>
         )}
 
+        {loading && (
+          <div className="flex justify-center items-center h-full">
+            <Spinner />
+          </div>
+        )}
+
         {!loading && commits.length === 0 && !error && (
-          <div className="p-3 text-center text-sm">
+          <div className="flex justify-center items-center h-full">
             No commit history found
           </div>
         )}
