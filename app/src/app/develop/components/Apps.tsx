@@ -18,6 +18,7 @@ export default function Apps() {
         <div className="flex flex-col gap-2 h-full">
           {sites.map((site) => (
             <SiteItem
+              key={site.id}
               site={site}
               dataEid={generateClickEID('develop.apps.item')} />
           ))}

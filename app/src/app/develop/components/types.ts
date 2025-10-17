@@ -85,6 +85,7 @@ export interface AiEditContext {
   elementInfo: ElementInfo
   selector: string
   devContext: DevContext
+  screenshot?: string | null
 }
 
 export enum ViewMode {

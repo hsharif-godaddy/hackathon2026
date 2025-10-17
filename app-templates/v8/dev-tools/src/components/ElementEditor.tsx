@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import html2canvas from 'html2canvas'
+import { safePostMessage } from '../utils/postMessage'
 import {
   FileText,
   Bold,
@@ -224,6 +226,40 @@ export default function ElementEditor({
     }
     
     return undefined
+  }, [])
+
+  // Capture screenshot of the selected element using html2canvas
+  const captureElementScreenshot = useCallback(async (element: HTMLElement): Promise<string | null> => {
+    try {
+      // Get element dimensions
+      const rect = element.getBoundingClientRect()
+      const maxWidth = 600
+      const maxHeight = 400
+      
+      // Calculate scale to fit within max dimensions while maintaining aspect ratio
+      let scale = 1
+      if (rect.width > maxWidth || rect.height > maxHeight) {
+        scale = Math.min(maxWidth / rect.width, maxHeight / rect.height)
+      }
+      
+      // Capture the element with html2canvas
+      const canvas = await html2canvas(element, {
+        scale: scale,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: null,
+        logging: false,
+        removeContainer: true,
+        imageTimeout: 0,
+        foreignObjectRendering: false
+      })
+      
+      // Convert to base64 with compression
+      return canvas.toDataURL('image/png')
+    } catch (error) {
+      console.error('Failed to capture screenshot:', error)
+      return null
+    }
   }, [])
 
   // Current styles extracted from element classes
@@ -525,7 +561,7 @@ export default function ElementEditor({
         
         // Send message to parent if in iframe
         if (window.parent !== window) {
-          window.parent.postMessage({
+          safePostMessage(window.parent, {
             type: 'STYLE_UPDATED',
             data: {
               selector: selectedElement.selector,
@@ -534,7 +570,7 @@ export default function ElementEditor({
               newClassName: element.className,
               newStyle: element.style.cssText
             }
-          }, '*')
+          })
         }
       }
     }
@@ -988,18 +1024,29 @@ export default function ElementEditor({
 
         {/* Edit with AI Button */}
         <button
-          onClick={() => {
+          onClick={async () => {
             if (selectedElement?.devContext && window.parent !== window) {
-              window.parent.postMessage({
+              const element = findElement(selectedElement)
+              let screenshot: string | null = null
+              
+              // Capture screenshot if element is found
+              if (element) {
+                screenshot = await captureElementScreenshot(element)
+              }
+              
+              safePostMessage(window.parent, {
                 type: 'EDIT_WITH_AI',
                 data: {
                   elementInfo: selectedElement,
                   selector: selectedElement.selector,
-                  devContext: selectedElement.devContext
+                  devContext: selectedElement.devContext,
+                  screenshot
                 }
-              }, '*')
-              // Close the element editor after sending the message
-              onClose()
+              })
+              // Send message to hide editor without clearing selection
+              safePostMessage(window.parent, {
+                type: 'HIDE_ELEMENT_EDITOR'
+              })
             }
           }}
           style={{

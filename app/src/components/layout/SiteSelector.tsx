@@ -65,7 +65,7 @@ export default function SiteSelector() {
         <PopoverContent align="end" className="w-[300px] p-2">
           <div className="flex flex-col gap-2">
             {sites.map((site) => (
-              <SiteItem site={site} dataEid={generateClickEID('sites.site.edit')} />
+              <SiteItem key={site.id} site={site} dataEid={generateClickEID('sites.site.edit')} />
             ))}
           </div>
         </PopoverContent>

@@ -58,7 +58,7 @@
       "bash -c 'cd packages/ai-lib && MATRIX_PACKAGE=ai-lib ../../../scripts/license-check.sh'"
     ],
     "app-templates/v8/package.json": [
-      "bash -c 'cd app-templates/v8 && MATRIX_PACKAGE=v8-template ../../../scripts/license-check.sh'"
+      "bash -c 'cd app-templates/v8 && MATRIX_PACKAGE=v8-template ../../scripts/license-check.sh'"
     ],
     "website/package.json": [
       "bash -c 'cd website && MATRIX_PACKAGE=website ../../scripts/license-check.sh'"

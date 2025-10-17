@@ -44,6 +44,7 @@ export interface AgentsAppContext {
       lineNumber?: number
     }
     selector?: string
+    screenshot?: string | null
   }
   
   // Visual context - user's current view state

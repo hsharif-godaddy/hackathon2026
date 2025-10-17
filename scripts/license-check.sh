@@ -4,8 +4,11 @@
 # Dynamically detects internal packages and runs license check
 set -e
 
-# Install dependencies
-npm install -g license-checker
+# Install license-checker if not already available
+if ! command -v license-checker &> /dev/null; then
+  echo "📦 Installing license-checker..."
+  npm install -g license-checker
+fi
 
 # Define allowed licenses globally
 ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0;Unlicense"
@@ -32,14 +35,22 @@ else
 fi
 
 # Package-specific manual exclusions (including transitive internal dependencies)
+# Also set check depth (0 = direct dependencies only, no limit = all transitive deps)
 if [ "$MATRIX_PACKAGE" = "root" ]; then
   MANUAL_EXCLUSIONS="airo-app-builder-root@1.0.0;gd-auth-client@2.1.1"
+  CHECK_DEPTH=""
 elif [ "$MATRIX_PACKAGE" = "agents" ]; then
   MANUAL_EXCLUSIONS="tslib@2.8.1;gd-auth-client@2.1.1"
+  CHECK_DEPTH=""
 elif [ "$MATRIX_PACKAGE" = "app" ]; then
   MANUAL_EXCLUSIONS="website@0.1.0"
+  CHECK_DEPTH=""
+elif [ "$MATRIX_PACKAGE" = "v8-template" ]; then
+  MANUAL_EXCLUSIONS=""
+  CHECK_DEPTH="--depth 0"  # Only check direct dependencies for v8-template
 else
   MANUAL_EXCLUSIONS="gd-auth-client@2.1.1"
+  CHECK_DEPTH=""
 fi
 
 # Combine internal packages with manual exclusions
@@ -55,12 +66,13 @@ fi
 
 echo "🚫 Excluding packages: $EXCLUSIONS"
 echo "✅ Allowed licenses: $ALLOWED_LICENSES"
+echo "🔍 Check depth: ${CHECK_DEPTH:-all dependencies}"
 
 # Run license checker
 if [ -n "$EXCLUSIONS" ]; then
-  license-checker --onlyAllow "$ALLOWED_LICENSES" --excludePackages "$EXCLUSIONS" --summary
-  license-checker --onlyAllow "$ALLOWED_LICENSES" --excludePackages "$EXCLUSIONS" --out licenses-report.txt
+  license-checker --onlyAllow "$ALLOWED_LICENSES" --excludePackages "$EXCLUSIONS" $CHECK_DEPTH --summary
+  license-checker --onlyAllow "$ALLOWED_LICENSES" --excludePackages "$EXCLUSIONS" $CHECK_DEPTH --out licenses-report.txt
 else
-  license-checker --onlyAllow "$ALLOWED_LICENSES" --summary
-  license-checker --onlyAllow "$ALLOWED_LICENSES" --out licenses-report.txt
+  license-checker --onlyAllow "$ALLOWED_LICENSES" $CHECK_DEPTH --summary
+  license-checker --onlyAllow "$ALLOWED_LICENSES" $CHECK_DEPTH --out licenses-report.txt
 fi

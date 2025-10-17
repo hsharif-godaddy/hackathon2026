@@ -26,6 +26,7 @@ import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { postMessageToIframe } from '@/utils/postMessage'
 import PreviewPane from '../preview/PreviewPane'
 
 interface ChatPaneProps {
@@ -103,7 +104,25 @@ export default function ChatPane({
 
       // Send the message using the streaming WebSocket
       sendMessage(inputValue, safeAiEditContext)
+
+      // Clear the AI edit context after sending
+      if (safeAiEditContext) {
+        handleClearAiEditContext()
+      }
     }
+  }
+
+  // Handle clearing AI edit context
+  const handleClearAiEditContext = () => {
+    // Send message to iframe to clear selection and highlight
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+    if (iframe) {
+      postMessageToIframe(iframe, {
+        type: 'CLEAR_SELECTION'
+      })
+    }
+    // Clear the context in the store
+    setAiEditContext(null)
   }
 
   // Listen for error fix requests from PreviewPaneSimple
@@ -112,6 +131,11 @@ export default function ChatPane({
       if (event.detail.appId === appId && inputValue?.trim()) {
         // Use the actual sendMessage function from WebSocket hook
         sendMessage(inputValue, safeAiEditContext)
+
+        // Clear the AI edit context after sending
+        if (safeAiEditContext) {
+          handleClearAiEditContext()
+        }
       }
     }
 
@@ -120,7 +144,7 @@ export default function ChatPane({
     return () => {
       window.removeEventListener('airo-error-fix', handleErrorFixEvent as EventListener)
     }
-  }, [appId, inputValue, sendMessage, safeAiEditContext])
+  }, [appId, inputValue, sendMessage, safeAiEditContext, handleClearAiEditContext])
 
   // Get tab index for animation - matches mobile toolbar order
   const getTabIndex = (tab: ChatTab): number => {
@@ -177,32 +201,37 @@ export default function ChatPane({
               transition={{ duration: 0.2 }}
             >
               <StreamingMessageList />
+
+              {safeAiEditContext && (
+                <div className="mx-4 rounded-md overflow-hidden bg-white">
+                  <div className="flex items-center gap-3 p-2">
+                    {safeAiEditContext.screenshot && (
+                      <div className="flex-shrink-0 relative">
+                        <img
+                          src={safeAiEditContext.screenshot}
+                          alt="Selected element"
+                          className="max-w-[120px] max-h-[90px] object-contain rounded border"
+                        />
+                        <button
+                          onClick={handleClearAiEditContext}
+                          className="absolute -top-2 -right-2 w-6 h-6 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
+                          style={{ backgroundColor: '#ffffff' }}
+                          title="Clear selection"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <ChatInput
                 inputValue={safeInputValue}
                 isDisabled={isProcessing}
                 onInputChange={setInputValue}
                 onSendMessage={handleSendMessage}
               />
-              {safeAiEditContext && (
-                <div className="mx-4 mb-2 px-3 py-2 border rounded-md">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">✨</span>
-                      <span className="text-sm font-medium">Selected Element</span>
-                      <span className="text-xs px-2 py-0.5 rounded">
-                        {safeAiEditContext.elementInfo.tagName}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setAiEditContext(null)}
-                      className="text-sm"
-                      title="Clear selection"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              )}
             </motion.div>
 
             {/* History Tab Content - Index 2 */}
@@ -245,6 +274,30 @@ export default function ChatPane({
       {activeChatTab === ChatTab.CHAT && (
         <>
           <StreamingMessageList />
+
+          {safeAiEditContext && (
+            <div className="mx-4 rounded-md overflow-hidden bg-white">
+              <div className="flex items-center gap-3 p-2">
+                {safeAiEditContext.screenshot && (
+                  <div className="flex-shrink-0 relative">
+                    <img
+                      src={safeAiEditContext.screenshot}
+                      alt="Selected element"
+                      className="max-w-[120px] max-h-[90px] object-contain rounded border"
+                    />
+                    <button
+                      onClick={handleClearAiEditContext}
+                      className="absolute -top-2 -right-2 w-6 h-6 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
+                      style={{ backgroundColor: '#ffffff' }}
+                      title="Clear selection"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <ChatInput
             inputValue={safeInputValue}
             isDisabled={isProcessing}
@@ -256,27 +309,6 @@ export default function ChatPane({
 
       {activeChatTab === ChatTab.HISTORY && (
         <VersionHistory />
-      )}
-
-      {safeAiEditContext && (
-        <div className="mx-4 mb-2 px-3 py-2 border rounded-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm">✨</span>
-              <span className="text-sm font-medium">Selected Element</span>
-              <span className="text-xs px-2 py-0.5 rounded">
-                {safeAiEditContext.elementInfo.tagName}
-              </span>
-            </div>
-            <button
-              onClick={() => setAiEditContext(null)}
-              className="text-sm"
-              title="Clear selection"
-            >
-              ×
-            </button>
-          </div>
-        </div>
       )}
 
       <ChatToolbar />
