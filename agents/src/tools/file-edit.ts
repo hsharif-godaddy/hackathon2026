@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 import { dirname, resolve, relative } from 'path';
 import { diffLines, createPatch } from 'diff';
 import { existsSync } from 'fs';
-import { TokenUsageRepository, AppRepository } from '../database/index.js';
+import { AppRepository } from '../database/index.js';
 import { GitTool } from './git-tool.js';
 import axios from 'axios';
 import { translateDockerPath } from '../utils/path-helper.js';
@@ -68,11 +68,9 @@ export interface FileEditResult {
  */
 export class FileEditTool {
   private readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
-  private tokenUsageRepo: TokenUsageRepository;
   private appRepo: AppRepository;
 
   constructor() {
-    this.tokenUsageRepo = new TokenUsageRepository();
     this.appRepo = new AppRepository();
   }
   
@@ -312,9 +310,6 @@ export class FileEditTool {
 
     if (!options.dryRun) {
       await writeFile(filePath, options.content, 'utf-8');
-      
-      // Track token usage for file creation
-      await this.trackFileEditUsage(context, 'create', options.path, options.content.length);
     }
 
     const result: FileEditResult = {
@@ -387,9 +382,6 @@ export class FileEditTool {
 
     if (!options.dryRun) {
       await writeFile(filePath, options.content, 'utf-8');
-      
-      // Track token usage for file rewrite
-      await this.trackFileEditUsage(context, 'rewrite', options.path, options.content.length);
     }
 
     const changes = this.calculateChanges(originalContent, options.content);
@@ -511,9 +503,6 @@ export class FileEditTool {
 
     if (!options.dryRun) {
       await writeFile(filePath, content, 'utf-8');
-      
-      // Track token usage for file edit
-      await this.trackFileEditUsage(context, 'edit', options.path, content.length);
     }
 
     const changes = this.calculateChanges(originalContent, content);
@@ -618,39 +607,6 @@ export class FileEditTool {
       deletions,
       totalLines: modified.split('\n').length,
     };
-  }
-
-  /**
-   * Track token usage for file edit operations
-   */
-  private async trackFileEditUsage(
-    context: { appId?: string; conversationId?: string } | undefined,
-    operation: string,
-    filePath: string,
-    contentLength: number
-  ): Promise<void> {
-    if (!context?.appId) return;
-
-    try {
-      // File operations don't use LLM tokens, so both prompt and completion are 0
-      await this.tokenUsageRepo.recordUsage(
-        context.appId,
-        'file_edit',
-        0, // No prompt tokens for file edits
-        0, // No completion tokens for file edits
-        {
-          ...(context.conversationId && { conversationId: context.conversationId }),
-          description: `File ${operation}: ${filePath ? filePath.split('/').pop() : 'unknown'} (${contentLength} chars)`
-        }
-      );
-    } catch (error) {
-      logger.warn('Failed to track file edit token usage', {
-        appId: context?.appId,
-        operation,
-        filePath,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
   }
 
   /**

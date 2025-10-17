@@ -13,17 +13,21 @@ import type {
 } from '@airo/ai-lib'
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
+import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js'
 import { MAX_PROMPT_LENGTH } from '../services/features.js'
 import { GitTool } from '../tools/git-tool.js'
 import { GitUtils } from '../utils/git.js'
 import { logger, log } from '../logging/index.js'
 import { toolGitEvents } from '../logging/events/index.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
+import { aiLibAgentMetadata, type AILibAgentMetadata } from '../agents/ai-lib-agents/index.js'
 import { nanoid } from 'nanoid'
+import apm from 'elastic-apm-node'
 
 export class AgentsMessagePersistence implements ConversationPersistenceWithCleanup {
   private conversationRepo: ConversationRepository
   private appRepository: AppRepository
+  private tokenUsageRepo: TokenUsageRepository
   
   // Track conversations for cleanup
   private activeConversations = new Map<string, {
@@ -39,6 +43,81 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   constructor() {
     this.conversationRepo = new ConversationRepository()
     this.appRepository = new AppRepository()
+    this.tokenUsageRepo = new TokenUsageRepository()
+  }
+
+  /**
+   * Track token usage in APM for monitoring and analytics using custom transactions
+   */
+  private trackTokenUsageInAPM(
+    type: 'main_agent' | 'handoff',
+    usage: {
+      inputTokens: number
+      outputTokens: number
+      totalTokens: number
+      cacheReadTokens?: number
+      cacheWriteTokens?: number
+    },
+    metadata: {
+      conversationId: string
+      appId: string
+      agentName: string
+      modelName: string
+      targetAgent?: string
+    }
+  ): void {
+    try {
+      // Create a custom transaction specifically for token tracking
+      const transactionName = type === 'handoff' 
+        ? `Token Usage: Handoff (${metadata.agentName} → ${metadata.targetAgent})`
+        : `Token Usage: ${metadata.agentName}`
+      
+      const transaction = apm.startTransaction(transactionName, 'token-tracking')
+      
+      if (transaction) {
+        // Add metadata as labels (strings for filtering)
+        transaction.setLabel('token_usage_type', type)
+        transaction.setLabel('agent_name', metadata.agentName)
+        transaction.setLabel('model_name', metadata.modelName)
+        transaction.setLabel('app_id', metadata.appId)
+        transaction.setLabel('conversation_id', metadata.conversationId)
+        
+        if (metadata.targetAgent) {
+          transaction.setLabel('target_agent', metadata.targetAgent)
+        }
+        
+        // Store numeric token values as labels (for aggregations and filtering)
+        transaction.addLabels({
+          tokens_input: usage.inputTokens,
+          tokens_output: usage.outputTokens,
+          tokens_total: usage.totalTokens,
+          tokens_cache_read: usage.cacheReadTokens || 0,
+          tokens_cache_write: usage.cacheWriteTokens || 0
+        })
+        
+        // Mark transaction as successful and end it
+        transaction.result = 'success'
+        transaction.setOutcome('success')
+        transaction.end()
+        
+        logger.info('apm.token_tracking.sent', {
+          type,
+          conversationId: metadata.conversationId,
+          totalTokens: usage.totalTokens,
+          cacheReadTokens: usage.cacheReadTokens,
+          cacheWriteTokens: usage.cacheWriteTokens,
+          transactionName
+        })
+      }
+      
+    } catch (error) {
+      // Don't let APM tracking errors break the flow
+      logger.warn('apm.token_tracking.failed', {
+        error: error instanceof Error ? error.message : String(error),
+        type,
+        conversationId: metadata.conversationId
+      })
+    }
   }
 
   private optimizeStreamingEvents(events: Array<{
@@ -362,6 +441,185 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     })
 
     contextLogger.info('conversation.agent_response.saved', {})
+    
+    // Track LLM token usage to database
+    if (result?.usage && context.appId) {
+      try {
+        // Get model name from agent metadata or fall back to env config
+        const agentMetadata = aiLibAgentMetadata[context.agentName] as AILibAgentMetadata & { modelName?: string };
+        const modelName = agentMetadata?.modelName || 'claude-sonnet-4-20250514';
+        
+        await this.tokenUsageRepo.recordUsage(
+          context.appId,
+          'llm_request',
+          result.usage.inputTokens || 0,
+          result.usage.outputTokens || 0,
+          {
+            model: modelName,
+            conversationId: conversationId,
+            description: `Agent: ${context.agentName}`,
+            cacheReadTokens: result.usage.cachedInputTokens,
+            cacheWriteTokens: result.caching?.cacheWriteInputTokens,
+          }
+        );
+        
+        // Track in APM for monitoring
+        this.trackTokenUsageInAPM(
+          'main_agent',
+          {
+            inputTokens: result.usage.inputTokens || 0,
+            outputTokens: result.usage.outputTokens || 0,
+            totalTokens: result.usage.totalTokens || 0,
+            cacheReadTokens: result.usage.cachedInputTokens || 0,
+            cacheWriteTokens: result.caching?.cacheWriteInputTokens || 0,
+          },
+          {
+            conversationId,
+            appId: context.appId,
+            agentName: context.agentName,
+            modelName,
+          }
+        );
+        
+        logger.info('conversation.token_usage.recorded', {
+          conversationId,
+          appId: context.appId,
+          modelName,
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          totalTokens: result.usage.totalTokens,
+          cacheReadTokens: result.usage.cachedInputTokens,
+          cacheWriteTokens: result.caching?.cacheWriteInputTokens,
+        });
+      } catch (tokenError) {
+        logger.error('conversation.token_usage.record_failed', {
+          conversationId,
+          appId: context.appId,
+          error: tokenError instanceof Error ? tokenError.message : String(tokenError),
+        });
+      }
+    }
+    
+    // Track handoff token usage from tool results
+    if (toolCalls.length > 0 && context.appId) {
+      await Promise.all(
+        toolCalls
+          .filter((toolCall) => toolCall.name === 'handoff' && toolCall.result)
+          .map(async (toolCall) => {
+            try {
+              // Parse the handoff result to extract usage data
+              let handoffResult: any;
+              if (typeof toolCall.result === 'string') {
+                try {
+                  handoffResult = JSON.parse(toolCall.result);
+                } catch {
+                  // If parsing fails, try to extract from the string
+                  handoffResult = toolCall.result;
+                }
+              } else {
+                handoffResult = toolCall.result;
+              }
+              
+              // Extract usage from handoff result
+              if (handoffResult?.result?.usage) {
+                const handoffUsage = handoffResult.result.usage;
+                const handoffCaching = handoffResult.result.caching;
+                const targetAgent = handoffResult.targetAgent || 'unknown';
+                // Get model name from target agent metadata
+                const targetMetadata = aiLibAgentMetadata[targetAgent] as AILibAgentMetadata & { modelName?: string };
+                const modelName = targetMetadata?.modelName || 'claude-sonnet-4-20250514';
+                
+                await this.tokenUsageRepo.recordUsage(
+                  context.appId!,
+                  'llm_request',
+                  handoffUsage.inputTokens || 0,
+                  handoffUsage.outputTokens || 0,
+                  {
+                    model: modelName,
+                    conversationId: conversationId,
+                    description: `Agent handoff: ${context.agentName} → ${targetAgent}`,
+                    cacheReadTokens: handoffUsage.cachedInputTokens,
+                    cacheWriteTokens: handoffCaching?.cacheWriteInputTokens,
+                  }
+                );
+                
+                // Track handoff in APM for monitoring
+                this.trackTokenUsageInAPM(
+                  'handoff',
+                  {
+                    inputTokens: handoffUsage.inputTokens || 0,
+                    outputTokens: handoffUsage.outputTokens || 0,
+                    totalTokens: handoffUsage.totalTokens || 0,
+                    cacheReadTokens: handoffUsage.cachedInputTokens || 0,
+                    cacheWriteTokens: handoffCaching?.cacheWriteInputTokens || 0,
+                  },
+                  {
+                    conversationId,
+                    appId: context.appId!,
+                    agentName: context.agentName,
+                    modelName,
+                    targetAgent,
+                  }
+                );
+                
+                logger.info('conversation.handoff_usage.recorded', {
+                  conversationId,
+                  appId: context.appId,
+                  sourceAgent: context.agentName,
+                  targetAgent,
+                  modelName,
+                  inputTokens: handoffUsage.inputTokens,
+                  outputTokens: handoffUsage.outputTokens,
+                  totalTokens: handoffUsage.totalTokens,
+                  cacheReadTokens: handoffUsage.cachedInputTokens,
+                  cacheWriteTokens: handoffCaching?.cacheWriteInputTokens,
+                });
+              }
+            } catch (handoffError) {
+              logger.warn('conversation.handoff_usage.parse_failed', {
+                conversationId,
+                appId: context.appId,
+                toolName: toolCall.name,
+                error: handoffError instanceof Error ? handoffError.message : String(handoffError),
+              });
+            }
+          })
+      );
+    }
+    
+    // Track tool invocations for analytics (tools don't use tokens, but tracking usage is valuable)
+    if (toolCalls.length > 0 && context.appId) {
+      await Promise.all(
+        toolCalls.map(async (toolCall) => {
+          try {
+            await this.tokenUsageRepo.recordUsage(
+              context.appId!,
+              'tool_execution',
+              0, // Tools don't use tokens
+              0,
+              {
+                conversationId: conversationId,
+                description: `Tool execution: ${toolCall.name}`,
+              }
+            );
+          } catch (toolError) {
+            logger.warn('conversation.tool_tracking.failed', {
+              conversationId,
+              appId: context.appId,
+              toolName: toolCall.name,
+              error: toolError instanceof Error ? toolError.message : String(toolError),
+            });
+          }
+        })
+      );
+      
+      logger.info('conversation.tool_usage.recorded', {
+        conversationId,
+        appId: context.appId,
+        toolCount: toolCalls.length,
+        tools: toolCalls.map(tc => tc.name),
+      });
+    }
     
     if (context.appId) {
       await this.checkAndCommitChanges(context.appId, 'conversation_complete');
