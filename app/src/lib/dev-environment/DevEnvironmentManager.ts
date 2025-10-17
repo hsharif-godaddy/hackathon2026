@@ -78,17 +78,17 @@ export class DevEnvironmentManager {
   async createDevApp(request: CreateDevAppRequest): Promise<DevAppResult> {
     await this.initialize();
 
-    const { siteId, name, initialPrompt, templateVersion = 'v8' } = request;
+    const { siteId, name, templateVersion = 'v8' } = request;
 
     try {
       logger.info(`🚀 Creating dev app: ${name} (${siteId})`);
 
       // 1. Check if app already exists - if so, return early
       const existingApp = this.devDb.findDevAppById(siteId);
-      
+
       if (existingApp && (existingApp.status === 'created' || existingApp.status === 'running')) {
         logger.info(`✅ App ${siteId} already exists with status: ${existingApp.status}, skipping creation`);
-        
+
         // Generate URLs for existing app
         const urls = {
           frontend: `http://localhost:${existingApp.port}`,
@@ -107,7 +107,7 @@ export class DevEnvironmentManager {
 
       // 2. App doesn't exist or is in error state - create/recreate it
       let port: number;
-      
+
       if (existingApp) {
         // Reuse existing port for error recovery
         port = existingApp.port;
@@ -123,7 +123,7 @@ export class DevEnvironmentManager {
       const appPath = `${baseAppsDir}/${siteId}`;
 
       // 4. Create or update dev app record
-      const devApp = this.devDb.createDevApp({
+      const devApp = this.devDb.createDevApp({ // eslint-disable-line @typescript-eslint/no-unused-vars
         appId: siteId,
         port,
         appPath,
@@ -135,7 +135,7 @@ export class DevEnvironmentManager {
 
       // 5. Set up template (only runs for new/error apps now)
       logger.info(`🔧 Setting up template for app ${siteId}`);
-      
+
       // Set up the app using the template copy service
       await this.setupAppFromTemplate(siteId, appPath, name, templateVersion);
 
@@ -300,7 +300,7 @@ export class DevEnvironmentManager {
    */
   private async setupAppFromTemplate(appId: string, appPath: string, appName: string, templateVersion: string): Promise<void> {
     logger.info(`📋 Setting up app ${appId} from template ${templateVersion} at ${appPath}`);
-    
+
     try {
       const result = await this.templateService.copyTemplate({
         appId,
@@ -311,7 +311,7 @@ export class DevEnvironmentManager {
 
       if (result.success) {
         logger.info(`✅ Template setup completed for app ${appId}`);
-        
+
         // Create .is_ready file for Docker mode to signal template is ready
         if (!this.adapter?.getCapabilities().supportsProcessOperations) {
           const fs = await import('fs');
@@ -335,9 +335,9 @@ export class DevEnvironmentManager {
   private async updateGitignoreForDevSupervisor(appPath: string): Promise<void> {
     const fs = await import('fs');
     const path = await import('path');
-    
+
     const gitignorePath = path.join(appPath, '.gitignore');
-    
+
     // Entries to add to .gitignore for dev-supervisor
     const devSupervisorIgnores = [
       '',
@@ -349,13 +349,13 @@ export class DevEnvironmentManager {
       'dev-supervisor/target/',
       ''
     ].join('\n');
-    
+
     try {
       // Check if .gitignore exists
       if (fs.existsSync(gitignorePath)) {
         // Read existing content
         const existingContent = fs.readFileSync(gitignorePath, 'utf-8');
-        
+
         // Only add if not already present
         if (!existingContent.includes('dev-supervisor/')) {
           fs.appendFileSync(gitignorePath, devSupervisorIgnores);

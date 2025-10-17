@@ -2,17 +2,16 @@ import { IControlPlaneAdapter, CreateSiteParams, CreateSiteResult, SiteInfo, Sit
 import { extractCustomerId, decodeJWT } from '@/lib/utils/jwt-utils';
 import { logger } from '@/lib/request-context';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
-import { useSubscriptionCacheStore, AppLocation } from '@/stores/useSubscriptionCacheStore';
+import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
 
 /**
  * ID length constants for distinguishing job IDs from app IDs
  */
 const APP_ID_LENGTH = 10; // App IDs are exactly 10 chars (nanoId format)
-const MAX_JOB_ID_LENGTH = 9; // Job IDs are shorter than 10 chars
 
 /**
  * V2 Control Plane Adapter
- * 
+ *
  * Uses mgmt-airo + mgmt-hosting APIs via AiroMgmtClient.
  * During creation, returns temporary jobId which transitions to permanent appId once ready.
  */
@@ -52,16 +51,16 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const generatedTitle = this.generateTitle(params.prompt);
       const alwaysNewSubscription = process.env.ALWAYS_NEW_SUBSCRIPTION === 'true';
       const targetSubscriptionId = process.env.AIRO_SUBSCRIPTION_ID;
-      
+
       let selectedSubscription = null;
-      
+
       if (!alwaysNewSubscription) {
         try {
           if (targetSubscriptionId) {
             // Find specific subscription by ID
             const allSubscriptions = await client.getSubscriptions();
             selectedSubscription = allSubscriptions.find(sub => sub.id === targetSubscriptionId);
-            
+
             if (!selectedSubscription) {
               logger.warn('v2-control-plane.create-site.target-subscription-not-found', {
                 targetSubscriptionId,
@@ -222,18 +221,18 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
   ): Promise<SiteInfo | null> {
     const client = this.createClient(jwt);
     const startTime = Date.now();
-    
+
     try {
       // SINGLE API CALL - Direct app fetch
       const app = await client.getApp(subscriptionId, systemId, appId);
-      
+
       logger.info('v2-control-plane.direct-app-lookup.success', {
         appId,
         subscriptionId,
         systemId,
         duration: Date.now() - startTime
       });
-      
+
       return this.mapAppToSiteInfo(app);
     } catch (error: any) {
       if (error.status === 404) {
@@ -244,12 +243,12 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           systemId,
           error: error instanceof Error ? error.message : String(error)
         });
-        
+
         const cache = useSubscriptionCacheStore.getState();
         cache.removeAppFromCache(appId);
         return null;
       }
-      
+
       logger.error('v2-control-plane.direct-app-lookup.error', {
         appId,
         subscriptionId,
@@ -257,7 +256,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         error: error instanceof Error ? error.message : String(error),
         duration: Date.now() - startTime
       });
-      
+
       throw error;
     }
   }
@@ -275,12 +274,12 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       });
       return null;
     }
-    
+
     try {
       logger.info('v2-control-plane.job-id-lookup.trying', { siteId });
       const client = this.createClient(jwt);
       const jobStatus = await client.getAiroJobApps(siteId);
-      
+
       if (jobStatus.apps && jobStatus.apps.length === 0) {
         return {
           id: siteId,
@@ -294,14 +293,14 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
       if (jobStatus.apps && jobStatus.apps.length > 0) {
         const jobApp = jobStatus.apps[0];
-        
+
         logger.info('v2-control-plane.job-id-lookup.found', {
           siteId,
           appId: jobApp.id,
           hasSystemId: !!jobApp.systemId,
           hasSubscriptionId: !!jobApp.subscriptionId
         });
-        
+
         // Only return job data if it's complete (has systemId and subscriptionId)
         // If systemId/subscriptionId is missing, try to look it up in cache first
         if (jobApp.systemId && jobApp.subscriptionId) {
@@ -321,10 +320,10 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             hasSubscriptionId: !!jobApp.subscriptionId,
             reason: 'Missing metadata, checking cache for app location'
           });
-          
+
           const subscriptionCache = useSubscriptionCacheStore.getState();
           let appLocation = subscriptionCache.getAppLocation(jobApp.id);
-          
+
           // If app not in cache, refresh cache to pick up newly created apps
           if (!appLocation) {
             logger.info('v2-control-plane.job-id-lookup.cache-miss-refreshing', {
@@ -332,11 +331,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
               appId: jobApp.id,
               reason: 'App not in cache, refreshing to pick up new app'
             });
-            
+
             await subscriptionCache.refresh(jwt, true);
             appLocation = subscriptionCache.getAppLocation(jobApp.id);
           }
-          
+
           if (appLocation) {
             logger.info('v2-control-plane.job-id-lookup.cache-hit', {
               siteId,
@@ -344,7 +343,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
               subscriptionId: appLocation.subscriptionId,
               systemId: appLocation.systemId
             });
-            
+
             // Fetch the full app data using the cache location
             try {
               return await this.directAppLookup(
@@ -361,7 +360,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
               // Fall through to "creating" status
             }
           }
-          
+
           logger.info('v2-control-plane.job-id-lookup.incomplete', {
             siteId,
             appId: jobApp.id,
@@ -393,7 +392,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           };
         }
       }
-      
+
       return null;
     } catch (error) {
       logger.info('v2-control-plane.job-id-lookup.failed', {
@@ -413,19 +412,19 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       if (!customerId) {
         throw new Error('Failed to extract customer ID from JWT');
       }
-      
+
       // Get subscription cache
       const subscriptionCache = useSubscriptionCacheStore.getState();
-      
+
       // Initialize cache on first use
       if (!subscriptionCache.customerId) {
         logger.info('v2-control-plane.get-site.initializing-cache', { siteId });
         await subscriptionCache.initialize(jwt);
       }
-      
+
       // Refresh cache if stale (background refresh)
       if (this.isCacheStale(subscriptionCache)) {
-        logger.info('v2-control-plane.get-site.refreshing-stale-cache', { 
+        logger.info('v2-control-plane.get-site.refreshing-stale-cache', {
           siteId,
           lastRefresh: subscriptionCache.lastRefresh,
           age: subscriptionCache.lastRefresh ? Date.now() - subscriptionCache.lastRefresh : null
@@ -433,7 +432,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         // Non-blocking refresh
         subscriptionCache.refresh(jwt, false);
       }
-      
+
       // Try cache-based direct lookup
       const location = subscriptionCache.getAppLocation(siteId);
       if (location) {
@@ -442,7 +441,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           subscriptionId: location.subscriptionId,
           systemId: location.systemId
         });
-        
+
         try {
           const result = await this.directAppLookup(
             siteId,
@@ -450,7 +449,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             location.systemId,
             jwt
           );
-          
+
           if (result) {
             logger.info('v2-control-plane.get-site.cache-hit-success', {
               siteId,
@@ -467,7 +466,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           // Continue to fallback methods
         }
       }
-      
+
       // Try job ID lookup first (for sites that are still being created)
       const jobResult = await this.jobIdLookup(siteId, jwt);
       if (jobResult) {
@@ -489,11 +488,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           return jobResult; // Return complete job data
         }
       }
-      
+
       // If cache miss or direct lookup failed, force refresh and try again
       logger.info('v2-control-plane.get-site.cache-miss-refreshing', { siteId });
       await subscriptionCache.refresh(jwt, true);
-      
+
       const retryLocation = subscriptionCache.getAppLocation(siteId);
       if (retryLocation) {
         logger.info('v2-control-plane.get-site.retry-with-refreshed-cache', {
@@ -501,7 +500,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           subscriptionId: retryLocation.subscriptionId,
           systemId: retryLocation.systemId
         });
-        
+
         try {
           const result = await this.directAppLookup(
             siteId,
@@ -509,7 +508,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             retryLocation.systemId,
             jwt
           );
-          
+
           if (result) {
             logger.info('v2-control-plane.get-site.cache-refresh-success', {
               siteId,
@@ -526,7 +525,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           // Fall through to full search
         }
       }
-      
+
       // Final fallback: traditional full search
       logger.info('v2-control-plane.get-site.falling-back-to-full-search', { siteId });
       const client = this.createClient(jwt);
@@ -578,7 +577,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
               // Fetch full app details to get variables (including initialPrompt)
               try {
                 const fullApp = await client.getApp(sub.id, system.id, matchingApp.id);
-                
+
                 logger.info('v2-control-plane.get-site.full-app-fetched', {
                   siteId,
                   hasVariables: !!fullApp.variables,
@@ -647,10 +646,10 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
   /**
    * Find app metadata (systemId and subscriptionId) by app ID
-   * 
+   *
    * This is a lightweight lookup that skips job ID polling logic.
    * Used by deleteSite and other operations that need metadata for existing apps.
-   * 
+   *
    * @param appId - The app ID to search for
    * @param jwt - JWT token for authentication
    * @returns Object with systemId and subscriptionId, or null if not found
@@ -666,28 +665,28 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       if (!customerId) {
         return null;
       }
-      
+
       // Try cache first
       const subscriptionCache = useSubscriptionCacheStore.getState();
       const location = subscriptionCache.getAppLocation(appId);
-      
+
       if (location) {
         logger.info('v2-control-plane.find-app-metadata.cache-hit', {
           appId,
           subscriptionId: location.subscriptionId,
           systemId: location.systemId
         });
-        
+
         return {
           systemId: location.systemId,
           subscriptionId: location.subscriptionId
         };
       }
-      
+
       // If cache miss, initialize/refresh cache
       if (!subscriptionCache.customerId) {
         await subscriptionCache.initialize(jwt);
-        
+
         // Check cache again after initialization
         const refreshedLocation = subscriptionCache.getAppLocation(appId);
         if (refreshedLocation) {
@@ -699,7 +698,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       } else if (this.isCacheStale(subscriptionCache)) {
         // Force refresh if stale
         await subscriptionCache.refresh(jwt, true);
-        
+
         // Check cache again after refresh
         const refreshedLocation = subscriptionCache.getAppLocation(appId);
         if (refreshedLocation) {
@@ -746,10 +745,10 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
                 systemId: system.id,
                 subscriptionId: sub.id
               });
-              
+
               // Update cache with found location
               subscriptionCache.refresh(jwt, false);
-              
+
               return {
                 systemId: system.id,
                 subscriptionId: sub.id
@@ -800,17 +799,17 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       await client.deleteApp(effectiveSubscriptionId, effectiveSystemId, siteId);
-      
+
       // Invalidate and reprime cache after deletion to ensure consistency
       const subscriptionCache = useSubscriptionCacheStore.getState();
       subscriptionCache.invalidate();
       await subscriptionCache.refresh(jwt, true);
-      
+
       logger.info('v2-control-plane.delete-site.success', {
         siteId,
         duration: Date.now() - startTime
       });
-      
+
       return { success: true };
     } catch (error: any) {
       // Re-throw 401 for auth redirect
@@ -835,7 +834,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
    *
    * Uses: PUT /airo/v1/systems/:systemId/apps/:appId/deploy
    * Triggers redeployment of the app (e.g., after code changes or configuration updates)
-   * 
+   *
    * IMPORTANT: In V2, deployment happens automatically during signup.
    * This method is primarily for re-deployments after the app exists.
    * If called during initial creation (with job ID), it gracefully indicates deployment is in progress.
@@ -934,7 +933,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
    * Update site with variables upsert pattern
    *
    * Uses: PATCH /airo/v1/systems/:systemId/apps/:appId
-   * 
+   *
    * UPSERT PATTERN:
    * 1. Fetch current app to get existing variables
    * 2. Merge updates with existing variables (client-side)
@@ -1032,14 +1031,14 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       });
 
       await client.updateApp(site.subscription_id, site.system_id, siteId, patchPayload);
-      
+
       logger.info('v2-control-plane.update-site.patch-complete', {
         siteId,
         message: 'PATCH completed, fetching updated app with variables'
       });
 
       const updatedApp = await client.getApp(site.subscription_id, site.system_id, siteId);
-      
+
       logger.info('v2-control-plane.update-site.response-received', {
         siteId,
         hasVariables: !!updatedApp?.variables,
@@ -1065,10 +1064,10 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
   /**
    * Update site variables (metadata) using upsert pattern
-   * 
+   *
    * This method specifically handles SiteMetadata updates:
    * - userTitle, aiGeneratedTitle, customDomain, tags, etc.
-   * 
+   *
    * @param siteId - Site/app ID
    * @param variableUpdates - Variables to upsert
    * @param jwt - Authentication token
@@ -1154,7 +1153,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
   /**
    * Construct URLs for an app
-   * 
+   *
    * V2 URL pattern: https://{appId}.{type}.{cellPrefix}.test-airoapp.ai
    * Example: https://egy3rfaop6.agent.c4.test-airoapp.ai
    * URLs are returned for pending/provisioning/active apps (optimistic URL construction)

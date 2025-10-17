@@ -154,7 +154,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   useEffect(() => {
     const hasUnsavedChanges = openFiles.some(file => file.isDirty)
     setHasUnsavedChanges(hasUnsavedChanges)
-  }, [openFiles])
+  }, [openFiles, setHasUnsavedChanges])
 
   const getLanguageFromPath = (path: string): string => {
     const ext = path.split('.').pop()?.toLowerCase()

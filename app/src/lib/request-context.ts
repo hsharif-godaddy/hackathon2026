@@ -2,7 +2,7 @@
 let AsyncLocalStorage: any;
 if (typeof window === 'undefined') {
   // Server-side: import AsyncLocalStorage
-  AsyncLocalStorage = require('async_hooks').AsyncLocalStorage;
+  AsyncLocalStorage = require('async_hooks').AsyncLocalStorage; // eslint-disable-line @typescript-eslint/no-var-requires
 } else {
   // Client-side: provide a no-op implementation
   AsyncLocalStorage = class {
@@ -232,14 +232,12 @@ export class ContextLogger {
    * Output log event to console with formatting
    */
   private output(logEvent: LogEvent): void {
-    const { level, event, message, customerId, requestId, data, error } = logEvent;
+    const { customerId, requestId } = logEvent;
 
     // Create context prefix
     const contextParts: string[] = [];
     if (customerId) contextParts.push(`customerId:${customerId}`);
     if (requestId) contextParts.push(`reqId:${requestId}`);
-
-    const contextPrefix = contextParts.length > 0 ? `[${contextParts.join(' ')}]` : '';
 
     // Always use structured JSON output (production format)
     // This ensures consistent, machine-parseable logs for FluentBit and log aggregation
@@ -306,27 +304,27 @@ export const logger = {
     }
     return _logger;
   },
-  
+
   debug(event: string, data?: any, options?: LogOptions): void {
     this.instance.debug(event, data, options);
   },
-  
+
   info(event: string, data?: any, options?: LogOptions): void {
     this.instance.info(event, data, options);
   },
-  
+
   warn(event: string, data?: any, options?: LogOptions): void {
     this.instance.warn(event, data, options);
   },
-  
+
   error(event: string, data?: any, options?: LogOptions): void {
     this.instance.error(event, data, options);
   },
-  
+
   fatal(event: string, data?: any, options?: LogOptions): void {
     this.instance.fatal(event, data, options);
   },
-  
+
   log(level: LogLevel, event: string, data?: any, options?: LogOptions): void {
     this.instance.log(level, event, data, options);
   }

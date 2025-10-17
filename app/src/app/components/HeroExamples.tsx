@@ -1,5 +1,5 @@
 import { ArrowRightIcon } from '@heroicons/react/24/outline'
-import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
+import { logClickEvent } from '@/utils/instrumentation'
 import { HeroExamplesProps, Example } from './types'
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'

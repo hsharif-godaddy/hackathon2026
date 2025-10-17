@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useMemo, useEffect } from 'react'
+import { useRef, useMemo, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import Apps from '@/app/develop/components/Apps'
 import PlanTracker from '@/app/develop/components/PlanTracker'
@@ -113,7 +113,7 @@ export default function ChatPane({
   }
 
   // Handle clearing AI edit context
-  const handleClearAiEditContext = () => {
+  const handleClearAiEditContext = useCallback(() => {
     // Send message to iframe to clear selection and highlight
     const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
     if (iframe) {
@@ -123,7 +123,7 @@ export default function ChatPane({
     }
     // Clear the context in the store
     setAiEditContext(null)
-  }
+  }, [setAiEditContext])
 
   // Listen for error fix requests from PreviewPaneSimple
   useEffect(() => {
@@ -207,7 +207,7 @@ export default function ChatPane({
                   <div className="flex items-center gap-3 p-2">
                     {safeAiEditContext.screenshot && (
                       <div className="flex-shrink-0 relative">
-                        <img
+                        <img // eslint-disable-line @next/next/no-img-element
                           src={safeAiEditContext.screenshot}
                           alt="Selected element"
                           className="max-w-[120px] max-h-[90px] object-contain rounded border"
@@ -280,7 +280,7 @@ export default function ChatPane({
               <div className="flex items-center gap-3 p-2">
                 {safeAiEditContext.screenshot && (
                   <div className="flex-shrink-0 relative">
-                    <img
+                    <img // eslint-disable-line @next/next/no-img-element
                       src={safeAiEditContext.screenshot}
                       alt="Selected element"
                       className="max-w-[120px] max-h-[90px] object-contain rounded border"

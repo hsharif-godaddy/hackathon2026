@@ -1,6 +1,6 @@
 /**
  * Site Context Provider
- * 
+ *
  * Manages the current site ID context throughout the application
  * This allows components to know which site's agent URL to use for API calls
  */
@@ -11,14 +11,13 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { dynamicApiConfigService, type DynamicApiConfig } from '@/config/dynamic-api'
 import { sitePollingService } from '@/services/SitePollingService'
 import { useSubscriptionCache } from '@/hooks/useSubscriptionCache'
-import { useAuth } from '@/hooks/useAuth'
 
 /**
  * Get JWT token from browser cookies for API authentication
  */
 const getAuthTokenFromCookie = (): string | null => {
   if (typeof document === 'undefined') return null;
-  
+
   const cookies = document.cookie.split(';');
   for (const cookie of cookies) {
     const [name, value] = cookie.trim().split('=');
@@ -32,22 +31,22 @@ const getAuthTokenFromCookie = (): string | null => {
 interface SiteContextValue {
   // Current site ID
   siteId: string | null
-  
+
   // Current dynamic API configuration
   apiConfig: DynamicApiConfig | null
-  
+
   // Whether the site is ready (has agent URL)
   isSiteReady: boolean
-  
+
   // Set current site ID and trigger config update
   setSiteId: (siteId: string | null) => void
-  
+
   // Manually refresh the API configuration for current site
   refreshConfig: () => Promise<void>
-  
+
   // Wait for site to be ready with agent URL
   waitForSite: (timeoutMs?: number) => Promise<boolean>
-  
+
   // Clear current site context
   clearSite: () => void
 }
@@ -63,7 +62,7 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
   const [siteId, setSiteIdState] = useState<string | null>(initialSiteId || null)
   const [apiConfig, setApiConfig] = useState<DynamicApiConfig | null>(null)
   const [isSiteReady, setIsSiteReady] = useState(false)
-  
+
   // Initialize subscription cache for performance optimization
   const jwt = getAuthTokenFromCookie()
   const cacheStatus = useSubscriptionCache(jwt)
@@ -75,7 +74,7 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
         const config = await dynamicApiConfigService.getConfigForSite(newSiteId)
         setApiConfig(config)
         setIsSiteReady(!config.isStatic && dynamicApiConfigService.isSiteReady(newSiteId))
-        
+
         console.log('📱 Site context updated:', {
           siteId: newSiteId,
           isStatic: config.isStatic,
@@ -112,17 +111,17 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
   // Wait for site to be ready
   const waitForSite = useCallback(async (timeoutMs = 300000): Promise<boolean> => {
     if (!siteId) return false
-    
+
     try {
       const maxAttempts = Math.ceil(timeoutMs / 10000) // Convert to attempts (10s intervals)
       let attempts = 0
-      
+
       while (attempts < maxAttempts) {
         attempts++
         console.log(`🔄 Checking site readiness (${attempts}/${maxAttempts}):`, siteId)
-        
+
         const siteStatus = await sitePollingService.checkSiteStatus(siteId)
-        
+
         if (siteStatus.ready) {
           console.log(`✅ Site is ready:`, siteId, siteStatus.agent_url)
           // Update config when site becomes ready
@@ -131,16 +130,16 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
           setIsSiteReady(true)
           return true
         }
-        
+
         if (siteStatus.status === 'failed') {
           console.log(`❌ Site failed:`, siteId)
           return false
         }
-        
+
         // Wait 10 seconds before next check
         await new Promise(resolve => setTimeout(resolve, 10000))
       }
-      
+
       console.log(`⏰ Site readiness check timed out:`, siteId)
       return false
     } catch (error) {
@@ -152,11 +151,11 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
   // Clear site context
   const clearSite = useCallback(() => {
     // Note: The new polling service doesn't need manual cancellation as it's promise-based
-    
+
     setSiteIdState(null)
     setApiConfig(null)
     setIsSiteReady(false)
-  }, [siteId])
+  }, [])
 
   // Initialize configuration when component mounts or siteId changes
   useEffect(() => {
@@ -182,7 +181,7 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
         isRefreshing: cacheStatus.isRefreshing
       })
     }
-  }, [cacheStatus.cacheHits, cacheStatus.cacheMisses])
+  }, [cacheStatus])
 
   const contextValue: SiteContextValue = {
     siteId,

@@ -17,11 +17,10 @@ interface ColorSchemeDrawerProps {
 
 type DrawerStep = 'questionnaire' | 'color-selection' | 'palette-options' | 'final-review';
 
-export default function ColorSchemeDrawer({ 
-  isOpen, 
-  onClose, 
-  onComplete, 
-  appId 
+export default function ColorSchemeDrawer({
+  isOpen,
+  onClose,
+  onComplete
 }: ColorSchemeDrawerProps) {
   const [currentStep, setCurrentStep] = useState<DrawerStep>('questionnaire');
   const [projectAnswers, setProjectAnswers] = useState<ProjectAnswers | null>(null);
@@ -42,7 +41,7 @@ export default function ColorSchemeDrawer({
     }
   }, [isOpen]);
 
-  const generatePaletteOptions = (baseColor: string, answers: ProjectAnswers): ColorPaletteOption[] => {
+  const generatePaletteOptions = (baseColor: string): ColorPaletteOption[] => {
     // Simplified palette generation
     const options = [
       {
@@ -138,9 +137,9 @@ export default function ColorSchemeDrawer({
   const handleColorSelection = (color: string, colorName: string) => {
     setSelectedColor(color);
     setSelectedColorName(colorName);
-    
+
     if (projectAnswers) {
-      const options = generatePaletteOptions(color, projectAnswers);
+      const options = generatePaletteOptions(color);
       setPaletteOptions(options);
       setCurrentStep('palette-options');
     }
@@ -233,22 +232,22 @@ export default function ColorSchemeDrawer({
                   <p className="text-gray-600 text-sm mb-3">
                     {option.description}
                   </p>
-                  
+
                   {/* Color swatches */}
                   <div className="flex space-x-2">
-                    <div 
+                    <div
                       className="w-6 h-6 rounded border"
                       style={{ backgroundColor: option.palette.primary }}
                     />
-                    <div 
+                    <div
                       className="w-6 h-6 rounded border"
                       style={{ backgroundColor: option.palette.secondary }}
                     />
-                    <div 
+                    <div
                       className="w-6 h-6 rounded border"
                       style={{ backgroundColor: option.palette.accent }}
                     />
-                    <div 
+                    <div
                       className="w-6 h-6 rounded border"
                       style={{ backgroundColor: option.palette.surface }}
                     />
@@ -290,10 +289,10 @@ export default function ColorSchemeDrawer({
     <>
       {/* Backdrop */}
       <div className="fixed inset-0 bg-black bg-opacity-50 z-40" onClick={onClose} />
-      
+
       {/* Drawer */}
       <div className={`
-        fixed top-0 right-0 h-full w-full max-w-4xl bg-white shadow-xl z-50 
+        fixed top-0 right-0 h-full w-full max-w-4xl bg-white shadow-xl z-50
         transform transition-transform duration-300 ease-in-out overflow-y-auto
         ${isOpen ? 'translate-x-0' : 'translate-x-full'}
       `}>
@@ -324,18 +323,18 @@ export default function ColorSchemeDrawer({
         {currentStep !== 'questionnaire' && currentStep !== 'final-review' && (
           <div className="p-6 border-t border-gray-200 bg-gray-50">
             <div className="flex justify-between">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={handleBack}
               >
                 Back
               </Button>
-              
+
               {selectedColor && currentStep === 'color-selection' && (
                 <Button
                   onClick={() => {
                     if (projectAnswers && selectedColor && selectedColorName) {
-                      const options = generatePaletteOptions(selectedColor, projectAnswers);
+                      const options = generatePaletteOptions(selectedColor);
                       setPaletteOptions(options);
                       setCurrentStep('palette-options');
                     }

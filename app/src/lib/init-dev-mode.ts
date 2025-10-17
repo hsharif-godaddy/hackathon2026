@@ -5,7 +5,6 @@ import { logger } from './request-context';
  */
 
 import { initializeTestUser } from './database/seed-test-user';
-import { isFeatureEnabled } from './features';
 
 let initialized = false;
 

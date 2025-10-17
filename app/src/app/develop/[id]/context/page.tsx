@@ -21,7 +21,7 @@ interface ContextDebugResponse {
 
 const TYPE_COLORS = {
   template: '#3b82f6',      // blue
-  app: '#10b981',           // green  
+  app: '#10b981',           // green
   visual: '#f59e0b',        // yellow
   element: '#ef4444',       // red
   conversation: '#8b5cf6',  // purple
@@ -81,23 +81,6 @@ const AreaChart = ({
     return acc
   }, [] as Array<{ x: number, y: number, section: ContextSection, percentage: number }>)
 
-  // Create path for area chart
-  const createPath = (points: Array<{ x: number, y: number }>) => {
-    if (points.length === 0) return ''
-
-    const pathCommands = points.map((point, index) => {
-      const command = index === 0 ? 'M' : 'L'
-      return `${command} ${(point.x / 100) * width} ${point.y}`
-    })
-
-    // Close the path at the bottom
-    pathCommands.push(`L ${width} ${height}`)
-    pathCommands.push(`L 0 ${height}`)
-    pathCommands.push('Z')
-
-    return pathCommands.join(' ')
-  }
-
   return (
     <div className="bg-white rounded-lg border p-6">
       <h3 className="text-lg font-semibold mb-4">Context Token Distribution</h3>
@@ -116,7 +99,7 @@ const AreaChart = ({
             const sectionWidth = endX - startX
 
             const isUnused = point.section.type === 'unused'
-            
+
             return (
               <g key={point.section.type}>
                 {/* Area rectangle */}

@@ -22,7 +22,6 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHistoryStore'
-import { useAppStore } from '@/stores/useAppStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { handlePreviewRefresh } from '@/app/develop/components/utils'
@@ -31,9 +30,6 @@ function DevelopPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const appId = useAppIdFromParams()
-
-  // App store - for app lifecycle operations
-  const { restartApp: appStoreRestartApp } = useAppStore()
 
   // Server polling store - unified server status management
   const { startPollingForServer, stopPollingForServer, cleanup: cleanupServerPolling } = useServerPollingStore()
@@ -53,8 +49,6 @@ function DevelopPageContent() {
     hasUnsavedChanges,
     isChatPaneCollapsed,
     isMobile,
-    toggleExpandedPlan,
-    restartApp: restartAppFromStore,
     setChatPaneWidth,
     setIsSelectMode,
     loadingPhase,
@@ -70,7 +64,6 @@ function DevelopPageContent() {
   } = useGitHistoryStore()
 
   // Local state (only what's not in stores)
-  const [showUsageCost, setShowUsageCost] = useState(false)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)
 
   // Store last known iframe state for restoration
@@ -292,7 +285,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode])
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, sendMessage, setInputValue])
 
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
@@ -357,7 +350,7 @@ function DevelopPageContent() {
     }, 500) // Wait 500ms for conversation history to load
 
     return () => clearTimeout(timer)
-  }, [loadingPhase, appId, site, app, conversations.length, searchParams, autoSendInitialMessage, isLoading])
+  }, [loadingPhase, appId, site, app, conversations.length, searchParams, autoSendInitialMessage, isLoading, sendMessage])
 
   // Load git history when page is ready
   useEffect(() => {
@@ -366,33 +359,6 @@ function DevelopPageContent() {
       loadGitHistory(appId)
     }
   }, [loadingPhase, appId, loadGitHistory])
-
-  const handleRestartServer = async () => {
-    if (!appId) return
-
-    console.log('🔄 Starting server restart process...')
-
-    try {
-      await restartAppFromStore(appId, appStoreRestartApp)
-      console.log('✅ App restart completed successfully')
-
-      // Refresh the preview after successful restart
-      setTimeout(() => {
-        handlePreviewRefresh({ lastIframeState })
-      }, 1000)
-
-    } catch (error) {
-      console.error('❌ Error restarting server:', error)
-
-      // More user-friendly error message
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      if (errorMessage.includes('404')) {
-        alert('App not found or not ready for restart. Please try again in a moment.')
-      } else {
-        alert(`Failed to restart server: ${errorMessage}`)
-      }
-    }
-  }
 
   const handlePanelResize = useCallback((newWidth: number) => {
     setChatPaneWidth(newWidth)

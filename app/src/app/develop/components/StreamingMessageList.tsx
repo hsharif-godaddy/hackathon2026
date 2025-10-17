@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, useState, useMemo } from 'react'
+import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import StreamingMessage from './StreamingMessage'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
@@ -44,7 +44,7 @@ export default function StreamingMessageList() {
   }
 
   // Reliable scroll to bottom function
-  const scrollToBottom = (smooth = true, immediate = false) => {
+  const scrollToBottom = useCallback((smooth = true, immediate = false) => {
     // Clear any pending scroll
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current)
@@ -77,7 +77,7 @@ export default function StreamingMessageList() {
       // Immediate scroll
       requestAnimationFrame(performScroll)
     }
-  }
+  }, [isStreaming])
 
   // Auto-scroll on message changes
   useEffect(() => {
@@ -103,7 +103,7 @@ export default function StreamingMessageList() {
 
     prevMessagesLength.current = allMessages.length
     prevLastMessageId.current = currentLastMessageId
-  }, [allMessages, isInitialLoad])
+  }, [allMessages, isInitialLoad, scrollToBottom])
 
   // Handle streaming content updates - more aggressive for better UX
   useEffect(() => {
@@ -111,7 +111,7 @@ export default function StreamingMessageList() {
       // More frequent scroll updates for streaming content
       scrollToBottom(true)
     }
-  }, [isStreaming, activeStream]) // Also depend on activeStream changes
+  }, [isStreaming, activeStream, scrollToBottom]) // Also depend on activeStream changes
 
   // Additional scroll trigger for content changes that might cause layout shifts
   useEffect(() => {
@@ -119,7 +119,7 @@ export default function StreamingMessageList() {
       // Use immediate scroll for layout-changing content to prevent jumping
       scrollToBottom(true, true)
     }
-  }, [isStreaming, activeStream?.content, activeStream?.segments, activeStream?.toolCalls])
+  }, [isStreaming, activeStream, scrollToBottom])
 
   // Handle thinking indicator appearance with immediate scroll
   useEffect(() => {
@@ -131,7 +131,7 @@ export default function StreamingMessageList() {
 
       return () => clearTimeout(thinkingScrollTimeout)
     }
-  }, [isStreaming, activeStream])
+  }, [isStreaming, activeStream, scrollToBottom])
 
   // Cleanup on unmount
   useEffect(() => {

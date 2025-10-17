@@ -174,7 +174,7 @@ export class LocalDeploymentAdapter extends BaseDeploymentAdapter {
     }
   }
 
-  async getMetadata(siteId: string): Promise<{ [key: string]: any; }> {
+  async getMetadata(): Promise<{ [key: string]: any; }> {
     // Local deployments don't need Ceph storage or complex metadata
     return {
       mode: 'local',

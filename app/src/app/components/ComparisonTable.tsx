@@ -1,6 +1,5 @@
 import React from 'react'
 import { text } from '@ux/text'
-import clsx from 'clsx'
 
 interface Feature {
   name: string

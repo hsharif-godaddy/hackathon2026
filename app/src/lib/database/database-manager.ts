@@ -23,7 +23,7 @@ class DatabaseManager {
     const hasDatabaseUrl = process.env.DATABASE_URL?.startsWith('mysql://');
     const hasIndividualMysqlVars = !!process.env.MYSQL_DB_USERNAME && !!process.env.MYSQL_DB_PASSWORD &&
       !!process.env.MYSQL_DB_PATH && !!process.env.MYSQL_DB_PORT && !!process.env.MYSQL_DB_NAME;
-    
+
     this.hasMySqlCredentials = hasDatabaseUrl || hasIndividualMysqlVars;
 
     logger.info('db_manager_init', '🔍 DatabaseManager initialization', {
@@ -62,7 +62,7 @@ class DatabaseManager {
 
     // Parse MySQL configuration from DATABASE_URL or individual env vars
     let config: DatabaseConfig;
-    
+
     if (process.env.DATABASE_URL?.startsWith('mysql://')) {
       // Parse DATABASE_URL format: mysql://user:password@host:port/database
       const url = new URL(process.env.DATABASE_URL);
@@ -93,7 +93,7 @@ class DatabaseManager {
     }
 
     // Load MySQL adapter
-    const { MySQLAdapter } = require('./mysql-adapter');
+    const { MySQLAdapter } = require('./mysql-adapter'); // eslint-disable-line @typescript-eslint/no-var-requires
     return new MySQLAdapter(config);
   }
 

@@ -1,6 +1,5 @@
 import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType, authFetch } from '@godaddy/gasket-auth';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/features';
 import { useMockAuth } from '@/hooks/useMockAuth';
 import { logger } from '@/lib/request-context';
@@ -36,7 +35,6 @@ export function useAuth(onShowMockLogin?: () => void) {
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState<boolean>(true);
-  const router = useRouter();
 
   // Check authentication mode (prefer server config if available)
   const authType = config?.auth?.authType || auth.getType();

@@ -23,7 +23,7 @@ export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
   }
 
   async deploy(config: DeploymentConfig): Promise<DeploymentResult> {
-    const { siteId, accountId, prompt } = config;
+    const { siteId, accountId } = config;
 
     try {
       this.log('info', 'Starting production deployment', { siteId, accountId });

@@ -28,10 +28,9 @@ const brandPersonalities = [
   { id: 'trustworthy', label: 'Trustworthy', description: 'Reliable, secure, dependable' },
 ];
 
-export default function ProjectQuestionnaire({ 
-  onComplete, 
-  onNext, 
-  onBack 
+export default function ProjectQuestionnaire({
+  onComplete,
+  onBack
 }: ProjectQuestionnaireProps) {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<Partial<ProjectAnswers>>({
@@ -68,14 +67,14 @@ export default function ProjectQuestionnaire({
   ];
 
   const currentQ = questions[currentQuestion];
-  
+
   const handleAnswer = (value: string) => {
     if (currentQ.type === 'multi-choice') {
       const currentValues = (answers[currentQ.id as keyof ProjectAnswers] as string[]) || [];
       const newValues = currentValues.includes(value)
         ? currentValues.filter(v => v !== value)
         : [...currentValues, value];
-      
+
       setAnswers(prev => ({
         ...prev,
         [currentQ.id]: newValues,
@@ -127,8 +126,8 @@ export default function ProjectQuestionnaire({
                 onClick={() => handleAnswer(option.id)}
                 className={`
                   p-3 border-2 rounded-lg text-left transition-all hover:border-blue-300
-                  ${currentAnswer === option.id 
-                    ? 'border-blue-500 bg-blue-50' 
+                  ${currentAnswer === option.id
+                    ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 hover:bg-gray-50'
                   }
                 `}
@@ -154,8 +153,8 @@ export default function ProjectQuestionnaire({
                   onClick={() => handleAnswer(option.id)}
                   className={`
                     p-3 border-2 rounded-lg text-left transition-all hover:border-blue-300
-                    ${isSelected 
-                      ? 'border-blue-500 bg-blue-50' 
+                    ${isSelected
+                      ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:bg-gray-50'
                     }
                   `}
@@ -184,7 +183,7 @@ export default function ProjectQuestionnaire({
           <span>{Math.round(((currentQuestion + 1) / questions.length) * 100)}% Complete</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
-          <div 
+          <div
             className="bg-blue-600 h-2 rounded-full transition-all duration-300"
             style={{ width: `${((currentQuestion + 1) / questions.length) * 100}%` }}
           />
@@ -195,7 +194,7 @@ export default function ProjectQuestionnaire({
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">{currentQ.title}</h2>
         <p className="text-gray-600 mb-6">{currentQ.subtitle}</p>
-        
+
         {renderQuestion()}
       </div>
 

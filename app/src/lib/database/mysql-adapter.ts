@@ -143,7 +143,7 @@ export class MySQLAdapter implements DatabaseAdapter {
   }
 
   // MySQL doesn't have PRAGMA, this is a no-op for compatibility
-  pragma(query: string): unknown[] {
+  pragma(): unknown[] {
     logger.warn('PRAGMA queries are not supported in MySQL, returning empty array');
     return [];
   }

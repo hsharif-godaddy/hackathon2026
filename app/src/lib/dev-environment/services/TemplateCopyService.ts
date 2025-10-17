@@ -2,7 +2,7 @@ import { logger } from '../../request-context';
 /**
  * TemplateCopyService handles all template-related operations
  * including template resolution, copying, and validation.
- * 
+ *
  * This service is responsible for:
  * - Resolving template paths from environment configuration
  * - Copying template directories to app destinations
@@ -46,7 +46,7 @@ export class TemplateCopyService {
    * Copy template to app directory with full validation
    */
   async copyTemplate(options: TemplateCopyOptions): Promise<TemplateCopyResult> {
-    const { appId, appPath, appName, templateDir } = options;
+    const { appId, appPath, templateDir } = options;
 
     try {
       // Resolve template path
@@ -110,24 +110,24 @@ export class TemplateCopyService {
   private resolveTemplatePath(templateDir?: string): { templatePath: string; templateVersion: string } {
     // Get template directory from parameter or environment variable, default to constant
     const configuredTemplateDir = templateDir || process.env.APP_TEMPLATE_DIR || DEFAULT_TEMPLATE_DIR;
-    
+
     // Calculate template path - ensure we're looking in the correct project directory
     let templatePath: string;
     if (path.isAbsolute(configuredTemplateDir)) {
       // For absolute paths, validate they're within reasonable bounds
       // Allow absolute paths but ensure they exist and are readable
-      templatePath = safeResolve('/', configuredTemplateDir, { 
-        allowAbsolute: true, 
-        allowTraversal: true 
+      templatePath = safeResolve('/', configuredTemplateDir, {
+        allowAbsolute: true,
+        allowTraversal: true
       });
     } else {
       const currentDir = process.cwd();
-      
+
       // Handle relative paths properly using safe path operations
       if (configuredTemplateDir.startsWith('../')) {
         // If template dir starts with ../, resolve it relative to current directory
-        templatePath = safeResolve(currentDir, configuredTemplateDir, { 
-          allowTraversal: true 
+        templatePath = safeResolve(currentDir, configuredTemplateDir, {
+          allowTraversal: true
         });
       } else {
         // Otherwise, resolve it relative to project root (one level up from app)
@@ -135,10 +135,10 @@ export class TemplateCopyService {
         templatePath = safeJoinWithOptions(projectRoot, [configuredTemplateDir], {});
       }
     }
-    
+
     // Extract template version from template directory
     const templateVersion = extractTemplateVersion(configuredTemplateDir);
-    
+
     return { templatePath, templateVersion };
   }
 
@@ -150,21 +150,21 @@ export class TemplateCopyService {
     // dirPath should be an absolute path within /tmp/apps
     const normalizedPath = path.resolve(dirPath);
     const appsBaseDir = path.resolve('/tmp/apps');
-    
+
     // Check if path is safe - must be within /tmp/apps and not contain traversal sequences
     if (!isSafePath(normalizedPath, appsBaseDir, { allowTraversal: false })) {
       const error = new Error(`Invalid directory path: ${dirPath} is outside allowed base directory ${appsBaseDir}`);
       logger.error(`❌ Path validation failed for directory removal: ${error.message}`);
       throw error;
     }
-    
+
     // Additional check: ensure the normalized path doesn't contain .. sequences
     if (normalizedPath.includes('..')) {
       const error = new Error(`Invalid directory path: ${dirPath} contains directory traversal sequences`);
       logger.error(`❌ Path validation failed: ${error.message}`);
       throw error;
     }
-    
+
     try {
       // Use system commands for more robust removal
       // This handles Git objects and other stubborn files better
@@ -176,7 +176,7 @@ export class TemplateCopyService {
         await execa('chmod', ['-R', '755', normalizedPath], { reject: false });
         await execa('rm', ['-rf', normalizedPath], { reject: false });
       }
-      
+
       logger.info(`🧹 Force cleanup succeeded for: ${dirPath}`);
     } catch (error: any) {
       logger.error(`❌ System-level cleanup failed: ${error.message}`);
@@ -190,13 +190,13 @@ export class TemplateCopyService {
   private async ensureAppDirectory(appPath: string): Promise<void> {
     if (existsSync(appPath)) {
       logger.info(`📁 App directory already exists, removing: ${appPath}`);
-      
+
       try {
         // First attempt: standard removal
         rmSync(appPath, { recursive: true, force: true });
       } catch (error: any) {
         logger.warn(`⚠️ Standard cleanup failed, trying force cleanup: ${error.message}`);
-        
+
         try {
           // Second attempt: Try to fix permissions first, then remove
           await this.forceRemoveDirectory(appPath);
@@ -206,7 +206,7 @@ export class TemplateCopyService {
         }
       }
     }
-    
+
     // Create parent directories if needed
     const parentDir = path.dirname(appPath);
     if (!existsSync(parentDir)) {
@@ -218,19 +218,19 @@ export class TemplateCopyService {
    * Perform the actual file copying with filtering
    */
   private performTemplateCopy(templatePath: string, appPath: string): void {
-    cpSync(templatePath, appPath, { 
+    cpSync(templatePath, appPath, {
       recursive: true,
       filter: (src, _dest) => {
         // Use safe path operations to get relative path
         try {
           // Validate that src is within template directory
           const relativePath = path.relative(templatePath, src);
-          
+
           // Additional safety check - ensure the source path is actually within template
           if (relativePath.startsWith('..')) {
             return false; // Skip files outside template directory
           }
-          
+
           // Skip node_modules and other build/cache directories
           if (relativePath.includes('node_modules') ||
               relativePath.includes('dist') ||
@@ -243,7 +243,7 @@ export class TemplateCopyService {
               relativePath.includes('.dev-ports.json')) {
             return false;
           }
-          
+
           return true;
         } catch {
           // If any path operation fails, skip the file for safety
@@ -265,24 +265,24 @@ export class TemplateCopyService {
     // Check for essential files
     const templatePackageJson = appPathBuilder.join('package.json');
     const templateSrcDir = appPathBuilder.join('src');
-    
+
     if (!existsSync(templatePackageJson)) {
       validationErrors.push(`Template package.json was not copied to ${templatePackageJson}`);
     }
-    
+
     if (!existsSync(templateSrcDir)) {
       validationErrors.push(`Template src directory was not copied to ${templateSrcDir}`);
     }
-    
+
     // Additional validation for v3 template structure
     if (templateVersion === 'v3') {
       const frontendDir = appPathBuilder.join('src', 'frontend');
       const backendDir = appPathBuilder.join('src', 'backend');
-      
+
       if (!existsSync(frontendDir)) {
         validationErrors.push(`V3 template frontend directory was not copied to ${frontendDir}`);
       }
-      
+
       if (!existsSync(backendDir)) {
         validationErrors.push(`V3 template backend directory was not copied to ${backendDir}`);
       }
@@ -317,7 +317,7 @@ export class TemplateCopyService {
   getTemplateInfo(templateDir?: string): { templatePath: string; templateVersion: string; exists: boolean } {
     const { templatePath, templateVersion } = this.resolveTemplatePath(templateDir);
     const exists = existsSync(templatePath);
-    
+
     return {
       templatePath,
       templateVersion,
@@ -367,7 +367,7 @@ export class TemplateCopyService {
       // Find the dev-supervisor source directory in the project root
       const projectRoot = path.resolve(process.cwd(), '..');
       const devSupervisorSourcePath = path.join(projectRoot, 'dev-supervisor');
-      
+
       if (!existsSync(devSupervisorSourcePath)) {
         logger.info(`⚠️ dev-supervisor source directory not found for app ${appId}, Docker build may fail`);
         return;
@@ -377,13 +377,13 @@ export class TemplateCopyService {
       const appDevSupervisorPath = path.join(appPath, 'dev-supervisor');
 
       // Copy the entire dev-supervisor source directory
-      cpSync(devSupervisorSourcePath, appDevSupervisorPath, { 
+      cpSync(devSupervisorSourcePath, appDevSupervisorPath, {
         recursive: true,
         force: true,
         filter: (src, _dest) => {
           // Skip build artifacts and git directories
           const relativePath = path.relative(devSupervisorSourcePath, src);
-          if (relativePath.includes('dist') || 
+          if (relativePath.includes('dist') ||
               relativePath.includes('.git') ||
               relativePath.includes('node_modules')) {
             return false;

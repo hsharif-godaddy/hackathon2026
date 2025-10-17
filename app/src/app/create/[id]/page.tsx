@@ -20,7 +20,6 @@ export default function CreateAppStatus() {
     error,
     retryCount,
     maxRetries,
-    siteId: currentSiteId,
     realAppId,
     initializeSite,
     retry,
@@ -160,7 +159,7 @@ export default function CreateAppStatus() {
     return () => {
       cleanupSiteCreationStore()
     }
-  }, [siteId])
+  }, [siteId, initializeSite])
 
   useEffect(() => {
     logImpressionEvent('create.page.view')();

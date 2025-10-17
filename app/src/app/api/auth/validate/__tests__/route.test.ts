@@ -36,8 +36,6 @@ vi.mock('@/lib/gd-auth-service', () => ({
 }))
 
 describe('Auth validate route', function validateTests() {
-  const originalEnv = process.env.NODE_ENV
-
   beforeEach(function setup() {
     vi.clearAllMocks()
   })
@@ -45,11 +43,11 @@ describe('Auth validate route', function validateTests() {
   function createRequest(token?: string): NextRequest {
     const url = 'https://example.com/api/auth/validate'
     const request = new NextRequest(url)
-    
+
     if (token) {
       request.headers.set('authorization', `Bearer ${token}`)
     }
-    
+
     return request
   }
 
@@ -61,7 +59,7 @@ describe('Auth validate route', function validateTests() {
 
     it('should allow 3-character shopper IDs', async function allow3Chars() {
       const { gdAuthService } = await import('@/lib/gd-auth-service')
-      
+
       vi.mocked(gdAuthService.extractTokenFromRequest).mockReturnValue('mock-token')
       vi.mocked(gdAuthService.authenticate).mockResolvedValue({
         valid: true,
@@ -83,7 +81,7 @@ describe('Auth validate route', function validateTests() {
 
     it('should reject shopper IDs longer than 3 characters', async function reject4Chars() {
       const { gdAuthService } = await import('@/lib/gd-auth-service')
-      
+
       vi.mocked(gdAuthService.extractTokenFromRequest).mockReturnValue('mock-token')
       vi.mocked(gdAuthService.authenticate).mockResolvedValue({
         valid: true,
@@ -106,7 +104,7 @@ describe('Auth validate route', function validateTests() {
 
     it('should reject shopper IDs shorter than 3 characters', async function reject2Chars() {
       const { gdAuthService } = await import('@/lib/gd-auth-service')
-      
+
       vi.mocked(gdAuthService.extractTokenFromRequest).mockReturnValue('mock-token')
       vi.mocked(gdAuthService.authenticate).mockResolvedValue({
         valid: true,
@@ -129,7 +127,7 @@ describe('Auth validate route', function validateTests() {
 
     it('should allow numeric 3-character shopper IDs', async function allowNumeric() {
       const { gdAuthService } = await import('@/lib/gd-auth-service')
-      
+
       vi.mocked(gdAuthService.extractTokenFromRequest).mockReturnValue('mock-token')
       vi.mocked(gdAuthService.authenticate).mockResolvedValue({
         valid: true,
@@ -151,7 +149,7 @@ describe('Auth validate route', function validateTests() {
 
     it('should allow mixed alphanumeric 3-character shopper IDs', async function allowMixed() {
       const { gdAuthService } = await import('@/lib/gd-auth-service')
-      
+
       vi.mocked(gdAuthService.extractTokenFromRequest).mockReturnValue('mock-token')
       vi.mocked(gdAuthService.authenticate).mockResolvedValue({
         valid: true,
@@ -173,7 +171,7 @@ describe('Auth validate route', function validateTests() {
 
     it('should reject missing shopper ID', async function rejectMissing() {
       const { gdAuthService } = await import('@/lib/gd-auth-service')
-      
+
       vi.mocked(gdAuthService.extractTokenFromRequest).mockReturnValue('mock-token')
       vi.mocked(gdAuthService.authenticate).mockResolvedValue({
         valid: true,
@@ -201,7 +199,7 @@ describe('Auth validate route', function validateTests() {
 
     it('should allow any shopper ID length in development', async function allowAny() {
       const { gdAuthService } = await import('@/lib/gd-auth-service')
-      
+
       vi.mocked(gdAuthService.extractTokenFromRequest).mockReturnValue('mock-token')
       vi.mocked(gdAuthService.authenticate).mockResolvedValue({
         valid: true,
@@ -230,7 +228,7 @@ describe('Auth validate route', function validateTests() {
 
     it('should reject invalid tokens before shopper ID check', async function rejectInvalid() {
       const { gdAuthService } = await import('@/lib/gd-auth-service')
-      
+
       vi.mocked(gdAuthService.extractTokenFromRequest).mockReturnValue('mock-token')
       vi.mocked(gdAuthService.authenticate).mockResolvedValue({
         valid: false,

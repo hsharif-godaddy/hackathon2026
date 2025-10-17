@@ -44,7 +44,7 @@ export class GdAuthService {
     // Check environment variable directly to avoid module loading issues
     const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
     const isJWTMode = authType === 'jwt' || (process.env.NODE_ENV === 'production' && !authType);
-    
+
     logger.info('🔍 GdAuthService.constructor.auth-check', {
       message: 'Checking authentication mode',
       authType: authType,
@@ -52,7 +52,7 @@ export class GdAuthService {
       nodeEnv: process.env.NODE_ENV,
       willInitializeGdAuth: isJWTMode
     });
-    
+
     if (isJWTMode) {
       logger.warn('🚨 GdAuthService.constructor.initializing-gd-auth', {
         message: 'About to initialize gd-auth library - this will cause AWS token calls',
@@ -75,9 +75,9 @@ export class GdAuthService {
       message: 'Starting gd-auth initialization - AWS token calls will begin',
       stack: new Error().stack?.split('\n').slice(1, 4).join('\n')
     });
-    
-    const { GdAuth } = require('gd-auth');
-    
+
+    const { GdAuth } = require('gd-auth'); // eslint-disable-line @typescript-eslint/no-var-requires
+
     logger.warn('🚨 GdAuthService.initializeGdAuth.required', {
       message: 'gd-auth module loaded - AWS token manager is now active'
     });
@@ -105,14 +105,14 @@ export class GdAuthService {
       // If auth is disabled or not JWT mode, return mock success
       const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
       const isJWTMode = authType === 'jwt' || (process.env.NODE_ENV === 'production' && !authType);
-      
+
       if (!isJWTMode || !this.gdAuth) {
         logger.info('gd-auth.authenticate.bypass', {
           message: 'Authentication bypassed',
           authType: authType,
           reason: 'Not using JWT authentication'
         });
-        
+
         return {
           valid: true,
           payload: {
@@ -152,7 +152,7 @@ export class GdAuthService {
       const errorData: any = {
         message: error.message
       };
-      
+
       if (error.ssoCode) errorData.ssoCode = error.ssoCode;
       if (error.code) errorData.code = error.code;
       if (error.status) errorData.status = error.status;
@@ -206,12 +206,12 @@ export const gdAuthService = {
     }
     return _gdAuthService;
   },
-  
+
   // Delegate methods for backward compatibility
   extractTokenFromRequest(request: any): string | null {
     return this.instance.extractTokenFromRequest(request);
   },
-  
+
   async authenticate(token: string) {
     return this.instance.authenticate(token);
   }

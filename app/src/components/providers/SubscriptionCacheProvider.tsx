@@ -11,7 +11,7 @@ import { logger } from '@/lib/request-context'
  */
 const getAuthTokenFromCookie = (): string | null => {
   if (typeof document === 'undefined') return null;
-  
+
   const cookies = document.cookie.split(';');
   for (const cookie of cookies) {
     const [name, value] = cookie.trim().split('=');
@@ -28,7 +28,7 @@ interface SubscriptionCacheProviderProps {
 
 /**
  * Subscription Cache Provider
- * 
+ *
  * Initializes and manages the subscription cache for optimal V2 site lookups.
  * This provider should be placed high in the component tree to ensure cache
  * warming happens early in the application lifecycle.
@@ -39,7 +39,7 @@ export default function SubscriptionCacheProvider({ children }: SubscriptionCach
   // Use the same JWT extraction method as production components
   const jwt = getAuthTokenFromCookie()
   const cacheStatus = useSubscriptionCache(jwt)
-  
+
   // Log cache initialization
   useEffect(() => {
     if (isAuthenticated && jwt) {
@@ -49,11 +49,11 @@ export default function SubscriptionCacheProvider({ children }: SubscriptionCach
       })
     }
   }, [isAuthenticated, jwt])
-  
+
   // Log cache performance metrics when they change significantly
   useEffect(() => {
     const totalRequests = cacheStatus.cacheHits + cacheStatus.cacheMisses
-    
+
     // Only log when we have meaningful data (at least 5 requests)
     if (totalRequests >= 5) {
       logger.info('subscription-cache.provider.performance', {
@@ -65,7 +65,7 @@ export default function SubscriptionCacheProvider({ children }: SubscriptionCach
         isRefreshing: cacheStatus.isRefreshing
       })
     }
-  }, [cacheStatus.cacheHits, cacheStatus.cacheMisses])
-  
+  }, [cacheStatus])
+
   return <>{children}</>
 }

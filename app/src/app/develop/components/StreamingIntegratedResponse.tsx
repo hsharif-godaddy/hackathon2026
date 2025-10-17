@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import clsx from 'clsx'
 import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
@@ -23,108 +23,108 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   const isComplete = 'isComplete' in message ? message.isComplete : true
 
   // Create chronological content blocks from segments
-  const chronologicalContent = hasSegments
-    ? (() => {
-        const blocks: Array<{
-          type: 'text' | 'tool'
-          content?: string
-          toolCall?: any
-          order: number
-        }> = []
+  const chronologicalContent = useMemo(() => {
+    if (!hasSegments) return []
 
-        let currentTextBlock = ''
-        let order = 0
+    const blocks: Array<{
+      type: 'text' | 'tool'
+      content?: string
+      toolCall?: any
+      order: number
+    }> = []
 
-        // Track tool calls to combine start/result
-        const toolCallsMap = new Map<string, any>()
+    let currentTextBlock = ''
+    let order = 0
 
-        message.segments?.forEach((segment, index) => {
-          if (segment.type === 'text' || segment.type === 'content') {
-            // Accumulate text content
-            currentTextBlock += segment.content
-          } else if (segment.type === 'tool_start' || segment.type === 'tool_result' || segment.type === 'tool_call') {
-            // Flush any accumulated text before tool
-            if (currentTextBlock.trim()) {
-              blocks.push({
-                type: 'text',
-                content: currentTextBlock,
-                order: order++
-              })
-              currentTextBlock = ''
-            }
+    // Track tool calls to combine start/result
+    const toolCallsMap = new Map<string, any>()
 
-            if (segment.toolCall) {
-              const toolId = segment.toolCall.id
-
-              if (segment.type === 'tool_call') {
-                // For persisted tool_call segments, we have complete tool information
-                const toolCall = {
-                  id: segment.toolCall.id,
-                  name: segment.toolCall.name,
-                  status: segment.toolCall.status || 'completed', // tool_call segments are complete
-                  input: segment.toolCall.input,
-                  result: segment.toolCall.result,
-                  error: segment.toolCall.error,
-                  startTime: segment.toolCall.startTime,
-                  endTime: segment.toolCall.endTime,
-                  duration: segment.toolCall.duration,
-                  order: order++
-                }
-
-                blocks.push({
-                  type: 'tool',
-                  toolCall,
-                  order: toolCall.order
-                })
-              } else {
-                // For streaming tool_start/tool_result segments, combine them
-                if (!toolCallsMap.has(toolId)) {
-                  // First time seeing this tool - create entry
-                  const toolCall = {
-                    id: toolId,
-                    name: segment.toolCall.name,
-                    status: segment.type === 'tool_result' ? 'completed' : 'running',
-                    input: segment.toolCall.input,
-                    result: segment.toolCall.result,
-                    error: segment.toolCall.error,
-                    startTime: segment.toolCall.startTime,
-                    endTime: segment.toolCall.endTime,
-                    order: order++
-                  }
-                  toolCallsMap.set(toolId, toolCall)
-
-                  blocks.push({
-                    type: 'tool',
-                    toolCall,
-                    order: toolCall.order
-                  })
-                } else {
-                  // Update existing tool call
-                  const existingTool = toolCallsMap.get(toolId)!
-                  if (segment.type === 'tool_result') {
-                    existingTool.status = segment.toolCall.status || 'completed'
-                    existingTool.result = segment.toolCall.result
-                    existingTool.error = segment.toolCall.error
-                    existingTool.endTime = segment.toolCall.endTime
-                  }
-                }
-              }
-            }
-          }
-        })
-
-        // Flush any remaining text
+    message.segments?.forEach((segment) => {
+      if (segment.type === 'text' || segment.type === 'content') {
+        // Accumulate text content
+        currentTextBlock += segment.content
+      } else if (segment.type === 'tool_start' || segment.type === 'tool_result' || segment.type === 'tool_call') {
+        // Flush any accumulated text before tool
         if (currentTextBlock.trim()) {
           blocks.push({
             type: 'text',
             content: currentTextBlock,
             order: order++
           })
+          currentTextBlock = ''
         }
 
-        return blocks.sort((a, b) => a.order - b.order)
-      })()
-    : []
+        if (segment.toolCall) {
+          const toolId = segment.toolCall.id
+
+          if (segment.type === 'tool_call') {
+            // For persisted tool_call segments, we have complete tool information
+            const toolCall = {
+              id: segment.toolCall.id,
+              name: segment.toolCall.name,
+              status: segment.toolCall.status || 'completed', // tool_call segments are complete
+              input: segment.toolCall.input,
+              result: segment.toolCall.result,
+              error: segment.toolCall.error,
+              startTime: segment.toolCall.startTime,
+              endTime: segment.toolCall.endTime,
+              duration: segment.toolCall.duration,
+              order: order++
+            }
+
+            blocks.push({
+              type: 'tool',
+              toolCall,
+              order: toolCall.order
+            })
+          } else {
+            // For streaming tool_start/tool_result segments, combine them
+            if (!toolCallsMap.has(toolId)) {
+              // First time seeing this tool - create entry
+              const toolCall = {
+                id: toolId,
+                name: segment.toolCall.name,
+                status: segment.type === 'tool_result' ? 'completed' : 'running',
+                input: segment.toolCall.input,
+                result: segment.toolCall.result,
+                error: segment.toolCall.error,
+                startTime: segment.toolCall.startTime,
+                endTime: segment.toolCall.endTime,
+                order: order++
+              }
+              toolCallsMap.set(toolId, toolCall)
+
+              blocks.push({
+                type: 'tool',
+                toolCall,
+                order: toolCall.order
+              })
+            } else {
+              // Update existing tool call
+              const existingTool = toolCallsMap.get(toolId)!
+              if (segment.type === 'tool_result') {
+                existingTool.status = segment.toolCall.status || 'completed'
+                existingTool.result = segment.toolCall.result
+                existingTool.error = segment.toolCall.error
+                existingTool.endTime = segment.toolCall.endTime
+              }
+            }
+          }
+        }
+      }
+    })
+
+    // Flush any remaining text
+    if (currentTextBlock.trim()) {
+      blocks.push({
+        type: 'text',
+        content: currentTextBlock,
+        order: order++
+      })
+    }
+
+    return blocks.sort((a, b) => a.order - b.order)
+  }, [hasSegments, message.segments])
 
   // Track content changes to show thinking indicator
   useEffect(() => {

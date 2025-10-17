@@ -42,7 +42,7 @@ export class DeploymentAdapterFactory {
     }
 
     // Production detection (multiple indicators)
-    const isProduction = 
+    const isProduction =
       process.env.NODE_ENV === 'production' ||
       !!process.env.MYSQL_DB_USERNAME ||        // MySQL indicates production
       !!process.env.AWS_REGION_NOMAD ||         // AWS/Nomad indicates production
@@ -55,11 +55,11 @@ export class DeploymentAdapterFactory {
 
     // Development mode detection
     const isDevelopment = process.env.NODE_ENV === 'development';
-    
+
     if (isDevelopment) {
       // Use new LOCAL_ENVIRONMENT_MODE system
       const localMode = process.env.LOCAL_ENVIRONMENT_MODE?.toLowerCase() || 'auto';
-      
+
       switch (localMode) {
         case 'docker':
           logger.info('🐳 Development mode with explicit Docker containers');
@@ -71,7 +71,7 @@ export class DeploymentAdapterFactory {
         default:
           // Auto-detect based on Docker availability
           try {
-            require('child_process').execSync('docker info', { stdio: 'ignore', timeout: 5000 });
+            require('child_process').execSync('docker info', { stdio: 'ignore', timeout: 5000 }); // eslint-disable-line @typescript-eslint/no-var-requires
             logger.info('🐳 Development mode with Docker containers (auto-detected)');
             return 'docker';
           } catch {
@@ -93,13 +93,13 @@ export class DeploymentAdapterFactory {
     switch (mode) {
       case 'production':
         return new ProductionDeploymentAdapter();
-        
+
       case 'local':
         return new LocalDeploymentAdapter();
-        
+
       case 'docker':
         return new DockerDeploymentAdapter();
-        
+
       default:
         throw new Error(`Unknown deployment mode: ${mode}`);
     }
@@ -123,7 +123,7 @@ export class DeploymentAdapterFactory {
     recommendedForDevelopment: boolean;
   } {
     const mode = DeploymentAdapterFactory.detectDeploymentMode();
-    
+
     return {
       mode,
       hasAgentsService: !!process.env.AGENTS_SERVICE_URL || mode !== 'production',
@@ -146,7 +146,7 @@ export function getDeploymentAdapter(): DeploymentAdapter {
  */
 export function getDeploymentEnvironmentInfo() {
   const capabilities = DeploymentAdapterFactory.getEnvironmentCapabilities();
-  
+
   logger.info('🔍 Deployment Environment Info:', {
     mode: capabilities.mode,
     nodeEnv: process.env.NODE_ENV,
@@ -156,6 +156,6 @@ export function getDeploymentEnvironmentInfo() {
     hasAWS: !!process.env.AWS_REGION_NOMAD,
     capabilities
   });
-  
+
   return capabilities;
 }

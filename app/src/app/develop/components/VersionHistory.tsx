@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import Tag from '@ux/tag'

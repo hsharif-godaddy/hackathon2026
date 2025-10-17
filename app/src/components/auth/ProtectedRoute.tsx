@@ -8,7 +8,6 @@ import Button from '@ux/button';
 import { text } from '@ux/text';
 import { useGasketConfig } from '@/hooks/useGasketConfig';
 import { useAuth } from '@/hooks/useAuth';
-import { isFeatureEnabled, auth } from '@/lib/features';
 import { MockLoginDialog } from './MockLogin';
 
 interface ProtectedRouteProps {
@@ -36,14 +35,13 @@ export default function ProtectedRoute({
   const [showMockLogin, setShowMockLogin] = useState(false);
 
   // Get gasket configuration and auth state
-  const { config: gasketConfig, isLoading: configLoading } = useGasketConfig();
-  const { 
-    isAuthenticated, 
-    isLoading: authLoading, 
-    isAuthDisabled, 
+  const { isLoading: configLoading } = useGasketConfig();
+  const {
+    isAuthenticated,
+    isLoading: authLoading,
+    isAuthDisabled,
     isMockAuth,
-    mockAuth,
-    handleSignIn 
+    handleSignIn
   } = useAuth(() => setShowMockLogin(true));
 
   // Set client flag after hydration
@@ -118,7 +116,7 @@ export default function ProtectedRoute({
         <>
           <UnauthorizedComponent />
           {showMockLogin && (
-            <MockLoginDialog 
+            <MockLoginDialog
               isOpen={showMockLogin}
               onClose={() => setShowMockLogin(false)}
             />

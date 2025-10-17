@@ -9,10 +9,9 @@ import { ArrowRightIcon, ArrowLeftIcon, CheckIcon } from '@heroicons/react/24/ou
 
 type FlowStep = 'questionnaire' | 'color-selection' | 'palette-options' | 'final-review';
 
-export default function ColorDesignFlow({ 
-  appId, 
-  onComplete, 
-  onCancel 
+export default function ColorDesignFlow({
+  onComplete,
+  onCancel
 }: ColorDesignFlowProps) {
   const [currentStep, setCurrentStep] = useState<FlowStep>('questionnaire');
   const [projectAnswers, setProjectAnswers] = useState<ProjectAnswers | null>(null);
@@ -156,7 +155,7 @@ export default function ColorDesignFlow({
   const handleColorSelection = (color: string, colorName: string) => {
     setSelectedColor(color);
     setSelectedColorName(colorName);
-    
+
     if (projectAnswers) {
       const options = generatePaletteOptions(color, projectAnswers);
       setPaletteOptions(options);
@@ -236,29 +235,29 @@ export default function ColorDesignFlow({
                   <p className="text-gray-600 text-sm mb-4">
                     {option.description}
                   </p>
-                  
+
                   {/* Color swatches */}
                   <div className="flex space-x-2 mb-3">
-                    <div 
+                    <div
                       className="w-8 h-8 rounded border"
                       style={{ backgroundColor: option.palette.primary }}
                     />
-                    <div 
+                    <div
                       className="w-8 h-8 rounded border"
                       style={{ backgroundColor: option.palette.secondary }}
                     />
-                    <div 
+                    <div
                       className="w-8 h-8 rounded border"
                       style={{ backgroundColor: option.palette.accent }}
                     />
-                    <div 
+                    <div
                       className="w-8 h-8 rounded border"
                       style={{ backgroundColor: option.palette.surface }}
                     />
                   </div>
-                  
+
                   <div className="text-xs text-gray-500">
-                    Primary: {option.palette.primary} • 
+                    Primary: {option.palette.primary} •
                     Scheme: {option.palette.scheme}
                   </div>
                 </button>
@@ -279,8 +278,8 @@ export default function ColorDesignFlow({
               </p>
             </div>
 
-            <ColorSchemePreview 
-              palette={selectedPalette} 
+            <ColorSchemePreview
+              palette={selectedPalette}
             />
 
             <div className="flex justify-center">
@@ -316,7 +315,7 @@ export default function ColorDesignFlow({
           <div className="flex justify-center mb-8">
             <div className="flex space-x-8">
               {steps.map((step, index) => (
-                <div 
+                <div
                   key={step.id}
                   className={`flex items-center space-x-2 ${
                     index <= currentStepIndex ? 'text-blue-600' : 'text-gray-400'
@@ -324,8 +323,8 @@ export default function ColorDesignFlow({
                 >
                   <div className={`
                     w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-medium
-                    ${index < currentStepIndex 
-                      ? 'bg-blue-600 border-blue-600 text-white' 
+                    ${index < currentStepIndex
+                      ? 'bg-blue-600 border-blue-600 text-white'
                       : index === currentStepIndex
                       ? 'border-blue-600 text-blue-600 bg-white'
                       : 'border-gray-300 text-gray-400 bg-white'

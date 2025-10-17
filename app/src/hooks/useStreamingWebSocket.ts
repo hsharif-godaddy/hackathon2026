@@ -219,7 +219,7 @@ export function useStreamingWebSocket() {
         logger.info('websocket.agents.available', { message: 'Available agents', agents: data.agents, defaultAgent: data.defaultAgent })
       })
     })
-  }, [setWebSocketState])
+  }, [setWebSocketState, currentAppId])
 
   /**
    * Set up Socket.IO event handlers for streaming

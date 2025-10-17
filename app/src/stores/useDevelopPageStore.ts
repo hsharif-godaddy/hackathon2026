@@ -132,8 +132,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setChatPaneWidth: (width) => set((state) => { state.chatPaneWidth = width }),
     setIsChatPaneCollapsed: (collapsed) => set((state) => { state.isChatPaneCollapsed = collapsed }),
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
-    setIsMobile: (isMobile) => set((state) => { 
-      state.isMobile = isMobile 
+    setIsMobile: (isMobile) => set((state) => {
+      state.isMobile = isMobile
       // Reset activeTab when switching between mobile/desktop to ensure proper layout
       if (state.activeChatTab !== ChatTab.CHAT) {
         state.activeChatTab = ChatTab.CHAT
@@ -147,7 +147,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     resetForNewApp: (appId: string) => {
       logger.debug('develop-store.reset', { message: 'Resetting develop page store for new app', appId })
       set((state) => {
-        state.activeChatTab = ChatTab.CHAT,
+        state.activeChatTab = ChatTab.CHAT
         state.currentAppId = appId
         state.loadingPhase = 'idle'
         state.app = null

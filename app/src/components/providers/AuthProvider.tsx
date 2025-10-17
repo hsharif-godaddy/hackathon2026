@@ -26,9 +26,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: isSwitchboardFeatureFlagsLoading
   } = useSwitchboard();
 
-  const stableSwitchboardFlags = useMemo(() => switchboardFeatureFlags, [
-    JSON.stringify(switchboardFeatureFlags)
-  ]);
+  const stableSwitchboardFlags = useMemo(() => switchboardFeatureFlags, [switchboardFeatureFlags]);
 
   // Load server-side auth configuration
   useEffect(() => {

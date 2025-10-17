@@ -53,7 +53,7 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
     if (isMobile) {
       setPreviewViewMode(PreviewViewMode.MOBILE)
     }
-  }, [isMobile])
+  }, [isMobile, setPreviewViewMode])
 
   const serverState = getServerState(appId)
   const previewUrl = serverState?.isReady ? serverState.url : null
@@ -123,7 +123,7 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
         setPendingStateRestore(null)
       }
     }
-  }, [appId, pendingStateRestore, isWaitingForIframeReady])
+  }, [appId, pendingStateRestore, isWaitingForIframeReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Attempt to restore iframe state (scroll position, etc.)
   const attemptStateRestoration = useCallback(() => {

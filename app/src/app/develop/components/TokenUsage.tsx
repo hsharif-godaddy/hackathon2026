@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react'
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react'
 import { appService } from '@/services/AppService'
 import {
   ChartBarIcon,
@@ -43,7 +43,7 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
     const [isExpanded, setIsExpanded] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
 
-    const fetchUsage = async () => {
+    const fetchUsage = useCallback(async () => {
       try {
         setIsLoading(true)
         const data = await appService.getTokenUsage(siteId || appId)
@@ -54,18 +54,18 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
       } finally {
         setIsLoading(false)
       }
-    }
+    }, [siteId, appId])
 
     // Expose refresh function via ref
     useImperativeHandle(ref, () => ({
       refreshUsage: fetchUsage
-    }), [appId, siteId])
+    }), [fetchUsage])
 
     useEffect(() => {
       if (appId && enabled) {
         fetchUsage()
       }
-    }, [appId, enabled])
+    }, [appId, enabled, fetchUsage])
 
   // Close on click outside
   useEffect(() => {
@@ -136,8 +136,8 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
             ({formatCost(usage.totalCost)})
           </span>
         )}
-        <ChevronDownIcon 
-          className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''} group-hover:text-gray-700`} 
+        <ChevronDownIcon
+          className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''} group-hover:text-gray-700`}
         />
       </button>
 
@@ -153,7 +153,7 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
               <XMarkIcon className="w-4 h-4" />
             </button>
           </div>
-          
+
           {/* Usage Stats */}
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div className="bg-gray-50 p-3 rounded border">
@@ -186,7 +186,7 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
           {/* Operation Breakdown */}
           <div className="space-y-3">
             <h5 className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Operations</h5>
-            
+
             <div className="space-y-2">
               <div className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
                 <span className="text-sm text-gray-700 flex items-center">
@@ -195,7 +195,7 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
                 </span>
                 <span className="font-semibold text-gray-900">{usage.operationCounts.llm_request}</span>
               </div>
-              
+
               <div className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
                 <span className="text-sm text-gray-700 flex items-center">
                   <span className="mr-2">📝</span>
@@ -203,7 +203,7 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
                 </span>
                 <span className="font-semibold text-gray-900">{usage.operationCounts.file_edit}</span>
               </div>
-              
+
               <div className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
                 <span className="text-sm text-gray-700 flex items-center">
                   <span className="mr-2">🔧</span>

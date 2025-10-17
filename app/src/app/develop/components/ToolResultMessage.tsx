@@ -41,14 +41,14 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
     // Match all markdown image formats: ![alt text](image_url)
     const imageMatches = toolResult.matchAll(/!\[([^\]]*)\]\(([^\)]+)\)/g)
     const images = []
-    
+
     for (const match of imageMatches) {
       images.push({
         alt: match[1] || 'Search result image',
         url: match[2]
       })
     }
-    
+
     return images.length > 0 ? images : null
   }
 
@@ -83,7 +83,7 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
                     <div className={`grid gap-3 ${images.length === 1 ? 'grid-cols-1' : images.length === 2 ? 'grid-cols-2' : images.length === 3 ? 'grid-cols-3' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
                       {images.map((imageData, index) => (
                         <div key={index} className="space-y-2">
-                          <img
+                          <img // eslint-disable-line @next/next/no-img-element
                             src={imageData.url}
                             alt={imageData.alt}
                             className="w-full h-auto max-h-48 object-cover rounded-lg shadow-sm border"
@@ -105,7 +105,7 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
                         </div>
                       ))}
                     </div>
-                    
+
                     {/* Show raw markdown for reference */}
                     <details className="mt-4">
                       <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
