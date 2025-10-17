@@ -170,15 +170,51 @@ router.post('/register', async (req: Request, res: Response) => {
   try {
     const { siteId, name, appPath, port, initialPrompt } = req.body;
 
-    if (!siteId) {
-      return res.status(400).json({ error: 'siteId is required' });
+    if (!siteId || typeof siteId !== 'string' || siteId.trim().length === 0) {
+      return res.status(400).json({ error: 'siteId is required and must be a non-empty string' });
     }
 
-    const contextLogger = log.forApp(siteId);
+    if (name !== undefined && (typeof name !== 'string' || name.trim().length === 0)) {
+      return res.status(400).json({ error: 'name must be a non-empty string if provided' });
+    }
+
+    if (appPath !== undefined && (typeof appPath !== 'string' || appPath.trim().length === 0)) {
+      return res.status(400).json({ error: 'appPath must be a non-empty string if provided' });
+    }
+
+    if (port !== undefined && (typeof port !== 'number' || port < 1 || port > 65535)) {
+      return res.status(400).json({ error: 'port must be a valid port number (1-65535) if provided' });
+    }
+
+    if (initialPrompt !== undefined && typeof initialPrompt !== 'string') {
+      return res.status(400).json({ error: 'initialPrompt must be a string if provided' });
+    }
+
+    const sanitizedSiteId = siteId.trim();
+    const sanitizedName = name?.trim();
+    const sanitizedAppPath = appPath?.trim();
+
+    if (process.env.SITE_ID && process.env.SITE_ID !== sanitizedSiteId) {
+      return res.status(403).json({ 
+        error: 'Site ID mismatch',
+        message: 'This agent is locked to a specific site and cannot register other sites'
+      });
+    }
+
+    const finalAppPath = sanitizedAppPath || (process.env.APPS_BASE_DIR ? `${process.env.APPS_BASE_DIR}/${sanitizedSiteId}` : `/tmp/apps/${sanitizedSiteId}`);
+
+    if (process.env.CUSTOMER_APP_DIR && finalAppPath !== process.env.CUSTOMER_APP_DIR) {
+      return res.status(403).json({
+        error: 'App path mismatch',
+        message: 'This agent is locked to a specific app directory'
+      });
+    }
+
+    const contextLogger = log.forApp(sanitizedSiteId);
     contextLogger.info('route.apps.register.begin', {});
 
     // Check if app already exists
-    const existingApp = appRepo.findById(siteId);
+    const existingApp = appRepo.findById(sanitizedSiteId);
     if (existingApp) {
       contextLogger.info('route.apps.register.exists', {});
       
@@ -191,9 +227,8 @@ router.post('/register', async (req: Request, res: Response) => {
 
     // Create minimal app record for agents tracking
     const now = new Date().toISOString();
-    const finalAppPath = appPath || (process.env.APPS_BASE_DIR ? `${process.env.APPS_BASE_DIR}/${siteId}` : `/tmp/apps/${siteId}`);
     const finalPort = port || 3000;
-    const socketPath = process.env.NOMAD_ALLOC_DIR ? `${process.env.NOMAD_ALLOC_DIR}/tmp/${siteId}-dev-supervisor.sock` : `/tmp/dev-supervisor-${siteId}/dev-supervisor.sock`;
+    const socketPath = process.env.NOMAD_ALLOC_DIR ? `${process.env.NOMAD_ALLOC_DIR}/tmp/${sanitizedSiteId}-dev-supervisor.sock` : `/tmp/dev-supervisor-${sanitizedSiteId}/dev-supervisor.sock`;
 
     const stmt = appRepo['db'].prepare(`
       INSERT INTO apps (id, name, path, port, socket_path, initial_prompt, status, created_at, updated_at)
@@ -201,8 +236,8 @@ router.post('/register', async (req: Request, res: Response) => {
     `);
 
     stmt.run(
-      siteId,
-      name || `App ${siteId}`,
+      sanitizedSiteId,
+      sanitizedName || `App ${sanitizedSiteId}`,
       finalAppPath,
       finalPort,
       socketPath,
@@ -212,11 +247,11 @@ router.post('/register', async (req: Request, res: Response) => {
       now
     );
 
-    const app = appRepo.findById(siteId);
+    const app = appRepo.findById(sanitizedSiteId);
     if (!app) {
       throw new Error('Failed to create app record');
     }
-    await appRepo.initGitRepo(siteId);
+    await appRepo.initGitRepo(sanitizedSiteId);
 
     contextLogger.info('route.apps.register.success', {});
 
