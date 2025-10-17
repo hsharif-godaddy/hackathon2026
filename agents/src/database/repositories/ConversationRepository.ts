@@ -179,7 +179,62 @@ export class ConversationRepository {
   }
 
   /**
+   * Get a single message by ID
+   */
+  async getMessageById(messageId: string): Promise<ConversationMessage | null> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM conversation_messages 
+      WHERE id = ?
+    `);
+    const row = stmt.get(messageId) as any;
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      conversationId: row.conversation_id,
+      sender: row.sender,
+      content: row.content,
+      messageType: row.message_type,
+      toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+      segments: row.segments ? JSON.parse(row.segments) : undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      createdAt: new Date(row.created_at)
+    };
+  }
+
+  /**
+   * Update message metadata by merging with existing metadata
+   * This preserves existing metadata fields while adding/updating new ones
+   */
+  async updateMessageMetadata(
+    messageId: string,
+    metadataUpdates: Record<string, any>
+  ): Promise<void> {
+    const stmt = this.db.prepare(`
+      SELECT metadata FROM conversation_messages WHERE id = ?
+    `);
+    const row = stmt.get(messageId) as any;
+
+    if (!row) {
+      throw new Error(`Message with ID ${messageId} not found`);
+    }
+
+    const existingMetadata = row.metadata ? JSON.parse(row.metadata) : {};
+    const mergedMetadata = { ...existingMetadata, ...metadataUpdates };
+
+    const updateStmt = this.db.prepare(`
+      UPDATE conversation_messages 
+      SET metadata = ? 
+      WHERE id = ?
+    `);
+
+    updateStmt.run(JSON.stringify(mergedMetadata), messageId);
+  }
+
+  /**
    * Update a message (useful for streaming updates)
+   * Metadata is merged with existing metadata to preserve previous fields
    */
   async updateMessage(
     messageId: string,
@@ -209,8 +264,20 @@ export class ConversationRepository {
     }
 
     if (updates.metadata !== undefined) {
-      updateFields.push('metadata = ?');
-      values.push(JSON.stringify(updates.metadata));
+      const currentStmt = this.db.prepare(`
+        SELECT metadata FROM conversation_messages WHERE id = ?
+      `);
+      const row = currentStmt.get(messageId) as any;
+      
+      if (row) {
+        const existingMetadata = row.metadata ? JSON.parse(row.metadata) : {};
+        const mergedMetadata = { ...existingMetadata, ...updates.metadata };
+        updateFields.push('metadata = ?');
+        values.push(JSON.stringify(mergedMetadata));
+      } else {
+        updateFields.push('metadata = ?');
+        values.push(JSON.stringify(updates.metadata));
+      }
     }
 
     if (updateFields.length === 0) return;

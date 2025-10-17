@@ -33,6 +33,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   private activeConversations = new Map<string, {
     conversationId: string
     userMessageId: string
+    agentMessageId?: string
     context: ConversationContext
     message?: string
   }>()
@@ -226,6 +227,78 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     }
 
     contextLogger.info('conversation.user_message.saved', {})
+  }
+
+  async startAgentTurn(
+    conversationId: string,
+    context: ConversationContext
+  ): Promise<string> {
+    const contextLogger = context.appId 
+      ? log.withContext({ 
+          appId: context.appId, 
+          agentId: context.agentName,
+          conversationId 
+        })
+      : logger
+
+    contextLogger.info('conversation.agent_turn.start', {
+      socketId: context.socketId
+    })
+
+    const message = await this.conversationRepo.addMessage(conversationId, 'agent', '', {
+      metadata: {
+        socketId: context.socketId,
+        agentName: context.agentName,
+        appId: context.appId,
+        inProgress: true
+      }
+    })
+
+    const activeConversation = this.activeConversations.get(context.socketId)
+    if (activeConversation) {
+      activeConversation.agentMessageId = message.id
+    }
+
+    contextLogger.info('conversation.agent_turn.placeholder_created', {
+      messageId: message.id
+    })
+
+    return message.id
+  }
+
+  async updateAgentTurn(
+    conversationId: string,
+    messageId: string,
+    updates: {
+      content?: string
+      segments?: any[]
+      toolCalls?: any[]
+    },
+    context: ConversationContext
+  ): Promise<void> {
+    const contextLogger = context.appId 
+      ? log.withContext({ 
+          appId: context.appId, 
+          agentId: context.agentName,
+          conversationId 
+        })
+      : logger
+
+    try {
+      await this.conversationRepo.updateMessage(messageId, updates)
+
+      contextLogger.info('conversation.agent_turn.updated', {
+        messageId,
+        hasContent: !!updates.content,
+        segmentsCount: updates.segments?.length || 0,
+        toolCallsCount: updates.toolCalls?.length || 0
+      })
+    } catch (error) {
+      contextLogger.error('conversation.agent_turn.update_failed', {
+        messageId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
   }
 
   async startConversation(
@@ -430,17 +503,35 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       toolNames: toolCalls.map(t => t.name)
     })
 
-    await this.conversationRepo.addMessage(conversationId, 'agent', accumulatedContent, {
-      segments,
-      toolCalls,
-      metadata: {
-        agentId: context.agentName,
-        finalResult: result,
-        streamingEvents: streamingEvents.length
-      }
-    })
-
-    contextLogger.info('conversation.agent_response.saved', {})
+    const activeConversation = this.activeConversations.get(context.socketId)
+    
+    if (activeConversation?.agentMessageId) {
+      await this.conversationRepo.updateMessage(activeConversation.agentMessageId, {
+        content: accumulatedContent,
+        segments,
+        toolCalls,
+        metadata: {
+          agentId: context.agentName,
+          finalResult: result,
+          streamingEvents: streamingEvents.length,
+          inProgress: false
+        }
+      })
+      contextLogger.info('conversation.agent_response.updated', {
+        messageId: activeConversation.agentMessageId
+      })
+    } else {
+      await this.conversationRepo.addMessage(conversationId, 'agent', accumulatedContent, {
+        segments,
+        toolCalls,
+        metadata: {
+          agentId: context.agentName,
+          finalResult: result,
+          streamingEvents: streamingEvents.length
+        }
+      })
+      contextLogger.info('conversation.agent_response.saved', {})
+    }
     
     // Track LLM token usage to database
     if (result?.usage && context.appId) {
@@ -647,13 +738,31 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       socketId: context?.socketId
     })
 
-    // Check for uncommitted changes if we have app context
-    if (context && context.appId) {
-      await this.checkAndCommitChanges(context.appId, 'conversation_error');
-    }
-
-    // Clean up tracking if we have context
     if (context) {
+      const activeConversation = this.activeConversations.get(context.socketId)
+      
+      if (activeConversation?.agentMessageId && conversationId) {
+        try {
+          await this.conversationRepo.updateMessageMetadata(activeConversation.agentMessageId, {
+            error: error.message,
+            errorTimestamp: new Date().toISOString(),
+            inProgress: false,
+            incomplete: true
+          })
+          contextLogger.info('conversation.agent_response.error_state_saved', {
+            messageId: activeConversation.agentMessageId
+          })
+        } catch (updateError) {
+          contextLogger.error('conversation.agent_response.error_state_failed', {
+            error: updateError instanceof Error ? updateError.message : String(updateError)
+          })
+        }
+      }
+
+      if (context.appId) {
+        await this.checkAndCommitChanges(context.appId, 'conversation_error');
+      }
+
       this.activeConversations.delete(context.socketId)
     }
   }

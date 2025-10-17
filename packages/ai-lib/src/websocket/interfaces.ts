@@ -100,6 +100,38 @@ export interface ConversationPersistence {
   ): Promise<void>
 
   /**
+   * Start an agent response turn (creates placeholder message)
+   * @param conversationId - The conversation ID
+   * @param context - Conversation context
+   * @returns Promise resolving to message ID for tracking updates
+   */
+  startAgentTurn?(
+    conversationId: string,
+    context: ConversationContext
+  ): Promise<string>
+
+  /**
+   * Update an in-progress agent message with new content/tools
+   * @param conversationId - The conversation ID
+   * @param messageId - The message ID to update
+   * @param updates - Incremental updates to apply
+   * @param updates.content - Additional content to append
+   * @param updates.segments - Message segments to add/update
+   * @param updates.toolCalls - Tool calls to add/update
+   * @param context - Conversation context
+   */
+  updateAgentTurn?(
+    conversationId: string,
+    messageId: string,
+    updates: {
+      content?: string
+      segments?: any[]
+      toolCalls?: any[]
+    },
+    context: ConversationContext
+  ): Promise<void>
+
+  /**
    * Complete a conversation with final results
    * @param conversationId - The conversation ID
    * @param events - Streaming events captured during the conversation

@@ -104,6 +104,9 @@ export class ExperimentalWebSocketServer {
     context: ConversationContext
     streamingEvents: PersistenceStreamingEvent[]
     startTime: number
+    pendingSegments?: any[]
+    pendingToolCalls?: Map<string, any>
+    accumulatedContent?: string
   }> = new Map()
 
   constructor(httpServer: HTTPServer, config: ExperimentalWebSocketConfig) {
@@ -213,6 +216,30 @@ export class ExperimentalWebSocketServer {
   }
 
   /**
+   * Initialize conversation buffers for incremental persistence
+   * Ensures all required properties are defined
+   */
+  private initializeConversationBuffers(conversation: {
+    pendingSegments?: any[]
+    pendingToolCalls?: Map<string, any>
+    accumulatedContent?: string
+  }): asserts conversation is {
+    pendingSegments: any[]
+    pendingToolCalls: Map<string, any>
+    accumulatedContent: string
+  } {
+    if (!conversation.pendingSegments) {
+      conversation.pendingSegments = []
+    }
+    if (!conversation.pendingToolCalls) {
+      conversation.pendingToolCalls = new Map()
+    }
+    if (!conversation.accumulatedContent) {
+      conversation.accumulatedContent = ''
+    }
+  }
+
+  /**
    * Capture streaming event for persistence
    */
   private async captureStreamingEvent(socketId: string, type: string, content?: string, data?: any): Promise<void> {
@@ -234,6 +261,102 @@ export class ExperimentalWebSocketServer {
         event,
         conversation.context
       )
+
+      this.initializeConversationBuffers(conversation)
+
+      const agentMessageId = conversation.context.agentMessageId
+      
+      if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+        console.log('📝 Event captured for persistence:', {
+          type,
+          hasAgentMessageId: !!agentMessageId,
+          hasUpdateMethod: !!this.config.messagePersistence.updateAgentTurn,
+          willTriggerUpdate: !!(agentMessageId && this.config.messagePersistence.updateAgentTurn && type === 'tool_result'),
+          contentLength: content?.length || 0
+        })
+      }
+      
+      if (agentMessageId && this.config.messagePersistence.updateAgentTurn) {
+        const timestamp = event.timestamp || new Date()
+
+        if (type === 'chunk' || type === 'text_chunk') {
+          if (content) {
+            conversation.accumulatedContent += content
+            conversation.pendingSegments.push({
+              id: `seg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+              type: 'content',
+              content,
+              timestamp,
+              metadata: undefined
+            })
+          }
+        } else if (type === 'tool_start' && data?.tool) {
+          const toolId = data.tool.id || `tool_${Date.now()}`
+          const toolData = {
+            id: toolId,
+            name: data.tool.name,
+            input: data.tool.input,
+            status: 'running',
+            startTime: timestamp
+          }
+          conversation.pendingToolCalls.set(toolId, toolData)
+
+          conversation.pendingSegments.push({
+            id: `seg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'tool_call',
+            timestamp,
+            toolCall: toolData
+          })
+        } else if (type === 'tool_result' && data?.tool) {
+          const toolId = data.tool.id
+          const existingTool = conversation.pendingToolCalls.get(toolId)
+
+          if (existingTool) {
+            existingTool.input = data.tool.input || existingTool.input
+            existingTool.result = data.tool.output ?? content ?? data.tool.result
+            existingTool.status = 'completed'
+            existingTool.endTime = timestamp
+
+            if (existingTool.startTime && timestamp) {
+              const startTime = new Date(existingTool.startTime).getTime()
+              const endTime = new Date(timestamp).getTime()
+              existingTool.duration = endTime - startTime
+            }
+
+            const segmentIndex = conversation.pendingSegments.findIndex(s =>
+              s.type === 'tool_call' && s.toolCall?.id === toolId
+            )
+            if (segmentIndex >= 0) {
+              conversation.pendingSegments[segmentIndex].toolCall = existingTool
+            }
+
+            try {
+              if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
+                console.log('💾 Updating agent turn with tool result:', {
+                  messageId: agentMessageId,
+                  toolId,
+                  toolName: existingTool.name,
+                  contentLength: conversation.accumulatedContent.length,
+                  segmentsCount: conversation.pendingSegments.length,
+                  toolCallsCount: conversation.pendingToolCalls.size
+                })
+              }
+              await this.config.messagePersistence.updateAgentTurn(
+                conversation.conversationId,
+                agentMessageId,
+                {
+                  content: conversation.accumulatedContent,
+                  segments: [...conversation.pendingSegments],
+                  toolCalls: Array.from(conversation.pendingToolCalls.values())
+                },
+                conversation.context
+              )
+            } catch (error) {
+              console.warn('⚠️ Failed to update agent turn with tool result:', error)
+            }
+          }
+        }
+      }
     }
   }
 
@@ -654,6 +777,7 @@ export class ExperimentalWebSocketServer {
           // Update context but keep the same conversation ID
           existingConversation.context = persistenceContext
           existingConversation.streamingEvents = []
+          this.initializeConversationBuffers(existingConversation)
         } else {
           // Create new conversation (first message or agent switch)
           conversationId = await this.config.messagePersistence.startConversation(
@@ -671,7 +795,10 @@ export class ExperimentalWebSocketServer {
             agentName,
             context: persistenceContext,
             streamingEvents: [],
-            startTime: Date.now()
+            startTime: Date.now(),
+            pendingSegments: [],
+            pendingToolCalls: new Map(),
+            accumulatedContent: ''
           })
         }
       }
@@ -829,6 +956,19 @@ export class ExperimentalWebSocketServer {
 
     // Keep the original user prompt intact - no modification!
     const originalPrompt = data.message
+
+    const activeConversation = this.activeConversations.get(socket.id)
+    if (activeConversation && this.config.messagePersistence?.startAgentTurn) {
+      try {
+        const messageId = await this.config.messagePersistence.startAgentTurn(
+          activeConversation.conversationId,
+          activeConversation.context
+        )
+        activeConversation.context.agentMessageId = messageId
+      } catch (error) {
+        console.warn('⚠️ Failed to start agent turn:', error)
+      }
+    }
 
     // Start streaming using streamGenerate with clean message assembly
     let streamResult
