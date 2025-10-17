@@ -1,8 +1,9 @@
+import config from "../lib/config";
+import { App } from "aws-cdk-lib";
+import {AiroBuilderStack} from "../lib/application-stack";
+import { MySQLV2Stack } from "../lib/mysql-v2-stack";
+import { AiroJWTKeyStack } from "../lib/airo-jwt-key-stack";
 import { MonitoringStack } from '../lib/monitoring-stack';
-import { MySQLV2Stack } from '../lib/mysql-v2-stack';
-import { AiroBuilderStack } from '../lib/application-stack';
-import config from '../lib/config';
-import { App } from 'aws-cdk-lib';
 
 /**
  * Main function to execute the CDK app
@@ -30,6 +31,9 @@ async function main() {
     env,
     ...config.monitoring,
   });
+
+  // Create JWT Key Management stack for secure token signing
+  new AiroJWTKeyStack(app, 'AiroJWTKeyStack', { env: env });
 
   app.synth();
 }

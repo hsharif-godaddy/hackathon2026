@@ -1,11 +1,13 @@
 /**
  * JWT Validator for Agents
- * Validates JWT tokens using public key from environment
+ * Validates JWT tokens using public keys from JWKS endpoint
  */
 
 import { createRequire } from 'module';
+import { createPublicKey, type JsonWebKey } from 'node:crypto';
 import { getJWTAgentConfig, validateJWTAgentConfig } from './jwks-config.js';
 import { auth } from '../services/features.js';
+import { logger } from '../logging/index.js';
 
 const require = createRequire(import.meta.url);
 const jwt = require('jsonwebtoken');
@@ -27,8 +29,17 @@ export interface ValidationResult {
   reason?: string;
 }
 
+interface JWK extends JsonWebKey {
+  kid: string;
+  use?: string;
+  key_ops?: string[];
+  alg?: string;
+}
+
 export class JWTValidator {
   private config: ReturnType<typeof getJWTAgentConfig>;
+  private keyCache = new Map<string, { key: string; expiresAt: number }>();
+  private readonly cacheTTL = 5 * 60 * 1000; // 5 minutes
 
   constructor() {
     // Validate config on startup
@@ -41,7 +52,7 @@ export class JWTValidator {
   }
 
   /**
-   * Validate JWT token using the public key from environment
+   * Validate JWT token using public key from JWKS endpoint
    */
   async validateToken(token: string): Promise<ValidationResult> {
     if (!token) {
@@ -49,8 +60,11 @@ export class JWTValidator {
     }
 
     try {
+      // Get the public key from JWKS endpoint
+      const publicKey = await this.getPublicKey(token);
+
       // Verify and decode the JWT using the public key
-      const decoded = jwt.verify(token, this.config.publicKey, {
+      const decoded = jwt.verify(token, publicKey, {
         algorithms: this.config.algorithms,
         issuer: this.config.issuer,
         audience: this.config.audience
@@ -72,6 +86,92 @@ export class JWTValidator {
         valid: false,
         reason: this.sanitizeErrorMessage(error)
       };
+    }
+  }
+
+  /**
+   * Get public key for JWT validation by fetching from JWKS endpoint
+   */
+  private async getPublicKey(token: string): Promise<string> {
+    const kid = this.getKeyIdFromToken(token);
+    return await this.fetchPublicKeyFromJWKS(kid);
+  }
+
+  /**
+   * Get key ID from JWT token header
+   */
+  private getKeyIdFromToken(token: string): string {
+    const decoded = jwt.decode(token, { complete: true });
+    if (!decoded || !decoded.header || !decoded.header.kid) {
+      throw new Error('JWT token missing kid in header');
+    }
+    return decoded.header.kid;
+  }
+
+  /**
+   * Convert JWK to PEM format using Node.js crypto
+   */
+  private jwkToPem(jwk: JWK): string {
+    const keyObject = createPublicKey({
+      key: jwk as JsonWebKey,
+      format: 'jwk'
+    });
+    
+    return keyObject.export({
+      type: 'spki',
+      format: 'pem'
+    }) as string;
+  }
+
+  /**
+   * Fetch public key from JWKS endpoint
+   */
+  private async fetchPublicKeyFromJWKS(kid: string): Promise<string> {
+    const cached = this.keyCache.get(kid);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.key;
+    }
+
+    try {
+      const response = await fetch(this.config.jwksUrl, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (!response.ok) {
+        throw new Error(`JWKS endpoint returned ${response.status}`);
+      }
+
+      const jwks: { keys: JWK[] } = await response.json();
+      const jwk = jwks.keys?.find((key) => key.kid === kid);
+      
+      if (!jwk) {
+        throw new Error(`Key with kid '${kid}' not found in JWKS`);
+      }
+
+      const publicKey = this.jwkToPem(jwk);
+      
+      this.keyCache.set(kid, {
+        key: publicKey,
+        expiresAt: Date.now() + this.cacheTTL
+      });
+
+      logger.info('jwks.key.fetched', {
+        message: 'Public key fetched from JWKS',
+        kid,
+        jwksUrl: this.config.jwksUrl
+      });
+
+      return publicKey;
+
+    } catch (error: unknown) {
+      logger.error('jwks.fetch.error', {
+        message: 'Failed to fetch public key from JWKS',
+        kid,
+        jwksUrl: this.config.jwksUrl,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw new Error(`Failed to fetch public key: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -137,7 +237,7 @@ export class JWTValidator {
       issuer: this.config.issuer,
       audience: this.config.audience,
       algorithms: this.config.algorithms,
-      hasPublicKey: !!this.config.publicKey
+      jwksUrl: this.config.jwksUrl
     };
   }
 }

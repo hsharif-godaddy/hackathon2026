@@ -27,6 +27,7 @@
     "install-gd-packages": "pnpm --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ install @godaddy/gasket-plugin-auth"
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "3.679.0",
     "@aws-sdk/client-sqs": "3.679.0",
     "@aws-sdk/client-sts": "3.679.0",
     "@fullstory/browser": "^2.0.6",

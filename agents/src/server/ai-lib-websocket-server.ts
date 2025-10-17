@@ -452,23 +452,13 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         if (authType === AuthType.MOCK) {
           // Mock authentication for testing
           socket.handshake.auth = { 
-            siteId: auth.getSiteId(AuthType.MOCK)
-          };
-          next();
-          return;
-        }
-        
-        // Handle JWT_PUBLIC_KEY bypass for existing containers (legacy compatibility)
-        // TODO: Remove this once we have a proper JWT implementation
-        if (!auth.hasJWTPublicKey()) {
-          socket.handshake.auth = { 
-            siteId: auth.getSiteId(AuthType.JWT)
-          };
-          next();
-          return;
-        }
+          siteId: auth.getSiteId(AuthType.MOCK)
+        };
+        next();
+        return;
+      }
 
-        // Debug: Log handshake details
+      // Debug: Log handshake details
         logger.info('websocket.auth.handshake_debug', {
           message: 'WebSocket handshake details',
           hasAuth: !!socket.handshake.auth,
@@ -507,9 +497,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           throw new Error('Missing or invalid Authorization header');
         }
         
-        // Validate JWT using public key
+        // Validate JWT using JWKS endpoint
         logger.info('websocket.auth.jwt_validation.start', {
-          message: 'Validating JWT token using public key'
+          message: 'Validating JWT token using JWKS'
         });
         
         const validationResult = await jwtAuthMiddleware.jwtValidator.validateToken(token);

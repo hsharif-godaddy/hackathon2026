@@ -83,8 +83,21 @@ export class AlarmUtil {
     comparisonOperator: cloudwatch.ComparisonOperator = cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
     treatMissingData: TreatMissingData = TreatMissingData.NOT_BREACHING
   ): void {
-    const snsTopicArn = StringParameter.valueForStringParameter(scope, '/AdminParams/SNS/AlarmNotificationTopic');
-    const existingSnsTopic = sns.Topic.fromTopicArn(scope, `SNSAlertTopic${id}`, snsTopicArn);
+    let snsActions: cloudwatch.IAlarmAction[] = [];
+    
+    try {
+      const snsTopicArn = StringParameter.valueForStringParameter(scope, '/AdminParams/SNS/AlarmNotificationTopic');
+      
+      // Check if we got a valid ARN (not a dummy value)
+      if (snsTopicArn && snsTopicArn.startsWith('arn:') && !snsTopicArn.includes('dummy-value')) {
+        const existingSnsTopic = sns.Topic.fromTopicArn(scope, `SNSAlertTopic${id}`, snsTopicArn);
+        snsActions = [new cloudwatchActions.SnsAction(existingSnsTopic)];
+      } else {
+        console.warn(`Warning: Invalid or dummy SNS topic ARN found: ${snsTopicArn}. Alarm ${id} will be created without SNS notifications.`);
+      }
+    } catch (error) {
+      console.warn(`Warning: Could not retrieve SNS topic ARN from parameter store: ${error}. Alarm ${id} will be created without SNS notifications.`);
+    }
 
     const alarm = new cloudwatch.Alarm(scope, id, {
       metric: metric,
@@ -95,8 +108,11 @@ export class AlarmUtil {
       comparisonOperator: comparisonOperator
     });
 
-    alarm.addAlarmAction(new cloudwatchActions.SnsAction(existingSnsTopic));
-    alarm.addOkAction(new cloudwatchActions.SnsAction(existingSnsTopic));
+    // Add SNS actions only if we have a valid SNS topic
+    snsActions.forEach(action => {
+      alarm.addAlarmAction(action);
+      alarm.addOkAction(action);
+    });
   }
 }
 

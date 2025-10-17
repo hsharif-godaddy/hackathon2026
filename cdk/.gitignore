@@ -49,4 +49,6 @@ next-env.d.ts
 /app/*.d.ts
 /lib/*.js
 /lib/*.d.ts
+/lambda/*.js
+/lambda/*.d.ts
 !/lib/*.config.js

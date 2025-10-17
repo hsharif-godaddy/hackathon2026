@@ -19,4 +19,15 @@ export default gasket.actions.getNextConfig({
     'airo-builder.dev-godaddy.com',
     'airo-builder-local.dev-godaddy.com'
   ],
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Exclude server-only modules from client bundle
+      // This is the standard Next.js approach for conditional server imports
+      config.externals = config.externals || [];
+      config.externals.push({
+        './jwt-service': 'commonjs ./jwt-service',
+      });
+    }
+    return config;
+  },
 });

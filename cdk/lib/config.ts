@@ -44,8 +44,14 @@ interface Config {
   serverlessV2MaxCapacity: number;
   mysqlReadersCount: number;
   gocodeAssumeRoleArns: string[];
+  katanaEcsTaskRoleArn: string[];  // Katana ECS Task Role for JWT access
   awsIamJwtAccount: string;
   monitoring: MonitoringConfig;
+  jwt: {
+    rotationIntervalDays: number;
+    keyExpiryDays: number;
+    gracePeriodDays: number;
+  };
 }
 
 const devConfig: Config = {
@@ -62,6 +68,11 @@ const devConfig: Config = {
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
+  ],
+  katanaEcsTaskRoleArn: [
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5688GlobalEcsTaskRole6C689234',
+    'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7',
+    'arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Ops'
   ],
   vpnIps: {
     "165.1.180.132/31": "Prisma External (India West)",
@@ -87,6 +98,11 @@ const devConfig: Config = {
       rdsMaxConnections: 100,
     },
   },
+  jwt: {
+    rotationIntervalDays: 7,    // Rotate keys weekly
+    keyExpiryDays: 60,          // Keys expire after 60 days
+    gracePeriodDays: 30         // Keep old keys for 30 days during rotation
+  }
 };
 
 const testConfig: Config = {
@@ -104,6 +120,7 @@ const testConfig: Config = {
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
   ],
+  katanaEcsTaskRoleArn: ['arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7'],
   vpnIps: {},
   awsIamJwtAccount: '333184933228',
   monitoring: {
@@ -120,6 +137,11 @@ const testConfig: Config = {
       rdsMaxConnections: 200,
     },
   },
+  jwt: {
+    rotationIntervalDays: 14,   // Rotate keys bi-weekly in test
+    keyExpiryDays: 90,          // Keys expire after 90 days
+    gracePeriodDays: 30         // Keep old keys for 30 days during rotation
+  }
 };
 
 const prodConfig: Config = {
@@ -135,6 +157,7 @@ const prodConfig: Config = {
   gocodeAssumeRoleArns: [
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
   ],
+  katanaEcsTaskRoleArn: ['arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment6030GlobalEcsTaskRole99409837'],
   vpnIps: {},
   awsIamJwtAccount: '377100941779',
   monitoring: {
@@ -149,6 +172,11 @@ const prodConfig: Config = {
       rdsMaxConnections: 300,
     },
   },
+  jwt: {
+    rotationIntervalDays: 30,   // Rotate keys monthly in production
+    keyExpiryDays: 120,         // Keys expire after 120 days
+    gracePeriodDays: 30         // Keep old keys for 30 days during rotation
+  }
 };
 
 

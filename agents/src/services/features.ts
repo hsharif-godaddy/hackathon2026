@@ -28,7 +28,7 @@ interface AgentFeatureConfig {
   authType: AuthType
   
   // JWT configuration
-  jwtPublicKey: string | undefined
+  jwksUrl: string | undefined
   siteId: string
   
   // OpenAI configuration
@@ -103,7 +103,7 @@ function parseEnvironmentFeatures(): AgentFeatureConfig {
     authType: determineAuthType(),
     
     // JWT configuration
-    jwtPublicKey: process.env.JWT_PUBLIC_KEY,
+    jwksUrl: process.env.JWKS_URL || 'https://airo-builder.test-godaddy.com/.well-known/jwks.json',
     siteId: process.env.SITE_ID || 'default-site',
         
     // OpenAI configuration
@@ -186,15 +186,15 @@ export const auth = {
   /** Check if authentication is required (not NONE) */
   isRequired: () => getAgentFeatures().authType !== AuthType.NONE,
   
-  /** Get JWT public key (undefined if not set or empty) */
-  getJWTPublicKey: () => {
-    const key = getAgentFeatures().jwtPublicKey;
-    return key && key.trim() !== '' ? key : undefined;
+  /** Get JWKS URL (undefined if not set or empty) */
+  getJWKSUrl: () => {
+    const url = getAgentFeatures().jwksUrl;
+    return url && url.trim() !== '' ? url : undefined;
   },
-  /** Check if JWT public key is available and not empty */
-  hasJWTPublicKey: () => {
-    const key = getAgentFeatures().jwtPublicKey;
-    return key !== undefined && key.trim() !== '';
+  /** Check if JWKS URL is available and not empty */
+  hasJWKSUrl: () => {
+    const url = getAgentFeatures().jwksUrl;
+    return url !== undefined && url.trim() !== '';
   },
   /** Get site ID for authentication context */
   getSiteId: (authType?: AuthType) => {

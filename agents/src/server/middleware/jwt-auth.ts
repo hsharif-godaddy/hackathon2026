@@ -1,6 +1,6 @@
 /**
  * JWT Authentication Middleware for Agents
- * Validates JWTs using public key from environment
+ * Validates JWTs using public keys from JWKS endpoint
  */
 
 import { Request, Response, NextFunction } from 'express';
@@ -19,7 +19,7 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export class JWTAuthMiddleware {
-  public jwtValidator: ReturnType<typeof import('../../lib/jwt-validator').getJWTValidator>;
+  public jwtValidator: ReturnType<typeof getJWTValidator>;
   private readonly MAX_TOKEN_SIZE = 10000;
 
   constructor() {

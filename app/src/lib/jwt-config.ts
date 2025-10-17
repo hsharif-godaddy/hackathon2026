@@ -4,8 +4,8 @@
  */
 
 export interface JWTConfig {
-  privateKey: string;
-  publicKey: string;
+  secretName: string;
+  awsRegion: string;
 }
 
 export interface JWTClaims {
@@ -21,23 +21,14 @@ export interface JWTClaims {
 
 /**
  * Get JWT configuration from environment variables
- * Only requires private and public keys
  */
 export function getJWTConfig(): JWTConfig {
-  const privateKey = process.env.JWT_PRIVATE_KEY;
-  const publicKey = process.env.JWT_PUBLIC_KEY;
-  
-  if (!privateKey) {
-    throw new Error('JWT_PRIVATE_KEY environment variable is required');
-  }
-  
-  if (!publicKey) {
-    throw new Error('JWT_PUBLIC_KEY environment variable is required');
-  }
+  const secretName = process.env.JWT_SECRETS_NAME || 'dev-airo-jwt-keys';
+  const awsRegion = process.env.AWS_REGION || 'us-west-2';
 
   return {
-    privateKey: privateKey.replace(/\\n/g, '\n'),
-    publicKey: publicKey.replace(/\\n/g, '\n')
+    secretName,
+    awsRegion
   };
 }
 
@@ -49,7 +40,6 @@ export function getJWTConstants() {
     issuer: 'airo-app',
     audience: 'agents-service',
     algorithm: 'RS256' as const,
-    keyId: 'key-1',
     expiresIn: '12h'
   };
 }
