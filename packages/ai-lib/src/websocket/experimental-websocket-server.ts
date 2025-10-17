@@ -3,10 +3,10 @@ import { Server as HTTPServer } from 'http'
 import type { ExperimentalAgentFactory, ExperimentalAgentWrapper } from '../core/agent-factory-experimental.js'
 import { createExperimentalAgentFactory } from '../core/agent-factory-experimental.js'
 import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '../utils/model-pricing.js'
-import type { 
-  MessageProvider, 
-  ContextProvider, 
-  ConversationPersistence, 
+import type {
+  MessageProvider,
+  ContextProvider,
+  ConversationPersistence,
   ConversationPersistenceWithCleanup,
   ConversationMessage,
   PersistenceStreamingEvent,
@@ -244,32 +244,42 @@ export class ExperimentalWebSocketServer {
     const baseStream = streamResult.baseStream
     if (!baseStream) {
       // Fallback to text-only streaming if baseStream is not available
-      for await (const chunk of streamResult.textStream) {
-        const chunkData = {
-          step: currentStep,
-          source: 'ai_response'
-        }
-
-        socket.emit('message', {
-          type: 'chunk',
-          content: chunk,
-          data: chunkData
-        } as WebSocketMessage)
-
-        await this.captureStreamingEvent(socket.id, 'chunk', chunk, chunkData)
-      }
+      await this.processTextOnlyStream(socket, streamResult, currentStep)
       return
     }
 
+    let reader: ReadableStreamDefaultReader | null = null
+    const socketId = socket.id
+    const abortController = this.activeStreams.get(socketId)
+
     try {
-      const reader = baseStream.getReader()
+      reader = baseStream.getReader()
       const accumulatedToolInput = new Map<string, string>() // Track tool input deltas
       let eventCount = 0
       let toolEventCount = 0
 
       // eslint-disable-next-line no-constant-condition
       while (true) { // Intentional infinite loop until stream is done
-        const { done, value } = await reader.read()
+        // Check if the stream was cancelled
+        if (abortController?.signal.aborted) {
+          console.warn('⚠️ Stream processing cancelled by client')
+          break
+        }
+
+        let readResult
+        try {
+          readResult = await reader!.read()
+        } catch (readError: unknown) {
+          // Handle specific stream read errors
+          if (this.isNetworkError(readError)) {
+            const errorMessage = readError instanceof Error ? readError.message : String(readError)
+            console.warn('⚠️ Network error during stream read, attempting graceful fallback:', errorMessage)
+            throw readError // Re-throw to trigger fallback
+          }
+          throw readError
+        }
+
+        const { done, value } = readResult
 
         if (done) {
           break
@@ -390,10 +400,61 @@ export class ExperimentalWebSocketServer {
           }
         }
       }
-    } catch (error) {
-      console.error('❌ Error processing baseStream, falling back to text-only:', error)
-      // Fallback to text-only streaming
+    } catch (error: unknown) {
+      // Enhanced error logging with structured information
+      const errorInfo = this.analyzeStreamError(error)
+
+      console.error('❌ Error processing baseStream, falling back to text-only:', {
+        errorType: errorInfo.type,
+        errorMessage: errorInfo.message,
+        isNetworkError: errorInfo.isNetworkError,
+        isAbortError: errorInfo.isAbortError,
+        originalError: error
+      })
+
+      // Don't attempt fallback if the stream was intentionally cancelled
+      if (errorInfo.isAbortError) {
+        console.info('ℹ️ Stream processing was cancelled, skipping fallback')
+        return
+      }
+
+      // Fallback to text-only streaming with better error handling
+      try {
+        await this.processTextOnlyStream(socket, streamResult, currentStep)
+      } catch (fallbackError: unknown) {
+        console.error('❌ Fallback to text-only streaming also failed:', fallbackError)
+        // Emit error to client as last resort
+        socket.emit('message', {
+          type: 'error',
+          content: `Stream processing failed: ${errorInfo.message}`,
+          data: {
+            timestamp: new Date().toISOString(),
+            errorType: errorInfo.type,
+            step: currentStep
+          }
+        } as WebSocketMessage)
+      }
+    } finally {
+      // Ensure reader is always cleaned up
+      await this.safeCleanupReader(reader)
+    }
+  }
+
+  /**
+   * Helper method to safely process text-only streaming
+   */
+  private async processTextOnlyStream(socket: any, streamResult: any, currentStep: number): Promise<void> {
+    const socketId = socket.id
+    const abortController = this.activeStreams.get(socketId)
+
+    try {
       for await (const chunk of streamResult.textStream) {
+        // Check if the stream was cancelled
+        if (abortController?.signal.aborted) {
+          console.warn('⚠️ Text stream processing cancelled by client')
+          break
+        }
+
         const chunkData = {
           step: currentStep,
           source: 'ai_response'
@@ -407,6 +468,119 @@ export class ExperimentalWebSocketServer {
 
         await this.captureStreamingEvent(socket.id, 'chunk', chunk, chunkData)
       }
+    } catch (error: unknown) {
+      const errorInfo = this.analyzeStreamError(error)
+
+      if (!errorInfo.isAbortError) {
+        console.error('❌ Error in text-only stream processing:', errorInfo)
+        throw error
+      }
+    }
+  }
+
+  /**
+   * Analyze stream errors to provide better error handling
+   */
+  private analyzeStreamError(error: unknown): {
+    type: string
+    message: string
+    isNetworkError: boolean
+    isAbortError: boolean
+  } {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorName = error instanceof Error ? error.name : 'UnknownError'
+
+    // Check for abort/cancellation errors (both UK and US spellings)
+    const isAbortError = errorName === 'AbortError' ||
+                        errorMessage.includes('aborted') ||
+                        errorMessage.includes('cancelled') ||
+                        errorMessage.includes('canceled')
+
+    // Check for network-related errors
+    const isNetworkError = this.isNetworkError(error)
+
+    let errorType = 'UnknownError'
+    if (isAbortError) {
+      errorType = 'AbortError'
+    } else if (isNetworkError) {
+      errorType = 'NetworkError'
+    } else if (errorName) {
+      errorType = errorName
+    }
+
+    return {
+      type: errorType,
+      message: errorMessage,
+      isNetworkError,
+      isAbortError
+    }
+  }
+
+  /**
+   * Check if an error is network-related
+   */
+  private isNetworkError(error: unknown): boolean {
+    if (!error) return false
+
+    const errorMessage = error instanceof Error ? error.message : ''
+    const errorName = error instanceof Error ? error.name : ''
+    const errorCode = (error as any)?.code || ''
+    const errorCause = (error as any)?.cause
+
+    // Known undici/fetch network error codes (explicit whitelist)
+    const knownNetworkCodes = new Set([
+      'UND_ERR_SOCKET',
+      'UND_ERR_RES_CONTENT_LENGTH_MISMATCH',
+      'UND_ERR_CONNECT_TIMEOUT',
+      'UND_ERR_HEADERS_TIMEOUT',
+      'UND_ERR_BODY_TIMEOUT',
+      'UND_ERR_REQUEST_TIMEOUT'
+    ])
+
+    // Check explicit error codes first
+    if (knownNetworkCodes.has(errorCode) || (errorCause && knownNetworkCodes.has(errorCause.code))) {
+      return true
+    }
+
+    // Check for specific well-defined network error messages
+    const networkErrorMessages = [
+      'terminated',
+      'other side closed',
+      'content-length'
+    ]
+
+    // Only check exact error names for fetch/network errors
+    const isNetworkErrorName = errorName === 'TypeError' && errorMessage.includes('terminated') ||
+                              errorName === 'FetchError' ||
+                              errorName === 'SocketError'
+
+    const hasNetworkMessage = networkErrorMessages.some(msg => errorMessage.includes(msg))
+
+    return isNetworkErrorName || hasNetworkMessage
+  }
+
+  /**
+   * Safely cleanup a stream reader
+   */
+  private async safeCleanupReader(reader: ReadableStreamDefaultReader | null): Promise<void> {
+    if (!reader) return
+
+    try {
+      // Cancel the reader if it's still active
+      await reader.cancel()
+    } catch (cancelError: unknown) {
+      // Ignore cancel errors - reader might already be closed
+      const errorMessage = cancelError instanceof Error ? cancelError.message : String(cancelError)
+      console.debug('Reader cancel error (expected if already closed):', errorMessage)
+    }
+
+    try {
+      // Release the lock
+      reader.releaseLock()
+    } catch (releaseError: unknown) {
+      // Ignore release errors - lock might already be released
+      const errorMessage = releaseError instanceof Error ? releaseError.message : String(releaseError)
+      console.debug('Reader release error (expected if already released):', errorMessage)
     }
   }
 

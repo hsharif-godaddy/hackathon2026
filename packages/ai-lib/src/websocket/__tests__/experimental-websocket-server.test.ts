@@ -305,6 +305,328 @@ describe('ExperimentalWebSocketServer - Error Handling', () => {
     })
   })
 
+  describe('Stream Processing Network Errors', () => {
+    it('should handle baseStream reader termination errors', async () => {
+      // Create a mock ReadableStream that throws the specific error from the stack trace
+      const mockReader = {
+        read: vi.fn(),
+        cancel: vi.fn(),
+        releaseLock: vi.fn()
+      }
+
+      // Simulate the undici termination error
+      const terminationError = new Error('terminated')
+      terminationError.name = 'TypeError'
+      // Add stack trace patterns from the actual error
+      Object.defineProperty(terminationError, 'cause', {
+        value: {
+          code: 'UND_ERR_SOCKET',
+          message: 'other side closed'
+        }
+      })
+
+      // First read succeeds, second read fails with termination error
+      mockReader.read
+        .mockResolvedValueOnce({ done: false, value: { part: { type: 'text-delta', text: 'Hello' } } })
+        .mockRejectedValueOnce(terminationError)
+
+      const mockBaseStream = {
+        getReader: vi.fn().mockReturnValue(mockReader)
+      }
+
+      const mockTextStream = (async function* () {
+        yield 'Fallback text'
+        yield ' from textStream'
+      })()
+
+      const mockStreamResult = {
+        baseStream: mockBaseStream,
+        textStream: mockTextStream,
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 100, outputTokens: 50 },
+          toolCalls: []
+        })
+      }
+
+      mockAgent.streamGenerate.mockResolvedValueOnce(mockStreamResult)
+
+      // Spy on console.error to verify fallback behavior
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      let messageHandler: any
+      mockIO.on.mockImplementation((event, handler) => {
+        if (event === 'connection') {
+          handler(mockSocket)
+          const onCall = mockSocket.on.mock.calls.find(call => call[0] === 'chat')
+          if (onCall) messageHandler = onCall[1]
+        }
+      })
+
+      server = new ExperimentalWebSocketServer(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent'
+      })
+
+      const chatMessage = {
+        message: 'Test message',
+        agentId: 'test-agent'
+      }
+
+      await messageHandler(chatMessage)
+
+      // Verify that the baseStream error was caught with improved structured logging
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '❌ Error processing baseStream, falling back to text-only:',
+        expect.objectContaining({
+          errorType: 'NetworkError',
+          errorMessage: 'terminated',
+          isNetworkError: true,
+          isAbortError: false,
+          originalError: terminationError
+        })
+      )
+
+      // Verify that reader.read was called and failed
+      expect(mockReader.read).toHaveBeenCalledTimes(2)
+      expect(mockBaseStream.getReader).toHaveBeenCalled()
+
+      // Verify that socket emitted chunk messages (first from baseStream, then from textStream fallback)
+      const emitCalls = mockSocket.emit.mock.calls
+      const chunkCalls = emitCalls.filter(call =>
+        call[0] === 'message' && call[1].type === 'chunk'
+      )
+
+      // Should have messages from both baseStream (before error) and textStream (after fallback)
+      expect(chunkCalls.length).toBeGreaterThan(0)
+
+      // Check that we have chunks with the expected content
+      const chunkContents = chunkCalls.map(call => call[1].content)
+      expect(chunkContents).toContain('Hello') // From baseStream before error
+      expect(chunkContents.some(content => content.includes('Fallback'))).toBe(true) // From textStream fallback
+
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should handle ResponseContentLengthMismatchError', async () => {
+      // Create the specific error from the second stack trace
+      const contentLengthError = new Error('Response body length does not match content-length header')
+      contentLengthError.name = 'TypeError'
+      Object.defineProperty(contentLengthError, 'cause', {
+        value: {
+          code: 'UND_ERR_RES_CONTENT_LENGTH_MISMATCH',
+          message: 'Response body length does not match content-length header'
+        }
+      })
+
+      const mockReader = {
+        read: vi.fn().mockRejectedValue(contentLengthError),
+        cancel: vi.fn(),
+        releaseLock: vi.fn()
+      }
+
+      const mockBaseStream = {
+        getReader: vi.fn().mockReturnValue(mockReader)
+      }
+
+      const mockTextStream = (async function* () {
+        yield 'Fallback after content-length error'
+      })()
+
+      const mockStreamResult = {
+        baseStream: mockBaseStream,
+        textStream: mockTextStream,
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 50, outputTokens: 25 },
+          toolCalls: []
+        })
+      }
+
+      mockAgent.streamGenerate.mockResolvedValueOnce(mockStreamResult)
+
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      let messageHandler: any
+      mockIO.on.mockImplementation((event, handler) => {
+        if (event === 'connection') {
+          handler(mockSocket)
+          const onCall = mockSocket.on.mock.calls.find(call => call[0] === 'chat')
+          if (onCall) messageHandler = onCall[1]
+        }
+      })
+
+      server = new ExperimentalWebSocketServer(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent'
+      })
+
+      const chatMessage = {
+        message: 'Test content length error',
+        agentId: 'test-agent'
+      }
+
+      await messageHandler(chatMessage)
+
+      // Verify error was logged with improved structured logging
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '❌ Error processing baseStream, falling back to text-only:',
+        expect.objectContaining({
+          errorType: 'NetworkError',
+          errorMessage: 'Response body length does not match content-length header',
+          isNetworkError: true,
+          isAbortError: false,
+          originalError: contentLengthError
+        })
+      )
+
+      // Verify textStream fallback was used
+      const emitCalls = mockSocket.emit.mock.calls
+      const chunkCalls = emitCalls.filter(call =>
+        call[0] === 'message' && call[1].type === 'chunk'
+      )
+
+      expect(chunkCalls.length).toBeGreaterThan(0)
+      const chunkContents = chunkCalls.map(call => call[1].content)
+      expect(chunkContents.some(content => content.includes('Fallback after content-length error'))).toBe(true)
+
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should handle stream processing cancellation gracefully', async () => {
+      const mockReader = {
+        read: vi.fn(),
+        cancel: vi.fn(),
+        releaseLock: vi.fn()
+      }
+
+      // First read succeeds, then simulate cancellation
+      mockReader.read
+        .mockResolvedValueOnce({ done: false, value: { part: { type: 'text-delta', text: 'Started' } } })
+        .mockImplementation(() => new Promise((_, reject) => {
+          // Simulate async operation that gets cancelled
+          setTimeout(() => reject(new Error('Operation cancelled')), 10)
+        }))
+
+      const mockBaseStream = {
+        getReader: vi.fn().mockReturnValue(mockReader)
+      }
+
+      const mockStreamResult = {
+        baseStream: mockBaseStream,
+        textStream: (async function* () {
+          yield 'Should not reach fallback'
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 10, outputTokens: 5 },
+          toolCalls: []
+        })
+      }
+
+      mockAgent.streamGenerate.mockResolvedValueOnce(mockStreamResult)
+
+      let messageHandler: any
+      let socketId: string
+      mockIO.on.mockImplementation((event, handler) => {
+        if (event === 'connection') {
+          socketId = mockSocket.id
+          handler(mockSocket)
+          const onCall = mockSocket.on.mock.calls.find(call => call[0] === 'chat')
+          if (onCall) messageHandler = onCall[1]
+        }
+      })
+
+      server = new ExperimentalWebSocketServer(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent'
+      })
+
+      const chatMessage = {
+        message: 'Test cancellation',
+        agentId: 'test-agent'
+      }
+
+      // Start the message processing
+      const messagePromise = messageHandler(chatMessage)
+
+      // Simulate cancellation by triggering socket disconnect
+      const disconnectHandler = mockSocket.on.mock.calls.find(call => call[0] === 'disconnect')?.[1]
+      if (disconnectHandler) {
+        disconnectHandler()
+      }
+
+      await messagePromise
+
+      // Verify that the stream was attempted to be processed
+      expect(mockBaseStream.getReader).toHaveBeenCalled()
+      expect(mockReader.read).toHaveBeenCalled()
+    })
+
+    it('should properly clean up streams on error', async () => {
+      const mockReader = {
+        read: vi.fn().mockRejectedValue(new Error('Stream failed')),
+        cancel: vi.fn().mockResolvedValue(undefined),
+        releaseLock: vi.fn()
+      }
+
+      const mockBaseStream = {
+        getReader: vi.fn().mockReturnValue(mockReader)
+      }
+
+      const mockStreamResult = {
+        baseStream: mockBaseStream,
+        textStream: (async function* () {
+          yield 'Fallback content'
+        })(),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: { inputTokens: 20, outputTokens: 10 },
+          toolCalls: []
+        })
+      }
+
+      mockAgent.streamGenerate.mockResolvedValueOnce(mockStreamResult)
+
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      let messageHandler: any
+      mockIO.on.mockImplementation((event, handler) => {
+        if (event === 'connection') {
+          handler(mockSocket)
+          const onCall = mockSocket.on.mock.calls.find(call => call[0] === 'chat')
+          if (onCall) messageHandler = onCall[1]
+        }
+      })
+
+      server = new ExperimentalWebSocketServer(httpServer, {
+        agents: mockAgents,
+        defaultAgent: 'test-agent'
+      })
+
+      const chatMessage = {
+        message: 'Test cleanup',
+        agentId: 'test-agent'
+      }
+
+      await messageHandler(chatMessage)
+
+      // Verify improved error handling with structured logging
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '❌ Error processing baseStream, falling back to text-only:',
+        expect.objectContaining({
+          errorType: 'Error',
+          errorMessage: 'Stream failed',
+          isNetworkError: false,
+          isAbortError: false,
+          originalError: expect.any(Error)
+        })
+      )
+
+      // Verify proper cleanup is now performed
+      expect(mockReader.cancel).toHaveBeenCalled() // Fixed: cleanup now happens
+      expect(mockReader.releaseLock).toHaveBeenCalled() // Fixed: cleanup now happens
+
+      consoleErrorSpy.mockRestore()
+    })
+  })
+
   describe('Debug Logging', () => {
     it('should log error details for debugging', async () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
