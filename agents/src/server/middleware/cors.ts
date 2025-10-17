@@ -16,7 +16,7 @@ const corsOptions: CorsOptions = {
     if (process.env.ALLOWED_ORIGINS) {
       allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
     } else if (isDevelopment) {
-      allowedOrigins = ['http://localhost:3000', 'http://localhost:3001'];
+      allowedOrigins = ['https://localhost:3000', 'https://localhost:3001', 'http://localhost:3000', 'http://localhost:3001'];
     }
     
     if (allowedOrigins.includes(origin)) {
