@@ -6,6 +6,7 @@ import Header from '@/components/layout/Header'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
+import SettingsDialog from '@/app/develop/components/SettingsDialog'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { ProtectedRoute } from '@/components/auth'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
@@ -55,7 +56,10 @@ function DevelopPageContent() {
     app,
     site,
     initializePage,
-    initializeMobileDetection
+    initializeMobileDetection,
+    isSettingsDialogOpen,
+    settingsDialogDefaultSection,
+    closeSettingsDialog
   } = useDevelopPageStore()
 
   // Git history store - handles loading with smart retry logic
@@ -367,6 +371,13 @@ function DevelopPageContent() {
   return (
     <div className="h-screen flex flex-col">
       <Header location="develop" />
+
+      <SettingsDialog
+        isOpen={isSettingsDialogOpen}
+        onClose={closeSettingsDialog}
+        defaultSection={settingsDialogDefaultSection || 'database'}
+        appId={appId}
+      />
 
       {isMobile ? (
         // Mobile layout with tabs

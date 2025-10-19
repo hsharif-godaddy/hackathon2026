@@ -50,6 +50,10 @@ interface DevelopPageStore {
   // Options sheet UI
   openOptionsSheet: OptionsSheetTab | null
 
+  // Settings dialog UI
+  isSettingsDialogOpen: boolean
+  settingsDialogDefaultSection: 'database' | 'environment' | 'deployment' | null
+
   // Page loading orchestration
   loadingPhase: LoadingPhase
   currentAppId: string | null
@@ -71,6 +75,10 @@ interface DevelopPageStore {
   setIsVersionHistoryOpen: (open: boolean) => void
   setSelectedCommit: (commit: GitCommit | null) => void
   setOpenOptionsSheet: (sheet: OptionsSheetTab | null) => void
+
+  // Settings dialog actions
+  openSettingsDialog: (defaultSection?: 'database' | 'environment' | 'deployment') => void
+  closeSettingsDialog: () => void
 
   // Page loading orchestration
   initializePage: (appId: string) => Promise<void>
@@ -115,6 +123,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     openOptionsSheet: null,
     isSelectingCommit: false, // Track commit selection state
 
+    // Settings dialog state
+    isSettingsDialogOpen: false,
+    settingsDialogDefaultSection: null,
+
     // Page loading orchestration state
     loadingPhase: 'idle',
     currentAppId: null,
@@ -142,6 +154,16 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),
     setSelectedCommit: (commit) => set((state) => { state.selectedCommit = commit }),
     setOpenOptionsSheet: (sheet) => set((state) => { state.openOptionsSheet = sheet }),
+
+    // Settings dialog actions
+    openSettingsDialog: (defaultSection = 'database') => set((state) => {
+      state.isSettingsDialogOpen = true
+      state.settingsDialogDefaultSection = defaultSection
+    }),
+    closeSettingsDialog: () => set((state) => {
+      state.isSettingsDialogOpen = false
+      state.settingsDialogDefaultSection = null
+    }),
 
     // Page loading orchestration
     resetForNewApp: (appId: string) => {

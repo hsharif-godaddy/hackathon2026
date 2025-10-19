@@ -6,6 +6,7 @@ import IconButton from '../IconButton'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import CodeIcon from '@ux/icon/code'
+import DatabaseIcon from '@ux/icon/database'
 import DesktopIcon from '@ux/icon/desktop'
 import EditIcon from '@ux/icon/edit'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
@@ -32,6 +33,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
     isSelectMode,
     isChatPaneCollapsed,
     toggleChatPaneCollapse,
+    openSettingsDialog,
     site
   } = useDevelopPageStore()
 
@@ -78,6 +80,12 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         icon={<CodeIcon />}
         onClick={() => handleViewModeChange(ViewMode.CODE, hasUnsavedChanges)}
         active={viewMode === ViewMode.CODE}
+      />
+      <IconButton
+        icon={<DatabaseIcon />}
+        onClick={() => openSettingsDialog('database')}
+        label="Database"
+        dataEid={generateClickEID('develop.preview.database')}
         separator
       />
       <IconButton
