@@ -35,6 +35,7 @@ export function useAuth(onShowMockLogin?: () => void) {
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState<boolean>(true);
+  const [jwtAuthValid, setJwtAuthValid] = useState<boolean | null>(null);
 
   // Check authentication mode (prefer server config if available)
   const authType = config?.auth?.authType || auth.getType();
@@ -82,11 +83,12 @@ export function useAuth(onShowMockLogin?: () => void) {
     loadConfig();
   }, []);
 
-  // Check for shopper ID authorization (JWT mode only)
+  // Check JWT authentication and authorization
   useEffect(() => {
-    async function checkShopperAuth() {
-      if (!shouldUseJWT || !authState.valid || isMockAuth || isAuthDisabled) {
+    async function checkJwtAuth() {
+      if (!shouldUseJWT || isMockAuth || isAuthDisabled) {
         setIsAuthorized(true);
+        setJwtAuthValid(null);
         return;
       }
 
@@ -94,6 +96,8 @@ export function useAuth(onShowMockLogin?: () => void) {
         const response = await fetch('/api/auth/validate');
         if (response.ok) {
           const data = await response.json();
+          setJwtAuthValid(data.valid);
+          
           // Check authorization status (login succeeded, but may not be authorized)
           if (data.valid && data.authorized === false) {
             logger.info('auth.shopper.unauthorized', {
@@ -104,18 +108,22 @@ export function useAuth(onShowMockLogin?: () => void) {
           } else {
             setIsAuthorized(true);
           }
+        } else {
+          setJwtAuthValid(false);
+          setIsAuthorized(true);
         }
       } catch (error) {
-        logger.error('auth.shopper.check.error', {
-          message: 'Failed to check shopper authorization',
+        logger.error('auth.jwt.check.error', {
+          message: 'Failed to check JWT authentication',
           error: error as Error
         });
+        setJwtAuthValid(false);
         setIsAuthorized(true);
       }
     }
 
-    checkShopperAuth();
-  }, [authState.valid, shouldUseJWT, isMockAuth, isAuthDisabled]);
+    checkJwtAuth();
+  }, [shouldUseJWT, isMockAuth, isAuthDisabled, configLoading]);
 
   // Helper function to get user email from auth details
   const getUserEmail = () => {
@@ -238,10 +246,16 @@ export function useAuth(onShowMockLogin?: () => void) {
         isLoading: mockAuth.isLoading
       };
     }
-    // JWT mode
+    // JWT mode - use our API validation result if available, fallback to Gasket Auth
+    if (shouldUseJWT) {
+      const isLoading = authState.status === 'loading' || configLoading || jwtAuthValid === null;
+      const isAuthenticated = jwtAuthValid !== null ? jwtAuthValid : authState.valid;
+      return { isAuthenticated, isLoading };
+    }
+    
     return {
-      isAuthenticated: shouldUseJWT ? authState.valid : false,
-      isLoading: shouldUseJWT ? (authState.status === 'loading' || configLoading) : configLoading
+      isAuthenticated: false,
+      isLoading: configLoading
     };
   };
 
