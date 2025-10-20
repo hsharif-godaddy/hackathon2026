@@ -44,17 +44,17 @@ function GalleryContent() {
     try {
       setLoading(true)
       const response = await appFetch('/api/sites')
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch sites: ${response.status}`)
       }
-      
+
       const data: SitesResponse = await response.json()
-      
+
       // Filter out sites that are not in running/created state and sort by creation date (newest first)
       const filteredAndSortedSites = (data || [])
         .filter(site => ['created', 'running'].includes(site.status))
-        .sort((a, b) => 
+        .sort((a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         )
       setSites(filteredAndSortedSites)
@@ -92,7 +92,7 @@ function GalleryContent() {
 
   const copyPromptToClipboard = async (site: Site) => {
     if (!site.initial_prompt) return
-    
+
     try {
       await navigator.clipboard.writeText(site.initial_prompt)
       setCopiedPromptId(site.id)
@@ -104,7 +104,7 @@ function GalleryContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
+      <div className="min-h-screen">
         <Header />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
           <div className="text-center py-12">
@@ -118,7 +118,7 @@ function GalleryContent() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
+      <div className="min-h-screen">
         <Header />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
           <div className="text-center py-12">
@@ -138,9 +138,9 @@ function GalleryContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
+    <div className="min-h-screen">
       <Header location='gallery' />
-      
+
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Gallery</h1>
@@ -175,12 +175,12 @@ function GalleryContent() {
                     </h3>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center text-sm text-gray-500 mb-3">
                   <CalendarIcon className="w-4 h-4 mr-1 flex-shrink-0" />
                   <span className="truncate">Created {formatDate(site.created_at)}</span>
                 </div>
-                
+
                 {site.initial_prompt && (
                   <div className="bg-gray-50 rounded-lg p-3 mb-4 flex-1">
                     <div className="flex items-center justify-between mb-2">
@@ -199,7 +199,7 @@ function GalleryContent() {
                     </div>
                   </div>
                 )}
-                
+
                 <div className="mt-auto space-y-3">
                   {(site.preview_url || site.backend_url) ? (
                     <a
@@ -218,7 +218,7 @@ function GalleryContent() {
                       No Preview Available
                     </div>
                   )}
-                  
+
                   <div className="text-xs text-gray-400 text-center">
                     Updated {formatDate(site.updated_at)}
                   </div>
@@ -235,7 +235,6 @@ function GalleryContent() {
 export default function GalleryPage() {
   return (
     <ProtectedRoute
-      loadingMessage="Loading Gallery"
       unauthorizedMessage="You need to be signed in to view the gallery."
     >
       <GalleryContent />

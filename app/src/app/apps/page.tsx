@@ -30,8 +30,8 @@ interface AlertState {
 
 function AppsPageContent() {
   // Use the app store instead of local state
-  const { 
-    apps, 
+  const {
+    apps,
     isLoadingApps: isLoading,
     appsError: error,
     loadApps,
@@ -46,7 +46,7 @@ function AppsPageContent() {
     isServerReady,
     startPeriodicBackendSync
   } = useServerStore()
-  
+
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [alertState, setAlertState] = useState<AlertState>({ appId: null, type: null, message: '' })
   const router = useRouter()
@@ -56,7 +56,7 @@ function AppsPageContent() {
       try {
         // Load apps using the store (this will also sync ports automatically)
         await loadApps()
-        
+
         // Start centralized server monitoring
         startPeriodicBackendSync()
       } catch (error) {
@@ -66,7 +66,7 @@ function AppsPageContent() {
 
     // Initial fetch
     fetchData()
-    
+
     // Periodic refresh to sync ports only (server monitoring is now centralized)
     const interval = setInterval(async () => {
       try {
@@ -75,7 +75,7 @@ function AppsPageContent() {
         console.error('Error syncing ports:', error)
       }
     }, 10000) // Reduced frequency since server monitoring is centralized
-    
+
     return () => clearInterval(interval)
   }, [loadApps, syncActualPorts, startPeriodicBackendSync])
 
@@ -164,7 +164,7 @@ function AppsPageContent() {
       if (result.success) {
         console.log('✅ Server started successfully for app:', appId)
       }
-        
+
       // Small delay to let server store update via its monitoring
       await new Promise(resolve => setTimeout(resolve, 1000))
     } catch (error) {
@@ -180,7 +180,7 @@ function AppsPageContent() {
     try {
       await appService.stopApp(siteId)
       console.log('✅ Server stopped successfully for app:', siteId)
-        
+
       // Small delay to let server store update via its monitoring
       await new Promise(resolve => setTimeout(resolve, 1000))
     } catch (error) {
@@ -204,7 +204,7 @@ function AppsPageContent() {
     setActionLoading(`delete-${appId}`)
     try {
       await appService.deleteApp(appId)
-      
+
       // Refresh apps list using store
       await loadApps()
     } catch (error) {
@@ -228,7 +228,7 @@ function AppsPageContent() {
   const handleStopAll = async () => {
     // Count running servers from server store
     const runningCount = apps.filter(app => isServerRunning(app.id)).length
-    
+
     if (runningCount === 0) {
       alert('No servers are currently running')
       return
@@ -242,7 +242,7 @@ function AppsPageContent() {
     try {
       const data = await appService.stopAllApps()
       alert(data.message || 'All apps stopped successfully')
-        
+
       // Small delay to let server store update via its monitoring
       await new Promise(resolve => setTimeout(resolve, 1000))
     } catch (error) {
@@ -259,7 +259,7 @@ function AppsPageContent() {
       // Use the store method
       await restartApp(appId)
       alert('App restarted successfully')
-        
+
       // Wait for the server store to update via its monitoring
       await new Promise(resolve => setTimeout(resolve, 2000))
     } catch (error) {
@@ -279,7 +279,7 @@ function AppsPageContent() {
     try {
       const data = await appService.cleanupOrphans()
       alert(data.message || 'Cleanup completed successfully')
-        
+
       // Wait for server store to update via its monitoring
       await new Promise(resolve => setTimeout(resolve, 1000))
     } catch (error) {
@@ -330,7 +330,7 @@ function AppsPageContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
-      <Header 
+      <Header
         actions={
           <>
             <button
@@ -391,7 +391,7 @@ function AppsPageContent() {
               </div>
             </div>
           </div>
-          
+
           <h1 className="text-3xl font-bold mb-2">My Sites (Legacy)</h1>
           <p className="text-gray-600">
             Manage your AI-built applications
@@ -464,7 +464,7 @@ function AppsPageContent() {
                       onCancel={clearAlert}
                     />
                   )}
-                  
+
                   <div className="flex items-start justify-between mb-4">
                     <div className="w-12 h-12 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg flex items-center justify-center">
                       {(() => {
@@ -494,11 +494,11 @@ function AppsPageContent() {
                       </span>
                     </div>
                   </div>
-                  
+
                   <h3 className="text-lg font-semibold text-gray-900">
                     {app.name}
                   </h3>
-                  
+
                   <div className="flex items-center text-sm text-gray-500 space-x-4 mb-4">
                     <div className="flex items-center space-x-1 italic">
                       <span>Created {formatDate(app.createdAt)}</span>
@@ -510,9 +510,9 @@ function AppsPageContent() {
                     return isRunning && actualPort && (
                       <div className="mb-4 p-3 bg-green-50 rounded-lg">
                         <p className="text-sm text-green-700 font-medium">Server running on port {actualPort}</p>
-                        <a 
+                        <a
                           href={`http://localhost:${actualPort}`}
-                          target="_blank" 
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm text-green-600 hover:text-green-800 underline"
                         >
@@ -521,7 +521,7 @@ function AppsPageContent() {
                       </div>
                     )
                   })()}
-                  
+
                   <div className="flex items-center justify-between mt-auto">
                     <span className="text-sm text-gray-600">
                       {formatDate(app.updatedAt)}
@@ -598,8 +598,7 @@ function AppsPageContent() {
 
 export default function Apps() {
   return (
-    <ProtectedRoute 
-      loadingMessage="Loading Your Apps"
+    <ProtectedRoute
       unauthorizedMessage="You need to be signed in to view your apps."
     >
       <AppsPageContent />

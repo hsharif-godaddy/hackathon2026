@@ -319,7 +319,6 @@ function SitesPageContent() {
 export default function Sites() {
   return (
     <ProtectedRoute
-      loadingMessage="Loading Your Sites"
       unauthorizedMessage="You need to be signed in to view your sites."
     >
       <SitesPageContent />

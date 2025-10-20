@@ -1,11 +1,13 @@
 'use client';
 
 import { ReactNode, useState, useEffect, useMemo } from 'react';
-import Box from '@ux/box';
-import Spinner from '@ux/spinner';
 import { logger } from '@/lib/request-context';
 import { auth } from '@/lib/features';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useAuth } from '@/hooks/useAuth'
+import UnauthorizedComponent from '@/components/auth/UnauthorizedComponent'
+import AccessDisabledComponent from '@/components/auth/AccessDisabledComponent'
+import LoadingComponent from '@/components/auth/LoadingComponent';
 
 // Simple component that just renders children
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,6 +22,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [featureFlags, setFeatureFlags] = useState<any>({});
   const [serverAuthConfig, setServerAuthConfig] = useState<any>(null);
+
+  const {isAuthenticated, isAuthDisabled} = useAuth()
 
   const {
     featureFlags: switchboardFeatureFlags,
@@ -112,35 +116,21 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   // Show loading while feature flags or auth provider are loading
   if (isSwitchboardFeatureFlagsLoading || isAuthLoading) {
-    return (
-      <Box
-        className="min-h-screen"
-        inlineAlignChildren='center'
-        blockAlignChildren='center'
-      >
-        <Spinner />
-      </Box>
-    );
+    return <LoadingComponent />
   }
 
-  // Show access restricted message if feature flag is disabled
-  if (!isAppbuilderAccessEnabled) {
+  // User is not authenticated and authentication is enabled
+  if (!isAuthDisabled && !isAuthenticated) {
     return (
-      <Box
-        className="min-h-screen"
-        inlineAlignChildren='center'
-        blockAlignChildren='center'
-      >
-        <div className="text-center space-y-4 max-w-md mx-auto px-4">
-          <div className="text-2xl font-semibold">
-            Access Restricted
-          </div>
-          <p className="opacity-50">
-            App Builder access is currently not available for your account. Please contact your administrator for assistance.
-          </p>
-        </div>
-      </Box>
-    );
+      <UnauthorizedComponent
+        unauthorizedMessage="You need to be signed in to access Airo App Builder."
+      />
+    )
+  }
+
+  // User is authenticated but does not have access to App Builder
+  if (!isAuthDisabled && isAuthenticated && !isAppbuilderAccessEnabled) {
+    return <AccessDisabledComponent />
   }
 
   // Render with the appropriate provider
