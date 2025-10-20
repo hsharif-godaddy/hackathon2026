@@ -11,6 +11,10 @@
 
 ### Internal Changes
 
+- **CORS Middleware Bug Fix**: Fixed critical bug causing 500 errors when rejecting non-allowed origins
+  - Changed origin rejection from `callback(new Error(...))` to `callback(null, false)` to prevent server crashes
+  - Non-allowed origins now receive 200 OK without CORS headers (browser blocks), instead of 500 error
+  - This is the standard and correct CORS rejection behavior
 - **CORS Security Audit Tools**: Comprehensive tooling for auditing and verifying CORS configurations to prevent security misconfigurations
   - Added `scripts/audit-cors-config.js`: Static analysis tool that scans codebase for CORS security issues
   - Added `scripts/verify-cors-production.js`: Live testing tool to verify production CORS headers from multiple origins
