@@ -9,8 +9,18 @@
   - Agent will create a todo-list when creating a site
   - Lists are currently rendered as standard tool calls, updates to the ui will happen later
 
-
 ### Internal Changes
+
+- **CORS Security Audit Tools**: Comprehensive tooling for auditing and verifying CORS configurations to prevent security misconfigurations
+  - Added `scripts/audit-cors-config.js`: Static analysis tool that scans codebase for CORS security issues
+  - Added `scripts/verify-cors-production.js`: Live testing tool to verify production CORS headers from multiple origins
+  - Added `scripts/README.md`: Comprehensive guide covering all scripts (CORS, security, JWT, licenses)
+  - Added `docs/cors-security-guide.md`: Complete CORS configuration guide with troubleshooting and best practices
+  - Added `docs/cors-audit-summary.md`: Detailed audit findings and security assessment
+  - Audit tool detects: wildcard origins in production, fail-open configurations, missing allowlist validation, localhost in production
+  - Verification tool tests: malicious origin rejection, localhost blocking in production, server-to-server allowance, preflight handling
+  - Both tools designed for CI/CD integration with exit codes for automated testing
+  - Confirms current agents CORS implementation is secure: explicit origin validation, environment-aware defaults, no fail-open behavior
 
 - **Workspace Configuration & Docker Build Improvements**: Fixed pnpm workspace issues and modernized Docker builds with security enhancements
   - Removed problematic `postinstall` script from agents/package.json (workspace root handles better-sqlite3 compilation)
@@ -59,7 +69,6 @@
 - Added Daily Limit of default value $10 for usage
 
 - Homepage updates:
-
   - Examples with screenshots and "Try this" buttons.
   - Require login before writing a prompt. (This is a temporary measure, to make sure people don't lose work.)
   - Ask the develop agent to view error logs after making changes
@@ -88,4 +97,3 @@
 - Created an internal-only ai-playground app, for testing websocket/ui interactions and prototyping new features.
 - Added feature class for managing ENV centrally in agents directory
 - Added/Enabled ElasticSearch APM to agents to capture stats in ESSP
-
