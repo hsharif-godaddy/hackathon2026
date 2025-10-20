@@ -229,9 +229,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   external
                   href="https://www.godaddy.com/help"
                   className="!text-intents-ux-boxHighContrast-foregroundColor font-medium"
-                >
-                  Contact Support
-                </Button>
+                  text="Contact Support"
+                />
               </text.p>
             </Box>
           </Box>
@@ -281,6 +280,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     'right-2 bottom-1.5': !isExpanded
                   })}
                   icon={isLoading ? <Spinner size='sm' /> : <WandFilledIcon className="w-4 h-4" />}
+                  aria-label={isLoading ? "Building your app..." : "Start building"}
                 />
 
                 {promptText.length >= MAX_PROMPT_LENGTH && isExpanded && (
@@ -298,7 +298,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
             </div>
 
             <text.p size={-1} className='max-w-lg mx-auto opacity-40 mb-8'>
-              AI can make mistakes, so double check its responses. By using Airo App Builder, you agree to our <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/ai-terms-of-use" className="!text-intents-ux-boxHighContrast-foregroundColor">Terms</Button> and <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/privacy-policy" className="!text-intents-ux-boxHighContrast-foregroundColor">Privacy Policy</Button>
+              AI can make mistakes, so double check its responses. By using Airo App Builder, you agree to our <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/ai-terms-of-use" className="!text-intents-ux-boxHighContrast-foregroundColor" text="Terms" /> and <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/privacy-policy" className="!text-intents-ux-boxHighContrast-foregroundColor" text="Privacy Policy" />
             </text.p>
 
             <ExamplesSection

@@ -18,9 +18,8 @@ export default function PreviewError({
         className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-colors"
         icon={<RefreshIcon />}
         design="tertiary"
-      >
-        {buttonText}
-      </Button>
+        text={buttonText}
+      />
     </div>
   )
 }

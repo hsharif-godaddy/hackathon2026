@@ -97,19 +97,17 @@ export default function DevelopmentAdminSection({
             onClick={handleConfirm}
             disabled={isStopAllLoading || isDeleteAllLoading}
             design="critical"
-          >
-            {(type === 'stop-all' && isStopAllLoading) || (type === 'delete-all' && isDeleteAllLoading) ?
+            text={(type === 'stop-all' && isStopAllLoading) || (type === 'delete-all' && isDeleteAllLoading) ?
               (type === 'stop-all' ? 'Stopping...' : 'Deleting...') :
               (type === 'stop-all' ? 'Stop All' : 'Delete All')
             }
-          </Button>
+          />
           <Button
             onClick={clearAlert}
             disabled={isStopAllLoading || isDeleteAllLoading}
             design="tertiary"
-          >
-            Cancel
-          </Button>
+            text="Cancel"
+          />
         </div>
       </div>
     </div>
