@@ -1,6 +1,5 @@
 import type { LanguageModel, Tool } from 'ai'
 import type { z } from 'zod'
-import type { MessageBuilder } from './message-builder.js'
 
 /**
  * Global configuration for the agent factory
@@ -21,42 +20,41 @@ export interface GlobalAgentConfig {
 }
 
 /**
- * Configuration for a single agent
+ * Configuration for a single agent (modern AgentFactory)
  */
 export interface AgentConfig {
   /** Human-readable name of the agent */
   name: string
-  /** System prompt for the agent (used with default message builder) */
-  systemPrompt?: string
-  /** Initial context messages to include in every conversation */
-  initialContextMessages?: Array<{
-    role: 'user' | 'assistant' | 'system'
-    content: string
-  }>
-  /** Message builder for constructing messages */
-  messageBuilder?: MessageBuilder
-  /** Model to use (can be string ID or LanguageModel instance) */
-  model?: string | LanguageModel
+  /** System prompt for the agent */
+  system?: string
+  /** Model to use (must be LanguageModel instance) */
+  model: LanguageModel
+  /** Original model name used for token cost calculations */
+  modelName?: string
   /** Tools available to this agent */
-  tools?: Tool[] | Record<string, Tool>
-  /** Temperature for generation (0-2) */
+  tools?: Record<string, any>
+  /** Temperature for generation (0-1) */
   temperature?: number
   /** Maximum tokens to generate */
-  maxTokens?: number
-  /** Enable agentic loop control */
-  enableLoopControl?: boolean
-  /** Indicates this agent supports vision/file content (informational) */
-  visionEnabled?: boolean
+  maxOutputTokens?: number
+  /** Stop conditions for agentic loops */
+  stopWhen?: Array<(result: any) => boolean>
+  /** Maximum steps for agentic reasoning */
+  maxSteps?: number
+  /** Stop after specific tool calls */
+  stopAfterTools?: string[]
   /** Provider-specific options */
-  providerOptions?: {
-    anthropic?: {
-      cacheControl?: { type: 'ephemeral' }
-    }
-    openai?: {
-      parallel_tool_calls?: boolean
-    }
-    [key: string]: any
-  }
+  providerOptions?: Record<string, any>
+  /** Hook called before each tool execution */
+  beforeToolExecution?: (toolName: string, args: unknown, context?: AgentContext) => Promise<unknown> | unknown
+  /** Hook called after each tool execution */
+  afterToolExecution?: (toolName: string, args: unknown, result: unknown, toolCallError: unknown, context?: AgentContext) => Promise<unknown> | unknown
+  /** Available handoff targets for this agent */
+  handoffs?: Array<{
+    agentName: string
+    description?: string
+    includeContext?: boolean
+  }>
 }
 
 /**
@@ -308,7 +306,7 @@ export interface EmbeddingsResult {
 /**
  * Supported file types for input
  */
-export type SupportedFileType = 
+export type SupportedFileType =
   | 'text/plain'
   | 'text/markdown'
   | 'text/csv'

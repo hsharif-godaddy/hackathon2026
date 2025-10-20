@@ -1,6 +1,6 @@
 import { 
-  createExperimentalAgentFactory, 
-  type ExperimentalAgentConfig,
+  createAgentFactory, 
+  type AgentConfig,
   type BeforeToolExecutionHook,
   type AfterToolExecutionHook,
   createPromptBuilder,
@@ -89,7 +89,7 @@ async function buildDatabaseSystemPrompt(): Promise<string> {
 /**
  * Create the Database Agent configuration
  */
-export async function createDatabaseAgent(options?: { appPath?: string }): Promise<ExperimentalAgentConfig> {
+export async function createDatabaseAgent(options?: { appPath?: string }): Promise<AgentConfig> {
   const systemPrompt = await buildDatabaseSystemPrompt()
   const { model, modelName } = await getAgentModelWithName('full') // Use full model for complex database operations
   
@@ -130,7 +130,7 @@ export async function createDatabaseAgent(options?: { appPath?: string }): Promi
  * Create Database Agent factory
  */
 export async function createDatabaseAgentFactory(options?: { appPath?: string }) {
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
   
   const agents = factory.defineAgents({
     database: await createDatabaseAgent(options)
@@ -267,7 +267,7 @@ Please complete all database setup tasks and provide the integration details.`
   /**
    * Get agent configuration
    */
-  getConfig(): ExperimentalAgentConfig {
+  getConfig(): AgentConfig {
     if (!this.factory) {
       throw new Error('Agent not initialized. Call initialize() first.')
     }

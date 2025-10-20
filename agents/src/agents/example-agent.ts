@@ -1,6 +1,6 @@
 import { 
-  createExperimentalAgentFactory, 
-  type ExperimentalAgentConfig,
+  createAgentFactory, 
+  type AgentConfig,
   type BeforeToolExecutionHook,
   type AfterToolExecutionHook,
   createPromptBuilder
@@ -13,7 +13,7 @@ import { Logger } from '../logging/index.js'
 const logger = Logger.create({ service: 'example-agent' })
 
 /**
- * Example Agent - demonstrates the new ExperimentalAgentFactory architecture
+ * Example Agent - demonstrates the new AgentFactory architecture
  */
 
 /**
@@ -39,7 +39,7 @@ const afterToolExecution: AfterToolExecutionHook = async (
 /**
  * Create the Example Agent configuration
  */
-export async function createExampleAgent(): Promise<ExperimentalAgentConfig> {
+export async function createExampleAgent(): Promise<AgentConfig> {
   const promptBuilder = createPromptBuilder()
   
   // Get modular prompt paths using helper utility
@@ -82,7 +82,7 @@ export async function createExampleAgent(): Promise<ExperimentalAgentConfig> {
  * Create Example Agent factory with single agent
  */
 export async function createExampleAgentFactory() {
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
   
   const agents = factory.defineAgents({
     example: await createExampleAgent()
@@ -138,7 +138,7 @@ export class ExampleAgent {
   /**
    * Get agent configuration
    */
-  getConfig(): ExperimentalAgentConfig {
+  getConfig(): AgentConfig {
     if (!this.factory) {
       throw new Error('Agent not initialized. Call initialize() first.')
     }

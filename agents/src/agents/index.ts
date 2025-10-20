@@ -1,4 +1,4 @@
-// Export new ExperimentalAgentFactory-based agents
+// Export new AgentFactory-based agents
 export * from './color-scheme-agent.js';
 export * from './database-agent.js';
 export * from './design-agent.js';

@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 
 import { 
-  createExperimentalAgentFactory, 
+  createAgentFactory, 
   getModel,
   createHandoffTool,
   createHandoffHistoryTool,
@@ -147,7 +147,7 @@ const createComponentTool = createTool(
 async function demonstrateBasicHandoff() {
   console.log('🚀 Basic Agent Handoff Demo\n')
 
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
   
   const agents = factory.defineAgents({
     developer: {
@@ -275,7 +275,7 @@ Please coordinate this development and hand off to specialists as needed.`
 async function demonstrateHandoffChain() {
   console.log('\n🔄 Handoff Chain Demo\n')
 
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
   
   // Create a simple chain: Planner → Developer → Database → Frontend
   const agents = factory.defineAgents({
@@ -368,7 +368,7 @@ When you receive a project request, analyze it and hand off to the Developer Age
 async function demonstrateHandoffHistory() {
   console.log('\n📚 Handoff History Management Demo\n')
 
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
   
   const agents = factory.defineAgents({
     coordinator: {

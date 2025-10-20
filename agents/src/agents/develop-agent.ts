@@ -1,6 +1,6 @@
 import {
-  createExperimentalAgentFactory,
-  type ExperimentalAgentConfig,
+  createAgentFactory,
+  type AgentConfig,
   type BeforeToolExecutionHook,
   type AfterToolExecutionHook,
   type AgentContext,
@@ -48,7 +48,7 @@ const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, ar
       toolName,
       reason: 'file_modifying_tool_detected'
     });
-    
+
     try {
       if (!appId) {
         contextLogger.warn('develop_agent.git.branch_check.skipped', {
@@ -139,6 +139,7 @@ const afterToolExecution: AfterToolExecutionHook = async (
   toolName: string,
   args: unknown,
   result: unknown,
+  toolCallError: unknown,
   context?: AgentContext
 ): Promise<unknown> => {
   const appId = context?.metadata?.appId as string
@@ -266,7 +267,7 @@ async function buildDynamicSystemPrompt(context?: AgentContext): Promise<string>
 /**
  * Create the Develop Agent configuration
  */
-export async function createDevelopAgent(options?: { appPath?: string }): Promise<ExperimentalAgentConfig> {
+export async function createDevelopAgent(options?: { appPath?: string }): Promise<AgentConfig> {
   const appPath = options?.appPath || process.cwd()
   const systemPrompt = await buildDevelopSystemPrompt(appPath)
   const { model, modelName } = await getAgentModelWithName('full') // Use full model for complex development tasks
@@ -327,7 +328,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
  * Create Develop Agent factory
  */
 export async function createDevelopAgentFactory(options?: { appPath?: string }) {
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
 
   const agents = factory.defineAgents({
     develop: await createDevelopAgent(options)
@@ -497,7 +498,7 @@ Please complete all database setup tasks and provide the integration details for
   /**
    * Get agent configuration
    */
-  getConfig(): ExperimentalAgentConfig {
+  getConfig(): AgentConfig {
     if (!this.factory) {
       throw new Error('Agent not initialized. Call initialize() first.')
     }

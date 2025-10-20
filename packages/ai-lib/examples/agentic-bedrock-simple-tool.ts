@@ -1,6 +1,6 @@
 /**
  * Simple Agentic Tool Call Example
- * 
+ *
  * This example demonstrates basic agentic capabilities:
  * - Tool calls triggered by user prompt
  * - No tool stop conditions
@@ -12,7 +12,7 @@
 import 'dotenv/config'
 import { getModel } from '../src/providers/unified-provider.js'
 import { createTool } from '../src/tools/base-tool.js'
-import { createExperimentalAgentFactory } from '../src/core/agent-factory-experimental.js'
+import { createAgentFactory } from '../src/core/agent-factory.js'
 import { z } from 'zod'
 
 // Track tool executions
@@ -28,28 +28,28 @@ const calculatorTool = createTool(
   async ({ expression, operation = 'mixed' }) => {
     toolExecutionCount++
     console.log(`🧮 [Calculator Tool] Evaluating: ${expression}`)
-    
+
     try {
       // Simple expression evaluator (safe for basic math)
       // First normalize common math symbols
-      let normalized = expression
+      const normalized = expression
         .replace(/×/g, '*')  // Replace × with *
         .replace(/÷/g, '/')  // Replace ÷ with /
         .replace(/\s+/g, '') // Remove all spaces
-      
+
       const sanitized = normalized.replace(/[^0-9+\-*/().]/g, '')
-      
+
       if (!sanitized) {
         throw new Error('No valid mathematical expression found')
       }
-      
+
       // Evaluate the expression safely
       const result = Function(`"use strict"; return (${sanitized})`)()
-      
+
       if (typeof result !== 'number' || !isFinite(result)) {
         throw new Error('Result is not a valid number')
       }
-      
+
       const response = {
         expression: expression,
         result: result,
@@ -57,10 +57,10 @@ const calculatorTool = createTool(
         formatted: `${expression} = ${result}`,
         timestamp: new Date().toISOString()
       }
-      
+
       console.log(`✅ [Calculator Tool] Result: ${response.formatted}`)
       return response
-      
+
     } catch (error) {
       const errorResponse = {
         expression: expression,
@@ -68,7 +68,7 @@ const calculatorTool = createTool(
         details: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString()
       }
-      
+
       console.log(`❌ [Calculator Tool] Error: ${errorResponse.error}`)
       return errorResponse
     }
@@ -84,17 +84,17 @@ async function runSimpleToolExample() {
 
   try {
     console.log('🔗 Connecting to AWS Bedrock...')
-    
+
     // Debug: Get model info before creating the model
     const { getModelInfo } = await import('../src/providers/unified-provider.js')
     const modelInfo = getModelInfo('claude4')
     console.log('🔍 Model Info:', JSON.stringify(modelInfo, null, 2))
-    
+
     const model = await getModel('claude4')
-    
+
     console.log('🏭 Creating calculator agent...')
-    
-    const agentFactory = createExperimentalAgentFactory()
+
+    const agentFactory = createAgentFactory()
 
     const agents = agentFactory.defineAgents({
       calculatorAgent: {
@@ -102,12 +102,12 @@ async function runSimpleToolExample() {
         system: `You are a helpful math calculator assistant. When users ask you to perform calculations, use the calculator tool to evaluate mathematical expressions.
 
 Always use the calculator tool when users provide mathematical expressions or ask for calculations. Provide clear, friendly responses with the results.`,
-        
+
         model,
         tools: {
           calculator: calculatorTool
         },
-        
+
         maxSteps: 3,           // Allow a few steps
         // Note: No stopAfterTools - we want the agent to continue after tool use
         temperature: 0.1,      // Low temperature for consistent math responses
@@ -116,16 +116,16 @@ Always use the calculator tool when users provide mathematical expressions or as
     })
 
     const agent = agents.get('calculatorAgent')
-    
+
     console.log(`✅ Created agent: ${agent.getName()}`)
-    
+
     // Debug: Log the agent configuration to see if tools are properly set up
     const agentConfig = agent.getConfig()
     console.log('🔍 Agent Config Debug:')
     console.log(`   Model: ${agentConfig.model}`)
     console.log(`   Tools: ${Object.keys(agentConfig.tools || {}).join(', ')}`)
     console.log(`   System prompt length: ${agentConfig.system?.length || 0} chars`)
-    
+
     // Debug: Check the actual tool object structure
     console.log('🔍 Tool Structure Debug:')
     const tools = agentConfig.tools || {}
@@ -148,13 +148,13 @@ Always use the calculator tool when users provide mathematical expressions or as
 
     // Simple user prompt that should trigger exactly one tool call
     const userPrompt = "What is 15 * 7 + 23?"
-    
+
     console.log(`\n👤 User: ${userPrompt}`)
-    
+
     const streamResult = await agent.streamGenerate(userPrompt)
 
     console.log('🤖 Assistant: ')
-    
+
     let assistantResponse = ''
     for await (const chunk of streamResult.textStream) {
       process.stdout.write(chunk)
@@ -162,20 +162,20 @@ Always use the calculator tool when users provide mathematical expressions or as
     }
 
     const finalResult = await streamResult.getFinalResult()
-    
+
     console.log('\n\n' + '='.repeat(60))
     console.log('EXECUTION SUMMARY')
     console.log('='.repeat(60))
-    
+
     const toolCalls = finalResult.toolCalls || []
-    
+
     console.log(`\n📊 Results:`)
     console.log(`   Response: ${assistantResponse.substring(0, 100)}${assistantResponse.length > 100 ? '...' : ''}`)
     console.log(`   Tool calls made: ${toolExecutionCount} (actual executions)`)
     console.log(`   Tool calls in result: ${Array.isArray(toolCalls) ? toolCalls.length : 0}`)
     console.log(`   Tokens used: ${finalResult.usage?.totalTokens || 'N/A'}`)
     console.log(`   Finish reason: ${finalResult.finishReason}`)
-    
+
     if (Array.isArray(toolCalls) && toolCalls.length > 0) {
       console.log(`\n🔧 Tool Call Details:`)
       toolCalls.forEach((call, index) => {
@@ -183,7 +183,7 @@ Always use the calculator tool when users provide mathematical expressions or as
         const toolName = call.toolName || call.toolCall?.toolName || 'unknown'
         const input = call.input || call.args || call.toolCall?.args || {}
         const output = call.output || call.result || call.toolCall?.result || null
-        
+
         console.log(`   ${index + 1}. Tool: ${toolName}`)
         console.log(`      Input: ${JSON.stringify(input)}`)
         if (output) {
@@ -204,7 +204,7 @@ Always use the calculator tool when users provide mathematical expressions or as
     console.log('   • When agents continue generating text after tool calls,')
     console.log('     the AI SDK may not include tool calls in the final result.')
     console.log('   • This is why we track actual executions separately.')
-    
+
     if (modelInfo.usingProxy) {
       console.log('\n✅ Using Proxy Configuration:')
       console.log(`   • Provider: ${modelInfo.provider}`)

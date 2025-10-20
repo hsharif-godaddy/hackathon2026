@@ -1,9 +1,9 @@
 /**
  * App-specific WebSocket context types
- * These extend the generic ai-lib ChatMessageData with application-specific context
+ * These extend the generic ai-lib ChatMessage with application-specific context
  */
 
-import type { ChatMessageData } from '@airo/ai-lib'
+import type { ChatMessage } from '@airo/ai-lib'
 
 /**
  * App-specific context structure for agents application
@@ -16,14 +16,14 @@ export interface AgentsAppContext {
     sessionId?: string
     [key: string]: unknown
   }
-  
+
   // Conversation context
   conversation?: {
     conversationId?: string
     maxMessages?: number
     includeHistory?: boolean
   }
-  
+
   // App context - project understanding
   appContext?: {
     includeDirectoryListing?: boolean
@@ -31,7 +31,7 @@ export interface AgentsAppContext {
     includeDependencyStatus?: boolean
     maxDirectoryDepth?: number
   }
-  
+
   // AI Edit context - selected element information
   aiEditContext?: {
     elementInfo?: {
@@ -47,7 +47,7 @@ export interface AgentsAppContext {
     }
     selector?: string
   }
-  
+
   // Visual context - user's current view state
   visualContext?: {
     page?: string
@@ -56,7 +56,7 @@ export interface AgentsAppContext {
     viewport?: { width: number; height: number }
     timestamp?: number
   }
-  
+
   // Image upload context
   uploadedFiles?: {
     uploadId: string
@@ -69,15 +69,15 @@ export interface AgentsAppContext {
       uploadedAt: string
     }>
   }
-  
+
   // Extensibility for future context types
   [key: string]: unknown
 }
 
 /**
- * App-specific ChatMessageData with typed context
+ * App-specific ChatMessage with typed context
  */
-export interface AgentsAppChatMessageData extends Omit<ChatMessageData, 'context'> {
+export interface AgentsAppChatMessage extends Omit<ChatMessage, 'context'> {
   context?: AgentsAppContext
 }
 

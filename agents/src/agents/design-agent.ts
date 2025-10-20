@@ -1,6 +1,6 @@
 import {
-  createExperimentalAgentFactory,
-  type ExperimentalAgentConfig,
+  createAgentFactory,
+  type AgentConfig,
   type AfterToolExecutionHook,
   type AgentContext,
   createPromptBuilder
@@ -23,6 +23,7 @@ const afterToolExecution: AfterToolExecutionHook = async (
   toolName: string,
   args: unknown,
   result: unknown,
+  toolCallError: unknown,
   context?: AgentContext
 ): Promise<unknown> => {
   const appId = context?.metadata?.appId as string
@@ -78,7 +79,7 @@ async function buildDesignSystemPrompt(): Promise<string> {
 /**
  * Create the Design Agent configuration
  */
-export async function createDesignAgent(): Promise<ExperimentalAgentConfig> {
+export async function createDesignAgent(): Promise<AgentConfig> {
   const systemPrompt = await buildDesignSystemPrompt();
   const { model, modelName } = await getAgentModelWithName('full'); // Use full model for comprehensive design work
 
@@ -120,7 +121,7 @@ export async function createDesignAgent(): Promise<ExperimentalAgentConfig> {
  * Create Design Agent factory
  */
 export async function createDesignAgentFactory() {
-  const factory = createExperimentalAgentFactory();
+  const factory = createAgentFactory();
 
   const agents = factory.defineAgents({
     design: await createDesignAgent()
@@ -175,7 +176,7 @@ export class DesignAgent {
   /**
    * Get agent configuration
    */
-  getConfig(): ExperimentalAgentConfig {
+  getConfig(): AgentConfig {
     if (!this.factory) {
       throw new Error('Agent not initialized. Call initialize() first.');
     }

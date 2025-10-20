@@ -1,8 +1,8 @@
 /**
  * Agentic Bedrock with Prompt Caching Example
- * 
+ *
  * This example demonstrates:
- * - Prompt caching with ExperimentalAgentFactory to reduce costs
+ * - Prompt caching with AgentFactory to reduce costs
  * - Large system prompts cached across multiple requests
  * - Cost comparison between cached and non-cached requests
  * - Agentic behavior with cached contexts
@@ -11,7 +11,7 @@
 import 'dotenv/config'
 import { getModel } from '../src/providers/unified-provider.js'
 import { createTool } from '../src/tools/base-tool.js'
-import { createExperimentalAgentFactory } from '../src/core/agent-factory-experimental.js'
+import { createAgentFactory } from '../src/core/agent-factory.js'
 import { z } from 'zod'
 
 // Large, detailed system prompt that benefits from caching (2000+ tokens)
@@ -108,11 +108,11 @@ const codeAnalysisTool = createTool(
   }),
   async ({ code, language, focus = 'general' }) => {
     console.log(`🔍 [Code Analysis Tool] Analyzing ${language} code (focus: ${focus})...`)
-    
+
     // Simulate code analysis
     const issues = []
     const suggestions = []
-    
+
     // Basic analysis patterns
     if (code.includes('var ') && language === 'javascript') {
       issues.push({
@@ -122,7 +122,7 @@ const codeAnalysisTool = createTool(
         message: 'Use const/let instead of var for better scoping'
       })
     }
-    
+
     if (code.includes('==') && !code.includes('===') && language === 'javascript') {
       issues.push({
         type: 'equality',
@@ -130,7 +130,7 @@ const codeAnalysisTool = createTool(
         message: 'Use strict equality (===) instead of loose equality (==)'
       })
     }
-    
+
     if (code.includes('eval(') && language === 'javascript') {
       issues.push({
         type: 'security',
@@ -138,7 +138,7 @@ const codeAnalysisTool = createTool(
         message: 'Avoid eval() - it poses security risks and performance issues'
       })
     }
-    
+
     // Generate suggestions based on focus
     if (focus === 'performance') {
       suggestions.push('Consider using memoization for expensive computations')
@@ -147,7 +147,7 @@ const codeAnalysisTool = createTool(
       suggestions.push('Validate and sanitize all user inputs')
       suggestions.push('Use parameterized queries to prevent SQL injection')
     }
-    
+
     const result = {
       language,
       linesAnalyzed: code.split('\n').length,
@@ -157,7 +157,7 @@ const codeAnalysisTool = createTool(
       focus,
       analyzedAt: new Date().toISOString()
     }
-    
+
     console.log(`✅ [Code Analysis Tool] Found ${issues.length} issues, score: ${result.overallScore}/10`)
     return result
   }
@@ -173,11 +173,11 @@ const architectureReviewTool = createTool(
   }),
   async ({ systemDescription, scale, primaryConcerns }) => {
     console.log(`🏗️  [Architecture Review Tool] Reviewing ${scale} scale system (concerns: ${primaryConcerns})...`)
-    
+
     const recommendations = []
     const patterns = []
     const technologies = []
-    
+
     // Generate recommendations based on scale and concerns
     if (scale === 'large' || scale === 'enterprise') {
       recommendations.push('Implement microservices architecture for better scalability')
@@ -185,20 +185,20 @@ const architectureReviewTool = createTool(
       patterns.push('API Gateway pattern for service routing')
       patterns.push('Circuit Breaker pattern for resilience')
     }
-    
+
     if (primaryConcerns.includes('performance')) {
       recommendations.push('Implement caching layers (Redis, CDN)')
       recommendations.push('Use database indexing and query optimization')
       technologies.push('Redis for caching')
       technologies.push('Elasticsearch for search')
     }
-    
+
     if (primaryConcerns.includes('security')) {
       recommendations.push('Implement OAuth 2.0 / JWT for authentication')
       recommendations.push('Use HTTPS everywhere and implement CORS properly')
       patterns.push('Zero Trust Architecture')
     }
-    
+
     const result = {
       systemDescription,
       scale,
@@ -209,7 +209,7 @@ const architectureReviewTool = createTool(
       estimatedComplexity: scale === 'small' ? 'Low' : scale === 'medium' ? 'Medium' : 'High',
       reviewedAt: new Date().toISOString()
     }
-    
+
     console.log(`✅ [Architecture Review Tool] Generated ${recommendations.length} recommendations`)
     return result
   }
@@ -220,7 +220,7 @@ async function runCachedExample(agent: any, prompt: string, label: string) {
   console.log('-'.repeat(60))
   console.log(`👤 User: ${prompt}\n`)
   console.log('🤖 Assistant: ')
-  
+
   // For the cached agent, pass the large system prompt as a cached context message
   const streamResult = await agent.streamGenerate(prompt, {
     context: agent.getName().includes('Cached') ? [{
@@ -230,16 +230,16 @@ async function runCachedExample(agent: any, prompt: string, label: string) {
     }] : undefined
   })
   let content = ''
-  
+
   const startTime = Date.now()
   for await (const chunk of streamResult.textStream) {
     process.stdout.write(chunk)
     content += chunk
   }
   const responseTime = Date.now() - startTime
-  
+
   const finalResult = await streamResult.getFinalResult()
-  
+
   console.log(`\n\n📊 Results:`)
   console.log(`   Response time: ${responseTime}ms`)
   console.log(`   Content length: ${content.length} characters`)
@@ -248,20 +248,20 @@ async function runCachedExample(agent: any, prompt: string, label: string) {
   console.log(`   Output tokens: ${finalResult.usage?.outputTokens}`)
   console.log(`   Cached input tokens: ${finalResult.usage?.cachedInputTokens || 0}`)
   console.log(`   Tools used: ${finalResult.toolCalls?.length || 0}`)
-  
+
   if (finalResult.usage) {
     const cost = (finalResult.usage.inputTokens / 1000 * 0.003) + (finalResult.usage.outputTokens / 1000 * 0.015)
-    const cachedCost = ((finalResult.usage.inputTokens - (finalResult.usage.cachedInputTokens || 0)) / 1000 * 0.003) + 
+    const cachedCost = ((finalResult.usage.inputTokens - (finalResult.usage.cachedInputTokens || 0)) / 1000 * 0.003) +
                       ((finalResult.usage.cachedInputTokens || 0) / 1000 * 0.0003) + // Cached tokens cost much less
                       (finalResult.usage.outputTokens / 1000 * 0.015)
-    
+
     console.log(`   Estimated cost (no caching): $${cost.toFixed(4)}`)
     if (finalResult.usage.cachedInputTokens) {
       console.log(`   Estimated cost (with caching): $${cachedCost.toFixed(4)}`)
       console.log(`   Savings from caching: $${(cost - cachedCost).toFixed(4)} (${((cost - cachedCost) / cost * 100).toFixed(1)}%)`)
     }
   }
-  
+
   return {
     responseTime,
     usage: finalResult.usage,
@@ -275,7 +275,7 @@ async function runCachedExampleWithContext(agent: any, prompt: string, label: st
   console.log('-'.repeat(60))
   console.log(`👤 User: ${prompt}\n`)
   console.log('🤖 Assistant: ')
-  
+
   // Demonstrate context with cachePoint - include the large system prompt + additional context
   const streamResult = await agent.streamGenerate(prompt, {
     context: [
@@ -292,19 +292,19 @@ async function runCachedExampleWithContext(agent: any, prompt: string, label: st
     ]
   })
   let content = ''
-  
+
   const startTime = Date.now()
   for await (const chunk of streamResult.textStream) {
     process.stdout.write(chunk)
     content += chunk
   }
-  
+
   const finalResult = await streamResult.getFinalResult()
   const responseTime = Date.now() - startTime
-  
+
   console.log(`\n\n⏱️  Response time: ${responseTime}ms`)
   console.log(`💾 Context: Included cached context message`)
-  
+
   if (finalResult.usage) {
     console.log(`📊 Token usage:`)
     console.log(`   Input tokens: ${finalResult.usage.inputTokens}`)
@@ -313,19 +313,19 @@ async function runCachedExampleWithContext(agent: any, prompt: string, label: st
     if (finalResult.usage.cachedInputTokens) {
       console.log(`   🎯 Cached input tokens: ${finalResult.usage.cachedInputTokens}`)
     }
-    
+
     const cost = (finalResult.usage.inputTokens / 1000 * 0.003) + (finalResult.usage.outputTokens / 1000 * 0.015)
-    const cachedCost = ((finalResult.usage.inputTokens - (finalResult.usage.cachedInputTokens || 0)) / 1000 * 0.003) + 
+    const cachedCost = ((finalResult.usage.inputTokens - (finalResult.usage.cachedInputTokens || 0)) / 1000 * 0.003) +
                       ((finalResult.usage.cachedInputTokens || 0) / 1000 * 0.0003) + // Cached tokens cost much less
                       (finalResult.usage.outputTokens / 1000 * 0.015)
-    
+
     console.log(`   Estimated cost (no caching): $${cost.toFixed(4)}`)
     if (finalResult.usage.cachedInputTokens) {
       console.log(`   Estimated cost (with caching): $${cachedCost.toFixed(4)}`)
       console.log(`   Savings from caching: $${(cost - cachedCost).toFixed(4)} (${((cost - cachedCost) / cost * 100).toFixed(1)}%)`)
     }
   }
-  
+
   return {
     responseTime,
     usage: finalResult.usage,
@@ -345,10 +345,10 @@ async function main() {
   try {
     console.log('🔗 Connecting to AWS Bedrock...')
     const model = await getModel('claude4')
-    
+
     console.log('🏭 Creating agents with and without caching...')
-    
-    const agentFactory = createExperimentalAgentFactory()
+
+    const agentFactory = createAgentFactory()
 
     // Create agents with different caching configurations
     const agents = agentFactory.defineAgents({
@@ -366,7 +366,7 @@ async function main() {
         temperature: 0.3,
         maxOutputTokens: 2000
       },
-      
+
       // Agent without caching for comparison
       nonCachedAgent: {
         name: 'Non-Cached AI Architect',
@@ -386,7 +386,7 @@ async function main() {
 
     const cachedAgent = agents.get('cachedAgent')
     const nonCachedAgent = agents.get('nonCachedAgent')
-    
+
     console.log(`✅ Created agents with large system prompt (${LARGE_SYSTEM_PROMPT.length} characters)\n`)
 
     console.log('=' + '='.repeat(80))
@@ -397,20 +397,20 @@ async function main() {
     const sampleCode = `
 function processUserData(userData) {
     var result = {};
-    
+
     if (userData.email == null) {
         throw new Error("Email required");
     }
-    
+
     if (userData.password.length < 8) {
         result.error = "Password too short";
         return result;
     }
-    
+
     // Store password in plain text (bad!)
     result.password = userData.password;
     result.email = userData.email.toLowerCase();
-    
+
     return result;
 }
 `
@@ -419,7 +419,7 @@ function processUserData(userData) {
     // FIRST REQUEST (No caching benefit yet)
     // ==========================================
     console.log('\n🔄 FIRST REQUEST - Establishing Cache')
-    
+
     const result1 = await runCachedExample(
       cachedAgent,
       `Please analyze this JavaScript code for security and best practices issues:\n\n${sampleCode}`,
@@ -491,7 +491,7 @@ function processUserData(userData) {
     console.log('   ✓ Faster response times for subsequent requests')
     console.log('   ✓ Maintained full agentic capabilities with tools')
     console.log('   ✓ Significant cost savings for applications with large system prompts')
-    console.log('   ✓ Seamless integration with ExperimentalAgentFactory')
+    console.log('   ✓ Seamless integration with AgentFactory')
 
     console.log('\n💡 Best Practices for Prompt Caching:')
     console.log('   • Use caching for large system prompts (>1000 tokens)')

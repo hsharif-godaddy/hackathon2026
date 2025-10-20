@@ -1,7 +1,7 @@
 import { Server as SocketIOServer } from 'socket.io'
 import { Server as HTTPServer } from 'http'
-import type { ExperimentalAgentFactory, ExperimentalAgentWrapper } from '../core/agent-factory-experimental.js'
-import { createExperimentalAgentFactory } from '../core/agent-factory-experimental.js'
+import type { AgentFactory, AgentWrapper } from '../core/agent-factory.js'
+import { createAgentFactory } from '../core/agent-factory.js'
 import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '../utils/model-pricing.js'
 import type {
   MessageProvider,
@@ -15,12 +15,12 @@ import type {
 
 
 /**
- * WebSocket Server Configuration for ExperimentalAgentFactory
+ * WebSocket Server Configuration for AgentFactory
  */
-export interface ExperimentalWebSocketConfig {
+export interface WebSocketConfig {
   /** Agents object from agentFactory.defineAgents() (required) */
   agents: {
-    get: (id: string) => ExperimentalAgentWrapper
+    get: (id: string) => AgentWrapper
     list: () => (string | number)[]
     [key: string]: any
   }
@@ -89,14 +89,14 @@ export interface WebSocketMessage {
 }
 
 /**
- * Modern WebSocket Server for ExperimentalAgentFactory
- * 
+ * Modern WebSocket Server for AgentFactory
+ *
  * Simplified architecture that always uses an agent factory and supports
  * both single and multi-agent scenarios.
  */
-export class ExperimentalWebSocketServer {
+export class WebSocketServer {
   private io: SocketIOServer
-  private config: ExperimentalWebSocketConfig
+  private config: WebSocketConfig
   private activeStreams: Map<string, AbortController> = new Map()
   private activeConversations: Map<string, {
     conversationId: string
@@ -109,12 +109,12 @@ export class ExperimentalWebSocketServer {
     accumulatedContent?: string
   }> = new Map()
 
-  constructor(httpServer: HTTPServer, config: ExperimentalWebSocketConfig) {
+  constructor(httpServer: HTTPServer, config: WebSocketConfig) {
     this.config = config
 
     // Validate configuration
     if (!config.agents) {
-      throw new Error('ExperimentalWebSocketServer requires an agents object in config')
+      throw new Error('WebSocketServer requires an agents object in config')
     }
 
     // Initialize Socket.IO server
@@ -265,7 +265,7 @@ export class ExperimentalWebSocketServer {
       this.initializeConversationBuffers(conversation)
 
       const agentMessageId = conversation.context.agentMessageId
-      
+
       if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
         console.log('📝 Event captured for persistence:', {
           type,
@@ -275,7 +275,7 @@ export class ExperimentalWebSocketServer {
           contentLength: content?.length || 0
         })
       }
-      
+
       if (agentMessageId && this.config.messagePersistence.updateAgentTurn) {
         const timestamp = event.timestamp || new Date()
 
@@ -871,7 +871,7 @@ export class ExperimentalWebSocketServer {
    * Assemble messages from various providers with proper ordering and cache points
    */
   private async assembleMessages(
-    data: ChatMessage, 
+    data: ChatMessage,
     context: Record<string, unknown> | undefined
   ): Promise<{
     messages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }>
@@ -887,7 +887,7 @@ export class ExperimentalWebSocketServer {
       try {
         const contextToLoad = context || {}
         const loadedContextMessages = await this.config.contextProvider.loadContextMessages(contextToLoad)
-        
+
         // Separate messages by insertion order and convert to proper format
         for (const msg of loadedContextMessages) {
           const { insertionOrder, ...messageWithoutOrder } = msg
@@ -896,14 +896,14 @@ export class ExperimentalWebSocketServer {
             content: messageWithoutOrder.content,
             ...(messageWithoutOrder.cachePoint && { cachePoint: messageWithoutOrder.cachePoint })
           }
-          
+
           if (insertionOrder === 'before_history') {
             beforeHistoryMessages.push(convertedMessage)
           } else {
             afterHistoryMessages.push(convertedMessage)
           }
         }
-        
+
         console.log(`✅ Loaded ${loadedContextMessages.length} context messages (${beforeHistoryMessages.length} before history, ${afterHistoryMessages.length} after history)`)
         console.log(`🎯 Cache points: ${loadedContextMessages.filter(m => m.cachePoint).length} messages with caching enabled`)
       } catch (error) {
@@ -915,7 +915,7 @@ export class ExperimentalWebSocketServer {
     // Assemble final message order:
     // 1. Context messages marked "before_history" go to contextMessages
     contextMessages.push(...beforeHistoryMessages)
-    
+
     // 2. Conversation history (if provided) - convert to proper format
     if (data.conversationHistory && data.conversationHistory.length > 0) {
       console.log(`🔄 Adding ${data.conversationHistory.length} conversation history messages`)
@@ -926,7 +926,7 @@ export class ExperimentalWebSocketServer {
       }))
       messages.push(...convertedHistoryMessages)
     }
-    
+
     // 3. Context messages marked "after_history" go to messages (after conversation history, before user message)
     messages.push(...afterHistoryMessages)
 
@@ -943,7 +943,7 @@ export class ExperimentalWebSocketServer {
    */
   private async streamAgentResponse(
     socket: any,
-    agent: ExperimentalAgentWrapper,
+    agent: AgentWrapper,
     data: ChatMessage,
     context: Record<string, unknown> | undefined,
     agentName: string,
@@ -990,7 +990,7 @@ export class ExperimentalWebSocketServer {
         hasToolUseInvalid: error?.message?.includes('toolUse.input is invalid'),
         hasJSONParsingFailed: error?.message?.includes('JSON parsing failed')
       })
-      
+
       if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid') || error?.message?.includes('JSON parsing failed')) {
         console.error('❌ Tool input validation error:', error.message)
 
@@ -1047,7 +1047,7 @@ export class ExperimentalWebSocketServer {
 
 Please analyze what went wrong and retry the tool call with properly formatted JSON. Ensure:
 1. All string values are properly quoted with double quotes
-2. All object properties use valid JSON syntax  
+2. All object properties use valid JSON syntax
 3. No trailing commas in objects or arrays
 4. All brackets and braces are properly closed
 5. No undefined or null values are passed as tool arguments
@@ -1057,9 +1057,9 @@ Please try again with corrected formatting.`
         // Continue the conversation by making a new streamGenerate call with the error feedback
         try {
           currentStep++
-          
+
           // Add the error as a user message to help the agent understand what went wrong
-          const retryMessages = [...messages, 
+          const retryMessages = [...messages,
             { role: 'user' as const, content: originalPrompt },
             { role: 'assistant' as const, content: 'I encountered an error with my tool call due to invalid JSON syntax. Let me fix that and try again.' },
             { role: 'user' as const, content: retryPrompt }
@@ -1102,7 +1102,7 @@ Please try again with corrected formatting.`
 
     // Get final result with usage and tool calls
     const finalResult = await streamResult.getFinalResult()
-    
+
     // Log token and cache usage information
     if (finalResult.usage) {
       // Merge usage data with caching information
@@ -1114,7 +1114,7 @@ Please try again with corrected formatting.`
           cachedInputTokensWrite: (finalResult as any).caching.cacheWriteInputTokens
         })
       }
-      
+
       // Get model information from agent config
       // Get model name from agent configuration
       let modelName = 'unknown'
@@ -1125,12 +1125,12 @@ Please try again with corrected formatting.`
         console.warn(`⚠️  Failed to get model name from agent config: ${error}`)
         modelName = agentName || 'unknown'
       }
-      
+
       console.log(`📊 Token Usage Statistics:`)
       console.log(`   Input tokens: ${usage.inputTokens || 0}`)
-      console.log(`   Output tokens: ${usage.outputTokens || 0}`)  
+      console.log(`   Output tokens: ${usage.outputTokens || 0}`)
       console.log(`   Total tokens: ${usage.totalTokens || 0}`)
-      
+
       // Log cache usage if available
       const totalCachedTokens = (usage.cachedInputTokensRead || 0) + (usage.cachedInputTokensWrite || 0)
       if (totalCachedTokens > 0) {
@@ -1147,7 +1147,7 @@ Please try again with corrected formatting.`
       } else {
         console.log(`   🔍 No cache usage detected`)
       }
-      
+
       // Calculate and log cost estimate using accurate model pricing
       const costEstimate = calculateCostEstimate(usage, modelName)
       const costLines = formatCostEstimate(costEstimate, usage)
@@ -1239,9 +1239,9 @@ Please try again with corrected formatting.`
  */
 export function createSingleAgentFactory(
   agentName: string,
-  agentConfig: Parameters<ExperimentalAgentFactory['defineAgents']>[0][string]
-): ExperimentalAgentFactory {
-  const factory = createExperimentalAgentFactory()
+  agentConfig: Parameters<AgentFactory['defineAgents']>[0][string]
+): AgentFactory {
+  const factory = createAgentFactory()
   factory.defineAgents({
     [agentName]: agentConfig
   })
@@ -1250,13 +1250,13 @@ export function createSingleAgentFactory(
 }
 
 /**
- * Create an ExperimentalWebSocketServer instance
+ * Create an WebSocketServer instance
  */
-export function createExperimentalWebSocketServer(
+export function createWebSocketServer(
   httpServer: HTTPServer,
-  config: ExperimentalWebSocketConfig
-): ExperimentalWebSocketServer {
-  return new ExperimentalWebSocketServer(httpServer, config)
+  config: WebSocketConfig
+): WebSocketServer {
+  return new WebSocketServer(httpServer, config)
 }
 
 // Re-export interfaces for convenience
@@ -1276,13 +1276,13 @@ export type {
 export function createSingleAgentWebSocketServer(
   httpServer: HTTPServer,
   agentName: string,
-  agentConfig: Parameters<ExperimentalAgentFactory['defineAgents']>[0][string],
-  options?: Omit<ExperimentalWebSocketConfig, 'agents' | 'defaultAgent'>
-): ExperimentalWebSocketServer {
+  agentConfig: Parameters<AgentFactory['defineAgents']>[0][string],
+  options?: Omit<WebSocketConfig, 'agents' | 'defaultAgent'>
+): WebSocketServer {
   const factory = createSingleAgentFactory(agentName, agentConfig)
   const agents = factory.defineAgents({ [agentName]: agentConfig })
 
-  return new ExperimentalWebSocketServer(httpServer, {
+  return new WebSocketServer(httpServer, {
     agents,
     defaultAgent: agentName,
     ...options

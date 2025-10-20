@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 
 import { 
-  createExperimentalAgentFactory, 
+  createAgentFactory, 
   getModel,
   addHandoffTools
 } from '../src/index.js'
@@ -126,7 +126,7 @@ const fileEditTool = createTool(
 async function demonstrateDevelopDatabaseHandoff() {
   console.log('🚀 Develop Agent → Database Agent Handoff Demo\n')
 
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
   
   const agents = factory.defineAgents({
     develop: {
@@ -268,7 +268,7 @@ Please coordinate this setup and hand off to the database specialist as needed.`
 async function demonstrateHandoffChain() {
   console.log('\n🔄 Multi-Step Handoff Chain Demo\n')
 
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
   
   const agents = factory.defineAgents({
     develop: {

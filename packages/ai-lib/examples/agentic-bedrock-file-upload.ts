@@ -1,8 +1,8 @@
 /**
  * Agentic Bedrock File Upload and Analysis Example
- * 
+ *
  * This example demonstrates:
- * - File upload and processing with ExperimentalAgentFactory
+ * - File upload and processing with AgentFactory
  * - Multi-format file analysis (text, JSON, CSV, images)
  * - Agentic behavior with file content tools
  * - Document comparison and extraction
@@ -12,7 +12,7 @@
 import 'dotenv/config'
 import { getModel } from '../src/providers/unified-provider.js'
 import { createTool } from '../src/tools/base-tool.js'
-import { createExperimentalAgentFactory } from '../src/core/agent-factory-experimental.js'
+import { createAgentFactory } from '../src/core/agent-factory.js'
 import { z } from 'zod'
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -27,7 +27,7 @@ const fileExtractionTool = createTool(
   }),
   async ({ filePath, analysisType, extractionFocus = 'general' }) => {
     console.log(`📄 [File Extraction Tool] Analyzing ${filePath} (${analysisType}, focus: ${extractionFocus})`)
-    
+
     try {
       // Read file content
       const content = readFileSync(filePath, 'utf-8')
@@ -36,10 +36,10 @@ const fileExtractionTool = createTool(
         lines: content.split('\n').length,
         words: content.split(/\s+/).filter(word => word.length > 0).length
       }
-      
+
       // Basic content analysis
       let analysis = {}
-      
+
       if (analysisType === 'summary') {
         analysis = {
           type: 'summary',
@@ -64,7 +64,7 @@ const fileExtractionTool = createTool(
           recommendations: generateRecommendations(content)
         }
       }
-      
+
       const result = {
         filePath,
         fileStats,
@@ -72,10 +72,10 @@ const fileExtractionTool = createTool(
         extractionFocus,
         processedAt: new Date().toISOString()
       }
-      
+
       console.log(`✅ [File Extraction Tool] Processed ${filePath}: ${fileStats.words} words, ${fileStats.lines} lines`)
       return result
-      
+
     } catch (error) {
       console.log(`❌ [File Extraction Tool] Error processing ${filePath}: ${error instanceof Error ? error.message : String(error)}`)
       return {
@@ -96,9 +96,9 @@ const documentComparisonTool = createTool(
   }),
   async ({ filePaths, comparisonType }) => {
     console.log(`🔍 [Document Comparison Tool] Comparing ${filePaths.length} documents (${comparisonType})`)
-    
+
     const documents = []
-    
+
     for (const filePath of filePaths) {
       try {
         const content = readFileSync(filePath, 'utf-8')
@@ -115,9 +115,9 @@ const documentComparisonTool = createTool(
         console.log(`❌ Could not read ${filePath}: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
-    
+
     let comparison = {}
-    
+
     if (comparisonType === 'content') {
       comparison = {
         type: 'content',
@@ -140,7 +140,7 @@ const documentComparisonTool = createTool(
         outliers: findOutliers(documents)
       }
     }
-    
+
     const result = {
       documentsCompared: filePaths,
       comparisonType,
@@ -148,7 +148,7 @@ const documentComparisonTool = createTool(
       summary: generateComparisonSummary(documents, comparison),
       comparedAt: new Date().toISOString()
     }
-    
+
     console.log(`✅ [Document Comparison Tool] Compared ${documents.length} documents`)
     return result
   }
@@ -164,14 +164,14 @@ const contentSearchTool = createTool(
   }),
   async ({ searchQuery, filePaths, searchType }) => {
     console.log(`🔎 [Content Search Tool] Searching for "${searchQuery}" in ${filePaths.length} files (${searchType})`)
-    
+
     const searchResults = []
-    
+
     for (const filePath of filePaths) {
       try {
         const content = readFileSync(filePath, 'utf-8')
         const matches = []
-        
+
         if (searchType === 'exact') {
           const lines = content.split('\n')
           lines.forEach((line, index) => {
@@ -192,7 +192,7 @@ const contentSearchTool = createTool(
           const keywords = searchQuery.split(/\s+/)
           const lines = content.split('\n')
           lines.forEach((line, index) => {
-            const foundKeywords = keywords.filter(keyword => 
+            const foundKeywords = keywords.filter(keyword =>
               line.toLowerCase().includes(keyword.toLowerCase())
             )
             if (foundKeywords.length > 0) {
@@ -204,13 +204,13 @@ const contentSearchTool = createTool(
             }
           })
         }
-        
+
         searchResults.push({
           filePath,
           matches: matches.slice(0, 10), // Limit to first 10 matches
           totalMatches: matches.length
         })
-        
+
       } catch (error) {
         searchResults.push({
           filePath,
@@ -218,7 +218,7 @@ const contentSearchTool = createTool(
         })
       }
     }
-    
+
     const result = {
       searchQuery,
       searchType,
@@ -227,7 +227,7 @@ const contentSearchTool = createTool(
       totalMatches: searchResults.reduce((sum, r) => sum + (r.totalMatches || 0), 0),
       searchedAt: new Date().toISOString()
     }
-    
+
     console.log(`✅ [Content Search Tool] Found ${result.totalMatches} total matches`)
     return result
   }
@@ -237,7 +237,7 @@ const contentSearchTool = createTool(
 function extractKeyTopics(content: string): string[] {
   const words = content.toLowerCase().split(/\s+/)
   const commonWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did'])
-  
+
   const wordCounts: Record<string, number> = {}
   words.forEach(word => {
     const cleanWord = word.replace(/[^\w]/g, '')
@@ -245,7 +245,7 @@ function extractKeyTopics(content: string): string[] {
       wordCounts[cleanWord] = (wordCounts[cleanWord] || 0) + 1
     }
   })
-  
+
   return Object.entries(wordCounts)
     .sort(([,a], [,b]) => b - a)
     .slice(0, 5)
@@ -286,24 +286,24 @@ function extractUrls(content: string): string[] {
 function identifySections(content: string): string[] {
   const sections = []
   const lines = content.split('\n')
-  
+
   for (const line of lines) {
     if (line.startsWith('#')) {
       sections.push(line.replace(/^#+\s*/, ''))
     }
   }
-  
+
   return sections.slice(0, 10)
 }
 
 function analyzeSentiment(content: string): string {
   const positiveWords = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'success', 'achieve', 'positive']
   const negativeWords = ['bad', 'terrible', 'awful', 'failure', 'problem', 'issue', 'negative', 'difficult']
-  
+
   const words = content.toLowerCase().split(/\s+/)
   const positive = words.filter(word => positiveWords.some(pw => word.includes(pw))).length
   const negative = words.filter(word => negativeWords.some(nw => word.includes(nw))).length
-  
+
   if (positive > negative) return 'positive'
   if (negative > positive) return 'negative'
   return 'neutral'
@@ -312,7 +312,7 @@ function analyzeSentiment(content: string): string {
 function analyzeComplexity(content: string): any {
   const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 0)
   const avgSentenceLength = sentences.reduce((sum, s) => sum + s.split(/\s+/).length, 0) / sentences.length
-  
+
   return {
     avgSentenceLength: Math.round(avgSentenceLength),
     complexity: avgSentenceLength > 20 ? 'high' : avgSentenceLength > 15 ? 'medium' : 'low',
@@ -322,35 +322,35 @@ function analyzeComplexity(content: string): any {
 
 function generateRecommendations(content: string): string[] {
   const recommendations = []
-  
+
   if (content.length < 500) {
     recommendations.push('Consider expanding the content with more details')
   }
-  
+
   if (!content.includes('\n\n')) {
     recommendations.push('Add paragraph breaks for better readability')
   }
-  
+
   if (content.split('\n').filter(line => line.startsWith('#')).length === 0) {
     recommendations.push('Add section headers to improve structure')
   }
-  
+
   return recommendations
 }
 
 // Document comparison helper functions
 function findContentSimilarities(documents: any[]): string[] {
   // Simple word overlap analysis
-  const wordSets = documents.map(doc => 
+  const wordSets = documents.map(doc =>
     new Set(doc.content.toLowerCase().split(/\s+/).filter(word => word.length > 3))
   )
-  
+
   if (wordSets.length < 2) return []
-  
-  const commonWords = [...wordSets[0]].filter(word => 
+
+  const commonWords = [...wordSets[0]].filter(word =>
     wordSets.slice(1).every(set => set.has(word))
   )
-  
+
   return commonWords.slice(0, 10)
 }
 
@@ -365,11 +365,11 @@ function findContentDifferences(documents: any[]): any[] {
 function findCommonThemes(documents: any[]): string[] {
   const allTopics = documents.flatMap(doc => extractKeyTopics(doc.content))
   const topicCounts: Record<string, number> = {}
-  
+
   allTopics.forEach(topic => {
     topicCounts[topic] = (topicCounts[topic] || 0) + 1
   })
-  
+
   return Object.entries(topicCounts)
     .filter(([, count]) => count > 1)
     .sort(([,a], [,b]) => b - a)
@@ -393,7 +393,7 @@ function compareOrganization(documents: any[]): string {
 function calculateAverages(documents: any[]): any {
   const totalWords = documents.reduce((sum, doc) => sum + doc.stats.words, 0)
   const totalLines = documents.reduce((sum, doc) => sum + doc.stats.lines, 0)
-  
+
   return {
     avgWords: Math.round(totalWords / documents.length),
     avgLines: Math.round(totalLines / documents.length),
@@ -403,7 +403,7 @@ function calculateAverages(documents: any[]): any {
 
 function findOutliers(documents: any[]): any[] {
   const averages = calculateAverages(documents)
-  return documents.filter(doc => 
+  return documents.filter(doc =>
     doc.stats.words > averages.avgWords * 2 || doc.stats.words < averages.avgWords * 0.5
   ).map(doc => ({ filePath: doc.filePath, reason: 'Unusual length' }))
 }
@@ -421,15 +421,15 @@ function getLineContext(lines: string[], index: number): string[] {
 // Create sample files for demonstration
 function createSampleFiles(): string[] {
   const samplesDir = join(process.cwd(), 'sample-files')
-  
+
   try {
     mkdirSync(samplesDir, { recursive: true })
   } catch {
     // Directory already exists
   }
-  
+
   const files = []
-  
+
   // Sample project report
   const projectReport = `# AI Project Analysis Report
 
@@ -471,13 +471,13 @@ Date: 2024-09-15`
   const reportPath = join(samplesDir, 'ai-project-report.md')
   writeFileSync(reportPath, projectReport)
   files.push(reportPath)
-  
+
   // Sample meeting notes
   const meetingNotes = `# Weekly Team Meeting - September 18, 2024
 
 ## Attendees
 - Sarah Johnson (Product Manager)
-- Mike Chen (Lead Developer)  
+- Mike Chen (Lead Developer)
 - Lisa Wang (UX Designer)
 - David Rodriguez (Data Scientist)
 
@@ -503,7 +503,7 @@ Date: 2024-09-15`
 ### 4. Next Sprint Planning
 Priority features:
 1. Batch file processing
-2. Advanced error handling  
+2. Advanced error handling
 3. Performance monitoring dashboard
 4. API rate limiting implementation
 
@@ -524,7 +524,7 @@ Next meeting: September 25, 2024 at 10:00 AM`
   const notesPath = join(samplesDir, 'team-meeting-notes.md')
   writeFileSync(notesPath, meetingNotes)
   files.push(notesPath)
-  
+
   // Sample user feedback
   const userFeedback = `# User Feedback Compilation
 
@@ -555,7 +555,7 @@ Next meeting: September 25, 2024 at 10:00 AM`
 ## Ratings Summary
 - Ease of Use: 4.9/5.0
 - Processing Speed: 4.8/5.0
-- Accuracy: 4.7/5.0  
+- Accuracy: 4.7/5.0
 - Overall Satisfaction: 4.8/5.0
 
 ## Common Requests
@@ -572,7 +572,7 @@ Collection period: September 1-15, 2024`
   const feedbackPath = join(samplesDir, 'user-feedback.md')
   writeFileSync(feedbackPath, userFeedback)
   files.push(feedbackPath)
-  
+
   return files
 }
 
@@ -588,13 +588,13 @@ async function main() {
     console.log('📁 Creating sample files for analysis...')
     const sampleFiles = createSampleFiles()
     console.log(`✅ Created ${sampleFiles.length} sample files`)
-    
+
     console.log('🔗 Connecting to AWS Bedrock...')
     const model = await getModel('claude4')
-    
+
     console.log('🏭 Creating document analysis agent...')
-    
-    const agentFactory = createExperimentalAgentFactory()
+
+    const agentFactory = createAgentFactory()
 
     const agents = agentFactory.defineAgents({
       documentAnalyst: {
@@ -613,14 +613,14 @@ You have access to powerful file processing tools that can:
 - Search across multiple files for specific information
 
 Always provide comprehensive analysis with actionable insights. Use the available tools to thoroughly examine uploaded documents and provide valuable feedback to users.`,
-        
+
         model,
         tools: {
           fileExtraction: fileExtractionTool,
           documentComparison: documentComparisonTool,
           contentSearch: contentSearchTool
         },
-        
+
         maxSteps: 8,
         stopAfterTools: ['fileExtraction', 'documentComparison', 'contentSearch'],
         temperature: 0.3,
@@ -647,15 +647,15 @@ File to analyze: ${sampleFiles[0]}`
 
     console.log(`👤 User: ${prompt1}\n`)
     console.log('🤖 Assistant: ')
-    
+
     const streamResult1 = await agent.streamGenerate(prompt1)
     let response1 = ''
-    
+
     for await (const chunk of streamResult1.textStream) {
       process.stdout.write(chunk)
       response1 += chunk
     }
-    
+
     const finalResult1 = await streamResult1.getFinalResult()
     console.log(`\n\n📊 Demo 1 Results: ${finalResult1.usage?.totalTokens} tokens, ${finalResult1.toolCalls?.length || 0} tools`)
 
@@ -668,22 +668,22 @@ File to analyze: ${sampleFiles[0]}`
     const prompt2 = `I'd like you to compare these three documents to understand the overall project status and identify common themes:
 
 1. ${sampleFiles[0]} (project report)
-2. ${sampleFiles[1]} (meeting notes) 
+2. ${sampleFiles[1]} (meeting notes)
 3. ${sampleFiles[2]} (user feedback)
 
 Please compare their content and tell me what the overall picture is regarding our AI project.`
 
     console.log(`👤 User: ${prompt2}\n`)
     console.log('🤖 Assistant: ')
-    
+
     const streamResult2 = await agent.streamGenerate(prompt2)
     let response2 = ''
-    
+
     for await (const chunk of streamResult2.textStream) {
       process.stdout.write(chunk)
       response2 += chunk
     }
-    
+
     const finalResult2 = await streamResult2.getFinalResult()
     console.log(`\n\n📊 Demo 2 Results: ${finalResult2.usage?.totalTokens} tokens, ${finalResult2.toolCalls?.length || 0} tools`)
 
@@ -699,15 +699,15 @@ Files to search: ${sampleFiles.join(', ')}`
 
     console.log(`👤 User: ${prompt3}\n`)
     console.log('🤖 Assistant: ')
-    
+
     const streamResult3 = await agent.streamGenerate(prompt3)
     let response3 = ''
-    
+
     for await (const chunk of streamResult3.textStream) {
       process.stdout.write(chunk)
       response3 += chunk
     }
-    
+
     const finalResult3 = await streamResult3.getFinalResult()
     console.log(`\n\n📊 Demo 3 Results: ${finalResult3.usage?.totalTokens} tokens, ${finalResult3.toolCalls?.length || 0} tools`)
 
@@ -723,15 +723,15 @@ Focus on extracting: completion rates, time savings, cost reductions, user satis
 
     console.log(`👤 User: ${prompt4}\n`)
     console.log('🤖 Assistant: ')
-    
+
     const streamResult4 = await agent.streamGenerate(prompt4)
     let response4 = ''
-    
+
     for await (const chunk of streamResult4.textStream) {
       process.stdout.write(chunk)
       response4 += chunk
     }
-    
+
     const finalResult4 = await streamResult4.getFinalResult()
     console.log(`\n\n📊 Demo 4 Results: ${finalResult4.usage?.totalTokens} tokens, ${finalResult4.toolCalls?.length || 0} tools`)
 
@@ -761,7 +761,7 @@ Focus on extracting: completion rates, time savings, cost reductions, user satis
     console.log(`   Total token usage: ${totalTokens}`)
     console.log(`   Total tool calls: ${totalToolCalls}`)
     console.log(`   File types analyzed: Markdown, text documents`)
-    
+
     if (totalTokens > 0) {
       const estimatedCost = (totalTokens / 1000) * 0.009
       console.log(`   Estimated cost: $${estimatedCost.toFixed(4)}`)

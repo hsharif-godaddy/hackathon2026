@@ -1,6 +1,6 @@
 /**
  * Simple Agentic Bedrock Example
- * 
+ *
  * This example demonstrates:
  * - Basic agentic behavior with tool usage
  * - Intelligent stop conditions
@@ -11,7 +11,7 @@
 import 'dotenv/config'
 import { getModel } from '../src/providers/unified-provider.js'
 import { createTool } from '../src/tools/base-tool.js'
-import { createExperimentalAgentFactory } from '../src/core/agent-factory-experimental.js'
+import { createAgentFactory } from '../src/core/agent-factory.js'
 import { z } from 'zod'
 
 // Simple weather tool
@@ -23,7 +23,7 @@ const weatherTool = createTool(
   }),
   async ({ city, units = 'celsius' }) => {
     console.log(`🌤️  [Weather Tool] Getting weather for ${city}...`)
-    
+
     // Mock weather data for demo
     const weatherData: Record<string, any> = {
       'london': { temp: 15, condition: 'rainy', humidity: 78 },
@@ -32,9 +32,9 @@ const weatherTool = createTool(
       'paris': { temp: 18, condition: 'overcast', humidity: 70 },
       'sydney': { temp: 25, condition: 'sunny', humidity: 60 }
     }
-    
+
     const weather = weatherData[city.toLowerCase()] || { temp: 20, condition: 'unknown', humidity: 60 }
-    
+
     const result = {
       city,
       temperature: weather.temp,
@@ -43,7 +43,7 @@ const weatherTool = createTool(
       units,
       timestamp: new Date().toISOString()
     }
-    
+
     console.log(`✅ [Weather Tool] ${city}: ${weather.condition}, ${weather.temp}°${units === 'celsius' ? 'C' : 'F'}`)
     return result
   }
@@ -60,9 +60,9 @@ const recommendationTool = createTool(
   }),
   async ({ location, weatherCondition, temperature, preferences }) => {
     console.log(`🎯 [Recommendation Tool] Generating for ${location} (${weatherCondition}, ${temperature}°)`)
-    
+
     const recommendations = []
-    
+
     if (weatherCondition === 'sunny' && temperature > 20) {
       recommendations.push({
         activity: 'Outdoor sightseeing and walking tours',
@@ -92,7 +92,7 @@ const recommendationTool = createTool(
         duration: '2-3 hours'
       })
     }
-    
+
     const result = {
       location,
       weather: { condition: weatherCondition, temperature },
@@ -100,7 +100,7 @@ const recommendationTool = createTool(
       preferences,
       generatedAt: new Date().toISOString()
     }
-    
+
     console.log(`✅ [Recommendation Tool] Generated ${recommendations.length} recommendations`)
     return result
   }
@@ -116,11 +116,11 @@ async function main() {
 
   try {
     console.log('🔗 Connecting to AWS Bedrock...')
-    
+
     console.log('🏭 Creating agentic travel assistant...')
-    
+
     // Create agent factory
-    const agentFactory = createExperimentalAgentFactory()
+    const agentFactory = createAgentFactory()
 
     // Define a simple agentic travel assistant
     const agents = agentFactory.defineAgents({
@@ -132,13 +132,13 @@ async function main() {
 2. Then generating personalized activity recommendations based on the weather and their preferences
 
 Always use the available tools in logical sequence and provide helpful explanations for your recommendations.`,
-        
+
         model: await getModel('claude4'),
         tools: {
           weather: weatherTool,
           recommendations: recommendationTool
         },
-        
+
         // Simple agentic configuration
         maxSteps: 5,                           // Allow up to 5 reasoning steps
         stopAfterTools: ['recommendations'],   // Stop after generating recommendations
@@ -158,26 +158,26 @@ Always use the available tools in logical sequence and provide helpful explanati
     console.log('=' + '='.repeat(60))
 
     const prompt1 = "I'm visiting Tokyo tomorrow. I love outdoor activities and cultural experiences. Can you help me plan some activities?"
-    
+
     console.log(`👤 User: ${prompt1}\n`)
     console.log('🤖 Assistant: ')
-    
+
     const streamResult1 = await agent.streamGenerate(prompt1)
     let response1 = ''
-    
+
     for await (const chunk of streamResult1.textStream) {
       process.stdout.write(chunk)
       response1 += chunk
     }
-    
+
     const finalResult1 = await streamResult1.getFinalResult()
-    
+
     console.log('\n\n📊 Demo 1 Results:')
     console.log(`   Content: ${response1.length} characters`)
     console.log(`   Usage: ${finalResult1.usage?.totalTokens} tokens`)
     console.log(`   Tools used: ${finalResult1.toolCalls?.length || 0}`)
     console.log(`   Finish reason: ${finalResult1.finishReason}`)
-    
+
     if (finalResult1.toolCalls && finalResult1.toolCalls.length > 0) {
       console.log('\n🔧 Tool execution sequence:')
       finalResult1.toolCalls.forEach((call, index) => {
@@ -193,20 +193,20 @@ Always use the available tools in logical sequence and provide helpful explanati
     console.log('=' + '='.repeat(60))
 
     const prompt2 = "I'm planning a day in London. I enjoy museums, art, and good food. What would you recommend?"
-    
+
     console.log(`👤 User: ${prompt2}\n`)
     console.log('🤖 Assistant: ')
-    
+
     const streamResult2 = await agent.streamGenerate(prompt2)
     let response2 = ''
-    
+
     for await (const chunk of streamResult2.textStream) {
       process.stdout.write(chunk)
       response2 += chunk
     }
-    
+
     const finalResult2 = await streamResult2.getFinalResult()
-    
+
     console.log('\n\n📊 Demo 2 Results:')
     console.log(`   Content: ${response2.length} characters`)
     console.log(`   Usage: ${finalResult2.usage?.totalTokens} tokens`)
@@ -226,11 +226,11 @@ Always use the available tools in logical sequence and provide helpful explanati
     console.log('3. Uses weather data to call recommendations tool')
     console.log('4. Provides contextual response based on weather and preferences')
     console.log('5. Stops after recommendations (intelligent stop condition)')
-    
+
     console.log('\n⚙️  Stop Conditions Configured:')
     console.log('   • Maximum 5 reasoning steps (prevents infinite loops)')
     console.log('   • Stop after "recommendations" tool call (task completion)')
-    
+
     console.log('\n🎯 This demonstrates the agent\'s ability to:')
     console.log('   ✓ Execute multi-step reasoning automatically')
     console.log('   ✓ Use tools in logical sequence')
@@ -256,12 +256,12 @@ Always use the available tools in logical sequence and provide helpful explanati
 
     console.log(`\n📊 Total token usage: ${totalTokens}`)
     console.log(`🔧 Total tool calls: ${totalToolCalls}`)
-    
+
     if (totalTokens > 0) {
       const estimatedCost = (totalTokens / 1000) * 0.009  // Rough average cost estimate
       console.log(`💰 Estimated cost: $${estimatedCost.toFixed(4)}`)
     }
-    
+
     console.log('\n✅ Simple Agentic Bedrock Demo Complete!')
     console.log('\n💡 Key features demonstrated:')
     console.log('   ✓ Autonomous multi-step reasoning with Claude Sonnet 4')

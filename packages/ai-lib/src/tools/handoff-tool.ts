@@ -1,5 +1,5 @@
 /**
- * Agent handoff tool for ExperimentalAgentFactory
+ * Agent handoff tool for AgentFactory
  * 
  * This tool allows agents to hand off tasks to other agents with specific context.
  * The handoff includes only the provided context, not the full conversation history.
@@ -7,13 +7,13 @@
 
 import { z } from 'zod'
 import { createTool } from './index.js'
-import type { ExperimentalAgentFactory, HandoffContext } from '../core/agent-factory-experimental.js'
+import type { AgentFactory, HandoffContext } from '../core/agent-factory.js'
 
 /**
  * Create a handoff tool for an agent factory
  */
 export function createHandoffTool(
-  factory: ExperimentalAgentFactory,
+  factory: AgentFactory,
   sourceAgentId: string
 ) {
   return createTool(
@@ -85,7 +85,7 @@ export function createHandoffTool(
  * Create a tool to view handoff history
  */
 export function createHandoffHistoryTool(
-  factory: ExperimentalAgentFactory,
+  factory: AgentFactory,
   agentId?: string
 ) {
   return createTool(
@@ -130,7 +130,7 @@ export function createHandoffHistoryTool(
  * Helper to add handoff tools to an agent configuration
  */
 export function addHandoffTools(
-  factory: ExperimentalAgentFactory,
+  factory: AgentFactory,
   agentId: string,
   includeHistory: boolean = true
 ) {

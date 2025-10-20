@@ -1,8 +1,8 @@
 /**
  * Experimental WebSocket Server Demo
- * 
+ *
  * This example demonstrates the new ExperimentalWebSocketServer with:
- * - Simplified setup using ExperimentalAgentFactory
+ * - Simplified setup using AgentFactory
  * - Single agent helper factory
  * - Multi-agent support
  * - Conversation history and context handling
@@ -11,8 +11,8 @@
 import 'dotenv/config'
 import { createServer } from 'http'
 import { getModel } from '../src/providers/unified-provider.js'
-import { createExperimentalAgentFactory } from '../src/core/agent-factory-experimental.js'
-import { 
+import { createAgentFactory } from '../src/core/agent-factory.js'
+import {
   createExperimentalWebSocketServer,
   createSingleAgentWebSocketServer
 } from '../src/websocket/experimental-websocket-server.js'
@@ -29,7 +29,7 @@ const weatherTool = createTool(
   async ({ city, units = 'celsius' }) => {
     // Simulate weather API call
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     return {
       city,
       temperature: 22,
@@ -54,6 +54,18 @@ const timeTool = createTool(
     }
   }
 )
+
+// Helper function for single agent usage example
+function showUsageExample(port: number) {
+  console.log('\n📝 Client usage example:')
+  console.log(`const socket = io("http://localhost:${port}")`)
+  console.log('socket.emit("chat", { message: "What\'s the weather in Tokyo?" })')
+  console.log('socket.on("message", (data) => {')
+  console.log('  if (data.type === "chunk") console.log(data.content)')
+  console.log('  if (data.type === "complete") console.log("Done:", data.data)')
+  console.log('})')
+  console.log('\n⚠️  Press Ctrl+C to stop the server')
+}
 
 async function singleAgentDemo() {
   console.log('🚀 Starting Single Agent WebSocket Demo...')
@@ -108,7 +120,7 @@ async function singleAgentDemo() {
 
     // Start server with error handling
     const PORT = process.env.WS_PORT ? parseInt(process.env.WS_PORT) : 3001
-    
+
     httpServer.on('error', (err: any) => {
       if (err.code === 'EADDRINUSE') {
         console.log(`⚠️  Port ${PORT} is in use, trying port ${PORT + 1}`)
@@ -122,23 +134,12 @@ async function singleAgentDemo() {
         process.exit(1)
       }
     })
-    
+
     httpServer.listen(PORT, () => {
       console.log(`✅ Single Agent WebSocket Server running on port ${PORT}`)
       console.log(`🌐 Connect to: http://localhost:${PORT}`)
       showUsageExample(PORT)
     })
-    
-    function showUsageExample(port: number) {
-      console.log('\n📝 Client usage example:')
-      console.log(`const socket = io("http://localhost:${port}")`)
-      console.log('socket.emit("chat", { message: "What\'s the weather in Tokyo?" })')
-      console.log('socket.on("message", (data) => {')
-      console.log('  if (data.type === "chunk") console.log(data.content)')
-      console.log('  if (data.type === "complete") console.log("Done:", data.data)')
-      console.log('})')
-      console.log('\n⚠️  Press Ctrl+C to stop the server')
-    }
 
     // Graceful shutdown
     process.on('SIGINT', () => {
@@ -154,6 +155,40 @@ async function singleAgentDemo() {
   }
 }
 
+// Helper function for multi-agent usage example
+function showMultiAgentUsage(port: number, agentList: string[]) {
+  console.log('\n🤖 Available agents:', agentList.join(', '))
+  console.log('\n📝 Client usage examples:')
+  console.log(`const socket = io("http://localhost:${port}")`)
+  console.log('')
+  console.log('// Use default agent (general)')
+  console.log('socket.emit("chat", { message: "Hello!" })')
+  console.log('')
+  console.log('// Use specific agent (agentId or agentName supported)')
+  console.log('socket.emit("chat", { message: "What\'s the weather?", agentId: "weather" })')
+  console.log('')
+  console.log('// With context and history')
+  console.log('socket.emit("chat", {')
+  console.log('  message: "Continue the story",')
+  console.log('  agentId: "creative",')
+  console.log('  context: { userPreferences: { genre: "sci-fi" } },')
+  console.log('  conversationHistory: [')
+  console.log('    { role: "user", content: "Write a story about space" },')
+  console.log('    { role: "assistant", content: "Once upon a time..." }')
+  console.log('  ]')
+  console.log('})')
+  console.log('')
+  console.log('// Listen for normalized events')
+  console.log('socket.on("message", (data) => {')
+  console.log('  switch(data.type) {')
+  console.log('    case "agents_available": console.log("Agents:", data.data.agents)')
+  console.log('    case "chunk": process.stdout.write(data.content)')
+  console.log('    case "complete": console.log("\\nDone:", data.data.agentId)')
+  console.log('  }')
+  console.log('})')
+  console.log('\n⚠️  Press Ctrl+C to stop the server')
+}
+
 async function multiAgentDemo() {
   console.log('🚀 Starting Multi-Agent WebSocket Demo...')
 
@@ -162,8 +197,8 @@ async function multiAgentDemo() {
 
   try {
     // Create agent factory with multiple agents
-    const agentFactory = createExperimentalAgentFactory()
-    
+    const agentFactory = createAgentFactory()
+
     const agents = agentFactory.defineAgents({
       general: {
         name: 'General Assistant',
@@ -173,7 +208,7 @@ async function multiAgentDemo() {
         maxOutputTokens: 500,
         maxSteps: 2
       },
-      
+
       weather: {
         name: 'Weather Specialist',
         system: `You are a weather specialist. Use the weather tool to provide accurate weather information. Be detailed about weather conditions.`,
@@ -186,7 +221,7 @@ async function multiAgentDemo() {
         maxOutputTokens: 800,
         maxSteps: 3
       },
-      
+
       creative: {
         name: 'Creative Writer',
         system: `You are a creative writing assistant. Help with stories, poems, and creative content. Be imaginative and inspiring.`,
@@ -223,59 +258,26 @@ async function multiAgentDemo() {
 
     // Start server with error handling
     const PORT = process.env.WS_PORT ? parseInt(process.env.WS_PORT) : 3002
-    
+
     httpServer.on('error', (err: any) => {
       if (err.code === 'EADDRINUSE') {
         console.log(`⚠️  Port ${PORT} is in use, trying port ${PORT + 1}`)
         httpServer.listen(PORT + 1, () => {
           console.log(`✅ Multi-Agent WebSocket Server running on port ${PORT + 1}`)
           console.log(`🌐 Connect to: http://localhost:${PORT + 1}`)
-          showMultiAgentUsage(PORT + 1)
+          showMultiAgentUsage(PORT + 1, agents.list())
         })
       } else {
         console.error(`❌ Server error:`, err)
         process.exit(1)
       }
     })
-    
+
     httpServer.listen(PORT, () => {
       console.log(`✅ Multi-Agent WebSocket Server running on port ${PORT}`)
       console.log(`🌐 Connect to: http://localhost:${PORT}`)
-      showMultiAgentUsage(PORT)
+      showMultiAgentUsage(PORT, agents.list())
     })
-    
-    function showMultiAgentUsage(port: number) {
-      console.log('\n🤖 Available agents:', agents.list().join(', '))
-      console.log('\n📝 Client usage examples:')
-      console.log(`const socket = io("http://localhost:${port}")`)
-      console.log('')
-      console.log('// Use default agent (general)')
-      console.log('socket.emit("chat", { message: "Hello!" })')
-      console.log('')
-      console.log('// Use specific agent (agentId or agentName supported)')
-      console.log('socket.emit("chat", { message: "What\'s the weather?", agentId: "weather" })')
-      console.log('')
-      console.log('// With context and history')
-      console.log('socket.emit("chat", {')
-      console.log('  message: "Continue the story",')
-      console.log('  agentId: "creative",')
-      console.log('  context: { userPreferences: { genre: "sci-fi" } },')
-      console.log('  conversationHistory: [')
-      console.log('    { role: "user", content: "Write a story about space" },')
-      console.log('    { role: "assistant", content: "Once upon a time..." }')
-      console.log('  ]')
-      console.log('})')
-      console.log('')
-      console.log('// Listen for normalized events')
-      console.log('socket.on("message", (data) => {')
-      console.log('  switch(data.type) {')
-      console.log('    case "agents_available": console.log("Agents:", data.data.agents)')
-      console.log('    case "chunk": process.stdout.write(data.content)')
-      console.log('    case "complete": console.log("\\nDone:", data.data.agentId)')
-      console.log('  }')
-      console.log('})')
-      console.log('\n⚠️  Press Ctrl+C to stop the server')
-    }
 
     // Graceful shutdown
     process.on('SIGINT', () => {

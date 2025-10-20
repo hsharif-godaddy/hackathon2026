@@ -1,6 +1,6 @@
 import { 
-  createExperimentalAgentFactory, 
-  type ExperimentalAgentConfig,
+  createAgentFactory, 
+  type AgentConfig,
   createPromptBuilder,
 } from '@airo/ai-lib'
 import { getAgentModelWithName } from '../utils/model-selection.js'
@@ -36,7 +36,7 @@ async function buildColorSchemeSystemPrompt(): Promise<string> {
 /**
  * Create the Color Scheme Agent configuration
  */
-export async function createColorSchemeAgent(): Promise<ExperimentalAgentConfig> {
+export async function createColorSchemeAgent(): Promise<AgentConfig> {
   const systemPrompt = await buildColorSchemeSystemPrompt()
   const { model, modelName } = await getAgentModelWithName('fast') // Use fast model for color scheme generation
   
@@ -67,7 +67,7 @@ export async function createColorSchemeAgent(): Promise<ExperimentalAgentConfig>
  * Create Color Scheme Agent factory with handoff support
  */
 export async function createColorSchemeAgentFactory() {
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
   
   const agents = factory.defineAgents({
     colorScheme: await createColorSchemeAgent()
@@ -123,7 +123,7 @@ export class ColorSchemeAgent {
   /**
    * Get agent configuration
    */
-  getConfig(): ExperimentalAgentConfig {
+  getConfig(): AgentConfig {
     if (!this.factory) {
       throw new Error('Agent not initialized. Call initialize() first.')
     }

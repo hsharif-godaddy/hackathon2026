@@ -18,48 +18,48 @@ A flexible, TypeScript-first system for building complex AI system prompts with 
 ### Basic Usage
 
 ```typescript
-import { createPromptBuilder } from '@airo/ai-lib'
+import { createPromptBuilder } from "@airo/ai-lib";
 
 const prompt = await createPromptBuilder()
-  .text('You are a helpful AI assistant.')
+  .text("You are a helpful AI assistant.")
   .list([
-    'Answer questions accurately',
-    'Be concise and clear',
-    'Ask for clarification when needed'
+    "Answer questions accurately",
+    "Be concise and clear",
+    "Ask for clarification when needed",
   ])
-  .text('How can I help you today?')
-  .build()
+  .text("How can I help you today?")
+  .build();
 ```
 
 ### File-Based Prompts
 
 ```typescript
 const prompt = await createPromptBuilder()
-  .file('./prompts/base-instructions.md')
-  .file('./prompts/coding-guidelines.md')
-  .file('./prompts/safety-rules.md')
-  .build()
+  .file("./prompts/base-instructions.md")
+  .file("./prompts/coding-guidelines.md")
+  .file("./prompts/safety-rules.md")
+  .build();
 ```
 
 ### Conditional Sections
 
 ```typescript
 const prompt = await createPromptBuilder()
-  .text('Welcome to the AI Assistant!')
-  
-  .when(when.exists('user.name'))
-    .template('Hello {{user.name}}!')
-    .template('I see you are a {{user.role}}.')
+  .text("Welcome to the AI Assistant!")
+
+  .when(when.exists("user.name"))
+  .template("Hello {{user.name}}!")
+  .template("I see you are a {{user.role}}.")
   .end()
-  
-  .when(when.equals('config.mode', 'development'))
-    .text('🔧 Development mode: Extra debug info enabled')
+
+  .when(when.equals("config.mode", "development"))
+  .text("🔧 Development mode: Extra debug info enabled")
   .end()
-  
+
   .build({
-    user: { name: 'John', role: 'developer' },
-    config: { mode: 'development' }
-  })
+    user: { name: "John", role: "developer" },
+    config: { mode: "development" },
+  });
 ```
 
 ## 📖 **API Reference**
@@ -71,7 +71,7 @@ const prompt = await createPromptBuilder()
 Main class for building prompts with fluent API.
 
 ```typescript
-const builder = createPromptBuilder()
+const builder = createPromptBuilder();
 ```
 
 #### Methods
@@ -91,47 +91,42 @@ const builder = createPromptBuilder()
 #### `pb` - Section Helpers
 
 ```typescript
-import { pb, when } from '@airo/ai-lib'
+import { pb, when } from "@airo/ai-lib";
 
 const sections = [
-  pb.text('System Instructions'),
-  pb.file('./instructions.md'),
-  pb.when(when.env('NODE_ENV', 'dev'), 
-    pb.text('Debug mode enabled')
-  ),
-  pb.list(['Feature 1', 'Feature 2'], 'numbered')
-]
+  pb.text("System Instructions"),
+  pb.file("./instructions.md"),
+  pb.when(when.env("NODE_ENV", "dev"), pb.text("Debug mode enabled")),
+  pb.list(["Feature 1", "Feature 2"], "numbered"),
+];
 
 const prompt = await createPromptBuilder()
   .sections(...sections)
-  .build()
+  .build();
 ```
 
 #### `when` - Condition Helpers
 
 ```typescript
 // Check if value exists
-when.exists('user.preferences')
+when.exists("user.preferences");
 
 // Check equality
-when.equals('user.role', 'admin')
+when.equals("user.role", "admin");
 
 // Check environment variable
-when.env('NODE_ENV', 'production')
+when.env("NODE_ENV", "production");
 
 // Combine with logic
-when.and(
-  when.exists('user.id'),
-  when.equals('features.beta', true)
-)
+when.and(when.exists("user.id"), when.equals("features.beta", true));
 
 when.or(
-  when.equals('user.type', 'premium'),
-  when.equals('user.type', 'enterprise')
-)
+  when.equals("user.type", "premium"),
+  when.equals("user.type", "enterprise"),
+);
 
 // Negate condition
-when.not(when.equals('config.disabled', true))
+when.not(when.equals("config.disabled", true));
 ```
 
 ### Dynamic Content
@@ -167,72 +162,74 @@ when.not(when.equals('config.disabled', true))
 
 ```typescript
 const agentPrompt = await createPromptBuilder()
-  .file('./prompts/base-personality.md')
-  
+  .file("./prompts/base-personality.md")
+
   // Conditional expertise areas
-  .when(when.exists('user.role'))
-    .template('\n## User Context\nRole: {{user.role}}')
-    .template('Experience: {{user.experience}}')
+  .when(when.exists("user.role"))
+  .template("\n## User Context\nRole: {{user.role}}")
+  .template("Experience: {{user.experience}}")
   .end()
-  
+
   // Dynamic capabilities based on features
-  .text('\n## Available Capabilities')
+  .text("\n## Available Capabilities")
   .list((ctx) => {
-    const features = ctx.config?.features || {}
-    const capabilities = []
-    
-    if (features.codeReview) capabilities.push('Code review and analysis')
-    if (features.debugging) capabilities.push('Debug assistance')
-    if (features.architecture) capabilities.push('Architecture guidance')
-    
-    return capabilities
+    const features = ctx.config?.features || {};
+    const capabilities = [];
+
+    if (features.codeReview) capabilities.push("Code review and analysis");
+    if (features.debugging) capabilities.push("Debug assistance");
+    if (features.architecture) capabilities.push("Architecture guidance");
+
+    return capabilities;
   })
-  
+
   // Environment-specific instructions
-  .when(when.env('NODE_ENV', 'development'))
-    .file('./prompts/dev-instructions.md')
+  .when(when.env("NODE_ENV", "development"))
+  .file("./prompts/dev-instructions.md")
   .end()
-  
-  .when(when.env('NODE_ENV', 'production'))
-    .file('./prompts/prod-safety.md')
+
+  .when(when.env("NODE_ENV", "production"))
+  .file("./prompts/prod-safety.md")
   .end()
-  
-  .build(context)
+
+  .build(context);
 ```
 
 ### Multi-Language Support
 
 ```typescript
 const prompt = await createPromptBuilder()
-  .when(when.equals('user.language', 'spanish'))
-    .file('./prompts/base-es.md')
+  .when(when.equals("user.language", "spanish"))
+  .file("./prompts/base-es.md")
   .end()
-  
-  .when(when.equals('user.language', 'french'))
-    .file('./prompts/base-fr.md')
+
+  .when(when.equals("user.language", "french"))
+  .file("./prompts/base-fr.md")
   .end()
-  
-  .when(when.not(when.exists('user.language')))
-    .file('./prompts/base-en.md')
+
+  .when(when.not(when.exists("user.language")))
+  .file("./prompts/base-en.md")
   .end()
-  
-  .build({ user: { language: 'spanish' } })
+
+  .build({ user: { language: "spanish" } });
 ```
 
 ### Caching with Large Prompts
 
 ```typescript
 // For use with Bedrock prompt caching
-const context = [{
-  role: 'user',
-  content: await createPromptBuilder()
-    .file('./large-knowledge-base.md')
-    .file('./detailed-instructions.md')
-    .build(),
-  cachePoint: { type: 'ephemeral' }
-}]
+const context = [
+  {
+    role: "user",
+    content: await createPromptBuilder()
+      .file("./large-knowledge-base.md")
+      .file("./detailed-instructions.md")
+      .build(),
+    cachePoint: { type: "ephemeral" },
+  },
+];
 
-const result = await agent.streamGenerate(userMessage, { context })
+const result = await agent.streamGenerate(userMessage, { context });
 ```
 
 ## 🏗️ **Custom Sections**
@@ -241,66 +238,75 @@ Create your own section types:
 
 ```typescript
 class DatabaseSection implements PromptSection {
-  type = 'database'
-  
+  type = "database";
+
   constructor(
     private query: string,
-    public condition?: ConditionFunction
+    public condition?: ConditionFunction,
   ) {}
 
   async build(context: PromptContext): Promise<string> {
     // Execute database query and format results
-    const results = await executeQuery(this.query, context)
-    return formatResults(results)
+    const results = await executeQuery(this.query, context);
+    return formatResults(results);
   }
 }
 
 const prompt = await createPromptBuilder()
-  .section(new DatabaseSection('SELECT * FROM user_preferences'))
-  .build()
+  .section(new DatabaseSection("SELECT * FROM user_preferences"))
+  .build();
 ```
 
 ## 🎮 **Usage with AI Agents**
 
-### ExperimentalAgentFactory Integration
+### AgentFactory Integration
 
 ```typescript
-import { createExperimentalAgentFactory, createPromptBuilder, pb, when } from '@airo/ai-lib'
+import {
+  createAgentFactory,
+  createPromptBuilder,
+  pb,
+  when,
+} from "@airo/ai-lib";
 
 const systemPrompt = await createPromptBuilder()
-  .file('./prompts/agent-base.md')
-  .when(when.exists('config.features.advanced'))
-    .file('./prompts/advanced-features.md')
+  .file("./prompts/agent-base.md")
+  .when(when.exists("config.features.advanced"))
+  .file("./prompts/advanced-features.md")
   .end()
-  .build(context)
+  .build(context);
 
-const agentFactory = createExperimentalAgentFactory()
+const agentFactory = createAgentFactory();
 const agents = agentFactory.defineAgents({
   assistant: {
-    name: 'Smart Assistant',
+    name: "Smart Assistant",
     system: systemPrompt,
-    model: await getModel('claude4'),
-    tools: { /* your tools */ }
-  }
-})
+    model: await getModel("claude4"),
+    tools: {
+      /* your tools */
+    },
+  },
+});
 ```
 
 ### Context Messages for Caching
 
 ```typescript
 const largeContext = await createPromptBuilder()
-  .file('./knowledge/product-docs.md')
-  .file('./knowledge/api-reference.md')
-  .file('./knowledge/troubleshooting.md')
-  .build()
+  .file("./knowledge/product-docs.md")
+  .file("./knowledge/api-reference.md")
+  .file("./knowledge/troubleshooting.md")
+  .build();
 
 const result = await agent.streamGenerate(userQuestion, {
-  context: [{
-    role: 'user',
-    content: largeContext,
-    cachePoint: { type: 'ephemeral' } // For Bedrock caching
-  }]
-})
+  context: [
+    {
+      role: "user",
+      content: largeContext,
+      cachePoint: { type: "ephemeral" }, // For Bedrock caching
+    },
+  ],
+});
 ```
 
 ## 🛠️ **Error Handling**
@@ -308,17 +314,17 @@ const result = await agent.streamGenerate(userQuestion, {
 ```typescript
 try {
   const prompt = await createPromptBuilder()
-    .text('This works')
-    .file('./missing-file.md') // Will throw error
-    .build()
+    .text("This works")
+    .file("./missing-file.md") // Will throw error
+    .build();
 } catch (error) {
-  console.error('Build failed:', error.message)
-  
+  console.error("Build failed:", error.message);
+
   // Recover with fallback
   const fallback = await createPromptBuilder()
     .clear()
-    .text('Fallback prompt')
-    .build()
+    .text("Fallback prompt")
+    .build();
 }
 ```
 
@@ -343,6 +349,7 @@ try {
 See `examples/prompt-builder-demo.ts` for comprehensive examples of all features.
 
 Run the demo:
+
 ```bash
 npm run example:prompt-builder
 ```

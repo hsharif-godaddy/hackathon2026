@@ -4,7 +4,7 @@ import { dirname as pathDirname, join } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { fromPath } from 'pdf2pic'
 import { getModel } from '@airo/ai-lib'
-import { createExperimentalAgentFactory } from '@airo/ai-lib'
+import { createAgentFactory } from '@airo/ai-lib'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = pathDirname(__filename)
@@ -157,7 +157,7 @@ async function main() {
   const model = await getModel('claude4')
   console.log('Connected to AI model')
   
-  const agentFactory = createExperimentalAgentFactory()
+  const agentFactory = createAgentFactory()
   
   const agents = agentFactory.defineAgents({
     designExtractor: {

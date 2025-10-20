@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 
 import { 
-  createExperimentalAgentFactory, 
+  createAgentFactory, 
   getModel,
   addHandoffTools
 } from '../src/index.js'
@@ -13,7 +13,7 @@ import {
 async function testBasicHandoff() {
   console.log('🧪 Simple Handoff Test\n')
 
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
   
   const agents = factory.defineAgents({
     coordinator: {
@@ -81,7 +81,7 @@ async function testBasicHandoff() {
 async function testAgentToolHandoff() {
   console.log('\n🔧 Testing Agent Tool Handoff\n')
 
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
   
   const agents = factory.defineAgents({
     coordinator: {

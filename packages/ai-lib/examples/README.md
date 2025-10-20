@@ -1,15 +1,17 @@
 # AI-Lib Examples
 
-This directory contains organized examples demonstrating the capabilities of the AI-Lib ExperimentalAgentFactory, which is built on top of AI SDK 5's `Experimental_Agent`.
+This directory contains organized examples demonstrating the capabilities of the AI-Lib AgentFactory, which is built on top of AI SDK 5's `Experimental_Agent`.
 
 ## 📁 Example Structure
 
 ### Basic Examples
+
 - **`basic-openai.ts`** - Simple OpenAI usage with multiple agent types (general, creative, technical)
 - **`basic-bedrock.ts`** - Basic AWS Bedrock usage with Claude models (Sonnet 4, Haiku)
 - **`claude-proxy-demo.ts`** - Demonstrates automatic Claude proxy routing through OpenAI when AWS credentials are not available
 
 ### Agentic Examples (Advanced AI Reasoning)
+
 - **`agentic-bedrock-simple.ts`** - Simple agentic behavior with weather and travel tools
 - **`agentic-bedrock-full.ts`** - Advanced agentic features with context injection, conversation history, and multi-turn interactions
 - **`agentic-bedrock-prompt-caching.ts`** - Demonstrates prompt caching for cost optimization with large system prompts
@@ -19,19 +21,21 @@ This directory contains organized examples demonstrating the capabilities of the
 ## 🚀 Quick Start
 
 ### Prerequisites
-1. **For OpenAI examples**: 
+
+1. **For OpenAI examples**:
    - Set `OPENAI_API_KEY` in your environment
    - Optionally set `OPENAI_BASE_URL` for proxy support
 2. **For Bedrock examples**: Configure AWS credentials (AWS CLI or environment variables)
 3. **Install dependencies**: `npm install` in the ai-lib package directory
 
 ### Run an Example
+
 ```bash
 # Basic examples
 npx tsx examples/basic-openai.ts
 npx tsx examples/basic-bedrock.ts
 
-# Agentic examples  
+# Agentic examples
 npx tsx examples/agentic-bedrock-simple.ts
 npx tsx examples/agentic-bedrock-full.ts
 npx tsx examples/agentic-bedrock-prompt-caching.ts
@@ -45,12 +49,14 @@ npm run example:websocket-multi
 ## 🧠 What is Agentic AI?
 
 Agentic AI refers to AI systems that can:
+
 - **Reason through multi-step problems** autonomously
 - **Use tools** to gather information and perform actions
 - **Make decisions** about when to stop or continue processing
 - **Maintain context** across multiple interactions
 
-Our ExperimentalAgentFactory provides:
+Our AgentFactory provides:
+
 - **Intelligent stop conditions** (step limits, tool completion)
 - **Custom context injection** (app state, pre-computed data)
 - **Conversation history management**
@@ -59,68 +65,74 @@ Our ExperimentalAgentFactory provides:
 
 ## 🛠️ Key Features Demonstrated
 
-### 1. ExperimentalAgentFactory Pattern
+### 1. AgentFactory Pattern
+
 ```typescript
-const factory = createExperimentalAgentFactory()
+const factory = createAgentFactory();
 const agents = factory.defineAgents({
   myAgent: {
-    name: 'My Agent',
-    system: 'You are a helpful assistant...',
+    name: "My Agent",
+    system: "You are a helpful assistant...",
     model: await bedrockModels.claudeSonnet4(),
     tools: { weather: weatherTool },
     maxSteps: 5,
-    stopAfterTools: ['weather']
-  }
-})
-const agent = agents.get('myAgent')
+    stopAfterTools: ["weather"],
+  },
+});
+const agent = agents.get("myAgent");
 ```
 
 ### 2. Streaming with Usage Tracking
+
 ```typescript
-const streamResult = await agent.streamGenerate(prompt)
+const streamResult = await agent.streamGenerate(prompt);
 for await (const chunk of streamResult.textStream) {
-  process.stdout.write(chunk)
+  process.stdout.write(chunk);
 }
-const finalResult = await streamResult.getFinalResult()
-console.log(`Tokens used: ${finalResult.usage.totalTokens}`)
+const finalResult = await streamResult.getFinalResult();
+console.log(`Tokens used: ${finalResult.usage.totalTokens}`);
 ```
 
 ### 3. Custom Context Injection
+
 ```typescript
 const result = await agent.streamGenerate(prompt, {
-  context: [{
-    role: 'user',
-    content: 'Current weather: sunny, 28°C'
-  }],
-  messages: previousMessages
-})
+  context: [
+    {
+      role: "user",
+      content: "Current weather: sunny, 28°C",
+    },
+  ],
+  messages: previousMessages,
+});
 ```
 
 ### 4. Tool Creation (Bedrock Compatible)
+
 ```typescript
 const myTool = createTool(
-  'Tool description',
+  "Tool description",
   z.object({
-    input: z.string().describe('Input parameter')
+    input: z.string().describe("Input parameter"),
   }),
   async ({ input }) => {
-    return { result: `Processed: ${input}` }
-  }
-)
+    return { result: `Processed: ${input}` };
+  },
+);
 ```
 
 ## 📊 Example Comparison
 
-| Example | Complexity | Features | Best For |
-|---------|------------|----------|----------|
-| `basic-openai` | Simple | Multiple models, streaming, proxy support | Getting started with OpenAI |
-| `basic-bedrock` | Simple | Claude models, cost comparison | Getting started with Bedrock |
-| `agentic-simple` | Medium | Basic tools, autonomous reasoning | Learning agentic concepts |
-| `agentic-full` | Advanced | Context injection, conversation history | Production apps |
-| `prompt-caching` | Advanced | Cost optimization, large prompts | High-volume applications |
-| `file-upload` | Advanced | Document processing, multi-file analysis | Document analysis systems |
-| `websocket-single` | Medium | Real-time WebSocket server, single agent | Chat applications |
-| `websocket-multi` | Advanced | Multi-agent WebSocket server, context handling | Complex chat systems |
+| Example            | Complexity | Features                                       | Best For                     |
+| ------------------ | ---------- | ---------------------------------------------- | ---------------------------- |
+| `basic-openai`     | Simple     | Multiple models, streaming, proxy support      | Getting started with OpenAI  |
+| `basic-bedrock`    | Simple     | Claude models, cost comparison                 | Getting started with Bedrock |
+| `agentic-simple`   | Medium     | Basic tools, autonomous reasoning              | Learning agentic concepts    |
+| `agentic-full`     | Advanced   | Context injection, conversation history        | Production apps              |
+| `prompt-caching`   | Advanced   | Cost optimization, large prompts               | High-volume applications     |
+| `file-upload`      | Advanced   | Document processing, multi-file analysis       | Document analysis systems    |
+| `websocket-single` | Medium     | Real-time WebSocket server, single agent       | Chat applications            |
+| `websocket-multi`  | Advanced   | Multi-agent WebSocket server, context handling | Complex chat systems         |
 
 ## 🔄 Claude Proxy Routing
 
@@ -131,12 +143,14 @@ The unified provider automatically routes Claude models through an OpenAI-compat
 3. **Model is supported** (currently `claude-sonnet-4-20250514`)
 
 ### Supported Claude Models for Proxy
+
 - `claude4` → `claude-sonnet-4-20250514`
 - `sonnet4` → `claude-sonnet-4-20250514`
 - `claude-sonnet-4` → `claude-sonnet-4-20250514`
 - `claude-sonnet-4-20250514` → `claude-sonnet-4-20250514`
 
 ### Example Usage
+
 ```bash
 # Set proxy URL
 export OPENAI_BASE_URL=https://your-proxy.example.com
@@ -149,12 +163,14 @@ npm run example:claude-proxy  # Demonstrates routing logic
 ## 🎯 Use Cases
 
 ### Business Applications
+
 - **Document Analysis**: Process reports, contracts, and compliance documents
 - **Customer Support**: Context-aware multi-turn conversations
 - **Content Generation**: Marketing copy, technical documentation
 - **Data Analysis**: Extract insights from structured and unstructured data
 
-### Development Applications  
+### Development Applications
+
 - **Code Review**: Automated code analysis and recommendations
 - **Architecture Review**: System design evaluation and suggestions
 - **Documentation**: API documentation and user guide generation
@@ -163,6 +179,7 @@ npm run example:claude-proxy  # Demonstrates routing logic
 ## 💰 Cost Management
 
 All examples include:
+
 - **Token usage tracking** with real-time monitoring
 - **Cost estimation** based on current model pricing
 - **Prompt caching** examples for cost optimization
@@ -171,6 +188,7 @@ All examples include:
 ## 🔧 Configuration Options
 
 ### Agent Configuration
+
 - `maxSteps`: Maximum reasoning steps (prevents infinite loops)
 - `stopAfterTools`: Stop after specific tool calls
 - `temperature`: Control randomness (0.0-1.0)
@@ -178,6 +196,7 @@ All examples include:
 - `tools`: Available tools for the agent
 
 ### Factory Configuration
+
 - `defaultTemperature`: Global temperature setting
 - `defaultMaxTokens`: Global token limit
 - `globalTools`: Tools available to all agents
@@ -185,11 +204,13 @@ All examples include:
 ## 🔍 Debugging
 
 Enable debug mode:
+
 ```bash
 DEBUG=true npx tsx examples/your-example.ts
 ```
 
 This provides detailed logging of:
+
 - Tool executions and results
 - Token usage and costs
 - Agent reasoning steps
@@ -205,6 +226,7 @@ This provides detailed logging of:
 ## 🆘 Support
 
 If you encounter issues:
+
 1. Check your API keys and credentials
 2. Verify model access (especially for Bedrock)
 3. Review the debug output

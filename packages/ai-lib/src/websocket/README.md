@@ -2,13 +2,13 @@
 
 This directory contains WebSocket server implementations for real-time AI agent interactions.
 
-## 🆕 ExperimentalWebSocketServer (Recommended)
+## 🆕 WebSocketServer (Recommended)
 
-The new `ExperimentalWebSocketServer` is designed to work with the `ExperimentalAgentFactory` and provides a simplified, more powerful interface.
+The new `WebSocketServer` is designed to work with the `AgentFactory` and provides a simplified, more powerful interface.
 
 ### Key Features
 
-- **Factory-Based**: Always uses an `ExperimentalAgentFactory` for consistency
+- **Factory-Based**: Always uses an `AgentFactory` for consistency
 - **Multi-Agent Support**: Easy switching between different agents
 - **Conversation History**: Built-in support for conversation context
 - **Custom Context**: Inject app-specific context into conversations
@@ -21,59 +21,56 @@ The new `ExperimentalWebSocketServer` is designed to work with the `Experimental
 #### Single Agent Setup
 
 ```typescript
-import { createServer } from 'http'
-import { getModel } from '@airo/ai-lib'
-import { createSingleAgentWebSocketServer } from '@airo/ai-lib'
+import { createServer } from "http";
+import { getModel } from "@airo/ai-lib";
+import { createSingleAgentWebSocketServer } from "@airo/ai-lib";
 
-const httpServer = createServer()
+const httpServer = createServer();
 
 const wsServer = createSingleAgentWebSocketServer(
   httpServer,
-  'assistant', // Agent name
+  "assistant", // Agent name
   {
-    name: 'AI Assistant',
-    system: 'You are a helpful AI assistant.',
-    model: await getModel('gpt4o-mini'),
-    temperature: 0.7
-  }
-)
+    name: "AI Assistant",
+    system: "You are a helpful AI assistant.",
+    model: await getModel("gpt4o-mini"),
+    temperature: 0.7,
+  },
+);
 
-httpServer.listen(3000)
+httpServer.listen(3000);
 ```
 
 #### Multi-Agent Setup
 
 ```typescript
-import { createServer } from 'http'
-import { getModel } from '@airo/ai-lib'
-import { 
-  createExperimentalAgentFactory,
-  createExperimentalWebSocketServer 
-} from '@airo/ai-lib'
+import { createServer } from "http";
+import { getModel } from "@airo/ai-lib";
+import { createAgentFactory, createWebSocketServer } from "@airo/ai-lib";
 
-const agentFactory = createExperimentalAgentFactory()
+const agentFactory = createAgentFactory();
 
 agentFactory.defineAgents({
   general: {
-    name: 'General Assistant',
-    model: await getModel('gpt4o-mini'),
-    system: 'You are a helpful assistant.'
+    name: "General Assistant",
+    model: await getModel("gpt4o-mini"),
+    system: "You are a helpful assistant.",
   },
   creative: {
-    name: 'Creative Writer',
-    model: await getModel('gpt4o'),
-    system: 'You are a creative writing assistant.',
-    temperature: 0.9
-  }
-})
+    name: "Creative Writer",
+    model: await getModel("gpt4o"),
+    system: "You are a creative writing assistant.",
+    temperature: 0.9,
+  },
+});
 
-const httpServer = createServer()
-const wsServer = createExperimentalWebSocketServer(httpServer, {
+const httpServer = createServer();
+const wsServer = createWebSocketServer(httpServer, {
   agentFactory,
-  defaultAgent: 'general'
-})
+  defaultAgent: "general",
+});
 
-httpServer.listen(3000)
+httpServer.listen(3000);
 ```
 
 ### Client Usage
@@ -81,89 +78,101 @@ httpServer.listen(3000)
 #### Basic Chat
 
 ```javascript
-const socket = io('http://localhost:3000')
+const socket = io("http://localhost:3000");
 
 // Send a message
-socket.emit('chat', {
-  message: 'Hello, how are you?'
-})
+socket.emit("chat", {
+  message: "Hello, how are you?",
+});
 
 // Listen for normalized events
-socket.on('message', (data) => {
-  switch(data.type) {
-    case 'agents_available':
-      console.log('Available agents:', data.data.agents)
-      break
-    case 'step_start':
-      console.log('Step started:', data.data.step)
-      break
-    case 'chunk':
-      process.stdout.write(data.content) // Stream text content
-      break
-    case 'step_complete':
-      console.log('Step completed:', data.data.step)
-      break
-    case 'complete':
-      console.log('Done! Agent:', data.data.agentId)
-      console.log('Usage:', data.data.usage)
-      break
-    case 'error':
-      console.error('Error:', data.content)
-      break
+socket.on("message", (data) => {
+  switch (data.type) {
+    case "agents_available":
+      console.log("Available agents:", data.data.agents);
+      break;
+    case "step_start":
+      console.log("Step started:", data.data.step);
+      break;
+    case "chunk":
+      process.stdout.write(data.content); // Stream text content
+      break;
+    case "step_complete":
+      console.log("Step completed:", data.data.step);
+      break;
+    case "complete":
+      console.log("Done! Agent:", data.data.agentId);
+      console.log("Usage:", data.data.usage);
+      break;
+    case "error":
+      console.error("Error:", data.content);
+      break;
   }
-})
+});
 ```
 
 #### Multi-Agent Chat
 
 ```javascript
 // Use specific agent (supports both agentId and agentName)
-socket.emit('chat', {
-  message: 'Write a poem about coding',
-  agentId: 'creative'  // or agentName: 'creative'
-})
+socket.emit("chat", {
+  message: "Write a poem about coding",
+  agentId: "creative", // or agentName: 'creative'
+});
 
 // Get available agents
-socket.emit('get_agents')
+socket.emit("get_agents");
 ```
 
 #### With Context and History
 
 ```javascript
-socket.emit('chat', {
-  message: 'Continue our conversation',
-  agentId: 'general',
+socket.emit("chat", {
+  message: "Continue our conversation",
+  agentId: "general",
   context: {
-    userPreferences: { style: 'formal' },
-    currentProject: 'ai-chatbot'
+    userPreferences: { style: "formal" },
+    currentProject: "ai-chatbot",
   },
   conversationHistory: [
-    { role: 'user', content: 'I need help with my project' },
-    { role: 'assistant', content: 'I\'d be happy to help! What kind of project?' }
-  ]
-})
+    { role: "user", content: "I need help with my project" },
+    {
+      role: "assistant",
+      content: "I'd be happy to help! What kind of project?",
+    },
+  ],
+});
 ```
 
 ### Configuration Options
 
 ```typescript
-interface ExperimentalWebSocketConfig {
-  agentFactory: ExperimentalAgentFactory
-  defaultAgent?: string
-  contextExtractor?: (context: Record<string, unknown>) => Record<string, unknown>
-  cors?: { origin?: string | string[] | boolean; methods?: string[] }
-  includeUsageData?: boolean
-  onConnection?: (socketId: string) => void
-  onDisconnection?: (socketId: string) => void
-  onMessageStart?: (socketId: string, message: string, agentName?: string) => void
-  onMessageComplete?: (socketId: string, result: {
-    agentName: string
-    duration: string
-    usage?: any
-    toolCalls?: any[]
-  }) => void
-  onError?: (socketId: string, error: Error, message?: string) => void
-  socketOptions?: Partial<ServerOptions>
+interface WebSocketConfig {
+  agentFactory: AgentFactory;
+  defaultAgent?: string;
+  contextExtractor?: (
+    context: Record<string, unknown>,
+  ) => Record<string, unknown>;
+  cors?: { origin?: string | string[] | boolean; methods?: string[] };
+  includeUsageData?: boolean;
+  onConnection?: (socketId: string) => void;
+  onDisconnection?: (socketId: string) => void;
+  onMessageStart?: (
+    socketId: string,
+    message: string,
+    agentName?: string,
+  ) => void;
+  onMessageComplete?: (
+    socketId: string,
+    result: {
+      agentName: string;
+      duration: string;
+      usage?: any;
+      toolCalls?: any[];
+    },
+  ) => void;
+  onError?: (socketId: string, error: Error, message?: string) => void;
+  socketOptions?: Partial<ServerOptions>;
 }
 ```
 
@@ -173,14 +182,14 @@ interface ExperimentalWebSocketConfig {
 
 ```typescript
 interface ChatMessage {
-  message: string
-  agentName?: string  // Backward compatibility
-  agentId?: string    // Preferred
-  context?: Record<string, unknown>
+  message: string;
+  agentName?: string; // Backward compatibility
+  agentId?: string; // Preferred
+  context?: Record<string, unknown>;
   conversationHistory?: Array<{
-    role: 'user' | 'assistant'
-    content: string
-  }>
+    role: "user" | "assistant";
+    content: string;
+  }>;
 }
 ```
 
@@ -188,9 +197,17 @@ interface ChatMessage {
 
 ```typescript
 interface WebSocketMessage {
-  type: 'step_start' | 'chunk' | 'tool_start' | 'tool_result' | 'step_complete' | 'complete' | 'error' | 'agents_available'
-  content: string
-  data: Record<string, unknown>
+  type:
+    | "step_start"
+    | "chunk"
+    | "tool_start"
+    | "tool_result"
+    | "step_complete"
+    | "complete"
+    | "error"
+    | "agents_available";
+  content: string;
+  data: Record<string, unknown>;
 }
 
 // Event Types:
@@ -216,11 +233,12 @@ Run the WebSocket examples:
 # Single agent example
 npm run example:websocket-single
 
-# Multi-agent example  
+# Multi-agent example
 npm run example:websocket-multi
 ```
 
 These examples demonstrate:
+
 - Single vs multi-agent setups
 - Tool usage with agents
 - Conversation history
@@ -229,11 +247,12 @@ These examples demonstrate:
 
 ## 🔧 Development
 
-The WebSocket servers use Socket.IO for WebSocket communication and integrate seamlessly with the ExperimentalAgentFactory for agent management.
+The WebSocket servers use Socket.IO for WebSocket communication and integrate seamlessly with the AgentFactory for agent management.
 
 ### Error Handling
 
 The server provides comprehensive error handling:
+
 - Invalid message formats
 - Missing agents
 - Agent execution errors
@@ -250,8 +269,8 @@ All errors are emitted to clients with descriptive messages and logged server-si
 
 ## 🚀 Migration from Legacy WebSocketServer
 
-1. Replace `WebSocketServer` with `ExperimentalWebSocketServer`
-2. Use `ExperimentalAgentFactory` instead of individual `Agent` instances
+1. Replace `WebSocketServer` with `WebSocketServer`
+2. Use `AgentFactory` instead of individual `Agent` instances
 3. Update client message format to new `ChatMessage` interface
 4. Update event handlers to new signature format
 

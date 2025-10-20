@@ -1,13 +1,13 @@
 /**
- * AI-Lib Agent Factory - Updated for ExperimentalAgentFactory
- * Replaces the current BaseAgent inheritance pattern with ExperimentalAgentFactory composition
+ * AI-Lib Agent Factory - Updated for AgentFactory
+ * Replaces the current BaseAgent inheritance pattern with AgentFactory composition
  * Enhanced with rich context support and agent handoffs
  */
 
 import { 
-  createExperimentalAgentFactory,
-  type ExperimentalAgentFactory,
-  type ExperimentalAgentConfig
+  createAgentFactory,
+  type AgentFactory,
+  type AgentConfig
 } from '@airo/ai-lib'
 import { addHandoffTools } from '@airo/ai-lib'
 import { 
@@ -38,10 +38,10 @@ export interface AILibAgentMetadata {
  * Create a unified agent factory with all agents
  */
 export async function createUnifiedAgentFactory(): Promise<{
-  factory: ExperimentalAgentFactory
-  agents: ReturnType<ExperimentalAgentFactory['defineAgents']>
+  factory: AgentFactory
+  agents: ReturnType<AgentFactory['defineAgents']>
 }> {
-  const factory = createExperimentalAgentFactory()
+  const factory = createAgentFactory()
   
   // Minimal change: enable handoff tool only for develop agent
   const developConfig = await createDevelopAgent()
@@ -101,7 +101,7 @@ export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
   example: {
     id: 'example',
     name: 'Example Agent',
-    description: 'A basic example agent for testing and demonstration purposes using ExperimentalAgentFactory.',
+    description: 'A basic example agent for testing and demonstration purposes using AgentFactory.',
     version: '2.0.0',
     tags: ['example', 'demo', 'testing'],
     toolGroups: ['core'],

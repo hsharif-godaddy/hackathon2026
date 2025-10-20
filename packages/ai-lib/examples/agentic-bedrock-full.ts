@@ -1,6 +1,6 @@
 /**
  * Full Agentic Bedrock Example
- * 
+ *
  * This example demonstrates advanced agentic capabilities:
  * - Custom context injection (app state)
  * - Conversation history management
@@ -12,7 +12,7 @@
 import 'dotenv/config'
 import { getModel } from '../src/providers/unified-provider.js'
 import { createTool } from '../src/tools/base-tool.js'
-import { createExperimentalAgentFactory } from '../src/core/agent-factory-experimental.js'
+import { createAgentFactory } from '../src/core/agent-factory.js'
 import { z } from 'zod'
 
 // Enhanced weather tool
@@ -24,7 +24,7 @@ const weatherTool = createTool(
   }),
   async ({ city, units = 'celsius' }) => {
     console.log(`🌤️  [Weather Tool] Getting detailed weather for ${city}...`)
-    
+
     const weatherData: Record<string, any> = {
       'london': { temp: 15, condition: 'rainy', humidity: 78, windSpeed: 12, windDirection: 'SW', visibility: 'good' },
       'tokyo': { temp: 28, condition: 'sunny', humidity: 55, windSpeed: 8, windDirection: 'E', visibility: 'excellent' },
@@ -32,11 +32,11 @@ const weatherTool = createTool(
       'paris': { temp: 18, condition: 'overcast', humidity: 70, windSpeed: 10, windDirection: 'W', visibility: 'fair' },
       'sydney': { temp: 25, condition: 'sunny', humidity: 60, windSpeed: 6, windDirection: 'SE', visibility: 'excellent' }
     }
-    
-    const weather = weatherData[city.toLowerCase()] || { 
-      temp: 20, condition: 'unknown', humidity: 60, windSpeed: 10, windDirection: 'N', visibility: 'good' 
+
+    const weather = weatherData[city.toLowerCase()] || {
+      temp: 20, condition: 'unknown', humidity: 60, windSpeed: 10, windDirection: 'N', visibility: 'good'
     }
-    
+
     const result = {
       city,
       temperature: weather.temp,
@@ -51,7 +51,7 @@ const weatherTool = createTool(
       timestamp: new Date().toISOString(),
       source: 'Weather API'
     }
-    
+
     console.log(`✅ [Weather Tool] ${city}: ${weather.condition}, ${weather.temp}°${units === 'celsius' ? 'C' : 'F'}`)
     return result
   }
@@ -70,9 +70,9 @@ const recommendationTool = createTool(
   }),
   async ({ location, weatherCondition, temperature, preferences, timeOfDay = 'any', budget = 'medium' }) => {
     console.log(`🎯 [Recommendation Tool] Generating for ${location} (${weatherCondition}, ${temperature}°, ${budget} budget)`)
-    
+
     const recommendations = []
-    
+
     if (weatherCondition === 'sunny' && temperature > 20) {
       recommendations.push({
         activity: 'Outdoor food markets and street food tours',
@@ -130,7 +130,7 @@ const recommendationTool = createTool(
         tips: ['Bring umbrella between locations', 'Look for unique local items', 'Negotiate at markets']
       })
     }
-    
+
     const result = {
       location,
       weather: { condition: weatherCondition, temperature },
@@ -141,7 +141,7 @@ const recommendationTool = createTool(
       totalRecommendations: recommendations.length,
       generatedAt: new Date().toISOString()
     }
-    
+
     console.log(`✅ [Recommendation Tool] Generated ${recommendations.length} detailed recommendations`)
     return result
   }
@@ -157,7 +157,7 @@ const bookingTool = createTool(
   }),
   async ({ activityName, location, timeSlot = 'flexible' }) => {
     console.log(`📅 [Booking Tool] Getting booking info for "${activityName}" in ${location}`)
-    
+
     const bookingInfo = {
       activity: activityName,
       location,
@@ -197,7 +197,7 @@ const bookingTool = createTool(
         website: 'https://example.com/booking'
       }
     }
-    
+
     console.log(`✅ [Booking Tool] Booking info ready for ${activityName}`)
     return bookingInfo
   }
@@ -236,7 +236,7 @@ class ConversationManager {
       totalMessages: this.history.length,
       userMessages: this.history.filter(m => m.role === 'user').length,
       assistantMessages: this.history.filter(m => m.role === 'assistant').length,
-      duration: this.history.length > 0 ? 
+      duration: this.history.length > 0 ?
         this.history[this.history.length - 1].timestamp.getTime() - this.history[0].timestamp.getTime() : 0
     }
   }
@@ -292,16 +292,16 @@ function getAppState() {
 }
 
 async function runConversationTurn(
-  agent: any, 
-  userMessage: string, 
-  conversationManager: ConversationManager, 
+  agent: any,
+  userMessage: string,
+  conversationManager: ConversationManager,
   appState: any,
   usePrecomputedWeather: boolean = false
 ) {
   console.log(`\n👤 User: ${userMessage}`)
-  
+
   conversationManager.addUserMessage(userMessage)
-  
+
   let contextMessage = `[CURRENT APP STATE]
 User: ${appState.user.name} (${appState.user.preferences.budget} budget, interested in ${appState.user.preferences.interests.join(', ')})
 Location: ${appState.user.location}
@@ -332,7 +332,7 @@ Note: Use the pre-computed weather data above. Do not call weather tools.`
       role: msg.role,
       content: msg.content
     }))
-  
+
   const streamResult = await agent.streamGenerate(userMessage, {
     context: [{
       role: 'user',
@@ -342,7 +342,7 @@ Note: Use the pre-computed weather data above. Do not call weather tools.`
   })
 
   console.log('🤖 Assistant: ')
-  
+
   let assistantResponse = ''
   for await (const chunk of streamResult.textStream) {
     process.stdout.write(chunk)
@@ -352,7 +352,7 @@ Note: Use the pre-computed weather data above. Do not call weather tools.`
   conversationManager.addAssistantMessage(assistantResponse)
 
   const finalResult = await streamResult.getFinalResult()
-  
+
   return {
     response: assistantResponse,
     usage: finalResult.usage,
@@ -371,10 +371,10 @@ async function main() {
   try {
     console.log('🔗 Connecting to AWS Bedrock...')
     const model = await getModel('claude4')
-    
+
     console.log('🏭 Creating advanced travel planning agent...')
-    
-    const agentFactory = createExperimentalAgentFactory()
+
+    const agentFactory = createAgentFactory()
 
     const agents = agentFactory.defineAgents({
       advancedTravelAgent: {
@@ -392,14 +392,14 @@ You have access to current app state including user preferences, trip details, a
 - Group size and trip duration
 
 Use tools in logical sequence and provide comprehensive, actionable advice.`,
-        
+
         model,
         tools: {
           weather: weatherTool,
           recommendations: recommendationTool,
           booking: bookingTool
         },
-        
+
         maxSteps: 8,                         // Allow more steps for complex interactions
         stopAfterTools: ['booking'],         // Stop after providing booking details
         temperature: 0.3,
@@ -410,7 +410,7 @@ Use tools in logical sequence and provide comprehensive, actionable advice.`,
     const agent = agents.get('advancedTravelAgent')
     const conversationManager = new ConversationManager()
     const appState = getAppState()
-    
+
     console.log(`✅ Created agent: ${agent.getName()}`)
     console.log('📱 App State:', JSON.stringify(appState, null, 2))
 
@@ -498,7 +498,7 @@ Use tools in logical sequence and provide comprehensive, actionable advice.`,
     const conversationSummary = conversationManager.getSummary()
     const totalTokens = [turn1.usage?.totalTokens, turn2.usage?.totalTokens, turn3.usage?.totalTokens, turn4.usage?.totalTokens]
       .filter(Boolean).reduce((sum, tokens) => sum + (tokens || 0), 0)
-    
+
     const totalToolCalls = [turn1.toolCalls?.length, turn2.toolCalls?.length, turn3.toolCalls?.length, turn4.toolCalls?.length]
       .filter(Boolean).reduce((sum, calls) => sum + (calls || 0), 0)
 
@@ -507,7 +507,7 @@ Use tools in logical sequence and provide comprehensive, actionable advice.`,
     console.log(`   Conversation duration: ${Math.round(conversationSummary.duration / 1000)} seconds`)
     console.log(`   Total tokens used: ${totalTokens}`)
     console.log(`   Total tool calls: ${totalToolCalls}`)
-    
+
     if (totalTokens > 0) {
       const estimatedCost = (totalTokens / 1000) * 0.009
       console.log(`   Estimated cost: $${estimatedCost.toFixed(4)}`)

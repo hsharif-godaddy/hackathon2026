@@ -1,6 +1,6 @@
 /**
- * Basic Bedrock Example with ExperimentalAgentFactory
- * 
+ * Basic Bedrock Example with AgentFactory
+ *
  * This example demonstrates:
  * - Simple agent creation using AWS Bedrock
  * - Basic text generation and streaming
@@ -9,10 +9,10 @@
 
 import 'dotenv/config'
 import { getModel } from '../src/providers/unified-provider.js'
-import { createExperimentalAgentFactory } from '../src/core/agent-factory-experimental.js'
+import { createAgentFactory } from '../src/core/agent-factory.js'
 
 async function main() {
-  console.log('🚀 Basic Bedrock Example with ExperimentalAgentFactory\n')
+  console.log('🚀 Basic Bedrock Example with AgentFactory\n')
 
   // Check for AWS credentials
   if (!process.env.AWS_ACCESS_KEY_ID && !process.env.AWS_PROFILE) {
@@ -22,11 +22,11 @@ async function main() {
 
   try {
     console.log('🔗 Connecting to AWS Bedrock...')
-    
+
     console.log('🏭 Creating agent factory...')
-    
+
     // Create the agent factory with Bedrock-specific defaults
-    const agentFactory = createExperimentalAgentFactory({
+    const agentFactory = createAgentFactory({
       defaultTemperature: 0.3,  // Conservative default for Bedrock
       defaultMaxTokens: 1500
     })
@@ -41,7 +41,7 @@ async function main() {
         maxOutputTokens: 1500,
         maxSteps: 3
       },
-      
+
       quick: {
         name: 'Claude 3 Haiku (Fast)',
         system: `You are Claude 3 Haiku, a fast and efficient AI assistant. You provide concise, accurate responses quickly. Keep answers clear and to the point.`,
@@ -50,7 +50,7 @@ async function main() {
         maxOutputTokens: 800,
         maxSteps: 2  // Fewer steps for quick responses
       },
-      
+
       creative: {
         name: 'Claude Sonnet (Creative)',
         system: `You are Claude, optimized for creative tasks. You help with writing, brainstorming, and creative problem-solving. Be imaginative while maintaining quality and helpfulness.`,
@@ -72,14 +72,14 @@ async function main() {
 
     const assistant = agents.get('assistant')
     console.log(`🤖 Using: ${assistant.getName()}`)
-    
+
     const basicPrompt = "Explain the benefits of serverless computing and when you might choose it over traditional hosting."
     console.log(`\n👤 User: ${basicPrompt}\n`)
     console.log('🤖 Assistant:')
-    
+
     const basicResult = await assistant.generate(basicPrompt)
     console.log(basicResult.content)
-    
+
     console.log(`\n📊 Usage: ${basicResult.usage?.totalTokens} tokens`)
     if (basicResult.usage) {
       // Claude Sonnet 4 pricing: $0.003 per 1K input, $0.015 per 1K output
@@ -96,21 +96,21 @@ async function main() {
 
     const quick = agents.get('quick')
     console.log(`🤖 Using: ${quick.getName()}`)
-    
+
     const quickPrompt = "What are the top 3 programming languages for web development in 2024?"
     console.log(`\n👤 User: ${quickPrompt}\n`)
     console.log('🤖 Assistant: ')
-    
+
     const quickStreamResult = await quick.streamGenerate(quickPrompt)
     let quickContent = ''
-    
+
     const startTime = Date.now()
     for await (const chunk of quickStreamResult.textStream) {
       process.stdout.write(chunk)
       quickContent += chunk
     }
     const responseTime = Date.now() - startTime
-    
+
     const quickFinalResult = await quickStreamResult.getFinalResult()
     console.log(`\n\n⚡ Response time: ${responseTime}ms`)
     console.log(`📊 Usage: ${quickFinalResult.usage?.totalTokens} tokens`)
@@ -129,19 +129,19 @@ async function main() {
 
     const creative = agents.get('creative')
     console.log(`🤖 Using: ${creative.getName()} (temperature: 0.7)`)
-    
+
     const creativePrompt = "Write a short poem about the relationship between artificial intelligence and human creativity."
     console.log(`\n👤 User: ${creativePrompt}\n`)
     console.log('🤖 Assistant: ')
-    
+
     const creativeStreamResult = await creative.streamGenerate(creativePrompt)
     let creativeContent = ''
-    
+
     for await (const chunk of creativeStreamResult.textStream) {
       process.stdout.write(chunk)
       creativeContent += chunk
     }
-    
+
     const creativeFinalResult = await creativeStreamResult.getFinalResult()
     console.log(`\n\n📊 Usage: ${creativeFinalResult.usage?.totalTokens} tokens`)
     if (creativeFinalResult.usage) {
@@ -157,22 +157,22 @@ async function main() {
     console.log('=' + '='.repeat(60))
 
     const comparisonPrompt = "Summarize the key differences between REST and GraphQL APIs."
-    
+
     console.log(`\n👤 User: ${comparisonPrompt}\n`)
-    
+
     // Test both models with the same prompt
     console.log('🤖 Claude 3 Haiku (Fast & Cheap):')
     const haikuStart = Date.now()
     const haikuResult = await quick.generate(comparisonPrompt)
     const haikuTime = Date.now() - haikuStart
     console.log(haikuResult.content.substring(0, 200) + '...')
-    
+
     console.log('\n🤖 Claude Sonnet 4 (Detailed & Thoughtful):')
     const sonnetStart = Date.now()
     const sonnetResult = await assistant.generate(comparisonPrompt)
     const sonnetTime = Date.now() - sonnetStart
     console.log(sonnetResult.content.substring(0, 200) + '...')
-    
+
     console.log('\n📊 Performance Comparison:')
     console.log(`   Claude 3 Haiku: ${haikuTime}ms, ${haikuResult.usage?.totalTokens} tokens`)
     console.log(`   Claude Sonnet 4: ${sonnetTime}ms, ${sonnetResult.usage?.totalTokens} tokens`)
@@ -194,8 +194,8 @@ async function main() {
 
     console.log(`\n📊 Total tokens used across all demos: ${totalTokens}`)
     console.log(`🏭 Factory stats:`, agentFactory.getStats())
-    
-    console.log('\n✅ Bedrock ExperimentalAgentFactory Demo Complete!')
+
+    console.log('\n✅ Bedrock AgentFactory Demo Complete!')
     console.log('\n💡 Features demonstrated:')
     console.log('   ✓ Multiple Bedrock models (Claude Sonnet 4, Claude 3 Haiku)')
     console.log('   ✓ Different temperature settings for various use cases')
@@ -206,7 +206,7 @@ async function main() {
 
   } catch (error) {
     console.error('\n❌ Error:', error instanceof Error ? error.message : String(error))
-    
+
     if (error instanceof Error) {
       if (error.message.includes('credentials')) {
         console.error('💡 Tip: Make sure AWS credentials are properly configured')
@@ -216,7 +216,7 @@ async function main() {
         console.error('💡 Tip: Verify that your AWS account has access to Bedrock models')
       }
     }
-    
+
     process.exit(1)
   }
 }

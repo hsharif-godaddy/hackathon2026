@@ -1,6 +1,6 @@
 /**
- * Basic OpenAI Example with ExperimentalAgentFactory
- * 
+ * Basic OpenAI Example with AgentFactory
+ *
  * This example demonstrates:
  * - Simple agent creation using OpenAI
  * - Basic text generation and streaming
@@ -10,10 +10,10 @@
 
 import 'dotenv/config'
 import { getModel } from '../src/providers/unified-provider.js'
-import { createExperimentalAgentFactory } from '../src/core/agent-factory-experimental.js'
+import { createAgentFactory } from '../src/core/agent-factory.js'
 
 async function main() {
-  console.log('🚀 Basic OpenAI Example with ExperimentalAgentFactory\n')
+  console.log('🚀 Basic OpenAI Example with AgentFactory\n')
 
   // Check for OpenAI API key
   if (!process.env.OPENAI_API_KEY) {
@@ -23,14 +23,14 @@ async function main() {
 
   try {
     console.log('🏭 Creating agent factory...')
-    
+
     // Log proxy usage if configured
     if (process.env.OPENAI_BASE_URL) {
       console.log(`🔗 Using OpenAI proxy: ${process.env.OPENAI_BASE_URL}`)
     }
-    
+
     // Create the agent factory
-    const agentFactory = createExperimentalAgentFactory({
+    const agentFactory = createAgentFactory({
       defaultTemperature: 0.7,
       defaultMaxTokens: 1000
     })
@@ -45,7 +45,7 @@ async function main() {
         maxOutputTokens: 1000,
         maxSteps: 3  // Simple agent doesn't need many steps
       },
-      
+
       creative: {
         name: 'Creative Writer',
         system: `You are a creative writing assistant. You help users with creative writing, storytelling, and brainstorming. Be imaginative and inspiring while maintaining quality.`,
@@ -54,7 +54,7 @@ async function main() {
         maxOutputTokens: 2000,
         maxSteps: 3
       },
-      
+
       technical: {
         name: 'Technical Expert',
         system: `You are a technical expert who helps with programming, software architecture, and technology questions. Provide accurate, detailed explanations with examples when helpful.`,
@@ -76,14 +76,14 @@ async function main() {
 
     const assistant = agents.get('assistant')
     console.log(`🤖 Using: ${assistant.getName()}`)
-    
+
     const basicPrompt = "Explain quantum computing in simple terms for a beginner."
     console.log(`\n👤 User: ${basicPrompt}\n`)
     console.log('🤖 Assistant:')
-    
+
     const basicResult = await assistant.generate(basicPrompt)
     console.log(basicResult.content)
-    
+
     console.log(`\n📊 Usage: ${basicResult.usage?.totalTokens} tokens`)
     if (basicResult.usage) {
       const cost = (basicResult.usage.inputTokens / 1000 * 0.00015) + (basicResult.usage.outputTokens / 1000 * 0.0006)
@@ -99,19 +99,19 @@ async function main() {
 
     const creative = agents.get('creative')
     console.log(`🤖 Using: ${creative.getName()}`)
-    
+
     const creativePrompt = "Write a short story about a robot who discovers emotions."
     console.log(`\n👤 User: ${creativePrompt}\n`)
     console.log('🤖 Assistant: ')
-    
+
     const streamResult = await creative.streamGenerate(creativePrompt)
     let streamedContent = ''
-    
+
     for await (const chunk of streamResult.textStream) {
       process.stdout.write(chunk)
       streamedContent += chunk
     }
-    
+
     const finalResult = await streamResult.getFinalResult()
     console.log(`\n\n📊 Streamed ${streamedContent.length} characters`)
     console.log(`📊 Usage: ${finalResult.usage?.totalTokens} tokens`)
@@ -129,19 +129,19 @@ async function main() {
 
     const technical = agents.get('technical')
     console.log(`🤖 Using: ${technical.getName()}`)
-    
+
     const technicalPrompt = "Explain the difference between async/await and Promises in JavaScript with a simple example."
     console.log(`\n👤 User: ${technicalPrompt}\n`)
     console.log('🤖 Assistant: ')
-    
+
     const techStreamResult = await technical.streamGenerate(technicalPrompt)
     let techContent = ''
-    
+
     for await (const chunk of techStreamResult.textStream) {
       process.stdout.write(chunk)
       techContent += chunk
     }
-    
+
     const techFinalResult = await techStreamResult.getFinalResult()
     console.log(`\n\n📊 Usage: ${techFinalResult.usage?.totalTokens} tokens`)
 
@@ -160,8 +160,8 @@ async function main() {
 
     console.log(`\n📊 Total tokens used: ${totalTokens}`)
     console.log(`🏭 Factory stats:`, agentFactory.getStats())
-    
-    console.log('\n✅ OpenAI ExperimentalAgentFactory Demo Complete!')
+
+    console.log('\n✅ OpenAI AgentFactory Demo Complete!')
     console.log('\n💡 Features demonstrated:')
     console.log('   ✓ Multiple specialized agents with different models and settings')
     console.log('   ✓ Both streaming and non-streaming generation')
@@ -172,7 +172,7 @@ async function main() {
 
   } catch (error) {
     console.error('\n❌ Error:', error instanceof Error ? error.message : String(error))
-    
+
     if (error instanceof Error) {
       if (error.message.includes('API key')) {
         console.error('💡 Tip: Make sure OPENAI_API_KEY is properly set')
@@ -180,7 +180,7 @@ async function main() {
         console.error('💡 Tip: Check your network connection or OPENAI_BASE_URL if using a proxy')
       }
     }
-    
+
     process.exit(1)
   }
 }

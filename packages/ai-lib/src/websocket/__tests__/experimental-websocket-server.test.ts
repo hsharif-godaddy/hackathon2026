@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Server as HTTPServer } from 'http'
-import { ExperimentalWebSocketServer } from '../experimental-websocket-server.js'
-import type { ExperimentalAgentWrapper } from '../../core/agent-factory-experimental.js'
+import { WebSocketServer } from '../experimental-websocket-server.js'
+import type { ExperimentalAgentWrapper } from '../../core/agent-factory.js'
 
 // Mock Socket.IO
 const mockSocket = {
@@ -31,15 +31,15 @@ const mockAgents = {
   list: vi.fn().mockReturnValue(['test-agent'])
 }
 
-describe('ExperimentalWebSocketServer - Error Handling', () => {
-  let server: ExperimentalWebSocketServer
+describe('WebSocketServer - Error Handling', () => {
+  let server: WebSocketServer
   let httpServer: HTTPServer
   
   beforeEach(() => {
     vi.clearAllMocks()
     httpServer = new HTTPServer()
     
-    server = new ExperimentalWebSocketServer(httpServer, {
+    server = new WebSocketServer(httpServer, {
       agents: mockAgents,
       defaultAgent: 'test-agent'
     })
@@ -93,7 +93,7 @@ describe('ExperimentalWebSocketServer - Error Handling', () => {
       })
 
       // Trigger connection setup
-      server = new ExperimentalWebSocketServer(httpServer, {
+      server = new WebSocketServer(httpServer, {
         agents: mockAgents,
         defaultAgent: 'test-agent'
       })
@@ -154,7 +154,7 @@ describe('ExperimentalWebSocketServer - Error Handling', () => {
         }
       })
 
-      server = new ExperimentalWebSocketServer(httpServer, {
+      server = new WebSocketServer(httpServer, {
         agents: mockAgents,
         defaultAgent: 'test-agent'
       })
@@ -221,7 +221,7 @@ describe('ExperimentalWebSocketServer - Error Handling', () => {
         }
       })
 
-      server = new ExperimentalWebSocketServer(httpServer, {
+      server = new WebSocketServer(httpServer, {
         agents: mockAgents,
         defaultAgent: 'test-agent',
         onError: onErrorMock
@@ -276,7 +276,7 @@ describe('ExperimentalWebSocketServer - Error Handling', () => {
         }
       })
 
-      server = new ExperimentalWebSocketServer(httpServer, {
+      server = new WebSocketServer(httpServer, {
         agents: mockAgents,
         defaultAgent: 'test-agent',
         onError: onErrorMock
@@ -362,7 +362,7 @@ describe('ExperimentalWebSocketServer - Error Handling', () => {
         }
       })
 
-      server = new ExperimentalWebSocketServer(httpServer, {
+      server = new WebSocketServer(httpServer, {
         agents: mockAgents,
         defaultAgent: 'test-agent'
       })
@@ -454,7 +454,7 @@ describe('ExperimentalWebSocketServer - Error Handling', () => {
         }
       })
 
-      server = new ExperimentalWebSocketServer(httpServer, {
+      server = new WebSocketServer(httpServer, {
         agents: mockAgents,
         defaultAgent: 'test-agent'
       })
@@ -534,7 +534,7 @@ describe('ExperimentalWebSocketServer - Error Handling', () => {
         }
       })
 
-      server = new ExperimentalWebSocketServer(httpServer, {
+      server = new WebSocketServer(httpServer, {
         agents: mockAgents,
         defaultAgent: 'test-agent'
       })
@@ -595,7 +595,7 @@ describe('ExperimentalWebSocketServer - Error Handling', () => {
         }
       })
 
-      server = new ExperimentalWebSocketServer(httpServer, {
+      server = new WebSocketServer(httpServer, {
         agents: mockAgents,
         defaultAgent: 'test-agent'
       })
@@ -645,7 +645,7 @@ describe('ExperimentalWebSocketServer - Error Handling', () => {
         }
       })
 
-      server = new ExperimentalWebSocketServer(httpServer, {
+      server = new WebSocketServer(httpServer, {
         agents: mockAgents,
         defaultAgent: 'test-agent'
       })

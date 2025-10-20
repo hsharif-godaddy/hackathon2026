@@ -1,13 +1,13 @@
 #!/usr/bin/env tsx
 
-import { createExperimentalAgentFactory, getModel } from '../src/index.js'
+import { createAgentFactory, getModel } from '../src/index.js'
 import { createTool } from '../src/tools/index.js'
 import { z } from 'zod'
 
 /**
- * Demo of tool execution hooks in ExperimentalAgentFactory
- * 
- * This example shows how to implement agent-level hooks similar to the 
+ * Demo of tool execution hooks in AgentFactory
+ *
+ * This example shows how to implement agent-level hooks similar to the
  * develop-agent's beforeToolExecution and afterToolExecution methods.
  */
 
@@ -23,7 +23,7 @@ const fileEditTool = createTool(
     // Simulate file editing
     console.log(`📝 ${operation.toUpperCase()}: ${filePath}`)
     console.log(`Content: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`)
-    
+
     return {
       success: true,
       message: `File ${filePath} ${operation}ed successfully`,
@@ -41,7 +41,7 @@ const gitStatusTool = createTool(
   async ({ checkBranch = true }) => {
     // Simulate git status
     console.log('📊 Checking git status...')
-    
+
     return {
       branch: 'main',
       status: 'clean',
@@ -60,7 +60,7 @@ const terminalTool = createTool(
   }),
   async ({ command, workingDir }) => {
     console.log(`💻 Executing: ${command}${workingDir ? ` (in ${workingDir})` : ''}`)
-    
+
     return {
       success: true,
       stdout: `Command executed: ${command}`,
@@ -75,17 +75,17 @@ const terminalTool = createTool(
  */
 async function beforeToolExecution(toolName: string, args: unknown): Promise<unknown> {
   console.log(`🔧 [BEFORE] Executing tool: ${toolName}`)
-  
+
   // File-modifying tools that need git branch check
   const fileModifyingTools = ['fileEdit', 'terminal']
-  
+
   if (fileModifyingTools.includes(toolName)) {
     console.log(`⚠️  File-modifying tool detected: ${toolName}`)
     console.log(`🔍 Checking git branch state...`)
-    
+
     // Simulate git branch check
     const currentBranch = 'main' // In real implementation, this would call git
-    
+
     if (currentBranch !== 'main') {
       console.log(`⚠️  Not on main branch (currently on: ${currentBranch})`)
       console.log(`🔄 Would attempt to checkout main branch`)
@@ -94,7 +94,7 @@ async function beforeToolExecution(toolName: string, args: unknown): Promise<unk
       console.log(`✅ Already on main branch`)
     }
   }
-  
+
   // Return args unchanged (could modify them if needed)
   return args
 }
@@ -104,7 +104,7 @@ async function beforeToolExecution(toolName: string, args: unknown): Promise<unk
  */
 async function afterToolExecution(toolName: string, args: unknown, result: unknown): Promise<unknown> {
   console.log(`✅ [AFTER] Completed tool: ${toolName}`)
-  
+
   // Log tool usage for development tracking
   const resultObj = result as any
   if (resultObj?.success) {
@@ -112,7 +112,7 @@ async function afterToolExecution(toolName: string, args: unknown, result: unkno
   } else if (resultObj?.error) {
     console.log(`❌ Tool ${toolName} failed: ${resultObj.error}`)
   }
-  
+
   // Could modify result if needed
   return result
 }
@@ -121,8 +121,8 @@ async function demonstrateToolHooks() {
   console.log('🚀 Tool Execution Hooks Demo\n')
 
   // Create agent factory with hooks
-  const factory = createExperimentalAgentFactory()
-  
+  const factory = createAgentFactory()
+
   const agents = factory.defineAgents({
     developer: {
       name: 'AI Developer with Hooks',
@@ -168,24 +168,24 @@ When a user asks you to edit files or run commands, proceed confidently knowing 
     console.log(`\n📋 Scenario: ${scenario.name}`)
     console.log(`💬 User: ${scenario.prompt}`)
     console.log('🤖 Agent response:')
-    
+
     try {
       const agent = agents.get('developer')
       const result = await agent.streamGenerate(scenario.prompt)
-      
+
       let response = ''
       for await (const chunk of result.textStream) {
         process.stdout.write(chunk)
         response += chunk
       }
-      
+
       const finalResult = await result.getFinalResult()
       console.log(`\n📊 Tool calls made: ${finalResult.toolCalls?.length || 0}`)
-      
+
     } catch (error) {
       console.log(`❌ Error: ${error instanceof Error ? error.message : String(error)}`)
     }
-    
+
     console.log('\n' + '='.repeat(60))
   }
 }
@@ -196,26 +196,26 @@ async function demonstrateHookErrorHandling() {
   // Create hooks that might fail
   const flakyBeforeHook = async (toolName: string, args: unknown) => {
     console.log(`🔧 [BEFORE] ${toolName}`)
-    
+
     if (toolName === 'fileEdit') {
       throw new Error('Simulated hook failure')
     }
-    
+
     return args
   }
 
   const flakyAfterHook = async (toolName: string, args: unknown, result: unknown) => {
     console.log(`✅ [AFTER] ${toolName}`)
-    
+
     if (toolName === 'terminal') {
       throw new Error('Simulated after-hook failure')
     }
-    
+
     return result
   }
 
-  const factory = createExperimentalAgentFactory()
-  
+  const factory = createAgentFactory()
+
   const agents = factory.defineAgents({
     flakyAgent: {
       name: 'Agent with Flaky Hooks',
@@ -231,31 +231,31 @@ async function demonstrateHookErrorHandling() {
   })
 
   console.log('🤖 Testing error handling in hooks...')
-  
+
   try {
     const agent = agents.get('flakyAgent')
     const result = await agent.streamGenerate('Create a file called "test.txt"')
-    
+
     let response = ''
     for await (const chunk of result.textStream) {
       process.stdout.write(chunk)
       response += chunk
     }
-    
+
     console.log('\n✅ Agent continued working despite hook errors')
-    
+
   } catch (error) {
     console.log(`❌ Agent failed: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
 async function main() {
-  console.log('🎯 ExperimentalAgentFactory Tool Execution Hooks Demo\n')
+  console.log('🎯 AgentFactory Tool Execution Hooks Demo\n')
 
   try {
     await demonstrateToolHooks()
     await demonstrateHookErrorHandling()
-    
+
     console.log('\n✅ All demos completed successfully!')
     console.log('\n📚 Key Features Demonstrated:')
     console.log('  • Agent-level tool execution hooks')
@@ -263,7 +263,7 @@ async function main() {
     console.log('  • Tool execution logging')
     console.log('  • Error handling in hooks')
     console.log('  • Hook argument/result modification')
-    
+
   } catch (error) {
     console.error('❌ Demo failed:', error)
     process.exit(1)
