@@ -44,10 +44,10 @@ function extractLucideIcons(code: string): Array<{icon: string, line: number}> {
   const lines = code.split('\n');
 
   // Match lucide-react import statements
-  const lucideImportRegex = /import\s+\{([^}]+)\}\s+from\s+['"]lucide-react['"];?/g;
+  const lucideImportPattern = /import\s+\{([^}]+)\}\s+from\s+['"]lucide-react['"];?/;
 
   lines.forEach((line, index) => {
-    const match = lucideImportRegex.exec(line);
+    const match = line.match(lucideImportPattern);
     if (match && match[1]) {
       const iconList = match[1];
       const lineNumber = index + 1;
@@ -62,8 +62,6 @@ function extractLucideIcons(code: string): Array<{icon: string, line: number}> {
         icons.push({ icon: iconName, line: lineNumber });
       });
     }
-    // Reset regex for next line
-    lucideImportRegex.lastIndex = 0;
   });
 
   return icons;

@@ -1,0 +1,28 @@
+name: Tools Security Check
+
+on:
+  pull_request:
+    paths:
+      - "agents/src/tools/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "agents/src/tools/**"
+
+jobs:
+  security-check:
+    name: Check for dangerous process execution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run security check
+        run: node scripts/check-tools-security.js
