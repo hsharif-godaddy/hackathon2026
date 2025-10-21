@@ -15,6 +15,7 @@ import Button from '@ux/button'
 import Tag from '@ux/tag'
 import { formatDate } from '@/utils/common'
 import PlusIcon from '@ux/icon/plus'
+import text from '@ux/text'
 
 interface AlertState {
   siteId: string | null
@@ -193,10 +194,11 @@ export const SiteCardEmptyState = () => {
 
   return (
     <div
-      className="relative flex flex-col justify-center items-center rounded-lg border hover:cursor-pointer hover:shadow-lg transition-all group"
+      className="relative flex flex-col justify-center items-center rounded-lg border gap-2 hover:cursor-pointer hover:shadow-lg transition-all group"
       onClick={() => router.push(`/`)}
     >
       <PlusIcon className="size-7 text-ai group-hover:scale-110 transition-all" />
+      <text.p>Create a new site</text.p>
     </div>
   )
 }

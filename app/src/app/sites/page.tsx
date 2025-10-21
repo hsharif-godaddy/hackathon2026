@@ -8,9 +8,8 @@ import {
 } from '@heroicons/react/24/outline'
 import { ProtectedRoute } from '@/components/auth'
 import Header from '@/components/layout/Header'
-import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { DevelopmentAdminSection } from '@/components/development'
-import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
+import { logImpressionEvent } from '@/utils/instrumentation'
 import { useSites } from '@/stores/useSitesStore'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -73,8 +72,7 @@ function SitesPageContent() {
   if (isLoading) {
     return (
       <Box className="min-h-screen flex items-center justify-center" data-partial="accentAiro">
-        <Spinner size="lg" />
-        <p className="mt-4">Loading your sites...</p>
+        <Spinner />
       </Box>
     )
   }
