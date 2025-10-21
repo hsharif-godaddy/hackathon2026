@@ -264,12 +264,14 @@ export function useStreamingWebSocket() {
 
         case 'tool_result':
           if (data.data?.tool) {
+            const hasError = data.data.tool.error || data.data.tool.is_error
             const toolCall: ToolCall = {
               id: data.data.tool.id,
               name: data.data.tool.name,
               input: data.data.tool.input || {},
               result: data.data.tool.output || data.data.tool.result,
-              status: 'completed',
+              error: data.data.tool.error,
+              status: hasError ? 'error' : 'completed',
               startTime: data.data.tool.startTime,
               endTime: Date.now()
             }

@@ -467,7 +467,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             if (existingTool) {
               existingTool.input = event.data.tool.input || existingTool.input
               existingTool.result = event.data.tool.output || event.content || event.data.tool.result
-              existingTool.status = 'completed'
+              const hasError = event.data.tool.error || event.data.tool.is_error
+              existingTool.error = event.data.tool.error
+              existingTool.status = hasError ? 'error' : 'completed'
               existingTool.endTime = timestamp
               
               if (existingTool.startTime && timestamp) {
