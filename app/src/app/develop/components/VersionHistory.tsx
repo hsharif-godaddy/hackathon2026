@@ -8,6 +8,7 @@ import Spinner from '@ux/spinner'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
 import { logger } from '@/lib/request-context'
 import { useAppIdFromParams } from './utils'
+import { formatDate } from '@/utils/common'
 
 interface Commit {
   hash: string
@@ -68,18 +69,6 @@ export default function VersionHistory() {
       // Select new commit
       await selectCommit(appId, commit)
     }
-  }
-
-  // Format date string
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date)
   }
 
   const renderCommitItem = ({
@@ -159,7 +148,7 @@ export default function VersionHistory() {
                 <div className="flex items-center gap-2">
                   <Tag type="info">{commit.shortHash}</Tag>
                   <span className="text-xs">
-                    {formatDate(commit.date)}
+                    {formatDate(commit.date, true)}
                   </span>
                 </div>
               ),

@@ -3,7 +3,10 @@
 import { useParams, useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import Box from '@ux/box';
+import { generateClickEID } from '@/utils/instrumentation';
 import { Site } from '@/stores/useSitesStore';
+import PlusIcon from '@ux/icon/plus';
+import text from '@ux/text';
 
 export default function SiteItem({site, dataEid}: {site: Site, dataEid?: string}) {
   const router = useRouter();
@@ -46,5 +49,29 @@ export function SiteItemSkeleton() {
       <div className="size-12 shrink-0 rounded-md bg-intents-ux-boxLowContrast-borderColor " />
       <div className="w-24 h-4 bg-intents-ux-boxLowContrast-borderColor animate-pulse"></div>
     </Box>
+  )
+}
+
+export function SiteItemNew() {
+  const router = useRouter();
+  return (
+    <button
+      onClick={() => router.push(`/`)}
+      className="px-2 hover:cursor-pointer group"
+      data-eid={generateClickEID('sites.site.new')}
+    >
+      <Box
+        orientation="horizontal"
+        gap="md"
+        inlineAlignChildren="center"
+      >
+        <div className="size-12 shrink-0 flex items-center justify-center">
+          <PlusIcon className="size-7 text-ai group-hover:rotate-90 transition-all" />
+        </div>
+        <div>
+          <text.p>Create a new site</text.p>
+        </div>
+      </Box>
+    </button>
   )
 }

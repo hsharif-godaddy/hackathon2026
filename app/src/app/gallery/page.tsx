@@ -7,6 +7,7 @@ import { ProtectedRoute } from '@/components/auth'
 import Header from '@/components/layout/Header'
 import { appFetch } from '@/lib/gasket-config'
 import { isFeatureEnabled } from '@/lib/features'
+import { formatDate } from '@/utils/common'
 
 interface Site {
   id: string
@@ -64,17 +65,6 @@ function GalleryContent() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
   }
 
   const getDisplayTitle = (site: Site) => {
@@ -178,7 +168,7 @@ function GalleryContent() {
 
                 <div className="flex items-center text-sm text-gray-500 mb-3">
                   <CalendarIcon className="w-4 h-4 mr-1 flex-shrink-0" />
-                  <span className="truncate">Created {formatDate(site.created_at)}</span>
+                  <span className="truncate">Created {formatDate(site.created_at, true)}</span>
                 </div>
 
                 {site.initial_prompt && (
@@ -220,7 +210,7 @@ function GalleryContent() {
                   )}
 
                   <div className="text-xs text-gray-400 text-center">
-                    Updated {formatDate(site.updated_at)}
+                    Updated {formatDate(site.updated_at, true)}
                   </div>
                 </div>
               </div>

@@ -1,8 +1,16 @@
 'use client';
 
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { generateClickEID } from '@/utils/instrumentation';
-import { Menu, MenuButton, MenuList, MenuItem, MenuSeparator } from '@ux/menu';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/lib/shadcn/popover"
+import { Button } from "@/lib/shadcn/button"
+import { Separator } from "@/lib/shadcn/separator"
 import UserIcon from '@ux/icon/user';
 
 interface UserMenuProps {
@@ -11,6 +19,9 @@ interface UserMenuProps {
 }
 
 export default function UserMenu({ onShowMockLogin, location = 'unknown' }: UserMenuProps = {}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+
   const {
     isAuthenticated,
     isAuthDisabled,
@@ -19,48 +30,56 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   } = useAuth(onShowMockLogin);
 
   return (
-    <Menu
-      closeOnSelect
-      id="user-menu"
-    >
-      <MenuButton
-        aria-label="open"
-        data-partial="dark1"
-        icon={<UserIcon />}
-        size="small"
-        data-eid={generateClickEID(`${location}.header.user_menu`)}
-      />
-      <MenuList placement="bottom-start">
-        { (isAuthDisabled || isAuthenticated) && (
-          <>
-            <MenuItem href="/sites">
-              My Sites
-            </MenuItem>
-            <MenuSeparator />
-          </>
-        ) }
-        { isAuthDisabled && (
-          <MenuItem>
-            Auth Disabled
-          </MenuItem>
-        ) }
-        { !isAuthenticated && (
-          <MenuItem
-            onSelect={handleSignIn}
-            data-eid={generateClickEID(`${location}.header.sign_in`)}
-          >
-            Sign In
-          </MenuItem>
-        ) }
-        { isAuthenticated && !isAuthDisabled && (
-          <MenuItem
-            onSelect={handleSignOut}
-            data-eid={generateClickEID(`${location}.header.sign_out`)}
-          >
-            Sign Out
-          </MenuItem>
-        ) }
-      </MenuList>
-    </Menu>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className="hover:cursor-pointer">
+        <UserIcon className="size-6" />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[200px] p-2">
+        <div className="flex flex-col gap-1">
+          { (isAuthDisabled || isAuthenticated) && (
+            <>
+              <Button
+                variant="ghost"
+                className="justify-start p-2 hover:cursor-pointer"
+                onClick={() => router.push('/sites')}
+                data-eid={generateClickEID(`${location}.user_menu.sites`)}
+              >
+                My Sites
+              </Button>
+              <Separator className="my-1" />
+            </>
+          ) }
+          { isAuthDisabled && (
+            <Button
+              variant="ghost"
+              className="justify-start px-2"
+              disabled
+            >
+              Auth Disabled
+            </Button>
+          ) }
+          { !isAuthenticated && (
+            <Button
+              variant="ghost"
+              className="justify-start px-2 hover:cursor-pointer"
+              onClick={() => handleSignIn()}
+              data-eid={generateClickEID(`${location}.user_menu.sign_in`)}
+            >
+              Sign In
+            </Button>
+          ) }
+          { isAuthenticated && !isAuthDisabled && (
+            <Button
+              variant="ghost"
+              className="justify-start px-2 hover:cursor-pointer"
+              onClick={() => handleSignOut()}
+              data-eid={generateClickEID(`${location}.user_menu.sign_out`)}
+            >
+              Sign Out
+            </Button>
+          ) }
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }

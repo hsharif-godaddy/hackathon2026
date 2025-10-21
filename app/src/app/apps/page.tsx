@@ -21,6 +21,7 @@ import Header from '@/components/layout/Header'
 import { appService, type App } from '@/services/AppService'
 import { useAppStore, AppStatus } from '@/stores/useAppStore'
 import { useServerStore } from '@/stores/useServerStore'
+import { formatDate } from '@/utils/common'
 
 interface AlertState {
   appId: string | null
@@ -81,15 +82,6 @@ function AppsPageContent() {
 
   const handleCreateNew = () => {
     router.push('/')
-  }
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    })
   }
 
   const getStatusBadge = (status: App['status']) => {

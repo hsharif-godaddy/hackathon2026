@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import { useAuth } from '@/hooks/useAuth';
 import { useSites } from '@/stores/useSitesStore';
-import SiteItem from '@/components/layout/SiteItem';
+import SiteItem, { SiteItemNew } from '@/components/layout/SiteItem';
 import {
   Popover,
   PopoverContent,
@@ -16,7 +16,7 @@ import Box from '@ux/box';
 import ChevronDownIcon from '@ux/icon/chevron-down';
 import { generateClickEID } from '@/utils/instrumentation';
 
-export default function SiteSelector() {
+export default function SiteSelector({ location }: { location?: string }) {
   const router = useRouter();
   const params = useParams();
   const {
@@ -65,8 +65,13 @@ export default function SiteSelector() {
         <PopoverContent align="end" className="w-[300px] p-2">
           <div className="flex flex-col gap-2">
             {sites.map((site) => (
-              <SiteItem key={site.id} site={site} dataEid={generateClickEID('sites.site.edit')} />
+              <SiteItem
+                key={site.id}
+                site={site}
+                dataEid={generateClickEID('sites.site.edit')}
+              />
             ))}
+            { location !== 'homepage' && <SiteItemNew /> }
           </div>
         </PopoverContent>
       )}

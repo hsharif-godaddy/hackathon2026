@@ -14,7 +14,7 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
     },
     {
       title: "Local Food Truck Landing Page",
-      prompt: "Event venue booking platform with calendar integration, space galleries, pricing calculator, and vendor coordination. Vibrant colors.",
+      prompt: "I need a landing page for my local food truck. It should have a menu, a location map, and a contact form. Vibrant colors.",
       slug: "food_truck"
     },
     {
