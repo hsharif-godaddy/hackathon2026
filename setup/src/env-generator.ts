@@ -441,6 +441,8 @@ AWS_PROFILE=${config.modelConfig.awsProfile}`;
 		} else {
 			envContent += `# GoCode Configuration (Anthropic API compatibility)
 DEFAULT_PROVIDER="anthropic"
+OPENAI_API_KEY="${config.modelConfig.gocodeApiKey}"
+OPENAI_BASE_URL="${config.modelConfig.gocodeBaseUrl}"
 ANTHROPIC_API_KEY="${config.modelConfig.gocodeApiKey}"
 ANTHROPIC_BASE_URL="${config.modelConfig.gocodeBaseUrl}"
 ANTHROPIC_MODEL="claude-sonnet-4"

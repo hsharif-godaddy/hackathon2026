@@ -59,15 +59,14 @@ export const imageSearchAITool = createTool(
  * Generate an image using AI based on a detailed text prompt
  */
 export const imageGenerateAITool = createTool(
-  'Generate an image using AI based on a detailed text prompt and save it to the app\'s public directory.',
+  'Generate an image using AI based on a detailed text prompt and save it to the app\'s public directory. Uses gpt-image-1 model which produces high-quality, vivid images by default.',
   z.object({
     prompt: z.string().describe('Detailed description of the image to generate'),
     size: z.enum(['1024x1024', '512x512', '256x256']).default('1024x1024').describe('Size of the generated image'),
-    style: z.enum(['vivid', 'natural']).default('vivid').describe('Visual style for the image generation'),
     filename: z.string().optional().describe('Optional custom filename without extension (default: derived from prompt)')
   }),
   async (input, context) => {
-    const { prompt, size, style, filename } = input
+    const { prompt, size, filename } = input
     
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
       throw new Error('A valid image generation prompt is required')
@@ -81,7 +80,6 @@ export const imageGenerateAITool = createTool(
     const result = await generateImage({
       prompt,
       size: size as '256x256' | '512x512' | '1024x1024',
-      style: style as 'vivid' | 'natural',
       appId,
       ...(filename && { filename })
     })

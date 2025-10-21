@@ -8,7 +8,6 @@ import { toolImageGenerationEvents } from '../logging/events/index.js';
 export interface ImageGenerationOptions {
   prompt: string;
   size?: '1024x1024' | '512x512' | '256x256';
-  style?: 'vivid' | 'natural';
   appId: string; // App ID to determine where to save the image
   filename?: string; // Optional custom filename (without extension)
 }
@@ -31,6 +30,7 @@ export class ImageGenerationTool {
   constructor() {
     // Initialize OpenAI client using API key from environment variables
     const apiKey = process.env.OPENAI_API_KEY;
+    const baseURL = process.env.OPENAI_BASE_URL;
     
     if (!apiKey) {
       logger.warn('OpenAI API key not configured - image generation will not work', {
@@ -40,7 +40,8 @@ export class ImageGenerationTool {
     }
     
     this.openaiClient = new OpenAI({
-      apiKey: apiKey
+      apiKey: apiKey,
+      baseURL: baseURL
     });
 
     // Get base directory for apps from environment variable or use default
@@ -66,7 +67,6 @@ export class ImageGenerationTool {
       prompt: options.prompt,
       options: {
         size: options.size,
-        style: options.style,
         filename: options.filename
       }
     };
@@ -75,7 +75,7 @@ export class ImageGenerationTool {
     toolImageGenerationEvents.begin(logger, logData);
     
     try {
-      const { prompt, size = '1024x1024', style = 'vivid', appId, filename } = options;
+      const { prompt, size = '1024x1024', appId, filename } = options;
       
       // Validate input
       if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -138,22 +138,19 @@ export class ImageGenerationTool {
         }
       }
 
-      logger.debug('Generating image with OpenAI', { 
-        appId, 
-        prompt: prompt.trim(), 
-        size, 
-        style,
+      logger.debug('Generating image with gpt-image-1 model', {
+        appId,
+        prompt: prompt.trim(),
+        size,
         component: 'ImageGenerationTool'
       });
       
-      // Always request base64 data to save the image locally
+      // Generate image using gpt-image-1 model (produces high-quality, vivid images by default)
       const result = await this.openaiClient.images.generate({
         model: "gpt-image-1",
         prompt: prompt.trim(),
         n: 1,  // Generate one image
         size: size,
-        style: style,
-        response_format: "b64_json", // Always get base64 to save locally
       });
 
       // Check if we have results
@@ -166,8 +163,8 @@ export class ImageGenerationTool {
       
       const imageData = result.data[0];
       
-      // Process the base64 data and save to the public directory
-      if (imageData && imageData.b64_json) {
+      // Process returned image (prefer base64, fallback to URL if provided)
+      if (imageData && (imageData.b64_json || imageData.url)) {
         // Generate a safe filename based on the prompt or use provided filename
         const safeFilename = filename || 
           prompt.trim()
@@ -180,8 +177,16 @@ export class ImageGenerationTool {
         const filePath = path.join(imagesDir, fullFilename);
         
         try {
-          // Convert base64 to buffer and write to file
-          const imageBuffer = Buffer.from(imageData.b64_json, 'base64');
+          // Get the image bytes from base64 or by downloading the URL
+          let imageBuffer: Buffer;
+          if (imageData.b64_json) {
+            imageBuffer = Buffer.from(imageData.b64_json, 'base64');
+          } else {
+            // Node 18+ has global fetch; if not, swap for node-fetch
+            const res = await fetch(imageData.url as string);
+            const arrBuf = await res.arrayBuffer();
+            imageBuffer = Buffer.from(arrBuf);
+          }
           fs.writeFileSync(filePath, imageBuffer);
           
           // Create public path that can be used in the app
@@ -195,7 +200,6 @@ export class ImageGenerationTool {
             prompt: logData.prompt,
             options: {
               ...(logData.options.size && { size: logData.options.size }),
-              ...(logData.options.style && { style: logData.options.style }),
               ...(logData.options.filename && { filename: logData.options.filename }),
             },
             resultStats: {
@@ -211,7 +215,7 @@ export class ImageGenerationTool {
             success: true,
             filepath: filePath,
             publicPath: publicPath,
-            base64Data: imageData.b64_json
+            ...(imageData.b64_json && { base64Data: imageData.b64_json })
           };
         } catch (fileError) {
           // Log failure
@@ -244,7 +248,7 @@ export class ImageGenerationTool {
  * Tool interface for image generation
  */
 export async function generateImage(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
-  const { prompt, size, style, appId, filename } = options;
+  const { prompt, size, appId, filename } = options;
   
   if (!prompt || typeof prompt !== 'string') {
     return { 
@@ -265,7 +269,6 @@ export async function generateImage(options: ImageGenerationOptions): Promise<Im
     const result = await imageGenerationTool.generateImage({
       prompt,
       size: size || '1024x1024',
-      style: style || 'vivid',
       appId,
       ...(filename && { filename })
     });
