@@ -6,28 +6,13 @@
 # fail immediately if anything fails
 set -e
 
-# create the customer app directory
-mkdir -p "${CUSTOMER_APP_DIR}"
+OWNER="${USER_ID:-agent}"
 
-# create the .is_ready file, so that the dev container can wait for it to appear
-touch "${CUSTOMER_APP_DIR}"/.is_ready
+# create the necessary directories
+mkdir -p "${CUSTOMER_APP_DIR}" "${CEPH_STORAGE_DIR}/git-repo" "${CEPH_STORAGE_DIR}/agent"
 
-# set ownership
-chown -R agent:agent "${CUSTOMER_APP_DIR}"
-
-ls -latr "${CUSTOMER_APP_DIR}"
-
-echo '✅ Directories created and set permissions'
-
-# create the git repo directory in the ceph storage
-mkdir -p "${CEPH_STORAGE_DIR}/git-repo"
-
-# set ownership
-chown -R agent:agent "${CEPH_STORAGE_DIR}"
-
-ls -latr "${CEPH_STORAGE_DIR}"
-
-echo '✅ Git repo directory created in the ceph storage and set permissions'
+# set ownership of the directories
+chown -R "$OWNER" "${CUSTOMER_APP_DIR}" "${CEPH_STORAGE_DIR}/git-repo" "${CEPH_STORAGE_DIR}/agent"
 
 # execute the provided arguments
 exec $@

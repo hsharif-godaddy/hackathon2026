@@ -3,14 +3,6 @@
 # fail immediately if anything fails
 set -e
 
-APP_DIR_READY="$CUSTOMER_APP_DIR"/.is_ready
-
-while [ ! -f "$APP_DIR_READY" ]; do
-    echo "Waiting for $APP_DIR_READY to appear..."
-    sleep 2 # Wait for 2 seconds before checking again
-done
-echo "Completed: $APP_DIR_READY exists, proceeding with setup..."
-
 # add the customer app directory to the git safe directory
 git config --global --add safe.directory "${CUSTOMER_APP_DIR}"
 git config --global user.name "Airo AI Builder"
@@ -35,7 +27,10 @@ if [ ! -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     git init --initial-branch=main
 
     # Copy template files, including hidden files (.gitignore, .api, .version, .npmrc and etc)
-    cp -p -r "$BASE_APP_DIR"/. "$CUSTOMER_APP_DIR"
+    cp -r "$BASE_APP_DIR"/. "$CUSTOMER_APP_DIR"
+
+    # Install dependencies
+    CI=true pnpm install --frozen-lockfile --registry=https://registry.npmjs.org/
 
     # Initial commit
     git add .

@@ -10,9 +10,6 @@ USER root
 # Install python and build tools
 RUN apk add --no-cache python3 py3-setuptools make g++ curl git ca-certificates tzdata
 
-# Install pnpm
-RUN npm install -g pnpm
-
 # create the group and user
 # hardcoded the GID of the agent group to 790, UID of the agent user to 790 for now
 RUN addgroup -S -g 790 agent
@@ -25,15 +22,8 @@ COPY --chown=agent:agent --from=dev-supervisor /usr/local/bin/dev-supervisor /us
 COPY --chown=agent:agent package.json /app-template/
 COPY --chown=agent:agent pnpm-lock.yaml* /app-template/
 
-# Enable corepack and prepare pnpm as root if pnpm-lock.yaml exists
-# Configure pnpm to use a shared store location accessible by both users
-RUN if [ -f /app-template/pnpm-lock.yaml ]; then \
-    corepack enable && corepack prepare pnpm@latest --activate && \
-    mkdir -p /shared/pnpm-store && \
-    chown -R agent:agent /shared/pnpm-store && \
-    chmod -R 775 /shared/pnpm-store && \
-    pnpm config set store-dir /shared/pnpm-store --global; \
-    fi
+# Enable corepack and prepare pnpm as root
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # copy all except nomad_setup_and_serve.sh to /app-template
 COPY --chown=agent:agent . /app-template
@@ -59,16 +49,6 @@ RUN chown -R agent:agent /app-template
 
 # Switch to the agent user so we are not running as root
 USER agent
-
-# Configure pnpm store for agent user if pnpm-lock.yaml exists
-RUN if [ -f pnpm-lock.yaml ]; then \
-    pnpm config set store-dir /shared/pnpm-store; \
-    fi
-
-# Install dependencies as the agent user
-# Note: v8 template maintains its own lockfile separate from workspace
-# The lockfile should be kept up-to-date via CI automation
-RUN pnpm install --frozen-lockfile --registry=https://registry.npmjs.org/
 
 # Set development environment variables
 ENV NODE_ENV=development
