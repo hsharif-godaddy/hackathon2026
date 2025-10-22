@@ -1,75 +1,133 @@
-## API Development - USE THE AUTO API GENERATOR TOOL!
+## API Development with vite-plugin-api-routes
 
-**🚨 CRITICAL: For ALL API creation tasks, use the `auto_api_generator` tool instead of manually writing endpoints!**
+**⚠️ IMPORTANT: The template uses vite-plugin-api-routes in ISOLATED mode with Express-style handlers.**
 
-**⚠️ PREREQUISITE: Database and migrations MUST be run first before using `analyze_schema` or `generate_endpoints` operations. Tables must exist in the database to be analyzed or have APIs generated for them.**
+### Template Architecture
 
-### When to Use the Auto API Generator Tool
+The template uses:
 
-Use this tool for ANY API-related request:
+- **vite-plugin-api-routes** in ISOLATED mode for automatic route detection
+- **Express Request/Response** handlers (not Next.js App Router)
+- **File structure**: Routes live in `src/api/` directory
+- **HTTP methods**: Use uppercase file names (`GET.ts`, `POST.ts`, etc.)
 
-- **Contact forms** and form submission endpoints
-- **User registration** and authentication APIs
-- **Data retrieval APIs** (products, orders, content, etc.)
-- **CRUD operations** on any database table
-- **Selective APIs** (read-only, create-only, etc.)
-- **Admin panels** requiring data management
+### Configuration
 
-### Tool Usage Patterns
+The Vite config is set up with:
 
-#### 1. Analyze Database Schema First (After DB & Migrations)
-
-```
-operation: "analyze_schema"
-database: { host, port, user, password, database }
-```
-
-**NOTE**: Database tables must exist before running this analysis!
-
-#### 2. Generate TypeScript Types
-
-```
-operation: "generate_types"
-database: { host, port, user, password, database }
-tables: ["users", "products"]
-outputDir: "src/types"
+```typescript
+apiRoutes({
+  mode: 'isolated',
+  routeBase: '/api',
+  dirs: [{ dir: './src/api', route: '' }],
+});
 ```
 
-#### 3. Create Selective API Endpoints (After DB & Migrations)
+### File-Based Routing Structure
+
+API routes are automatically mapped from files in `src/api/`:
 
 ```
-operation: "generate_endpoints"
-database: { host, port, user, password, database }
-tables: ["contacts"]
-operations: ["create", "read_all"]  // Only what's needed!
-framework: "hono"
-generateTypes: true
+src/api/
+├── health/
+│   └── GET.ts                → GET /api/health
+├── users/
+│   ├── GET.ts                → GET /api/users
+│   ├── POST.ts               → POST /api/users
+│   └── [userId]/
+│       ├── GET.ts            → GET /api/users/:userId
+│       └── DELETE.ts         → DELETE /api/users/:userId
 ```
 
-**NOTE**: Specified tables must exist in the database before generating endpoints!
+### Creating New API Endpoints
 
-### Common Operation Combinations
+To create a new API endpoint:
 
-- **Contact Forms**: `["create", "read_all"]` - submit + admin view
-- **Read-Only APIs**: `["read", "read_all"]` - display data only
-- **Data Collection**: `["create"]` - forms, surveys, signups
-- **Full Management**: `["create", "read", "read_all", "update", "delete"]` - admin panels
-- **User Profiles**: `["read", "update"]` - view + edit own data
+1. **Create a directory** under `src/api/` with your endpoint name
+2. **Add HTTP method files** (uppercase: `GET.ts`, `POST.ts`, etc.)
+3. **Export a default handler function** using Express-style signature
 
-### Benefits of Using the Tool
+#### Example: Health Check Endpoint
 
-✅ **Type-safe validation** with auto-generated Zod schemas  
-✅ **Proper error handling** and database connection management  
-✅ **TypeScript interfaces** for all data structures  
-✅ **Consistent API patterns** across entire application  
-✅ **Auto-generated documentation** with endpoint descriptions  
-✅ **Framework-specific code** (Hono.js optimized)  
-✅ **Only generates needed operations** - no unnecessary endpoints
+File: `src/api/health/GET.ts`
 
-### Database Configuration Discovery
+```typescript
+import type { Request, Response } from 'express';
 
-The tool can auto-discover database configuration from:
+export default async function handler(_req: Request, res: Response) {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    message: 'Hello World!',
+  });
+}
+```
 
-- `.env` files (DB_HOST, DB_USER, DB_PASS, DB_NAME)
-- `src/services/database.ts` files
-- Other common configuration locations
+This creates a `GET /api/health` endpoint.
+
+#### Example: Data Retrieval with Query Parameters
+
+File: `src/api/users/GET.ts`
+
+```typescript
+import type { Request, Response } from 'express';
+
+export default async function handler(req: Request, res: Response) {
+  const { limit = '10' } = req.query;
+
+  const users = [
+    { id: '1', name: 'Alice', email: 'alice@example.com' },
+    { id: '2', name: 'Bob', email: 'bob@example.com' },
+  ].slice(0, parseInt(limit as string));
+
+  res.json({ users });
+}
+```
+
+#### Example: Creating Resources
+
+File: `src/api/users/POST.ts`
+
+```typescript
+import type { Request, Response } from 'express';
+
+export default async function handler(req: Request, res: Response) {
+  const { name, email } = req.body;
+
+  if (!name || !email) {
+    return res.status(400).json({
+      error: 'Missing required fields',
+    });
+  }
+
+  const user = {
+    id: Date.now().toString(),
+    name,
+    email,
+  };
+
+  res.status(201).json({ user });
+}
+```
+
+#### Dynamic Routes
+
+Use `[paramName]` directories for dynamic segments:
+
+File: `src/api/users/[userId]/GET.ts`
+
+```typescript
+import type { Request, Response } from 'express';
+
+export default async function handler(req: Request, res: Response) {
+  const { userId } = req.params;
+
+  const user = {
+    id: userId,
+    name: 'Sample User',
+    email: 'user@example.com',
+  };
+
+  res.json({ user });
+}
+```

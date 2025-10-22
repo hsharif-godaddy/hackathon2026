@@ -5,6 +5,7 @@ import sourceMapperPlugin from "./source-mapper/src/index";
 import { devToolsPlugin } from "./dev-tools/src/vite-plugin";
 import { fullStoryPlugin } from "./fullstory-plugin";
 import { errorInterceptorPlugin } from "./dev-tools/src/vite-error-interceptor";
+import apiRoutes from "vite-plugin-api-routes";
 
 let allowedHosts: string[] = [];
 if (process.env.FRONTEND_DOMAIN) {
@@ -20,41 +21,6 @@ if (allowedHosts.length === 0) {
 	allowedHosts.push('*');
 }
 
-// Simple API plugin that serves our API routes
-function apiPlugin(): Plugin {
-	return {
-		name: "simple-api",
-		configureServer(server) {
-			server.middlewares.use("/api", async (req, res, _next) => {
-				try {
-					const url = new URL(req.url!, "http://localhost");
-					const pathname = url.pathname;
-
-					// Handle health endpoint
-					if (pathname === "/health") {
-						const health = {
-							status: "ok",
-							timestamp: new Date().toISOString(),
-							message: "V7 Template API is running!",
-						};
-						res.setHeader("Content-Type", "application/json");
-						res.end(JSON.stringify(health));
-						return;
-					}
-
-					// Not found
-					res.statusCode = 404;
-					res.end(JSON.stringify({ error: "API endpoint not found" }));
-				} catch (error) {
-					console.error("API Error:", error);
-					res.statusCode = 500;
-					res.end(JSON.stringify({ error: "Internal server error" }));
-				}
-			});
-		},
-	};
-}
-
 export default defineConfig(({ mode }) => ({
 	plugins: [
 		react({
@@ -62,7 +28,11 @@ export default defineConfig(({ mode }) => ({
 				plugins: [sourceMapperPlugin],
 			},
 		}),
-		apiPlugin(),
+		apiRoutes({
+			mode: 'isolated',
+			routeBase: '/api',
+			dirs: [{ dir: './src/api', route: '' }],
+		}),
 		...(mode === "development" ? [
 			devToolsPlugin() as Plugin,
 			fullStoryPlugin(),
@@ -102,6 +72,8 @@ export default defineConfig(({ mode }) => ({
 	},
 
 	build: {
-		// Manual chunks will be configured later if needed
+		rollupOptions: {
+			external: ['dotenv-local', 'express']
+		}
 	},
 }));

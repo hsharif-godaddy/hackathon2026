@@ -193,7 +193,8 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     //.file(paths.getAgentFile('develop', 'tools.md'))
     //.file(paths.getAgentFile('develop', 'database.md'))
-    //.file(paths.getAgentFile('develop', 'api.md'))
+    .file(paths.getAgentFile('develop', 'api.md'))
+    .file(paths.getAgentFile('develop', 'email.md'))
     .file(paths.getAgentFile('develop', 'decision-matrix.md'))
     .file(paths.getAgentFile('develop', 'approach.md'))
     .file(paths.getAgentFile('develop', 'visual-context.md'))
