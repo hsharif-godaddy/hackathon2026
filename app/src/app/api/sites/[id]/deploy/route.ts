@@ -5,7 +5,6 @@ import {
   withCustomerAuth,
   customerHasAccount,
   createCustomerAuthError,
-  isShopperAuthorized,
   type CustomerAuthContext
 } from '@/lib/customer-auth';
 
@@ -30,23 +29,6 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     const { user } = authContext;
     const { id: siteId } = await params;
 
-    // Check shopper authorization (production only)
-    if (!isShopperAuthorized(user.shopperId)) {
-      logger.warn('sites.deploy.unauthorized', {
-        message: 'User not authorized to deploy sites',
-        shopperId: user.shopperId,
-        siteId
-      });
-      return NextResponse.json(
-        {
-          error: 'Access restricted',
-          message: 'Your account does not have authorization to deploy sites at this time.',
-          redirectTo: '/coming-soon'
-        },
-        { status: 403 }
-      );
-    }
-
     // Customer must have an account to deploy sites
     if (!customerHasAccount(user)) {
       return createCustomerAuthError('You must have an account to deploy sites', 403);
@@ -61,15 +43,15 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     // Check if deployment is already in progress for this site
     if (!acquireDeploymentLock(siteId)) {
-      logger.warn('deploy.concurrent.blocked', { 
-        message: 'Deployment already in progress for site, blocking concurrent request', 
-        siteId 
+      logger.warn('deploy.concurrent.blocked', {
+        message: 'Deployment already in progress for site, blocking concurrent request',
+        siteId
       });
       return NextResponse.json(
-        { 
-          error: 'Deployment already in progress', 
+        {
+          error: 'Deployment already in progress',
           message: 'Please wait for the current deployment to complete before starting a new one',
-          siteId 
+          siteId
         },
         { status: 409 } // 409 Conflict
       );
@@ -95,13 +77,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Extract siteId from params in catch block since it's not in scope
     const siteId = (await params).id;
     releaseDeploymentLock(siteId);
-    
-    logger.error('deploy.start.error', { 
-      message: 'Failed to start deployment', 
-      siteId, 
-      errorMessage: error instanceof Error ? error.message : 'Unknown error' 
+
+    logger.error('deploy.start.error', {
+      message: 'Failed to start deployment',
+      siteId,
+      errorMessage: error instanceof Error ? error.message : 'Unknown error'
     });
-    
+
     return NextResponse.json(
       {
         error: 'Failed to start deployment',

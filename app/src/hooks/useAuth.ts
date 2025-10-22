@@ -34,7 +34,6 @@ export function useAuth(onShowMockLogin?: () => void) {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [isAuthorized, setIsAuthorized] = useState<boolean>(true);
   const [jwtAuthValid, setJwtAuthValid] = useState<boolean | null>(null);
 
   // Check authentication mode (prefer server config if available)
@@ -87,7 +86,6 @@ export function useAuth(onShowMockLogin?: () => void) {
   useEffect(() => {
     async function checkJwtAuth() {
       if (!shouldUseJWT || isMockAuth || isAuthDisabled) {
-        setIsAuthorized(true);
         setJwtAuthValid(null);
         return;
       }
@@ -97,20 +95,9 @@ export function useAuth(onShowMockLogin?: () => void) {
         if (response.ok) {
           const data = await response.json();
           setJwtAuthValid(data.valid);
-          
-          // Check authorization status (login succeeded, but may not be authorized)
-          if (data.valid && data.authorized === false) {
-            logger.info('auth.shopper.unauthorized', {
-              message: 'User authenticated but not authorized',
-              shopperId: data.payload?.shopperId
-            });
-            setIsAuthorized(false);
-          } else {
-            setIsAuthorized(true);
-          }
+
         } else {
           setJwtAuthValid(false);
-          setIsAuthorized(true);
         }
       } catch (error) {
         logger.error('auth.jwt.check.error', {
@@ -118,7 +105,6 @@ export function useAuth(onShowMockLogin?: () => void) {
           error: error as Error
         });
         setJwtAuthValid(false);
-        setIsAuthorized(true);
       }
     }
 
@@ -252,7 +238,7 @@ export function useAuth(onShowMockLogin?: () => void) {
       const isAuthenticated = jwtAuthValid !== null ? jwtAuthValid : authState.valid;
       return { isAuthenticated, isLoading };
     }
-    
+
     return {
       isAuthenticated: false,
       isLoading: configLoading
@@ -265,7 +251,6 @@ export function useAuth(onShowMockLogin?: () => void) {
     // Core auth state
     isAuthenticated,
     isLoading,
-    isAuthorized,
     authState: shouldUseJWT ? authState : null,
 
     // Configuration

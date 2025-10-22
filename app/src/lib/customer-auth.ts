@@ -165,9 +165,6 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       };
     }
 
-    // NOTE: Shopper ID authorization check removed from authentication
-    // Users are allowed to login regardless of shopper ID criteria
-    // Authorization check happens after login (see isShopperAuthorized function)
     logger.info('auth.login.success', {
       message: 'User authenticated successfully',
       shopperId,
@@ -214,11 +211,11 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
         shopperId,
         recommendation: 'Client should refresh token'
       });
-      
+
       // Still return the token, but log the warning
       // The client-side code should handle refresh
     }
-    
+
     // Debug: Log JWT token info for troubleshooting mgmt-airo auth issues
     logger.info('auth.jwt.debug', {
       message: 'JWT token extracted for mgmt-airo calls',
@@ -246,35 +243,6 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
 }
 
 /**
- * Check if a shopper is authorized to use the application
- * 
- * In production, checks if shopper ID meets authorization criteria.
- * Returns authorization status without blocking authentication.
- * 
- * @param shopperId - The shopper ID to check
- * @returns true if authorized, false otherwise
- */
-export function isShopperAuthorized(shopperId: string): boolean {
-  // In non-production environments, all shoppers are authorized
-  if (process.env.ENVIRONMENT_NAME !== 'production') {
-    return true;
-  }
-
-  // Production: Check if shopper ID meets criteria (length === 3)
-  const isAuthorized = shopperId.length === 3;
-  
-  logger.info('auth.shopper.authorization-check', {
-    message: 'Shopper authorization check',
-    shopperId,
-    isAuthorized,
-    expectedLength: 3,
-    actualLength: shopperId.length
-  });
-  
-  return isAuthorized;
-}
-
-/**
  * Middleware wrapper for API routes requiring customer authentication
  */
 export function withCustomerAuth<T extends unknown[]>(
@@ -285,7 +253,7 @@ export function withCustomerAuth<T extends unknown[]>(
 
     if (!authContext.isAuthenticated) {
       const errorMessage = (authContext as UnauthenticatedCustomerContext).error;
-      
+
       return NextResponse.json(
         {
           error: 'Unauthorized',
