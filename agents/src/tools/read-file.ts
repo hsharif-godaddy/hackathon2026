@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises';
-import { join, resolve, basename } from 'path';
-import { existsSync } from 'fs';
+import { join, resolve, basename, relative } from 'path';
+import { existsSync, lstatSync, realpathSync } from 'fs';
 import { translateDockerPath } from '../utils/path-helper.js';
 
 export interface ReadFileOptions {
@@ -118,6 +118,67 @@ function isFileBlocked(filePath: string): { blocked: boolean; reason?: string } 
  */
 export class ReadFileTool {
   /**
+   * Validate that a file path is within the app directory and check for escaping symlinks
+   */
+  private isPathSafe(filePath: string, appPath: string): boolean {
+    try {
+      const resolved = resolve(filePath);
+      
+      // Check using relative() to prevent prefix confusion
+      const rel = relative(appPath, resolved);
+      if (rel.startsWith('..')) {
+        return false;
+      }
+      
+      // Check for symlinks that escape
+      this.validateNoEscapingSymlinks(resolved, appPath);
+      
+      return true;
+    } catch (error) {
+      // If validation throws, path is not safe
+      return false;
+    }
+  }
+
+  /**
+   * Validate that no symlinks in the path chain point outside the app directory
+   */
+  private validateNoEscapingSymlinks(targetPath: string, appPath: string): void {
+    const pathParts = relative(appPath, targetPath).split('/').filter(Boolean);
+    let currentPath = appPath;
+    
+    for (const part of pathParts) {
+      currentPath = resolve(currentPath, part);
+      
+      if (existsSync(currentPath)) {
+        try {
+          const stats = lstatSync(currentPath);
+          
+          if (stats.isSymbolicLink()) {
+            const realPath = realpathSync(currentPath);
+            
+            // Ensure the real path is within the app directory
+            const rel = relative(appPath, realPath);
+            if (rel.startsWith('..')) {
+              throw new Error(
+                `Security violation: symlink points outside the app directory. ` +
+                `Link: ${currentPath}, Target: ${realPath}, App path: ${appPath}`
+              );
+            }
+            
+            // NOTE: We do NOT update currentPath here to continue checking the original path structure
+          }
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('Security violation')) {
+            throw error;
+          }
+          // For other errors, continue
+        }
+      }
+    }
+  }
+
+  /**
    * Create a summary of the file read operation for conversation history
    */
   summarizeOperation(options: ReadFileOptions, result: ReadFileResult): string {
@@ -158,14 +219,14 @@ export class ReadFileTool {
       const normalizedPath = translateDockerPath(options.path);
       const fullPath = resolve(join(appPath, normalizedPath));
       
-      // Security check: ensure the path is within the app directory
-      if (!fullPath.startsWith(resolve(appPath))) {
+      // Security check: ensure the path is within the app directory and no escaping symlinks
+      if (!this.isPathSafe(fullPath, resolve(appPath))) {
         return {
           success: false,
           path: options.path,
           content: '',
           totalLines: 0,
-          error: 'Access denied: path is outside the app directory',
+          error: 'Access denied: path is outside the app directory or contains unsafe symlinks',
         };
       }
 

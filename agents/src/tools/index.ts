@@ -11,7 +11,6 @@ export { GettyImageTool, findGettyImage } from './image-search-driver/index.js';
 export { ASTEditorBase } from './ast-editor-base.js';
 export { ASTTextEditor } from './ast-text-editor.js';
 export { ServerManagementTool } from './server-management-tool.js';
-export { EnvManager, createEnvManager } from './env-manager.js';
 export { MySQLResponseFormatter, createMySQLResponseFormatter } from './mysql-response-formatter.js';
 export { ASTStyleEditor } from './ast-style-editor.js';
 export { AutoAPIGenerator } from './auto-api-generator.js';
@@ -84,12 +83,6 @@ export type {
   ServerStatusResult,
   RestartServerResult
 } from './server-management-tool.js';
-
-export type {
-  EnvVariable,
-  EnvManagerOptions,
-  EnvUpdateResult
-} from './env-manager.js';
 
 export type {
   MySQLOperationData,

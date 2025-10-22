@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { glob } from 'glob';
 import { minimatch } from 'minimatch';
+import { existsSync, lstatSync, realpathSync } from 'fs';
 import { logger } from '../logging/index.js';
 import { toolGrepEvents } from '../logging/events/index.js';
 
@@ -84,6 +85,67 @@ export class GrepTool {
 
   constructor(workingDirectory: string = process.cwd()) {
     this.workingDirectory = workingDirectory;
+  }
+
+  /**
+   * Validate that a file path is within the working directory
+   */
+  private isPathSafe(filePath: string): boolean {
+    try {
+      const resolved = path.resolve(filePath);
+      
+      // Check using relative() to prevent prefix confusion
+      const rel = path.relative(this.workingDirectory, resolved);
+      if (rel.startsWith('..')) {
+        return false;
+      }
+      
+      // Check for symlinks that escape
+      this.validateNoEscapingSymlinks(resolved);
+      
+      return true;
+    } catch (error) {
+      // If validation throws, path is not safe
+      return false;
+    }
+  }
+
+  /**
+   * Validate that no symlinks in the path chain point outside the working directory
+   */
+  private validateNoEscapingSymlinks(targetPath: string): void {
+    const pathParts = path.relative(this.workingDirectory, targetPath).split('/').filter(Boolean);
+    let currentPath = this.workingDirectory;
+    
+    for (const part of pathParts) {
+      currentPath = path.resolve(currentPath, part);
+      
+      if (existsSync(currentPath)) {
+        try {
+          const stats = lstatSync(currentPath);
+          
+          if (stats.isSymbolicLink()) {
+            const realPath = realpathSync(currentPath);
+            
+            // Ensure the real path is within the working directory
+            const rel = path.relative(this.workingDirectory, realPath);
+            if (rel.startsWith('..')) {
+              throw new Error(
+                `Security violation: symlink points outside the working directory. ` +
+                `Link: ${currentPath}, Target: ${realPath}, Working dir: ${this.workingDirectory}`
+              );
+            }
+            
+            // NOTE: We do NOT update currentPath here to continue checking the original path structure
+          }
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('Security violation')) {
+            throw error;
+          }
+          // For other errors, continue
+        }
+      }
+    }
   }
 
   async execute(params: GrepOptions): Promise<GrepResult> {
@@ -228,10 +290,23 @@ export class GrepTool {
     let searchPaths: string[];
 
     if (options.paths && options.paths.length > 0) {
-      // Specific paths provided
-      searchPaths = options.paths.map(p =>
-        path.isAbsolute(p) ? p : path.join(this.workingDirectory, p)
-      );
+      // Specific paths provided - validate each one
+      searchPaths = [];
+      for (const p of options.paths) {
+        const resolved = path.isAbsolute(p) ? p : path.join(this.workingDirectory, p);
+        
+        // Security check: ensure path is within working directory
+        if (this.isPathSafe(resolved)) {
+          searchPaths.push(resolved);
+        } else {
+          logger.warn('grep-tool.path-rejected', {
+            path: p,
+            resolved,
+            workingDirectory: this.workingDirectory,
+            reason: 'Path is outside working directory or contains unsafe symlinks'
+          });
+        }
+      }
     } else {
       // Search entire project
       searchPaths = [this.workingDirectory];
@@ -256,12 +331,17 @@ export class GrepTool {
             absolute: true
           });
 
-          files.forEach(f => allFiles.add(f));
+          // Validate each file from glob results
+          files.forEach(f => {
+            if (this.isPathSafe(f)) {
+              allFiles.add(f);
+            }
+          });
         }
       }
     }
 
-    // Filter out excluded patterns
+    // Filter out excluded patterns and validate safety
     const filteredFiles = Array.from(allFiles).filter(file => {
       const relativePath = path.relative(this.workingDirectory, file);
 
@@ -272,7 +352,8 @@ export class GrepTool {
         }
       }
 
-      return true;
+      // Final safety check
+      return this.isPathSafe(file);
     });
 
     return filteredFiles;

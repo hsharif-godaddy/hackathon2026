@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { dirname, resolve, relative } from 'path';
 import { diffLines, createPatch } from 'diff';
-import { existsSync } from 'fs';
+import { existsSync, realpathSync, lstatSync } from 'fs';
 import { AppRepository } from '../database/index.js';
 import { GitTool } from './git-tool.js';
 import axios from 'axios';
@@ -244,12 +244,64 @@ export class FileEditTool {
     const normalizedPath = translateDockerPath(relativePath);
     const resolved = resolve(appPath, normalizedPath);
     
-    // Ensure the file is within the app directory
-    if (!resolved.startsWith(appPath)) {
+    // Ensure the file is within the app directory (before resolving symlinks)
+    // Use relative() to check for escape attempts with '..' - if the relative path
+    // starts with '..' then it's trying to escape the app directory
+    const rel = relative(appPath, resolved);
+    if (rel.startsWith('..') || resolve(appPath) === resolved.slice(0, -1)) {
       throw new Error(`File path must be within the app directory. Resolved: ${resolved}, App path: ${appPath}`);
     }
     
+    // Check all components of the path for symlinks that might escape
+    this.validateNoEscapingSymlinks(resolved, appPath);
+    
     return resolved;
+  }
+
+  /**
+   * Validate that no symlinks in the path chain point outside the app directory
+   */
+  private validateNoEscapingSymlinks(targetPath: string, appPath: string): void {
+    // Build up the path component by component, checking each for symlinks
+    const pathParts = relative(appPath, targetPath).split('/').filter(Boolean);
+    let currentPath = appPath;
+    
+    for (const part of pathParts) {
+      currentPath = resolve(currentPath, part);
+      
+      // Check if this component exists and is a symlink
+      if (existsSync(currentPath)) {
+        try {
+          const stats = lstatSync(currentPath);
+          
+          if (stats.isSymbolicLink()) {
+            // Resolve the symlink to its real path
+            const realPath = realpathSync(currentPath);
+            
+            // Ensure the real path is within the app directory
+            // Use relative() to properly check for escape attempts
+            const rel = relative(appPath, realPath);
+            if (rel.startsWith('..')) {
+              throw new Error(
+                `Security violation: symlink points outside the app directory. ` +
+                `Link: ${currentPath}, Target: ${realPath}, App path: ${appPath}`
+              );
+            }
+            
+            // NOTE: We do NOT update currentPath here. We continue traversing the original
+            // path structure to ensure we check all components, even those that come after
+            // a symlink. If we updated currentPath to realPath, we would skip checking
+            // subsequent symlinks in the original path chain.
+          }
+        } catch (error) {
+          // Re-throw security violation errors
+          if (error instanceof Error && error.message.includes('Security violation')) {
+            throw error;
+          }
+          // For other errors (like permission denied), continue - they'll be caught later
+        }
+      }
+    }
   }
 
   /**
