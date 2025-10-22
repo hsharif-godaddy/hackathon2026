@@ -239,12 +239,19 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
           {serverState?.status === 'pending'
             ? 'Waiting for server to start...'
             : serverState?.status === 'running'
-            ? 'Server is running, verifying readiness...'
+            ? serverState.url && !serverState.healthCheckPassed
+              ? 'Server is starting, waiting for it to accept connections...'
+              : 'Server is running, verifying readiness...'
             : 'Checking server status...'}
         </p>
         <p className="text-xs text-center max-w-md">
           This usually takes 30-60 seconds for the first load.
         </p>
+        {serverState?.url && !serverState.healthCheckPassed && (
+          <p className="text-xs text-center max-w-md mt-2 text-gray-500">
+            Preview URL: {serverState.url}
+          </p>
+        )}
       </div>
     )
   }

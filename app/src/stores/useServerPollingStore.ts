@@ -15,6 +15,7 @@ export interface ServerState {
   status: 'pending' | 'running' | 'stopped' | 'failed' | 'error'
   lastActivity?: string
   isReady: boolean
+  healthCheckPassed: boolean
   error?: string
 }
 
@@ -42,6 +43,7 @@ interface ServerPollingStore {
   _pollServer: (appId: string) => Promise<void>
   _scheduleNextPoll: (appId: string) => void
   _calculateNextInterval: (pollCount: number) => number
+  _checkUrlHealth: (url: string) => Promise<boolean>
 }
 
 // Adaptive polling intervals (in ms)
@@ -156,6 +158,14 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         const data = await response.json()
         const serverData = data.server
 
+        // If we have a URL, perform actual health check
+        let healthCheckPassed = false
+        if (serverData.status === 'running' && serverData.url) {
+          logger.debug('server-polling.health-check', { message: 'Performing health check', appId, url: serverData.url })
+          healthCheckPassed = await get()._checkUrlHealth(serverData.url)
+          logger.debug('server-polling.health-check-result', { message: 'Health check result', appId, passed: healthCheckPassed })
+        }
+
         set((state) => {
           const currentState = state.servers.get(appId)
           if (currentState) {
@@ -165,7 +175,8 @@ export const useServerPollingStore = create<ServerPollingStore>()(
               url: serverData.url,
               status: serverData.status,
               lastActivity: serverData.lastActivity,
-              isReady: serverData.status === 'running' && !!serverData.url,
+              isReady: serverData.status === 'running' && !!serverData.url && healthCheckPassed,
+              healthCheckPassed,
               error: undefined
             }
             currentState.pollCount++
@@ -173,9 +184,9 @@ export const useServerPollingStore = create<ServerPollingStore>()(
           }
         })
 
-        // Stop polling if server is ready
-        if (serverData.status === 'running' && serverData.url) {
-          logger.info('server-polling.ready', { message: 'Server is ready', appId, url: serverData.url })
+        // Stop polling only if server is ready AND health check passed
+        if (serverData.status === 'running' && serverData.url && healthCheckPassed) {
+          logger.info('server-polling.ready', { message: 'Server is ready and health check passed', appId, url: serverData.url })
           get().stopPollingForServer(appId)
           return
         }
@@ -202,6 +213,7 @@ export const useServerPollingStore = create<ServerPollingStore>()(
               url: null,
               status: 'error',
               isReady: false,
+              healthCheckPassed: false,
               error: error instanceof Error ? error.message : 'Unknown error'
             }
             currentState.pollCount++
@@ -245,6 +257,31 @@ export const useServerPollingStore = create<ServerPollingStore>()(
         return POLLING_INTERVALS.slow
       } else {
         return POLLING_INTERVALS.slowest
+      }
+    },
+
+    _checkUrlHealth: async (url: string): Promise<boolean> => {
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000)
+
+        const response = await fetch(url, {
+          signal: controller.signal,
+          method: 'HEAD',
+          cache: 'no-store'
+        })
+
+        clearTimeout(timeoutId)
+
+        // Validate response status
+        return response.ok || response.status < 500
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          logger.debug('server-polling.health-check.timeout', { message: 'Health check timed out', url })
+        } else {
+          logger.debug('server-polling.health-check.failed', { message: 'Health check failed', url, error: error instanceof Error ? error.message : String(error) })
+        }
+        return false
       }
     }
   })),
