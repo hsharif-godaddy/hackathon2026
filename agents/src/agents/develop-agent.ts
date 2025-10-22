@@ -318,7 +318,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       },
     ],
 
-    maxSteps: 25,
+    maxSteps: 100,
     temperature: 0.3,
     maxOutputTokens: 8000
   }
