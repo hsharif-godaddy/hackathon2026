@@ -26,7 +26,7 @@ export function errorInterceptorPlugin(): Plugin {
       }
     },
 
-    transform(code: string, id: string) {
+    transform(_code: string, id: string) {
       try {
         return null;
       } catch (error: any) {
@@ -79,10 +79,6 @@ export function errorInterceptorPlugin(): Plugin {
           throw error;
         }
       };
-    },
-
-    load(id: string) {
-      return null;
     },
 
     resolveId(id: string) {

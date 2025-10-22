@@ -9,6 +9,9 @@
     "build": "tsc && vite build",
     "dev": "tsc --watch"
   },
+  "dependencies": {
+    "html2canvas": "^1.4.1"
+  },
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

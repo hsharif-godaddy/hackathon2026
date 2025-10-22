@@ -30,7 +30,7 @@ const sendMessageToParent = (errorMessage: string) => {
   }
 };
 
-const DefaultErrorFallback = ({ error, reset }: { error: Error; reset: () => void }) => {
+const DefaultErrorFallback = ({ error, reset: _reset }: { error: Error; reset: () => void }) => {
   // Determine error type based on error name and message
   const isCompileError = error.name?.includes('Error') && (
     error.name.includes('Compile') || 
