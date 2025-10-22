@@ -21,6 +21,7 @@ npm install @airo/ai-lib ai
 **OpenAI and AWS Bedrock support included out of the box!** 🎉
 
 For other providers, install as needed:
+
 ```bash
 # For Anthropic
 npm install @ai-sdk/anthropic
@@ -45,49 +46,49 @@ npm run example:setup
 ### 1. Set up providers (Easy Mode)
 
 ```typescript
-import { AgentFactory, tools, openAIModels, bedrockModels } from '@airo/ai-lib'
+import { AgentFactory, tools, openAIModels, bedrockModels } from "@airo/ai-lib";
 
 // OpenAI and Bedrock models work out of the box
 const agents = agentFactory.defineAgents({
   openaiAgent: {
-    name: 'OpenAI Assistant',
-    systemPrompt: 'You are helpful.',
+    name: "OpenAI Assistant",
+    systemPrompt: "You are helpful.",
     model: openAIModels.gpt4oMini(), // Uses OPENAI_API_KEY
   },
-  
+
   claudeAgent: {
-    name: 'Claude Assistant', 
-    systemPrompt: 'You are Claude.',
+    name: "Claude Assistant",
+    systemPrompt: "You are Claude.",
     model: bedrockModels.claudeSonnet4(), // Uses AWS credentials
-  }
-})
+  },
+});
 ```
 
 Or with manual configuration:
 
 ```typescript
-import { AgentFactory, tools, EnvConfig } from '@airo/ai-lib'
-import { createOpenAI } from '@ai-sdk/openai'
+import { AgentFactory, tools, EnvConfig } from "@airo/ai-lib";
+import { createOpenAI } from "@ai-sdk/openai";
 
 // Manual configuration
-const config = EnvConfig.getDefaultConfig()
-const openai = createOpenAI({ 
+const config = EnvConfig.getDefaultConfig();
+const openai = createOpenAI({
   apiKey: config.apiKey,
-  baseURL: config.baseURL // Supports OPENAI_BASE_URL
-})
+  baseURL: config.baseURL, // Supports OPENAI_BASE_URL
+});
 ```
 
 Or with the provider registry:
 
 ```typescript
-import { setDefaultProvider } from '@airo/ai-lib'
+import { setDefaultProvider } from "@airo/ai-lib";
 
 // Configure your default provider
-setDefaultProvider('openai', {
-  type: 'openai',
+setDefaultProvider("openai", {
+  type: "openai",
   apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL
-})
+  baseURL: process.env.OPENAI_BASE_URL,
+});
 ```
 
 ### Advanced: Prompt Caching (Bedrock)
@@ -95,100 +96,96 @@ setDefaultProvider('openai', {
 AWS Bedrock supports prompt caching to reduce costs and improve performance:
 
 ```typescript
-import { bedrockModels } from '@airo/ai-lib'
+import { bedrockModels } from "@airo/ai-lib";
 
 const agents = agentFactory.defineAgents({
   cachedAgent: {
-    name: 'Cached Code Reviewer',
-    systemPrompt: 'Your large system prompt here...', // Will be cached
+    name: "Cached Code Reviewer",
+    systemPrompt: "Your large system prompt here...", // Will be cached
     model: bedrockModels.claudeSonnet4(),
     providerOptions: {
       anthropic: {
-        cacheControl: { type: 'ephemeral' }
-      }
-    }
-  }
-})
+        cacheControl: { type: "ephemeral" },
+      },
+    },
+  },
+});
 ```
 
 ### 2. Define your agents
 
 ```typescript
 // agents/index.ts
-import { AgentFactory, tools } from '@airo/ai-lib'
+import { AgentFactory, tools } from "@airo/ai-lib";
 
 const agentFactory = new AgentFactory({
-  defaultModel: 'gpt-4o',
+  defaultModel: "gpt-4o",
   defaultTemperature: 0.7,
-  globalTools: [tools.webSearch()]
-})
+  globalTools: [tools.webSearch()],
+});
 
 export const agents = agentFactory.defineAgents({
   assistant: {
-    name: 'General Assistant',
-    systemPrompt: 'You are a helpful AI assistant.',
-    model: openai('gpt-4o-mini'), // Use actual model instance
-    temperature: 0.7
+    name: "General Assistant",
+    systemPrompt: "You are a helpful AI assistant.",
+    model: openai("gpt-4o-mini"), // Use actual model instance
+    temperature: 0.7,
   },
 
   developer: {
-    name: 'Development Assistant',
-    systemPrompt: 'You are an expert software developer.',
-    model: openai('gpt-4o'), // Use more powerful model for development
+    name: "Development Assistant",
+    systemPrompt: "You are an expert software developer.",
+    model: openai("gpt-4o"), // Use more powerful model for development
     temperature: 0.1,
-    tools: [
-      tools.readFile(),
-      tools.writeFile(),
-      tools.listDirectory()
-    ]
+    tools: [tools.readFile(), tools.writeFile(), tools.listDirectory()],
   },
 
   writer: {
-    name: 'Creative Writer',
-    systemPrompt: 'You are a creative writing assistant.',
-    model: openai('gpt-4o'),
+    name: "Creative Writer",
+    systemPrompt: "You are a creative writing assistant.",
+    model: openai("gpt-4o"),
     temperature: 0.9,
-    maxTokens: 3000
-  }
-})
+    maxTokens: 3000,
+  },
+});
 
-export const getAgent = agents.get
-export type AgentType = keyof typeof agents.definitions
+export const getAgent = agents.get;
+export type AgentType = keyof typeof agents.definitions;
 ```
 
 ### 3. Use agents anywhere
 
 ```typescript
 // In an API route
-import { getAgent } from './agents'
+import { getAgent } from "./agents";
 
 export async function POST(request: Request) {
-  const { message, agentType = 'assistant' } = await request.json()
-  
-  const agent = getAgent(agentType)
-  const response = await agent.generate(message)
-  
-  return Response.json({ response: response.content })
+  const { message, agentType = "assistant" } = await request.json();
+
+  const agent = getAgent(agentType);
+  const response = await agent.generate(message);
+
+  return Response.json({ response: response.content });
 }
 ```
 
 ```typescript
 // In a CLI tool
-import { getAgent } from './agents'
+import { getAgent } from "./agents";
 
-const developer = getAgent('developer')
+const developer = getAgent("developer");
 const result = await developer.runAgenticLoop(
-  'Create a TypeScript function to calculate fibonacci numbers',
-  { maxSteps: 3 }
-)
-console.log(result.content)
+  "Create a TypeScript function to calculate fibonacci numbers",
+  { maxSteps: 3 },
+);
+console.log(result.content);
 ```
 
 ```typescript
 // Streaming
-const writer = getAgent('writer')
-for await (const chunk of writer.generateStream('Write a story about AI')) {
-  process.stdout.write(chunk)
+const writer = getAgent("writer");
+for await (const chunk of writer.generateStream("Write a story about AI")) {
+  process.stdout.write(chunk);
 }
 ```
 
@@ -197,90 +194,173 @@ for await (const chunk of writer.generateStream('Write a story about AI')) {
 ### Custom Tools
 
 ```typescript
-import { createTool } from '@airo/ai-lib'
-import { z } from 'zod'
+import { createTool } from "@airo/ai-lib";
+import { z } from "zod";
 
 const weatherTool = createTool(
-  'get_weather',
-  'Get current weather for a location',
+  "get_weather",
+  "Get current weather for a location",
   z.object({
     location: z.string(),
-    units: z.enum(['celsius', 'fahrenheit']).default('celsius')
+    units: z.enum(["celsius", "fahrenheit"]).default("celsius"),
   }),
   async ({ location, units }) => {
     // Your weather API integration
-    return { temperature: 22, units, location }
-  }
-)
+    return { temperature: 22, units, location };
+  },
+);
 
 // Use in agent definition
 export const agents = agentFactory.defineAgents({
   weatherBot: {
-    name: 'Weather Assistant',
-    systemPrompt: 'You help users with weather information.',
-    tools: [weatherTool]
-  }
-})
+    name: "Weather Assistant",
+    systemPrompt: "You help users with weather information.",
+    tools: [weatherTool],
+  },
+});
 ```
 
 ### Environment-Specific Configuration
 
 ```typescript
-const isDev = process.env.NODE_ENV === 'development'
+const isDev = process.env.NODE_ENV === "development";
 
 const agentFactory = new AgentFactory({
-  defaultModel: isDev ? 'gpt-4o-mini' : 'gpt-4o',
+  defaultModel: isDev ? "gpt-4o-mini" : "gpt-4o",
   defaultTemperature: isDev ? 0.8 : 0.7,
-  globalTools: isDev ? [tools.debug()] : []
-})
+  globalTools: isDev ? [tools.debug()] : [],
+});
 ```
 
 ### Multiple Providers
 
 ```typescript
-import { configureProvider } from '@airo/ai-lib'
-import { createOpenAI } from '@ai-sdk/openai'
-import { createAnthropic } from '@ai-sdk/anthropic'
+import { configureProvider } from "@airo/ai-lib";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 
 // Configure multiple providers
-configureProvider('openai-gpt4', {
-  type: 'openai',
-  apiKey: process.env.OPENAI_API_KEY
-})
+configureProvider("openai-gpt4", {
+  type: "openai",
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-configureProvider('claude', {
-  type: 'anthropic',
-  apiKey: process.env.ANTHROPIC_API_KEY
-})
+configureProvider("claude", {
+  type: "anthropic",
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
 // Use specific models
 export const agents = agentFactory.defineAgents({
   fastAgent: {
-    name: 'Fast Agent',
-    model: createOpenAI()('gpt-4o-mini'),
-    systemPrompt: 'You provide quick responses.'
+    name: "Fast Agent",
+    model: createOpenAI()("gpt-4o-mini"),
+    systemPrompt: "You provide quick responses.",
   },
-  
+
   smartAgent: {
-    name: 'Smart Agent',
-    model: createAnthropic()('claude-3-5-sonnet-20241022'),
-    systemPrompt: 'You provide detailed, thoughtful responses.'
-  }
-})
+    name: "Smart Agent",
+    model: createAnthropic()("claude-3-5-sonnet-20241022"),
+    systemPrompt: "You provide detailed, thoughtful responses.",
+  },
+});
 ```
 
 ## API Reference
 
 ### AgentFactory
 
-```typescript
+````typescript
 class AgentFactory {
   constructor(globalConfig?: GlobalAgentConfig)
   defineAgents<T>(configs: T): AgentRegistry<T>
   createAgent(config: AgentConfig & { id: string }): Agent
   updateGlobalConfig(config: Partial<GlobalAgentConfig>): void
 }
+
+### Retry Logic (Resilient LLM Calls)
+
+`@airo/ai-lib` automatically supports resilient retries for both `generate()` and streaming calls when you supply a `retryConfig` in an `AgentConfig`.
+
+Defaults (when `retryConfig` omitted):
+- 5 total attempts (initial + 4 retries)
+- Exponential backoff delays (approx): 1s, 2s, 4s, 8s, 16s (full jitter)
+- Retry categories: network/transient errors (timeouts, 5xx, connection resets) and rate limits (429)
+- Non‑retryable: standard 4xx client errors (400, 401, 403, etc.)
+
+Add custom retry behavior:
+```typescript
+import { AgentFactory, openAIModels } from '@airo/ai-lib'
+
+const agentFactory = new AgentFactory()
+
+const agents = agentFactory.defineAgents({
+  resilientAssistant: {
+    name: 'Resilient Assistant',
+    model: openAIModels.gpt4oMini(),
+    // Override defaults (only provide what you need)
+    retryConfig: {
+      maxAttempts: 6,        // increase attempts
+      baseDelayMs: 750,       // lower initial delay
+      maxDelayMs: 12000,      // cap maximum backoff
+      jitter: true            // keep full jitter
+    },
+    // Optional unified structured logger (receives retry events)
+    logger: {
+      info: (e, d) => console.log(e, d),
+      warn: (e, d) => console.warn(e, d),
+      error: (e, d) => console.error(e, d)
+    }
+  }
+})
+
+const agent = agents.get('resilientAssistant')
+const result = await agent.generate('Explain retry backoff')
+console.log(result.content)
+````
+
+Structured events emitted (if a logger is provided):
+
+- `llm.api_call.retry` (warn) – a retry attempt will occur (includes delay, attempt number, classification)
+- `llm.api_call.retry_success` (info) – final successful attempt after ≥1 retries
+- `llm.api_call.retry_exhausted` (error) – all attempts failed; metadata attached to the thrown error
+
+Access retry failure metadata:
+
+```typescript
+import { hasRetryMetadata, getRetryMetadata } from "@airo/ai-lib";
+
+try {
+  await agent.generate("Force an error scenario");
+} catch (err) {
+  if (hasRetryMetadata(err)) {
+    const meta = getRetryMetadata(err);
+    console.log("Attempts:", meta.attempts);
+    console.log("Elapsed ms:", meta.elapsedMs);
+    console.log("Category:", meta.category); // 'transient' | 'rate_limit'
+    console.log("Last message:", meta.lastMessage);
+  }
+}
 ```
+
+Tuning tips:
+
+- Increase `maxAttempts` cautiously—each retry increases worst‑case latency.
+- Use jitter in multi‑instance deployments to reduce synchronized retry storms.
+- Consider surfacing `category` + `statusCode` in your own analytics for reliability dashboards.
+
+The retry utility is exported directly if you need manual control:
+
+```typescript
+import { retryWithBackoff, DEFAULT_RETRY_CONFIG } from "@airo/ai-lib";
+const value = await retryWithBackoff(
+  () => expensiveCall(),
+  DEFAULT_RETRY_CONFIG,
+  { operation: "generate" },
+);
+```
+
+````
 
 ### Agent
 
@@ -291,7 +371,7 @@ class Agent {
   runAgenticLoop(input: string, options?: AgenticLoopOptions): Promise<AgentResult>
   executeWithTools(input: string, context?: AgentContext): Promise<AgentResult & { toolExecutions: ToolExecutionResult[] }>
 }
-```
+````
 
 ### Tools
 

@@ -443,22 +443,30 @@ Please complete all database setup tasks and provide the integration details for
     )
 
     if (handoffResult.success) {
+      // Type guard: assert result shape for database handoff
+      const result = handoffResult.result as {
+        success?: boolean
+        summary?: string
+        credentials?: { host: string; port: number; database: string }
+        backendPort?: number
+      } | undefined
+
       logger.info('develop_agent.handoff.database.success', {
         targetAgent: 'database',
         userId: params.userId,
         databaseName: params.databaseName,
-        backendPort: handoffResult.result?.backendPort || 3000
+        backendPort: result?.backendPort || 3000
       });
 
       return {
-        success: handoffResult.result?.success || true,
-        message: handoffResult.result?.summary || 'Database setup completed. Ready for frontend integration.',
-        credentials: handoffResult.result?.credentials || {
+        success: result?.success || true,
+        message: result?.summary || 'Database setup completed. Ready for frontend integration.',
+        credentials: result?.credentials || {
           host: 'localhost',
           port: 3306,
           database: params.databaseName
         },
-        backendPort: handoffResult.result?.backendPort || 3000,
+        backendPort: result?.backendPort || 3000,
         handoffDetails: handoffResult.handoffDetails
       }
     } else {

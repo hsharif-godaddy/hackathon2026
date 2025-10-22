@@ -40,6 +40,7 @@ import type {
   LLMRequestData,
   LLMResponseData,
   LLMTokenUsageData,
+  LLMRetryData,
   TracingEventData,
   ConversationContextLoadData,
   ConversationContextBuildData,
@@ -830,6 +831,18 @@ export const llmEvents = {
 
   tokenUsageFailure: (logger: ILogger, error: Error, data: Pick<LLMTokenUsageData, 'appId' | 'operation' | 'tokenType'>) => {
     log.error(logger, AppEvents.llm.tokenUsage.failure, error, data);
+  },
+
+  retryAttempt: (logger: ILogger, data: LLMRetryData) => {
+    logger.warn(AppEvents.llm.retry.attempt, data);
+  },
+
+  retrySuccess: (logger: ILogger, data: Pick<LLMRetryData, 'attempt' | 'totalAttempts' | 'elapsedMs' | 'operation' | 'model' | 'agentId'>) => {
+    logger.info(AppEvents.llm.retry.success, data);
+  },
+
+  retryExhausted: (logger: ILogger, data: LLMRetryData) => {
+    logger.error(AppEvents.llm.retry.exhausted, data);
   },
 };
 

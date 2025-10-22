@@ -18,12 +18,12 @@ export class ReadFileTool extends BaseTool {
     input: z.infer<typeof this.inputSchema>,
     _context?: AgentContext
   ): Promise<{ content: string; size: number }> {
-    const { path, encoding } = this.validateInput(input)
+    const { path, encoding } = this.validateInput<z.infer<typeof this.inputSchema>>(input)
 
     try {
       const content = await fs.readFile(path, encoding)
       const stats = await fs.stat(path)
-      
+
       return {
         content: content.toString(),
         size: stats.size
@@ -50,12 +50,12 @@ export class WriteFileTool extends BaseTool {
     input: z.infer<typeof this.inputSchema>,
     _context?: AgentContext
   ): Promise<{ success: boolean; bytesWritten: number }> {
-    const { path, content, encoding } = this.validateInput(input)
+    const { path, content, encoding } = this.validateInput<z.infer<typeof this.inputSchema>>(input)
 
     try {
       await fs.writeFile(path, content, encoding)
       const stats = await fs.stat(path)
-      
+
       return {
         success: true,
         bytesWritten: stats.size
@@ -80,15 +80,15 @@ export class ListDirectoryTool extends BaseTool {
   async execute(
     input: z.infer<typeof this.inputSchema>,
     _context?: AgentContext
-  ): Promise<{ 
-    files: Array<{ 
+  ): Promise<{
+    files: Array<{
       name: string
       type: 'file' | 'directory'
       size: number
       modified: string
-    }> 
+    }>
   }> {
-    const { path, includeHidden } = this.validateInput(input)
+    const { path, includeHidden } = this.validateInput<z.infer<typeof this.inputSchema>>(input)
 
     try {
       const entries = await fs.readdir(path, { withFileTypes: true })

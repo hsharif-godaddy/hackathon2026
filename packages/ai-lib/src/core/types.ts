@@ -1,5 +1,7 @@
 import type { LanguageModel, Tool } from 'ai'
 import type { z } from 'zod'
+// Retry types (optional import to avoid hard dependency cycles)
+import type { RetryConfig } from '../utils/retry-with-backoff.js'
 
 /**
  * Global configuration for the agent factory
@@ -12,7 +14,7 @@ export interface GlobalAgentConfig {
   /** Global tools available to all agents */
   globalTools?: Tool[]
   /** Global provider options */
-  providerOptions?: Record<string, any>
+  providerOptions?: Record<string, unknown>
   /** Global temperature setting */
   defaultTemperature?: number
   /** Global max tokens setting */
@@ -32,19 +34,19 @@ export interface AgentConfig {
   /** Original model name used for token cost calculations */
   modelName?: string
   /** Tools available to this agent */
-  tools?: Record<string, any>
+  tools?: Record<string, unknown>
   /** Temperature for generation (0-1) */
   temperature?: number
   /** Maximum tokens to generate */
   maxOutputTokens?: number
   /** Stop conditions for agentic loops */
-  stopWhen?: Array<(result: any) => boolean>
+  stopWhen?: Array<(result: unknown) => boolean>
   /** Maximum steps for agentic reasoning */
   maxSteps?: number
   /** Stop after specific tool calls */
   stopAfterTools?: string[]
   /** Provider-specific options */
-  providerOptions?: Record<string, any>
+  providerOptions?: Record<string, unknown>
   /** Hook called before each tool execution */
   beforeToolExecution?: (toolName: string, args: unknown, context?: AgentContext) => Promise<unknown> | unknown
   /** Hook called after each tool execution */
@@ -55,6 +57,14 @@ export interface AgentConfig {
     description?: string
     includeContext?: boolean
   }>
+  /** Override default retry options */
+  retryConfig?: Partial<RetryConfig>
+  /** Unified structured logger (preferred over callbacks) */
+  logger?: {
+    info: (event: string, data: unknown) => void
+    warn: (event: string, data: unknown) => void
+    error: (event: string, data: unknown) => void
+  }
 }
 
 /**
@@ -107,8 +117,8 @@ export interface AgentResult {
   toolCalls?: Array<{
     id: string
     name: string
-    input: any
-    result?: any
+  input: unknown
+  result?: unknown
   }>
   /** Token usage information */
   usage?: {
@@ -165,8 +175,8 @@ export interface DefaultDataParts {
   'tool-execution': {
     toolName: string
     status: 'started' | 'completed' | 'failed'
-    input?: any
-    result?: any
+  input?: unknown
+  result?: unknown
     error?: string
   }
   'progress': {
@@ -187,9 +197,9 @@ export interface ToolDefinition {
   /** Input schema using Zod */
   inputSchema: z.ZodSchema
   /** Tool execution function */
-  execute: (input: any, context?: AgentContext) => Promise<any>
+  execute: (input: unknown, context?: AgentContext) => Promise<unknown>
   /** Provider-specific options */
-  providerOptions?: Record<string, any> | undefined
+  providerOptions?: Record<string, unknown> | undefined
 }
 
 /**
@@ -199,9 +209,9 @@ export interface ToolExecutionResult {
   /** Tool name */
   toolName: string
   /** Tool input */
-  input: any
+  input: unknown
   /** Tool output */
-  output: any
+  output: unknown
   /** Execution time in milliseconds */
   executionTime?: number
   /** Whether execution was successful */
@@ -209,6 +219,8 @@ export interface ToolExecutionResult {
   /** Error message if execution failed */
   error?: string
 }
+
+// (Removed granular retry callback event types in favor of unified logger interface)
 
 /**
  * Image generation options
@@ -225,7 +237,7 @@ export interface ImageGenerationOptions {
   /** Seed for reproducible generation */
   seed?: number
   /** Provider-specific options */
-  providerOptions?: Record<string, any>
+  providerOptions?: Record<string, unknown>
   /** Maximum number of retries */
   maxRetries?: number
   /** Abort signal for cancellation */
@@ -374,7 +386,7 @@ export interface ProcessedFile {
   /** Base64 encoded content for images */
   base64Content?: string
   /** Structured data (for CSV, JSON, etc.) */
-  structuredData?: any
+  structuredData?: unknown
   /** File metadata */
   metadata: {
     size: number

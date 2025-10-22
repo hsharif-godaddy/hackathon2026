@@ -2,12 +2,12 @@
  * App domain event interfaces with consistent lifecycle naming
  */
 
-import type { 
-  AppEventData, 
-  DockerEventData, 
+import type {
+  AppEventData,
+  DockerEventData,
   ProcessEventData,
   FileEventData,
-  DurationInfo, 
+  DurationInfo,
   ErrorContext,
   NetworkInfo,
   OperationType
@@ -26,7 +26,7 @@ export interface AppProcessRecoveryData extends ProcessEventData {
   portOccupied?: boolean; // for validation
 }
 
-// App Creation Events  
+// App Creation Events
 export interface AppCreationBeginData extends AppEventData {
   name: string;
   templateVersion: string;
@@ -99,7 +99,7 @@ export interface AppGitOperationData extends AppEventData, FileEventData {
   userConfigured?: boolean;
 }
 
-// Server & Container Events  
+// Server & Container Events
 export interface AppServerOperationData extends AppEventData, NetworkInfo, DurationInfo {
   processId?: number;
   packageManager?: 'npm' | 'pnpm' | 'yarn';
@@ -528,6 +528,22 @@ export interface LLMTokenUsageData {
   description?: string | undefined;
 }
 
+export interface LLMRetryData {
+  attempt: number;
+  totalAttempts: number;
+  /** High-level category of error */
+  errorType: 'network' | 'server' | 'client' | 'unknown';
+  /** Optional subtype for more granular classification */
+  errorSubType?: 'rate_limit' | 'service_unavailable';
+  statusCode?: number;
+  message: string;
+  nextRetryDelayMs?: number;
+  elapsedMs: number;
+  operation: 'generate' | 'stream';
+  model?: string;
+  agentId?: string;
+}
+
 // Tracing Events
 export interface TracingEventData {
   traceId: string;
@@ -618,7 +634,7 @@ export const AppEvents = {
   // Repository lifecycle: app.repository.init.{begin|success|failure}
   repositoryInit: {
     begin: 'app.repository.init.begin' as const,
-    success: 'app.repository.init.success' as const, 
+    success: 'app.repository.init.success' as const,
     failure: 'app.repository.init.failure' as const,
   },
 
@@ -637,7 +653,7 @@ export const AppEvents = {
     abort: 'app.create.abort' as const,
   },
 
-  // Name suggestion: app.name.suggest.{begin|success|failure}  
+  // Name suggestion: app.name.suggest.{begin|success|failure}
   nameSuggest: {
     begin: 'app.name.suggest.begin' as const,
     success: 'app.name.suggest.success' as const,
@@ -652,13 +668,13 @@ export const AppEvents = {
       failure: 'app.template.resolve.failure' as const,
     },
     copy: {
-      begin: 'app.template.copy.begin' as const, 
+      begin: 'app.template.copy.begin' as const,
       success: 'app.template.copy.success' as const,
       failure: 'app.template.copy.failure' as const,
     },
     validate: {
       begin: 'app.template.validate.begin' as const,
-      success: 'app.template.validate.success' as const, 
+      success: 'app.template.validate.success' as const,
       failure: 'app.template.validate.failure' as const,
     },
   },
@@ -908,7 +924,7 @@ export const AppEvents = {
     },
   },
 
-  // LLM events: llm.{request|response|token_usage|error}
+  // LLM events: llm.{request|response|token_usage|error|retry}
   llm: {
     request: 'llm.request' as const,
     response: 'llm.response' as const,
@@ -917,6 +933,11 @@ export const AppEvents = {
       begin: 'llm.token_usage.begin' as const,
       success: 'llm.token_usage.success' as const,
       failure: 'llm.token_usage.failure' as const,
+    },
+    retry: {
+      attempt: 'llm.api_call.retry' as const,
+      success: 'llm.api_call.retry_success' as const,
+      exhausted: 'llm.api_call.retry_exhausted' as const,
     },
   },
 

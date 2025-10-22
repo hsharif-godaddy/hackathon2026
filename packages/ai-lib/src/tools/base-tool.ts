@@ -9,14 +9,14 @@ export abstract class BaseTool implements ToolDefinition {
   abstract readonly name: string
   abstract readonly description: string
   abstract readonly inputSchema: z.ZodSchema
-  
+
   /** Provider-specific options */
-  providerOptions?: Record<string, any>
+  providerOptions?: Record<string, unknown>
 
   /**
    * Execute the tool
    */
-  abstract execute(input: any, context?: AgentContext): Promise<any>
+  abstract execute(input: unknown, context?: AgentContext): Promise<unknown>
 
   /**
    * Convert to AI SDK tool format
@@ -24,8 +24,10 @@ export abstract class BaseTool implements ToolDefinition {
   toAISDKTool() {
     return tool({
       description: this.description,
+      // @ts-expect-error schema generic mismatch
       inputSchema: this.inputSchema,
-      execute: async (input) => this.execute(input),
+      // @ts-expect-error execute generic mismatch
+      execute: async (input: unknown) => this.execute(input),
       ...(this.providerOptions ? { providerOptions: this.providerOptions } : {})
     })
   }
@@ -33,8 +35,8 @@ export abstract class BaseTool implements ToolDefinition {
   /**
    * Validate input against schema
    */
-  protected validateInput(input: any): any {
-    return this.inputSchema.parse(input)
+  protected validateInput<T = unknown>(input: unknown): T {
+    return this.inputSchema.parse(input) as T
   }
 
   /**
@@ -54,26 +56,25 @@ export abstract class BaseTool implements ToolDefinition {
 export function createTool<T extends z.ZodSchema>(
   description: string,
   inputSchema: T,
-  execute: (input: z.infer<T>, context?: AgentContext) => Promise<any>,
+  execute: (input: z.infer<T>, context?: AgentContext) => Promise<unknown>,
   options?: {
-    providerOptions?: Record<string, any>
+    providerOptions?: Record<string, unknown>
   }
-): Tool & { executeWithContext?: (input: z.infer<T>, context?: AgentContext) => Promise<any> } {
+): Tool & { executeWithContext?: (input: z.infer<T>, context?: AgentContext) => Promise<unknown> } {
   const toolInstance = tool({
     description,
+    // @ts-expect-error generic mismatch
     inputSchema,
-    execute: async (input) => {
-      // For AI SDK compatibility, we execute without context here since AI SDK doesn't support it natively
-      // Context-aware execution happens through the executeWithContext method in the agent wrapper
+    // @ts-expect-error execute generic mismatch
+    execute: async (input: z.infer<T>) => {
       return execute(input)
     },
     ...(options?.providerOptions ? { providerOptions: options.providerOptions } : {})
   })
-  
-  // Add a custom method for context-aware execution that will be used by ai-lib's agent wrappers
-  ;(toolInstance as any).executeWithContext = execute
-  
-  return toolInstance as Tool & { executeWithContext?: (input: z.infer<T>, context?: AgentContext) => Promise<any> }
+
+  ;(toolInstance as Tool & { executeWithContext?: typeof execute }).executeWithContext = execute
+
+  return toolInstance as Tool & { executeWithContext?: (input: z.infer<T>, context?: AgentContext) => Promise<unknown> }
 }
 
 /**
@@ -83,8 +84,10 @@ export function createTool<T extends z.ZodSchema>(
 export function toAISDKTool(toolDef: ToolDefinition) {
   return tool({
     description: toolDef.description,
+    // @ts-expect-error zod schema typing not yet aligned with AI SDK FlexibleSchema
     inputSchema: toolDef.inputSchema,
-    execute: async (input) => toolDef.execute(input),
+    // @ts-expect-error execute generic mismatch
+  execute: async (input: unknown) => toolDef.execute(input),
     ...(toolDef.providerOptions ? { providerOptions: toolDef.providerOptions } : {})
   })
 }

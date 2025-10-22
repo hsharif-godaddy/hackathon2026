@@ -7,6 +7,7 @@
 import { Experimental_Agent, stepCountIs, hasToolCall } from 'ai'
 import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from './types.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
+import { retryWithBackoff, DEFAULT_RETRY_CONFIG } from '../utils/retry-with-backoff.js'
 
 /**
  * Tool execution hook function types
@@ -33,9 +34,9 @@ export interface HandoffContext {
   /** Task description for the target agent */
   task: string
   /** Additional context data */
-  context?: Record<string, any> | undefined
+  context?: Record<string, unknown> | undefined
   /** Parameters to pass to the target agent */
-  parameters?: Record<string, any> | undefined
+  parameters?: Record<string, unknown> | undefined
   /** Metadata about the handoff */
   metadata?: {
     sourceAgent: string
@@ -51,7 +52,7 @@ export interface HandoffResult {
   /** Whether the handoff was successful */
   success: boolean
   /** Result from the target agent */
-  result?: any
+  result?: unknown
   /** Error message if handoff failed */
   error?: string
   /** Handoff execution details */
@@ -93,6 +94,9 @@ export interface HandoffHistoryEntry {
  * Wrapper around Experimental_Agent to provide consistent API
  */
 export class AgentWrapper {
+  // Using 'any' generics here because Experimental_Agent generics are provider-internal and
+  // strict typing would require duplicating SDK internal types. Safe wrapper boundary.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private agent: Experimental_Agent<any, any, any>
   private config: AgentConfig
   private executionContext?: Record<string, unknown>
@@ -142,23 +146,27 @@ export class AgentWrapper {
   /**
    * Wrap tools with execution hooks
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private wrapToolsWithHooks(tools: Record<string, any>): Record<string, any> {
     if (!this.config.beforeToolExecution && !this.config.afterToolExecution) {
       return tools
     }
 
-    const wrappedTools: Record<string, any> = {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const wrappedTools: Record<string, any> = {}
 
     for (const [toolName, tool] of Object.entries(tools)) {
       // Clone the tool to avoid modifying the original
       const wrappedTool = { ...tool }
 
       // Get the original execute function - prefer executeWithContext if available
-      const originalExecute = (tool as any).executeWithContext || tool.execute
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const originalExecute = (tool as any).executeWithContext || (tool as any).execute
 
       if (originalExecute) {
         // Wrap the execute function with hooks
-        wrappedTool.execute = async (args: any) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  wrappedTool.execute = async (args: any) => {
           let processedArgs = args
 
           // Pass execution context to tools that support it
@@ -183,7 +191,9 @@ export class AgentWrapper {
           let toolCallError
           try {
             // CRITICAL FIX: Use executeWithContext when available to pass context to tools like fileEdit
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if ((tool as any).executeWithContext) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               toolCallResult = await (tool as any).executeWithContext(processedArgs, context)
             } else {
               toolCallResult = await originalExecute(processedArgs)
@@ -238,15 +248,18 @@ export class AgentWrapper {
    */
   async generate(prompt: string, options?: {
     messages?: Array<{ role: 'user' | 'assistant', content: string }>
-    context?: Record<string, any>
+    context?: Record<string, unknown>
     files?: ProcessedFile[]
   }): Promise<{
     content: string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     usage: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     finishReason: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     toolCalls: any
   }> {
-    const messages = []
+    const messages: Array<{ role: 'user' | 'assistant', content: string }> = []
 
     // Add context messages if provided
     if (options?.messages) {
@@ -256,12 +269,28 @@ export class AgentWrapper {
     // Add the main prompt (with vision support if files provided)
     if (options?.files && options.files.length > 0) {
       const visionMessage = buildHybridContent(prompt, options.files)
-      messages.push(visionMessage as any)
+  // visionMessage is constructed via helper which returns provider-compatible shape
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  messages.push(visionMessage as any)
     } else {
       messages.push({ role: 'user' as const, content: prompt })
     }
 
-    const result = await this.agent.generate({ messages })
+    const retryOptions = this.config.retryConfig
+      ? { ...DEFAULT_RETRY_CONFIG, ...this.config.retryConfig }
+      : DEFAULT_RETRY_CONFIG
+
+    const retryContext = {
+      operation: 'generate' as const,
+      agentName: this.config.name,
+      modelName: this.config.modelName || (typeof this.config.model === 'string' ? this.config.model : 'unknown'),
+      ...(this.config.logger && { logger: this.config.logger })
+    }
+    const result = await retryWithBackoff(
+      () => this.agent.generate({ messages }),
+      retryOptions,
+      retryContext
+    )
 
     // Await all promises from Experimental_Agent
     const [usage, finishReason, toolCalls] = await Promise.all([
@@ -292,17 +321,21 @@ export class AgentWrapper {
     files?: ProcessedFile[]
   }): Promise<{
     textStream: AsyncIterable<string>
-    baseStream?: any
+  baseStream?: unknown
     getFinalResult: () => Promise<{
-      usage: any
-      finishReason: any
-      toolCalls: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  usage: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  finishReason: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  toolCalls: any
     }>
   }> {
     // Set execution context for tool calls
     this.executionContext = options?.executionContext || {}
 
-    const messages = []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const messages: Array<{ role: 'user' | 'assistant' | 'system', content: string | any, providerOptions?: any, cachePoint?: any }> = []
 
     // Add custom context as a user message if provided
     if (options?.context) {
@@ -345,20 +378,35 @@ export class AgentWrapper {
     // Add the main prompt (with vision support if files provided)
     if (options?.files && options.files.length > 0) {
       const visionMessage = buildHybridContent(prompt, options.files)
-      messages.push(visionMessage as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  messages.push(visionMessage as any)
     } else {
       messages.push({ role: 'user' as const, content: prompt })
     }
 
     let streamResult
     try {
-      // Always use messages format when files are present to preserve vision content
-      streamResult = this.agent.stream(
-        messages.length > 1 || (options?.files && options.files.length > 0)
-          ? { messages }
-          : { prompt }
+      const retryOptions = this.config.retryConfig
+        ? { ...DEFAULT_RETRY_CONFIG, ...this.config.retryConfig }
+        : DEFAULT_RETRY_CONFIG
+
+      const retryContext = {
+        operation: 'stream' as const,
+        agentName: this.config.name,
+        modelName: this.config.modelName || (typeof this.config.model === 'string' ? this.config.model : 'unknown'),
+        ...(this.config.logger && { logger: this.config.logger })
+      }
+      streamResult = await retryWithBackoff(
+        () => this.agent.stream(
+          messages.length > 1 || (options?.files && options.files.length > 0)
+            ? { messages }
+            : { prompt }
+        ),
+        retryOptions,
+        retryContext
       )
-    } catch (error: any) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
       // Handle API call errors (like tool input validation failures)
       if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {
         console.error('❌ Tool input validation error in AgentWrapper.streamGenerate:', error.message)
@@ -392,14 +440,19 @@ Please retry your tool call with corrected input formatting.`
 
     return {
       // Provide the text stream for the caller to iterate over
-      textStream: streamResult.textStream,
+  // Cast to any for streaming structure as Experimental_Agent internal types are provider-specific.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  textStream: (streamResult as any).textStream,
 
       // Provide access to the raw baseStream for real-time tool call events
-      baseStream: (streamResult as any).baseStream,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  baseStream: (streamResult as any).baseStream,
 
       // Function to get final result after streaming is complete
       getFinalResult: async () => {
-        const finalResult = await streamResult
+  // streamResult is the stream object returned from retryWithBackoff; its properties are promises to be awaited below
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const finalResult: any = streamResult
 
         // Await all promises from Experimental_Agent
         const [usage, finishReason, toolCalls, toolResults] = await Promise.all([
@@ -425,6 +478,7 @@ Please retry your tool call with corrected input formatting.`
   /**
    * Get the underlying Experimental_Agent (for advanced usage)
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getExperimentalAgent(): Experimental_Agent<any, any, any> {
     return this.agent
   }
@@ -729,7 +783,8 @@ export class AgentFactory {
       const configTools = config.tools || {}
 
       // Convert global tools array to object if needed
-      let globalToolsObj: Record<string, any> = {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let globalToolsObj: Record<string, any> = {}
       if (Array.isArray(globalTools)) {
         globalTools.forEach((tool, index) => {
           // Tools don't have a name property, so we use index-based naming

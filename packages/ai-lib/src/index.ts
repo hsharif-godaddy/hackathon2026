@@ -21,6 +21,7 @@ export * from './utils/image-content-builder.js'
 export * from './utils/token-counter.js'
 export * from './utils/s2s-auth.js'
 export * from './utils/embeddings.js'
+export * from './utils/retry-with-backoff.js'
 
 // Convenience re-exports
 export {

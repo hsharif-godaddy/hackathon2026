@@ -17,12 +17,12 @@ export class WebSearchTool extends BaseTool {
     input: z.infer<typeof this.inputSchema>,
     _context?: AgentContext
   ): Promise<{ results: Array<{ title: string; url: string; snippet: string }> }> {
-    const { query, maxResults } = this.validateInput(input)
+    const { query, maxResults } = this.validateInput<z.infer<typeof this.inputSchema>>(input)
 
     try {
       // Placeholder implementation - in real usage, integrate with search API
       console.log(`[WebSearch] Searching for: "${query}" (max: ${maxResults})`)
-      
+
       // Mock results for now
       const mockResults = [
         {
