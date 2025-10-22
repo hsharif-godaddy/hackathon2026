@@ -21,6 +21,7 @@ export interface AuthenticatedRequest extends Request {
 export class JWTAuthMiddleware {
   public jwtValidator: ReturnType<typeof getJWTValidator>;
   private readonly MAX_TOKEN_SIZE = 10000;
+  private readonly MAX_WEBSOCKET_TOKEN_TTL_SECONDS = 600; // 10 minutes max for WebSocket tokens
 
   constructor() {
     // Validate config on startup
@@ -31,6 +32,33 @@ export class JWTAuthMiddleware {
     }
 
     this.jwtValidator = getJWTValidator();
+  }
+
+  /**
+   * Validate token TTL for WebSocket connections
+   * WebSocket tokens must have a TTL of 10 minutes or less
+   * 
+   * @param claims - JWT claims with exp and iat
+   * @returns Validation result with error message if invalid
+   */
+  validateWebSocketTokenTTL(claims: AgentContext): { valid: boolean; error?: string } {
+    const now = Math.floor(Date.now() / 1000);
+    const tokenTTL = claims.exp - claims.iat;
+    
+    // Check if token has already expired
+    if (claims.exp <= now) {
+      return { valid: false, error: 'Token has expired' };
+    }
+    
+    // Check if token TTL exceeds maximum for WebSocket connections
+    if (tokenTTL > this.MAX_WEBSOCKET_TOKEN_TTL_SECONDS) {
+      return { 
+        valid: false, 
+        error: `WebSocket tokens must have TTL of ${this.MAX_WEBSOCKET_TOKEN_TTL_SECONDS} seconds or less (token TTL: ${tokenTTL} seconds)` 
+      };
+    }
+    
+    return { valid: true };
   }
 
   /**
@@ -126,6 +154,9 @@ export function getJWTAuthMiddleware(): JWTAuthMiddleware {
 export const jwtAuthMiddleware = {
   authenticate: (req: Request, res: Response, next: NextFunction) => {
     return getJWTAuthMiddleware().authenticate(req, res, next);
+  },
+  validateWebSocketTokenTTL: (claims: AgentContext) => {
+    return getJWTAuthMiddleware().validateWebSocketTokenTTL(claims);
   },
   get jwtValidator() {
     return getJWTAuthMiddleware().jwtValidator;

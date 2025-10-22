@@ -512,20 +512,35 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           throw new Error(`JWT validation failed: ${validationResult.reason}`);
         }
 
+        // Validate token TTL for WebSocket connections (must be 10 minutes or less)
+        const agentContext = {
+          siteId: validationResult.claims?.siteId || '',
+          exp: validationResult.claims?.exp || 0,
+          iat: validationResult.claims?.iat || 0
+        };
+
+        const ttlValidation = jwtAuthMiddleware.validateWebSocketTokenTTL(agentContext);
+        if (!ttlValidation.valid) {
+          logger.warn('websocket.auth.connection_rejected.ttl', {
+            message: 'CONNECTION REJECTED: Token TTL validation failed',
+            error: ttlValidation.error,
+            tokenTTL: agentContext.exp - agentContext.iat,
+            maxAllowed: 600
+          });
+          throw new Error(ttlValidation.error || 'Token TTL validation failed');
+        }
+
         logger.info('websocket.auth.connection_approved', {
-          message: 'Connection approved: JWT validation passed',
-          siteId: validationResult.claims?.siteId
+          message: 'Connection approved: JWT validation and TTL check passed',
+          siteId: validationResult.claims?.siteId,
+          tokenTTL: agentContext.exp - agentContext.iat
         });
 
         // Store validated context in socket for reuse
         socket.handshake.auth = {
           token,
           decoded: validationResult.claims,
-          agentContext: {
-            siteId: validationResult.claims?.siteId,
-            exp: validationResult.claims?.exp,
-            iat: validationResult.claims?.iat
-          }
+          agentContext
         };
 
         // Add token refresh handler for this socket
@@ -547,15 +562,35 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               return;
             }
 
+            // Validate TTL for refreshed token
+            const refreshAgentContext = {
+              siteId: refreshResult.claims?.siteId || '',
+              exp: refreshResult.claims?.exp || 0,
+              iat: refreshResult.claims?.iat || 0
+            };
+
+            const refreshTTLValidation = jwtAuthMiddleware.validateWebSocketTokenTTL(refreshAgentContext);
+            if (!refreshTTLValidation.valid) {
+              logger.warn('websocket.auth.token_refresh.ttl_failed', {
+                message: 'Token refresh TTL validation failed',
+                error: refreshTTLValidation.error,
+                tokenTTL: refreshAgentContext.exp - refreshAgentContext.iat
+              });
+              socket.emit('tokenRefreshError', { error: refreshTTLValidation.error });
+              return;
+            }
+
             // Update socket auth data with new token
             socket.handshake.auth = {
               token: data.newToken,
-              siteId: refreshResult.claims?.siteId
+              decoded: refreshResult.claims,
+              agentContext: refreshAgentContext
             };
 
             logger.info('websocket.auth.token_refresh.success', {
               message: 'Token refreshed successfully',
               siteId: refreshResult.claims?.siteId,
+              tokenTTL: refreshAgentContext.exp - refreshAgentContext.iat,
               expiryTime: new Date((refreshResult.claims?.exp || 0) * 1000).toISOString()
             });
             socket.emit('tokenRefreshSuccess', {

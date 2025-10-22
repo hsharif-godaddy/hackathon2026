@@ -102,10 +102,15 @@ export class JWTService {
 
   /**
    * Create JWT header and payload
+   * 
+   * @param options - Token creation options
+   * @param keyId - Key ID for JWT header
+   * @param expiresInSeconds - Token expiration time in seconds (default: 12 hours)
+   * @returns JWT header and payload as base64url strings
    */
-  private createTokenPayload(options: CreateTokenOptions, keyId: string): { header: string; payload: string } {
+  private createTokenPayload(options: CreateTokenOptions, keyId: string, expiresInSeconds?: number): { header: string; payload: string } {
     const now = Math.floor(Date.now() / 1000);
-    const exp = now + (12 * 60 * 60);
+    const exp = now + (expiresInSeconds || (12 * 60 * 60));
 
     const header = {
       typ: 'JWT',
@@ -132,12 +137,16 @@ export class JWTService {
 
   /**
    * Create JWT token using Node.js crypto for signing
+   * 
+   * @param options - Token creation options
+   * @param expiresInSeconds - Token expiration time in seconds (default: 12 hours)
+   * @returns Token and expiration date
    */
-  async createToken(options: CreateTokenOptions): Promise<TokenResult> {
+  async createToken(options: CreateTokenOptions, expiresInSeconds?: number): Promise<TokenResult> {
     try {
       const activeKey = await this.getActiveKey();
       
-      const { header, payload } = this.createTokenPayload(options, activeKey.keyId);
+      const { header, payload } = this.createTokenPayload(options, activeKey.keyId, expiresInSeconds);
       
       const message = `${header}.${payload}`;
       

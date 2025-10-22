@@ -15,7 +15,8 @@ import { NextRequest } from 'next/server';
 const { mockJWTService, mockSiteAdapter, mockAuthenticateCustomer, mockControlPlaneAdapter, mockIsV2ControlPlaneEnabled } = vi.hoisted(function setup() {
   return {
     mockJWTService: {
-      getToken: vi.fn()
+      getToken: vi.fn(),
+      createToken: vi.fn()
     },
     mockSiteAdapter: {
       requiresAuth: vi.fn(),
@@ -144,6 +145,10 @@ describe('agent-token', function packageTests() {
       mockIsV2ControlPlaneEnabled.mockReturnValue(false);
       mockSiteAdapter.requiresAuth.mockReturnValue(true);
       mockJWTService.getToken.mockResolvedValue({
+        token: MOCK_JWT_TOKEN,
+        expires: MOCK_TOKEN_EXPIRES
+      });
+      mockJWTService.createToken.mockResolvedValue({
         token: MOCK_JWT_TOKEN,
         expires: MOCK_TOKEN_EXPIRES
       });
@@ -400,6 +405,175 @@ describe('agent-token', function packageTests() {
       expect(data.expires).toBe(customExpires.toISOString());
     });
 
+    describe('expiresInSeconds parameter', function expiresTests() {
+      it('should create token with custom expiration when expiresInSeconds is provided', async function customExpiration() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        
+        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
+
+        const expiresInSeconds = 300;
+        const request = createMockRequest({ 
+          siteId: MOCK_SITE_ID,
+          expiresInSeconds 
+        });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data).toEqual({
+          token: MOCK_JWT_TOKEN,
+          expires: MOCK_TOKEN_EXPIRES.toISOString(),
+          siteId: MOCK_SITE_ID,
+          type: 'jwt',
+          expiresInSeconds
+        });
+        expect(mockJWTService.createToken).toHaveBeenCalledWith(
+          { siteId: MOCK_SITE_ID },
+          expiresInSeconds
+        );
+        expect(mockJWTService.getToken).not.toHaveBeenCalled();
+      });
+
+      it('should use getToken when expiresInSeconds is not provided', async function defaultExpiration() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        
+        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.expiresInSeconds).toBeUndefined();
+        expect(mockJWTService.getToken).toHaveBeenCalledWith({
+          siteId: MOCK_SITE_ID
+        });
+        expect(mockJWTService.createToken).not.toHaveBeenCalled();
+      });
+
+      it('should reject when expiresInSeconds is zero', async function rejectZero() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        const request = createMockRequest({ 
+          siteId: MOCK_SITE_ID,
+          expiresInSeconds: 0 
+        });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data).toEqual({
+          error: 'expiresInSeconds must be greater than 0'
+        });
+        expect(mockJWTService.createToken).not.toHaveBeenCalled();
+        expect(mockJWTService.getToken).not.toHaveBeenCalled();
+      });
+
+      it('should reject when expiresInSeconds is negative', async function rejectNegative() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        const request = createMockRequest({ 
+          siteId: MOCK_SITE_ID,
+          expiresInSeconds: -100 
+        });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data).toEqual({
+          error: 'expiresInSeconds must be greater than 0'
+        });
+        expect(mockJWTService.createToken).not.toHaveBeenCalled();
+      });
+
+      it('should reject when expiresInSeconds exceeds 12 hours', async function rejectTooLarge() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        const request = createMockRequest({ 
+          siteId: MOCK_SITE_ID,
+          expiresInSeconds: 50000
+        });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data).toEqual({
+          error: 'expiresInSeconds cannot exceed 43200 seconds (12 hours)'
+        });
+        expect(mockJWTService.createToken).not.toHaveBeenCalled();
+      });
+
+      it('should accept expiresInSeconds at maximum limit (12 hours)', async function acceptMaximum() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        
+        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
+
+        const expiresInSeconds = 43200;
+        const request = createMockRequest({ 
+          siteId: MOCK_SITE_ID,
+          expiresInSeconds 
+        });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.expiresInSeconds).toBe(expiresInSeconds);
+        expect(mockJWTService.createToken).toHaveBeenCalledWith(
+          { siteId: MOCK_SITE_ID },
+          expiresInSeconds
+        );
+      });
+
+      it('should create short-lived token for WebSocket use case', async function websocketToken() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        
+        mockSiteAdapter.getSiteById.mockResolvedValue(MOCK_SITE);
+
+        const expiresInSeconds = 300;
+        const request = createMockRequest({ 
+          siteId: MOCK_SITE_ID,
+          expiresInSeconds 
+        });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.expiresInSeconds).toBe(300);
+        expect(mockJWTService.createToken).toHaveBeenCalledWith(
+          { siteId: MOCK_SITE_ID },
+          300
+        );
+      });
+    });
+
     describe('V2 control plane mode', function v2Tests() {
       beforeEach(function setupV2() {
         mockIsV2ControlPlaneEnabled.mockReturnValue(true);
@@ -506,6 +680,53 @@ describe('agent-token', function packageTests() {
         // Should not call SiteAdapter methods
         expect(mockSiteAdapter.getSiteById).not.toHaveBeenCalled();
         expect(mockSiteAdapter.requiresAuth).not.toHaveBeenCalled();
+      });
+
+      it('should support custom expiresInSeconds in V2 mode', async function v2CustomExpiration() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+        
+        mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_SITE);
+
+        const expiresInSeconds = 600;
+        const request = createMockRequest({ 
+          siteId: MOCK_SITE_ID,
+          expiresInSeconds 
+        });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.expiresInSeconds).toBe(expiresInSeconds);
+        expect(mockJWTService.createToken).toHaveBeenCalledWith(
+          { siteId: MOCK_SITE_ID },
+          expiresInSeconds
+        );
+        expect(mockJWTService.getToken).not.toHaveBeenCalled();
+      });
+
+      it('should validate expiresInSeconds limits in V2 mode', async function v2ValidateLimits() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        const request = createMockRequest({ 
+          siteId: MOCK_SITE_ID,
+          expiresInSeconds: 50000
+        });
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data).toEqual({
+          error: 'expiresInSeconds cannot exceed 43200 seconds (12 hours)'
+        });
+        expect(mockControlPlaneAdapter.getSite).not.toHaveBeenCalled();
       });
     });
   });

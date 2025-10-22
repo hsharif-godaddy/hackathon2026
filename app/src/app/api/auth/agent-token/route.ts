@@ -1,7 +1,10 @@
 /**
  * Agent Token Endpoint
- * Creates simple JWT tokens for agent communication
+ * Creates JWT tokens for agent communication with configurable TTL
  * POST /api/auth/agent-token
+ * 
+ * @param request.body.siteId - Site ID for the token
+ * @param request.body.expiresInSeconds - Optional expiration time in seconds (must be > 0 and <= 43200, default: 12 hours)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -12,9 +15,15 @@ import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 
 export interface CreateAgentTokenRequest {
   siteId: string;
+  expiresInSeconds?: number;
 }
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * Maximum allowed expiration time in seconds (12 hours)
+ */
+const MAX_EXPIRATION_SECONDS = 12 * 60 * 60; // 43200 seconds
 
 /**
  * Validate and retrieve site using V2 control plane adapter
@@ -80,22 +89,42 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       }, { status: 400 });
     }
 
+    if (body.expiresInSeconds !== undefined) {
+      if (body.expiresInSeconds <= 0) {
+        return NextResponse.json({ 
+          error: 'expiresInSeconds must be greater than 0' 
+        }, { status: 400 });
+      }
+      
+      if (body.expiresInSeconds > MAX_EXPIRATION_SECONDS) {
+        return NextResponse.json({ 
+          error: `expiresInSeconds cannot exceed ${MAX_EXPIRATION_SECONDS} seconds (12 hours)` 
+        }, { status: 400 });
+      }
+    }
+
     const validationError = await validateSiteAccess(body.siteId, user, authContext.jwt || '');
     if (validationError) {
       return validationError;
     }
 
     const jwtService = getJWTService();
-    const result = await jwtService.getToken({
-      siteId: body.siteId
-    });
+    const result = body.expiresInSeconds 
+      ? await jwtService.createToken({ siteId: body.siteId }, body.expiresInSeconds)
+      : await jwtService.getToken({ siteId: body.siteId });
 
-    return NextResponse.json({
+    const response: Record<string, unknown> = {
       token: result.token,
       expires: result.expires.toISOString(),
       siteId: body.siteId,
       type: 'jwt'
-    });
+    };
+
+    if (body.expiresInSeconds) {
+      response.expiresInSeconds = body.expiresInSeconds;
+    }
+
+    return NextResponse.json(response);
 
   } catch (error) {
     return NextResponse.json({ 
