@@ -168,7 +168,6 @@ function HomeContent() {
           isLoading={isLoading}
           error={error}
           setError={setError}
-          onShowMockLogin={() => setShowMockLogin(true)}
           onExampleClick={handleExampleClick}
         />
 
