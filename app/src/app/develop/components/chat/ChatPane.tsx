@@ -19,7 +19,8 @@ import {
   useAiEditContext,
   useSetInputValue,
   useSetAiEditContext,
-  useSetCurrentAppId
+  useSetCurrentAppId,
+  useErrorState
 } from '@/stores/useStreamingConversationStore'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { logger } from '@/lib/request-context'
@@ -45,6 +46,7 @@ export default function ChatPane({
   const isStreaming = useIsActivelyStreaming()
   const developmentPlan = useDevelopmentPlan()
   const aiEditContext = useAiEditContext()
+  const errorState = useErrorState()
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
   const setCurrentAppId = useSetCurrentAppId()
@@ -86,7 +88,8 @@ export default function ChatPane({
   }
 
   // Track processing state - use isLoading OR isStreaming to match original behavior
-  const isProcessing = isLoading || isStreaming
+  // Also disable during error state to prevent confusion during retry
+  const isProcessing = isLoading || isStreaming || errorState.hasError
 
   // Handle sending a message
   const handleSendMessage = () => {

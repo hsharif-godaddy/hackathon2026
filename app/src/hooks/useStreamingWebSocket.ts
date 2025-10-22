@@ -21,6 +21,7 @@ import {
   useSetWebSocketState,
   useSetStreamingState,
   useSetIsLoading,
+  useSetErrorState,
   useStreamingConversationStore
 } from '@/stores/useStreamingConversationStore'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
@@ -78,6 +79,7 @@ const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
 
 export function useStreamingWebSocket() {
   const socketRef = useRef<Socket | null>(null)
+  const lastMessageRef = useRef<{ content: string; context?: any } | null>(null)
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
 
@@ -90,6 +92,7 @@ export function useStreamingWebSocket() {
   const setWebSocketState = useSetWebSocketState()
   const setStreamingState = useSetStreamingState()
   const setIsLoading = useSetIsLoading()
+  const setErrorState = useSetErrorState()
 
   const sendToolImpression = (tool: string) => logImpressionEvent(`develop.tool.${tool}`)()
 
@@ -118,6 +121,14 @@ export function useStreamingWebSocket() {
    */
   const createConnection = useCallback(async (appId: string): Promise<Socket> => {
     return new Promise(async (resolve, reject) => {
+      // Clean up existing socket first to prevent duplicate handlers
+      if (socketRef.current) {
+        logger.info('websocket.connection.cleanup', { message: 'Cleaning up existing socket before creating new one' })
+        socketRef.current.removeAllListeners()
+        socketRef.current.disconnect()
+        socketRef.current = null
+      }
+
       // Get the dynamic config to extract the baseUrl
       const { dynamicApiConfigService } = await import('../config/dynamic-api')
       const config = await dynamicApiConfigService.getConfigForSite(appId)
@@ -206,6 +217,16 @@ export function useStreamingWebSocket() {
       socket.on('connect_error', (error) => {
         logger.error('websocket.connection.error', { message: 'Socket.IO connection error', error: error.message })
         setWebSocketState({ connected: false, status: 'error', error: error.message })
+
+        // Set error state for retry if we have a last message
+        if (lastMessageRef.current) {
+          setErrorState(
+            `Connection failed: ${error.message}`,
+            lastMessageRef.current.content,
+            lastMessageRef.current.context
+          )
+        }
+
         reject(new Error(`Failed to connect to Socket.IO: ${error.message}`))
       })
 
@@ -219,7 +240,7 @@ export function useStreamingWebSocket() {
         logger.info('websocket.agents.available', { message: 'Available agents', agents: data.agents, defaultAgent: data.defaultAgent })
       })
     })
-  }, [setWebSocketState, currentAppId])
+  }, [setWebSocketState, currentAppId, setErrorState])
 
   /**
    * Set up Socket.IO event handlers for streaming
@@ -310,6 +331,15 @@ export function useStreamingWebSocket() {
           setWebSocketState({ status: 'error', error: data.content })
           setStreamingState('error')
           setIsLoading(false)
+
+          // Set error state for retry
+          if (lastMessageRef.current) {
+            setErrorState(
+              data.content || 'An error occurred during streaming',
+              lastMessageRef.current.content,
+              lastMessageRef.current.context
+            )
+          }
           break
 
         default:
@@ -325,7 +355,8 @@ export function useStreamingWebSocket() {
     finalizeStream,
     setWebSocketState,
     setStreamingState,
-    setIsLoading
+    setIsLoading,
+    setErrorState
   ])
 
   /**
@@ -340,6 +371,12 @@ export function useStreamingWebSocket() {
     try {
       setIsLoading(true)
       setStreamingState('streaming')
+
+      // Store message details for potential retry
+      lastMessageRef.current = {
+        content,
+        context: aiEditContext
+      }
 
       // Ensure we're on the latest commit
       await ensureLatestCommit(currentAppId)
@@ -424,13 +461,24 @@ export function useStreamingWebSocket() {
       socket.emit('chat_message', chatMessage)
 
     } catch (error) {
-      logger.error('websocket.message.failure', { message: 'Failed to send message', error: error instanceof Error ? error.message : String(error) })
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      logger.error('websocket.message.failure', { message: 'Failed to send message', error: errorMessage })
+
       setWebSocketState({
         status: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: errorMessage
       })
       setStreamingState('error')
       setIsLoading(false)
+
+      // Set error state for retry
+      if (lastMessageRef.current) {
+        setErrorState(
+          errorMessage,
+          lastMessageRef.current.content,
+          lastMessageRef.current.context
+        )
+      }
     }
   }, [
     currentAppId,
@@ -440,7 +488,146 @@ export function useStreamingWebSocket() {
     setupEventHandlers,
     setIsLoading,
     setStreamingState,
-    setWebSocketState
+    setWebSocketState,
+    setErrorState
+  ])
+
+  /**
+   * Retry message - specifically for error recovery
+   * Differs from sendMessage by NOT creating duplicate user messages
+   * and intelligently reusing existing connections
+   */
+  const retrySendMessage = useCallback(async (
+    content: string,
+    aiEditContext?: any
+  ) => {
+    if (!content.trim() || !currentAppId) return
+
+    try {
+      setIsLoading(true)
+      setStreamingState('streaming')
+
+      // Store message details for potential future retry
+      lastMessageRef.current = {
+        content,
+        context: aiEditContext
+      }
+
+      // Ensure we're on the latest commit
+      await ensureLatestCommit(currentAppId)
+
+      // IMPORTANT: Do NOT call startNewStream here!
+      // The user message already exists from the original failed attempt
+
+      // Check if we can reuse the existing socket
+      let socket = socketRef.current
+
+      if (!socket || !socket.connected) {
+        // Need to reconnect
+        logger.info('websocket.retry.reconnecting', {
+          message: 'Creating new connection for retry',
+          hadSocket: !!socketRef.current,
+          wasConnected: socketRef.current?.connected
+        })
+
+        // Create fresh connection (createConnection handles cleanup)
+        socket = await createConnection(currentAppId)
+        socketRef.current = socket
+
+        // Set up handlers on the new socket
+        setupEventHandlers(socket)
+      } else {
+        logger.info('websocket.retry.reuse-socket', {
+          message: 'Reusing existing connected socket for retry',
+          socketId: socket.id
+        })
+        // Socket is connected and handlers already attached - just reuse it
+      }
+
+      logger.info('websocket.retry.send', { message: 'Sending retry message via Socket.IO', appId: currentAppId })
+
+      // Get current state for rich context
+      const state = useStreamingConversationStore.getState()
+      const { conversations } = state
+
+      // Find current conversation ID
+      const currentConversation = conversations.find((conv: any) => conv.appId === currentAppId)
+      const conversationId = currentConversation?.id
+
+      // Capture visual context from iframe
+      logger.debug('websocket.retry.visual-context', { message: 'Capturing visual context for retry' })
+      const visualContext = await captureVisualContext()
+
+      // Build rich context object
+      const richContext: AgentsAppContext = {
+        metadata: {
+          appId: currentAppId,
+          userId: 'current-user',
+          sessionId: socket.id
+        },
+        conversation: {
+          conversationId,
+          maxMessages: 10,
+          includeHistory: true
+        },
+        appContext: {
+          includeDirectoryListing: true,
+          includePackageInfo: true,
+          includeDependencyStatus: true,
+          maxDirectoryDepth: 3
+        },
+        ...(aiEditContext && { aiEditContext }),
+        ...(visualContext && { visualContext }),
+      }
+
+      logger.debug('websocket.retry.details', {
+        message: 'Sending retry with context',
+        messageLength: content.length,
+        hasAiEditContext: !!aiEditContext,
+        hasVisualContext: !!visualContext,
+        conversationId,
+        socketId: socket.id
+      })
+
+      // Send the retry message
+      const chatMessage: AgentsAppChatMessage = {
+        message: content,
+        timestamp: new Date().toISOString(),
+        agentId: 'develop',
+        context: richContext
+      }
+
+      socket.emit('chat_message', chatMessage)
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      logger.error('websocket.retry.failure', { message: 'Retry failed', error: errorMessage })
+
+      setWebSocketState({
+        status: 'error',
+        error: errorMessage
+      })
+      setStreamingState('error')
+      setIsLoading(false)
+
+      // Set error state for another retry attempt
+      if (lastMessageRef.current) {
+        setErrorState(
+          errorMessage,
+          lastMessageRef.current.content,
+          lastMessageRef.current.context
+        )
+      }
+    }
+  }, [
+    currentAppId,
+    ensureLatestCommit,
+    createConnection,
+    setupEventHandlers,
+    setIsLoading,
+    setStreamingState,
+    setWebSocketState,
+    setErrorState
   ])
 
   /**
@@ -449,7 +636,8 @@ export function useStreamingWebSocket() {
   useEffect(() => {
     return () => {
       if (socketRef.current) {
-        logger.info('websocket.cleanup', { message: 'Cleaning up Socket.IO connection' })
+        logger.info('websocket.cleanup', { message: 'Cleaning up Socket.IO connection on unmount' })
+        socketRef.current.removeAllListeners()
         socketRef.current.disconnect()
         socketRef.current = null
       }
@@ -461,10 +649,46 @@ export function useStreamingWebSocket() {
    */
   useEffect(() => {
     if (socketRef.current && currentAppId) {
+      logger.info('websocket.cleanup', { message: 'Cleaning up Socket.IO connection on app change' })
+      socketRef.current.removeAllListeners()
       socketRef.current.disconnect()
       socketRef.current = null
     }
   }, [currentAppId])
+
+  /**
+   * Listen for retry events from the store
+   */
+  useEffect(() => {
+    const handleRetry = async (event: CustomEvent) => {
+      const { message, context, appId } = event.detail
+
+      // Only handle retry for current app
+      if (appId !== currentAppId) {
+        logger.warn('websocket.retry.app-mismatch', {
+          message: 'Retry event for different app',
+          eventAppId: appId,
+          currentAppId
+        })
+        return
+      }
+
+      logger.info('websocket.retry.start', {
+        message: 'Starting retry',
+        messagePreview: message.slice(0, 50) + '...',
+        hasContext: !!context
+      })
+
+      // Use retrySendMessage to avoid duplicates
+      await retrySendMessage(message, context)
+    }
+
+    window.addEventListener('airo-retry-message', handleRetry as EventListener)
+
+    return () => {
+      window.removeEventListener('airo-retry-message', handleRetry as EventListener)
+    }
+  }, [currentAppId, retrySendMessage])
 
   return {
     sendMessage,
