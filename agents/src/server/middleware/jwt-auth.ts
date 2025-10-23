@@ -21,7 +21,7 @@ export interface AuthenticatedRequest extends Request {
 export class JWTAuthMiddleware {
   public jwtValidator: ReturnType<typeof getJWTValidator>;
   private readonly MAX_TOKEN_SIZE = 10000;
-  private readonly MAX_WEBSOCKET_TOKEN_TTL_SECONDS = 600; // 10 minutes max for WebSocket tokens
+  private readonly MAX_WEBSOCKET_TOKEN_TTL_SECONDS = 43200; // 12 hours max for WebSocket tokens
 
   constructor() {
     // Validate config on startup
@@ -36,7 +36,7 @@ export class JWTAuthMiddleware {
 
   /**
    * Validate token TTL for WebSocket connections
-   * WebSocket tokens must have a TTL of 10 minutes or less
+   * WebSocket tokens must have a TTL of 12 hours or less
    * 
    * @param claims - JWT claims with exp and iat
    * @returns Validation result with error message if invalid
