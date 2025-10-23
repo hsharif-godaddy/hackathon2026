@@ -150,7 +150,7 @@ export function useStreamingWebSocket() {
       }
       const socket = io(socketUrl, socketOptions)
       if (process.env.NODE_ENV === 'development') {
-        socket.onAny((event, ...args) => logger.debug('websocket.event.incoming', { event, argsPreview: JSON.stringify(args).slice(0,500), timestamp: Date.now() }))
+        socket.onAny((event, ...args) => logger.debug('websocket.event.incoming', { event, argsPreview: JSON.stringify(args).slice(0, 500), timestamp: Date.now() }))
         socket.onAnyOutgoing((event, ...args) => logger.debug('websocket.event.outgoing', { event, argsCount: args.length, timestamp: Date.now() }))
       }
       socket.on('connect', () => {
@@ -322,7 +322,7 @@ export function useStreamingWebSocket() {
         socketRef.current = null
       }
     }
-  // Including createConnection & setupEventHandlers satisfies exhaustive-deps; guard prevents duplicate initialization.
+    // Including createConnection & setupEventHandlers satisfies exhaustive-deps; guard prevents duplicate initialization.
   }, [currentAppId, createConnection, setupEventHandlers])
 
 

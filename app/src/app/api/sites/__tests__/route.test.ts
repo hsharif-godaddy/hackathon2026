@@ -67,8 +67,8 @@ describe('/api/sites', function sitesRouteTests() {
       // Create mock request
       const request = new NextRequest('http://localhost:3000/api/sites');
 
-        // GET handler now only takes request; authContext is applied via withCustomerAuth mock
-        const response = await GET(request);
+      // GET handler now only takes request; authContext is applied via withCustomerAuth mock
+      const response = await GET(request);
       const body = await response.json();
 
       // Should return 401 for client-side redirect
@@ -98,7 +98,7 @@ describe('/api/sites', function sitesRouteTests() {
       const request = new NextRequest('http://localhost:3000/api/sites');
 
       // Call the route handler
-        const response = await GET(request);
+      const response = await GET(request);
       const body = await response.json();
 
       // Should return 403
@@ -140,7 +140,7 @@ describe('/api/sites', function sitesRouteTests() {
       const request = new NextRequest('http://localhost:3000/api/sites');
 
       // Call the route handler
-        const response = await GET(request);
+      const response = await GET(request);
       const body = await response.json();
 
       // Should return sites (dates serialized as ISO strings)
@@ -169,7 +169,7 @@ describe('/api/sites', function sitesRouteTests() {
       const request = new NextRequest('http://localhost:3000/api/sites');
 
       // Call the route handler
-        const response = await GET(request);
+      const response = await GET(request);
       const body = await response.json();
 
       // Should return 500
@@ -201,7 +201,7 @@ describe('/api/sites', function sitesRouteTests() {
       const request = new NextRequest('http://localhost:3000/api/sites?site_id=test-site-123');
 
       // Call the route handler
-        const response = await GET(request);
+      const response = await GET(request);
       const body = await response.json();
 
       // Should return 401 for client-side redirect

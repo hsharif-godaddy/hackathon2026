@@ -157,10 +157,10 @@ function DevelopPageContent() {
 
   // Batching state for style updates
   const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const pendingUpdateRef = useRef<{selector: string; property: string; value: string; newClassName: string; newStyle?: string} | null>(null)
+  const pendingUpdateRef = useRef<{ selector: string; property: string; value: string; newClassName: string; newStyle?: string } | null>(null)
   const isFirstUpdateRef = useRef(true)
 
-  const sendStyleUpdate = useCallback(async (styleData: {selector: string; property: string; value: string; newClassName: string; newStyle?: string}) => {
+  const sendStyleUpdate = useCallback(async (styleData: { selector: string; property: string; value: string; newClassName: string; newStyle?: string }) => {
     if (!appId) return
 
     try {
@@ -174,7 +174,7 @@ function DevelopPageContent() {
     }
   }, [appId, selectedElement])
 
-  const sendTextUpdate = useCallback(async (textData: {selector: string; oldText: string; newText: string; devContext: Record<string, unknown>}) => {
+  const sendTextUpdate = useCallback(async (textData: { selector: string; oldText: string; newText: string; devContext: Record<string, unknown> }) => {
     if (!appId) return
 
     console.log('📤 Sending text update to API:', {
@@ -195,7 +195,7 @@ function DevelopPageContent() {
     }
   }, [appId])
 
-  const handleStyleUpdate = useCallback(async (styleData: {selector: string; property: string; value: string; newClassName: string; newStyle?: string}) => {
+  const handleStyleUpdate = useCallback(async (styleData: { selector: string; property: string; value: string; newClassName: string; newStyle?: string }) => {
     if (!appId) return
 
     // Send first update immediately
