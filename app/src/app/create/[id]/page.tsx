@@ -12,7 +12,7 @@ export default function CreateAppStatus() {
   const router = useRouter()
   const params = useParams()
   const searchParams = useSearchParams()
-  const siteId = params.id as string
+  const siteId = params?.id as string
   const isJobId = searchParams.get('type') === 'job'
 
   const {

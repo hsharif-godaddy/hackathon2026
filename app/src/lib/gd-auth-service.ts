@@ -4,6 +4,7 @@
  */
 
 import { logger } from '@/lib/request-context';
+import { authUtils } from '@/lib/features';
 
 export class GdAuthService {
   private gdAuth: any;
@@ -83,11 +84,11 @@ export class GdAuthService {
     });
 
 
-    // Initialize gd-auth with correct parameters for IDP basic auth + heartbeat
+    // Initialize gd-auth with support for multiple auth types including impersonation
     this.gdAuth = new GdAuth({
       app: 'airo-builder',           // Our application name
       type: 'idp',                   // IDP token type
-      auths: ['basic'],              // Allowed auth types
+      auths: authUtils.getSupportedAuthTypes(), // Support both basic and e2s (impersonation)
       allowHeartbeat: true,          // Enable automatic heartbeat
       fetchKey: require('gd-auth/src/fetch-key')
     });

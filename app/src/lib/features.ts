@@ -3,6 +3,7 @@
  * This module handles all environment variable parsing and feature flags
  */
 import { logger } from '@/lib/request-context';
+import { decodeJWT } from '@/lib/utils/jwt-utils';
 
 /**
  * Authentication types supported by the application
@@ -140,6 +141,56 @@ export const devSupervisor = {
   },
   /** Get the configured TCP port */
   getTcpPort: () => features.devSupervisorTcpPort,
+} as const
+
+/**
+ * Authentication helper functions for JWT token handling
+ */
+export const authUtils = {
+  /** 
+   * Get supported auth types for JWT authentication
+   * Includes both basic and impersonation (e2s) auth types
+   */
+  getSupportedAuthTypes: (): string[] => {
+    return ['basic', 'e2s'];
+  },
+  
+  /**
+   * Detect auth type from a JWT token
+   * @param token - JWT token string
+   * @returns Detected auth type or 'basic' as fallback
+   */
+  detectAuthTypeFromToken: (token: string): string => {
+    if (!token) return 'basic';
+    
+    const payload = decodeJWT(token);
+    if (!payload) return 'basic';
+    
+    // Check for e2s (impersonation) auth
+    if (payload.e2s && typeof payload.e2s === 'object') {
+      return 'e2s';
+    }
+    
+    // Check for other nested auth types
+    const nestedAuthTypes = ['cert2s', 's2s', 'e2s2s'];
+    for (const authType of nestedAuthTypes) {
+      if (payload[authType] && typeof payload[authType] === 'object') {
+        return authType;
+      }
+    }
+    
+    // Default to basic auth
+    return 'basic';
+  },
+  
+  /**
+   * Check if a token is an impersonation (e2s) token
+   * @param token - JWT token string  
+   * @returns True if token is e2s impersonation
+   */
+  isImpersonationToken: (token: string): boolean => {
+    return authUtils.detectAuthTypeFromToken(token) === 'e2s';
+  }
 } as const
 
 /**

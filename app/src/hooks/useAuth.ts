@@ -1,6 +1,6 @@
 import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType, authFetch } from '@godaddy/gasket-auth';
 import { useState, useEffect } from 'react';
-import { auth } from '@/lib/features';
+import { auth, authUtils } from '@/lib/features';
 import { useMockAuth } from '@/hooks/useMockAuth';
 import { logger } from '@/lib/request-context';
 
@@ -48,10 +48,12 @@ export function useAuth(onShowMockLogin?: () => void) {
   const shouldUseJWT = config?.auth?.isJWT ?? auth.isJWT();
 
   // Always call useAuthState to maintain hook order, but only use result for JWT mode
+  const supportedAuthTypes = config?.auth?.type || authUtils.getSupportedAuthTypes();
+  
   const authState = useAuthState({
     realm: (config?.auth?.realm || 'idp') as AuthRealmType,
     risk: (config?.auth?.risk || 'low') as AuthRiskType,
-    type: (config?.auth?.type || ['basic']) as AuthIdpType[],
+    type: supportedAuthTypes as AuthIdpType[],
     allowHeartbeat: true,
     use12HourExpiration: true,
   });

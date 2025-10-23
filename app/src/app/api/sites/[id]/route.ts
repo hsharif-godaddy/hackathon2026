@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
 import { logger } from '@/lib/request-context';
-import { 
-  withCustomerAuth, 
+import {
+  withCustomerAuth,
   customerHasAccount,
   createCustomerAuthError,
-  type CustomerAuthContext 
+  type CustomerAuthContext
 } from '@/lib/customer-auth';
 
 // Force dynamic rendering to prevent database calls during build
@@ -15,17 +15,17 @@ export const dynamic = 'force-dynamic';
 async function handleGetSite(request: NextRequest, siteId: string, authContext: CustomerAuthContext) {
   const adapter = getControlPlaneAdapter();
   const site = await adapter.getSite(siteId, authContext.jwt);
-  
+
   if (!site) {
     return NextResponse.json({ error: 'Site not found' }, { status: 404 });
   }
-  
+
   // Add control plane type to response so client knows whether to skip deploy
   const siteWithMetadata = {
     ...site,
     controlPlane: isV2ControlPlaneEnabled() ? 'v2' : 'legacy'
   };
-  
+
   return NextResponse.json(siteWithMetadata);
 }
 
@@ -76,16 +76,16 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
     }
 
     const adapter = getControlPlaneAdapter();
-    
+
     // Get site first to verify existence and get system_id (only one expensive search)
     const site = await adapter.getSite(siteId, authContext.jwt);
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
-    
+
     // Delete via adapter, passing system_id and subscription_id to avoid redundant getSite call
     const result = await adapter.deleteSite(siteId, authContext.jwt, site.system_id, site.subscription_id);
-    
+
     if (!result.success) {
       return NextResponse.json({ error: result.error || 'Failed to delete site' }, { status: 500 });
     }
@@ -96,9 +96,9 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
       accountId: user.accountId
     });
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Site deleted successfully' 
+    return NextResponse.json({
+      success: true,
+      message: 'Site deleted successfully'
     });
 
   } catch (error) {
@@ -132,17 +132,17 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
     }
 
     const adapter = getControlPlaneAdapter();
-    
+
     // Check site exists and ownership
     const existingSite = await adapter.getSite(siteId, authContext.jwt);
-    
+
     if (!existingSite) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
     // Update site via adapter
     const updatedSite = await adapter.updateSite(siteId, updateData, authContext.jwt);
-    
+
     if (!updatedSite) {
       return NextResponse.json({ error: 'Failed to update site' }, { status: 404 });
     }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { logger } from '@/lib/request-context';
-import { auth } from '@/lib/features';
+import { auth, authUtils } from '@/lib/features';
 
 // Server-side configuration that can access actual environment variables
 const getServerConfig = () => {
@@ -14,7 +14,7 @@ const getServerConfig = () => {
     auth: {
       realm: 'idp',
       risk: 'low',
-      type: ['basic'],
+      type: authUtils.getSupportedAuthTypes(),
       authType: auth.getType(),
       isDisabled: auth.isDisabled(),
       isMock: auth.isMock(),
