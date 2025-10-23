@@ -1,63 +1,31 @@
-export interface ToolCall {
-  id: string
-  tool_name: string
-  tool_args?: string | object
-  tool_result?: string
-  error?: string
-  start_time?: number
-  end_time?: number
-  duration_ms?: number
-  status: 'running' | 'success' | 'error'
-}
+/**
+ * Type Consolidation
+ *
+ * This file now re-exports canonical types from the streaming store to maintain
+ * a single source of truth. Local types are only for UI-specific concerns.
+ *
+ * Store types (canonical & re-exported):
+ *   - ToolCall, StreamSegment, ChatMessage, StreamingMessage
+ *   - Conversation, ErrorState, WebSocketState, PlanItem
+ *
+ * UI-specific types (local only):
+ *   - DevContext, ElementInfo, AiEditContext
+ *   - ViewMode, PreviewViewMode, ChatTab, VisualContext
+ */
 
-export interface MessageSegment {
-  id: string
-  type: 'content' | 'tool_call'
-  content?: string
-  tool_call?: ToolCall
-  timestamp: Date
-}
+// Re-export streaming store types as the canonical source
+export type {
+  ToolCall,
+  StreamSegment,
+  ChatMessage,
+  StreamingMessage,
+  Conversation,
+  ErrorState,
+  WebSocketState,
+  PlanItem
+} from '@/stores/useStreamingConversationStore'
 
-export interface Message {
-  id: number | string
-  sender: 'user' | 'agent'
-  content: string
-  timestamp: Date
-  isThinking?: boolean
-  handoff?: {
-    to: string
-    action: string
-    url: string
-  }
-  type?: 'message' | 'status' | 'tool_result' | 'tool_call' | 'complete'
-  status?: string
-  tool_name?: string
-  tool_result?: string
-  message?: string
-  tool_call_id?: string
-  tool_args?: string | object
-  start_time?: number
-  end_time?: number
-  duration_ms?: number
-  tool_status?: 'running' | 'success' | 'error'
-  error?: string
-  tool_calls?: ToolCall[]
-  segments?: MessageSegment[]
-  response_start_time?: number
-  response_end_time?: number
-  response_duration_ms?: number
-  is_complete?: boolean
-  is_processing?: boolean
-}
-
-export interface PlanItem {
-  id: string
-  title: string
-  description: string
-  status: 'pending' | 'in_progress' | 'complete'
-  tasks: string[]
-  estimatedTime: string
-}
+// All streaming-related types are now exported from the store above
 
 export interface DevContext {
   fileName: string

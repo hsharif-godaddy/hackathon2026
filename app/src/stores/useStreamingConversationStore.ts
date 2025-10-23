@@ -6,8 +6,18 @@
  */
 
 import { create } from 'zustand'
-import type { AiEditContext, PlanItem } from '../app/develop/components/types'
+import type { AiEditContext } from '../app/develop/components/types'
 import { logger } from '@/lib/request-context'
+
+// Development plan item
+export interface PlanItem {
+  id: string
+  title: string
+  description: string
+  status: 'pending' | 'in_progress' | 'complete'
+  tasks: string[]
+  estimatedTime: string
+}
 
 // Core streaming segment types
 export interface StreamSegment {
