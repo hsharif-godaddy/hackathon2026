@@ -10,7 +10,6 @@ import { isAuthDisabled } from '@/lib/gasket-config';
 import { isFeatureEnabled } from '@/lib/features';
 import { MOCK_USER } from '@/lib/mock-auth';
 import { RequestContextService, type RequestContext, logger } from '@/lib/request-context';
-import { randomUUID } from 'crypto';
 import { isTokenTooOld, getTokenAgeMinutes } from '@/lib/auth/token-refresh';
 
 /**
@@ -272,8 +271,7 @@ export function withCustomerAuth<T extends unknown[]>(
 
     // Set up request context for the entire request lifecycle
     const requestContext: RequestContext = {
-      customerId: authContext.user.customerId,
-      requestId: randomUUID()
+      customerId: authContext.user.customerId
     };
 
     // Run the handler within the request context

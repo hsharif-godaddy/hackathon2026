@@ -1,3 +1,5 @@
+import { trace, context as otelContext, SpanContext } from '@opentelemetry/api';
+
 // Conditional import for server-only AsyncLocalStorage
 let AsyncLocalStorage: any;
 if (typeof window === 'undefined') {
@@ -21,7 +23,7 @@ if (typeof window === 'undefined') {
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
 /**
- * Log event structure following agents pattern
+ * Log event structure following agents pattern with APM correlation
  */
 export interface LogEvent {
   timestamp: string;
@@ -31,7 +33,11 @@ export interface LogEvent {
 
   // Request context
   customerId?: string;
-  requestId?: string;
+
+  // APM correlation fields (Elastic APM format)
+  'trace.id'?: string;
+  'span.id'?: string;
+  'transaction.id'?: string;
 
   // Optional data
   data?: Record<string, any>;
@@ -57,7 +63,6 @@ export interface LogOptions {
  */
 export interface RequestContext {
   customerId: string;     // GoDaddy customer identifier
-  requestId?: string;     // Unique request tracking ID
 }
 
 /**
@@ -97,13 +102,6 @@ export class RequestContextService {
   }
 
   /**
-   * Get current request ID
-   */
-  static getRequestId(): string | undefined {
-    return asyncLocalStorage?.getStore()?.requestId;
-  }
-
-  /**
    * Check if context exists
    */
   static hasContext(): boolean {
@@ -119,7 +117,6 @@ export class RequestContextService {
 
     const parts: string[] = [];
     if (context.customerId) parts.push(`customerId:${context.customerId}`);
-    if (context.requestId) parts.push(`reqId:${context.requestId}`);
 
     return parts.length > 0 ? `[${parts.join(' ')}]` : '';
   }
@@ -187,10 +184,35 @@ export class ContextLogger {
   }
 
   /**
+   * Extract OpenTelemetry trace context for log correlation
+   * Returns trace.id, span.id, and transaction.id in Elastic APM format
+   */
+  private getTraceContext(): { 'trace.id'?: string; 'span.id'?: string; 'transaction.id'?: string } {
+    try {
+      const span = trace.getSpan(otelContext.active());
+      if (span) {
+        const spanContext = span.spanContext();
+        if (spanContext && spanContext.traceId && spanContext.spanId) {
+          return {
+            'trace.id': spanContext.traceId,
+            'span.id': spanContext.spanId,
+            'transaction.id': spanContext.traceId
+          };
+        }
+      }
+    } catch (error) {
+      // Silently fail if OTel context is not available
+      // This can happen in client-side rendering or before OTel is initialized
+    }
+    return {};
+  }
+
+  /**
    * Create log event with context
    */
   private createLogEvent(level: LogLevel, event: string, data?: any, options?: LogOptions): LogEvent {
     const context = RequestContextService.getContext();
+    const traceContext = this.getTraceContext();
 
     const logEvent: LogEvent = {
       timestamp: new Date().toISOString(),
@@ -200,9 +222,11 @@ export class ContextLogger {
 
       // Include request context if available
       ...(context ? {
-        customerId: context.customerId,
-        requestId: context.requestId
-      } : {})
+        customerId: context.customerId
+      } : {}),
+
+      // Include OpenTelemetry trace context for APM log correlation
+      ...traceContext
     };
 
     if (data !== undefined && typeof data === 'object' && !Array.isArray(data)) {
@@ -230,18 +254,25 @@ export class ContextLogger {
 
   /**
    * Output log event to console with formatting
+   * Includes OpenTelemetry trace correlation fields for APM integration
    */
   private output(logEvent: LogEvent): void {
-    const { customerId, requestId } = logEvent;
-
-    // Create context prefix
-    const contextParts: string[] = [];
-    if (customerId) contextParts.push(`customerId:${customerId}`);
-    if (requestId) contextParts.push(`reqId:${requestId}`);
+    // Serialize error if present
+    const logOutput = {
+      ...logEvent,
+      ...(logEvent.error ? {
+        error: {
+          message: logEvent.error.message,
+          stack: logEvent.error.stack,
+          name: logEvent.error.name
+        }
+      } : {})
+    };
 
     // Always use structured JSON output (production format)
-    // This ensures consistent, machine-parseable logs for FluentBit and log aggregation
-    console.log(JSON.stringify(logEvent));
+    // This ensures consistent, machine-parseable logs for FluentBit, Elastic APM, and log aggregation
+    // Includes trace.id, span.id, and transaction.id for APM log correlation
+    console.log(JSON.stringify(logOutput));
   }
 
   /**

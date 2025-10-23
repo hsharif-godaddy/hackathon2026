@@ -45,7 +45,8 @@ if (!otlpEndpoint) {
         
         // Ignore Next.js internal requests
         ignoreIncomingRequestHook: (request) => {
-          const url = request.url || '';
+          if (!request || !request.url) return false;
+          const url = typeof request.url === 'string' ? request.url : request.url.pathname || '';
           return url.includes('/_next/') || 
                  url.includes('/__nextjs_') || 
                  url.includes('/static/');

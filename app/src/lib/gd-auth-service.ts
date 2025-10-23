@@ -198,7 +198,8 @@ let _gdAuthService: GdAuthService | null = null;
 export const gdAuthService = {
   get instance(): GdAuthService {
     if (!_gdAuthService) {
-      console.log('🔍 gd-auth-service.ts: Creating gdAuthService singleton (lazy)', {
+      logger.info('gd-auth-service.singleton.create', {
+        message: 'Creating gdAuthService singleton (lazy)',
         authType: process.env.AUTH_TYPE,
         nodeEnv: process.env.NODE_ENV,
         stack: new Error().stack?.split('\n').slice(1, 6).join('\n')

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { agentFetch } from '@/lib/agent-fetch'
 import { features } from '@/lib/features'
+import { logger } from '@/lib/request-context'
 
 interface ContextSection {
   type: 'template' | 'app' | 'visual' | 'element' | 'conversation' | 'hot_files'
@@ -57,7 +58,13 @@ export async function GET(
 
     return NextResponse.json(contextData)
   } catch (error) {
-    console.error('Context debug API error:', error)
+    logger.error('api.context.debug.error', {
+      message: 'Context debug API error',
+      appId: params.id,
+      errorMessage: error instanceof Error ? error.message : String(error)
+    }, {
+      error: error instanceof Error ? error : undefined
+    })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

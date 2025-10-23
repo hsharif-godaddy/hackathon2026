@@ -42,6 +42,9 @@ RUN mkdir -p /workspace/app/data && chown -R node:node /workspace/app
 
 USER node
 
+# Set NODE_OPTIONS to load OpenTelemetry instrumentation with absolute path
+ENV NODE_OPTIONS="--import /workspace/app/otel-setup.js"
+
 EXPOSE 8443
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
