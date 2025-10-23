@@ -21,7 +21,11 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    */
   async createSite(params: CreateSiteParams): Promise<CreateSiteResult> {
     try {
-      logger.info('legacy-control-plane.create-site.start', { accountId: params.accountId });
+      logger.info('legacy-control-plane.create-site.start', {
+        accountId: params.accountId
+      }, {
+        tags: ['security']
+      });
 
       // Create site record in database
       const site = await this.siteService.createSite({
@@ -55,6 +59,8 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
           logger.info('legacy-control-plane.create-site.success', {
             siteId: site.id,
             status: deployResult.status
+          }, {
+            tags: ['security']
           });
 
           return {
@@ -318,4 +324,3 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
     };
   }
 }
-

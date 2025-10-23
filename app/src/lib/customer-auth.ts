@@ -62,14 +62,14 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
 
       // The account should already exist (created by ensureTestUserExists)
       if (!mockAccount) {
-        logger.info('auth.mock.account.create', { message: 'Creating mock account for customer auth', mockShopperId, mockCustomerId });
+        logger.info('auth.mock.account.create', { message: 'Creating mock account for customer auth', mockShopperId, mockCustomerId }, { tags: ['security'] });
         try {
           mockAccount = await getAccountService().createAccount(mockShopperId, mockCustomerId);
-          logger.info('auth.mock.account.success', { message: 'Mock account created', accountId: mockAccount.id });
+          logger.info('auth.mock.account.success', { message: 'Mock account created', accountId: mockAccount.id }, { tags: ['security'] });
         } catch (error: any) {
           if (error.message.includes('UNIQUE constraint failed')) {
             mockAccount = await getAccountService().getAccountByShopperId(mockCustomerId);
-            logger.info('auth.mock.account.found', { message: 'Mock account found', accountId: mockAccount?.id });
+            logger.info('auth.mock.account.found', { message: 'Mock account found', accountId: mockAccount?.id }, { tags: ['security'] });
           } else {
             throw error;
           }
@@ -91,7 +91,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
 
     // Skip JWT validation if auth is disabled in development
     if (await isAuthDisabled()) {
-      logger.info('auth.dev.bypass', 'Customer auth bypassed - development mode');
+      logger.info('auth.dev.bypass', 'Customer auth bypassed - development mode', { tags: ['security'] });
 
       // Ensure dev account exists in database
       const devShopperId = 'dev-user';
@@ -100,15 +100,15 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
 
       // Create dev account if it doesn't exist
       if (!devAccount) {
-        logger.info('auth.dev.account.create', { message: 'Creating dev account for testing', devShopperId, devCustomerId });
+        logger.info('auth.dev.account.create', { message: 'Creating dev account for testing', devShopperId, devCustomerId }, { tags: ['security'] });
         try {
           devAccount = await getAccountService().createAccount(devShopperId, devCustomerId);
-          logger.info('auth.dev.account.success', { message: 'Dev account created', accountId: devAccount.id });
+          logger.info('auth.dev.account.success', { message: 'Dev account created', accountId: devAccount.id }, { tags: ['security'] });
         } catch (error: any) {
           // Account might already exist, try to find it
           if (error.message.includes('UNIQUE constraint failed')) {
             devAccount = await getAccountService().getAccountByShopperId(devCustomerId);
-            logger.info('auth.dev.account.found', { message: 'Dev account found', accountId: devAccount?.id });
+            logger.info('auth.dev.account.found', { message: 'Dev account found', accountId: devAccount?.id }, { tags: ['security'] });
           } else {
             throw error;
           }
@@ -140,10 +140,10 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     }
 
     // Use gd-auth for authentication (includes automatic heartbeat)
-    logger.info('auth.gdauth.validate.start', 'Using gd-auth for validation');
+    logger.info('auth.gdauth.validate.start', 'Using gd-auth for validation', { tags: ['security'] });
     const result = await gdAuthService.authenticate(token);
     if (!result.valid || !result.payload) {
-      logger.error('auth.gdauth.validate.failed', { message: 'gd-auth validation failed', reason: result.reason });
+      logger.error('auth.gdauth.validate.failed', { message: 'gd-auth validation failed', reason: result.reason }, { tags: ['security'] });
       return {
         isAuthenticated: false,
         user: null,
@@ -151,7 +151,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       };
     }
 
-    logger.info('auth.gdauth.validate.success', 'gd-auth validation successful');
+    logger.info('auth.gdauth.validate.success', 'gd-auth validation successful', { tags: ['security'] });
 
     // Extract customer information from JWT payload
     const shopperId = result.payload.shopperId as string;
@@ -169,6 +169,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       message: 'User authenticated successfully',
       shopperId,
       environment: process.env.ENVIRONMENT_NAME
+    }, {
+      tags: ['security']
     });
 
     // Get or create account for the authenticated shopper
@@ -210,6 +212,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
         customerId,
         shopperId,
         recommendation: 'Client should refresh token'
+      }, {
+        tags: ['security']
       });
 
       // Still return the token, but log the warning
@@ -224,6 +228,8 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       tokenAge: getTokenAgeMinutes(token),
       customerId,
       shopperId
+    }, {
+      tags: ['security']
     });
 
     return {
@@ -233,7 +239,7 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     };
 
   } catch (error) {
-    logger.error('auth.error', { message: 'Customer authentication error', errorMessage: error instanceof Error ? error.message : 'Unknown error' });
+    logger.error('auth.error', { message: 'Customer authentication error', errorMessage: error instanceof Error ? error.message : 'Unknown error' }, { tags: ['security'] });
     return {
       isAuthenticated: false,
       user: null,

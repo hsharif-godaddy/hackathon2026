@@ -401,7 +401,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       onError: (socketId: string, error: Error, message?: string) => {
         // Check if this is a customer context error (auth-related)
         if (error.message.includes('customer context') ||
-            error.message.includes('authentication may have failed')) {
+          error.message.includes('authentication may have failed')) {
           logger.error('WebSocket context error:', {
             socketId,
             error: error.message,
@@ -452,13 +452,13 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         if (authType === AuthType.MOCK) {
           // Mock authentication for testing
           socket.handshake.auth = {
-          siteId: auth.getSiteId(AuthType.MOCK)
-        };
-        next();
-        return;
-      }
+            siteId: auth.getSiteId(AuthType.MOCK)
+          };
+          next();
+          return;
+        }
 
-      // Debug: Log handshake details
+        // Debug: Log handshake details
         logger.info('websocket.auth.handshake_debug', {
           message: 'WebSocket handshake details',
           hasAuth: !!socket.handshake.auth,
@@ -477,14 +477,14 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // First try Socket.IO auth object (this should work for WebSocket transport)
         if (socket.handshake.auth && socket.handshake.auth.token) {
           token = socket.handshake.auth.token;
-          logger.info('websocket.auth.token_source', { message: 'JWT token found in handshake.auth.token' });
+          logger.info('websocket.auth.token_source', { message: 'JWT token found in handshake.auth.token' }, { tags: ['security'] });
         }
         // Fallback to Authorization header (works for polling transport)
         else if (socket.handshake.headers.authorization) {
           const authHeader = socket.handshake.headers.authorization;
           if (authHeader.startsWith('Bearer ')) {
             token = authHeader.substring(7);
-            logger.info('websocket.auth.token_source', { message: 'JWT token found in Authorization header' });
+            logger.info('websocket.auth.token_source', { message: 'JWT token found in Authorization header' }, { tags: ['security'] });
           }
         }
 
@@ -493,13 +493,17 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             message: 'No JWT token found in handshake',
             hasAuth: !!socket.handshake.auth,
             hasAuthHeader: !!socket.handshake.headers.authorization
+          }, {
+            tags: ['security']
           });
           throw new Error('Missing or invalid Authorization header');
         }
 
         // Validate JWT using JWKS endpoint
         logger.info('websocket.auth.jwt_validation.start', {
-          message: 'Validating JWT token using JWKS'
+          message: 'Validating JWT token using public key'
+        }, {
+          tags: ['security']
         });
 
         const validationResult = await jwtAuthMiddleware.jwtValidator.validateToken(token);
@@ -508,6 +512,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           logger.warn('websocket.auth.connection_rejected', {
             message: 'CONNECTION REJECTED: JWT validation failed',
             reason: validationResult.reason
+          }, {
+            tags: ['security']
           });
           throw new Error(`JWT validation failed: ${validationResult.reason}`);
         }
@@ -531,9 +537,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
 
         logger.info('websocket.auth.connection_approved', {
-          message: 'Connection approved: JWT validation and TTL check passed',
+          message: 'Connection approved: JWT validation passed',
           siteId: validationResult.claims?.siteId,
-          tokenTTL: agentContext.exp - agentContext.iat
+          tokenTTL: agentContext.exp - agentContext.iat,
+        }, {
+          tags: ['security']
         });
 
         // Store validated context in socket for reuse
@@ -549,6 +557,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             logger.info('websocket.auth.token_refresh.requested', {
               message: 'Token refresh requested',
               siteId: socket.handshake.auth.siteId
+            }, {
+              tags: ['security']
             });
 
             const refreshResult = await jwtAuthMiddleware.jwtValidator.validateToken(data.newToken);
@@ -557,6 +567,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               logger.warn('websocket.auth.token_refresh.failed', {
                 message: 'Token refresh failed',
                 reason: refreshResult.reason
+              }, {
+                tags: ['security']
               });
               socket.emit('tokenRefreshError', { error: refreshResult.reason });
               return;
@@ -592,6 +604,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               siteId: refreshResult.claims?.siteId,
               tokenTTL: refreshAgentContext.exp - refreshAgentContext.iat,
               expiryTime: new Date((refreshResult.claims?.exp || 0) * 1000).toISOString()
+            }, {
+              tags: ['security']
             });
             socket.emit('tokenRefreshSuccess', {
               newExpiry: refreshResult.claims?.exp,
@@ -603,6 +617,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             logger.error('websocket.auth.token_refresh.error', {
               message: 'Token refresh error',
               error: errorMessage
+            }, {
+              tags: ['security']
             });
             socket.emit('tokenRefreshError', { error: errorMessage });
           }

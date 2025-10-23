@@ -172,6 +172,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
       logger.info('v2-control-plane.create-site.signup.success', {
         jobId: response.statusJobId
+      }, {
+        tags: ['security']
       });
 
       const createdAt = new Date();
@@ -190,7 +192,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       if (error.status === 401) {
         throw error;
       }
-      logger.error('v2-control-plane.create-site.error', { error });
+      logger.error('v2-control-plane.create-site.error', {
+        error
+      }, {
+        tags: ['security']
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -1200,4 +1206,3 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     }
   }
 }
-

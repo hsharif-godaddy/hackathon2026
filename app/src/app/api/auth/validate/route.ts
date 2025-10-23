@@ -77,9 +77,9 @@ export async function GET(request: NextRequest) {
 
     // Log validation result
     if (result.valid) {
-      logger.info('auth.validate.token.valid', { message: 'Token is VALID' });
+      logger.info('auth.validate.token.valid', { message: 'Token is VALID' }, { tags: ['security'] });
     } else {
-      logger.warn('auth.validate.token.invalid', { message: 'Token is INVALID', reason: result.reason });
+      logger.warn('auth.validate.token.invalid', { message: 'Token is INVALID', reason: result.reason }, { tags: ['security'] });
     }
 
     // Since the authorization check is being removed, default to authorized.
