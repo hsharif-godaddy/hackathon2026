@@ -4,6 +4,7 @@ import path from 'path';
 import { nanoid } from 'nanoid';
 import { logger } from '../logging/index.js';
 import { toolImageGenerationEvents } from '../logging/events/index.js';
+import { createOpenAIClient } from '@airo/ai-lib';
 
 export interface ImageGenerationOptions {
   prompt: string;
@@ -24,32 +25,46 @@ export interface ImageGenerationResult {
  * Service for generating images using OpenAI's DALL-E model
  */
 export class ImageGenerationTool {
-  private openaiClient: OpenAI;
   private appsBaseDir: string;
 
   constructor() {
-    // Initialize OpenAI client using API key from environment variables
-    const apiKey = process.env.OPENAI_API_KEY;
-    const baseURL = process.env.OPENAI_BASE_URL;
-    
-    if (!apiKey) {
-      logger.warn('OpenAI API key not configured - image generation will not work', {
-        component: 'ImageGenerationTool',
-        missingConfig: 'OPENAI_API_KEY'
-      });
-    }
-    
-    this.openaiClient = new OpenAI({
-      apiKey: apiKey,
-      baseURL: baseURL
-    });
-
     // Get base directory for apps from environment variable or use default
     this.appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/apps';
     logger.info('Image generation tool initialized', {
-      component: 'ImageGenerationTool', 
+      component: 'ImageGenerationTool',
       appsBaseDir: this.appsBaseDir
     });
+  }
+
+  /**
+   * Create OpenAI client using ai-lib's unified provider system
+   * This leverages ai-lib's authentication handling while providing access to the full OpenAI client
+   */
+  private async createOpenAIClient(): Promise<OpenAI | null> {
+    try {
+      logger.debug('image-generation.client.create.start', {
+        component: 'ImageGenerationTool',
+        message: 'Creating OpenAI client via ai-lib unified provider'
+      });
+
+      // Use ai-lib's createOpenAIClient function which handles authentication automatically
+      // This supports both S2S authentication and API key authentication
+      const openaiClient = await createOpenAIClient();
+
+      logger.debug('image-generation.client.create.success', {
+        component: 'ImageGenerationTool',
+        message: 'Successfully created OpenAI client via ai-lib'
+      });
+
+      return openaiClient;
+    } catch (error) {
+      logger.error('image-generation.client.create.failed', {
+        component: 'ImageGenerationTool',
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      return null;
+    }
   }
 
   /**
@@ -59,7 +74,7 @@ export class ImageGenerationTool {
    */
   async generateImage(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
     const startTime = Date.now();
-    
+
     // Build logging data
     const logData = {
       toolName: 'image-generation',
@@ -70,129 +85,131 @@ export class ImageGenerationTool {
         filename: options.filename
       }
     };
-    
+
     // Log operation begin
     toolImageGenerationEvents.begin(logger, logData);
-    
+
     try {
       const { prompt, size = '1024x1024', appId, filename } = options;
-      
+
       // Validate input
       if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
-        return { 
-          success: false, 
-          error: 'A valid prompt is required' 
+        logger.warn('image-generation.validation.failed', {
+          component: 'ImageGenerationTool',
+          error: 'Invalid prompt'
+        });
+        return {
+          success: false,
+          error: 'A valid prompt is required'
         };
       }
 
       if (!appId) {
-        return { 
-          success: false, 
-          error: 'App ID is required to save the image' 
+        logger.warn('image-generation.validation.failed', {
+          component: 'ImageGenerationTool',
+          error: 'Missing app ID'
+        });
+        return {
+          success: false,
+          error: 'App ID is required to save the image'
         };
       }
 
-      if (!this.openaiClient) {
-        return { 
-          success: false, 
-          error: 'OpenAI API key not configured' 
+      // Create OpenAI client using ai-lib unified provider
+      const openaiClient = await this.createOpenAIClient();
+      if (!openaiClient) {
+        logger.error('image-generation.client.create.failed', {
+          component: 'ImageGenerationTool',
+          error: 'Failed to create OpenAI client via ai-lib unified provider'
+        });
+        return {
+          success: false,
+          error: 'OpenAI client could not be created - authentication not configured properly'
         };
       }
 
-      // Determine the app path and public directory path
+      // Setup directories
       const appPath = path.join(this.appsBaseDir, appId);
       const publicDir = path.join(appPath, 'public');
-      
-      // Ensure the public directory exists
-      if (!fs.existsSync(publicDir)) {
-        try {
-          fs.mkdirSync(publicDir, { recursive: true });
-          logger.debug('Created public directory for app', { 
-            appId, 
-            publicDir,
-            component: 'ImageGenerationTool'
-          });
-        } catch (error) {
-          return {
-            success: false,
-            error: `Failed to create public directory: ${error instanceof Error ? error.message : String(error)}`
-          };
-        }
-      }
-
-      // Create an images subdirectory
       const imagesDir = path.join(publicDir, 'images');
-      if (!fs.existsSync(imagesDir)) {
-        try {
-          fs.mkdirSync(imagesDir, { recursive: true });
-          logger.debug('Created images directory for app', { 
-            appId, 
-            imagesDir,
-            component: 'ImageGenerationTool'
-          });
-        } catch (error) {
-          return {
-            success: false,
-            error: `Failed to create images directory: ${error instanceof Error ? error.message : String(error)}`
-          };
+
+      // Ensure directories exist
+      try {
+        if (!fs.existsSync(publicDir)) {
+          fs.mkdirSync(publicDir, { recursive: true });
         }
+        if (!fs.existsSync(imagesDir)) {
+          fs.mkdirSync(imagesDir, { recursive: true });
+        }
+      } catch (error) {
+        logger.error('image-generation.directories.failed', {
+          component: 'ImageGenerationTool',
+          error: error instanceof Error ? error.message : String(error),
+          appId
+        });
+        return {
+          success: false,
+          error: `Failed to create directories: ${error instanceof Error ? error.message : String(error)}`
+        };
       }
 
-      logger.debug('Generating image with gpt-image-1 model', {
-        appId,
-        prompt: prompt.trim(),
-        size,
-        component: 'ImageGenerationTool'
-      });
-      
-      // Generate image using gpt-image-1 model (produces high-quality, vivid images by default)
-      const result = await this.openaiClient.images.generate({
+      // Generate image using gpt-image-1 model
+      const result = await openaiClient.images.generate({
         model: "gpt-image-1",
         prompt: prompt.trim(),
-        n: 1,  // Generate one image
+        n: 1,
         size: size,
       });
 
       // Check if we have results
       if (!result.data || result.data.length === 0) {
+        logger.warn('image-generation.api.no-data', {
+          component: 'ImageGenerationTool',
+          appId,
+          error: 'No image data returned from API',
+          resultData: result.data
+        });
         return {
           success: false,
           error: 'No image generated from the provided prompt'
         };
       }
-      
+
       const imageData = result.data[0];
-      
+
       // Process returned image (prefer base64, fallback to URL if provided)
       if (imageData && (imageData.b64_json || imageData.url)) {
         // Generate a safe filename based on the prompt or use provided filename
-        const safeFilename = filename || 
+        const safeFilename = filename ||
           prompt.trim()
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/^-+|-+$/g, '')
             .substring(0, 40);
-        
+
         const fullFilename = `${safeFilename}-${nanoid(6)}.png`;
         const filePath = path.join(imagesDir, fullFilename);
-        
+
         try {
           // Get the image bytes from base64 or by downloading the URL
           let imageBuffer: Buffer;
           if (imageData.b64_json) {
             imageBuffer = Buffer.from(imageData.b64_json, 'base64');
           } else {
-            // Node 18+ has global fetch; if not, swap for node-fetch
             const res = await fetch(imageData.url as string);
+            if (!res.ok) {
+              throw new Error(`Failed to fetch image: ${res.status} ${res.statusText}`);
+            }
             const arrBuf = await res.arrayBuffer();
             imageBuffer = Buffer.from(arrBuf);
           }
+
           fs.writeFileSync(filePath, imageBuffer);
-          
+
           // Create public path that can be used in the app
           const publicPath = `/images/${fullFilename}`;
           const executionTime = Date.now() - startTime;
-          
+
           // Log success
           toolImageGenerationEvents.success(logger, {
             toolName: logData.toolName,
@@ -210,7 +227,7 @@ export class ImageGenerationTool {
               executionTime
             }
           });
-          
+
           return {
             success: true,
             filepath: filePath,
@@ -218,24 +235,42 @@ export class ImageGenerationTool {
             ...(imageData.b64_json && { base64Data: imageData.b64_json })
           };
         } catch (fileError) {
+          logger.error('image-generation.file.save.failed', {
+            component: 'ImageGenerationTool',
+            appId,
+            error: fileError instanceof Error ? fileError.message : String(fileError),
+            filePath,
+            stack: fileError instanceof Error ? fileError.stack : undefined
+          });
+
           // Log failure
           toolImageGenerationEvents.failure(logger, fileError as Error, logData);
-          
+
           return {
             success: false,
             error: `Failed to save image to file: ${fileError instanceof Error ? fileError.message : String(fileError)}`
           };
         }
       }
-      
+
       return {
         success: false,
         error: 'No image data returned from the API'
       };
     } catch (error) {
+      const executionTime = Date.now() - startTime;
+
+      logger.error('image-generation.failed', {
+        component: 'ImageGenerationTool',
+        appId: options.appId,
+        error: error instanceof Error ? error.message : String(error),
+        executionTime,
+        stack: error instanceof Error ? error.stack : undefined
+      });
+
       // Log failure
       toolImageGenerationEvents.failure(logger, error as Error, logData);
-      
+
       return {
         success: false,
         error: `Image generation failed: ${error instanceof Error ? error.message : String(error)}`

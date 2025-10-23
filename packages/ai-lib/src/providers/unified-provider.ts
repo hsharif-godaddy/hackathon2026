@@ -210,6 +210,45 @@ function getProviderType(modelName: string, config?: ProviderConfig): 'openai' |
 }
 
 /**
+ * Create raw OpenAI client for direct usage (e.g., image generation)
+ * Uses the same authentication logic as the unified provider
+ */
+export async function createOpenAIClient(config?: ProviderConfig): Promise<any> {
+  // Check if S2S authentication is enabled and get config
+  const s2sConfig = await getS2SProviderConfig(config?.s2sAuth)
+
+  if (s2sConfig) {
+    // Use S2S authentication with GoCode endpoint
+    const { default: OpenAI } = await import('openai')
+    return new OpenAI({
+      apiKey: s2sConfig.apiKey, // Placeholder API key
+      baseURL: s2sConfig.baseURL, // GoCode endpoint
+      defaultHeaders: s2sConfig.headers // Authorization: Bearer JWT
+    })
+  } else {
+    // Use regular OpenAI authentication
+    const fallbackApiKey = config?.openaiApiKey || process.env.OPENAI_API_KEY || ''
+
+    if (!fallbackApiKey) {
+      throw new Error('OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass openaiApiKey in config.')
+    }
+
+    const { default: OpenAI } = await import('openai')
+    const openaiConfig: any = {
+      apiKey: fallbackApiKey
+    }
+
+    // Add base URL if provided (for proxy support)
+    const baseURL = config?.openaiBaseUrl || process.env.OPENAI_BASE_URL
+    if (baseURL) {
+      openaiConfig.baseURL = baseURL
+    }
+
+    return new OpenAI(openaiConfig)
+  }
+}
+
+/**
  * Create OpenAI provider with configuration
  * Now supports S2S authentication when GOCODE_USE_S2S_AUTH is enabled
  */

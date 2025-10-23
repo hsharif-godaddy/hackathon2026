@@ -38,7 +38,7 @@ export {
   createCachingMessageBuilder,
   createConversationMessageBuilder
 } from './core/message-builder.js'
-export { getModel, getAvailableModels, isModelSupported, getFullModelName, validateModelEnvironment, getModelInfo, getEmbeddingModel } from './providers/unified-provider.js'
+export { getModel, getAvailableModels, isModelSupported, getFullModelName, validateModelEnvironment, getModelInfo, getEmbeddingModel, createOpenAIClient } from './providers/unified-provider.js'
 export {
   WebSocketServer,
   createWebSocketServer,
