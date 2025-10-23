@@ -98,7 +98,7 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   /**
    * Get site by database ID
    */
-  async getSite(siteId: string): Promise<SiteInfo | null> {
+  async getSite(siteId: string, _jwt: string): Promise<SiteInfo | null> {
     const site = await this.siteService.getSiteById(siteId);
 
     if (!site) {
@@ -111,7 +111,7 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   /**
    * List all sites for account
    */
-  async listSites(): Promise<SiteInfo[]> {
+  async listSites(_jwt: string): Promise<SiteInfo[]> {
     // Note: In legacy mode, we'd need to extract accountId from JWT
     // For now, return all sites (would need JWT parsing implementation)
     // TODO: Parse JWT to extract accountId and use getSitesByAccountId()
@@ -128,7 +128,7 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   /**
    * Delete site using legacy deployment cleanup
    */
-  async deleteSite(siteId: string): Promise<{ success: boolean; error?: string }> {
+  async deleteSite(siteId: string, _jwt: string, _systemId?: string, _subscriptionId?: string): Promise<{ success: boolean; error?: string }> {
     try {
       logger.info('legacy-control-plane.delete-site.start', { siteId });
 
@@ -164,12 +164,12 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    * Legacy Mode: Triggers manual deployment via background task.
    * Updates site status to 'creating' and starts async deployment.
    */
-  async deploySite(siteId: string): Promise<{ success: boolean; site: SiteInfo; message: string }> {
+  async deploySite(siteId: string, jwt: string): Promise<{ success: boolean; site: SiteInfo; message: string }> {
     try {
       logger.info('legacy-control-plane.deploy-site.start', { siteId });
 
       // Get site to validate status
-      const site = await this.getSite(siteId);
+  const site = await this.getSite(siteId, jwt);
 
       if (!site) {
         throw new Error('Site not found');
@@ -284,7 +284,7 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    *
    * Legacy Mode: Updates site metadata in database.
    */
-  async updateSite(siteId: string, updates: Partial<SiteInfo>): Promise<SiteInfo | null> {
+  async updateSite(siteId: string, updates: Partial<SiteInfo>, _jwt: string): Promise<SiteInfo | null> {
     try {
       logger.info('legacy-control-plane.update-site.start', { siteId });
 

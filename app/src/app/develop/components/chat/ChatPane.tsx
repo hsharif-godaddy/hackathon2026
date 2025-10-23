@@ -22,7 +22,6 @@ import {
   useSetCurrentAppId,
   useErrorState
 } from '@/stores/useStreamingConversationStore'
-import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { ChatTab } from '@/app/develop/components/types'
@@ -32,10 +31,12 @@ import PreviewPane from '../preview/PreviewPane'
 
 interface ChatPaneProps {
   onPreviewRefresh?: () => void
+  sendMessage: (content: string, aiEditContext?: any) => Promise<void>
 }
 
 export default function ChatPane({
-  onPreviewRefresh
+  onPreviewRefresh,
+  sendMessage
 }: ChatPaneProps) {
   // Get state from streaming store
   const messages = useMessages()
@@ -50,7 +51,6 @@ export default function ChatPane({
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
   const setCurrentAppId = useSetCurrentAppId()
-  const { sendMessage } = useStreamingWebSocket()
 
   const {
     expandedPlan,

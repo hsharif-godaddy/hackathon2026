@@ -80,9 +80,11 @@ const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
 export function useStreamingWebSocket() {
   const socketRef = useRef<Socket | null>(null)
   const lastMessageRef = useRef<{ content: string; context?: any } | null>(null)
+  // Guard flag to prevent concurrent initialization attempts
+  const initializingRef = useRef<boolean>(false)
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
-
+  // Hook setters & streaming state (declared early for use in callbacks)
   const startNewStream = useStartNewStream()
   const appendTextSegment = useAppendTextSegment()
   const addToolStartSegment = useAddToolStartSegment()
@@ -93,12 +95,9 @@ export function useStreamingWebSocket() {
   const setStreamingState = useSetStreamingState()
   const setIsLoading = useSetIsLoading()
   const setErrorState = useSetErrorState()
-
   const sendToolImpression = (tool: string) => logImpressionEvent(`develop.tool.${tool}`)()
 
-  /**
-   * Ensure we're on the latest git commit before sending messages
-   */
+  // Ensure latest commit before starting streaming (stable)
   const ensureLatestCommit = useCallback(async (appId: string) => {
     try {
       const apiUrl = await buildDynamicApiUrl(`/git/return`, appId)
@@ -107,7 +106,6 @@ export function useStreamingWebSocket() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })
-
       if (!response.ok) {
         logger.warn('websocket.git-return.failure', { message: 'Git return request failed (non-blocking)', status: response.status })
       }
@@ -116,159 +114,85 @@ export function useStreamingWebSocket() {
     }
   }, [])
 
-  /**
-   * Create Socket.IO connection
-   */
+  // Create Socket.IO connection (stable)
   const createConnection = useCallback(async (appId: string): Promise<Socket> => {
     return new Promise(async (resolve, reject) => {
-      // Clean up existing socket first to prevent duplicate handlers
       if (socketRef.current) {
-        logger.info('websocket.connection.cleanup', { message: 'Cleaning up existing socket before creating new one' })
         socketRef.current.removeAllListeners()
         socketRef.current.disconnect()
         socketRef.current = null
       }
-
-      // Get the dynamic config to extract the baseUrl
       const { dynamicApiConfigService } = await import('../config/dynamic-api')
       const config = await dynamicApiConfigService.getConfigForSite(appId)
-
-      // Socket.IO connects to the base URL, not the app-specific URL
       const socketUrl = config.baseUrl
       logger.info('websocket.connection.create', { message: 'Creating Socket.IO connection', url: socketUrl })
 
-      // Get JWT token for WebSocket authentication using our new system
-      let authToken = null;
+      let authToken: string | null = null
       try {
-        // Use appId parameter directly - it comes from the URL params and is always available
-        if (!appId) {
-          throw new Error('Unable to determine appId for WebSocket authentication - appId is required');
-        }
-
-        logger.info('websocket.token.request', {
-          message: 'Requesting JWT token for WebSocket connection',
-          appId,
-          currentAppId,
-          appIdFromParams: appId
-        });
-
-        authToken = await getAgentJWTToken(appId);
-
-        if (!authToken) {
-          logger.error('websocket.token.missing', {
-            message: 'No JWT token received - WebSocket connection will fail',
-            appId
-          });
-        } else {
-          logger.info('websocket.token.success', {
-            message: 'JWT token received successfully for WebSocket',
-            tokenLength: authToken.length,
-            tokenPreview: authToken.substring(0, 20) + '...',
-            appId
-          });
-        }
-      } catch (error) {
-        logger.error('websocket.token.error', {
-          message: 'Failed to get WebSocket JWT token - connection will fail',
-          error: error instanceof Error ? error.message : String(error)
-        });
+        authToken = await getAgentJWTToken(appId)
+      } catch (e) {
+        logger.error('websocket.token.error', { message: 'Failed to get WebSocket JWT token', error: e instanceof Error ? e.message : String(e) })
       }
 
-      // Create Socket.IO connection with JWT authentication
       const socketOptions: any = {
         transports: ['websocket', 'polling'],
         timeout: 10000,
-        autoConnect: true
-      };
-
-      // Add JWT authentication (Socket.IO specific way)
-      if (authToken) {
-        // Use auth object - Socket.IO will send this in handshake.auth
-        // The agent-side middleware needs to check handshake.auth.token
-        socketOptions.auth = {
-          token: authToken
-        };
-
-        // Also try extraHeaders for polling transport fallback
-        socketOptions.extraHeaders = {
-          'Authorization': `Bearer ${authToken}`
-        };
-
-        logger.info('websocket.connection.jwt', {
-          message: 'Socket.IO connection configured with JWT authentication via auth object and extraHeaders',
-          tokenLength: authToken.length,
-          socketUrl,
-          authMethods: ['auth.token', 'extraHeaders.Authorization']
-        });
-      } else {
-        logger.error('websocket.connection.no-auth', {
-          message: 'Socket.IO connection will proceed without JWT authentication - connection will fail'
-        });
+        autoConnect: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        randomizationFactor: 0.5
       }
-
+      if (authToken) {
+        socketOptions.auth = { token: authToken }
+        socketOptions.extraHeaders = { Authorization: `Bearer ${authToken}` }
+      }
       const socket = io(socketUrl, socketOptions)
-
+      if (process.env.NODE_ENV === 'development') {
+        socket.onAny((event, ...args) => logger.debug('websocket.event.incoming', { event, argsPreview: JSON.stringify(args).slice(0,500), timestamp: Date.now() }))
+        socket.onAnyOutgoing((event, ...args) => logger.debug('websocket.event.outgoing', { event, argsCount: args.length, timestamp: Date.now() }))
+      }
       socket.on('connect', () => {
-        logger.info('websocket.connection.success', { message: 'Socket.IO connected' })
         setWebSocketState({ connected: true, status: 'idle' })
         resolve(socket)
       })
-
       socket.on('connect_error', (error) => {
-        logger.error('websocket.connection.error', { message: 'Socket.IO connection error', error: error.message })
         setWebSocketState({ connected: false, status: 'error', error: error.message })
-
-        // Set error state for retry if we have a last message
         if (lastMessageRef.current) {
-          setErrorState(
-            `Connection failed: ${error.message}`,
-            lastMessageRef.current.content,
-            lastMessageRef.current.context
-          )
+          setErrorState(`Connection failed: ${error.message}`, lastMessageRef.current.content, lastMessageRef.current.context)
         }
-
-        reject(new Error(`Failed to connect to Socket.IO: ${error.message}`))
+        reject(error)
       })
-
-      socket.on('disconnect', (reason) => {
-        logger.info('websocket.connection.disconnect', { message: 'Socket.IO disconnected', reason })
-        setWebSocketState({ connected: false, status: 'idle' })
-      })
-
-      // Listen for agent availability
-      socket.on('agents_available', (data) => {
-        logger.info('websocket.agents.available', { message: 'Available agents', agents: data.agents, defaultAgent: data.defaultAgent })
+      socket.on('disconnect', () => setWebSocketState({ connected: false, status: 'idle' }))
+      socket.on('reconnect_attempt', () => setWebSocketState({ connected: false, status: 'connecting' }))
+      socket.on('reconnect', () => setWebSocketState({ connected: true, status: 'idle' }))
+      socket.on('reconnect_error', (error) => setWebSocketState({ connected: false, status: 'connecting', error: error.message }))
+      socket.on('reconnect_failed', () => {
+        setWebSocketState({ connected: false, status: 'error', error: 'Failed to reconnect' })
+        if (lastMessageRef.current) {
+          setErrorState('Connection lost. Please try again.', lastMessageRef.current.content, lastMessageRef.current.context)
+        }
       })
     })
-  }, [setWebSocketState, currentAppId, setErrorState])
-
-  /**
-   * Set up Socket.IO event handlers for streaming
-   */
+  }, [setWebSocketState, setErrorState])
+  // Set up Socket.IO event handlers for streaming (defined before useEffect to satisfy dependency ordering)
   const setupEventHandlers = useCallback((socket: Socket) => {
-    // Status updates
     socket.on('status', (data) => {
-      logger.debug('websocket.status', { message: 'Status update', status: data.data?.status, content: data.content })
-
       if (data.data?.status === 'thinking') {
         setWebSocketState({ status: 'streaming' })
         setStreamingState('streaming')
       }
     })
-
-    // Handle all events through the 'message' wrapper
     socket.on('message', (data) => {
       switch (data.type) {
         case 'step_start':
           sendToolImpression('start')
           setStreamingState('streaming')
           break
-
         case 'chunk':
-          // Direct streaming update - no message array manipulation
           appendTextSegment(data.content)
           break
-
         case 'tool_start':
           if (data.data?.tool) {
             const toolCall: ToolCall = {
@@ -278,11 +202,9 @@ export function useStreamingWebSocket() {
               status: 'running',
               startTime: Date.now()
             }
-
             addToolStartSegment(toolCall)
           }
           break
-
         case 'tool_result':
           if (data.data?.tool) {
             const hasError = data.data.tool.error || data.data.tool.is_error
@@ -296,43 +218,33 @@ export function useStreamingWebSocket() {
               startTime: data.data.tool.startTime,
               endTime: Date.now()
             }
-
             sendToolImpression(data.data.tool.name)
             addToolResultSegment(toolCall)
           }
           break
-
         case 'step_complete':
-          // Check if this step completion indicates max steps reached
           if (data.data?.maxStepsReached === true) {
             logger.info('websocket.steps.max-reached', { message: 'Max steps reached - marking in state' })
             markMaxStepsReached()
           }
           break
-
         case 'complete':
-
-          // Clean finalization - move activeStream to messages array
           finalizeStream({
             agentId: data.data?.agentId,
             usage: data.data?.usage,
             totalSteps: data.data?.step
           })
-
           sendToolImpression('complete')
           setWebSocketState({ status: 'idle' })
           setStreamingState('idle')
           setIsLoading(false)
           break
-
         case 'error':
           logger.error('websocket.error', { message: 'Socket.IO error', data })
           sendToolImpression('error')
           setWebSocketState({ status: 'error', error: data.content })
           setStreamingState('error')
           setIsLoading(false)
-
-          // Set error state for retry
           if (lastMessageRef.current) {
             setErrorState(
               data.content || 'An error occurred during streaming',
@@ -341,9 +253,7 @@ export function useStreamingWebSocket() {
             )
           }
           break
-
         default:
-          // Unknown message type - silently ignore
           break
       }
     })
@@ -358,6 +268,63 @@ export function useStreamingWebSocket() {
     setIsLoading,
     setErrorState
   ])
+
+  useEffect(() => {
+    // Effect intentionally depends ONLY on currentAppId to avoid recreating connection on stable callback identity changes.
+    // createConnection & setupEventHandlers are stable (useCallback with static deps) and exclusion prevents unnecessary reconnects.
+    if (!currentAppId) return
+
+    const initializeConnection = async () => {
+      try {
+        logger.info('websocket.connection.initialize', {
+          message: 'Initializing persistent WebSocket connection',
+          appId: currentAppId
+        })
+
+        const socket = await createConnection(currentAppId)
+        socketRef.current = socket
+
+        // Set up event handlers once for the lifetime of this connection
+        setupEventHandlers(socket)
+
+        logger.info('websocket.connection.ready', {
+          message: 'Persistent WebSocket connection established and ready',
+          appId: currentAppId,
+          socketId: socket.id
+        })
+      } catch (error) {
+        logger.error('websocket.connection.init_failed', {
+          message: 'Failed to initialize persistent connection',
+          error: error instanceof Error ? error.message : String(error),
+          appId: currentAppId
+        })
+      } finally {
+        initializingRef.current = false
+      }
+    }
+
+    // Only create connection if we don't have one and not already initializing
+    if (!socketRef.current && !initializingRef.current) {
+      initializingRef.current = true
+      void initializeConnection()
+    }
+
+    // Cleanup when app changes or component unmounts
+    return () => {
+      if (socketRef.current) {
+        logger.info('websocket.cleanup', {
+          message: 'Cleaning up Socket.IO connection',
+          reason: 'app change or unmount',
+          appId: currentAppId
+        })
+        socketRef.current.removeAllListeners()
+        socketRef.current.disconnect()
+        socketRef.current = null
+      }
+    }
+  // Including createConnection & setupEventHandlers satisfies exhaustive-deps; guard prevents duplicate initialization.
+  }, [currentAppId, createConnection, setupEventHandlers])
+
 
   /**
    * Send message - the main streaming function
@@ -384,14 +351,22 @@ export function useStreamingWebSocket() {
       // Start new stream (adds user message + creates activeStream)
       startNewStream(content)
 
-      // Create Socket.IO connection
-      const socket = await createConnection(currentAppId)
-      socketRef.current = socket
+      // Reuse existing Socket.IO connection
+      const socket = socketRef.current
 
-      // Set up streaming event handlers
-      setupEventHandlers(socket)
+      if (!socket) {
+        throw new Error('WebSocket connection not initialized. Please wait for connection to establish.')
+      }
 
-      logger.info('websocket.message.send', { message: 'Sending Socket.IO message for app', appId: currentAppId })
+      if (!socket.connected) {
+        throw new Error('WebSocket not connected. Connection may be reconnecting...')
+      }
+
+      logger.info('websocket.message.send', {
+        message: 'Sending Socket.IO message using existing connection',
+        appId: currentAppId,
+        socketId: socket.id
+      })
 
       // Get current state for rich context
       const state = useStreamingConversationStore.getState()
@@ -402,7 +377,6 @@ export function useStreamingWebSocket() {
       const conversationId = currentConversation?.id
 
       // Capture visual context from iframe
-      logger.debug('websocket.visual-context.capture', { message: 'Capturing visual context from iframe' })
       const visualContext = await captureVisualContext()
 
       // Build rich context object with proper typing
@@ -436,20 +410,6 @@ export function useStreamingWebSocket() {
         ...(visualContext && { visualContext }),
       }
 
-      logger.debug('websocket.message.details', {
-        message: 'Sending message with rich context',
-        messageLength: content.length,
-        hasAiEditContext: !!aiEditContext,
-        hasVisualContext: !!visualContext,
-        conversationId,
-        contextKeys: Object.keys(richContext),
-        visualContextDetails: visualContext ? {
-          page: visualContext.page,
-          activeSection: visualContext.active_section,
-          scrollY: visualContext.scroll_position.y
-        } : null
-      })
-
       // Send the message to start streaming with rich context
       const chatMessage: AgentsAppChatMessage = {
         message: content,
@@ -458,7 +418,28 @@ export function useStreamingWebSocket() {
         context: richContext
       }
 
-      socket.emit('chat_message', chatMessage)
+      // Use Socket.IO acknowledgement for delivery confirmation
+      socket.emit('chat_message', chatMessage, (response: any) => {
+        if (response?.status === 'ok') {
+          logger.info('websocket.message.acknowledged', {
+            message: 'Message delivery confirmed by server',
+            messageLength: content.length
+          })
+          // Clear lastMessageRef on successful delivery confirmation
+          lastMessageRef.current = null
+        } else if (response?.error) {
+          logger.error('websocket.message.ack_error', {
+            message: 'Server rejected message',
+            error: response.error
+          })
+          // Keep lastMessageRef for potential retry
+          setErrorState(
+            response.error,
+            lastMessageRef.current?.content || content,
+            lastMessageRef.current?.context || aiEditContext
+          )
+        }
+      })
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -484,8 +465,6 @@ export function useStreamingWebSocket() {
     currentAppId,
     ensureLatestCommit,
     startNewStream,
-    createConnection,
-    setupEventHandlers,
     setIsLoading,
     setStreamingState,
     setWebSocketState,
@@ -495,7 +474,7 @@ export function useStreamingWebSocket() {
   /**
    * Retry message - specifically for error recovery
    * Differs from sendMessage by NOT creating duplicate user messages
-   * and intelligently reusing existing connections
+   * Socket.IO auto-reconnection handles connection state automatically
    */
   const retrySendMessage = useCallback(async (
     content: string,
@@ -519,32 +498,28 @@ export function useStreamingWebSocket() {
       // IMPORTANT: Do NOT call startNewStream here!
       // The user message already exists from the original failed attempt
 
-      // Check if we can reuse the existing socket
-      let socket = socketRef.current
+      // Socket.IO auto-reconnection means socket should already be connected
+      // or is in the process of reconnecting
+      const socket = socketRef.current
 
-      if (!socket || !socket.connected) {
-        // Need to reconnect
-        logger.info('websocket.retry.reconnecting', {
-          message: 'Creating new connection for retry',
-          hadSocket: !!socketRef.current,
-          wasConnected: socketRef.current?.connected
-        })
-
-        // Create fresh connection (createConnection handles cleanup)
-        socket = await createConnection(currentAppId)
-        socketRef.current = socket
-
-        // Set up handlers on the new socket
-        setupEventHandlers(socket)
-      } else {
-        logger.info('websocket.retry.reuse-socket', {
-          message: 'Reusing existing connected socket for retry',
-          socketId: socket.id
-        })
-        // Socket is connected and handlers already attached - just reuse it
+      if (!socket) {
+        throw new Error('No socket connection available')
       }
 
-      logger.info('websocket.retry.send', { message: 'Sending retry message via Socket.IO', appId: currentAppId })
+      if (!socket.connected) {
+        logger.info('websocket.retry.waiting', {
+          message: 'Socket not connected, relying on Socket.IO auto-reconnection',
+          socketId: socket.id
+        })
+        // Socket.IO will automatically reconnect and our effect will retry
+        return
+      }
+
+      logger.info('websocket.retry.send', {
+        message: 'Socket connected, sending retry message',
+        socketId: socket.id,
+        appId: currentAppId
+      })
 
       // Get current state for rich context
       const state = useStreamingConversationStore.getState()
@@ -555,7 +530,6 @@ export function useStreamingWebSocket() {
       const conversationId = currentConversation?.id
 
       // Capture visual context from iframe
-      logger.debug('websocket.retry.visual-context', { message: 'Capturing visual context for retry' })
       const visualContext = await captureVisualContext()
 
       // Build rich context object
@@ -580,16 +554,7 @@ export function useStreamingWebSocket() {
         ...(visualContext && { visualContext }),
       }
 
-      logger.debug('websocket.retry.details', {
-        message: 'Sending retry with context',
-        messageLength: content.length,
-        hasAiEditContext: !!aiEditContext,
-        hasVisualContext: !!visualContext,
-        conversationId,
-        socketId: socket.id
-      })
-
-      // Send the retry message
+      // Send the retry message with acknowledgement
       const chatMessage: AgentsAppChatMessage = {
         message: content,
         timestamp: new Date().toISOString(),
@@ -597,7 +562,27 @@ export function useStreamingWebSocket() {
         context: richContext
       }
 
-      socket.emit('chat_message', chatMessage)
+      socket.emit('chat_message', chatMessage, (response: any) => {
+        if (response?.status === 'ok') {
+          logger.info('websocket.retry.acknowledged', {
+            message: 'Retry message delivery confirmed by server',
+            messageLength: content.length
+          })
+          // Clear lastMessageRef on successful delivery confirmation
+          lastMessageRef.current = null
+        } else if (response?.error) {
+          logger.error('websocket.retry.ack_error', {
+            message: 'Server rejected retry message',
+            error: response.error
+          })
+          // Keep lastMessageRef for another potential retry
+          setErrorState(
+            response.error,
+            lastMessageRef.current?.content || content,
+            lastMessageRef.current?.context || aiEditContext
+          )
+        }
+      })
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -622,8 +607,6 @@ export function useStreamingWebSocket() {
   }, [
     currentAppId,
     ensureLatestCommit,
-    createConnection,
-    setupEventHandlers,
     setIsLoading,
     setStreamingState,
     setWebSocketState,
@@ -631,30 +614,31 @@ export function useStreamingWebSocket() {
   ])
 
   /**
-   * Cleanup on unmount
+   * Auto-retry pending message after successful reconnection
    */
   useEffect(() => {
-    return () => {
-      if (socketRef.current) {
-        logger.info('websocket.cleanup', { message: 'Cleaning up Socket.IO connection on unmount' })
-        socketRef.current.removeAllListeners()
-        socketRef.current.disconnect()
-        socketRef.current = null
+    // retrySendMessage is included because it is used in handleReconnect; not just to satisfy exhaustive-deps.
+    const socket = socketRef.current
+    if (!socket) return
+
+    const handleReconnect = () => {
+      if (lastMessageRef.current) {
+        logger.info('websocket.reconnection.auto_retry', {
+          message: 'Auto-retrying pending message after reconnection'
+        })
+        retrySendMessage(
+          lastMessageRef.current.content,
+          lastMessageRef.current.context
+        )
       }
     }
-  }, [])
 
-  /**
-   * Disconnect socket when app changes
-   */
-  useEffect(() => {
-    if (socketRef.current && currentAppId) {
-      logger.info('websocket.cleanup', { message: 'Cleaning up Socket.IO connection on app change' })
-      socketRef.current.removeAllListeners()
-      socketRef.current.disconnect()
-      socketRef.current = null
+    socket.on('reconnect', handleReconnect)
+
+    return () => {
+      socket.off('reconnect', handleReconnect)
     }
-  }, [currentAppId])
+  }, [retrySendMessage])
 
   /**
    * Listen for retry events from the store

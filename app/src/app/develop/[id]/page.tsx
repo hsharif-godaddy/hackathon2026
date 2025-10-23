@@ -382,7 +382,9 @@ function DevelopPageContent() {
       {isMobile ? (
         // Mobile layout with tabs
         <div className="flex-1 flex flex-col min-h-0 relative">
-          <ChatPane />
+          <ChatPane
+            sendMessage={sendMessage}
+          />
         </div>
       ) : (
         // Desktop layout with resizable panels
@@ -398,6 +400,7 @@ function DevelopPageContent() {
             >
               <ChatPane
                 onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                sendMessage={sendMessage}
               />
             </div>
           )}
