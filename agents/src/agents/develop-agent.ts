@@ -191,6 +191,7 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
+    .file(paths.getSharedFile('filesystem.md'))
     //.file(paths.getAgentFile('develop', 'tools.md'))
     //.file(paths.getAgentFile('develop', 'database.md'))
     .file(paths.getAgentFile('develop', 'api.md'))

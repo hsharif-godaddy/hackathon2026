@@ -5,16 +5,26 @@ This directory contains prompt sections that are reusable across multiple agents
 ## Current Shared Sections
 
 ### `communication.md` - Communication Style Guidelines
+
 - Interaction principles and guidelines
 - Communication patterns and tone
 - Response formatting expectations
 - Used by: Develop Agent (and potentially others)
 
-### `security.md` - Security & Privacy Guidelines  
+### `security.md` - Security & Privacy Guidelines
+
 - Information protection policies
 - Scope limitations for sensitive information
 - Response constraints for security-related requests
 - Used by: Develop Agent (and potentially others)
+
+### `filesystem.md` - Filesystem & Persistent Storage Guidelines
+
+- Persistent storage locations and mount points
+- Public vs private file storage
+- Best practices for file management
+- Storage decision matrix
+- Used by: Develop Agent, Design Agent, Example Agent
 
 ## Usage
 
@@ -23,6 +33,7 @@ Shared sections are included in agent configurations using:
 ```typescript
 .file(join(sharedDir, 'communication.md'))
 .file(join(sharedDir, 'security.md'))
+.file(join(sharedDir, 'filesystem.md'))
 ```
 
 ## Benefits of Shared Sections
@@ -42,6 +53,6 @@ Shared sections are included in agent configurations using:
 ## Guidelines
 
 - Only move truly reusable content to shared sections
-- Keep agent-specific content in individual agent directories  
+- Keep agent-specific content in individual agent directories
 - Maintain clear documentation of which agents use each shared section
 - Test changes across all agents that use a shared section

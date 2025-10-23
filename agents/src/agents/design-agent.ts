@@ -71,7 +71,8 @@ async function buildDesignSystemPrompt(): Promise<string> {
     .file(paths.getAgentFile('design', 'sections.md'))
     .file(paths.getAgentFile('design', 'memory-usage.md'))
     .file(paths.getAgentFile('design', 'workflow.md'))
-    .file(paths.getSharedFile('communication.md'));
+    .file(paths.getSharedFile('communication.md'))
+    .file(paths.getSharedFile('filesystem.md'));
 
   return await promptBuilder.build();
 }

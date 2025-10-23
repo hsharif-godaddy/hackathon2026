@@ -58,3 +58,6 @@ pids
 
 # Development port configuration
 .dev-ports.json
+
+# Public Assets
+public/assets

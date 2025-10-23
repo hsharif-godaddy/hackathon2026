@@ -49,6 +49,7 @@ export async function createExampleAgent(): Promise<AgentConfig> {
   const systemPrompt = await promptBuilder
     .file(paths.getAgentFile('example', 'core.md'))
     .file(paths.getSharedFile('communication.md'))
+    .file(paths.getSharedFile('filesystem.md'))
     .build()
 
   const { model, modelName } = await getAgentModelWithName('fast') // Use fast model for example/demo purposes
