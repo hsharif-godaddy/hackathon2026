@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import clsx from 'clsx';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useSites } from '@/stores/useSitesStore';
 import SiteItem, { SiteItemNew } from '@/components/layout/SiteItem';
 import {
@@ -22,7 +22,7 @@ export default function SiteSelector({ location }: { location?: string }) {
   const {
     isAuthenticated,
     isLoading: isLoadingAuth
-  } = useAuth();
+  } = useAuthContext();
 
   const {
     sites,

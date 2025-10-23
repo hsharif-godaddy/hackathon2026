@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthContext } from '@/components/providers/AuthProvider';
 import { generateClickEID } from '@/utils/instrumentation';
 import {
   Popover,
@@ -27,7 +27,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
     isAuthDisabled,
     handleSignOut,
     handleSignIn
-  } = useAuth(onShowMockLogin);
+  } = useAuthContext();
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -62,7 +62,13 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
             <Button
               variant="ghost"
               className="justify-start px-2 hover:cursor-pointer"
-              onClick={() => handleSignIn()}
+              onClick={() => {
+                if (onShowMockLogin) {
+                  onShowMockLogin();
+                } else {
+                  handleSignIn();
+                }
+              }}
               data-eid={generateClickEID(`${location}.user_menu.sign_in`)}
             >
               Sign In

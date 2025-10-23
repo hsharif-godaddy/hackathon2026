@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { AuthRequired, AuthRealmType, AuthRiskType, AuthIdpType } from '@godaddy/gasket-auth';
 import { useGasketConfig } from '@/hooks/useGasketConfig';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthContext } from '@/components/providers/AuthProvider';
 import UnauthorizedComponent from './UnauthorizedComponent';
 import LoadingComponent from './LoadingComponent';
 
@@ -35,7 +35,7 @@ export default function ProtectedRoute({
     isLoading: authLoading,
     isAuthDisabled,
     isMockAuth
-  } = useAuth();
+  } = useAuthContext();
 
   // Set client flag after hydration
   useEffect(() => {

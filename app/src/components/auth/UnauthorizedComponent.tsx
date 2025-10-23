@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/hooks/useAuth'
+import { useAuthContext } from '@/components/providers/AuthProvider'
 import Box from '@ux/box';
 import Button from '@ux/button';
 import { text } from '@ux/text';
@@ -18,7 +18,7 @@ export default function UnauthorizedComponent({
   const {
     isMockAuth,
     handleSignIn
-  } = useAuth(() => setShowMockLogin(true));
+  } = useAuthContext();
 
   useEffect(() => {
     logImpressionEvent('auth.unauthorized.view')();
@@ -36,9 +36,10 @@ export default function UnauthorizedComponent({
           )}
           <Button
             onClick={() => {
-              const signInResult = handleSignIn(window.location.href);
-              if (signInResult?.showModal) {
+              if (isMockAuth) {
                 setShowMockLogin(true);
+              } else {
+                handleSignIn(window.location.href);
               }
             }}
             design='secondary'

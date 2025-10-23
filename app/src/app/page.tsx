@@ -7,7 +7,7 @@ import Spinner from '@ux/spinner'
 import { isFeatureEnabled } from '@/lib/features'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuthContext } from '@/components/providers/AuthProvider'
 import StartSection from '@/app/components/StartSection'
 import InfraSection from '@/app/components/InfraSection'
 import HelpSection from '@/app/components/HelpSection'
@@ -28,7 +28,7 @@ function HomeContent() {
   const searchParams = useSearchParams()
   const heroSectionRef = useRef<HeroSectionRef>(null)
 
-  const { isAuthenticated, isAuthDisabled, gasketConfig } = useAuth(() => setShowMockLogin(true))
+  const { isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth } = useAuthContext()
 
   useEffect(() => {
     logImpressionEvent('homepage.page.view')();
@@ -63,9 +63,11 @@ function HomeContent() {
       // Ensure consistent timing for async and sync auth checks
       if (!isAuthDisabled && !isAuthenticated) {
         logger.info('page.auth.redirect', 'User not authenticated, redirecting to login')
-        const isMockLoginEnabled = isFeatureEnabled.mockLogin();
-        if (isMockLoginEnabled) {
-          throw new Error('Please sign in using the mock authentication system')
+        if (isMockAuth) {
+          setShowMockLogin(true);
+          setIsLoading(false);
+          setIsRedirecting(false);
+          return;
         }
         if (gasketConfig) {
           const url = new URL(gasketConfig.sso.loginUrl);

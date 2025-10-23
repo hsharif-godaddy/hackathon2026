@@ -1,5 +1,5 @@
 import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType, authFetch } from '@godaddy/gasket-auth';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { auth, authUtils } from '@/lib/features';
 import { useMockAuth } from '@/hooks/useMockAuth';
 import { logger } from '@/lib/request-context';
@@ -35,21 +35,20 @@ export function useAuth(onShowMockLogin?: () => void) {
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
   const [jwtAuthValid, setJwtAuthValid] = useState<boolean | null>(null);
+  const isValidatingRef = useRef(false);
 
-  // Check authentication mode (prefer server config if available)
-  const authType = config?.auth?.authType || auth.getType();
-  const isMockAuth = config?.auth?.isMock ?? auth.isMock();
-  const isAuthDisabled = config?.auth?.isDisabled ?? auth.isDisabled();
+  // Memoize auth configuration to prevent unnecessary re-renders
+  const authType = useMemo(() => config?.auth?.authType || auth.getType(), [config?.auth?.authType]);
+  const isMockAuth = useMemo(() => config?.auth?.isMock ?? auth.isMock(), [config?.auth?.isMock]);
+  const isAuthDisabled = useMemo(() => config?.auth?.isDisabled ?? auth.isDisabled(), [config?.auth?.isDisabled]);
+  const shouldUseJWT = useMemo(() => config?.auth?.isJWT ?? auth.isJWT(), [config?.auth?.isJWT]);
 
   // Mock auth integration
   const mockAuth = useMockAuth();
 
-  // Determine if we should use JWT auth based on config
-  const shouldUseJWT = config?.auth?.isJWT ?? auth.isJWT();
-
   // Always call useAuthState to maintain hook order, but only use result for JWT mode
-  const supportedAuthTypes = config?.auth?.type || authUtils.getSupportedAuthTypes();
-  
+  const supportedAuthTypes = useMemo(() => config?.auth?.type || authUtils.getSupportedAuthTypes(), [config?.auth?.type]);
+
   const authState = useAuthState({
     realm: (config?.auth?.realm || 'idp') as AuthRealmType,
     risk: (config?.auth?.risk || 'low') as AuthRiskType,
@@ -89,15 +88,22 @@ export function useAuth(onShowMockLogin?: () => void) {
     async function checkJwtAuth() {
       if (!shouldUseJWT || isMockAuth || isAuthDisabled) {
         setJwtAuthValid(null);
+        isValidatingRef.current = false;
         return;
       }
+
+      // Prevent duplicate validation requests using ref to avoid dependency cycles
+      if (isValidatingRef.current) {
+        return;
+      }
+
+      isValidatingRef.current = true;
 
       try {
         const response = await fetch('/api/auth/validate');
         if (response.ok) {
           const data = await response.json();
           setJwtAuthValid(data.valid);
-
         } else {
           setJwtAuthValid(false);
         }
@@ -107,6 +113,8 @@ export function useAuth(onShowMockLogin?: () => void) {
           error: error as Error
         });
         setJwtAuthValid(false);
+      } finally {
+        isValidatingRef.current = false;
       }
     }
 

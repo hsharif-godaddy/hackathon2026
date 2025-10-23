@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useSubscriptionCache } from '@/hooks/useSubscriptionCache'
 import { logger } from '@/lib/request-context'
 
@@ -34,7 +34,7 @@ interface SubscriptionCacheProviderProps {
  * warming happens early in the application lifecycle.
  */
 export default function SubscriptionCacheProvider({ children }: SubscriptionCacheProviderProps) {
-  const auth = useAuth()
+  const auth = useAuthContext()
   const isAuthenticated = auth?.isAuthenticated || false
   // Use the same JWT extraction method as production components
   const jwt = getAuthTokenFromCookie()

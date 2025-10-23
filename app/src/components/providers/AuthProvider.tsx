@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState, useEffect, useMemo } from 'react';
+import { ReactNode, useState, useEffect, useMemo, createContext, useContext } from 'react';
 import { logger } from '@/lib/request-context';
 import { auth } from '@/lib/features';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -8,6 +8,9 @@ import { useAuth } from '@/hooks/useAuth'
 import UnauthorizedComponent from '@/components/auth/UnauthorizedComponent'
 import AccessDisabledComponent from '@/components/auth/AccessDisabledComponent'
 import LoadingComponent from '@/components/auth/LoadingComponent';
+
+// Create auth context
+const AuthContext = createContext<ReturnType<typeof useAuth> | null>(null);
 
 // Simple component that just renders children
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,7 +26,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [featureFlags, setFeatureFlags] = useState<any>({});
   const [serverAuthConfig, setServerAuthConfig] = useState<any>(null);
 
-  const {isAuthenticated, isAuthDisabled} = useAuth()
+  const authData = useAuth()
+  const {isAuthenticated, isAuthDisabled} = authData
 
   const {
     featureFlags: switchboardFeatureFlags,
@@ -135,5 +139,47 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   // Render with the appropriate provider
   const Provider = authProvider;
-  return <Provider>{children}</Provider>;
+  return (
+    <AuthContext.Provider value={authData}>
+      <Provider>{children}</Provider>
+    </AuthContext.Provider>
+  );
+}
+
+// Export hook to use auth context
+export function useAuthContext() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    // During logout/unmounting, create a minimal auth hook to avoid errors
+    // Import auth directly to get the actual auth configuration
+    const { auth } = require('@/lib/features');
+    const actualIsMock = auth.isMock();
+    const actualIsDisabled = auth.isDisabled();
+    const actualAuthType = auth.getType();
+    
+    return {
+      isAuthenticated: false,
+      isLoading: false,
+      authState: null,
+      config: null,
+      gasketConfig: null,
+      configLoading: false,
+      configError: null,
+      getUserEmail: () => 'unknown@example.com',
+      getUserInfo: () => ({
+        customerId: 'unknown',
+        shopperId: 'unknown',
+        accountName: 'Unknown',
+        email: 'unknown@example.com',
+      }),
+      handleSignIn: () => {},
+      handleSignOut: () => {},
+      authenticatedFetch: fetch,
+      isAuthDisabled: actualIsDisabled,
+      authType: actualAuthType,
+      isMockAuth: actualIsMock,
+      mockAuth: null,
+    };
+  }
+  return context;
 }
