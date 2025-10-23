@@ -42,10 +42,13 @@ export class ToolCallRenderer {
   private static getRenderer(toolName: string): (toolCall: ToolCallResult) => string {
     switch (toolName) {
       case 'read_file':
+      case 'readFile':
         return this.renderReadFileSummary
       case 'file_edit':
+      case 'fileEdit':
         return this.renderFileEditSummary
       case 'list_dir':
+      case 'directoryListing':
         return this.renderListDir
       default:
         return this.renderDefault

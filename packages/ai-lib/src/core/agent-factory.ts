@@ -226,7 +226,13 @@ export class AgentWrapper {
             }
           }
 
-          return toolCallResult ? toolCallResult : toolCallError
+          // CRITICAL FIX: Re-throw errors so the AI SDK can emit tool-error events
+          // This ensures the LLM knows the tool failed and the frontend receives proper error info
+          if (toolCallError) {
+            throw toolCallError
+          }
+
+          return toolCallResult
         }
       }
 

@@ -239,13 +239,21 @@ export default function ToolCallMessage({
                   )
                 })()}
               </div>
+            ) : error ? (
+              <motion.div
+                className="bg-intents-ux-box-backgroundColor shadow-md p-2 rounded max-h-64 overflow-y-auto"
+              >
+                <pre className="text-xs whitespace-pre-wrap font-mono text-red-600">
+                  {error}
+                </pre>
+              </motion.div>
             ) : (
               <motion.div
                 className="bg-intents-ux-box-backgroundColor shadow-md p-2 rounded max-h-64 overflow-y-auto"
-                layoutId={!error && toolResult ? layoutId : undefined}
+                layoutId={toolResult ? layoutId : undefined}
               >
                 <MarkdownRenderer
-                  content={error || toolResult}
+                  content={toolResult}
                   className="text-sm leading-relaxed break-words"
                 />
               </motion.div>

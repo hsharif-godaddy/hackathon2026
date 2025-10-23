@@ -494,26 +494,28 @@ export class WebSocketServer {
             }
 
             case 'tool-error': {
-              // Tool execution completed with error (but we'll treat it as completed)
+              // Tool execution failed with error - communicate this clearly to frontend and LLM
 
+              const errorMessage = part.error?.message || (typeof part.error === 'string' ? part.error : String(part.error)) || 'Tool execution error'
               const toolErrorData = {
                 step: currentStep,
                 tool: {
                   id: part.toolId || part.toolCallId || part.id,
                   name: part.toolName,
                   input: part.input || {},
-                  output: part.error?.message || part.error || 'Tool execution error'
+                  output: {},
+                  error: errorMessage,
+                  is_error: true
                 }
               }
 
-
               socket.emit('message', {
                 type: 'tool_result',
-                content: `${part.toolName} completed`,
+                content: `${part.toolName} failed: ${errorMessage}`,
                 data: toolErrorData
               } as WebSocketMessage)
 
-              await this.captureStreamingEvent(socket.id, 'tool_result', `${part.toolName} completed`, toolErrorData)
+              await this.captureStreamingEvent(socket.id, 'tool_result', `${part.toolName} failed: ${errorMessage}`, toolErrorData)
               break
             }
 

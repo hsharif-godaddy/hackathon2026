@@ -584,6 +584,15 @@ export class FileEditTool {
    * Apply a single edit operation
    */
   private applyEdit(content: string, edit: { old: string; new: string }, fuzzyMatch: boolean): { success: boolean; content: string; error?: string } {
+    // Check if old and new text are identical
+    if (edit.old === edit.new) {
+      return {
+        success: false,
+        content,
+        error: 'Old and new text are identical - no changes needed',
+      };
+    }
+
     // Try exact match first
     if (content.includes(edit.old)) {
       return {
