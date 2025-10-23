@@ -72,6 +72,7 @@ type Server struct {
 	envMgr                 *EnvironmentManager
 	logMgr                 *LogManager
 	pid1Mgr                *PID1Manager
+	smtpProxy              *SMTPProxy
 	startTime              time.Time
 	config                 *Config
 	processLogging         bool // Current process logging configuration
@@ -105,6 +106,7 @@ func NewServer() *Server {
 		procMgr:                procMgr,
 		cmdExec:                NewCommandExecutor(),
 		envMgr:                 NewEnvironmentManager(),
+		smtpProxy:              NewSMTPProxy(),
 		startTime:              time.Now(),
 		processLogging:         true,                        // Default: enable child process logging
 		processLoggingToStdout: getProcessLoggingToStdout(), // Default: enable structured output, configurable via env
@@ -233,6 +235,11 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 
 	slog.Info("dev-supervisor starting", "socket_path", socketPath, "pid", os.Getpid())
 
+	// Start SMTP proxy
+	if err := s.smtpProxy.Start(); err != nil {
+		slog.Warn("failed to start SMTP proxy", "error", err)
+	}
+
 	// Create HTTP server
 	server := &http.Server{
 		Handler:      s.router,
@@ -307,6 +314,11 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		select {}
 	}
 
+	// Stop SMTP proxy
+	if err := s.smtpProxy.Stop(); err != nil {
+		slog.Warn("failed to stop SMTP proxy", "error", err)
+	}
+
 	// Clean up socket file
 	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 		slog.Warn("failed to clean up socket file", "path", socketPath, "error", err)
@@ -325,6 +337,11 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 
 	slog.Warn("dev-supervisor starting in TCP mode (INSECURE - development only)", "port", port, "pid", os.Getpid())
 	slog.Warn("TCP mode exposes dev-supervisor API to network - use only in secure development environments")
+
+	// Start SMTP proxy
+	if err := s.smtpProxy.Start(); err != nil {
+		slog.Warn("failed to start SMTP proxy", "error", err)
+	}
 
 	// Create HTTP server
 	server := &http.Server{
@@ -398,6 +415,11 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 		// If we are PID 1, the PID1Manager handles shutdown
 		// Wait for server to be shut down (block forever until PID1Manager calls shutdown)
 		select {}
+	}
+
+	// Stop SMTP proxy
+	if err := s.smtpProxy.Stop(); err != nil {
+		slog.Warn("failed to stop SMTP proxy", "error", err)
 	}
 
 	slog.Info("TCP server stopped")
@@ -489,6 +511,13 @@ func parseFlags() *Config {
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_SOCKET_PATH  Path for Unix domain socket (default: /tmp/dev-supervisor.sock)\n")
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_USE_TCP      Enable TCP mode instead of Unix socket (set to 'true')\n")
 		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_TCP_PORT     TCP port to listen on (default: 8080)\n")
+		fmt.Fprintf(os.Stderr, "  SMTP_DESTINATION            SMTP server destination for proxy (default: relay-hosting.secureserver.net:25)\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "SMTP Proxy Headers (automatically injected):\n")
+		fmt.Fprintf(os.Stderr, "  SITE_ID                     Sets X-SITE-UID header (default: unknown)\n")
+		fmt.Fprintf(os.Stderr, "  PRODUCT                     Sets X-PRODUCT header (default: airo-app-builder)\n")
+		fmt.Fprintf(os.Stderr, "  NODE_ENV                    Sets X-ENVIRONMENT header (default: unknown)\n")
+		fmt.Fprintf(os.Stderr, "  NOMAD_DC                    Sets X-DATACENTER header (default: unknown)\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  %s                                    # Use default settings (Unix socket)\n", AppName)

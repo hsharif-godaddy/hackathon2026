@@ -12,6 +12,7 @@ A containerized service written in Go that acts as the primary process (PID 1) i
 - **Environment Management**: Dynamic environment variable control
 - **Real-time Log Streaming**: WebSocket-based log streaming with buffering
 - **Automatic Recovery**: Crash detection and automatic process restart with backoff
+- **SMTP Proxy**: Built-in SMTP proxy for intercepting and modifying email traffic
 
 ## Quick Start
 
@@ -122,7 +123,7 @@ dev-supervisor/
 ├── main.go                     # Main application entry point
 ├── api.go                      # HTTP API endpoint handlers
 ├── health_monitor.go           # Health monitoring and restart policies
-├── process_manager.go          # Process lifecycle management  
+├── process_manager.go          # Process lifecycle management
 ├── command_executor.go         # Command execution functionality
 ├── environment_manager.go      # Environment variable management
 ├── logging.go                  # Logging configuration and management
@@ -140,27 +141,33 @@ dev-supervisor/
 ## API Endpoints
 
 ### Health and Status
+
 - `GET /health` - Health check
 - `GET /info` - System information
 
 ### Process Control
+
 - `POST /process/start` - Start development process
 - `POST /process/stop` - Stop current process
 - `POST /process/restart` - Restart process
 - `GET /process/status` - Get process status
 
 ### Command Execution
+
 - `POST /exec` - Execute command with output capture
 
 ### Environment Management
+
 - `GET /environment` - Get environment variables
 - `PUT /environment` - Set environment variables
 - `DELETE /environment` - Reset environment
 
 ### Log Management
+
 - `GET /logs` - Get historical logs with filtering options
 
 ### Health Monitoring
+
 - `GET /health-config` - Get health monitoring configuration and status
 - `PUT /health-config` - Configure health checks and restart policies
 - `GET /health-config/status` - Get current health status
@@ -197,11 +204,13 @@ services:
 ### Logging
 
 The service uses structured logging with the following behavior:
+
 - **Terminal output**: Human-readable text format with key=value pairs
 - **Non-terminal output**: JSON format for Docker containers, pipes, and log aggregation
 - **Log level**: Info by default, includes debug messages for detailed troubleshooting
 
 Example outputs:
+
 ```bash
 # Terminal format
 time=2025-09-03T13:15:00.000Z level=INFO msg="dev-supervisor starting" socket_path=/tmp/dev-supervisor.sock pid=12345
@@ -227,7 +236,64 @@ DEV_SUPERVISOR_SOCKET_PATH=/custom/path/supervisor.sock ./dev-supervisor
 
 # Docker container with custom socket path
 docker run -e DEV_SUPERVISOR_SOCKET_PATH=/app/supervisor.sock myapp
+
+# Configure SMTP proxy destination
+SMTP_DESTINATION=smtp.example.com:587 ./dev-supervisor
 ```
+
+## SMTP Proxy
+
+dev-supervisor includes a built-in SMTP proxy that listens on localhost port 2525 and forwards email to a configurable destination. The proxy automatically injects tracking headers based on environment variables.
+
+### Configuration
+
+- **Listen Address**: `127.0.0.1:2525` (localhost only)
+- **Default Destination**: `relay-hosting.secureserver.net:25`
+- **Environment Variables**:
+  - `SMTP_DESTINATION` - Set the target SMTP server (default: `relay-hosting.secureserver.net:25`)
+
+### Injected Headers
+
+The proxy automatically injects the following headers based on environment variables:
+
+| Header          | Environment Variable | Default Value      |
+| --------------- | -------------------- | ------------------ |
+| `X-SITE-UID`    | `SITE_ID`            | `unknown`          |
+| `X-PRODUCT`     | `PRODUCT`            | `airo-app-builder` |
+| `X-ENVIRONMENT` | `NODE_ENV`           | `unknown`          |
+| `X-DATACENTER`  | `NOMAD_DC`           | `unknown`          |
+
+### Features
+
+- Transparent SMTP proxy with automatic header injection
+- Headers populated from environment variables
+- Automatic startup/shutdown with dev-supervisor lifecycle
+- Localhost-only listening for security
+- Production-grade SMTP protocol handling
+
+### Usage
+
+Configure environment variables and start dev-supervisor:
+
+```bash
+# Use default SMTP destination with custom headers
+SITE_ID="app-123" \
+PRODUCT="my-app" \
+NODE_ENV="production" \
+NOMAD_DC="us-east-1" \
+./dev-supervisor
+
+# Configure custom SMTP destination
+SMTP_DESTINATION=smtp.example.com:587 \
+SITE_ID="app-456" \
+./dev-supervisor
+
+# In your application, configure email client to use:
+# SMTP Host: 127.0.0.1
+# SMTP Port: 2525
+```
+
+The proxy will intercept all email traffic and inject the configured headers before forwarding to the destination SMTP server.
 
 ## Contributing
 
