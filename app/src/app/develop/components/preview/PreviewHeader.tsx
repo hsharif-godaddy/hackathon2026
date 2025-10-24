@@ -6,7 +6,8 @@ import IconButton from '../IconButton'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import CodeIcon from '@ux/icon/code'
-import DatabaseIcon from '@ux/icon/database'
+// TODO: Re-enable database icon when ready
+//import DatabaseIcon from '@ux/icon/database'
 import DesktopIcon from '@ux/icon/desktop'
 import EditIcon from '@ux/icon/edit'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
@@ -33,7 +34,8 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
     isSelectMode,
     isChatPaneCollapsed,
     toggleChatPaneCollapse,
-    openSettingsDialog,
+    // TODO: re-enable settings dialog when ready
+    //openSettingsDialog,
     site
   } = useDevelopPageStore()
 
@@ -81,13 +83,16 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         onClick={() => handleViewModeChange(ViewMode.CODE, hasUnsavedChanges)}
         active={viewMode === ViewMode.CODE}
       />
-      <IconButton
-        icon={<DatabaseIcon />}
-        onClick={() => openSettingsDialog('database')}
-        label="Database"
-        dataEid={generateClickEID('develop.preview.database')}
-        separator
-      />
+      {/*
+        TODO: re-enable once database settings panel is ready
+        <IconButton
+          icon={<DatabaseIcon />}
+          onClick={() => openSettingsDialog('database')}
+          label="Database"
+          dataEid={generateClickEID('develop.preview.database')}
+          separator
+        />
+      */}
       <IconButton
         icon={<EditIcon />}
         disabled={viewMode === ViewMode.CODE}
