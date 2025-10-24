@@ -20,6 +20,7 @@ export interface App {
   path: string;
   port: number;
   socketPath?: string; // Path to dev-supervisor socket for this app
+  previewUrl?: string; // Full URL for preview (e.g., https://site-id.preview.example.com)
   initialPrompt?: string;
   templateVersion?: string; // v1, v2, v3, etc.
   status: 'creating' | 'created' | 'error';
@@ -190,6 +191,7 @@ function createAppsTable(db: Database): void {
       path TEXT NOT NULL,
       port INTEGER NOT NULL DEFAULT 5000,
       socket_path TEXT,
+      preview_url TEXT,
       initial_prompt TEXT,
       template_version TEXT,
       status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'created', 'error')),
@@ -572,6 +574,13 @@ function applyMigrations(db: Database): void {
   // Add socket_path column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN socket_path TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+  
+  // Add preview_url column if it doesn't exist (for existing databases)
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN preview_url TEXT`);
   } catch (err) {
     // Column might already exist, that's fine
   }

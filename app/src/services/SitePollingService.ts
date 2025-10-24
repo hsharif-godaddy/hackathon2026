@@ -413,7 +413,8 @@ export class SitePollingService {
         const registerPayload = {
           siteId: site.id,
           name: site.name || `App ${site.id}`,
-          initialPrompt: site.initial_prompt
+          initialPrompt: site.initial_prompt,
+          previewUrl: site.preview_url
         };
         
         logger.info('📝 Registration payload:', {

@@ -250,7 +250,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   /**
    * Register app with agents service for AI assistance
    */
-  private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string): Promise<void> {
+  private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string, previewUrl?: string): Promise<void> {
     try {
       this.log('info', 'Registering app with agents service', { siteId, name });
 
@@ -264,7 +264,8 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
           siteId,
           name,
           appPath,
-          initialPrompt
+          initialPrompt,
+          previewUrl
         }),
         signal: AbortSignal.timeout(10000) // 10 second timeout
       });

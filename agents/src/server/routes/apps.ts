@@ -168,7 +168,7 @@ router.post('/create', async (req: Request, res: Response) => {
  */
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { siteId, name, appPath, port, initialPrompt } = req.body;
+    const { siteId, name, appPath, port, initialPrompt, previewUrl } = req.body;
 
     if (!siteId || typeof siteId !== 'string' || siteId.trim().length === 0) {
       return res.status(400).json({ error: 'siteId is required and must be a non-empty string' });
@@ -188,6 +188,10 @@ router.post('/register', async (req: Request, res: Response) => {
 
     if (initialPrompt !== undefined && typeof initialPrompt !== 'string') {
       return res.status(400).json({ error: 'initialPrompt must be a string if provided' });
+    }
+
+    if (previewUrl !== undefined && typeof previewUrl !== 'string') {
+      return res.status(400).json({ error: 'previewUrl must be a string if provided' });
     }
 
     const sanitizedSiteId = siteId.trim();
@@ -231,8 +235,8 @@ router.post('/register', async (req: Request, res: Response) => {
     const socketPath = process.env.NOMAD_ALLOC_DIR ? `${process.env.NOMAD_ALLOC_DIR}/tmp/${sanitizedSiteId}-dev-supervisor.sock` : `/tmp/dev-supervisor-${sanitizedSiteId}/dev-supervisor.sock`;
 
     const stmt = appRepo['db'].prepare(`
-      INSERT INTO apps (id, name, path, port, socket_path, initial_prompt, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO apps (id, name, path, port, socket_path, preview_url, initial_prompt, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -241,6 +245,7 @@ router.post('/register', async (req: Request, res: Response) => {
       finalAppPath,
       finalPort,
       socketPath,
+      previewUrl || null,
       initialPrompt || null,
       'created',
       now,

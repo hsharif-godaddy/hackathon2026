@@ -3,7 +3,6 @@ import path from 'path';
 import { getDatabase } from '../connection.js';
 import { GitUtils } from '../../utils/git.js';
 import type { App, UpdateAppRequest } from '../schema.js';
-import { DevSupervisorClient } from '../../services/DevSupervisorClient.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { Logger } from '../../logging/index.js';
 import { getErrorMessage } from '../../utils/error.js';
@@ -126,7 +125,7 @@ export class AppRepository {
    */
   findById(id: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, initial_prompt, template_version, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, preview_url, initial_prompt, template_version, status, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE id = ?
     `);
@@ -140,6 +139,7 @@ export class AppRepository {
       path: row.path,
       port: row.port,
       socketPath: row.socket_path,
+      previewUrl: row.preview_url,
       initialPrompt: row.initial_prompt,
       templateVersion: row.template_version,
       status: row.status,
@@ -182,7 +182,7 @@ export class AppRepository {
    */
   findAll(limit = 50, offset = 0): App[] {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, initial_prompt, template_version, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, preview_url, initial_prompt, template_version, status, initial_build_complete, created_at, updated_at
       FROM apps
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -196,6 +196,7 @@ export class AppRepository {
       path: row.path,
       port: row.port,
       socketPath: row.socket_path,
+      previewUrl: row.preview_url,
       initialPrompt: row.initial_prompt,
       templateVersion: row.template_version,
       status: row.status,

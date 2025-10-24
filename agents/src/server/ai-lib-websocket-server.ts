@@ -73,6 +73,9 @@ function buildDynamicDataMessage(context: AgentsAppContext): {
     if (app?.name) {
       sections.push(`Project title: ${app.name}`)
     }
+    if (app?.previewUrl) {
+      sections.push(`Preview URL: ${app.previewUrl}`)
+    }
   }
 
   return {
