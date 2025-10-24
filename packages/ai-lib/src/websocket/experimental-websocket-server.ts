@@ -840,13 +840,15 @@ export class WebSocketServer {
     } catch (error) {
       // Handle errors following the schema
       const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorType = (error as any)?.errorType
 
       socket.emit('message', {
         type: 'error',
         content: errorMessage,
         data: {
           timestamp: new Date().toISOString(),
-          agentId: agentName || this.config.defaultAgent
+          agentId: agentName || this.config.defaultAgent,
+          ...(errorType && { errorType })
         }
       } as WebSocketMessage)
 

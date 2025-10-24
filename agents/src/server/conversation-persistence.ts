@@ -21,6 +21,7 @@ import { logger, log } from '../logging/index.js'
 import { toolGitEvents } from '../logging/events/index.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 import { aiLibAgentMetadata, type AILibAgentMetadata } from '../agents/ai-lib-agents/index.js'
+import { AppNotFoundError } from './errors/app-not-found-error.js'
 import { nanoid } from 'nanoid'
 import apm from 'elastic-apm-node'
 
@@ -324,7 +325,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
     const app = this.appRepository.findById(context.appId)
     if (!app) {
-      throw new Error(`App with ID '${context.appId}' not found`)
+      throw new AppNotFoundError(context.appId)
     }
 
     let conversationId: string

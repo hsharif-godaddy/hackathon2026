@@ -77,6 +77,13 @@ const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
 
 export function useStreamingWebSocket() {
   const socketRef = useRef<Socket | null>(null)
+  
+  // Track retry state for APP_NOT_FOUND errors (race condition during app registration)
+  const retryStateRef = useRef<{
+    pendingMessage?: { content: string; aiEditContext?: any; startTime: number }
+    retryCount: number
+    retryTimer?: NodeJS.Timeout
+  }>({ retryCount: 0 })
   // Guard flag to prevent concurrent initialization attempts
   const initializingRef = useRef<boolean>(false)
   const webSocketState = useWebSocketState()
@@ -207,6 +214,12 @@ export function useStreamingWebSocket() {
           }
           break
         case 'complete':
+          // Clear retry state on successful completion
+          if (retryStateRef.current.retryTimer) {
+            clearTimeout(retryStateRef.current.retryTimer)
+          }
+          retryStateRef.current = { retryCount: 0 }
+          
           finalizeStream({
             agentId: data.data?.agentId,
             usage: data.data?.usage,
@@ -223,12 +236,104 @@ export function useStreamingWebSocket() {
           }, window.location.origin)
           break
         case 'error':
-          logger.error('websocket.error', { message: 'Socket.IO error', data })
-          markUpstreamError();
-          sendToolImpression('error')
-          setWebSocketState({ status: 'error', error: data.content })
-          setStreamingState('error')
-          setIsLoading(false)
+          // Check if this is an APP_NOT_FOUND error that we should retry
+          const errorType = data.data?.errorType
+          const isAppNotFound = errorType === 'APP_NOT_FOUND'
+          const retryState = retryStateRef.current
+          const elapsedTime = retryState.pendingMessage 
+            ? Date.now() - retryState.pendingMessage.startTime 
+            : 0
+          const shouldRetry = isAppNotFound && elapsedTime < 10000 // Retry for up to 10 seconds
+          
+          if (shouldRetry && retryState.pendingMessage) {
+            retryState.retryCount++
+            const retryDelay = Math.min(500 * Math.pow(2, retryState.retryCount - 1), 2000) // Exponential backoff, max 2s
+            
+            logger.warn('websocket.error.app_not_found.retry', { 
+              message: 'App not found, will retry',
+              retryCount: retryState.retryCount,
+              retryDelay,
+              elapsedTime,
+              data 
+            })
+            
+            // Clear any existing retry timer
+            if (retryState.retryTimer) {
+              clearTimeout(retryState.retryTimer)
+            }
+            
+            // Schedule retry
+            retryState.retryTimer = setTimeout(() => {
+              logger.info('websocket.error.app_not_found.retrying', {
+                message: 'Retrying message after APP_NOT_FOUND error',
+                retryCount: retryState.retryCount
+              })
+              
+              // Re-send the message using the stored pending message
+              const { content, aiEditContext } = retryState.pendingMessage!
+              const socket = socketRef.current
+              
+              if (socket && socket.connected) {
+                // Build the same rich context as in sendMessage
+                const state = useStreamingConversationStore.getState()
+                const { conversations } = state
+                const currentConversation = conversations.find((conv: any) => conv.appId === currentAppId)
+                const conversationId = currentConversation?.id
+                
+                const richContext: AgentsAppContext = {
+                  metadata: {
+                    appId: currentAppId,
+                    userId: 'current-user',
+                    sessionId: socket.id
+                  },
+                  conversation: {
+                    conversationId,
+                    maxMessages: 10,
+                    includeHistory: true
+                  },
+                  appContext: {
+                    includeDirectoryListing: true,
+                    includePackageInfo: true,
+                    includeDependencyStatus: true,
+                    maxDirectoryDepth: 3
+                  },
+                  ...(aiEditContext && { aiEditContext })
+                }
+                
+                const chatMessage: AgentsAppChatMessage = {
+                  message: content,
+                  timestamp: new Date().toISOString(),
+                  agentId: 'develop',
+                  context: richContext
+                }
+                
+                socket.emit('chat_message', chatMessage)
+              }
+            }, retryDelay)
+          } else {
+            // Not retryable or exceeded retry time - show error
+            if (isAppNotFound && elapsedTime >= 10000) {
+              logger.error('websocket.error.app_not_found.timeout', {
+                message: 'App not found after 10 seconds of retries',
+                retryCount: retryState.retryCount,
+                elapsedTime
+              })
+            } else {
+              logger.error('websocket.error', { message: 'Socket.IO error', data })
+            }
+            
+            // Clear retry state
+            if (retryState.retryTimer) {
+              clearTimeout(retryState.retryTimer)
+            }
+            retryStateRef.current = { retryCount: 0 }
+            
+            markUpstreamError();
+            sendToolImpression('error')
+            setWebSocketState({ status: 'error', error: data.content })
+            setStreamingState('error')
+            setIsLoading(false)
+          }
           break
         default:
           break
@@ -315,6 +420,12 @@ export function useStreamingWebSocket() {
     try {
       setIsLoading(true)
       setStreamingState('streaming')
+
+      // Store message for potential retry on APP_NOT_FOUND error
+      retryStateRef.current = {
+        pendingMessage: { content, aiEditContext, startTime: Date.now() },
+        retryCount: 0
+      }
 
       // Start new stream (adds user message + creates activeStream)
       startNewStream(content)
