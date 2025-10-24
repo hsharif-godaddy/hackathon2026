@@ -314,7 +314,7 @@ export interface ToolImageGenerationData {
   appId: string;
   prompt: string;
   options?: {
-    size?: '1024x1024' | '512x512' | '256x256';
+    size?: '1024x1024' | '1024x1536' | '1536x1024' | 'auto';
     style?: 'vivid' | 'natural';
     filename?: string;
   };

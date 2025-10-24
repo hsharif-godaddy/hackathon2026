@@ -62,7 +62,7 @@ export const imageGenerateAITool = createTool(
   'Generate an image using AI based on a detailed text prompt and save it to the app\'s public directory. Uses gpt-image-1 model which produces high-quality, vivid images by default.',
   z.object({
     prompt: z.string().describe('Detailed description of the image to generate'),
-    size: z.enum(['1024x1024', '512x512', '256x256']).default('1024x1024').describe('Size of the generated image'),
+    size: z.enum(['1024x1024', '1024x1536', '1536x1024', 'auto']).default('1024x1024').describe('Size of the generated image'),
     filename: z.string().optional().describe('Optional custom filename without extension (default: derived from prompt)')
   }),
   async (input, context) => {
@@ -79,7 +79,7 @@ export const imageGenerateAITool = createTool(
     
     const result = await generateImage({
       prompt,
-      size: size as '256x256' | '512x512' | '1024x1024',
+      size: size as '1024x1024' | '1024x1536' | '1536x1024' | 'auto',
       appId,
       ...(filename && { filename })
     })

@@ -991,7 +991,7 @@ UNSPLASH_ACCESS_KEY=...
 {
   prompt: string,            // Image description
   style?: 'realistic' | 'artistic' | 'sketch',
-  size?: '256x256' | '512x512' | '1024x1024',
+  size?: '1024x1024' | '1024x1536' | '1536x1024' | 'auto',
   filename?: string,         // Output filename
   outputPath?: string        // Custom output path
 }

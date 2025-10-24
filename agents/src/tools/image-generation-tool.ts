@@ -8,7 +8,7 @@ import { createOpenAIClient } from '@airo/ai-lib';
 
 export interface ImageGenerationOptions {
   prompt: string;
-  size?: '1024x1024' | '512x512' | '256x256';
+  size?: '1024x1024' | '1024x1536' | '1536x1024' | 'auto';
   appId: string; // App ID to determine where to save the image
   filename?: string; // Optional custom filename (without extension)
 }
