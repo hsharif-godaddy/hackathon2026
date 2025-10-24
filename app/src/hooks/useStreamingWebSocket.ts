@@ -7,8 +7,6 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
-import { buildDynamicApiUrl } from '../config/dynamic-api'
-import { agentFetch } from '../lib/agent-fetch'
 import {
   useWebSocketState,
   useCurrentAppId,
@@ -96,23 +94,6 @@ export function useStreamingWebSocket() {
   const setIsLoading = useSetIsLoading()
   const setErrorState = useSetErrorState()
   const sendToolImpression = (tool: string) => logImpressionEvent(`develop.tool.${tool}`)()
-
-  // Ensure latest commit before starting streaming (stable)
-  const ensureLatestCommit = useCallback(async (appId: string) => {
-    try {
-      const apiUrl = await buildDynamicApiUrl(`/git/return`, appId)
-      const response = await agentFetch(apiUrl, {
-        siteId: appId,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      })
-      if (!response.ok) {
-        logger.warn('websocket.git-return.failure', { message: 'Git return request failed (non-blocking)', status: response.status })
-      }
-    } catch (error) {
-      logger.warn('websocket.git-return.error', { message: 'Git return error (non-blocking)', error: error instanceof Error ? error.message : String(error) })
-    }
-  }, [])
 
   // Create Socket.IO connection (stable)
   const createConnection = useCallback(async (appId: string): Promise<Socket> => {
@@ -345,9 +326,6 @@ export function useStreamingWebSocket() {
         context: aiEditContext
       }
 
-      // Ensure we're on the latest commit
-      await ensureLatestCommit(currentAppId)
-
       // Start new stream (adds user message + creates activeStream)
       startNewStream(content)
 
@@ -463,7 +441,6 @@ export function useStreamingWebSocket() {
     }
   }, [
     currentAppId,
-    ensureLatestCommit,
     startNewStream,
     setIsLoading,
     setStreamingState,
@@ -491,9 +468,6 @@ export function useStreamingWebSocket() {
         content,
         context: aiEditContext
       }
-
-      // Ensure we're on the latest commit
-      await ensureLatestCommit(currentAppId)
 
       // IMPORTANT: Do NOT call startNewStream here!
       // The user message already exists from the original failed attempt
@@ -606,7 +580,6 @@ export function useStreamingWebSocket() {
     }
   }, [
     currentAppId,
-    ensureLatestCommit,
     setIsLoading,
     setStreamingState,
     setWebSocketState,

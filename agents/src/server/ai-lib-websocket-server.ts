@@ -36,8 +36,10 @@ import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
 import { MAX_PROMPT_LENGTH, getAgentConfig } from '../services/features.js'
-import { AppRepository } from '../database/repositories/AppRepository.js'
 import type { AgentsAppContext } from '../types/websocket-context.js'
+import { AppRepository } from '../database/repositories/AppRepository.js'
+import { GitTool } from '../tools/git-tool.js'
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -403,6 +405,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           throw new Error('siteId is required in context.metadata.appId but was not provided');
         }
 
+        const contextLogger = log.forApp(siteId);
+
         // Debug: Log what context we received
         logger.debug('websocket.message.context_debug', {
           message: 'Message start context debug',
@@ -410,6 +414,38 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           contextKeys: context ? Object.keys(context) : [],
           siteId
         });
+
+        // Ensure we're on the latest commit (main branch) before starting chat
+        try {
+          const appRepository = new AppRepository();
+          const app = appRepository.findById(siteId);
+          
+          if (app) {
+            const devSupervisor = DevSupervisorClientFactory.createForApp(siteId);
+            const gitTool = new GitTool(devSupervisor || undefined);
+            
+            const result = await gitTool.executeGitOperation(app.path, {
+              operation: 'checkout',
+              branch: 'main'
+            });
+
+            if (result.success) {
+              contextLogger.debug('websocket.git.checkout.success', {
+                message: 'Checked out main branch before starting chat'
+              });
+            } else {
+              contextLogger.warn('websocket.git.checkout.failure', {
+                message: 'Failed to checkout main branch (non-blocking)',
+                error: result.error
+              });
+            }
+          }
+        } catch (error) {
+          contextLogger.warn('websocket.git.checkout.error', {
+            message: 'Error checking out main branch (non-blocking)',
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
 
         // Authentication already done at handshake - just log the message start
 
