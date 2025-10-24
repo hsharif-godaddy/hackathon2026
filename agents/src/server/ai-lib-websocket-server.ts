@@ -36,8 +36,49 @@ import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
 import { jwtAuthMiddleware } from './middleware/jwt-auth.js'
 import { MAX_PROMPT_LENGTH, getAgentConfig } from '../services/features.js'
+import { AppRepository } from '../database/repositories/AppRepository.js'
 import type { AgentsAppContext } from '../types/websocket-context.js'
 
+/**
+ * Shared AppRepository instance to avoid repeated initialization
+ */
+const appRepo = new AppRepository()
+
+/**
+ * Build dynamic data message for system prompt enrichment
+ * Note: Must be a user message to avoid Anthropic's restriction on multiple system messages
+ */
+function buildDynamicDataMessage(context: AgentsAppContext): {
+  role: 'user' | 'system'
+  content: string
+  insertionOrder: 'before_history' | 'after_history'
+} {
+  const sections: string[] = []
+
+  // Always include current date
+  const currentDate = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+  sections.push(`Today's date is ${currentDate}`)
+
+  // Include project title if available (not falling back to initial prompt)
+  const appId = context.metadata?.appId
+  if (appId) {
+    const app = appRepo.findById(appId)
+    if (app?.name) {
+      sections.push(`Project title: ${app.name}`)
+    }
+  }
+
+  return {
+    role: 'user',
+    content: `## Dynamic Context\n\n${sections.join('\n')}`,
+    insertionOrder: 'before_history'
+  }
+}
 
 /**
  * Create and setup the AI-Lib WebSocket server
@@ -141,18 +182,38 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           // Build context messages including app context and template descriptions
           const contextResult = await contextManager.buildContextMessages('', enhancedContext)
 
+          // Build dynamic data section
+          const dynamicDataMessage = buildDynamicDataMessage(agentsAppContext)
+
           logger.info('websocket.context.provider.success', {
             message: 'Built context messages',
-            messageCount: contextResult.contextMessages.length
+            messageCount: contextResult.contextMessages.length + (dynamicDataMessage ? 1 : 0),
+            hasDynamicData: !!dynamicDataMessage
           })
 
-          // Return the context messages directly - the context manager already set insertionOrder
-          return contextResult.contextMessages.map((msg) => ({
+          // Collect all context messages
+          const allMessages: Array<{
+            role: 'user' | 'system'
+            content: string
+            insertionOrder: 'before_history' | 'after_history'
+            cachePoint?: { type: 'ephemeral' }
+          }> = contextResult.contextMessages.map((msg) => ({
             role: msg.role,
             content: msg.content,
             insertionOrder: msg.insertionOrder || 'after_history',
             ...(msg.cachePoint && { cachePoint: msg.cachePoint })
           }))
+
+          // Add dynamic data message at the end if present
+          if (dynamicDataMessage) {
+            allMessages.push({
+              role: dynamicDataMessage.role,
+              content: dynamicDataMessage.content,
+              insertionOrder: dynamicDataMessage.insertionOrder
+            })
+          }
+
+          return allMessages
         } catch (error) {
           logger.error('websocket.context.provider.failure', {
             message: 'Error loading context',

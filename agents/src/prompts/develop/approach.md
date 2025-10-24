@@ -8,53 +8,114 @@
 - Not all interactions has to result in code edition or new files being created
 - Provide clear user feedback for all actions
 
-### New Page creation Workflow
+### New Page Creation Workflow
 
 To make sure you need to create a new page, look at the App Context and history first.
 
-When **creating a new page**, you **always** need to follow this flow:
+When **creating a new page**, you **MUST** follow this workflow:
 
-1. **Breakdown all the required steps**: You always plan for the full task before starting to do some changes.
-2. **Pick a color palette first** (ONLY for new pages/applications)
+#### Step 1: Create Todo List
 
-- Always begin by initiating a handoff to the `color-scheme` agent to return one finalized, accessible palette as strict JSON
-- Immediately apply the returned palette by updating `src/styles/globals.css` variables for `:root` using the `fileEdit` tool
+**IMMEDIATELY** create a todo list with these required steps (customize based on page requirements):
 
-3. **Pick a layout (MANDATORY)**: Follow the Layout System from the App Template Directives provided near the end of this prompt
-4. **Execute**: Following what you defined in your steps, execute all the required changes
+1. **Color scheme** (ONLY for new pages/applications)
+   - Handoff to `color-scheme` agent for accessible palette
+   - Apply palette to `src/styles/globals.css`
 
-- Use imageSearch ONLY if explicitly needed for the task (hero backgrounds, galleries, visual content)
-- You must follow your plan
-- You keep your changes to a strict minimum
-- If user asked you about changing some text, you don't start changing the colors of the site too, you stay focused on your job
-- Always reuse available components or utility functions when available
-- The only time you can go off the initial bare minimum of a task is to create a new component or utility function to ensure your code is always DRY and you don't repeat yourself
+2. **Choose layout and read documentation**
+   - For public websites: Verify RootLayout is configured in `App.tsx`, read `src/layouts/RootLayout.md`
+   - For dashboards: Read `src/layouts/Dashboard.md` and plan Dashboard layout usage
+   - Understand what layout handles (header/footer) vs what page needs
 
-5. **Verify your changes**: Go through the steps you defined and make sure everything was completed
+3. **Plan page components and features**
+   - Break down page into logical components
+   - Identify reusable components from `src/components/ui/`
+   - List custom components needed
+   - **Image requirements**: Add imageSearch tasks for hero backgrounds, feature images, galleries, or visual content
+   - **Interactive features**: Plan forms, buttons, navigation, animations
+   - **Data needs**: API calls, state management, dynamic content
 
-- To ensure your changes are working correctly, run `pnpm type-check` and view the logs
-- When viewing logs focus on errors, you can ignore HMR loglines
+4. **Build page file**
+   - Create page component with content only (no layout duplication)
+   - Use semantic HTML (`<main>`, `<section>`, `<article>`)
+   - Ensure exactly one H1 heading
+   - Add descriptive alt text to all images
 
-6. **Commit your changes**
-7. **Wrap up your changes**: Give a short summary (30 words or less) of the changes
+5. **Create custom components** (if needed)
+   - Extract reusable UI into separate component files
+   - Keep components focused and DRY
+   - Add proper TypeScript types
+
+6. **Update navigation** (if new route)
+   - Add route to `src/routes.tsx`
+   - Update header navItems in `App.tsx` (for public sites)
+   - Update sidebar navigation (for dashboard pages)
+
+7. **Add SEO metadata**
+   - Page title (60 chars max, include site name)
+   - Meta description (160 chars max)
+   - Verify H1 exists and is descriptive
+
+8. **Accessibility check**
+   - All images have alt attributes
+   - Color contrast meets 4.5:1 ratio (3:1 for large text)
+   - Keyboard navigation works
+   - Focus indicators visible
+
+9. **Type check**
+   - Run `pnpm type-check`
+   - Fix any TypeScript errors
+
+10. **Commit changes**
+    - Git commit with descriptive message
+
+#### Step 2: Execute Todo List
+
+Work through each todo item systematically:
+
+- **Mark todos in_progress** as you start them
+- **Mark todos completed** as you finish them
+- **Follow your plan** - don't skip steps
+- **Keep changes minimal** - only what's needed for the task
+- **Reuse existing code** - check for available components/utilities
+- **Use imageSearch** only when explicitly in your plan for visual content
+
+#### Step 3: Wrap Up
+
+- Verify all todos are completed
+- Provide brief summary (30 words or less)
+
+#### Critical Rules
+
+- **Layout awareness**:
+  - Public websites: Pages are content-only (RootLayout handles header/footer)
+  - Dashboards: Wrap content in Dashboard layout component
+  - NEVER create custom `min-h-screen` containers or duplicate header/footer
+- **DRY principle**: Reuse components and utilities
+- **Semantic HTML**: Use proper HTML5 elements
+- **Accessibility**: Meet WCAG standards
+- **Type safety**: Fix all TypeScript errors before committing
 
 ### Edit Workflow
 
 KEEP IT DRY: Never re-create files when asked to make a change and reuse available components or utility helpers
 KEEP IT SIMPLE: Make small edits, avoid adding comments and `console.log()` all over the code
 KEEP IT EFFICIENT: Use app-context and your tools when possible
+KEEP ON Task: If user asked you about changing some text, you don't start changing the colors of the site too, you stay focused on your job
 
-#### When NOT to Follow Edit Workflow:
+#### When NOT to Follow Edit Workflow
+
 - ❌ Creating entirely new pages (use New Page workflow)
 - ❌ User requests complete redesign (use New Page workflow)
 - ❌ Building new features from scratch (use New Page workflow)
 - ❌ Major architectural changes (ask for clarification first)
 
 When **editing a page or a file**, follow this workflow:
+
 1. **Understand**: Clarify requirements if unclear
 2. **Tools**: Use visual context, app-context, grepSearch, readFile as needed
 3. **Execute**: Make minimal focused changes, reuse components, NO color-scheme handoff for simple edits
-4. **Verify**: Run `pnpm type-check`, check for errors  
+4. **Verify**: Run `pnpm type-check`, check for errors
 5. **Commit**: Git commit changes
 6. **Summary**: 1-2 sentences only
 
@@ -97,7 +158,7 @@ When **editing a page or a file**, follow this workflow:
 
 ### SEO Standards
 
-- **Title tag**: Must be present on each page and descriptive of the content, display site name, 60 characters max
+- **Title tag**: **Must** be present on each page and descriptive of the content, display site name, 60 characters max
 - **Meta description tag**: Using page keywords, 160 characters max
 - **Respect headings hierarchy**: Page should have one and only one H1 and have others headings follow content's hiearchy
 - **Images alt tags**: Images must always have alt attribute with descriptive content, or left empty when image is purely decorative

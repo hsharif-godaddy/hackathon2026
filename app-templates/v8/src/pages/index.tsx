@@ -1,5 +1,9 @@
-
-// Geometric pattern component
+/**
+ * Geometric pattern component for visual decoration
+ *
+ * Renders animated floating shapes and grid patterns as background decoration
+ * for the home page hero section.
+ */
 function GeometricPattern() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -37,13 +41,19 @@ function GeometricPattern() {
   );
 }
 
+/**
+ * Home page component
+ *
+ * Displays the main landing page with animated geometric patterns and welcome message.
+ * The layout (header/footer) is handled by RootLayout in App.tsx.
+ */
 export default function HomePage() {
   return (
-    <div className="min-h-screen relative bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-900 dark:via-slate-800 dark:to-indigo-900">
+    <div className="relative bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-900 dark:via-slate-800 dark:to-indigo-900">
       <GeometricPattern />
 
       {/* Main content */}
-      <div className="relative z-10 flex items-center justify-center min-h-screen px-4">
+      <div className="relative z-10 flex items-center justify-center min-h-[calc(100vh-8rem)] px-4 py-16">
         <div className="text-center space-y-8 max-w-4xl mx-auto">
           {/* Main title */}
           <div className="space-y-4">

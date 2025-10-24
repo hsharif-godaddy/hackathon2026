@@ -47,13 +47,15 @@ v8-app-template/
 │   │   ├── ui/           # shadcn/ui base components (40+ components)
 │   │   └── Spinner.tsx
 │   ├── layouts/          # Layout systems
-│   │   ├── Website.tsx   # Main website layout
-│   │   ├── Dashboard.tsx # Dashboard layout
-│   │   ├── Website.md    # Layout documentation
-│   │   └── parts/        # Layout components
+│   │   ├── RootLayout.tsx    # Centralized layout wrapper
+│   │   ├── Website.tsx       # Structural container
+│   │   ├── Dashboard.tsx     # Dashboard layout
+│   │   ├── RootLayout.md     # RootLayout documentation
+│   │   ├── Website.md        # Website layout documentation
+│   │   └── parts/            # Layout components
 │   │       ├── Header.tsx
 │   │       └── Footer.tsx
-│   ├── pages/            # Page components
+│   ├── pages/            # Page components (content only)
 │   │   ├── index.tsx     # Homepage
 │   │   └── _404.tsx      # 404 page
 │   ├── lib/              # Utilities and API
@@ -153,21 +155,47 @@ The template includes:
 
 ### Layout System
 
-Two pre-built layout options:
+**RootLayout Pattern** (Recommended for multi-page sites):
 
-**Website Layout** (`src/layouts/Website.tsx`):
+Configure header and footer once in `App.tsx`, applies to all pages:
 
-- Configurable header with navigation and actions
-- Optional footer with multiple variants
-- Responsive design with mobile menu
-- Perfect for marketing sites and applications
+```tsx
+// src/App.tsx
+const headerConfig = {
+  logo: { text: "MyApp" },
+  navItems: [
+    { href: "/", label: "Home" },
+    { href: "/about", label: "About" },
+  ],
+};
 
-**Dashboard Layout** (`src/layouts/Dashboard.tsx`):
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: (
+      <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
+        <Outlet />
+      </RootLayout>
+    ),
+    children: routes,
+  },
+]);
+```
 
-- Sidebar navigation
-- Header with user actions
-- Content area with proper spacing
-- Ideal for admin panels and dashboards
+Pages become simple content components:
+
+```tsx
+// src/pages/home.tsx
+export default function HomePage() {
+  return <div>Your content here</div>;
+}
+```
+
+**Available Layouts**:
+
+- **RootLayout** (`src/layouts/RootLayout.tsx`) - Centralized header/footer wrapper
+- **Website** (`src/layouts/Website.tsx`) - Structural container (used by RootLayout)
+- **Dashboard** (`src/layouts/Dashboard.tsx`) - Admin panels and dashboards
 
 See `src/layouts/*.md` for detailed usage documentation.
 
@@ -248,10 +276,11 @@ export default defineConfig({
 
 ### Layout Usage
 
-- Always use Website or Dashboard layout as page wrapper
-- Configure layouts via props, not custom implementations
+- Use RootLayout for multi-page sites (configure in `App.tsx`)
+- Pages should only contain content, not layout concerns
+- Define header/footer once, applies to all pages
 - Follow layout documentation in `src/layouts/*.md`
-- Use consistent navigation and header patterns
+- Never duplicate header/footer config across pages
 
 ## 🤝 Contributing
 

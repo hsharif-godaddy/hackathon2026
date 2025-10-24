@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
 import { Suspense } from 'react';
 import CompileErrorCatcher from '../dev-tools/src/CompileErrorCatcher';
+import RootLayout, { RootLayoutConfig } from './layouts/RootLayout';
 import { routes } from './routes';
 import Spinner from './components/Spinner';
 
@@ -10,6 +11,40 @@ const SpinnerFallback = () => (
   </div>
 );
 
+/**
+ * Centralized header configuration for the entire site
+ *
+ * This configuration is shared across all pages to maintain consistent navigation.
+ * Update these values to change the header across the entire application.
+ */
+const headerConfig: RootLayoutConfig['header'] = {
+  logo: {
+    text: 'App',
+    href: '/'
+  },
+  navItems: [
+    { href: '/', label: 'Home' },
+    { href: '/about', label: 'About' },
+    { href: '/contact', label: 'Contact' }
+  ],
+  sticky: true
+};
+
+/**
+ * Centralized footer configuration for the entire site
+ *
+ * This configuration is shared across all pages to maintain consistent footer.
+ * Update these values to change the footer across the entire application.
+ */
+const footerConfig: RootLayoutConfig['footer'] = {
+  variant: 'simple',
+  copyright: {
+    text: 'App',
+    showYear: true,
+    position: 'center'
+  }
+};
+
 // Create router with layout wrapper
 const router = createBrowserRouter([
   {
@@ -17,12 +52,16 @@ const router = createBrowserRouter([
     element: import.meta.env.DEV ? (
       <CompileErrorCatcher>
         <Suspense fallback={<SpinnerFallback />}>
-          <Outlet />
+          <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
+            <Outlet />
+          </RootLayout>
         </Suspense>
       </CompileErrorCatcher>
     ) : (
       <Suspense fallback={<SpinnerFallback />}>
-        <Outlet />
+        <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
+          <Outlet />
+        </RootLayout>
       </Suspense>
     ),
     children: routes,

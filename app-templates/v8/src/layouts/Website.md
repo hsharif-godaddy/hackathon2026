@@ -1,111 +1,107 @@
 # Website Layout Documentation
 
 ## Overview
-The Website layout is the primary layout component for creating professional websites and landing pages. It provides a complete page structure with configurable header, footer, and content areas.
 
-## CRITICAL: Required Usage Pattern
+The Website layout provides the structural container for website pages. For most applications, you should use **RootLayout** instead, which wraps this component and provides centralized header/footer management in `App.tsx`.
 
-**ALL PAGES MUST USE THIS LAYOUT** - Never create pages with their own `min-h-screen` or custom layout structure.
+## RECOMMENDED: Use RootLayout Pattern
+
+**For multi-page applications, use RootLayout to maintain consistent navigation across all pages.**
 
 ### Correct Implementation ✅
-```tsx
-import Website from '@/layouts/Website';
-import { HeroShowcase } from '@/patterns/HeroShowcase';
-import { BentoGrid } from '@/patterns/BentoGrid';
 
-export default function HomePage() {
-  return (
-    <Website config={{
-      header: {
-        logo: { text: 'Your App Name' },
-        navItems: [
-          { href: '/about', label: 'About' },
-          { href: '/services', label: 'Services' },
-          { href: '/contact', label: 'Contact' }
-        ]
-      },
-      footer: {
-        variant: 'simple'
-      }
-    }}>
-      {/* All page content goes INSIDE the Website component */}
-      <HeroShowcase variant="centered" {...heroConfig} />
-      <BentoGrid items={features} />
-      {/* More patterns and content... */}
-    </Website>
-  );
-}
+**Step 1: Configure header/footer in `App.tsx`**
+
+```tsx
+import RootLayout, { RootLayoutConfig } from "./layouts/RootLayout";
+
+const headerConfig: RootLayoutConfig["header"] = {
+  logo: { text: "MyApp", href: "/" },
+  navItems: [
+    { href: "/", label: "Home" },
+    { href: "/about", label: "About" },
+    { href: "/contact", label: "Contact" },
+  ],
+  sticky: true,
+};
+
+const footerConfig: RootLayoutConfig["footer"] = {
+  variant: "simple",
+  copyright: { text: "MyApp", showYear: true },
+};
+
+// Apply to all routes
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: (
+      <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
+        <Outlet />
+      </RootLayout>
+    ),
+    children: routes,
+  },
+]);
 ```
 
-### Incorrect Implementation ❌
+**Step 2: Create simple page components**
+
 ```tsx
-// DON'T DO THIS - Creating your own layout structure
+// src/pages/index.tsx
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-white">
-      <header>...</header>
-      <main>...</main>
-      <footer>...</footer>
+    <div className="container mx-auto px-4 py-16">
+      <h1>Welcome to MyApp</h1>
+      <p>Your content here...</p>
+    </div>
+  );
+}
+
+// src/pages/about.tsx
+export default function AboutPage() {
+  return (
+    <div className="container mx-auto px-4 py-16">
+      <h1>About Us</h1>
+      <p>Your content here...</p>
     </div>
   );
 }
 ```
 
-## Configuration Options
+### Benefits of RootLayout Pattern
 
-### Optional Components
+1. **Consistency**: Header and footer are defined once in `App.tsx`
+2. **Maintainability**: Update navigation in one place, applies to all pages
+3. **Simplicity**: Page components focus only on content
+4. **Common Pattern**: Follows React Router and Next.js conventions
 
-**Header and Footer are optional** - you can omit either or both from the configuration:
-
-```tsx
-// No header or footer
-<Website>
-  <div>Content without header/footer</div>
-</Website>
-
-// Only header
-<Website config={{ header: { logo: { text: 'MyApp' } } }}>
-  <div>Content with header only</div>
-</Website>
-
-// Only footer  
-<Website config={{ footer: { copyright: { text: 'MyApp' } } }}>
-  <div>Content with footer only</div>
-</Website>
-```
-
-When header or footer configurations are not provided (null/undefined), they will not be rendered at all.
-
-### Header Configuration
+## Header Configuration
 
 ```typescript
 interface HeaderConfig {
   logo?: {
     text?: string;
-    image?: string;
     href?: string;
+    className?: string;
   };
   navItems?: Array<{
     href: string;
     label: string;
-    icon?: React.ComponentType;
-    children?: Array<{ href: string; label: string; description?: string }>;
+    external?: boolean;
   }>;
   actions?: React.ReactNode;
-  variant?: 'default' | 'centered' | 'split';
+  variant?: "default" | "centered" | "split";
   sticky?: boolean;
-  className?: string;
+  transparent?: boolean;
+  blur?: boolean;
+  border?: boolean;
 }
 ```
 
-#### Header Variants
-- **`default`**: Logo on left, navigation in center, actions on right
-- **`centered`**: Everything centered in a single row
-- **`split`**: Logo on left, navigation and actions on right
-
-#### Example Configurations
+### Header Examples
 
 **Simple Header:**
+
 ```tsx
 header: {
   logo: { text: 'MyApp' },
@@ -113,44 +109,40 @@ header: {
     { href: '/', label: 'Home' },
     { href: '/about', label: 'About' },
     { href: '/contact', label: 'Contact' }
-  ]
+  ],
+  sticky: true
 }
 ```
 
-**Header with Dropdown Navigation:**
+**Header with Actions:**
+
 ```tsx
 header: {
   logo: { text: 'MyApp' },
   navItems: [
     { href: '/', label: 'Home' },
-    {
-      href: '#',
-      label: 'Products',
-      children: [
-        { href: '/products/app', label: 'Mobile App', description: 'iOS and Android' },
-        { href: '/products/web', label: 'Web Platform', description: 'Browser-based' }
-      ]
-    }
+    { href: '/features', label: 'Features' },
+    { href: '/pricing', label: 'Pricing' }
   ],
   actions: (
     <>
       <Button variant="ghost">Sign In</Button>
-      <Button variant="default">Get Started</Button>
+      <Button>Get Started</Button>
     </>
   ),
   sticky: true
 }
 ```
 
-### Footer Configuration
+## Footer Configuration
 
 ```typescript
 interface FooterConfig {
-  variant?: 'simple' | 'columns' | 'centered' | 'detailed';
+  variant?: "simple" | "columns" | "centered" | "detailed";
   copyright?: {
     text?: string;
     showYear?: boolean;
-    position?: 'left' | 'center' | 'right';
+    position?: "left" | "center" | "right";
   };
   sections?: Array<{
     title: string;
@@ -165,37 +157,20 @@ interface FooterConfig {
     label: string;
     icon?: React.ReactNode;
   }>;
-  description?: string;
-  logo?: {
-    text?: string;
-    href?: string;
-    className?: string;
-  };
   bottomLinks?: Array<{
     href: string;
     label: string;
     external?: boolean;
   }>;
-  newsletter?: {
-    title?: string;
-    description?: string;
-    placeholder?: string;
-    buttonText?: string;
-  };
-  background?: 'default' | 'muted' | 'dark';
+  background?: "default" | "muted" | "dark";
   border?: boolean;
 }
 ```
 
-#### Footer Variants
-- **`simple`**: Minimal footer with copyright and links in one line
-- **`columns`**: Multi-column footer with organized link sections
-- **`centered`**: Centered layout with logo and social links
-- **`detailed`**: Full-featured footer with newsletter, multiple columns, and social links
-
-#### Example Configurations
+### Footer Examples
 
 **Simple Footer:**
+
 ```tsx
 footer: {
   variant: 'simple',
@@ -211,7 +186,8 @@ footer: {
 }
 ```
 
-**Detailed Footer with Columns:**
+**Detailed Footer:**
+
 ```tsx
 footer: {
   variant: 'detailed',
@@ -222,80 +198,41 @@ footer: {
       title: 'Product',
       links: [
         { href: '/features', label: 'Features' },
-        { href: '/pricing', label: 'Pricing' },
-        { href: '/docs', label: 'Documentation' }
+        { href: '/pricing', label: 'Pricing' }
       ]
     },
     {
       title: 'Company',
       links: [
         { href: '/about', label: 'About' },
-        { href: '/blog', label: 'Blog' },
-        { href: '/careers', label: 'Careers' }
+        { href: '/blog', label: 'Blog' }
       ]
     }
   ],
   socialLinks: [
     { href: 'https://twitter.com/myapp', label: 'Twitter' },
-    { href: 'https://github.com/myapp', label: 'GitHub' },
-    { href: 'https://linkedin.com/company/myapp', label: 'LinkedIn' }
-  ],
-  newsletter: {
-    title: 'Stay updated',
-    description: 'Get the latest news and updates.',
-    placeholder: 'Enter your email',
-    buttonText: 'Subscribe'
-  }
+    { href: 'https://github.com/myapp', label: 'GitHub' }
+  ]
 }
 ```
 
-### Layout Configuration
+## Advanced: Direct Website Component Usage
 
-```typescript
-interface LayoutConfig {
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
-  padding?: boolean;
-  background?: string;
-  minHeight?: string;
-}
-```
-
-**Example:**
-```tsx
-layout: {
-  maxWidth: 'xl',      // Container max width
-  padding: true,       // Add horizontal padding
-  background: 'bg-gray-50',  // Page background
-  minHeight: 'min-h-screen'  // Minimum height
-}
-```
-
-## Basic Usage Example
+For special cases where you need custom layout behavior, you can use the Website component directly:
 
 ```tsx
 import Website from '@/layouts/Website';
-import { Button } from '@/components/ui/button';
+import Header from '@/layouts/parts/Header';
+import Footer from '@/layouts/parts/Footer';
 
-export default function HomePage() {
+export default function CustomPage() {
   return (
-    <Website config={{
-      header: {
-        logo: { text: 'My App' },
-        navItems: [
-          { href: '/', label: 'Home' },
-          { href: '/about', label: 'About' },
-          { href: '/contact', label: 'Contact' }
-        ]
-      },
-      footer: {
-        variant: 'simple'
-      }
-    }}>
-      <div className="container mx-auto px-4 py-16 text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to My App</h1>
-        <p className="text-xl mb-8">Build something amazing</p>
-        <Button size="lg">Get Started</Button>
-      </div>
+    <Website config={{ layout: { background: 'gradient' } }}>
+      <Header config={{ logo: { text: 'Custom' }, navItems: [...] }} />
+      <main>
+        <div>Your custom content</div>
+      </main>
+      <Footer config={{ variant: 'simple' }} />
     </Website>
   );
 }
@@ -304,44 +241,96 @@ export default function HomePage() {
 ## Common Patterns
 
 ### Navigation with Smooth Scrolling
+
 For single-page sites with anchor links:
+
 ```tsx
 navItems: [
-  { href: '#features', label: 'Features' },
-  { href: '#pricing', label: 'Pricing' },
-  { href: '#testimonials', label: 'Testimonials' }
-]
+  { href: "#features", label: "Features" },
+  { href: "#pricing", label: "Pricing" },
+  { href: "#testimonials", label: "Testimonials" },
+];
 ```
 
 ### Multi-page Navigation
-For multi-page applications:
+
+For multi-page applications (use RootLayout):
+
 ```tsx
 navItems: [
-  { href: '/', label: 'Home' },
-  { href: '/products', label: 'Products' },
-  { href: '/solutions', label: 'Solutions' },
-  { href: '/company', label: 'Company' }
-]
+  { href: "/", label: "Home" },
+  { href: "/products", label: "Products" },
+  { href: "/solutions", label: "Solutions" },
+  { href: "/company", label: "Company" },
+];
 ```
 
-### Mobile Responsiveness
-The Website layout automatically handles mobile responsiveness:
+### External Links
+
+```tsx
+navItems: [
+  { href: "/", label: "Home" },
+  { href: "https://docs.example.com", label: "Docs", external: true },
+  { href: "/contact", label: "Contact" },
+];
+```
+
+## Mobile Responsiveness
+
+The layout automatically handles mobile responsiveness:
+
 - Header navigation collapses into a mobile menu
 - Footer columns stack vertically on small screens
 - Content areas adjust padding and spacing
 
 ## Important Notes
 
-1. **Always wrap pages**: Every page component must use the Website layout as its root element
-2. **Use available components**: Use UI components from `@/components/ui/` inside the Website layout
-3. **Don't create custom headers/footers**: Use the configuration options provided
-4. **Read component files**: Always read the actual component files for the most up-to-date props and options
-5. **Maintain consistency**: Use the same header/footer configuration across pages for a cohesive experience
+1. **Use RootLayout for multi-page apps**: Define header/footer once in `App.tsx`
+2. **Keep pages simple**: Let RootLayout handle layout concerns
+3. **Centralized configuration**: Update navigation in one place
+4. **Read component files**: Check actual component files for latest props
+5. **Maintain consistency**: Same header/footer across all pages
 
 ## Anti-Patterns to Avoid
 
-❌ **Don't create standalone pages without the Website layout**
-❌ **Don't add your own min-h-screen or page containers**
-❌ **Don't build custom navigation when header.navItems is available**
-❌ **Don't guess configuration - read the actual component files**
-❌ **Don't mix multiple layouts on the same page**
+❌ **Don't duplicate header/footer config in every page**
+
+```tsx
+// Bad - duplicated in every page file
+export default function Page1() {
+  return (
+    <Website config={{ header: {...}, footer: {...} }}>
+      <div>Content</div>
+    </Website>
+  );
+}
+```
+
+✅ **Do use RootLayout in App.tsx**
+
+```tsx
+// Good - defined once in App.tsx
+<RootLayout config={{ header: {...}, footer: {...} }}>
+  <Outlet />
+</RootLayout>
+```
+
+❌ **Don't create custom layout structure**
+
+```tsx
+// Bad
+<div className="min-h-screen">
+  <header>...</header>
+  <main>...</main>
+  <footer>...</footer>
+</div>
+```
+
+✅ **Do use provided layout components**
+
+```tsx
+// Good
+<RootLayout config={{ header: {...}, footer: {...} }}>
+  <YourPageContent />
+</RootLayout>
+```

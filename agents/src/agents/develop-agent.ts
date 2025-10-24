@@ -211,62 +211,6 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
 }
 
 /**
- * Build dynamic system prompt with context enrichment
- */
-async function buildDynamicSystemPrompt(context?: AgentContext): Promise<string> {
-  logger.info('develop_agent.system_prompt.build.start', {
-    hasContext: !!context,
-    contextKeys: context ? Object.keys(context) : [],
-    hasMetadata: !!(context?.metadata),
-    appId: context?.metadata?.appId
-  });
-
-  // Get the base static system prompt
-  const baseSystemPrompt = await buildDevelopSystemPrompt()
-
-  if (!context?.metadata?.appId) {
-    logger.warn('develop_agent.system_prompt.build.no_app_id', {
-      reason: 'no_context_enrichment'
-    });
-    return baseSystemPrompt
-  }
-
-  try {
-    // Use the context manager to build enhanced context
-    const contextManager = new AILibContextManager()
-
-    // Convert context to enhanced format
-    const enhancedContext = contextManager.convertToEnhancedContext(context as any)
-
-    // Build context messages
-    const contextResult = await contextManager.buildContextMessages(baseSystemPrompt, enhancedContext)
-
-    // Combine base system prompt with context messages
-    const contextMessages = contextResult.contextMessages.map((msg: { role: 'user' | 'system'; content: string }) => msg.content).join('\n\n')
-
-    const enrichedSystemPrompt = contextMessages ?
-      `${baseSystemPrompt}\n\n${contextMessages}` : baseSystemPrompt
-
-    logger.info('develop_agent.system_prompt.build.success', {
-      baseLength: baseSystemPrompt.length,
-      contextMessagesCount: contextResult.contextMessages.length,
-      totalLength: enrichedSystemPrompt.length,
-      enriched: contextResult.contextMessages.length > 0,
-      appId: context?.metadata?.appId
-    });
-
-    return enrichedSystemPrompt
-  } catch (error) {
-    logger.error('develop_agent.system_prompt.build.failure', {
-      error: error instanceof Error ? error.message : String(error),
-      appId: context?.metadata?.appId,
-      fallback: 'static_prompt'
-    });
-    return baseSystemPrompt
-  }
-}
-
-/**
  * Create the Develop Agent configuration
  */
 export async function createDevelopAgent(options?: { appPath?: string }): Promise<AgentConfig> {
@@ -322,7 +266,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
     maxSteps: 100,
     temperature: 0.3,
-    maxOutputTokens: 8000
+    maxOutputTokens: 16000
   }
 }
 

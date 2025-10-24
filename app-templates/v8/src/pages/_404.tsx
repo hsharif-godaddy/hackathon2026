@@ -2,9 +2,16 @@ import { Link } from '../router';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 
+/**
+ * 404 Not Found page component
+ *
+ * Displays a user-friendly error page when a route is not found.
+ * Includes navigation to available pages and a back button.
+ * The layout (header/footer) is handled by RootLayout in App.tsx.
+ */
 export default function NotFoundPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 dark:from-gray-900 dark:to-red-900 flex items-center justify-center py-12">
+    <div className="bg-gradient-to-br from-red-50 to-orange-100 dark:from-gray-900 dark:to-red-900 flex items-center justify-center py-12">
       <div className="container mx-auto px-4 max-w-2xl text-center">
         <div className="space-y-8">
           <div className="space-y-4">
