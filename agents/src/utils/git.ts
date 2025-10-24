@@ -193,7 +193,7 @@ export class GitUtils {
     // Use simpler git log command to avoid dev-supervisor validation issues
     // Execute the log command with basic options only
     const result = await this.executeGitCommand(
-      ['log', '--oneline', `--max-count=${limit}`],
+      ['log', 'main', '--oneline', `--max-count=${limit}`],
       repoPath,
       options
     );
