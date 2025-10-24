@@ -30,6 +30,7 @@ run-name: "Promote ${{ inputs.component }} to ${{ inputs.environment }} | ${{ gi
 
 permissions:
   id-token: write # Required for Katana auth
+  contents: read # Required for checkout
 
 jobs:
   promote:
@@ -128,11 +129,11 @@ jobs:
 
       - name: Configure webhook URL securely
         run: |
-          # Securely set webhook URL without logging it
+          # Get webhook from environment (set by get-aws-secrets action)
           if [[ "${{ steps.config.outputs.is_prod }}" == "true" ]]; then
-            WEBHOOK="${{ env._Katana_Secrets_airo_app_builder__katana_SLACK_WEBHOOK_PROD }}"
+            WEBHOOK="${_Katana_Secrets_airo_app_builder__katana_SLACK_WEBHOOK_PROD}"
           else
-            WEBHOOK="${{ env._Katana_Secrets_airo_app_builder__katana_SLACK_WEBHOOK_NONPROD }}"
+            WEBHOOK="${_Katana_Secrets_airo_app_builder__katana_SLACK_WEBHOOK_NONPROD}"
           fi
 
           # Mask the webhook URL to prevent exposure in logs
