@@ -7,10 +7,11 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc && vite build",
+    "type-check": "tsc --noEmit",
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "html2canvas": "^1.4.1"
+    "html-to-image": "^1.11.11"
   },
   "peerDependencies": {
     "react": "^19.0.0",

@@ -204,13 +204,13 @@ export default function ChatPane({
 
               {safeAiEditContext && (
                 <div className="mx-4 rounded-md overflow-hidden bg-white">
-                  <div className="flex items-center gap-3 p-2">
+                  <div className="p-2">
                     {safeAiEditContext.screenshot && (
-                      <div className="flex-shrink-0 relative">
+                      <div className="relative inline-block">
                         <img // eslint-disable-line @next/next/no-img-element
                           src={safeAiEditContext.screenshot}
                           alt="Selected element"
-                          className="max-w-[120px] max-h-[90px] object-contain rounded border"
+                          className="max-h-[120px] object-contain rounded border"
                         />
                         <button
                           onClick={handleClearAiEditContext}
@@ -277,13 +277,13 @@ export default function ChatPane({
 
           {safeAiEditContext && (
             <div className="mx-4 rounded-md overflow-hidden bg-white">
-              <div className="flex items-center gap-3 p-2">
+              <div className="p-2">
                 {safeAiEditContext.screenshot && (
-                  <div className="flex-shrink-0 relative">
+                  <div className="relative inline-block">
                     <img // eslint-disable-line @next/next/no-img-element
                       src={safeAiEditContext.screenshot}
                       alt="Selected element"
-                      className="max-w-[120px] max-h-[90px] object-contain rounded border"
+                      className="max-h-[120px] object-contain rounded border"
                     />
                     <button
                       onClick={handleClearAiEditContext}

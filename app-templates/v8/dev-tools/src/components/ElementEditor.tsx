@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import html2canvas from 'html2canvas'
+import { toPng } from 'html-to-image'
 import { safePostMessage } from '../utils/postMessage'
 import {
   FileText,
@@ -66,6 +66,8 @@ export default function ElementEditor({
   
   const [adjustedPosition, setAdjustedPosition] = useState<{ top: number; left: number } | null>(null)
   const [spacingDropdownOffset, setSpacingDropdownOffset] = useState(0)
+  const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false)
+  const [hideToolbar, setHideToolbar] = useState(false)
 
   const toolbarRef = useRef<HTMLDivElement>(null)
 
@@ -228,33 +230,83 @@ export default function ElementEditor({
     return undefined
   }, [])
 
-  // Capture screenshot of the selected element using html2canvas
+  // Capture screenshot of the selected element with background context using html-to-image
   const captureElementScreenshot = useCallback(async (element: HTMLElement): Promise<string | null> => {
     try {
-      // Get element dimensions
+      // Get element dimensions and position
       const rect = element.getBoundingClientRect()
-      const maxWidth = 600
-      const maxHeight = 400
+      const scrollX = window.scrollX
+      const scrollY = window.scrollY
       
-      // Calculate scale to fit within max dimensions while maintaining aspect ratio
-      let scale = 1
-      if (rect.width > maxWidth || rect.height > maxHeight) {
-        scale = Math.min(maxWidth / rect.width, maxHeight / rect.height)
-      }
-      
-      // Capture the element with html2canvas
-      const canvas = await html2canvas(element, {
-        scale: scale,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: null,
-        logging: false,
-        removeContainer: true,
-        imageTimeout: 0,
-        foreignObjectRendering: false
+      // Capture the entire viewport/body to get background context
+      const fullCapture = await toPng(document.body, {
+        quality: 0.95,
+        cacheBust: true,
+        skipAutoScale: true,
+        pixelRatio: 1,
       })
       
-      // Convert to base64 with compression
+      // Load the full capture into an image
+      const img = new Image()
+      img.src = fullCapture
+      
+      await new Promise((resolve) => {
+        img.onload = resolve
+      })
+      
+      // Create canvas to crop to element bounds
+      const canvas = document.createElement('canvas')
+      canvas.width = rect.width
+      canvas.height = rect.height
+      const ctx = canvas.getContext('2d')
+      
+      if (!ctx) {
+        throw new Error('Failed to get canvas context')
+      }
+
+ // Calculate the element's position in the capture
+      // The capture is rendered as if scroll is at 0,0
+      // So we need: viewport position + current scroll - how much scroll affects this element
+      
+      // Walk up the tree to find if element is in a fixed/sticky container
+      let isInFixedContainer = false
+      let node: HTMLElement | null = element
+      
+      while (node && node !== document.body) {
+        const style = window.getComputedStyle(node)
+        if (style.position === 'fixed' || style.position === 'sticky') {
+          isInFixedContainer = true
+          break
+        }
+        node = node.parentElement
+      }
+      
+      let sourceX, sourceY
+      
+      if (isInFixedContainer) {
+        // Fixed elements stay at their viewport position
+        sourceX = rect.left
+        sourceY = rect.top
+      } else {
+        // Regular elements: viewport position + scroll
+        sourceX = rect.left + scrollX
+        sourceY = rect.top + scrollY
+      }
+          
+      // Draw the cropped portion of the full capture
+      ctx.drawImage(
+        img,
+        sourceX,
+        sourceY,
+        rect.width,
+        rect.height,
+        0,
+        0,
+        rect.width,
+        rect.height
+      )
+      
+      // Convert to data URL with compression
       return canvas.toDataURL('image/png')
     } catch (error) {
       console.error('Failed to capture screenshot:', error)
@@ -305,6 +357,14 @@ export default function ElementEditor({
       }
     }
   }, [selectedElement, findElement, extractDevContext])
+
+  // Reset hideToolbar state when editor opens
+  useEffect(() => {
+    if (isOpen) {
+      setHideToolbar(false)
+      setIsCapturingScreenshot(false)
+    }
+  }, [isOpen])
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -574,6 +634,11 @@ export default function ElementEditor({
         }
       }
     }
+  }
+
+  // Don't render toolbar if it should be hidden
+  if (hideToolbar) {
+    return null
   }
 
   return (
@@ -1025,7 +1090,10 @@ export default function ElementEditor({
         {/* Edit with AI Button */}
         <button
           onClick={async () => {
-            if (selectedElement?.devContext && window.parent !== window) {
+            if (selectedElement?.devContext && window.parent !== window && !isCapturingScreenshot) {
+              // Disable button immediately
+              setIsCapturingScreenshot(true)
+              
               const element = findElement(selectedElement)
               let screenshot: string | null = null
               
@@ -1043,12 +1111,12 @@ export default function ElementEditor({
                   screenshot
                 }
               })
-              // Send message to hide editor without clearing selection
-              safePostMessage(window.parent, {
-                type: 'HIDE_ELEMENT_EDITOR'
-              })
+              
+              // Hide the toolbar but keep selection visible
+              setHideToolbar(true)
             }
           }}
+          disabled={isCapturingScreenshot}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -1056,22 +1124,27 @@ export default function ElementEditor({
             padding: '6px 12px',
             fontSize: '12px',
             fontWeight: '500',
-            color: '#3b82f6',
-            backgroundColor: '#eff6ff',
-            border: '1px solid #bfdbfe',
+            color: isCapturingScreenshot ? '#9ca3af' : '#3b82f6',
+            backgroundColor: isCapturingScreenshot ? '#f3f4f6' : '#eff6ff',
+            border: `1px solid ${isCapturingScreenshot ? '#d1d5db' : '#bfdbfe'}`,
             borderRadius: '6px',
-            cursor: 'pointer'
+            cursor: isCapturingScreenshot ? 'not-allowed' : 'pointer',
+            opacity: isCapturingScreenshot ? 0.6 : 1
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#dbeafe'
-            e.currentTarget.style.borderColor = '#93c5fd'
+            if (!isCapturingScreenshot) {
+              e.currentTarget.style.backgroundColor = '#dbeafe'
+              e.currentTarget.style.borderColor = '#93c5fd'
+            }
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = '#eff6ff'
-            e.currentTarget.style.borderColor = '#bfdbfe'
+            if (!isCapturingScreenshot) {
+              e.currentTarget.style.backgroundColor = '#eff6ff'
+              e.currentTarget.style.borderColor = '#bfdbfe'
+            }
           }}
         >
-          ✨ Edit with AI
+          {isCapturingScreenshot ? '⏳ Capturing...' : '✨ Edit with AI'}
         </button>
 
         {/* Divider */}
