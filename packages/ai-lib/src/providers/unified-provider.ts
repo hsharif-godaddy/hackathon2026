@@ -223,7 +223,7 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
     const { default: OpenAI } = await import('openai')
     return new OpenAI({
       apiKey: s2sConfig.apiKey, // Placeholder API key
-      baseURL: s2sConfig.baseURL, // GoCode endpoint
+      baseURL: s2sConfig.baseURL.endsWith('/v1') ? s2sConfig.baseURL : s2sConfig.baseURL + '/v1', // Ensure /v1 suffix
       defaultHeaders: s2sConfig.headers, // Authorization: Bearer JWT
       fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token refresh
     })
@@ -243,7 +243,8 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
     // Add base URL if provided (for proxy support)
     const baseURL = config?.openaiBaseUrl || process.env.OPENAI_BASE_URL
     if (baseURL) {
-      openaiConfig.baseURL = baseURL
+      // Ensure URL ends with /v1 for OpenAI API compatibility
+      openaiConfig.baseURL = baseURL.endsWith('/v1') ? baseURL : baseURL + '/v1'
     }
 
     return new OpenAI(openaiConfig)
@@ -327,12 +328,12 @@ async function createOpenAIProvider(config?: ProviderConfig) {
     // Use S2S authentication with GoCode endpoint
     const openaiConfig: any = {
       apiKey: s2sConfig.apiKey, // Placeholder API key
-      baseURL: s2sConfig.baseURL, // GoCode endpoint
+      baseURL: s2sConfig.baseURL.endsWith('/v1') ? s2sConfig.baseURL : s2sConfig.baseURL + '/v1', // Ensure /v1 suffix
       headers: s2sConfig.headers,   // Authorization: Bearer JWT
       fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token refresh
     }
     
-    console.log(`🔐 Using S2S authentication with GoCode endpoint: ${s2sConfig.baseURL}`)
+    console.log(`🔐 Using S2S authentication with GoCode endpoint: ${openaiConfig.baseURL}`)
     return createOpenAI(openaiConfig)
     
   } else {
@@ -346,7 +347,8 @@ async function createOpenAIProvider(config?: ProviderConfig) {
     // Add base URL if provided (for proxy support)
     const baseURL = config?.openaiBaseUrl || process.env.OPENAI_BASE_URL
     if (baseURL) {
-      openaiConfig.baseURL = baseURL
+      // Ensure URL ends with /v1 for OpenAI API compatibility
+      openaiConfig.baseURL = baseURL.endsWith('/v1') ? baseURL : baseURL + '/v1'
     }
     
     return createOpenAI(openaiConfig)
