@@ -18,7 +18,9 @@ function shouldRenderMessage(message: ChatMessage | StreamingMessageType): boole
     message.content ||
     ('isComplete' in message && !message.isComplete) || // Active stream
     message.segments?.length ||
-    message.toolCalls?.length
+    message.toolCalls?.length ||
+    message.upstreamError || // Show error messages
+    message.maxStepsReached // Show max steps warnings
   )
 
   return hasContent
@@ -28,8 +30,8 @@ function shouldRenderMessage(message: ChatMessage | StreamingMessageType): boole
 function getMessageClasses(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean): string {
   const baseClasses = 'rounded-md'
 
-  // Active streaming messages that are incomplete
-  if (isActiveStream && 'isComplete' in message && !message.isComplete && message.content === '') {
+  // Active streaming messages that are incomplete - but don't hide if there's an error or warning
+  if (isActiveStream && 'isComplete' in message && !message.isComplete && message.content === '' && !message.upstreamError && !message.maxStepsReached) {
     return 'hidden'
   }
 

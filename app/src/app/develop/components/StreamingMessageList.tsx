@@ -2,7 +2,6 @@
 
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import StreamingMessage from './StreamingMessage'
-import ErrorMessageWithRetry from './ErrorMessageWithRetry'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
 import {
@@ -13,7 +12,6 @@ import {
   useConversationPagination,
   useCurrentAppId,
   useIsLoading,
-  useErrorState
 } from '@/stores/useStreamingConversationStore'
 
 export default function StreamingMessageList() {
@@ -32,7 +30,6 @@ export default function StreamingMessageList() {
   const pagination = useConversationPagination()
   const currentAppId = useCurrentAppId()
   const isLoadingMessages = useIsLoading()
-  const errorState = useErrorState()
 
   // Combine messages with useMemo to prevent infinite loops
   const allMessages = useMemo(() => {
@@ -136,13 +133,6 @@ export default function StreamingMessageList() {
     }
   }, [isStreaming, activeStream, scrollToBottom])
 
-  // Scroll to error message when it appears
-  useEffect(() => {
-    if (errorState.hasError) {
-      scrollToBottom(true)
-    }
-  }, [errorState.hasError, scrollToBottom])
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -199,11 +189,6 @@ export default function StreamingMessageList() {
           isActiveStream={'isComplete' in message && !message.isComplete}
         />
       ))}
-
-      {/* Error Message with Retry */}
-      {errorState.hasError && errorState.errorMessage && (
-        <ErrorMessageWithRetry errorMessage={errorState.errorMessage} />
-      )}
 
       <div ref={messagesEndRef} />
     </div>

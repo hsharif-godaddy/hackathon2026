@@ -60,6 +60,7 @@ export interface StreamingMessage {
   timestamp: Date
   isComplete: boolean
   maxStepsReached?: boolean        // True when agent hit max steps limit
+  upstreamError?: boolean           // True if an error from upstream service, if any
   metadata?: {
     usage?: {
       inputTokens: number
@@ -80,6 +81,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   timestamp: Date
   maxStepsReached?: boolean        // True when agent hit max steps limit
+  upstreamError?: boolean           // True if an error from upstream service, if any
   metadata?: {
     usage?: {
       inputTokens: number
@@ -96,14 +98,6 @@ export interface WebSocketState {
   connected: boolean
   status: 'idle' | 'connecting' | 'streaming' | 'completing' | 'error'
   error?: string
-}
-
-// Error state for retry functionality
-export interface ErrorState {
-  hasError: boolean
-  errorMessage: string | null
-  failedMessage: string | null  // Original user message that failed
-  failedContext: AiEditContext | null  // AI edit context at time of failure
 }
 
 // Main store state
@@ -140,9 +134,6 @@ export interface StreamingConversationState {
   // WebSocket state
   websocket: WebSocketState
 
-  // Error state
-  errorState: ErrorState
-
   // === CORE STREAMING ACTIONS ===
 
   // Stream lifecycle
@@ -159,6 +150,7 @@ export interface StreamingConversationState {
   addToolStartSegment: (toolCall: ToolCall) => void
   addToolResultSegment: (toolCall: ToolCall) => void
   markMaxStepsReached: () => void
+  markUpstreamError: () => void
 
   // === APP CONTEXT ACTIONS ===
 
@@ -173,12 +165,6 @@ export interface StreamingConversationState {
 
   setWebSocketState: (state: Partial<WebSocketState>) => void
   setStreamingState: (state: 'idle' | 'streaming' | 'completing' | 'error') => void
-
-  // === ERROR RECOVERY ACTIONS ===
-
-  setErrorState: (errorMessage: string, failedMessage?: string, failedContext?: AiEditContext | null) => void
-  clearErrorState: () => void
-  retryLastMessage: () => Promise<void>
 
   // === UTILITY ACTIONS ===
 
@@ -221,12 +207,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   websocket: {
     connected: false,
     status: 'idle'
-  },
-  errorState: {
-    hasError: false,
-    errorMessage: null,
-    failedMessage: null,
-    failedContext: null
   },
 
   // === CORE STREAMING ACTIONS ===
@@ -396,6 +376,18 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     set({ activeStream: updatedStream })
   },
 
+  markUpstreamError: () => {
+    const { activeStream } = get()
+    if (!activeStream) return
+
+    const updatedStream = {
+      ...activeStream,
+      upstreamError: true
+    }
+
+    set({ activeStream: updatedStream })
+  },
+
   updateToolInStream: (toolId: string, updates: Partial<ToolCall>) => {
     const { activeStream } = get()
     if (!activeStream) return
@@ -423,6 +415,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       toolCalls: activeStream.toolCalls,
       timestamp: activeStream.timestamp,
       maxStepsReached: activeStream.maxStepsReached,
+      upstreamError: activeStream.upstreamError,
       metadata: {
         ...activeStream.metadata,
         ...metadata
@@ -505,69 +498,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   setStreamingState: (state) => set({ streamingState: state }),
 
-  // === ERROR RECOVERY ACTIONS ===
-
-  setErrorState: (errorMessage, failedMessage, failedContext) => {
-    logger.error('streaming-store.error-state.set', {
-      message: 'Setting error state for retry',
-      errorMessage,
-      hasFailedMessage: !!failedMessage,
-      hasFailedContext: !!failedContext
-    })
-
-    set({
-      errorState: {
-        hasError: true,
-        errorMessage,
-        failedMessage: failedMessage || null,
-        failedContext: failedContext || null
-      },
-      streamingState: 'error',
-      isLoading: false
-    })
-  },
-
-  clearErrorState: () => {
-    logger.info('streaming-store.error-state.clear', { message: 'Clearing error state' })
-    set({
-      errorState: {
-        hasError: false,
-        errorMessage: null,
-        failedMessage: null,
-        failedContext: null
-      }
-    })
-  },
-
-  retryLastMessage: async () => {
-    const { errorState, currentAppId } = get()
-
-    if (!errorState.hasError || !errorState.failedMessage) {
-      logger.warn('streaming-store.retry.no-error', { message: 'No error state to retry' })
-      return
-    }
-
-    logger.info('streaming-store.retry.begin', {
-      message: 'Retrying last message',
-      messagePreview: errorState.failedMessage.slice(0, 50) + '...',
-      hasContext: !!errorState.failedContext
-    })
-
-    // Clear error state before retry
-    get().clearErrorState()
-
-    // The retry will be handled by the WebSocket hook through a custom event
-    // Dispatch event with retry details
-    const retryEvent = new CustomEvent('airo-retry-message', {
-      detail: {
-        message: errorState.failedMessage,
-        context: errorState.failedContext,
-        appId: currentAppId
-      }
-    })
-    window.dispatchEvent(retryEvent)
-  },
-
   // === UTILITY ACTIONS ===
 
   addCompletedMessage: (message) => {
@@ -603,12 +533,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       },
       appChatHistory: {},
       websocket: { connected: false, status: 'idle' },
-      errorState: {
-        hasError: false,
-        errorMessage: null,
-        failedMessage: null,
-        failedContext: null
-      }
     })
   },
 
@@ -978,6 +902,7 @@ export const useAppendTextSegment = () => useStreamingConversationStore(state =>
 export const useAddToolStartSegment = () => useStreamingConversationStore(state => state.addToolStartSegment)
 export const useAddToolResultSegment = () => useStreamingConversationStore(state => state.addToolResultSegment)
 export const useMarkMaxStepsReached = () => useStreamingConversationStore(state => state.markMaxStepsReached)
+export const useMarkUpstreamError = () => useStreamingConversationStore(state => state.markUpstreamError)
 export const useFinalizeStream = () => useStreamingConversationStore(state => state.finalizeStream)
 export const useAutoSendInitialMessage = () => useStreamingConversationStore(state => state.autoSendInitialMessage)
 export const useLoadConversationHistory = () => useStreamingConversationStore(state => state.loadConversationHistory)
@@ -997,9 +922,3 @@ export const useSetStreamingState = () => useStreamingConversationStore(state =>
 export const useDevelopmentPlan = () => useStreamingConversationStore(state => state.developmentPlan)
 export const useAiEditContext = () => useStreamingConversationStore(state => state.aiEditContext)
 export const useConversations = () => useStreamingConversationStore(state => state.conversations)
-
-// Error state selectors
-export const useErrorState = () => useStreamingConversationStore(state => state.errorState)
-export const useSetErrorState = () => useStreamingConversationStore(state => state.setErrorState)
-export const useClearErrorState = () => useStreamingConversationStore(state => state.clearErrorState)
-export const useRetryLastMessage = () => useStreamingConversationStore(state => state.retryLastMessage)

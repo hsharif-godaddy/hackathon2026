@@ -6,7 +6,7 @@
  *
  * Store types (canonical & re-exported):
  *   - ToolCall, StreamSegment, ChatMessage, StreamingMessage
- *   - Conversation, ErrorState, WebSocketState, PlanItem
+ *   - Conversation, WebSocketState, PlanItem
  *
  * UI-specific types (local only):
  *   - DevContext, ElementInfo, AiEditContext
@@ -20,7 +20,6 @@ export type {
   ChatMessage,
   StreamingMessage,
   Conversation,
-  ErrorState,
   WebSocketState,
   PlanItem
 } from '@/stores/useStreamingConversationStore'

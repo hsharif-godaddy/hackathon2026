@@ -20,7 +20,6 @@ import {
   useSetInputValue,
   useSetAiEditContext,
   useSetCurrentAppId,
-  useErrorState
 } from '@/stores/useStreamingConversationStore'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -47,7 +46,6 @@ export default function ChatPane({
   const isStreaming = useIsActivelyStreaming()
   const developmentPlan = useDevelopmentPlan()
   const aiEditContext = useAiEditContext()
-  const errorState = useErrorState()
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
   const setCurrentAppId = useSetCurrentAppId()
@@ -88,8 +86,7 @@ export default function ChatPane({
   }
 
   // Track processing state - use isLoading OR isStreaming to match original behavior
-  // Also disable during error state to prevent confusion during retry
-  const isProcessing = isLoading || isStreaming || errorState.hasError
+  const isProcessing = isLoading || isStreaming
 
   // Handle sending a message
   const handleSendMessage = () => {

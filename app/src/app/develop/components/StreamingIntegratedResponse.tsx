@@ -128,7 +128,8 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
 
   // Track content changes to show thinking indicator
   useEffect(() => {
-    if (isComplete || !isActiveStream) {
+    // Don't show thinking indicator if there's an error or max steps reached
+    if (isComplete || !isActiveStream || message.upstreamError || message.maxStepsReached) {
       setShowThinkingIndicator(false)
       if (thinkingTimeoutRef.current) {
         clearTimeout(thinkingTimeoutRef.current)
@@ -155,7 +156,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
         clearTimeout(thinkingTimeoutRef.current)
       }
     }
-  }, [chronologicalContent, isComplete, isActiveStream])
+  }, [chronologicalContent, isComplete, isActiveStream, message.upstreamError, message.maxStepsReached])
 
   const thinkingIndicator = () => (
     <div className="flex items-center gap-4 text-sm mt-4">
@@ -171,8 +172,8 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   return (
     <div>
       <div className="p-2">
-        {/* Initial thinking indicator - show when actively streaming but no content yet */}
-        {isActiveStream && !isComplete && chronologicalContent.length === 0 && !hasSegments && thinkingIndicator()}
+        {/* Initial thinking indicator - show when actively streaming but no content yet, and no errors */}
+        {isActiveStream && !isComplete && chronologicalContent.length === 0 && !hasSegments && !message.upstreamError && !message.maxStepsReached && thinkingIndicator()}
 
         <div className="space-y-2">
           {/* Streaming approach - accumulate text and render tools in order */}
@@ -296,17 +297,27 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
         {/* Max steps reached notification */}
         {message.maxStepsReached && (
           <StreamingAlertMessage
+            type="Warning"
             title="Maximum reasoning steps reached"
             message="Content generation stopped here to maintain quick responses, but more steps are needed to complete this task. Continue with a follow-up question or break down your request into smaller parts."
           />
         )}
 
+        {/* Error notification */}
+        {message.upstreamError && (
+          <StreamingAlertMessage
+            type="Critical"
+            title="Error"
+            message="Sorry, an error occurred while processing your request. Please try again."
+          />
+        )}
+
         {/* Thinking indicator for active streams - reserve space to prevent layout shifts */}
         <div className={clsx("transition-all duration-200", {
-          "h-8 opacity-100": isActiveStream && !isComplete && showThinkingIndicator,
-          "h-0 opacity-0 overflow-hidden": !(isActiveStream && !isComplete && showThinkingIndicator)
+          "h-8 opacity-100": isActiveStream && !isComplete && showThinkingIndicator && !message.upstreamError && !message.maxStepsReached,
+          "h-0 opacity-0 overflow-hidden": !(isActiveStream && !isComplete && showThinkingIndicator && !message.upstreamError && !message.maxStepsReached)
         })}>
-          {isActiveStream && !isComplete && showThinkingIndicator && thinkingIndicator()}
+          {isActiveStream && !isComplete && showThinkingIndicator && !message.upstreamError && !message.maxStepsReached && thinkingIndicator()}
         </div>
       </div>
     </div>
