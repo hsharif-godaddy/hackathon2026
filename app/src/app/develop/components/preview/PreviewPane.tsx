@@ -196,6 +196,29 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
         setTimeout(() => {
           if (iframeRef.current) {
             iframeRef.current.src = iframeRef.current.src
+
+            // If we have scroll position to restore, do it after iframe loads
+            if (event.data.preserveState?.scrollPosition) {
+              setTimeout(() => {
+                try {
+                  const contentWindow = iframeRef.current?.contentWindow
+                  if (contentWindow) {
+                    contentWindow.scrollTo(
+                      event.data.preserveState.scrollPosition.x,
+                      event.data.preserveState.scrollPosition.y
+                    )
+                  }
+                } catch (error) {
+                  // Cross-origin, try postMessage
+                  if (iframeRef.current) {
+                    postMessageToIframe(iframeRef.current, {
+                      type: 'RESTORE_STATE_AFTER_REFRESH',
+                      scrollPosition: event.data.preserveState.scrollPosition
+                    })
+                  }
+                }
+              }, 500) // Wait for iframe to load
+            }
           }
         }, REFRESH_DEBOUNCE_MS)
       }

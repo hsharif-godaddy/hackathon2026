@@ -216,6 +216,11 @@ export function useStreamingWebSocket() {
           setWebSocketState({ status: 'idle' })
           setStreamingState('idle')
           setIsLoading(false)
+          // Send window message to trigger preview refresh
+          window.postMessage({
+            type: 'MESSAGE_COMPLETE',
+            source: 'websocket'
+          }, window.location.origin)
           break
         case 'error':
           logger.error('websocket.error', { message: 'Socket.IO error', data })

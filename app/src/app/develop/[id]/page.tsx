@@ -226,9 +226,12 @@ function DevelopPageContent() {
   // Listen for messages from preview iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Only handle messages from our iframe
+      // Handle messages from iframe or from same window (for websocket events)
       const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
-      if (!iframe || event.source !== iframe.contentWindow) return
+      const isFromIframe = iframe && event.source === iframe.contentWindow
+      const isFromSameWindow = event.source === window
+
+      if (!isFromIframe && !isFromSameWindow) return
 
       switch (event.data.type) {
         case 'ELEMENT_SELECTED':
