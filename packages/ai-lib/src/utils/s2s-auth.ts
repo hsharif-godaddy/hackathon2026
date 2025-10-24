@@ -19,6 +19,7 @@ interface TokenCache {
 import { IamTokenClient } from 'gd-auth-client'
 
 let cachedToken: TokenCache | null = null;
+let tokenRefreshPromise: Promise<string> | null = null;
 
 /**
  * Configuration for S2S authentication
@@ -182,6 +183,7 @@ function isCachedTokenValid(config: Required<S2SAuthConfig>): boolean {
  */
 export function clearTokenCache(): void {
   cachedToken = null;
+  tokenRefreshPromise = null;
 }
 
 /**
@@ -213,6 +215,7 @@ export function getTokenCacheInfo(): {
 /**
  * Get JWT token for S2S authentication using AWS IAM credentials
  * Uses caching to avoid fetching new tokens on every request
+ * Thread-safe: prevents concurrent token refresh attempts
  * 
  * @param config - Optional S2S authentication configuration
  * @returns Promise that resolves to JWT token string
@@ -230,24 +233,55 @@ export async function getS2SToken(config?: S2SAuthConfig): Promise<string> {
     return cachedToken!.jwt;
   }
   
-  // Fetch new token
-  try {
-    const client = new IamTokenClient(finalConfig.ssoHost);
-    
-    const token = await client.getToken();
-    
-    // Cache the token with its expiration time
-    const payload = decodeJWTPayload(token);
-    cachedToken = {
-      jwt: token,
-      expiresAt: payload.exp * 1000, // Convert to milliseconds
-      config: finalConfig
-    };
-    
-    return token;
-  } catch (error) {
-    throw new Error(`Failed to retrieve S2S token: ${error instanceof Error ? error.message : String(error)}`);
+  // If a refresh is already in progress, wait for it
+  if (tokenRefreshPromise) {
+    return tokenRefreshPromise;
   }
+  
+  // Fetch new token with mutex
+  tokenRefreshPromise = (async () => {
+    try {
+      const client = new IamTokenClient(finalConfig.ssoHost);
+      
+      const token = await client.getToken();
+      
+      // Cache the token with its expiration time
+      const payload = decodeJWTPayload(token);
+      cachedToken = {
+        jwt: token,
+        expiresAt: payload.exp * 1000, // Convert to milliseconds
+        config: finalConfig
+      };
+      
+      return token;
+    } catch (error) {
+      throw new Error(`Failed to retrieve S2S token: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      tokenRefreshPromise = null;
+    }
+  })();
+  
+  return tokenRefreshPromise;
+}
+
+/**
+ * Force refresh of S2S token, bypassing cache
+ * Useful for manual recovery or when token is known to be invalid
+ * 
+ * @param config - Optional S2S authentication configuration
+ * @returns Promise that resolves to new JWT token string
+ * @throws Error if S2S auth is not enabled or token retrieval fails
+ */
+export async function refreshS2SToken(config?: S2SAuthConfig): Promise<string> {
+  if (!isS2SAuthEnabled()) {
+    throw new Error('S2S authentication is not enabled. Set GOCODE_USE_S2S_AUTH=true to enable.');
+  }
+  
+  // Clear cache to force refresh
+  clearTokenCache();
+  
+  // Fetch new token
+  return getS2SToken(config);
 }
 
 /**

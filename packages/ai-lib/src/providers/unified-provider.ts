@@ -16,7 +16,7 @@ import {
   isModelSupported as isModelSupportedFromNormalization,
   getFullModelName as getFullModelNameFromNormalization
 } from '../utils/model-normalization.js'
-import { getS2SProviderConfig, isS2SAuthEnabled, getDefaultAnthropicProxyEndpoint, type S2SAuthConfig } from '../utils/s2s-auth.js'
+import { getS2SProviderConfig, isS2SAuthEnabled, getDefaultAnthropicProxyEndpoint, refreshS2SToken, type S2SAuthConfig } from '../utils/s2s-auth.js'
 
 /**
  * Claude models that can be routed through OpenAI proxy
@@ -212,6 +212,7 @@ function getProviderType(modelName: string, config?: ProviderConfig): 'openai' |
 /**
  * Create raw OpenAI client for direct usage (e.g., image generation)
  * Uses the same authentication logic as the unified provider
+ * Includes automatic token refresh on authentication failures via custom fetch
  */
 export async function createOpenAIClient(config?: ProviderConfig): Promise<any> {
   // Check if S2S authentication is enabled and get config
@@ -223,7 +224,8 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
     return new OpenAI({
       apiKey: s2sConfig.apiKey, // Placeholder API key
       baseURL: s2sConfig.baseURL, // GoCode endpoint
-      defaultHeaders: s2sConfig.headers // Authorization: Bearer JWT
+      defaultHeaders: s2sConfig.headers, // Authorization: Bearer JWT
+      fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token refresh
     })
   } else {
     // Use regular OpenAI authentication
@@ -249,8 +251,73 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
 }
 
 /**
+ * Create a fetch wrapper that handles S2S token refresh on authentication errors
+ */
+function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
+  // Store reference to original fetch to avoid infinite recursion
+  const originalFetch = fetch
+  
+  return async (url: RequestInfo | URL, init?: RequestInit) => {
+    // Convert headers to plain object for easier inspection and manipulation
+    const headersObj: Record<string, string> = {}
+    if (init?.headers) {
+      if (init.headers instanceof Headers) {
+        init.headers.forEach((value, key) => {
+          headersObj[key] = value
+        })
+      } else if (Array.isArray(init.headers)) {
+        for (const [key, value] of init.headers) {
+          headersObj[key] = value
+        }
+      } else {
+        Object.assign(headersObj, init.headers)
+      }
+    }
+    
+    // Check if this is already a retry attempt (case-insensitive)
+    const isRetry = headersObj['x-s2s-token-retry'] === 'true'
+    
+    // Make initial request
+    const response = await originalFetch(url, init)
+    
+    // Only attempt token refresh on first failure (not on retry)
+    if (!isRetry && (response.status === 401 || response.status === 403) && isS2SAuthEnabled()) {
+      // Consume the failed response to prevent issues
+      try {
+        await response.arrayBuffer()
+      } catch {
+        // Ignore errors consuming the response body
+      }
+      
+      // Refresh token
+      const newToken = await refreshS2SToken(s2sAuthConfig)
+      
+      // Update headers with new token and retry flag
+      // Use lowercase to match the original header names from the AI SDK
+      const updatedHeaders = {
+        ...headersObj,
+        'authorization': `Bearer ${newToken}`,
+        'x-s2s-token-retry': 'true'
+      }
+      
+      // Create updated init with new headers
+      const updatedInit = {
+        ...init,
+        headers: updatedHeaders
+      }
+      
+      // Retry the request once with new token and return the retry response
+      return await originalFetch(url, updatedInit)
+    }
+    
+    return response
+  }
+}
+
+/**
  * Create OpenAI provider with configuration
  * Now supports S2S authentication when GOCODE_USE_S2S_AUTH is enabled
+ * Includes automatic token refresh on authentication failures
  */
 async function createOpenAIProvider(config?: ProviderConfig) {
   // Check if S2S authentication is enabled and get config
@@ -261,7 +328,8 @@ async function createOpenAIProvider(config?: ProviderConfig) {
     const openaiConfig: any = {
       apiKey: s2sConfig.apiKey, // Placeholder API key
       baseURL: s2sConfig.baseURL, // GoCode endpoint
-      headers: s2sConfig.headers   // Authorization: Bearer JWT
+      headers: s2sConfig.headers,   // Authorization: Bearer JWT
+      fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token refresh
     }
     
     console.log(`🔐 Using S2S authentication with GoCode endpoint: ${s2sConfig.baseURL}`)
@@ -511,6 +579,7 @@ function validateAnthropicConfig(config?: ProviderConfig): void {
 /**
  * Create Anthropic provider with configuration
  * Now supports S2S authentication when GOCODE_USE_S2S_AUTH is enabled
+ * Includes automatic token refresh on authentication failures
  */
 async function createAnthropicProvider(config?: ProviderConfig) {
   // Check if S2S authentication is enabled and get config
@@ -521,7 +590,8 @@ async function createAnthropicProvider(config?: ProviderConfig) {
     const anthropicConfig: any = {
       apiKey: s2sConfig.apiKey, // Placeholder API key
       baseURL: s2sConfig.baseURL.endsWith('/v1') ? s2sConfig.baseURL : s2sConfig.baseURL + '/v1', // Ensure /v1 suffix
-      headers: s2sConfig.headers // Authorization: Bearer JWT
+      headers: s2sConfig.headers, // Authorization: Bearer JWT
+      fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token refresh
     }
     
     console.log(`🔐 Using S2S authentication with GoCode endpoint (Anthropic): ${anthropicConfig.baseURL}`)
