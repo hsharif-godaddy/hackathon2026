@@ -2,7 +2,7 @@
 
 Use **Nodemailer** with SMTP for sending emails:
 
-The from address should never by from user input. It should either be `noreply@airoapps.ai` or an addressed that is explicitly specified.
+The from address should never be from user input. It should either be `noreply@airoapp.ai` or an address that is explicitly specified.
 
 ```typescript
 import nodemailer from 'nodemailer';
@@ -14,7 +14,7 @@ const transporter = nodemailer.createTransport({
 });
 
 await transporter.sendMail({
-  from: 'noreply@airoapps.ai',
+  from: 'noreply@airoapp.ai',
   to: 'recipient@example.com',
   subject: 'Subject',
   text: 'Plain text body',
