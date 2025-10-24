@@ -2,6 +2,7 @@ import { createTool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { findImage } from '../image-search-tool.js'
 import { generateImage } from '../image-generation-tool.js'
+import { AppRepository } from '../../database/repositories/AppRepository.js'
 
 /**
  * Image Search Tool for AI-Lib
@@ -88,7 +89,20 @@ export const imageGenerateAITool = createTool(
       throw new Error(result.error || 'Failed to generate image')
     }
     
-    let response = `![${prompt}](${result.publicPath})`
+    // Get the app's preview URL to construct the full image URL
+    const appRepository = new AppRepository()
+    const app = appRepository.findById(appId)
+    
+    if (!app) {
+      throw new Error(`App not found with ID: ${appId}`)
+    }
+    
+    // Combine previewUrl with the publicPath to create full image URL
+    const imageUrl = app.previewUrl 
+      ? `${app.previewUrl.replace(/\/+$/, '')}${result.publicPath}` 
+      : result.publicPath
+    
+    let response = `![${prompt}](${imageUrl})`
     response += `\n\nImage saved to: ${result.publicPath}`
     
     return response
