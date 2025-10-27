@@ -26,6 +26,7 @@ import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHisto
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { handlePreviewRefresh } from '@/app/develop/components/utils'
+import { logger } from '@/lib/request-context'
 
 function DevelopPageContent() {
   const searchParams = useSearchParams()
@@ -42,7 +43,7 @@ function DevelopPageContent() {
   const setCurrentAppId = useSetCurrentAppId()
   const autoSendInitialMessage = useAutoSendInitialMessage()
   const loadConversationHistory = useLoadConversationHistory()
-  const { sendMessage } = useStreamingWebSocket()
+  const { sendMessage, isConnected: isWebSocketConnected } = useStreamingWebSocket()
 
   // Develop page store - for UI state and coordination
   const {
@@ -326,9 +327,10 @@ function DevelopPageContent() {
     }
   }, [loadingPhase, searchParams, conversations.length, router, setInputValue])
 
-  // Handle auto-send initial message for new apps (after conversation history is loaded)
+  // Handle auto-send initial message for new apps (after conversation history is loaded AND WebSocket is connected)
   useEffect(() => {
-    if (loadingPhase !== 'ready' || !appId || isLoading) return
+    // Only proceed when page is ready, we have an appId, not currently loading, and WebSocket is connected
+    if (loadingPhase !== 'ready' || !appId || isLoading || !isWebSocketConnected) return
 
     // Wait a bit for conversation history to load, then check if we should auto-send
     const timer = setTimeout(() => {
@@ -342,22 +344,24 @@ function DevelopPageContent() {
         !searchParams.get('message') // Don't auto-send if there's a URL message
 
       if (shouldAutoSend) {
-        console.log('🚀 Auto-sending initial message for new app:', appId)
+        logger.info('develop-page.auto-send.triggered', {
+          message: 'Auto-sending initial message for new app',
+          appId,
+          promptPreview: site.initial_prompt?.substring(0, 50) + '...'
+        })
 
         // Use the streaming store's auto-send function
         const wasTriggered = autoSendInitialMessage(site.initial_prompt!, appId)
 
         if (wasTriggered) {
-          // Trigger the actual send after a brief delay to ensure WebSocket is ready
-          setTimeout(() => {
-            sendMessage(site.initial_prompt!, null)
-          }, 1000)
+          // Send immediately - WebSocket is confirmed to be connected
+          sendMessage(site.initial_prompt!, null)
         }
       }
     }, 500) // Wait 500ms for conversation history to load
 
     return () => clearTimeout(timer)
-  }, [loadingPhase, appId, site, app, conversations.length, searchParams, autoSendInitialMessage, isLoading, sendMessage])
+  }, [loadingPhase, appId, site, app, conversations.length, searchParams, autoSendInitialMessage, isLoading, sendMessage, isWebSocketConnected])
 
   // Load git history when page is ready
   useEffect(() => {
