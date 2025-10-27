@@ -1,6 +1,6 @@
-# Agents Rules
+# Agents Rules and Guidance
 
-Guidance for Claude Code and other agents when working with code in this repository.
+This file provides guidance to Claude Code and other agents when working with code in this repository.
 
 **Read this before writing, editing, or executing anything in this repo.**
 
@@ -51,31 +51,88 @@ pnpm run dev:app            # Main Next.js app (port 3000)
 
 **For complete setup instructions, see [GETTING_STARTED.md](./GETTING_STARTED.md)**
 
+### Common Development Commands
+
+```bash
+# Code Quality
+pnpm typecheck              # Type check all packages
+pnpm lint                   # Lint all packages
+pnpm test                   # Run all tests
+pnpm test:e2e              # Run end-to-end tests with Playwright
+
+# Per-service commands (run from workspace root)
+pnpm --filter @airo/agents test        # Test agents service
+pnpm --filter @airo/agents test:unit   # Unit tests only
+pnpm --filter @airo/agents test:integration # Integration tests only
+pnpm --filter website test             # Test Next.js app
+
+# Building
+pnpm build                  # Build all packages
+pnpm build:all             # Build all packages recursively
+pnpm --filter @airo/agents build      # Build agents service only
+pnpm --filter website build           # Build Next.js app only
+```
+
 ## Architecture Overview
+
+This is a **pnpm workspace monorepo** with multiple interconnected services. All commands should use `pnpm` instead of `npm`.
 
 ### Core Services
 
 - **agents/** - Backend API service (Express.js, port 4000)
+  - Package name: `@airo/agents`
   - AI agent registry and execution
   - App lifecycle management with adapter pattern
   - SQLite database for persistence
   - WebSocket support for real-time communication
+  - Uses Vitest for testing
 
-- **app/** - Main Next.js application (port 3000)
-  - Primary user interface
+- **app/** - Primary Next.js application (port 3000)
+  - **This is the main application users interact with for building apps with AI agents**
+  - Package name: `website` (directory is `app/`, package name is `website`)
   - Development environment with Monaco editor
-  - Real-time collaboration features
-  - Authentication integration
+  - Real-time collaboration features with agents via WebSocket
+  - Chat interface for agent interactions
+  - File explorer and code editing
+  - MySQL database via Prisma ORM
+  - GoDaddy authentication integration via Gasket plugins
+  - UXCore design system (@ux/\* components)
+  - Uses Tailwind CSS with design system (NO default colors like `bg-white` or `text-blue-600`)
+  - Uses Vitest for testing
+
+- **website/** - Marketing/demo website
+  - Separate mockup website demonstrating the Airo AI Builder experience
+  - Simpler Next.js app with homepage, pricing, team pages
+  - Used for showcasing the platform, not the actual builder interface
 
 - **app-templates/** - Template system for new applications
   - v8 is current: Vite + React frontend + Node.js backend
   - Templates are copied and customized for new apps
+  - Template dependencies must be installed via workspace `pnpm install`
 
-### Deployment Adapter Pattern
+- **packages/ai-lib/** - Shared AI utilities library
+  - Package name: `@airo/ai-lib`
+  - Shared between agents and app services
+  - Must be built before building agents service
 
-The system uses Docker containers for all development and local deployments. Production uses a different adapter for enterprise infrastructure.
+- **setup/** - Interactive configuration utility
+  - Package name: `airo-setup`
+  - Automated environment setup and validation
+  - AWS credentials and secrets management
 
-Key files: `app/src/lib/dev-environment/adapters/` containing `DockerAppService.ts`
+### Key Architectural Patterns
+
+**Deployment Adapter Pattern:**
+
+- Docker containers for development and local deployments
+- Production uses different adapter for enterprise infrastructure
+- Key files: `app/src/lib/dev-environment/adapters/` containing `DockerAppService.ts`
+
+**Workspace Dependencies:**
+
+- `packages/ai-lib` must be built before `agents` service
+- Template in `app-templates/v8` must have dependencies installed
+- Use `pnpm --filter <package-name>` to run commands for specific packages
 
 ### AI Agent System
 
@@ -84,14 +141,27 @@ Key files: `app/src/lib/dev-environment/adapters/` containing `DockerAppService.
 - Available agents: ExampleAgent, DevelopAgent, FakeEventsAgent
 - Prompts stored in: `agents/src/prompts/`
 
-### Database Schema
+### Database Architecture
 
-SQLite database with tables for:
+**Agents Service (SQLite):**
 
-- `apps` - Application metadata and lifecycle
-- `running_processes` - Development server tracking
-- `token_usage` - AI model usage analytics
-- `conversations` - Chat history and context
+- File: `agents/database.sqlite`
+- Auto-created on first run
+- Tables: `apps`, `running_processes`, `token_usage`, `conversations`
+- Direct database access via better-sqlite3
+
+**App Service (MySQL via Prisma):**
+
+- MySQL container managed via Docker Compose
+- Connection string in `app/.env`: `DATABASE_URL`
+- Schema managed via Prisma migrations in `app/prisma/`
+- Package name is `website` (directory is `app/`)
+- Commands:
+  ```bash
+  pnpm --filter website dlx prisma migrate dev    # Run migrations
+  pnpm --filter website dlx prisma generate       # Generate Prisma client
+  pnpm --filter website dlx prisma studio         # Open Prisma Studio
+  ```
 
 ### File Operations & Tools
 
@@ -108,6 +178,58 @@ Comprehensive file system tools in `agents/src/tools/`:
 - `image-search-tool.ts` - Web image search
 - `getty-image-tool.ts` - Professional stock photos
 
+## Environment Configuration
+
+### Required Environment Files
+
+**agents/.env:**
+
+```bash
+# AI Provider (choose one: openai, bedrock, gocode)
+OPENAI_API_KEY=your_key_here
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4
+
+# App Configuration
+APP_TEMPLATE_DIR=app-templates/v8
+SHOW_USAGE_COST=true
+
+# MySQL for created apps
+MYSQL_ROOT_HOST=localhost
+MYSQL_ROOT_PORT=3306
+MYSQL_ROOT_USER=root
+MYSQL_ROOT_PASS=
+
+# Getty Images (optional)
+GETTY_API_URL=<proxy-url>
+GETTY_TOKEN=<token>
+IMAGE_SEARCH_DRIVER=getty
+```
+
+**app/.env:**
+
+```bash
+NODE_ENV=development
+PORT=3000
+DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app
+
+# AI Provider (match agents config)
+AI_PROVIDER=openai
+OPENAI_API_KEY=your_key_here
+
+# Authentication
+NEXT_PUBLIC_USE_MOCK_LOGIN=true
+```
+
+### Setup Utility
+
+Instead of manually creating `.env` files, use the automated setup:
+
+```bash
+./setup.sh                          # Full interactive setup
+pnpm --filter airo-setup start      # Selective configuration
+```
+
 ## Important Patterns
 
 ### Development Server Lifecycle
@@ -117,14 +239,25 @@ Apps go through states: `creating` → `created` → `running`/`stopped`/`error`
 - Asynchronous setup after database insertion
 - Automatic process recovery on restart
 - Graceful cleanup and orphan detection
+- Generated apps stored in `/tmp/apps/` (DO NOT edit directly)
+
+### WebSocket Communication
+
+- Real-time agent communication via Socket.IO
+- V2 protocol active with conversation history support
+- Bidirectional streaming for agent responses
+- File context management with hot file tracking
 
 ## Key Integrations
 
-- **OpenAI API** - Required for AI agent functionality
+- **OpenAI API / AWS Bedrock / GoCode** - AI model providers
 - **Git** - Automatic repository initialization for new apps
-- **Docker** - Optional containerized deployment mode
-- **WebSocket** - Real-time communication (v2 protocol active)
-- **SQLite** - Embedded database with foreign key constraints
+- **Docker** - Containerized deployment via Docker Compose
+- **WebSocket** - Real-time communication (Socket.IO v2 protocol)
+- **SQLite** - Agents service embedded database
+- **MySQL** - Website service database via Prisma
+- **Getty Images** - Professional stock photos via proxy
+- **GoDaddy SSO** - Enterprise authentication in production
 
 ## Development Notes
 
@@ -133,6 +266,7 @@ Apps go through states: `creating` → `created` → `running`/`stopped`/`error`
 - All file operations include security filtering and validation
 - Process management includes automatic cleanup and orphan recovery
 - Token usage tracking is always enabled regardless of UI settings
+- Apps automatically start on ports 5001+ (incremental)
 
 ## Logging Standards
 
@@ -291,6 +425,38 @@ console.log('Agent feature flags and configuration:', { ... })
 2. **Medium Priority**: Standardize app service logging to match agents pattern
 3. **Low Priority**: Add structured event helpers for both services
 
+## Coding Standards
+
+### Mandatory Requirements
+
+**Import Sorting:**
+
+- Sort all imports by exact character length (longest first)
+- Count every character including spaces, quotes, semicolons
+- Apply to both ES6 imports and CommonJS requires
+- See `.cursor/rules/import-sorting.mdc` for details
+
+**JSDoc Documentation:**
+
+- All functions, classes, interfaces, and exports MUST have comprehensive JSDoc
+- Required tags: `@param` for every parameter, `@returns` for non-void functions, `@throws` for error cases
+- Include `@example` for public APIs and complex functions
+- See `.cursor/rules/jsdoc-mandatory.mdc` for full standards
+
+**Dependency Validation:**
+
+- Every external package import MUST be declared in `package.json`
+- Add dependency BEFORE importing and using it
+- Use correct category: `dependencies` (runtime) vs `devDependencies` (dev/test only)
+- Node.js core modules with `node:` prefix do NOT need package.json entries
+
+**React Component Architecture (website/ only):**
+
+- Build pages using reusable components in separate files
+- Never inline complex UI directly in pages (>5-10 lines of JSX)
+- Extract to `components/` directory with clear naming
+- One component per file with TypeScript prop interfaces
+
 ## Package Management
 
 This project uses **pnpm** as the package manager. All commands should use `pnpm` instead of `npm`:
@@ -299,6 +465,17 @@ This project uses **pnpm** as the package manager. All commands should use `pnpm
 - `pnpm run dev` - Start development server
 - `pnpm test` - Run tests
 - `pnpm run lint` - Run linting
+
+### Adding New Dependencies
+
+```bash
+# Add to a specific workspace package
+pnpm --filter @airo/agents add <package-name>
+pnpm --filter website add <package-name>
+
+# Add as dev dependency
+pnpm --filter @airo/agents add -D <package-name>
+```
 
 ## Pull Request Guidelines
 
