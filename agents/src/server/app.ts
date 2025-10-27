@@ -18,6 +18,105 @@ if (isApmEnabled) {
   });
 }
 
+// Patch global fetch to include full URL paths in APM spans
+if (isApmEnabled) {
+  const originalFetch = global.fetch;
+  global.fetch = async function apmFetch(this: any, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    // Extract URL and method
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const method = 
+      init?.method ||
+      (input instanceof Request ? input.method : undefined) ||
+      'GET';
+    
+    // Check if URL is absolute (has protocol)
+    const isAbsoluteUrl = url.startsWith('http://') || url.startsWith('https://');
+    
+    // For relative URLs, we need a base URL to parse them
+    let urlObj: URL;
+    let hostname: string;
+    let path: string;
+    let isExternal: boolean;
+    
+    if (!isAbsoluteUrl) {
+      // Relative URL - assume it's to localhost (internal call)
+      // Use a dummy base URL just for parsing the path
+      try {
+        urlObj = new URL(url, 'http://localhost');
+        hostname = 'localhost';
+        path = urlObj.pathname + urlObj.search;
+        isExternal = false;
+      } catch (error) {
+        // If URL parsing fails, just call original fetch without instrumentation
+        return originalFetch.call(this, input, init);
+      }
+    } else {
+      // Absolute URL - parse normally
+      urlObj = new URL(url);
+      hostname = urlObj.hostname;
+      path = urlObj.pathname + urlObj.search;
+      // Consider localhost, 127.0.0.1, and same hostname as internal
+      isExternal = !['localhost', '127.0.0.1', '::1'].includes(hostname.toLowerCase());
+    }
+    
+    // Create custom span name with full URL path
+    const spanName = `${method} ${hostname}${path}`;
+    
+    // Start custom APM span
+    // Use 'external' for external calls, 'internal' for local calls
+    const spanType = isExternal ? 'external' : 'internal';
+    const span = apmAgent.startSpan(spanName, spanType, 'http');
+    
+    if (span) {
+      // Add span labels for better filtering and searching (use underscores, not dots)
+      span.addLabels({
+        'http_url': url,
+        'http_method': method,
+        'http_hostname': hostname,
+        'http_path': path,
+        'http_is_external': isExternal,
+        'destination_service_resource': `${hostname}${path}`
+      });
+      
+      // Set span type for proper categorization
+      span.setType(spanType, 'http', hostname);
+    }
+    
+    try {
+      // Execute the actual fetch with proper context binding
+      const response = await originalFetch.call(this, input, init);
+      
+      if (span) {
+        // Add response status to span
+        span.addLabels({ 'http_status_code': response.status });
+        span.setOutcome(response.ok ? 'success' : 'failure');
+      }
+      
+      // Clone the response to ensure the caller can still read the body
+      // (Response bodies can only be read once)
+      return response.clone();
+    } catch (error) {
+      if (span) {
+        span.setOutcome('failure');
+        // Capture the error in the span
+        if (error instanceof Error) {
+          span.addLabels({ 'error_message': error.message });
+        }
+      }
+      throw error;
+    } finally {
+      // Always end the span
+      if (span) {
+        span.end();
+      }
+    }
+  } as typeof fetch;
+  
+  logger.info('server.apm.fetch_instrumentation', {
+    message: 'Global fetch patched with APM instrumentation for full URL path tracking'
+  });
+}
+
 const apm = apmAgent.start({
   serviceName,
   secretToken: process.env.ELASTIC_APM_SECRET_TOKEN || '',
@@ -34,7 +133,15 @@ const apm = apmAgent.start({
   instrumentIncomingHTTPRequests: true,
   captureSpanStackTraces: false,
   stackTraceLimit: 50,
-  transactionMaxSpans: 500
+  transactionMaxSpans: 500,
+  // Span configuration for external HTTP calls
+  spanCompressionEnabled: false,
+  spanCompressionExactMatchMaxDuration: '0ms',
+  spanCompressionSameKindMaxDuration: '0ms',
+  // Capture full URL paths in external HTTP spans for better dependency tracking
+  spanStackTraceMinDuration: '0ms',
+  // Enable automatic HTTP client instrumentation for http, https, and undici
+  // disableInstrumentations: ['http', 'https', 'undici']
 });
 
 // Now import other modules after APM is initialized
