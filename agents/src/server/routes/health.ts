@@ -9,7 +9,7 @@ const registry = AgentRegistry.getInstance();
  */
 router.get('/', async (req, res) => {
   const stats = registry.getStats();
-  
+
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -17,6 +17,8 @@ router.get('/', async (req, res) => {
     memory: process.memoryUsage(),
     registry: stats,
     version: process.env.npm_package_version || '0.1.0',
+    agent_version: process.env.AGENT_IMAGE_TAG || 'unknown',
+    dev_app_version: process.env.DEV_APP_IMAGE_TAG || 'unknown',
   });
 });
 
@@ -26,7 +28,7 @@ router.get('/', async (req, res) => {
 router.get('/agents', async (req, res, next) => {
   try {
     const validation = await registry.validateAll();
-    
+
     res.json({
       status: validation.invalid.length === 0 ? 'healthy' : 'degraded',
       timestamp: new Date().toISOString(),
