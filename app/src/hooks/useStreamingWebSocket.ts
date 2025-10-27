@@ -29,7 +29,7 @@ import { logImpressionEvent } from '@/utils/instrumentation'
 import { logger } from '@/lib/request-context'
 
 /**
- * Get short-lived JWT token for WebSocket authentication (5 minutes)
+ * Get short-lived JWT token for WebSocket authentication (12 hours)
  */
 const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
   if (typeof document === 'undefined') return null;
@@ -38,7 +38,7 @@ const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
     const response = await fetch('/api/auth/agent-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ siteId, expiresInSeconds: 300 })
+      body: JSON.stringify({ siteId, expiresInSeconds: (12 * 60 * 60) })
     });
 
     if (!response.ok) {
