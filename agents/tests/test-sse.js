@@ -2,13 +2,12 @@
 
 /**
  * SSE Test Script - Validates Server-Sent Events compliance
- * 
+ *
  * This script tests the /agent/develop/chat-streaming endpoint to ensure
  * it properly follows the SSE specification (RFC 6455 / HTML5 SSE).
  */
 
 import { EventSource } from 'eventsource';
-import fetch from 'node-fetch';
 
 // Colors for console output
 const colors = {
@@ -34,7 +33,7 @@ class SSETestRunner {
 
   async createTestApp() {
     this.log('\n📱 Creating test app...', 'blue');
-    
+
     try {
       const response = await fetch(`${this.baseUrl}/apps`, {
         method: 'POST',
@@ -116,31 +115,31 @@ class SSETestRunner {
           const chunkStr = chunk.toString();
           buffer += chunkStr;
           chunks.push(chunkStr);
-          
+
           // Split on double newlines to separate SSE events
           const events = buffer.split('\n\n');
-          
+
           // Update buffer with any remaining incomplete event
           buffer = events.pop() || '';
 
           for (const event of events) {
             if (event.trim()) {
               this.processSSEEvent(event, events);
-              
+
               // Parse event data
               const lines = event.split('\n');
               for (const line of lines) {
                 if (line.startsWith('data: ')) {
                   try {
                     const data = JSON.parse(line.slice(6));
-                    
+
                     if (data.type === 'metadata') hasMetadata = true;
                     if (data.type === 'content') {
                       hasContent = true;
                       contentChunkCount++;
                     }
                     if (data.type === 'complete') hasComplete = true;
-                    
+
                   } catch (error) {
                     this.testResults.push({
                       name: 'Valid JSON in data field',
@@ -157,10 +156,10 @@ class SSETestRunner {
 
         response.body.on('end', () => {
           clearTimeout(timeout);
-          
+
           // Final validations
           const duration = Date.now() - startTime;
-          
+
           this.testResults.push({
             name: 'Has metadata event',
             passed: hasMetadata,
@@ -303,7 +302,7 @@ class SSETestRunner {
       });
 
       clearTimeout(timeoutId);
-      
+
       const text = await response.text();
       const hasError = text.includes('not found') || text.includes('App ') || !response.ok;
 
@@ -315,10 +314,10 @@ class SSETestRunner {
       });
 
     } catch (error) {
-      const isExpectedError = error.message.includes('not found') || 
-                             error.message.includes('App ') || 
+      const isExpectedError = error.message.includes('not found') ||
+                             error.message.includes('App ') ||
                              error.name === 'AbortError';
-      
+
       this.testResults.push({
         name: 'Invalid appId error handling',
         passed: isExpectedError,
@@ -352,9 +351,9 @@ class SSETestRunner {
     for (const result of this.testResults) {
       const status = result.passed ? '✅' : '❌';
       const color = result.passed ? 'green' : 'red';
-      
+
       this.log(`${status} ${result.name}`, color);
-      
+
       if (!result.passed) {
         this.log(`   Expected: ${result.expected}`, 'yellow');
         this.log(`   Actual:   ${result.actual}`, 'yellow');
@@ -365,7 +364,7 @@ class SSETestRunner {
     }
 
     this.log('\n' + '═'.repeat(50), 'cyan');
-    this.log(`Total: ${passed + failed} | Passed: ${passed} | Failed: ${failed}`, 
+    this.log(`Total: ${passed + failed} | Passed: ${passed} | Failed: ${failed}`,
              failed === 0 ? 'green' : 'red');
 
     if (failed === 0) {

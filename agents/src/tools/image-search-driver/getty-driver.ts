@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import { Logger, log } from '../../logging/index.js';
 import { toolImageSearchEvents } from '../../logging/events/index.js';
 import { ImageSearchDriver, ImageSearchResult } from './types.js';
