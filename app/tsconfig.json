@@ -9,18 +9,11 @@
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,
     "outDir": "dist",
-    "lib": [
-      "esnext",
-      "dom"
-    ],
-    "types": [
-      "node"
-    ],
+    "lib": ["esnext", "dom"],
+    "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@/gasket": [
-        "./dist/gasket.js"
-      ],
+      "@/gasket": ["./dist/gasket.js"],
       "@/*": ["src/*"]
     },
     "allowJs": true,
@@ -33,15 +26,9 @@
       {
         "name": "next"
       }
-    ]
+    ],
+    "strictNullChecks": false
   },
-  "exclude": [
-    "node_modules"
-  ],
-  "include": [
-    "./plugins",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts"
-  ]
+  "exclude": ["node_modules"],
+  "include": ["./plugins", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"]
 }

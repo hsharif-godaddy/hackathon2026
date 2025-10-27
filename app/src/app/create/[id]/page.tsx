@@ -39,7 +39,7 @@ export default function CreateAppStatus() {
     'polling': 'Adding a bit of magic...',
     'verifying-agent': 'Making sure the AI didn\'t break anything...',
     'updating-name': 'Asking the naming fairy for inspiration...',
-    'complete': 'Your app is ready! Redirecting, hold on tight...'
+    'complete': 'Your building environment is ready! Redirecting...'
   } as const
 
   // Add new phases to queue when they occur
