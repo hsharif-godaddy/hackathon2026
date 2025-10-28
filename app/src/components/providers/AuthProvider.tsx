@@ -22,12 +22,12 @@ function AuthProviderComponent(props: any) {
 // Export the wrapped provider with proper typing
 export default function AuthProvider({ children }: { children: ReactNode }) {
   const [authProvider, setAuthProvider] = useState<any>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isAuthProviderLoading, setIsAuthProviderLoading] = useState(true);
   const [featureFlags, setFeatureFlags] = useState<any>({});
   const [serverAuthConfig, setServerAuthConfig] = useState<any>(null);
 
   const authData = useAuth()
-  const {isAuthenticated, isAuthDisabled} = authData
+  const {isAuthenticated, isAuthDisabled, isLoading} = authData
 
   const {
     featureFlags: switchboardFeatureFlags,
@@ -111,15 +111,15 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
         // Fallback to plain component
         setAuthProvider(() => AuthProviderComponent);
       } finally {
-        setIsAuthLoading(false);
+        setIsAuthProviderLoading(false);
       }
     }
 
     loadAuthProvider();
   }, [serverAuthConfig, isJWTMode]);
 
-  // Show loading while feature flags or auth provider are loading
-  if (isSwitchboardFeatureFlagsLoading || isAuthLoading) {
+  // Show loading while feature flags, auth provider, or auth validation are loading
+  if (isSwitchboardFeatureFlagsLoading || isAuthProviderLoading || isLoading) {
     return <LoadingComponent />
   }
 
