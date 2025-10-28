@@ -196,6 +196,7 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
     //.file(paths.getAgentFile('develop', 'database.md'))
     .file(paths.getAgentFile('develop', 'api.md'))
     .file(paths.getAgentFile('develop', 'email.md'))
+    .file(paths.getAgentFile('develop', 'deployment.md'))
     .file(paths.getAgentFile('develop', 'decision-matrix.md'))
     .file(paths.getAgentFile('develop', 'approach.md'))
     .file(paths.getAgentFile('develop', 'visual-context.md'))
