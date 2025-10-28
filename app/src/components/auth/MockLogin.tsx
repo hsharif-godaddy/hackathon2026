@@ -13,9 +13,9 @@ interface MockLoginDialogProps {
   message?: string
 }
 
-export function MockLoginDialog({ 
-  isOpen, 
-  onClose, 
+export function MockLoginDialog({
+  isOpen,
+  onClose,
   title = "Mock Login - Development Only",
   message = "Sign in as a test user to simulate the login experience. This is only available in development mode."
 }: MockLoginDialogProps) {
@@ -49,7 +49,7 @@ export function MockLoginDialog({
           />
         </>
       }
-    > 
+    >
       <div>
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">

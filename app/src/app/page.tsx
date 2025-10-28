@@ -27,8 +27,9 @@ function HomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const heroSectionRef = useRef<HeroSectionRef>(null)
+  const promptTextRef = useRef(promptText)
 
-  const { isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth } = useAuthContext()
+  const { isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth, isLoading: authIsLoading } = useAuthContext()
 
   useEffect(() => {
     logImpressionEvent('homepage.page.view')();
@@ -43,7 +44,10 @@ function HomeContent() {
     }
   }, [searchParams, promptText])
 
-  // Detect and handle back navigation to reset the redirect state
+  useEffect(() => {
+    promptTextRef.current = promptText
+  }, [promptText])
+
   useEffect(() => {
     // Reset the redirect state when returning to this page
     return () => setIsRedirecting(false)
@@ -51,7 +55,7 @@ function HomeContent() {
 
   // Use useCallback to ensure the function reference stays stable
   const handleStartBuilding = useCallback(async () => {
-    if (!promptText.trim() || isRedirecting || isLoading) return
+    if (!promptTextRef.current.trim() || isRedirecting || isLoading) return
 
     // Clear any previous errors and set loading state
     setError(null)
@@ -63,6 +67,11 @@ function HomeContent() {
       // Ensure consistent timing for async and sync auth checks
       if (!isAuthDisabled && !isAuthenticated) {
         logger.info('page.auth.redirect', 'User not authenticated, redirecting to login')
+
+        // Save the prompt to localStorage before redirecting to login
+        localStorage.setItem('airo-pending-prompt', promptTextRef.current.trim())
+        logger.info('homepage.prompt.save', { message: 'Saved prompt to localStorage before login redirect' })
+
         if (isMockAuth) {
           setShowMockLogin(true);
           setIsLoading(false);
@@ -85,7 +94,7 @@ function HomeContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          initialPrompt: promptText.trim()
+          initialPrompt: promptTextRef.current.trim()
         })
       })
 
@@ -140,7 +149,24 @@ function HomeContent() {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [promptText, router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, gasketConfig])
+  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth])
+
+  // Restore prompt from localStorage after login and clear it
+  useEffect(() => {
+    if (!isAuthenticated || authIsLoading) return
+
+    const savedPrompt = localStorage.getItem('airo-pending-prompt')
+
+    if (savedPrompt && !promptText) {
+      logger.info('homepage.prompt.restore', { message: 'Restoring saved prompt after login' })
+      setPromptText(savedPrompt)
+      localStorage.removeItem('airo-pending-prompt')
+
+      setTimeout(() => {
+        handleStartBuilding()
+      }, 250)
+    }
+  }, [isAuthenticated, authIsLoading, promptText, handleStartBuilding])
 
   const handleExampleClick = (examplePrompt: string) => {
     if (heroSectionRef.current) {

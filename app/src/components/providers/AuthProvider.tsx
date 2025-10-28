@@ -123,17 +123,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     return <LoadingComponent />
   }
 
-  // User is not authenticated and authentication is enabled
-  if (!isAuthDisabled && !isAuthenticated) {
-    return (
-      <AuthContext.Provider value={authData}>
-        <UnauthorizedComponent
-          unauthorizedMessage="You need to be signed in to access Airo App Builder."
-        />
-      </AuthContext.Provider>
-    )
-  }
-
   // User is authenticated but does not have access to App Builder
   if (!isAuthDisabled && isAuthenticated && !isAppbuilderAccessEnabled) {
     return (
