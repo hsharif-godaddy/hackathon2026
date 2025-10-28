@@ -27,21 +27,13 @@ export default function ChatToolbar() {
       gap="sm"
       className="p-2 md:px-4 md:pb-4"
     >
-      { isMobile ? (
+      { isMobile && (
         <IconButton
           icon={<WebsiteIcon className="w-4 h-4" />}
           dataEid={ generateClickEID('develop.chat_toolbar.preview') }
           onClick={() => { setActiveChatTab(ChatTab.PREVIEW) }}
           label="Preview"
           active={activeChatTab === ChatTab.PREVIEW}
-        />
-      ) : (
-        <IconButton
-          icon={<DashboardFillesIcon className="w-4 h-4" />}
-          dataEid={ generateClickEID('develop.chat_toolbar.apps') }
-          onClick={() => { setActiveChatTab(ChatTab.APPS) }}
-          label="Apps"
-          active={activeChatTab === ChatTab.APPS}
         />
       )}
       <IconButton
