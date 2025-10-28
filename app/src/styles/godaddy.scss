@@ -94,8 +94,8 @@ html, body {
 }
 
 // Contact Us widget
-#dc-dynamic-container-chiclet,
-#dc-messaging-proactive,
-#dc-messaging-bottom-right {
+#dc-dynamic-container-chiclet div,
+#dc-messaging-proactive div,
+#dc-messaging-bottom-right div {
   display: none !important;
 }
