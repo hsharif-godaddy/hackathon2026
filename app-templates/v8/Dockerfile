@@ -8,7 +8,7 @@ FROM 764525110978.dkr.ecr.us-west-2.amazonaws.com/node:${UPSTREAM_VERSION}-alpin
 USER root
 
 # Install python and build tools
-RUN apk add --no-cache python3 py3-setuptools make g++ curl git ca-certificates tzdata
+RUN apk add --no-cache python3 py3-setuptools make g++ curl git ca-certificates tzdata bash jq yq ripgrep
 
 # create the group and user
 # hardcoded the GID of the agent group to 790, UID of the agent user to 790 for now
