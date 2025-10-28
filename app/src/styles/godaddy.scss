@@ -92,3 +92,10 @@ html, body {
     opacity: 0.8;
   }
 }
+
+// Contact Us widget
+#dc-dynamic-container-chiclet,
+#dc-messaging-proactive,
+#dc-messaging-bottom-right {
+  display: none !important;
+}
