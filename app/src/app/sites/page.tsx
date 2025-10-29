@@ -30,13 +30,16 @@ function SitesPageContent() {
     stopAllSites,
     deleteAllSites,
     totalSites,
-    runningCount
+    runningCount,
+    refreshSites
   } = useSites()
 
   console.log('SITES', sites)
 
   useEffect(() => {
     logImpressionEvent('sites.page.view')();
+    // Always refresh sites when the page loads to show newly created sites
+    refreshSites();
   }, [])
 
   const handleCreateNew = () => {

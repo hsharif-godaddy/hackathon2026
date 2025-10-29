@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSiteCreationStore, cleanupSiteCreationStore, type SiteCreationPhase } from '@/stores/useSiteCreationStore'
+import { useSites } from '@/stores/useSitesStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -24,6 +25,10 @@ export default function CreateAppStatus() {
     initializeSite,
     retry,
   } = useSiteCreationStore()
+
+  const {
+    refreshSites
+  } = useSites()
 
   // Track if we've updated the URL with the real app ID
   const [urlUpdated, setUrlUpdated] = useState(false)
@@ -142,6 +147,9 @@ export default function CreateAppStatus() {
         console.log('[CREATE] 🛑 Stopping site creation polling before redirect')
       }
       cleanupSiteCreationStore()
+
+      // Refresh sites list to ensure "My Sites" dropdown has the latest data
+      refreshSites()
 
       router.replace(`/develop/${targetId}`)
     }, 1000) // Reduced from 3000ms to 1000ms - develop page shows loading state anyway
