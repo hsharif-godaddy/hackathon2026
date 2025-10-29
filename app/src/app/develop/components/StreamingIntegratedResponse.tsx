@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
 import ToolCallMessage from '@/app/develop/components/ToolCallMessage'
+import WidgetRenderer from '@/app/develop/components/WidgetRenderer'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 
 interface StreamingIntegratedResponseProps {
@@ -190,32 +191,45 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                   )}
 
                   {block.type === 'tool' && block.toolCall && (
-                    <ToolCallMessage
-                      toolName={block.toolCall.name}
-                      toolStatus={
-                        block.toolCall.status === 'completed' ? 'success' :
-                        block.toolCall.status === 'error' ? 'error' :
-                        'running'
-                      }
-                      duration={
-                        block.toolCall.startTime && block.toolCall.endTime
-                          ? new Date(block.toolCall.endTime).getTime() - new Date(block.toolCall.startTime).getTime()
-                          : undefined
-                      }
-                      toolResult={
-                        typeof block.toolCall.result === 'string'
-                          ? block.toolCall.result
-                          : block.toolCall.result
-                            ? JSON.stringify(block.toolCall.result, null, 2)
-                            : undefined
-                      }
-                      error={block.toolCall.error}
-                      toolArgs={
-                        block.toolCall.input && Object.keys(block.toolCall.input).length > 0
-                          ? JSON.stringify(block.toolCall.input, null, 2)
-                          : undefined
-                      }
-                    />
+                    <>
+                      {/* Check if this is a widgetRender tool - render widget instead of tool call */}
+                      {block.toolCall.name === 'widgetRender' && 
+                       block.toolCall.result && 
+                       typeof block.toolCall.result === 'object' &&
+                       (block.toolCall.result as any).widgetData ? (
+                        <WidgetRenderer
+                          widgetData={(block.toolCall.result as any).widgetData}
+                          className="my-4"
+                        />
+                      ) : (
+                        <ToolCallMessage
+                          toolName={block.toolCall.name}
+                          toolStatus={
+                            block.toolCall.status === 'completed' ? 'success' :
+                            block.toolCall.status === 'error' ? 'error' :
+                            'running'
+                          }
+                          duration={
+                            block.toolCall.startTime && block.toolCall.endTime
+                              ? new Date(block.toolCall.endTime).getTime() - new Date(block.toolCall.startTime).getTime()
+                              : undefined
+                          }
+                          toolResult={
+                            typeof block.toolCall.result === 'string'
+                              ? block.toolCall.result
+                              : block.toolCall.result
+                                ? JSON.stringify(block.toolCall.result, null, 2)
+                                : undefined
+                          }
+                          error={block.toolCall.error}
+                          toolArgs={
+                            block.toolCall.input && Object.keys(block.toolCall.input).length > 0
+                              ? JSON.stringify(block.toolCall.input, null, 2)
+                              : undefined
+                          }
+                        />
+                      )}
+                    </>
                   )}
                 </div>
               ))}
@@ -235,55 +249,68 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
               {hasToolCalls && (
                 <div className="space-y-2">
                   {message.toolCalls?.map((toolCall, index) => (
-                    <div key={toolCall.id || `tool-${index}`} className="border rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-sm">
-                          🔧 {toolCall.name}
-                        </span>
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          toolCall.status === 'completed' ? 'bg-green-100 text-green-800' :
-                          toolCall.status === 'error' ? 'bg-red-100 text-red-800' :
-                          'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {toolCall.status}
-                        </span>
-                      </div>
+                    <div key={toolCall.id || `tool-${index}`}>
+                      {/* Check if this is a widgetRender tool - render widget instead */}
+                      {toolCall.name === 'widgetRender' && 
+                       toolCall.result && 
+                       typeof toolCall.result === 'object' &&
+                       (toolCall.result as any).widgetData ? (
+                        <WidgetRenderer
+                          widgetData={(toolCall.result as any).widgetData}
+                          className="my-4"
+                        />
+                      ) : (
+                        <div className="border rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-sm">
+                              🔧 {toolCall.name}
+                            </span>
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              toolCall.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              toolCall.status === 'error' ? 'bg-red-100 text-red-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {toolCall.status}
+                            </span>
+                          </div>
 
-                      {/* Tool input */}
-                      {toolCall.input && Object.keys(toolCall.input).length > 0 && (
-                        <div className="mb-2">
-                          <div className="text-xs mb-1">Input:</div>
-                          <pre className="text-xs p-2 rounded overflow-x-auto">
-                            {JSON.stringify(toolCall.input, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-
-                      {/* Tool result */}
-                      {toolCall.result && (
-                        <div>
-                          <div className="text-xs mb-1">Result:</div>
-                          <div className="text-sm">
-                            {typeof toolCall.result === 'string' ? (
-                              <div className="p-2 rounded text-xs font-mono">
-                                {toolCall.result}
-                              </div>
-                            ) : (
+                          {/* Tool input */}
+                          {toolCall.input && Object.keys(toolCall.input).length > 0 && (
+                            <div className="mb-2">
+                              <div className="text-xs mb-1">Input:</div>
                               <pre className="text-xs p-2 rounded overflow-x-auto">
-                                {JSON.stringify(toolCall.result, null, 2)}
+                                {JSON.stringify(toolCall.input, null, 2)}
                               </pre>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                            </div>
+                          )}
 
-                      {/* Tool error */}
-                      {toolCall.error && (
-                        <div className="mt-2">
-                          <div className="text-xs text-intents-ux-feedbackCritical-feedbackColor mb-1">Error:</div>
-                          <div className="text-xs text-rintents-ux-feedbackCritical-feedbackColor p-2 rounded">
-                            {toolCall.error}
-                          </div>
+                          {/* Tool result */}
+                          {toolCall.result && (
+                            <div>
+                              <div className="text-xs mb-1">Result:</div>
+                              <div className="text-sm">
+                                {typeof toolCall.result === 'string' ? (
+                                  <div className="p-2 rounded text-xs font-mono">
+                                    {toolCall.result}
+                                  </div>
+                                ) : (
+                                  <pre className="text-xs p-2 rounded overflow-x-auto">
+                                    {JSON.stringify(toolCall.result, null, 2)}
+                                  </pre>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Tool error */}
+                          {toolCall.error && (
+                            <div className="mt-2">
+                              <div className="text-xs text-intents-ux-feedbackCritical-feedbackColor mb-1">Error:</div>
+                              <div className="text-xs text-rintents-ux-feedbackCritical-feedbackColor p-2 rounded">
+                                {toolCall.error}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

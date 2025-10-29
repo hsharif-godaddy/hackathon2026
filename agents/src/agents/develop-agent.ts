@@ -246,6 +246,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       imageSearch: allAILibTools.imageSearch,
       imageGenerate: allAILibTools.imageGenerate,
 
+      // Widget rendering
+      widgetRender: allAILibTools.widgetRender,
+
       // Handoff tools will be added by the factory when needed
     },
 
