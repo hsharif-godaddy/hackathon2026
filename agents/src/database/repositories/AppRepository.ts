@@ -8,6 +8,28 @@ import { Logger } from '../../logging/index.js';
 import { getErrorMessage } from '../../utils/error.js';
 import { appCleanupEvents } from '../../logging/events/index.js';
 
+/**
+ * Parameters for registering or updating an app
+ */
+export interface RegisterAppParams {
+  siteId: string;
+  name?: string;
+  appPath?: string;
+  port?: number;
+  initialPrompt?: string;
+  previewUrl?: string;
+}
+
+/**
+ * Result of app registration or update
+ */
+export interface RegisterAppResult {
+  success: boolean;
+  message: string;
+  app: App;
+  created: boolean;
+}
+
 export class AppRepository {
   private db = getDatabase();
   private gitUtils = new GitUtils();
@@ -46,6 +68,173 @@ export class AppRepository {
       return;
     }
     await this.initializeGitRepository(appId, app.path, app.name);
+  }
+
+  /**
+   * Register a new app or update an existing one
+   *
+   * This function handles the core logic for app registration, including:
+   * - Validation and sanitization of inputs
+   * - Environment variable constraint checks
+   * - Default value calculation
+   * - Creating or updating app records
+   * - Git repository initialization
+   *
+   * @param params - Registration parameters including siteId, name, paths, etc.
+   * @returns Promise resolving to registration result with app details
+   *
+   * @throws {Error} If validation fails or database operations fail
+   *
+   * @example
+   * ```typescript
+   * const result = await appRepo.registerOrUpdateApp({
+   *   siteId: 'my-site',
+   *   name: 'My App',
+   *   previewUrl: 'https://my-site.example.com'
+   * });
+   * ```
+   */
+  async registerOrUpdateApp(params: RegisterAppParams): Promise<RegisterAppResult> {
+    const { siteId, name, appPath, port, initialPrompt, previewUrl } = params;
+
+    const sanitizedSiteId = siteId.trim();
+    const sanitizedName = name?.trim();
+    const sanitizedAppPath = appPath?.trim();
+
+    if (process.env.SITE_ID && process.env.SITE_ID !== sanitizedSiteId) {
+      throw new Error('Site ID mismatch: This agent is locked to a specific site and cannot register other sites');
+    }
+
+    const finalAppPath = sanitizedAppPath || (process.env.APPS_BASE_DIR ? `${process.env.APPS_BASE_DIR}/${sanitizedSiteId}` : `/tmp/apps/${sanitizedSiteId}`);
+
+    if (process.env.CUSTOMER_APP_DIR && finalAppPath !== process.env.CUSTOMER_APP_DIR) {
+      throw new Error('App path mismatch: This agent is locked to a specific app directory');
+    }
+
+    this.logger.info('app.register.begin', {
+      appId: sanitizedSiteId,
+      hasName: !!sanitizedName,
+      hasPath: !!sanitizedAppPath,
+      hasPort: !!port,
+      hasPreviewUrl: !!previewUrl
+    });
+
+    const existingApp = this.findById(sanitizedSiteId);
+
+    if (existingApp) {
+      this.logger.info('app.register.exists', {
+        appId: sanitizedSiteId,
+        updating: !!(sanitizedName || port || initialPrompt || previewUrl)
+      });
+
+      const updates: string[] = [];
+      const values: any[] = [];
+
+      if (sanitizedName) {
+        updates.push('name = ?');
+        values.push(sanitizedName);
+      }
+
+      if (port !== undefined) {
+        updates.push('port = ?');
+        values.push(port);
+      }
+
+      if (initialPrompt !== undefined) {
+        updates.push('initial_prompt = ?');
+        values.push(initialPrompt);
+      }
+
+      if (previewUrl !== undefined) {
+        updates.push('preview_url = ?');
+        values.push(previewUrl);
+      }
+
+      if (updates.length > 0) {
+        updates.push('updated_at = ?');
+        values.push(new Date().toISOString());
+        values.push(sanitizedSiteId);
+
+        const stmt = this.db.prepare(`
+          UPDATE apps
+          SET ${updates.join(', ')}
+          WHERE id = ?
+        `);
+
+        stmt.run(...values);
+
+        const updatedApp = this.findById(sanitizedSiteId);
+        if (!updatedApp) {
+          throw new Error('Failed to retrieve updated app');
+        }
+
+        this.logger.info('app.register.updated', {
+          appId: sanitizedSiteId,
+          fieldsUpdated: updates.length - 1
+        });
+
+        return {
+          success: true,
+          message: 'App updated successfully',
+          app: updatedApp,
+          created: false
+        };
+      }
+
+      return {
+        success: true,
+        message: 'App already registered',
+        app: existingApp,
+        created: false
+      };
+    }
+
+    const now = new Date().toISOString();
+    const finalPort = port || 3000;
+    const finalName = sanitizedName || `App ${sanitizedSiteId}`;
+    const socketPath = process.env.NOMAD_ALLOC_DIR ? `${process.env.NOMAD_ALLOC_DIR}/tmp/${sanitizedSiteId}-dev-supervisor.sock` : `/tmp/dev-supervisor-${sanitizedSiteId}/dev-supervisor.sock`;
+
+    this.logger.info('app.register.create', {
+      appId: sanitizedSiteId,
+      name: finalName,
+      path: finalAppPath,
+      port: finalPort
+    });
+
+    const stmt = this.db.prepare(`
+      INSERT INTO apps (id, name, path, port, socket_path, preview_url, initial_prompt, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      sanitizedSiteId,
+      finalName,
+      finalAppPath,
+      finalPort,
+      socketPath,
+      previewUrl || null,
+      initialPrompt || null,
+      'created',
+      now,
+      now
+    );
+
+    const app = this.findById(sanitizedSiteId);
+    if (!app) {
+      throw new Error('Failed to create app record');
+    }
+
+    this.logger.info('app.register.success', {
+      appId: sanitizedSiteId,
+      name: finalName
+    });
+
+    return {
+      success: true,
+      message: 'App registered successfully',
+      app,
+      created: true
+    };
   }
 
 

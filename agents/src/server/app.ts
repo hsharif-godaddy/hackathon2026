@@ -265,6 +265,43 @@ async function initialize() {
     await appRepo.initialize();
     logger.info('server.repository.init.success', {});
 
+    // Auto-register app if SITE_ID and PREVIEW_URL are set (production mode)
+    if (process.env.SITE_ID && process.env.PREVIEW_URL) {
+      const existingApp = appRepo.findById(process.env.SITE_ID);
+
+      if (!existingApp) {
+        logger.info('server.app.autoregister.begin', {
+          siteId: process.env.SITE_ID,
+          previewUrl: process.env.PREVIEW_URL
+        });
+
+        try {
+          const result = await appRepo.registerOrUpdateApp({
+            siteId: process.env.SITE_ID,
+            name: 'default',
+            initialPrompt: 'default',
+            previewUrl: process.env.PREVIEW_URL
+          });
+
+          logger.info('server.app.autoregister.success', {
+            siteId: process.env.SITE_ID,
+            created: result.created,
+            message: result.message
+          });
+        } catch (error) {
+          logger.error('server.app.autoregister.failed', {
+            siteId: process.env.SITE_ID,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      } else {
+        logger.info('server.app.autoregister.skipped', {
+          siteId: process.env.SITE_ID,
+          reason: 'App already exists'
+        });
+      }
+    }
+
     // Phase 3: Setup AI-Lib WebSocket Server
     logger.info('server.websocket.init.begin', { phase: 3 });
     await setupAILibWebSocketServer(server);

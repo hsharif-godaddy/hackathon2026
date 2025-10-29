@@ -194,80 +194,24 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'previewUrl must be a string if provided' });
     }
 
-    const sanitizedSiteId = siteId.trim();
-    const sanitizedName = name?.trim();
-    const sanitizedAppPath = appPath?.trim();
-
-    if (process.env.SITE_ID && process.env.SITE_ID !== sanitizedSiteId) {
-      return res.status(403).json({ 
-        error: 'Site ID mismatch',
-        message: 'This agent is locked to a specific site and cannot register other sites'
-      });
-    }
-
-    const finalAppPath = sanitizedAppPath || (process.env.APPS_BASE_DIR ? `${process.env.APPS_BASE_DIR}/${sanitizedSiteId}` : `/tmp/apps/${sanitizedSiteId}`);
-
-    if (process.env.CUSTOMER_APP_DIR && finalAppPath !== process.env.CUSTOMER_APP_DIR) {
-      return res.status(403).json({
-        error: 'App path mismatch',
-        message: 'This agent is locked to a specific app directory'
-      });
-    }
-
-    const contextLogger = log.forApp(sanitizedSiteId);
-    contextLogger.info('route.apps.register.begin', {});
-
-    // Check if app already exists
-    const existingApp = appRepo.findById(sanitizedSiteId);
-    if (existingApp) {
-      contextLogger.info('route.apps.register.exists', {});
-      
-      return res.json({
-        success: true,
-        message: 'App already registered',
-        app: existingApp
-      });
-    }
-
-    // Create minimal app record for agents tracking
-    const now = new Date().toISOString();
-    const finalPort = port || 3000;
-    const socketPath = process.env.NOMAD_ALLOC_DIR ? `${process.env.NOMAD_ALLOC_DIR}/tmp/${sanitizedSiteId}-dev-supervisor.sock` : `/tmp/dev-supervisor-${sanitizedSiteId}/dev-supervisor.sock`;
-
-    const stmt = appRepo['db'].prepare(`
-      INSERT INTO apps (id, name, path, port, socket_path, preview_url, initial_prompt, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      sanitizedSiteId,
-      sanitizedName || `App ${sanitizedSiteId}`,
-      finalAppPath,
-      finalPort,
-      socketPath,
-      previewUrl || null,
-      initialPrompt || null,
-      'created',
-      now,
-      now
-    );
-
-    const app = appRepo.findById(sanitizedSiteId);
-    if (!app) {
-      throw new Error('Failed to create app record');
-    }
-    await appRepo.initGitRepo(sanitizedSiteId);
-
-    contextLogger.info('route.apps.register.success', {});
-
-    return res.status(201).json({
-      success: true,
-      message: 'App registered successfully',
-      app
+    const result = await appRepo.registerOrUpdateApp({
+      siteId,
+      name,
+      appPath,
+      port,
+      initialPrompt,
+      previewUrl
     });
+
+    return res.status(result.created ? 201 : 200).json(result);
 
   } catch (error) {
     log.error(logger, 'route.apps.register.error', error as Error, {});
+
+    if (error instanceof Error && error.message.includes('mismatch')) {
+      return res.status(403).json({ error: error.message });
+    }
+
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
