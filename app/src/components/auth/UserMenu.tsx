@@ -26,7 +26,8 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
     isAuthenticated,
     isAuthDisabled,
     handleSignOut,
-    handleSignIn
+    handleSignIn,
+    isMockAuth
   } = useAuthContext();
 
   return (
@@ -63,10 +64,12 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
               variant="ghost"
               className="justify-start px-2 hover:cursor-pointer"
               onClick={() => {
-                if (onShowMockLogin) {
+                if (isMockAuth && onShowMockLogin) {
                   onShowMockLogin();
                 } else {
-                  handleSignIn();
+                  // For production JWT mode, redirect back to current page after login
+                  const currentUrl = window.location.href;
+                  handleSignIn(currentUrl);
                 }
               }}
               data-eid={generateClickEID(`${location}.user_menu.sign_in`)}
