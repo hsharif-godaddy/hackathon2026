@@ -1,4 +1,4 @@
-# Development Dockerfile for V8 App Template (Vite + React + Hono)
+# Development Dockerfile for V8 App Template (Vite + React)
 FROM node:22-alpine
 
 # Accept build arguments for dynamic UID/GID mapping
