@@ -182,3 +182,44 @@ export const logImpressionEvent = (eid: string): () => void => () => {
     logger.error('instrumentation.logImpressionEvent.failure', { message: 'Failed to log impression event information', section, widget });
   }
 };
+
+/**
+ * Logs an Airo HQ event to CSP.
+ * @param {EventProps} represent the event to track.
+ * @returns {function} a function that logs the Airo HQ event.
+ *
+ * logAiroHQEvent({ category: 'click', task: 'builder_develop_prompt_submit', type: 'user_prompt' })();
+ */
+export const logAiroHQEvent = ({
+  category,
+  task,
+  type
+}: {
+  category: 'click' | 'impression',
+  task?: string,
+  type?: string
+}): () => void => () => {
+  try {
+    const eventSchema = {
+      impression: 'add_impression',
+      click: 'add_event',
+    }
+    const eventData = {
+      schema: eventSchema[category],
+      targets: ['fullstory'],
+      version: 'v2',
+      data: {
+        eid: `airohq.agent.page.component.${category}`,
+        type: category,
+        custom_properties: {
+          task,
+          type,
+          ai_agent_id: 'app-builder'
+        }
+      }
+    }
+    getExpDataLayer()?.push(eventData);
+  } catch (_e) {
+    logger.error('instrumentation.logAiroHQImpressionEvent.failure', { message: 'Failed to log Airo HQ impression event information', category, task, type });
+  }
+};

@@ -5,7 +5,7 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSiteCreationStore, cleanupSiteCreationStore, type SiteCreationPhase } from '@/stores/useSiteCreationStore'
 import { useSites } from '@/stores/useSitesStore'
-import { logImpressionEvent } from '@/utils/instrumentation'
+import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import Box from '@ux/box'
 import Button from '@ux/button'
 
@@ -171,6 +171,11 @@ export default function CreateAppStatus() {
 
   useEffect(() => {
     logImpressionEvent('create.page.view')();
+    logAiroHQEvent({
+      category: 'impression',
+      task: 'builder_create_loading_viewed',
+      type: 'navigation'
+    })();
   }, [])
 
   return (

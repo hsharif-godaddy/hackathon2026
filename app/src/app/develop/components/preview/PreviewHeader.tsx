@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
-import { generateClickEID } from '@/utils/instrumentation'
+import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation'
 import IconButton from '../IconButton'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import ChevronDownIcon from '@ux/icon/chevron-down'
@@ -133,6 +133,11 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
       <IconButton
         icon={<WindowNewIcon />}
         onClick={() => {
+          logAiroHQEvent({
+            category: 'click',
+            task: 'builder_develop_openpreview',
+            type: 'preview'
+          })();
           if (serverUrl) {
             window.open(serverUrl, '_blank')
           } else if (actualPort) {

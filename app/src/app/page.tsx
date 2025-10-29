@@ -14,7 +14,7 @@ import HelpSection from '@/app/components/HelpSection'
 import FeaturesSection from '@/components/layout/Features'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
 import Header from '@/components/layout/Header'
-import { logImpressionEvent } from '@/utils/instrumentation'
+import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import HeroSection from './components/HeroSection'
 import { HeroSectionRef } from './components/types'
 
@@ -33,6 +33,11 @@ function HomeContent() {
 
   useEffect(() => {
     logImpressionEvent('homepage.page.view')();
+    logAiroHQEvent({
+      category: 'impression',
+      task: 'builder_homepage_viewed',
+      type: 'navigation'
+    })();
   }, [])
 
   // Check for URL parameter and prefill prompt text
@@ -61,6 +66,12 @@ function HomeContent() {
     setError(null)
     setIsLoading(true)
     setIsRedirecting(true)
+
+    logAiroHQEvent({
+      category: 'click',
+      task: 'builder_homepage_prompt_submit',
+      type: 'user_prompt'
+    })();
 
     try {
       // Step 1: Quick auth check - only redirect to login if needed

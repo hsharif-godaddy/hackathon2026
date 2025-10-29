@@ -24,7 +24,7 @@ import {
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
-import { logImpressionEvent } from '@/utils/instrumentation'
+import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { handlePreviewRefresh } from '@/app/develop/components/utils'
 import { logger } from '@/lib/request-context'
 
@@ -82,6 +82,11 @@ function DevelopPageContent() {
 
   useEffect(() => {
     logImpressionEvent('develop.page.view')();
+    logAiroHQEvent({
+      category: 'impression',
+      task: 'builder_develop_page_view',
+      type: 'navigation'
+    })();
   }, [])
 
   // Initialize mobile detection

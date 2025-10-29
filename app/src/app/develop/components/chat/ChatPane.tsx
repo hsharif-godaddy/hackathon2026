@@ -23,6 +23,7 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { logAiroHQEvent } from '@/utils/instrumentation'
 import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { postMessageToIframe } from '@/utils/postMessage'
@@ -97,6 +98,12 @@ export default function ChatPane({
     })
 
     if (inputValue?.trim()) {
+      logAiroHQEvent({
+        category: 'click',
+        task: 'builder_develop_prompt_submit',
+        type: 'user_prompt'
+      })();
+
       // Ensure we're connected to the right app
       if (currentAppId !== appId) {
         setCurrentAppId(appId)
