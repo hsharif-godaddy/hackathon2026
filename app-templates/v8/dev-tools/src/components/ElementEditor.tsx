@@ -22,6 +22,7 @@ interface SelectedElement {
     height: number
   }
   selector: string
+  preciseSelector?: string
   dataId?: string
   // Development context for saving changes back to disk
   devContext?: {
@@ -71,6 +72,47 @@ export default function ElementEditor({
 
   const toolbarRef = useRef<HTMLDivElement>(null)
 
+  /**
+   * Generate precise nth-child selector for element
+   *
+   * @param element - HTML element to generate selector for
+   * @returns Precise CSS selector using nth-child
+   */
+  const generatePreciseSelector = useCallback((element: HTMLElement): string => {
+    const path: string[] = []
+    let current: HTMLElement | null = element
+
+    while (current && current !== document.body && current !== document.documentElement) {
+      let selector = current.tagName.toLowerCase()
+      
+      // Add nth-child to make it unique
+      if (current.parentElement) {
+        const siblings = Array.from(current.parentElement.children)
+        const index = siblings.indexOf(current) + 1
+        selector += `:nth-child(${index})`
+      }
+      
+      path.unshift(selector)
+      current = current.parentElement
+    }
+
+    // Add html and body if needed
+    if (current === document.documentElement) {
+      path.unshift('html:nth-child(1)')
+    }
+    if (document.body && element !== document.body) {
+      const bodyIndex = Array.from(document.documentElement?.children || []).indexOf(document.body) + 1
+      if (path[0] === 'html:nth-child(1)' && path[1]?.startsWith('body')) {
+        // Body already in path, just ensure it has nth-child
+        if (!path[1].includes(':nth-child')) {
+          path[1] = `body:nth-child(${bodyIndex})`
+        }
+      }
+    }
+
+    return path.join(' > ')
+  }, [])
+
   // Find element using multiple strategies
   const findElement = useCallback((elementInfo: SelectedElement): HTMLElement | null => {
     // First try the data attribute (most reliable)
@@ -79,13 +121,23 @@ export default function ElementEditor({
       if (element) return element
     }
     
+    // Try precise nth-child selector (most accurate)
+    if (elementInfo.selector && elementInfo.selector.includes(':nth-child')) {
+      try {
+        const element = document.querySelector(elementInfo.selector) as HTMLElement
+        if (element) return element
+      } catch (_e) {
+        console.warn('Invalid nth-child selector:', elementInfo.selector)
+      }
+    }
+    
     // Fallback to ID
     if (elementInfo.id) {
       const element = document.getElementById(elementInfo.id)
       if (element) return element
     }
     
-    // Fallback to clean selector
+    // Fallback to basic selector
     try {
       if (elementInfo.selector) {
         const element = document.querySelector(elementInfo.selector) as HTMLElement
@@ -111,7 +163,7 @@ export default function ElementEditor({
     }
     
     return null
-  }, [])
+  }, [generatePreciseSelector])
 
   // Helper function to find the appropriate dev wrapper element
   // This handles the edge case where there are nested dev wrappers (double wrappers)
@@ -1096,17 +1148,23 @@ export default function ElementEditor({
               
               const element = findElement(selectedElement)
               let screenshot: string | null = null
+              let preciseSelector = selectedElement.selector
               
-              // Capture screenshot if element is found
+              // Capture screenshot and generate precise selector if element is found
               if (element) {
                 screenshot = await captureElementScreenshot(element)
+                preciseSelector = generatePreciseSelector(element)
+                console.log('🎯 Generated precise selector:', preciseSelector)
               }
               
               safePostMessage(window.parent, {
                 type: 'EDIT_WITH_AI',
                 data: {
-                  elementInfo: selectedElement,
-                  selector: selectedElement.selector,
+                  elementInfo: {
+                    ...selectedElement,
+                    preciseSelector
+                  },
+                  selector: preciseSelector,
                   devContext: selectedElement.devContext,
                   screenshot
                 }

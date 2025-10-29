@@ -13,6 +13,7 @@ interface SelectedElement {
     height: number
   }
   selector: string
+  preciseSelector?: string
   dataId?: string
   // Development context for saving changes back to disk
   devContext?: {
@@ -612,12 +613,13 @@ export function useDevelopmentMode() {
             type: 'TEXT_UPDATED',
             data: {
               selector: state.selectedElement?.selector,
+              preciseSelector: state.selectedElement?.preciseSelector,
               oldText: originalTextAttr,
               newText: currentText,
               devContext: state.selectedElement?.devContext
             }
           }, '*')
-          console.log('✅ TEXT_UPDATED message sent successfully')
+          console.log('✅ TEXT_UPDATED message sent successfully with preciseSelector:', state.selectedElement?.preciseSelector)
         } else {
           console.log('⚠️ Not in iframe context, cannot send message to parent')
         }

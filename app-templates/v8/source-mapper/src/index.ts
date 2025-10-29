@@ -1,54 +1,33 @@
 import type { PluginObj, PluginPass, types, NodePath } from '@babel/core';
-import type { JSXIdentifier, JSXMemberExpression, JSXAttribute, JSXElement, JSXNamespacedName } from '@babel/types';
+import type { JSXAttribute, JSXElement } from '@babel/types';
 
 interface PluginOptions {
-  wrapComponents?: boolean;
-  onlyComponents?: boolean;
+  excludePaths?: string[];
 }
 
-interface PluginState extends PluginPass {
-  opts: PluginOptions & object;
-}
+type PluginState = PluginPass & {
+  opts?: PluginOptions;
+};
 
+/**
+ *
+ * @param babel - Babel instance with types API
+ * @returns Babel plugin configuration object
+ *
+ * @example
+ */
 export default function jsxSourceMapper(babel: { types: typeof types }): PluginObj<PluginState> {
   const t = babel.types;
-
-  function isComponent(name: string): boolean {
-    // Components start with uppercase, HTML elements with lowercase
-    return /^[A-Z]/.test(name);
-  }
-
-  function getComponentName(node: JSXIdentifier | JSXMemberExpression | JSXNamespacedName): string {
-    if (t.isJSXIdentifier(node)) {
-      return node.name;
-    } else if (t.isJSXMemberExpression(node)) {
-      const parts: string[] = [];
-      let current: JSXMemberExpression | JSXIdentifier = node;
-
-      while (t.isJSXMemberExpression(current)) {
-        if (t.isJSXIdentifier(current.property)) {
-          parts.unshift(current.property.name);
-        }
-        current = current.object;
-      }
-
-      if (t.isJSXIdentifier(current)) {
-        parts.unshift(current.name);
-      }
-
-      return parts.join('.');
-    } else if (t.isJSXNamespacedName(node)) {
-      // Handle JSX namespaced names like <namespace:component>
-      return `${node.namespace.name}:${node.name.name}`;
-    }
-
-    return 'unknown';
-  }
 
   return {
     name: 'jsx-source-mapper',
     visitor: {
       JSXElement(path: NodePath<JSXElement>, state: PluginState) {
+        // Skip in production
+        if (process.env.NODE_ENV === 'production') {
+          return;
+        }
+
         const openingElement = path.node.openingElement;
 
         // Skip fragments
@@ -56,105 +35,48 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           return;
         }
 
-        // Only add in development mode
-        if (process.env.NODE_ENV === 'production') {
-          return;
-        }
-
-        const componentName = getComponentName(openingElement.name);
-        const isComponentElement = isComponent(componentName);
-        const onlyComponents = state.opts?.onlyComponents ?? false;
-
-        // Skip HTML elements if onlyComponents is true
-        if (onlyComponents && !isComponentElement) {
-          return;
-        }
-
         // Get source information
-        const filename = state.filename || state.file.opts.filename || 'unknown';
-        const line = openingElement.loc ? openingElement.loc.start.line : 0;
+        const fileName = state.filename || state.file.opts.filename || 'unknown';
+
+        // Default excluded paths (component libraries)
+        const defaultExcludePaths = [
+          'components/ui/',
+          '/components/ui/',
+          'src/components/ui/',
+          '/src/components/ui/'
+        ];
+
+        const excludePaths = state.opts?.excludePaths || defaultExcludePaths;
+
+        // Skip if file is in excluded paths (component libraries)
+        if (excludePaths.some(excludePath => fileName.includes(excludePath))) {
+          return;
+        }
 
         // Check if attributes already exist
         const hasSourceAttrs = openingElement.attributes.some((attr: JSXAttribute | any) =>
           t.isJSXAttribute(attr) &&
           t.isJSXIdentifier(attr.name) &&
-          attr.name.name.startsWith('data-dev-')
+          (attr.name.name === 'data-dev-file' || attr.name.name === 'data-dev-line')
         );
 
         if (hasSourceAttrs) {
           return;
         }
 
-        if (isComponentElement && (state.opts?.wrapComponents ?? true)) {
-          // For components, wrap in a div with source attributes
-          // This ensures we capture where the component is USED, not implemented
+        const lineNumber = openingElement.loc ? openingElement.loc.start.line : 0;
 
-          const wrapperAttributes = [
-            t.jsxAttribute(
-              t.jsxIdentifier('data-dev-file'),
-              t.stringLiteral(filename)
-            ),
-            t.jsxAttribute(
-              t.jsxIdentifier('data-dev-line'),
-              t.stringLiteral(String(line))
-            ),
-            t.jsxAttribute(
-              t.jsxIdentifier('data-dev-component'),
-              t.stringLiteral(componentName)
-            ),
-            t.jsxAttribute(
-              t.jsxIdentifier('data-dev-wrapper'),
-              t.stringLiteral('true')
-            ),
-            // Make wrapper invisible
-            t.jsxAttribute(
-              t.jsxIdentifier('style'),
-              t.jsxExpressionContainer(
-                t.objectExpression([
-                  t.objectProperty(
-                    t.identifier('display'),
-                    t.stringLiteral('contents')
-                  )
-                ])
-              )
-            )
-          ];
-
-          // Create wrapper div with display: contents (invisible wrapper)
-          const wrapper = t.jsxElement(
-            t.jsxOpeningElement(
-              t.jsxIdentifier('div'),
-              wrapperAttributes,
-              false
-            ),
-            t.jsxClosingElement(t.jsxIdentifier('div')),
-            [path.node],
-            false
-          );
-
-          // Replace the component with wrapped version
-          path.replaceWith(wrapper);
-          path.skip(); // Skip traversing into the wrapper we just created
-
-        } else {
-          // For HTML elements, add attributes directly
-          const attributes = [
-            t.jsxAttribute(
-              t.jsxIdentifier('data-dev-file'),
-              t.stringLiteral(filename)
-            ),
-            t.jsxAttribute(
-              t.jsxIdentifier('data-dev-line'),
-              t.stringLiteral(String(line))
-            ),
-            t.jsxAttribute(
-              t.jsxIdentifier('data-dev-component'),
-              t.stringLiteral(componentName)
-            )
-          ];
-
-          openingElement.attributes.push(...attributes);
-        }
+        // Add source attributes
+        openingElement.attributes.push(
+          t.jsxAttribute(
+            t.jsxIdentifier('data-dev-file'),
+            t.stringLiteral(fileName)
+          ),
+          t.jsxAttribute(
+            t.jsxIdentifier('data-dev-line'),
+            t.jsxExpressionContainer(t.numericLiteral(lineNumber))
+          )
+        );
       }
     }
   };

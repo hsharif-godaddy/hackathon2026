@@ -40,6 +40,7 @@ export interface StyleUpdateData {
 
 export interface TextUpdateData {
   selector: string
+  preciseSelector?: string
   oldText: string
   newText: string
   devContext: Record<string, unknown>
@@ -299,6 +300,7 @@ export class AppService {
   async updateText(appId: string, textData: TextUpdateData): Promise<unknown> {
     const requestBody = {
       selector: textData.selector,
+      preciseSelector: textData.preciseSelector,
       oldText: textData.oldText,
       newText: textData.newText,
       devContext: textData.devContext

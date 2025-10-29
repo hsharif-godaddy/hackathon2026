@@ -596,7 +596,7 @@ router.post('/:id/files/edit', async (req: Request, res: Response) => {
 router.post('/:id/text/edit', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { selector, oldText, newText, devContext } = req.body;
+    const { selector, preciseSelector, oldText, newText, devContext } = req.body;
 
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
@@ -607,10 +607,12 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
     if (!selector || !oldText || !newText || !devContext) {
       contextLogger.warn('route.apps.text-edit.validation.failed', {
         hasSelector: !!selector,
+        hasPreciseSelector: !!preciseSelector,
         hasOldText: !!oldText,
         hasNewText: !!newText,
         hasDevContext: !!devContext,
         selector,
+        preciseSelector,
         oldText: oldText?.substring(0, 100),
         newText: newText?.substring(0, 100),
         devContext,
@@ -654,6 +656,7 @@ router.post('/:id/text/edit', async (req: Request, res: Response) => {
     // Use AST text editor to make precise text changes
     const editResult = await astTextEditor.editElementText(app.path, {
       selector,
+      preciseSelector,
       oldText,
       newText,
       devContext
