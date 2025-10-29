@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import clsx from 'clsx'
-import Box from '@ux/box'
 import { UserMenu } from '@/components/auth'
 import SiteSelector from '@/components/layout/SiteSelector'
 import { generateClickEID } from '@/utils/instrumentation'
 import { HeaderProps } from './types'
 import ChevronLeftIcon from '@ux/icon/chevron-left';
+import Image from 'next/image';
+import Box from '@ux/box'
+import Tag from '@ux/tag';
 
 export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
   return (
@@ -23,12 +25,12 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
               className="flex items-center"
               data-eid={ generateClickEID(`${location}.header.airo_ai_link`) }
             >
-              <div className="flex items-center justify-center">
+              <div className="flex items-center justify-center gap-4">
                 <ChevronLeftIcon />
-                Back to Airo.ai
-                { /* <Image src="/airo.svg" alt="GoDaddy Airo" width={58} height={24} /> */ }
+                <Image src="/airo.svg" alt="GoDaddy Airo" width={58} height={24} className="-top-0.5 relative" />
               </div>
             </Link>
+            <Tag emphasis="info">Beta</Tag>
           </div>
           <Box orientation="horizontal" gap="md">
             {actions && actions}
