@@ -4,6 +4,7 @@ import { makeLayout } from '@godaddy/gasket-next/layout';
 import AuthProvider from "@/components/providers/AuthProvider";
 import FullStoryProvider from "@/components/providers/FullStoryProvider";
 import SubscriptionCacheProvider from "@/components/providers/SubscriptionCacheProvider";
+import FrameBuster from "@/components/security/FrameBuster";
 
 import "@/styles/globals.scss";
 
@@ -23,6 +24,7 @@ async function RootLayout({
 }>) {
   return (
     <PresentationLayout>
+      <FrameBuster />
       <FullStoryProvider>
         <AuthProvider>
           <SubscriptionCacheProvider>
