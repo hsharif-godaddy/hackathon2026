@@ -17,7 +17,7 @@
     "prepare": "husky && husky install"
   },
   "devDependencies": {
-    "@playwright/test": "^1.51.1",
+    "@playwright/test": "^1.56.1",
     "concurrently": "^9.1.2",
     "husky": "^8.0.0",
     "lint-staged": "^15.2.0",
