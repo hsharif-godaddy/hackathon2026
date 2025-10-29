@@ -41,4 +41,4 @@ fi
 
 # run `npm run dev` from $CUSTOMER_APP_DIR
 echo "Running npm run dev from $CUSTOMER_APP_DIR"
-cd "$CUSTOMER_APP_DIR" && npm run dev
+cd "$CUSTOMER_APP_DIR" && exec npm run dev

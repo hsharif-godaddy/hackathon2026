@@ -63,7 +63,7 @@ cd "$CUSTOMER_APP_DIR"
 
 # Use pnpm or npm based on lock file presence
 if [ -f "pnpm-lock.yaml" ]; then
-    pnpm run dev
+    exec pnpm run dev
 else
-    npm run dev
+    exec npm run dev
 fi
