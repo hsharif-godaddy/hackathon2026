@@ -9,8 +9,8 @@ export default defineConfig({
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
+  /* No retries */
+  retries: 0,
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
   /* Global timeout for tests - site creation can take up to 5 minutes */
@@ -27,6 +27,14 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     /* Record video on failure */
     video: 'retain-on-failure',
+    /* Record HAR file for network debugging in CI */
+    ...(process.env.CI && {
+      recordHar: {
+        mode: 'full',
+        path: './test-results/network.har',
+        content: 'embed',
+      },
+    }),
   },
 
   /* Configure projects for major browsers */
