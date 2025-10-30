@@ -9,8 +9,9 @@ export async function GET(request: NextRequest) {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     service: 'airo-app-builder-backend',
-    version: process.env.npm_package_version || '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
+    package_version: process.env.npm_package_version || '1.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    version: process.env.KATANA_ARTIFACT_VERSION?.substring(0, 7) || 'unknown'
   };
 
   if (detailed) {
