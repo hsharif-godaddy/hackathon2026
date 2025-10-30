@@ -1,10 +1,13 @@
-import { appFetch } from '@/lib/gasket-config'
-import { agentFetch } from '@/lib/agent-fetch'
-import { buildApiUrl } from '@/config/api'
 import { buildDynamicAgentUrl, buildDynamicApiUrl } from '@/config/dynamic-api'
-import { type AppStatusType } from '@/stores/useAppStore'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { type ServerStatusType } from '@/stores/useServerStore'
+import { type AppStatusType } from '@/stores/useAppStore'
+import { useSitesStore } from '@/stores/useSitesStore'
+import { useSiteStore } from '@/stores/useSiteStore'
+import { agentFetch } from '@/lib/agent-fetch'
+import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
+import { buildApiUrl } from '@/config/api'
 
 export interface App {
   id: string
@@ -505,6 +508,156 @@ export class AppService {
     }
 
     return (await this.safeJsonParse(response, { success: true, message: 'Cleanup completed successfully' })) as { success: boolean; message?: string }
+  }
+
+  /**
+   * Update app name with AI suggestion and register the app
+   * 
+   * This function performs three main operations:
+   * 1. Gets an AI-suggested name based on the initial prompt
+   * 2. Updates the name in the database and UI stores
+   * 3. Registers the app with the agent
+   * 
+   * @param appId - The ID of the app to update and register
+   * @returns Promise that resolves when all operations are complete
+   * 
+   * @throws {Error} If any of the API calls fail
+   */
+  async updateNameAndRegister(appId: string): Promise<void> {
+    try {
+      logger.info('develop-page.name-update.start', {
+        message: 'Starting async name suggestion and registration',
+        appId
+      })
+
+      // Get fresh site data with initial_prompt
+      const siteStore = useSiteStore.getState()
+      const freshSite = await siteStore.fetchSite(appId, true)
+
+      if (!freshSite?.agent_url) {
+        logger.warn('develop-page.name-update.no-agent-url', {
+          message: 'No agent URL available, skipping name update'
+        })
+        return
+      }
+
+      if (!freshSite.initial_prompt) {
+        logger.info('develop-page.name-update.no-prompt', {
+          message: 'No initial prompt, skipping name suggestion'
+        })
+        return
+      }
+
+      // Call name suggestion API
+      logger.info('develop-page.name-update.calling-api', {
+        message: 'Requesting name suggestion from agent'
+      })
+
+      const suggestResponse = await agentFetch(`${freshSite.agent_url}/apps/suggest-name`, {
+        siteId: appId,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: freshSite.initial_prompt
+        })
+      })
+
+      if (!suggestResponse.ok) {
+        logger.warn('develop-page.name-update.suggestion-failed', {
+          message: 'Name suggestion API call failed',
+          status: suggestResponse.status
+        })
+        return
+      }
+
+      const nameData = await suggestResponse.json()
+      const suggestedName = nameData.name || nameData.suggestedName
+
+      if (!suggestedName) {
+        logger.warn('develop-page.name-update.no-name', {
+          message: 'No suggested name returned from API'
+        })
+        return
+      }
+
+      logger.info('develop-page.name-update.got-suggestion', {
+        message: 'Got suggested name from agent',
+        suggestedName
+      })
+
+      // Update site name in database
+      try {
+        const updateResponse = await appFetch(`/api/sites/${appId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: suggestedName })
+        })
+
+        if (updateResponse.ok) {
+          logger.info('develop-page.name-update.db-updated', {
+            message: 'Site name updated in database',
+            suggestedName
+          })
+        } else {
+          logger.warn('develop-page.name-update.db-update-failed', {
+            message: 'Failed to update site name in database, continuing with UI and registration'
+          })
+        }
+      } catch (dbError) {
+        logger.warn('develop-page.name-update.db-error', {
+          message: 'Error updating database, continuing with UI and registration',
+          error: dbError instanceof Error ? dbError.message : 'Unknown error'
+        })
+      }
+
+      // Update UI state in multiple stores
+      siteStore.updateSite(appId, { name: suggestedName })
+
+      // Update the sites list store (used by dropdown)
+      await useSitesStore.getState().refreshSites()
+
+      // Update the develop page store's local site state
+      useDevelopPageStore.setState((state) => {
+        if (state.site) {
+          state.site.name = suggestedName
+        }
+      })
+
+      // Call register endpoint with updated name (in all modes)
+      logger.info('develop-page.name-update.registering', {
+        message: 'Registering app with updated name'
+      })
+
+      const registerResponse = await agentFetch(`${freshSite.agent_url}/apps/register`, {
+        siteId: appId,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          siteId: appId,
+          name: suggestedName,
+          initialPrompt: freshSite.initial_prompt,
+          previewUrl: freshSite.preview_url
+        })
+      })
+
+      if (registerResponse.ok) {
+        logger.info('develop-page.name-update.registered', {
+          message: 'App registered successfully with new name',
+          suggestedName
+        })
+      } else {
+        logger.warn('develop-page.name-update.registration-failed', {
+          message: 'App registration failed',
+          status: registerResponse.status
+        })
+      }
+
+    } catch (error) {
+      logger.error('develop-page.name-update.error', {
+        message: 'Error during name update flow',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      })
+    }
   }
 }
 

@@ -26,7 +26,6 @@ export type SiteCreationPhase =
   | 'deploying'
   | 'polling'
   | 'verifying-agent'
-  | 'updating-name'
   | 'complete'
   | 'error'
 
@@ -62,7 +61,6 @@ interface SiteCreationStore {
   _startPolling: () => void
   _stopPolling: () => void
   _verifyAgentEndpoint: (agentUrl: string, appId: string) => Promise<boolean>
-  _updateSiteName: (agentUrl: string) => Promise<void>
 }
 
 export const useSiteCreationStore = create<SiteCreationStore>()(
@@ -477,8 +475,10 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           logger.info('site.verification.result', { message: 'Agent verification result', success: isAgentReady })
 
           if (isAgentReady) {
-            logger.info('site.verification.success', { message: 'Agent endpoint verified! Starting name update' })
-            await get()._updateSiteName(finalSiteData.agent_url)
+            logger.info('site.verification.success', { message: 'Agent endpoint verified! Marking as complete' })
+            set((state) => {
+              state.phase = 'complete'
+            })
           } else {
             // Agent not ready yet, wait longer before retrying (likely still registering)
             logger.info('site.verification.not_ready', { message: 'Agent endpoint not ready yet, waiting 10 seconds before resuming polling' })
@@ -561,118 +561,6 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
       } catch (error) {
         logger.warn('site.verification.error', { message: 'Agent endpoint verification failed with error', error: error instanceof Error ? error.message : 'Unknown error' })
         return false
-      }
-    },
-
-    // Update site name using AI
-    _updateSiteName: async (agentUrl: string) => {
-      const { siteId, realAppId, site } = get()
-      if (!siteId || !site) {
-        logger.warn('site.name_update.no_data', { message: 'No siteId or site data for name update' })
-        return
-      }
-      
-      // Use real app ID if available (important for V2 where siteId might be a job ID)
-      const effectiveId = realAppId || site.id || siteId
-      logger.info('site.name_update.using_id', { 
-        siteId, 
-        realAppId, 
-        effectiveId,
-        message: 'Using effective ID for name update'
-      })
-      
-      // Safety check: If we don't have a real app ID yet, skip name update
-      // This can happen if the site is still provisioning
-      if (!site.id || site.id.length < 8) {
-        logger.warn('site.name_update.skipped', { 
-          message: 'Site ID not ready yet, skipping name update',
-          siteId: site.id
-        })
-        set((state) => {
-          state.phase = 'complete'
-        })
-        return
-      }
-
-      try {
-        set((state) => {
-          state.phase = 'updating-name'
-        })
-
-        logger.info('site.name_update.begin', { message: 'Starting name update from agent' })
-        logger.info('site.name_update.data', { message: 'Site data', siteId, initialPrompt: site.initial_prompt })
-
-        // Get initial prompt from site
-        const initialPrompt = site.initial_prompt || 'Suggest a name for this project'
-        logger.info('site.name_update.prompt', { message: 'Using prompt', initialPrompt })
-
-        // Call the agents service to get a name suggestion
-        logger.info('site.name_update.api_call', { message: 'Calling suggest-name endpoint' })
-        const agentResponse = await agentFetch(`${agentUrl}/apps/suggest-name`, {
-          siteId,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: initialPrompt
-          })
-        })
-
-        logger.info('site.name_update.api_response', { message: 'Agent response status', status: agentResponse.status, statusText: agentResponse.statusText })
-
-        if (agentResponse.ok) {
-          const nameData = await agentResponse.json()
-          const suggestedName = nameData.name || nameData.suggestedName
-
-          if (suggestedName) {
-            logger.info('site.name_update.suggestion', { message: 'Got suggested name from agent', suggestedName })
-
-            // Update the site name using the effective ID (real app ID, not job ID)
-            const updateResponse = await appFetch(`/api/sites/${effectiveId}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: suggestedName })
-            })
-
-            if (updateResponse.ok) {
-              logger.info('site.name_update.success', { message: 'Site name updated successfully', name: suggestedName })
-              set((state) => {
-                if (state.site) {
-                  state.site.name = suggestedName
-                }
-              })
-              
-              // Update the global site store cache to reflect the name change in the UI
-              const { useSiteStore } = await import('@/stores/useSiteStore')
-              useSiteStore.getState().updateSite(effectiveId, { name: suggestedName })
-              logger.info('site.name_update.cache_updated', { message: 'Updated site cache with new name', siteId: effectiveId })
-            } else {
-              logger.warn('site.name_update.update_failure', { message: 'Failed to update site name, continuing anyway' })
-            }
-          }
-        } else {
-          logger.warn('site.name_update.suggestion_failure', { message: 'Failed to get name suggestion from agent, continuing anyway' })
-        }
-
-        // Complete the flow
-        set((state) => {
-          state.phase = 'complete'
-        })
-        
-        logger.info('site.creation.name-update-flow-complete', { 
-          message: 'Name update flow complete - page will handle cleanup on redirect'
-        })
-
-      } catch (error) {
-        logger.error('site.name_update.error', { message: 'Error in name update flow', error: error instanceof Error ? error.message : 'Unknown error' })
-        // Don't fail the entire flow for name update issues
-        logger.warn('site.name_update.continue', { message: 'Name update failed, marking as complete anyway' })
-        set((state) => {
-          state.phase = 'complete'
-        })
-        
-        logger.info('site.creation.name-update-error-complete', {
-          message: 'Name update error handled - page will handle cleanup on redirect'
-        })
       }
     },
 

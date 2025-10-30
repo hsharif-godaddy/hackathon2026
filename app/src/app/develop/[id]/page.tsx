@@ -376,6 +376,23 @@ function DevelopPageContent() {
     }
   }, [loadingPhase, appId, loadGitHistory])
 
+  // Handle async name suggestion and registration after redirect from setup
+  useEffect(() => {
+    if (loadingPhase !== 'ready' || !appId || !site) return
+
+    // Check if we just redirected from setup using sessionStorage flag
+    const setupCompleteKey = `setup-complete-${appId}`
+    const isNewSetup = sessionStorage.getItem(setupCompleteKey) === 'true'
+
+    if (!isNewSetup) return
+
+    // Clear the flag immediately to prevent duplicate runs
+    sessionStorage.removeItem(setupCompleteKey)
+
+    // Run async without blocking page load
+    appService.updateNameAndRegister(appId)
+  }, [loadingPhase, appId, site])
+
   const handlePanelResize = useCallback((newWidth: number) => {
     setChatPaneWidth(newWidth)
   }, [setChatPaneWidth])

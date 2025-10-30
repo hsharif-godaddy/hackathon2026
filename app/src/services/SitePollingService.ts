@@ -389,17 +389,17 @@ export class SitePollingService {
     let registrationComplete = false;
     let registrationAttempted = false;
 
-    // Register app with agent service if agent is ready
-    // We only need the agent to be healthy for registration - frontend can still be loading
-    // In Legacy mode: status is 'created' when ready
+    // Register app with agent service if agent is ready (Legacy mode only)
+    // V2 mode: Agent automatically registers on startup, skip this call
+    // Legacy mode: status is 'created' when ready, needs manual registration
     // In V2 mode: status is 'running' immediately when active
-    const shouldRegister = agentHealthy && site.agent_url && 
-      (site.status === 'created' || site.status === 'running');
+    const isV2Mode = process.env.USE_V2_CONTROL_PLANE === 'true';
+    const shouldRegister = !isV2Mode && agentHealthy && site.agent_url && site.status === 'created';
     
     if (shouldRegister) {
       registrationAttempted = true;
       
-      logger.info('📝 Attempting to register app with agent service:', {
+      logger.info('📝 Attempting to register app with agent service (Legacy mode):', {
         siteId: site.id,
         status: site.status,
         mode: site.status === 'created' ? 'Legacy' : 'V2',
@@ -455,6 +455,11 @@ export class SitePollingService {
           registrationComplete: false
         });
       }
+    } else if (isV2Mode && site.status === 'running') {
+      // In V2 mode, agent registers automatically on startup
+      // Mark as complete without making the call
+      registrationComplete = true;
+      logger.info('✅ V2 mode: Agent auto-registers on startup, skipping manual registration');
     }
 
     // Auto-update status from "created" to "running" if services are ready (Legacy mode only)

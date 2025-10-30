@@ -43,7 +43,6 @@ export default function CreateAppStatus() {
     'deploying': 'Teaching your code how to fly...',
     'polling': 'Adding a bit of magic...',
     'verifying-agent': 'Making sure the AI didn\'t break anything...',
-    'updating-name': 'Asking the naming fairy for inspiration...',
     'complete': 'Your building environment is ready! Redirecting...'
   } as const
 
@@ -150,6 +149,9 @@ export default function CreateAppStatus() {
 
       // Refresh sites list to ensure "My Sites" dropdown has the latest data
       refreshSites()
+
+      // Set flag to trigger name suggestion and registration after redirect
+      sessionStorage.setItem(`setup-complete-${targetId}`, 'true')
 
       router.replace(`/develop/${targetId}`)
     }, 1000) // Reduced from 3000ms to 1000ms - develop page shows loading state anyway
