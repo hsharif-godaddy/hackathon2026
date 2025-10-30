@@ -7,13 +7,13 @@ The from address should never be from user input. It should either be `noreply@a
 ```typescript
 import nodemailer from 'nodemailer';
 
-const transporter = nodemailer.createTransport({
+const transport = nodemailer.createTransport({
   host: 'localhost',
   port: 25,
   secure: false,
 });
 
-await transporter.sendMail({
+await transport.sendMail({
   from: 'noreply@airoapp.ai',
   to: 'recipient@example.com',
   subject: 'Subject',
