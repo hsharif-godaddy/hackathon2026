@@ -11,6 +11,7 @@ import ChevronRightIcon from '@ux/icon/chevron-right'
 import ClockIcon from '@ux/icon/clock'
 import MarkdownRenderer from './MarkdownRenderer'
 import FullscreenModal from './FullscreenModal'
+import { getToolRenderType } from './utils'
 import { getToolDisplayName } from '../../../utils/toolNameMapping'
 
 interface ToolCallMessageProps {
@@ -176,7 +177,7 @@ export default function ToolCallMessage({
                   content={toolResult}
                   toolName={toolName}
                   layoutId={layoutId}
-                  type="markdown"
+                  type={getToolRenderType(toolName)}
                 />
               )}
             </div>
@@ -238,6 +239,12 @@ export default function ToolCallMessage({
                     </pre>
                   )
                 })()}
+              </div>
+            ) : getToolRenderType(toolName) === 'plain' && !error && toolResult ? (
+              <div className="bg-intents-ux-box-backgroundColor shadow-md p-2 rounded max-h-64 overflow-y-auto">
+                <pre className="text-xs whitespace-pre font-mono text-left overflow-x-auto">
+                  {toolResult}
+                </pre>
               </div>
             ) : error ? (
               <motion.div

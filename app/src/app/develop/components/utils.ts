@@ -26,6 +26,27 @@ export function serializeToolArgs(toolArgs: string | object | undefined): string
   return String(toolArgs)
 }
 
+/**
+ * Get the render type for tool output display
+ * Determines if tool output should be rendered as plain text (preserving formatting)
+ * or as markdown (with rich formatting)
+ *
+ * @param toolName - The name of the tool
+ * @returns 'plain' for tools that need preserved formatting (e.g., directory trees), 'markdown' otherwise
+ */
+export function getToolRenderType(toolName: string): 'plain' | 'markdown' {
+  const plainTextTools = [
+    'directoryListing',
+    'directory_listing',
+    // Add other tools that need plain text rendering here:
+    // 'terminalCommand',
+    // 'terminal_command',
+    // 'grepSearch',
+    // 'grep_search',
+  ];
+  return plainTextTools.includes(toolName) ? 'plain' : 'markdown';
+}
+
 export function useAppIdFromParams() {
   const params = useParams()
   return params?.id as string || ''

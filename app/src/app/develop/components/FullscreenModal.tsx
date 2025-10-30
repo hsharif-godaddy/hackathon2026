@@ -16,7 +16,7 @@ interface FullscreenModalProps {
   title?: string
   toolName?: string
   layoutId?: string
-  type?: 'markdown' | 'image'
+  type?: 'markdown' | 'image' | 'plain'
   children?: React.ReactNode
 }
 
@@ -115,6 +115,10 @@ export default function FullscreenModal({
                     alt={imageAlt || 'Fullscreen image'}
                     className="max-w-full max-h-full object-contain"
                   />
+                ) : type === 'plain' ? (
+                  <pre className="text-sm whitespace-pre font-mono text-left overflow-auto h-full bg-intents-ux-box-backgroundColor p-4 rounded">
+                    {content}
+                  </pre>
                 ) : (
                   <MarkdownRenderer
                     content={content || ''}
