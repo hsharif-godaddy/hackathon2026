@@ -253,7 +253,7 @@ export default function ChatPane({
           </motion.div>
         </div>
 
-        <ChatToolbar />
+        <ChatToolbar isProcessing={isProcessing} />
       </div>
     )
   }
@@ -318,7 +318,7 @@ export default function ChatPane({
         <VersionHistory />
       )}
 
-      <ChatToolbar />
+      <ChatToolbar isProcessing={isProcessing} />
     </div>
   )
 }

@@ -14,7 +14,11 @@ import WebsiteIcon from '@ux/icon/website'
 import { ChatTab } from '@/app/develop/components/types'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
-export default function ChatToolbar() {
+interface ChatToolbarProps {
+  isProcessing?: boolean
+}
+
+export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) {
   const {
     activeChatTab,
     setActiveChatTab,
@@ -73,6 +77,7 @@ export default function ChatToolbar() {
         onClick={() => { setActiveChatTab(ChatTab.HISTORY) }}
         label="History"
         active={activeChatTab === ChatTab.HISTORY}
+        disabled={isProcessing}
       />
       <IconButton
         icon={<SettingsIcon className="w-4 h-4" />}
