@@ -42,10 +42,10 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
               <Button
                 variant="ghost"
                 className="justify-start p-2 hover:cursor-pointer"
-                onClick={() => router.push('/sites')}
-                data-eid={generateClickEID(`${location}.user_menu.sites`)}
+                onClick={() => router.push('/apps')}
+                data-eid={generateClickEID(`${location}.user_menu.apps`)}
               >
-                My Sites
+                My Apps
               </Button>
               <Separator className="my-1" />
             </>

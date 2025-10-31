@@ -8,7 +8,7 @@ import { Site } from '@/stores/useSitesStore';
 import PlusIcon from '@ux/icon/plus';
 import text from '@ux/text';
 
-export default function SiteItem({site, dataEid}: {site: Site, dataEid?: string}) {
+export default function AppItem({site, dataEid}: {site: Site, dataEid?: string}) {
   const router = useRouter();
   const params = useParams();
 
@@ -38,7 +38,7 @@ export default function SiteItem({site, dataEid}: {site: Site, dataEid?: string}
   )
 }
 
-export function SiteItemSkeleton() {
+export function AppItemSkeleton() {
   return (
     <Box
       orientation="horizontal"
@@ -52,13 +52,13 @@ export function SiteItemSkeleton() {
   )
 }
 
-export function SiteItemNew() {
+export function AppItemNew({ location }: { location?: string }) {
   const router = useRouter();
   return (
     <button
       onClick={() => router.push(`/`)}
       className="px-2 hover:cursor-pointer group"
-      data-eid={generateClickEID('sites.site.new')}
+      data-eid={generateClickEID(`${location}.apps_menu.new`)}
     >
       <Box
         orientation="horizontal"
@@ -69,7 +69,7 @@ export function SiteItemNew() {
           <PlusIcon className="size-7 text-ai group-hover:rotate-90 transition-all" />
         </div>
         <div>
-          <text.p>Create a new site</text.p>
+          <text.p>Create a new app</text.p>
         </div>
       </Box>
     </button>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useSites } from '@/stores/useSitesStore';
-import SiteItem, { SiteItemSkeleton } from '@/components/layout/SiteItem';
+import AppItem, { AppItemSkeleton } from '@/components/layout/AppItem';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export default function Apps() {
@@ -13,11 +13,11 @@ export default function Apps() {
   return (
     <div className="flex grow flex-col overflow-y-auto">
       {isLoadingSites ? (
-        <SiteItemSkeleton />
+        <AppItemSkeleton />
       ) : (
         <div className="flex flex-col gap-2 h-full">
           {sites.map((site) => (
-            <SiteItem
+            <AppItem
               key={site.id}
               site={site}
               dataEid={generateClickEID('develop.apps.item')} />

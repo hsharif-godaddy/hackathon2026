@@ -147,7 +147,7 @@ export default function CreateAppStatus() {
       }
       cleanupSiteCreationStore()
 
-      // Refresh sites list to ensure "My Sites" dropdown has the latest data
+      // Refresh apps list to ensure "My Apps" dropdown has the latest data
       refreshSites()
 
       // Set flags for post-setup actions

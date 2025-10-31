@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import clsx from 'clsx'
 import { UserMenu } from '@/components/auth'
-import SiteSelector from '@/components/layout/SiteSelector'
+import AppSelector from '@/components/layout/AppSelector'
 import { generateClickEID } from '@/utils/instrumentation'
 import { HeaderProps } from './types'
 import ChevronLeftIcon from '@ux/icon/chevron-left';
@@ -34,7 +34,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
           </div>
           <Box orientation="horizontal" gap="md">
             {actions && actions}
-            <SiteSelector location={location} />
+            <AppSelector location={location} />
             <UserMenu
               onShowMockLogin={onShowMockLogin}
               location={location}

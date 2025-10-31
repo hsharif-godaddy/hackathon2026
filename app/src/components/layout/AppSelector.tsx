@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useSites } from '@/stores/useSitesStore';
-import SiteItem, { SiteItemNew } from '@/components/layout/SiteItem';
+import AppItem, { AppItemNew } from '@/components/layout/AppItem';
 import {
   Popover,
   PopoverContent,
@@ -16,7 +16,7 @@ import Box from '@ux/box';
 import ChevronDownIcon from '@ux/icon/chevron-down';
 import { generateClickEID } from '@/utils/instrumentation';
 
-export default function SiteSelector({ location }: { location?: string }) {
+export default function AppSelector({ location }: { location?: string }) {
   const router = useRouter();
   const params = useParams();
   const {
@@ -40,7 +40,7 @@ export default function SiteSelector({ location }: { location?: string }) {
   // Get current site from URL params
   const currentSiteId = params?.id as string;
   const currentSite = currentSiteId ? sites.find(site => site.id === currentSiteId) : null;
-  const displayTitle = currentSite?.name || "My Sites";
+  const displayTitle = currentSite?.name || "My Apps";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -65,13 +65,13 @@ export default function SiteSelector({ location }: { location?: string }) {
         <PopoverContent align="end" className="w-[300px] p-2">
           <div className="flex flex-col gap-2">
             {sites.map((site) => (
-              <SiteItem
+              <AppItem
                 key={site.id}
                 site={site}
-                dataEid={generateClickEID('sites.site.edit')}
+                dataEid={generateClickEID(`${location}.apps_menu.app`)}
               />
             ))}
-            { location !== 'homepage' && <SiteItemNew /> }
+            { location !== 'homepage' && <AppItemNew location={location} /> }
           </div>
         </PopoverContent>
       )}
