@@ -47,7 +47,9 @@ function HomeContent() {
       // URL decode and set the prompt text
       setPromptText(decodeURIComponent(initialPromptParam))
     }
-  }, [searchParams, promptText])
+    // Intentionally excluding promptText from the dependency array to prevent clearing the input when typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   useEffect(() => {
     promptTextRef.current = promptText
