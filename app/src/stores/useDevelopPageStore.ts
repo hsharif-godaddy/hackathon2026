@@ -6,6 +6,7 @@ import { appService, type App } from '@/services/AppService'
 import { type Site, useSitesStore } from '@/stores/useSitesStore'
 import { ViewMode, PreviewViewMode, ChatTab } from '@/app/develop/components/types'
 import { logger } from '@/lib/request-context'
+import { logImpressionEvent } from '@/utils/instrumentation'
 
 interface GitCommit {
   hash: string
@@ -54,6 +55,9 @@ interface DevelopPageStore {
   isSettingsDialogOpen: boolean
   settingsDialogDefaultSection: 'database' | 'environment' | 'deployment' | null
 
+  // Feedback modal UI
+  openFeedbackId: string | null
+
   // Page loading orchestration
   loadingPhase: LoadingPhase
   currentAppId: string | null
@@ -79,6 +83,10 @@ interface DevelopPageStore {
   // Settings dialog actions
   openSettingsDialog: (defaultSection?: 'database' | 'environment' | 'deployment') => void
   closeSettingsDialog: () => void
+
+  // Feedback modal actions
+  openFeedbackModal: (feedbackId: string) => void
+  closeFeedbackModal: () => void
 
   // Page loading orchestration
   initializePage: (appId: string) => Promise<void>
@@ -127,6 +135,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     isSettingsDialogOpen: false,
     settingsDialogDefaultSection: null,
 
+    // Feedback modal state
+    openFeedbackId: null,
+
     // Page loading orchestration state
     loadingPhase: 'idle',
     currentAppId: null,
@@ -164,6 +175,46 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       state.isSettingsDialogOpen = false
       state.settingsDialogDefaultSection = null
     }),
+
+    // Feedback modal actions
+    openFeedbackModal: (feedbackId: string) => {
+      // Check if feedback modal has been shown before using feedback ID
+      const localStorageKey = `airo-feedback-shown:${feedbackId}`
+      const hasShownFeedback = typeof window !== 'undefined'
+        ? localStorage.getItem(localStorageKey) === 'true'
+        : false
+
+      if (hasShownFeedback) {
+        return
+      }
+
+      logger.info('feedback.modal.opened', {
+        message: 'Feedback modal opened',
+        feedbackId
+      })
+
+      logImpressionEvent('feedback.modal.opened')();
+
+      // Mark as shown in localStorage with feedback ID
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(localStorageKey, 'true')
+      }
+
+      set((state) => {
+        state.openFeedbackId = feedbackId
+      })
+    },
+    closeFeedbackModal: () => {
+      const currentFeedbackId = get().openFeedbackId
+      logger.info('feedback.modal.closed', {
+        message: 'Feedback modal closed',
+        feedbackId: currentFeedbackId
+      })
+      logImpressionEvent('feedback.modal.closed')();
+      set((state) => {
+        state.openFeedbackId = null
+      })
+    },
 
     // Page loading orchestration
     resetForNewApp: (appId: string) => {

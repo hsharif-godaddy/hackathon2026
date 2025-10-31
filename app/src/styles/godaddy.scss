@@ -7,6 +7,11 @@ html, body {
   z-index: 1000 !important;
 }
 
+#feedback-modal .ux-radio-shell,
+#feedback-modal .ux-checkbox-shell {
+  align-items: center;
+}
+
 .airo-sentinel-background {
   max-width: 100vw !important;
   min-height: 100% !important;

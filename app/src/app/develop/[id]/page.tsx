@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import Button from '@ux/button'
 import Header from '@/components/layout/Header'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
@@ -27,6 +28,7 @@ import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { handlePreviewRefresh } from '@/app/develop/components/utils'
 import { logger } from '@/lib/request-context'
+import { Feedback } from '@/components/feedback/Feedback'
 
 function DevelopPageContent() {
   const searchParams = useSearchParams()
@@ -60,7 +62,9 @@ function DevelopPageContent() {
     initializeMobileDetection,
     isSettingsDialogOpen,
     settingsDialogDefaultSection,
-    closeSettingsDialog
+    closeSettingsDialog,
+    openFeedbackId,
+    closeFeedbackModal
   } = useDevelopPageStore()
 
   // Git history store - handles loading with smart retry logic
@@ -459,6 +463,14 @@ function DevelopPageContent() {
             </div>
           </div>
         </div>
+      )}
+
+      {openFeedbackId === "airo#app-builder" && (
+        <Feedback
+          feedbackId="airo#app-builder"
+          onClose={closeFeedbackModal}
+          onSubmitSuccess={closeFeedbackModal}
+        />
       )}
     </div>
   )

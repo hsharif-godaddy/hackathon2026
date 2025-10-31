@@ -34,6 +34,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
     isSelectMode,
     isChatPaneCollapsed,
     toggleChatPaneCollapse,
+    openFeedbackModal,
     // TODO: re-enable settings dialog when ready
     //openSettingsDialog,
     site
@@ -143,6 +144,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
           } else if (actualPort) {
             window.open(`http://localhost:${actualPort}`, '_blank')
           }
+          openFeedbackModal('airo#app-builder')
         }}
         dataEid={ generateClickEID('develop.preview.new_tab') }
         disabled={!actualPort || isCheckingApp || isRestarting || isStartingApp}
