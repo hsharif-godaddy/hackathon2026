@@ -100,8 +100,8 @@ export default function ChatPane({
     if (inputValue?.trim()) {
       logAiroHQEvent({
         category: 'click',
-        task: 'builder_develop_prompt_submit',
-        type: 'user_prompt'
+        recommendation_task: 'builder_develop_prompt_submit',
+        recommendation_type: 'user_prompt'
       })();
 
       // Ensure we're connected to the right app

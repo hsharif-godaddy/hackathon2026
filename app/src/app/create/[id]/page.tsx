@@ -175,8 +175,8 @@ export default function CreateAppStatus() {
     logImpressionEvent('create.page.view')();
     logAiroHQEvent({
       category: 'impression',
-      task: 'builder_create_loading_viewed',
-      type: 'navigation'
+      recommendation_task: 'builder_create_loading_viewed',
+      recommendation_type: 'navigation'
     })();
   }, [])
 

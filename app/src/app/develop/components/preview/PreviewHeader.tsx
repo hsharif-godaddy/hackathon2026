@@ -135,8 +135,8 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         onClick={() => {
           logAiroHQEvent({
             category: 'click',
-            task: 'builder_develop_openpreview',
-            type: 'preview'
+            recommendation_task: 'builder_develop_openpreview',
+            recommendation_type: 'preview'
           })();
           if (serverUrl) {
             window.open(serverUrl, '_blank')

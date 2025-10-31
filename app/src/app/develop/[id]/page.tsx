@@ -84,8 +84,8 @@ function DevelopPageContent() {
     logImpressionEvent('develop.page.view')();
     logAiroHQEvent({
       category: 'impression',
-      task: 'builder_develop_page_view',
-      type: 'navigation'
+      recommendation_task: 'builder_develop_page_view',
+      recommendation_type: 'navigation'
     })();
   }, [])
 

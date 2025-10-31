@@ -191,13 +191,21 @@ export const logImpressionEvent = (eid: string): () => void => () => {
  * logAiroHQEvent({ category: 'click', task: 'builder_develop_prompt_submit', type: 'user_prompt' })();
  */
 export const logAiroHQEvent = ({
+  ai_agent_id = 'app-builder',
+  agent_conversation_id,
   category,
-  task,
-  type
+  recommendation_task,
+  recommendation_type,
+  recommendation_id,
+  ventureID
 }: {
+  ai_agent_id?: string,
   category: 'click' | 'impression',
-  task?: string,
-  type?: string
+  recommendation_id?: string,
+  recommendation_task?: string,
+  recommendation_type?: string,
+  ventureID?: string,
+  agent_conversation_id?: string
 }): () => void => () => {
   try {
     const eventSchema = {
@@ -212,14 +220,28 @@ export const logAiroHQEvent = ({
         eid: `airohq.agent.page.component.${category}`,
         type: category,
         custom_properties: {
-          task,
-          type,
-          ai_agent_id: 'app-builder'
+          ai_agent_id,
+          agent_conversation_id,
+          recommendation_id,
+          recommendation_task,
+          recommendation_type,
+          ventureID
         }
       }
     }
     getExpDataLayer()?.push(eventData);
   } catch (_e) {
-    logger.error('instrumentation.logAiroHQImpressionEvent.failure', { message: 'Failed to log Airo HQ impression event information', category, task, type });
+    logger.error('instrumentation.logAiroHQImpressionEvent.failure', {
+      message: 'Failed to log Airo HQ impression event information',
+      category,
+      custom_properties: {
+        ai_agent_id,
+        agent_conversation_id,
+        recommendation_task,
+        recommendation_type,
+        recommendation_id,
+        ventureID
+      }
+    });
   }
 };

@@ -35,8 +35,8 @@ function HomeContent() {
     logImpressionEvent('homepage.page.view')();
     logAiroHQEvent({
       category: 'impression',
-      task: 'builder_homepage_viewed',
-      type: 'navigation'
+      recommendation_task: 'builder_homepage_viewed',
+      recommendation_type: 'navigation'
     })();
   }, [])
 
@@ -69,8 +69,8 @@ function HomeContent() {
 
     logAiroHQEvent({
       category: 'click',
-      task: 'builder_homepage_prompt_submit',
-      type: 'user_prompt'
+      recommendation_task: 'builder_homepage_prompt_submit',
+      recommendation_type: 'user_prompt'
     })();
 
     try {
