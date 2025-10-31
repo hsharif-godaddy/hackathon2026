@@ -1,7 +1,13 @@
 /**
- * Gasket OTel Custom Setup - Full Transaction Names
- * Configures OpenTelemetry to show full HTTP paths in transaction names
- * Example: "GET /api/sites/[id]" instead of just "GET"
+ * Gasket OTel Setup for Proxy Server
+ *
+ * Configures OpenTelemetry for the Express proxy server layer only.
+ * HTTP instrumentation is disabled to avoid duplicates with Next.js instrumentation
+ * (Next.js instrumentation is handled by app/instrumentation.ts via @vercel/otel).
+ *
+ * This setup only instruments:
+ * - Express middleware and routing
+ * - DNS operations
  */
 
 import { register } from '@godaddy/gasket-otel';
@@ -13,44 +19,33 @@ import { register } from '@godaddy/gasket-otel';
 const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 
 if (!otlpEndpoint) {
-  console.log('[OTel] Skipping OpenTelemetry registration - OTEL_EXPORTER_OTLP_ENDPOINT not configured');
+  console.log('[OTel] Skipping Gasket OTel registration - OTEL_EXPORTER_OTLP_ENDPOINT not configured');
 } else {
-  console.log('[OTel] Registering OpenTelemetry with endpoint:', otlpEndpoint);
-  
+  console.log('[OTel] Registering Gasket OTel for proxy server');
+
   register({
     // Service identification
     serviceName: process.env.OTEL_SERVICE_NAME || 'airo-app-builder',
     serviceVersion: process.env.npm_package_version || '1.0.0',
-    
+
     // OTLP exporter endpoint (from AWS Secrets Manager)
     exporterOtlpEndpoint: otlpEndpoint,
-    
-    // Custom instrumentation options for full transaction names
+
+    // Disable HTTP instrumentation to avoid duplicates with Next.js
+    // Only instrument Express and DNS operations
+    /**
+     * nodeEnabledInstrumentations determines which Node.js modules are instrumented.
+     * Common options include: 'http', 'https', 'express', 'dns', 'fs', etc.
+     * See the full list of available options at:
+     * https://github.com/godaddy/gasket-otel#nodeenabledinstrumentations
+     */
+    nodeEnabledInstrumentations: 'express,dns',
+
+    // Custom instrumentation options
     autoInstrumentationOptions: {
-      // HTTP instrumentation - capture full paths in span names
-      '@opentelemetry/instrumentation-http': {
-        // Customize span attributes and name
-        applyCustomAttributesOnSpan: (span, request) => {
-          if (request && request.url) {
-            const url = typeof request.url === 'string' ? request.url : request.url.pathname || '/';
-            const method = request.method || 'GET';
-            
-            // Set http.target attribute
-            span.setAttribute('http.target', url);
-            
-            // Update span name to include method and full path
-            span.updateName(`${method} ${url}`);
-          }
-        },
-        
-        // Ignore Next.js internal requests
-        ignoreIncomingRequestHook: (request) => {
-          if (!request || !request.url) return false;
-          const url = typeof request.url === 'string' ? request.url : request.url.pathname || '';
-          return url.includes('/_next/') || 
-                 url.includes('/__nextjs_') || 
-                 url.includes('/static/');
-        }
+      // Express instrumentation for proxy server
+      '@opentelemetry/instrumentation-express': {
+        enabled: true
       }
     }
   });
