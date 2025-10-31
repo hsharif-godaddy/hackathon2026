@@ -150,8 +150,9 @@ export default function CreateAppStatus() {
       // Refresh sites list to ensure "My Sites" dropdown has the latest data
       refreshSites()
 
-      // Set flag to trigger name suggestion and registration after redirect
-      sessionStorage.setItem(`setup-complete-${targetId}`, 'true')
+      // Set flags for post-setup actions
+      sessionStorage.setItem(`name-registration-pending-${targetId}`, 'true')
+      sessionStorage.setItem(`initial-prompt-pending-${targetId}`, 'true')
 
       router.replace(`/develop/${targetId}`)
     }, 1000) // Reduced from 3000ms to 1000ms - develop page shows loading state anyway

@@ -339,16 +339,23 @@ function DevelopPageContent() {
 
     // Wait a bit for conversation history to load, then check if we should auto-send
     const timer = setTimeout(() => {
-      // Check if we should auto-send initial message
-      const shouldAutoSend =
+      // Check if initial prompt should be sent (only after setup completion)
+      const initialPromptKey = `initial-prompt-pending-${appId}`
+      const shouldSendInitialPrompt = sessionStorage.getItem(initialPromptKey) === 'true'
+
+      if (!shouldSendInitialPrompt) return
+
+      // Check if conditions are met to actually send
+      const canSendNow =
         site?.initial_prompt &&
         site.status === 'running' &&
-        app &&
-        !app.initialBuildComplete &&
-        conversations.length === 0 &&
+        isWebSocketConnected &&
         !searchParams.get('message') // Don't auto-send if there's a URL message
 
-      if (shouldAutoSend) {
+      if (canSendNow) {
+        // Clear the flag immediately to prevent duplicate sends
+        sessionStorage.removeItem(initialPromptKey)
+
         logger.info('develop-page.auto-send.triggered', {
           message: 'Auto-sending initial message for new app',
           appId,
@@ -366,7 +373,7 @@ function DevelopPageContent() {
     }, 500) // Wait 500ms for conversation history to load
 
     return () => clearTimeout(timer)
-  }, [loadingPhase, appId, site, app, conversations.length, searchParams, autoSendInitialMessage, isLoading, sendMessage, isWebSocketConnected])
+  }, [loadingPhase, appId, site, searchParams, autoSendInitialMessage, isLoading, sendMessage, isWebSocketConnected])
 
   // Load git history when page is ready
   useEffect(() => {
@@ -380,14 +387,14 @@ function DevelopPageContent() {
   useEffect(() => {
     if (loadingPhase !== 'ready' || !appId || !site) return
 
-    // Check if we just redirected from setup using sessionStorage flag
-    const setupCompleteKey = `setup-complete-${appId}`
-    const isNewSetup = sessionStorage.getItem(setupCompleteKey) === 'true'
+    // Check if name registration is pending after setup
+    const nameRegistrationKey = `name-registration-pending-${appId}`
+    const shouldRegisterName = sessionStorage.getItem(nameRegistrationKey) === 'true'
 
-    if (!isNewSetup) return
+    if (!shouldRegisterName) return
 
     // Clear the flag immediately to prevent duplicate runs
-    sessionStorage.removeItem(setupCompleteKey)
+    sessionStorage.removeItem(nameRegistrationKey)
 
     // Run async without blocking page load
     appService.updateNameAndRegister(appId)
