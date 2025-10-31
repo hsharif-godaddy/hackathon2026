@@ -123,7 +123,7 @@ const apm = apmAgent.start({
   serverUrl: process.env.ELASTIC_APM_SERVER_URL || '',
   environment: process.env.NODE_ENV || 'development',
   active: isApmEnabled,
-  // Express specific configuration
+  // Express specific configuration for route template support
   usePathAsTransactionName: true,
   transactionSampleRate: 1.0,
   captureBody: 'all',
@@ -184,10 +184,11 @@ app.use(express.urlencoded({ extended: true }));
 // Logging
 app.use(requestLogger);
 
-// APM transaction middleware for explicit transaction creation
+// APM transaction middleware for explicit transaction creation with dynamic route support
 if (isApmEnabled) {
   app.use((req, res, next) => {
-    const transaction = apm.startTransaction(`${req.method} ${req.route?.path || req.path}`, 'request');
+    // Start with actual path, will update with route template after matching
+    const transaction = apm.startTransaction(`${req.method} ${req.path}`, 'request');
     if (transaction) {
       transaction.setLabel('method', req.method);
       transaction.setLabel('path', req.path);
@@ -200,6 +201,27 @@ if (isApmEnabled) {
       }
 
       res.on('finish', () => {
+        // Update transaction name with route template if available
+        if (req.route?.path) {
+          // Convert :param to [param] format for better APM grouping
+          const routeTemplate = req.route.path.replace(/:([a-zA-Z0-9_-]+)/g, '[$1]');
+          const baseUrl = req.baseUrl || '';
+          const fullRoute = baseUrl + routeTemplate;
+          transaction.name = `${req.method} ${fullRoute}`;
+          transaction.setLabel('route_template', fullRoute);
+          transaction.setLabel('actual_path', req.path);
+          
+          // Log route template usage for debugging
+          if (req.route.path.includes(':')) {
+            logger.debug('apm.route.template', {
+              method: req.method,
+              template: fullRoute,
+              actualPath: req.path,
+              statusCode: res.statusCode
+            });
+          }
+        }
+        
         transaction.result = `HTTP ${res.statusCode}`;
         transaction.setOutcome(res.statusCode >= 400 ? 'failure' : 'success');
         transaction.end();
