@@ -4,15 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       DEPLOY_TO_ENV:
-        description: 'Environment to deploy the artifact'
+        description: "Environment to deploy the artifact"
         required: true
-        default: 'pre-dev'
+        default: "test"
         type: choice
         options:
-          - 'pre-dev'
-          - 'dev-private-ecs'
-          - 'test'
-          - 'NA'
+          - "dev-private-ecs"
+          - "test"
+          - "NA"
 
 run-name: "[Env: ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
 
@@ -22,13 +21,13 @@ permissions:
 
 jobs:
   continuous-integration:
+    name: "[Env: ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} "
     runs-on:
       group: 8606-awsx64
       labels:
         - self-hosted
 
     steps:
-
       - name: Checkout Codebase
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
 
@@ -96,3 +95,17 @@ jobs:
           app: ${{ steps.katana-app.outputs.app }}
           environment: ${{ inputs.DEPLOY_TO_ENV }}
           artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
+
+      # Publish summary
+      - name: Publish Summary
+        run: |
+          {
+            printf '**Build Summary:**\n\n```\n'
+            echo "Artifact ID: ${{ steps.katana-publish.outputs.artifact_id }}"
+            echo "Deployed to: ${{ inputs.DEPLOY_TO_ENV }}"
+            echo "Image: ${{ steps.katana-publish.outputs.image_uri }}"
+            echo "Commit: ${{ github.sha }}"
+            echo "Branch: ${{ github.ref_name }}"
+            echo "Actor: ${{ github.actor }}"
+            printf '\n```\n\n'
+          } >> $GITHUB_STEP_SUMMARY

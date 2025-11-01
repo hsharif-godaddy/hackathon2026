@@ -17,7 +17,6 @@ on:
         default: "test"
         type: choice
         options:
-          - "pre-dev"
           - "dev-private-ecs"
           - "test"
           - "prod-ecs"
@@ -26,7 +25,7 @@ on:
         required: true
         type: string
 
-run-name: "Promote ${{ inputs.component }} to ${{ inputs.environment }} | ${{ github.actor }}"
+run-name: "[${{ inputs.component }}] Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }} | actor: ${{ github.actor }}"
 
 permissions:
   id-token: write # Required for Katana auth
@@ -34,6 +33,7 @@ permissions:
 
 jobs:
   promote:
+    name: "[${{ inputs.component }}] Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }}"
     runs-on:
       group: 8606-awsx64
       labels:
@@ -92,6 +92,16 @@ jobs:
           echo "Artifact ID: $ARTIFACT_ID"
           echo "Namespace: $NAMESPACE"
           echo "App: $APP"
+          {
+            printf '## ✅ Successfully promoted artifact\n\n'
+            printf '**Promotion Summary:**\n\n```\n'
+            echo "Component: $COMPONENT"
+            echo "Promoted artifact ID: $ARTIFACT_ID"
+            echo "To environment: $ENVIRONMENT"
+            echo "Namespace: $NAMESPACE"
+            echo "Actor: ${{ github.actor }}"
+            printf '\n```\n\n'
+          } >> $GITHUB_STEP_SUMMARY
 
   slack-notify:
     name: Send Slack Notification
