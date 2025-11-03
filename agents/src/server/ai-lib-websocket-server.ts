@@ -14,6 +14,7 @@ import {
   type ConversationContext
 } from '@airo/ai-lib'
 import { auth, AuthType } from '../services/features.js'
+import apm from 'elastic-apm-node'
 // Define ContextMessage interface locally (extends ConversationMessage with required insertionOrder)
 interface ContextMessage {
   role: 'user' | 'assistant' | 'system'
@@ -45,6 +46,12 @@ import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-facto
  * Shared AppRepository instance to avoid repeated initialization
  */
 const appRepo = new AppRepository()
+
+/**
+ * Map to track active WebSocket transactions for APM
+ * Key: socketId, Value: APM transaction object
+ */
+const activeWebSocketTransactions = new Map<string, any>()
 
 /**
  * Build dynamic data message for system prompt enrichment
@@ -396,6 +403,19 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           message: 'WebSocket client connected',
           socketId
         })
+
+        // Start APM transaction for WebSocket connection lifecycle
+        const transaction = apm.startTransaction('WebSocket Connection', 'websocket')
+        if (transaction) {
+          transaction.setLabel('socket_id', socketId)
+          transaction.setLabel('event', 'connection')
+          activeWebSocketTransactions.set(socketId, transaction)
+
+          logger.debug('apm.websocket.transaction.started', {
+            socketId,
+            transactionName: transaction.name
+          })
+        }
       },
 
       // Optional event handlers (persistence is now handled automatically)
@@ -417,6 +437,43 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           contextKeys: context ? Object.keys(context) : [],
           siteId
         });
+
+        // Start APM transaction for message processing
+        const messageTransaction = apm.startTransaction(
+          `WebSocket Message: ${agentName || 'default'}`,
+          'websocket-message'
+        )
+        if (messageTransaction) {
+          messageTransaction.setLabel('socket_id', socketId)
+          messageTransaction.setLabel('app_id', siteId)
+          messageTransaction.setLabel('agent_name', agentName || 'default')
+          messageTransaction.setLabel('message_length', message.length)
+          messageTransaction.setLabel('event', 'message_start')
+
+          // Add session and conversation IDs if available
+          if (typedContext?.metadata?.sessionId) {
+            messageTransaction.setLabel('session_id', typedContext.metadata.sessionId)
+          }
+          if (typedContext?.metadata?.userId) {
+            messageTransaction.setLabel('user_id', typedContext.metadata.userId)
+          }
+          if (typedContext?.conversation?.conversationId) {
+            messageTransaction.setLabel('conversation_id', typedContext.conversation.conversationId)
+          }
+
+          // Store transaction with a message-specific key
+          activeWebSocketTransactions.set(`${socketId}:message`, messageTransaction)
+
+          logger.debug('apm.websocket.message.transaction.started', {
+            socketId,
+            siteId,
+            agentName,
+            sessionId: typedContext?.metadata?.sessionId,
+            userId: typedContext?.metadata?.userId,
+            conversationId: typedContext?.conversation?.conversationId,
+            transactionName: messageTransaction.name
+          })
+        }
 
         // Ensure we're on the latest commit (main branch) before starting chat
         try {
@@ -489,6 +546,35 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         contextLogger.info('websocket.request.site_completed', {
           message: 'WebSocket request completed for site'
         });
+
+        // End APM transaction for message processing
+        const messageTransactionKey = `${socketId}:message`
+        const messageTransaction = activeWebSocketTransactions.get(messageTransactionKey)
+        if (messageTransaction) {
+          messageTransaction.setLabel('steps', steps)
+          messageTransaction.setLabel('agent_id', agentId)
+          messageTransaction.setLabel('event', 'message_complete')
+          
+          // Add duration if available as a number
+          if (typeof duration === 'number') {
+            messageTransaction.setLabel('duration_ms', duration)
+          }
+
+          messageTransaction.result = 'success'
+          messageTransaction.setOutcome('success')
+          messageTransaction.end()
+
+          activeWebSocketTransactions.delete(messageTransactionKey)
+
+          logger.debug('apm.websocket.message.transaction.ended', {
+            socketId,
+            siteId,
+            agentId,
+            steps,
+            duration,
+            transactionName: messageTransaction.name
+          })
+        }
       },
 
       onDisconnection: (socketId: string) => {
@@ -496,6 +582,37 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           message: 'WebSocket client disconnected',
           socketId
         })
+
+        // End APM transaction for connection lifecycle
+        const connectionTransaction = activeWebSocketTransactions.get(socketId)
+        if (connectionTransaction) {
+          connectionTransaction.setLabel('event', 'disconnection')
+          connectionTransaction.result = 'success'
+          connectionTransaction.setOutcome('success')
+          connectionTransaction.end()
+
+          activeWebSocketTransactions.delete(socketId)
+
+          logger.debug('apm.websocket.connection.transaction.ended', {
+            socketId,
+            transactionName: connectionTransaction.name
+          })
+        }
+
+        // Also clean up any orphaned message transaction
+        const messageTransactionKey = `${socketId}:message`
+        const messageTransaction = activeWebSocketTransactions.get(messageTransactionKey)
+        if (messageTransaction) {
+          messageTransaction.result = 'aborted'
+          messageTransaction.setOutcome('unknown')
+          messageTransaction.end()
+          activeWebSocketTransactions.delete(messageTransactionKey)
+
+          logger.debug('apm.websocket.message.transaction.aborted', {
+            socketId,
+            reason: 'Connection closed before message completion'
+          })
+        }
       },
 
       onError: (socketId: string, error: Error, message?: string) => {
@@ -515,6 +632,42 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             message: message ? message.substring(0, 100) : undefined,
             type: 'general_error'
           });
+        }
+
+        // Mark APM transactions as failed
+        const messageTransactionKey = `${socketId}:message`
+        const messageTransaction = activeWebSocketTransactions.get(messageTransactionKey)
+        if (messageTransaction) {
+          messageTransaction.setLabel('error_message', error.message)
+          messageTransaction.setLabel('error_type', error.name || 'Error')
+          messageTransaction.setLabel('event', 'error')
+          messageTransaction.result = 'error'
+          messageTransaction.setOutcome('failure')
+          
+          // Capture the error in APM
+          apm.captureError(error, {
+            custom: {
+              socketId,
+              messagePreview: message ? message.substring(0, 100) : undefined,
+              transactionType: 'websocket-message'
+            }
+          })
+
+          messageTransaction.end()
+          activeWebSocketTransactions.delete(messageTransactionKey)
+
+          logger.debug('apm.websocket.message.transaction.failed', {
+            socketId,
+            error: error.message,
+            transactionName: messageTransaction.name
+          })
+        }
+
+        // Also mark connection transaction if it exists
+        const connectionTransaction = activeWebSocketTransactions.get(socketId)
+        if (connectionTransaction) {
+          connectionTransaction.setLabel('error_message', error.message)
+          connectionTransaction.setLabel('has_error', 'true')
         }
       }
     })
