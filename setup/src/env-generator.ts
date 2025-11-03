@@ -28,6 +28,7 @@ export interface AppEnvConfig {
 	databaseUrl: string;
 	modelConfig: ModelConfig;
 	authConfig: AuthConfig;
+	awsProfile?: string;
 	port: number;
 	httpsPort: number;
 }
@@ -101,8 +102,8 @@ export class EnvGenerator {
 				name: "provider",
 				message: "Which AI model provider would you like to use?",
 				choices: [
-					{ name: "AWS Bedrock (Claude models)", value: "aws-bedrock" },
-					{ name: "GoCode (Custom endpoint)", value: "gocode" },
+					{ name: "GoCode (Recommended)", value: "gocode" },
+					{ name: "AWS Bedrock (Legacy)", value: "aws-bedrock" },
 				],
 			},
 		]);
@@ -287,6 +288,68 @@ export class EnvGenerator {
 		}
 	}
 
+	async promptAppAwsProfile(): Promise<string | undefined> {
+		console.log(chalk.cyan("\n☁️  AWS Profile Configuration"));
+		console.log(chalk.gray("The app requires an AWS profile for various AWS service integrations."));
+
+		const currentProfile = await this.checkExistingAWSProfile();
+
+		if (currentProfile) {
+			const { useExistingProfile } = await inquirer.prompt([
+				{
+					type: "confirm",
+					name: "useExistingProfile",
+					message: `Use existing AWS profile '${currentProfile}' for the app?`,
+					default: true,
+				},
+			]);
+
+			if (useExistingProfile) {
+				return currentProfile;
+			}
+		}
+
+		const { setupSSO } = await inquirer.prompt([
+			{
+				type: "list",
+				name: "setupSSO",
+				message: "How would you like to configure AWS credentials for the app?",
+				choices: [
+					{ name: "Set up AWS SSO profile (recommended)", value: "sso" },
+					{ name: "Use existing AWS credentials/profile", value: "existing" },
+					{ name: "Skip AWS profile configuration", value: "skip" },
+				],
+				default: "sso",
+			},
+		]);
+
+		if (setupSSO === "skip") {
+			return undefined;
+		}
+
+		if (setupSSO === "sso") {
+			console.log(chalk.blue("\n🔧 Setting up AWS SSO for the app..."));
+			const ssoSuccess = await this.awsSSO.setup();
+
+			if (ssoSuccess) {
+				return await this.awsSSO.getProfile();
+			} else {
+				console.log(chalk.red("❌ AWS SSO setup failed. Falling back to manual profile entry."));
+			}
+		}
+
+		const { awsProfile } = await inquirer.prompt([
+			{
+				type: "input",
+				name: "awsProfile",
+				message: "AWS Profile name (leave empty to skip):",
+				default: "",
+			},
+		]);
+
+		return awsProfile || undefined;
+	}
+
 	private async promptSSOConfig(): Promise<AuthConfig> {
 		console.log(chalk.yellow("\n🔧 SSO Configuration"));
 
@@ -358,20 +421,25 @@ HTTPS_PORT=${config.httpsPort}
 # The 'airo' user has enhanced privileges for Prisma migrations
 DATABASE_URL=${config.databaseUrl}
 
+# AWS Configuration
+`;
+
+		if (config.awsProfile) {
+			envContent += `AWS_PROFILE=${config.awsProfile}
+`;
+		} else {
+			envContent += `# AWS_PROFILE=<your-aws-profile>
+`;
+		}
+
+		envContent += `
 # AI Model Configuration
 `;
 
 		if (config.modelConfig.provider === "aws-bedrock") {
 			envContent += `# AWS Bedrock Configuration
 AI_PROVIDER=aws-bedrock
-AWS_REGION=${config.modelConfig.awsRegion}`;
-
-			if (config.modelConfig.awsProfile) {
-				envContent += `
-AWS_PROFILE=${config.modelConfig.awsProfile}`;
-			}
-
-			envContent += `
+AWS_REGION=${config.modelConfig.awsRegion}
 BEDROCK_MODEL_ID=anthropic.claude-3-sonnet-20240229-v1:0
 `;
 		} else {
@@ -488,12 +556,14 @@ SSO_JWT=${config.ssoJwt}
 
 		const modelConfig = await this.promptModelProvider();
 		const authConfig = await this.promptAuthConfig();
+		const awsProfile = await this.promptAppAwsProfile();
 
 		const config: AppEnvConfig = {
 			nodeEnv: "development",
 			databaseUrl: EnvGenerator.DEFAULT_DATABASE_URL,
 			modelConfig,
 			authConfig,
+			awsProfile,
 			port: 3000,
 			httpsPort: 3443,
 		};
@@ -527,8 +597,8 @@ SSO_JWT=${config.ssoJwt}
 		console.log(`AI Provider: ${config.modelConfig.provider}`);
 		if (config.modelConfig.provider === "aws-bedrock") {
 			console.log(`AWS Region: ${config.modelConfig.awsRegion}`);
-			console.log(`AWS Profile: ${config.modelConfig.awsProfile || 'default'}`);
 		}
+		console.log(`AWS Profile: ${config.awsProfile || 'not configured'}`);
 		console.log(
 			`Authentication: AUTH_TYPE=${config.authConfig.authType}`,
 		);
