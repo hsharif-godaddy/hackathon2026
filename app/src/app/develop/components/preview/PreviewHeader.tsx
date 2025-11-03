@@ -2,12 +2,9 @@ import clsx from 'clsx'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation'
-import IconButton from '../IconButton'
+import IconButton from '@/app/develop/components/IconButton'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
-import ChevronDownIcon from '@ux/icon/chevron-down'
 import CodeIcon from '@ux/icon/code'
-// TODO: Re-enable database icon when ready
-//import DatabaseIcon from '@ux/icon/database'
 import DesktopIcon from '@ux/icon/desktop'
 import EditIcon from '@ux/icon/edit'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
@@ -47,16 +44,11 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
 
   const DomainButton = () => {
     return (
-      <button
-        className="grow mx-8 pl-4 flex justify-between items-center border rounded-xl px-2.5 h-full leading-none text-left bg-intents-ux-box-backgroundColor hover:cursor-pointer"
+      <div
+        className="grow mx-8 pl-4 flex justify-between items-center border rounded-xl px-2.5 h-full leading-none text-left bg-intents-ux-box-backgroundColor"
       >
-        {site?.name && (
-          <>
-            <span className="truncate max-w-[200px]">{site.name}</span>
-            <ChevronDownIcon />
-          </>
-        )}
-      </button>
+        {site?.name && <span className="truncate max-w-[200px]">{site.name}</span>}
+      </div>
     )
   }
 
@@ -72,34 +64,31 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
           icon={isChatPaneCollapsed ? <SidebarExpandIcon /> : <SidebarCollapseIcon />}
           onClick={toggleChatPaneCollapse}
           separator
+          tooltip={isChatPaneCollapsed ? 'Expand Chat Pane' : 'Collapse Chat Pane'}
+          data-eid={ generateClickEID(`develop.preview.chat_pane_${isChatPaneCollapsed ? 'expand' : 'collapse'}`) }
         />
       )}
       <IconButton
         icon={<WebsiteFilledIcon />}
         onClick={() => handleViewModeChange(ViewMode.PREVIEW, hasUnsavedChanges)}
+        data-eid={ generateClickEID('develop.preview.iframe') }
         active={viewMode === ViewMode.PREVIEW}
+        tooltip="Preview"
       />
       <IconButton
         icon={<CodeIcon />}
         onClick={() => handleViewModeChange(ViewMode.CODE, hasUnsavedChanges)}
+        data-eid={ generateClickEID('develop.preview.code_editor') }
         active={viewMode === ViewMode.CODE}
+        tooltip="Code Editor"
       />
-      {/*
-        TODO: re-enable once database settings panel is ready
-        <IconButton
-          icon={<DatabaseIcon />}
-          onClick={() => openSettingsDialog('database')}
-          label="Database"
-          dataEid={generateClickEID('develop.preview.database')}
-          separator
-        />
-      */}
       <IconButton
         icon={<EditIcon />}
         disabled={viewMode === ViewMode.CODE}
         onClick={toggleSelectMode}
-        data-eid={ generateClickEID('develop.preview.selector') }
+        data-eid={ generateClickEID('develop.preview.select_mode') }
         active={isSelectMode}
+        tooltip="Select Mode"
       />
 
       { (previewViewMode === PreviewViewMode.DESKTOP || viewMode === ViewMode.CODE) && !isMobile && <DomainButton /> }
@@ -110,6 +99,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         onClick={onPreviewRefresh}
         dataEid={ generateClickEID('develop.preview.refresh') }
         disabled={viewMode === ViewMode.CODE}
+        tooltip="Refresh Preview"
       />
 
       { !isMobile && (
@@ -120,6 +110,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
             active={previewViewMode === PreviewViewMode.DESKTOP}
             dataEid={ generateClickEID('develop.preview.preview_desktop') }
             disabled={viewMode === ViewMode.CODE}
+            tooltip="Preview Desktop"
           />
           <IconButton
             icon={<MobilePhoneIcon />}
@@ -127,6 +118,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
             active={previewViewMode === PreviewViewMode.MOBILE}
             dataEid={ generateClickEID('develop.preview.preview_mobile') }
             disabled={viewMode === ViewMode.CODE}
+            tooltip="Preview Mobile"
             separator
           />
         </>
@@ -148,6 +140,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         }}
         dataEid={ generateClickEID('develop.preview.new_tab') }
         disabled={!actualPort || isCheckingApp || isRestarting || isStartingApp}
+        tooltip="Open in new tab"
       />
     </header>
   )

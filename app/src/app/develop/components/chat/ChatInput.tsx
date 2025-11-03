@@ -27,7 +27,7 @@ export default function ChatInput({
   }
 
   return (
-    <div className="py-2 px-4 mt-auto">
+    <div className="px-4 mt-2 mt-auto">
       <div className="relative">
         <div className="flex items-stretch space-x-2 p-3 border rounded-lg focus-within:ring-2">
           <div className="flex-1">

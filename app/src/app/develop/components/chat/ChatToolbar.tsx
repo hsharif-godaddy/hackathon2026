@@ -5,7 +5,6 @@ import Box from '@ux/box'
 import IconButton from '@/app/develop/components/IconButton'
 import CheckboxListIcon from '@ux/icon/checkbox-list'
 import CommentsIcon from '@ux/icon/comments'
-import DashboardFillesIcon from '@ux/icon/dashboard-filled'
 import HistoryIcon from '@ux/icon/history'
 import ImageIcon from '@ux/icon/image'
 import PaintBucketIcon from '@ux/icon/paint-bucket'
@@ -29,11 +28,11 @@ export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) 
     <Box
       orientation="horizontal"
       gap="sm"
-      className="p-2 md:px-4 md:pb-4"
+      className="pt-4 md:pt-0 px-4 pb-4"
     >
       { isMobile && (
         <IconButton
-          icon={<WebsiteIcon className="w-4 h-4" />}
+          icon={<WebsiteIcon />}
           dataEid={ generateClickEID('develop.chat_toolbar.preview') }
           onClick={() => { setActiveChatTab(ChatTab.PREVIEW) }}
           label="Preview"
@@ -41,38 +40,35 @@ export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) 
         />
       )}
       <IconButton
-        icon={<CommentsIcon className="w-4 h-4" />}
+        icon={<CommentsIcon />}
         dataEid={ generateClickEID('develop.chat_toolbar.chat') }
         onClick={() => { setActiveChatTab(ChatTab.CHAT) }}
         label="Chat"
         active={activeChatTab === ChatTab.CHAT}
       />
       <IconButton
-        icon={<PaintBucketIcon className="w-4 h-4" />}
+        icon={<PaintBucketIcon />}
         dataEid={ generateClickEID('develop.chat_toolbar.styles') }
-        onClick={() => { setActiveChatTab(ChatTab.STYLES) }}
         label="Styles"
         active={activeChatTab === ChatTab.STYLES}
-        availableSoon
+        tooltip="Available soon!"
       />
       <IconButton
-        icon={<ImageIcon className="w-4 h-4" />}
+        icon={<ImageIcon />}
         dataEid={ generateClickEID('develop.chat_toolbar.medias') }
-        onClick={() => { setActiveChatTab(ChatTab.MEDIAS) }}
         label="Medias"
         active={activeChatTab === ChatTab.MEDIAS}
-        availableSoon
+        tooltip="Available soon!"
       />
       <IconButton
-        icon={<CheckboxListIcon className="w-4 h-4" />}
+        icon={<CheckboxListIcon />}
         dataEid={ generateClickEID('develop.chat_toolbar.todo') }
-        onClick={() => { setActiveChatTab(ChatTab.TODO) }}
         label="To-do"
         active={activeChatTab === ChatTab.TODO}
-        availableSoon
+        tooltip="Available soon!"
       />
       <IconButton
-        icon={<HistoryIcon className="w-4 h-4" />}
+        icon={<HistoryIcon />}
         dataEid={ generateClickEID('develop.chat_toolbar.history') }
         onClick={() => { setActiveChatTab(ChatTab.HISTORY) }}
         label="History"
@@ -80,12 +76,12 @@ export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) 
         disabled={isProcessing}
       />
       <IconButton
-        icon={<SettingsIcon className="w-4 h-4" />}
+        icon={<SettingsIcon />}
         dataEid={ generateClickEID('develop.chat_toolbar.settings') }
-        onClick={() => { setActiveChatTab(ChatTab.SETTINGS) }}
         className="ml-auto"
+        label="Settings"
         active={activeChatTab === ChatTab.SETTINGS}
-        availableSoon
+        tooltip="Available soon!"
       />
     </Box>
   )

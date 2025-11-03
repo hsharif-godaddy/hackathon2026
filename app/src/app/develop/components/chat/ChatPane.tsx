@@ -258,9 +258,8 @@ export default function ChatPane({
     )
   }
 
-  // Desktop layout (unchanged)
   return (
-    <div className="flex-1 flex flex-col h-full md:pt-4 gap-4">
+    <div className="flex-1 flex flex-col h-full md:pt-4 gap-2 md:gap-4">
       <PlanTracker
         developmentPlan={developmentPlan}
         expandedPlan={expandedPlan}
