@@ -659,27 +659,39 @@ func (pm *ProcessManager) GetRestartStats() map[string]interface{} {
 
 func (pm *ProcessManager) StopAllProcesses() {
 	pm.mu.Lock()
-	defer pm.mu.Unlock()
 
-	if pm.currentProcess != nil {
-		status := pm.currentProcess.GetInfo()
-		if status.State == ProcessStateRunning {
-			// Stop health monitoring first
-			pm.healthMon.Stop()
-
-			// Stop the current process with SIGTERM and 10 second timeout
-			stopReq := ProcessStopRequest{
-				Signal:  "SIGTERM",
-				Timeout: 10,
-			}
-			if err := pm.currentProcess.Stop(stopReq.Signal, stopReq.Timeout); err != nil {
-				slog.Error("failed to stop process during cleanup", "error", err, "signal", stopReq.Signal)
-			}
-
-			// Wait for the process to fully stop
-			pm.currentProcess.WaitForCompletion()
-		}
+	if pm.currentProcess == nil {
+		pm.mu.Unlock()
+		return
 	}
+
+	status := pm.currentProcess.GetInfo()
+	if status.State != ProcessStateRunning {
+		pm.mu.Unlock()
+		return
+	}
+
+	// Stop health monitoring first
+	pm.healthMon.Stop()
+
+	// Get a reference to the process before unlocking
+	process := pm.currentProcess
+
+	// Unlock BEFORE calling Stop() to prevent deadlock
+	// The Stop() method already handles waiting with timeout
+	pm.mu.Unlock()
+
+	// Stop the current process with SIGTERM and 10 second timeout
+	stopReq := ProcessStopRequest{
+		Signal:  "SIGTERM",
+		Timeout: 10,
+	}
+	if err := process.Stop(stopReq.Signal, stopReq.Timeout); err != nil {
+		slog.Error("failed to stop process during cleanup", "error", err, "signal", stopReq.Signal)
+	}
+
+	// The Stop() method already waits with timeout, so no need to call WaitForCompletion()
+	// which could block indefinitely. The process will clean up asynchronously.
 }
 
 // SetProcessLogging enables or disables child process stdout/stderr logging
