@@ -11,6 +11,7 @@ import type {
   PersistenceStreamingEvent, 
   ConversationContext
 } from '@airo/ai-lib'
+import { calculateCostEstimate } from '@airo/ai-lib'
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js'
@@ -50,8 +51,15 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
   /**
    * Track token usage in APM for monitoring and analytics using custom transactions
+   * 
+   * Creates a dedicated APM transaction with token metrics and accurate total cost.
+   * The cost calculation properly accounts for cached token pricing (10x cheaper for reads).
+   * 
+   * @param type - Type of usage: 'main_agent' or 'handoff'
+   * @param usage - Token usage metrics from LLM response
+   * @param metadata - Context metadata for tracking
    */
-  private trackTokenUsageInAPM(
+  trackTokenUsageInAPM(
     type: 'main_agent' | 'handoff',
     usage: {
       inputTokens: number
@@ -69,6 +77,18 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     }
   ): void {
     try {
+      // Calculate accurate cost including cache pricing
+      const costEstimate = calculateCostEstimate(
+        {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          totalTokens: usage.totalTokens,
+          ...(usage.cacheReadTokens !== undefined && { cachedInputTokensRead: usage.cacheReadTokens }),
+          ...(usage.cacheWriteTokens !== undefined && { cachedInputTokensWrite: usage.cacheWriteTokens })
+        },
+        metadata.modelName
+      )
+      
       // Create a custom transaction specifically for token tracking
       const transactionName = type === 'handoff' 
         ? `Token Usage: Handoff (${metadata.agentName} → ${metadata.targetAgent})`
@@ -94,7 +114,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           tokens_output: usage.outputTokens,
           tokens_total: usage.totalTokens,
           tokens_cache_read: usage.cacheReadTokens || 0,
-          tokens_cache_write: usage.cacheWriteTokens || 0
+          tokens_cache_write: usage.cacheWriteTokens || 0,
+          // Add total cost metric (includes cache pricing)
+          cost_total_usd: parseFloat(costEstimate.totalCost.toFixed(6))
         })
         
         // Mark transaction as successful and end it
@@ -108,6 +130,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           totalTokens: usage.totalTokens,
           cacheReadTokens: usage.cacheReadTokens,
           cacheWriteTokens: usage.cacheWriteTokens,
+          totalCost: costEstimate.totalCost,
           transactionName
         })
       }
@@ -536,63 +559,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       contextLogger.info('conversation.agent_response.saved', {})
     }
     
-    // Track LLM token usage to database
-    if (result?.usage && context.appId) {
-      try {
-        // Get model name from agent metadata or fall back to env config
-        const agentMetadata = aiLibAgentMetadata[context.agentName] as AILibAgentMetadata & { modelName?: string };
-        const modelName = agentMetadata?.modelName || 'claude-sonnet-4-20250514';
-        
-        await this.tokenUsageRepo.recordUsage(
-          context.appId,
-          'llm_request',
-          result.usage.inputTokens || 0,
-          result.usage.outputTokens || 0,
-          {
-            model: modelName,
-            conversationId: conversationId,
-            description: `Agent: ${context.agentName}`,
-            cacheReadTokens: result.usage.cachedInputTokens,
-            cacheWriteTokens: result.caching?.cacheWriteInputTokens,
-          }
-        );
-        
-        // Track in APM for monitoring
-        this.trackTokenUsageInAPM(
-          'main_agent',
-          {
-            inputTokens: result.usage.inputTokens || 0,
-            outputTokens: result.usage.outputTokens || 0,
-            totalTokens: result.usage.totalTokens || 0,
-            cacheReadTokens: result.usage.cachedInputTokens || 0,
-            cacheWriteTokens: result.caching?.cacheWriteInputTokens || 0,
-          },
-          {
-            conversationId,
-            appId: context.appId,
-            agentName: context.agentName,
-            modelName,
-          }
-        );
-        
-        logger.info('conversation.token_usage.recorded', {
-          conversationId,
-          appId: context.appId,
-          modelName,
-          inputTokens: result.usage.inputTokens,
-          outputTokens: result.usage.outputTokens,
-          totalTokens: result.usage.totalTokens,
-          cacheReadTokens: result.usage.cachedInputTokens,
-          cacheWriteTokens: result.caching?.cacheWriteInputTokens,
-        });
-      } catch (tokenError) {
-        logger.error('conversation.token_usage.record_failed', {
-          conversationId,
-          appId: context.appId,
-          error: tokenError instanceof Error ? tokenError.message : String(tokenError),
-        });
-      }
-    }
+    // Note: Token tracking is now handled exclusively by the onTokenUsage callback
+    // in experimental-websocket-server.ts. This ensures 100% capture regardless of
+    // conversation state and eliminates any risk of double counting.
     
     // Track handoff token usage from tool results
     if (toolCalls.length > 0 && context.appId) {
@@ -623,6 +592,18 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
                 const targetMetadata = aiLibAgentMetadata[targetAgent] as AILibAgentMetadata & { modelName?: string };
                 const modelName = targetMetadata?.modelName || 'claude-sonnet-4-20250514';
                 
+                // Calculate accurate cost for handoff
+                const handoffCostEstimate = calculateCostEstimate(
+                  {
+                    inputTokens: handoffUsage.inputTokens || 0,
+                    outputTokens: handoffUsage.outputTokens || 0,
+                    totalTokens: handoffUsage.totalTokens || 0,
+                    ...(handoffCaching?.cachedInputTokens !== undefined && { cachedInputTokensRead: handoffCaching.cachedInputTokens }),
+                    ...(handoffCaching?.cacheWriteInputTokens !== undefined && { cachedInputTokensWrite: handoffCaching.cacheWriteInputTokens })
+                  },
+                  modelName
+                )
+                
                 await this.tokenUsageRepo.recordUsage(
                   context.appId!,
                   'llm_request',
@@ -632,8 +613,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
                     model: modelName,
                     conversationId: conversationId,
                     description: `Agent handoff: ${context.agentName} → ${targetAgent}`,
-                    cacheReadTokens: handoffUsage.cachedInputTokens,
+                    cacheReadTokens: handoffCaching?.cachedInputTokens,
                     cacheWriteTokens: handoffCaching?.cacheWriteInputTokens,
+                    cost: handoffCostEstimate.totalCost
                   }
                 );
                 
@@ -644,7 +626,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
                     inputTokens: handoffUsage.inputTokens || 0,
                     outputTokens: handoffUsage.outputTokens || 0,
                     totalTokens: handoffUsage.totalTokens || 0,
-                    cacheReadTokens: handoffUsage.cachedInputTokens || 0,
+                    cacheReadTokens: handoffCaching?.cachedInputTokens || 0,
                     cacheWriteTokens: handoffCaching?.cacheWriteInputTokens || 0,
                   },
                   {
@@ -665,8 +647,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
                   inputTokens: handoffUsage.inputTokens,
                   outputTokens: handoffUsage.outputTokens,
                   totalTokens: handoffUsage.totalTokens,
-                  cacheReadTokens: handoffUsage.cachedInputTokens,
+                  cacheReadTokens: handoffCaching?.cachedInputTokens,
                   cacheWriteTokens: handoffCaching?.cacheWriteInputTokens,
+                  cost: handoffCostEstimate.totalCost
                 });
               }
             } catch (handoffError) {

@@ -55,7 +55,7 @@ export interface WebSocketConfig {
   /** Event handlers */
   onConnection?: (socketId: string) => void
   onDisconnection?: (socketId: string) => void
-  onMessageStart?: (socketId: string, message: string, agentName?: string, context?: Record<string, unknown>) => void
+  onMessageStart?: (socketId: string, message: string, agentName?: string, context?: Record<string, unknown>) => void | Promise<void>
   onMessageComplete?: (socketId: string, result: {
     agentName: string
     duration: string
@@ -63,6 +63,19 @@ export interface WebSocketConfig {
     toolCalls?: any[]
   }, context?: Record<string, unknown>) => void
   onError?: (socketId: string, error: Error, message?: string, context?: Record<string, unknown>) => void
+  onTokenUsage?: (usage: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+    cachedInputTokens?: number
+    cacheWriteInputTokens?: number
+  }, metadata: {
+    agentName: string
+    modelName: string
+    conversationId?: string
+    appId?: string
+    context?: Record<string, unknown>
+  }) => void | Promise<void>
 
   /** Socket.IO server options */
   socketOptions?: Partial<import('socket.io').ServerOptions>
@@ -827,8 +840,9 @@ export class WebSocketServer {
         }
       }
 
-      // Call message start handler with processed context
-      this.config.onMessageStart?.(socketId, data.message, agentName, processedContext)
+      // Call message start handler with processed context (fire-and-forget to avoid blocking)
+      Promise.resolve(this.config.onMessageStart?.(socketId, data.message, agentName, processedContext))
+        .catch(() => { /* Silently handle - tracking errors shouldn't fail requests */ })
 
       // Create abort controller for this stream
       const controller = new AbortController()
@@ -1186,8 +1200,53 @@ Please try again with corrected formatting.`
       }
     } as WebSocketMessage)
 
-    // Complete persistence if configured
+    // Track token usage (independent of conversation state for 100% capture)
     const conversation = this.activeConversations.get(socket.id)
+    
+    if (finalResult.usage && this.config.onTokenUsage) {
+      try {
+        // Get model name from agent config
+        let modelName = 'unknown'
+        try {
+          const agentConfig = agent.getConfig()
+          modelName = agentConfig.modelName || agentName || 'unknown'
+        } catch (error) {
+          // Silently fall back to agent name if config retrieval fails
+          modelName = agentName || 'unknown'
+        }
+
+        // Extract appId from multiple sources (fallback chain for reliability)
+        const appId = conversation?.context?.appId || (context as any)?.metadata?.appId
+        
+        // Call token tracking callback with usage data (fire-and-forget to avoid blocking)
+        Promise.resolve(this.config.onTokenUsage(
+          {
+            inputTokens: finalResult.usage.inputTokens || 0,
+            outputTokens: finalResult.usage.outputTokens || 0,
+            totalTokens: finalResult.usage.totalTokens || 0,
+            cachedInputTokens: (finalResult as any).caching?.cachedInputTokens,
+            cacheWriteInputTokens: (finalResult as any).caching?.cacheWriteInputTokens
+          },
+          {
+            agentName,
+            modelName,
+            ...(conversation?.conversationId && { conversationId: conversation.conversationId }),
+            ...(appId && { appId }),
+            ...(context && { context })
+          }
+        )).catch(() => { /* Silently handle - tracking errors shouldn't fail requests */ })
+      } catch (tokenError) {
+        // Don't fail the entire request if token tracking setup fails
+        this.config.onError?.(
+          socket.id,
+          tokenError instanceof Error ? tokenError : new Error(String(tokenError)),
+          'Failed to track token usage',
+          context
+        )
+      }
+    }
+
+    // Complete conversation persistence if configured
     if (conversation && this.config.messagePersistence) {
       const result = {
         agentName,

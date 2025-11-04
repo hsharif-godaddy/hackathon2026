@@ -2,7 +2,16 @@
  * Model Pricing and Cost Estimation Utility
  * 
  * Provides accurate cost calculations for different AI models including cache optimizations.
- * Pricing information is kept up-to-date with provider pricing as of January 2024.
+ * Pricing information is kept up-to-date with provider pricing as of January 2025.
+ * 
+ * Cache Pricing (Anthropic):
+ * - Cache Read: $0.30 per 1M tokens (90% discount vs regular input)
+ * - Cache Write: $3.75 per 1M tokens (25% markup vs regular input to create cache)
+ * 
+ * Sources:
+ * - https://www.anthropic.com/pricing
+ * - https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+ * - https://openai.com/pricing
  */
 
 import { 
@@ -82,30 +91,37 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // Anthropic Models (via Anthropic API)
   'claude-sonnet-4': {
-    inputCostPer1K: 0.015,
-    outputCostPer1K: 0.075,
+    inputCostPer1K: 0.003,
+    outputCostPer1K: 0.015,
+    cachedInputReadCostPer1K: 0.0003,
+    cachedInputWriteCostPer1K: 0.00375,
     currency: 'USD'
   },
   'claude-3-5-sonnet': {
     inputCostPer1K: 0.003,
     outputCostPer1K: 0.015,
+    cachedInputReadCostPer1K: 0.0003,
+    cachedInputWriteCostPer1K: 0.00375,
     currency: 'USD'
   },
   'claude-3-5-haiku': {
     inputCostPer1K: 0.0008,
     outputCostPer1K: 0.004,
+    cachedInputReadCostPer1K: 0.0003,
+    cachedInputWriteCostPer1K: 0.00375,
     currency: 'USD'
   },
 }
 
 /**
- * Bedrock pricing (different from Anthropic direct API)
+ * Bedrock pricing (same base pricing as Anthropic direct API)
+ * Note: Input pricing for Claude Sonnet 4 is the same on both platforms
  */
 const BEDROCK_PRICING: Record<string, ModelPricing> = {
   'claude-sonnet-4': {
     inputCostPer1K: 0.003,
-    outputCostPer1K: 0.075,
-    cachedInputReadCostPer1K: 0.0003, 
+    outputCostPer1K: 0.015,
+    cachedInputReadCostPer1K: 0.0003,
     cachedInputWriteCostPer1K: 0.00375,
     currency: 'USD'
   },
@@ -280,12 +296,10 @@ export function getCacheHitRate(usage: TokenUsage): number {
  * Check if a model supports caching
  */
 export function modelSupportsCaching(modelName: string): boolean {
-  const modelInfo = normalizeModelName(modelName, true) // Prefer Bedrock for caching support
+  const pricing = getModelPricing(modelName)
   
-  // Only Bedrock Claude models currently support caching
-  const pricing = BEDROCK_PRICING[modelInfo.normalizedName]
-  return modelInfo.provider === 'bedrock-claude' && 
-         !!pricing && 
+  // Check if the model has cache pricing defined
+  return !!pricing && 
          (pricing.cachedInputReadCostPer1K !== undefined || pricing.cachedInputWriteCostPer1K !== undefined)
 }
 

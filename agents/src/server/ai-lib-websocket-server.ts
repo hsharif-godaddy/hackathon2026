@@ -5,6 +5,7 @@
 
 import { Server as HTTPServer } from 'http'
 import {
+  calculateCostEstimate,
   createWebSocketServer,
   type MessageProvider,
   type ContextProvider,
@@ -32,6 +33,7 @@ import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js'
 import { AgentsMessagePersistence } from './conversation-persistence.js'
 import { ConversationContextManager } from '../services/ConversationContextManager.js'
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
+import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js'
 import { fileContextRegistry } from '../services/FileContextRegistry.js'
 import { fileUploadService } from '../services/FileUploadService.js'
 import { logger, log } from '../logging/index.js'
@@ -362,6 +364,84 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       // File path resolver for uploaded files
       filePathResolver: (appId: string, uploadId: string, filename: string) => {
         return fileUploadService.getFilePath(appId, uploadId, filename)
+      },
+
+      // Token usage tracking (independent of persistence)
+      onTokenUsage: async (usage, metadata) => {
+        // Only track if we have appId
+        if (!metadata.appId) {
+          logger.warn('websocket.token_usage.no_app_id', {
+            agentName: metadata.agentName,
+            modelName: metadata.modelName,
+            conversationId: metadata.conversationId
+          })
+          return
+        }
+
+        try {
+          // Calculate accurate cost including cache pricing
+          const costEstimate = calculateCostEstimate(
+            {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              totalTokens: usage.totalTokens,
+              ...(usage.cachedInputTokens !== undefined && { cachedInputTokensRead: usage.cachedInputTokens }),
+              ...(usage.cacheWriteInputTokens !== undefined && { cachedInputTokensWrite: usage.cacheWriteInputTokens })
+            },
+            metadata.modelName
+          )
+
+          // Record to database
+          const tokenUsageRepo = new TokenUsageRepository()
+          await tokenUsageRepo.recordUsage(
+            metadata.appId,
+            'llm_request',
+            usage.inputTokens,
+            usage.outputTokens,
+            {
+              model: metadata.modelName,
+              conversationId: metadata.conversationId,
+              description: `Agent: ${metadata.agentName}${!metadata.conversationId ? ' (no conversation)' : ''}`,
+              cacheReadTokens: usage.cachedInputTokens,
+              cacheWriteTokens: usage.cacheWriteInputTokens,
+              cost: costEstimate.totalCost
+            }
+          )
+
+          // Track in APM
+          messagePersistence.trackTokenUsageInAPM(
+            'main_agent',
+            {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              totalTokens: usage.totalTokens,
+              cacheReadTokens: usage.cachedInputTokens || 0,
+              cacheWriteTokens: usage.cacheWriteInputTokens || 0,
+            },
+            {
+              conversationId: metadata.conversationId || 'unknown',
+              appId: metadata.appId,
+              agentName: metadata.agentName,
+              modelName: metadata.modelName,
+            }
+          )
+
+          logger.info('websocket.token_usage.tracked', {
+            appId: metadata.appId,
+            agentName: metadata.agentName,
+            modelName: metadata.modelName,
+            conversationId: metadata.conversationId,
+            totalTokens: usage.totalTokens,
+            cost: costEstimate.totalCost,
+            hasConversation: !!metadata.conversationId
+          })
+        } catch (error) {
+          logger.error('websocket.token_usage.tracking_failed', {
+            error: error instanceof Error ? error.message : String(error),
+            appId: metadata.appId,
+            agentName: metadata.agentName
+          })
+        }
       },
 
       // Context extractor to validate appId

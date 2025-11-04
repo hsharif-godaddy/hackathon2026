@@ -161,7 +161,8 @@ interface WebSocketConfig {
     socketId: string,
     message: string,
     agentName?: string,
-  ) => void;
+    context?: Record<string, unknown>,
+  ) => void | Promise<void>;
   onMessageComplete?: (
     socketId: string,
     result: {
@@ -171,10 +172,30 @@ interface WebSocketConfig {
       toolCalls?: any[];
     },
   ) => void;
+  onTokenUsage?: (
+    usage: {
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      cachedInputTokens?: number;
+      cacheWriteInputTokens?: number;
+    },
+    metadata: {
+      agentName: string;
+      modelName: string;
+      conversationId?: string;
+      appId?: string;
+      context?: Record<string, unknown>;
+    },
+  ) => void | Promise<void>;
   onError?: (socketId: string, error: Error, message?: string) => void;
   socketOptions?: Partial<ServerOptions>;
 }
 ```
+
+> **⚡ Performance Note:** `onMessageStart` and `onTokenUsage` are fire-and-forget (non-blocking). Errors are logged but don't fail message processing.
+
+````
 
 ### Message Types
 
@@ -191,7 +212,7 @@ interface ChatMessage {
     content: string;
   }>;
 }
-```
+````
 
 #### Server → Client (Normalized Event Schema)
 
