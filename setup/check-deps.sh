@@ -44,12 +44,15 @@ check_nodejs() {
     if command -v node &> /dev/null; then
         NODE_VERSION=$(node --version)
         NODE_MAJOR=$(echo $NODE_VERSION | cut -d'.' -f1 | sed 's/v//')
+        NODE_MINOR=$(echo $NODE_VERSION | cut -d'.' -f2)
         
-        if [ "$NODE_MAJOR" -eq 22 ]; then
+        # Check for Node.js 22.16.0 or higher (required to fix ERR_INVALID_URL_SCHEME bug)
+        if [ "$NODE_MAJOR" -eq 22 ] && [ "$NODE_MINOR" -ge 16 ]; then
             print_status "Node.js $NODE_VERSION is installed and compatible"
             return 0
         else
-            print_error "Node.js $NODE_VERSION found, but version 22.x is required"
+            print_error "Node.js $NODE_VERSION found, but version 22.16.0 or higher is required"
+            print_warning "Node.js 22.16.0+ is needed to fix ERR_INVALID_URL_SCHEME bug"
             show_nodejs_install_instructions
             return 1
         fi
@@ -75,10 +78,53 @@ check_pnpm() {
     fi
 }
 
+# Check direnv installation
+check_direnv() {
+    print_info "Checking direnv installation..."
+
+    if command -v direnv &> /dev/null; then
+        DIRENV_VERSION=$(direnv version)
+        print_status "direnv $DIRENV_VERSION is installed"
+        return 0
+    else
+        print_warning "direnv is not installed (recommended)"
+        show_direnv_install_instructions
+        return 1
+    fi
+}
+
+# Check if direnv hook is configured and working
+check_direnv_hook() {
+    # Check if DIRENV_DIR is set, which indicates direnv hook is active and .envrc is loaded
+    if [ -n "${DIRENV_DIR:-}" ]; then
+        print_status "direnv hook is configured and .envrc is already loaded"
+        return 0
+    else
+        print_warning "direnv hook is not active in this shell session"
+        echo ""
+        print_info "To enable direnv, add the appropriate hook to your shell config:"
+        echo ""
+        echo "  For bash - add to ~/.bashrc:"
+        echo "    eval \"\$(direnv hook bash)\""
+        echo ""
+        echo "  For zsh - add to ~/.zshrc:"
+        echo "    eval \"\$(direnv hook zsh)\""
+        echo ""
+        echo "  For fish - add to ~/.config/fish/config.fish:"
+        echo "    direnv hook fish | source"
+        echo ""
+        print_info "After adding the hook:"
+        echo "  1. Restart your shell or source the config file"
+        echo "  2. Navigate to this project directory"
+        echo "  3. Run: direnv allow"
+        return 1
+    fi
+}
+
 # Show Node.js installation instructions for Ubuntu
 show_nodejs_install_instructions() {
     echo ""
-    print_warning "Node.js 22 installation required"
+    print_warning "Node.js 22.16.0 or higher installation required"
     echo ""
     echo "For Ubuntu/Debian systems, install Node.js 22 using NodeSource repository:"
     echo ""
@@ -91,10 +137,10 @@ show_nodejs_install_instructions() {
     echo "  # Add NodeSource repository for Node.js 22"
     echo "  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
     echo ""
-    echo "  # Install Node.js 22"
+    echo "  # Install Node.js 22 (will install latest 22.x version)"
     echo "  sudo apt install -y nodejs"
     echo ""
-    echo "Alternative using Node Version Manager (nvm):"
+    echo "Alternative using Node Version Manager (nvm) - Recommended:"
     echo ""
     echo "  # Install nvm"
     echo "  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash"
@@ -102,9 +148,11 @@ show_nodejs_install_instructions() {
     echo "  # Reload shell or run:"
     echo "  source ~/.bashrc"
     echo ""
-    echo "  # Install and use Node.js 22"
+    echo "  # Install and use Node.js 22.16.0 or higher"
     echo "  nvm install 22"
     echo "  nvm use 22"
+    echo ""
+    print_info "Note: Node.js 22.16.0+ is required to fix ERR_INVALID_URL_SCHEME bug"
     echo ""
 }
 
@@ -128,6 +176,50 @@ show_pnpm_install_instructions() {
     echo ""
 }
 
+# Show direnv installation instructions
+show_direnv_install_instructions() {
+    echo ""
+    print_warning "direnv installation recommended"
+    echo ""
+    print_info "direnv automatically loads environment variables from .envrc files"
+    print_info "This project uses .envrc to manage Node.js versions and workspace setup"
+    echo ""
+    echo "For macOS:"
+    echo ""
+    echo "  # Using Homebrew"
+    echo "  brew install direnv"
+    echo ""
+    echo "  # Add to your shell config (~/.zshrc, ~/.bashrc, etc.)"
+    echo "  eval \"\$(direnv hook zsh)\"  # For zsh"
+    echo "  eval \"\$(direnv hook bash)\" # For bash"
+    echo ""
+    echo "For Ubuntu/Debian:"
+    echo ""
+    echo "  # Install direnv"
+    echo "  sudo apt update"
+    echo "  sudo apt install -y direnv"
+    echo ""
+    echo "  # Add to your shell config (~/.bashrc, ~/.zshrc, etc.)"
+    echo "  eval \"\$(direnv hook bash)\" # For bash"
+    echo "  eval \"\$(direnv hook zsh)\"  # For zsh"
+    echo ""
+    echo "After installing and configuring direnv:"
+    echo ""
+    echo "  # Navigate to the project directory"
+    echo "  cd /path/to/airo-app-builder"
+    echo ""
+    echo "  # Allow the .envrc file to be executed"
+    echo "  direnv allow"
+    echo ""
+    print_info "Once direnv is set up, it will automatically:"
+    echo "  - Load the correct Node.js version (22.16.0+) via nvm"
+    echo "  - Ensure pnpm is installed"
+    echo "  - Set up workspace protection for pnpm commands"
+    echo ""
+    print_info "Learn more at: https://direnv.net/"
+    echo ""
+}
+
 # Main execution
 main() {
     # Check if running in integrated mode (called from master setup script)
@@ -143,8 +235,31 @@ main() {
     
     local nodejs_ok=0
     local pnpm_ok=0
+    local direnv_ok=0
+    local direnv_hook_ok=0
     
-    # Check dependencies
+    # Check direnv first - it can automatically manage Node.js and pnpm
+    if check_direnv; then
+        direnv_ok=1
+
+        # Check if direnv hook is properly configured in shell
+        if check_direnv_hook; then
+            direnv_hook_ok=1
+        fi
+
+        echo ""
+        if [ $direnv_hook_ok -eq 1 ]; then
+            print_info "direnv is fully configured - it will automatically manage Node.js and pnpm via .envrc"
+            print_info "Make sure to run 'direnv allow' in the project directory"
+        else
+            print_warning "direnv is installed but shell hook is NOT configured"
+            print_info "The .envrc file will not load automatically until you configure the hook"
+            print_info "Follow the instructions above to add the hook to your shell config"
+        fi
+        echo ""
+    fi
+
+    # Check other dependencies
     if check_nodejs; then
         nodejs_ok=1
     fi
@@ -161,9 +276,11 @@ main() {
         echo "=================================="
     fi
     
-    if [ $nodejs_ok -eq 1 ] && [ $pnpm_ok -eq 1 ]; then
+    if [ $direnv_ok -eq 1 ] && [ $direnv_hook_ok -eq 1 ] && [ $nodejs_ok -eq 1 ] && [ $pnpm_ok -eq 1 ]; then
         if [ "$integrated_mode" = false ]; then
-            print_status "All dependencies are satisfied!"
+            print_status "All required dependencies are satisfied!"
+            echo ""
+            print_info "direnv is active and managing your environment!"
             echo ""
             print_info "You can now proceed with the Airo App Builder setup."
             echo ""
@@ -177,9 +294,13 @@ main() {
     else
         if [ "$integrated_mode" = false ]; then
             echo ""
-            print_error "Some dependencies are missing. Please install them and run this script again."
+            print_error "Required dependencies are missing."
             echo ""
-            print_info "After installing dependencies, you can run the full setup with: ./setup.sh"
+            print_warning "RECOMMENDED: Install direnv first - it will automatically manage Node.js and pnpm"
+            show_direnv_install_instructions
+            echo ""
+            print_info "Alternatively, you can manually install the missing dependencies."
+            print_info "After installing, run this script again or proceed with: ./setup.sh"
         fi
         exit 1
     fi

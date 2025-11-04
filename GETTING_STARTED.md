@@ -3,21 +3,31 @@
 Complete setup guide to run the AI builder locally in under 5 minutes.
 
 ## Prerequisites
-- Node.js 22+ (recommended) or Node.js 18+ 
-- pnpm (recommended) or npm
+
+- Access to AWS Account: `GD-AWS-USA-GD-AiroBuilde-Dev-Private`
+- direnv
+- Node.js 22.16.0+
+- pnpm
 - Docker (for local database)
 - AI Provider API Key (OpenAI, AWS Bedrock, or GoCode)
+
+## Request Access
+
+You first need to request access to the `GD-AWS-USA-GD-AiroBuilde-Dev-Private` AWS Account, as the app has to retrive secrets in order to run. Please request access in #airo-app-builder-dev. After verifying access via Okta, you can then proceed with the setup.
 
 ## 🛠️ Automated Setup (Recommended)
 
 ### Option 1: Full Setup
+
 Run the complete setup utility:
+
 ```bash
 ./setup.sh
 ```
 
 This will:
-1. ✅ Verify Node.js 22+ and pnpm installation
+
+1. ✅ Verify Node.js 22.16.0+ and pnpm installation
 2. ✅ Check Docker environment and start MySQL container
 3. ✅ Configure AI provider (AWS Bedrock, GoCode, or OpenAI)
 4. ✅ Set up authentication (Mock login or SSO)
@@ -25,7 +35,9 @@ This will:
 6. ✅ Generate all required `.env` files
 
 ### Option 2: Selective Configuration
+
 For individual component setup or reconfiguration:
+
 ```bash
 # From project root (recommended)
 pnpm --filter airo-setup start
@@ -35,9 +47,10 @@ cd setup && pnpm start
 ```
 
 Choose from the menu:
+
 - 🔍 Check Docker Dependencies
 - 📱 Configure App Environment (.env)
-- 🤖 Configure Agents Environment (.env)  
+- 🤖 Configure Agents Environment (.env)
 - 🖼️ Configure Getty Images Proxy
 - 🗄️ Check MySQL Container Status
 - 🐳 Start MySQL Container
@@ -57,7 +70,9 @@ pnpm install
 ```
 
 ### 2. Configure Environment
+
 Create `agents/.env`:
+
 ```bash
 # AI Provider (choose one)
 OPENAI_API_KEY=your_api_key_here
@@ -81,6 +96,7 @@ MYSQL_ROOT_PASS=
 ```
 
 Create `app/.env`:
+
 ```bash
 NODE_ENV=development
 PORT=3000
@@ -97,26 +113,31 @@ NEXT_PUBLIC_USE_MOCK_LOGIN=true
 ```
 
 ### 3. Start Services
+
 **Start MySQL Container (if not using setup utility):**
+
 ```bash
 docker compose up app-mysql -d
 ```
 
 **Option 1 - Start both services concurrently:**
+
 ```bash
 pnpm run dev
 ```
 
 **Option 2 - Start services individually:**
+
 ```bash
 # Terminal 1 - Agents Backend (port 4000)
 pnpm run dev:agents
 
-# Terminal 2 - Main App (port 3000) 
+# Terminal 2 - Main App (port 3000)
 pnpm run dev:app
 ```
 
 **Database Migrations (first time only):**
+
 ```bash
 # Run from project root using workspace filter
 pnpm --filter website dlx prisma migrate dev
@@ -129,6 +150,7 @@ pnpm --filter website dlx prisma migrate dev
 - **Health Check**: http://localhost:4000/health
 
 ## Test
+
 ```bash
 # List available agents
 curl http://localhost:4000/agents
@@ -156,7 +178,9 @@ curl -X POST http://localhost:4000/agent/example-agent/chat \
 ## 🔧 Setup Utilities
 
 ### Reconfigure Components
+
 Use the selective configuration tool to modify specific settings:
+
 ```bash
 # From project root (recommended)
 pnpm --filter airo-setup start
@@ -167,7 +191,9 @@ cd setup && pnpm start
 ```
 
 ### Check System Status
+
 Get an overview of your current configuration:
+
 ```bash
 # From project root (recommended)
 pnpm --filter airo-setup start
@@ -178,7 +204,9 @@ cd setup && pnpm start
 ```
 
 ### Getty Images Setup
+
 If Getty Images isn't working, reconfigure it:
+
 ```bash
 # From project root (recommended)
 pnpm --filter airo-setup start
@@ -189,6 +217,7 @@ cd setup && pnpm start
 ```
 
 This will:
+
 - Set up AWS SSO credentials if needed
 - Fetch the Getty token from AWS Secrets Manager
 - Update your `agents/.env` with the correct configuration
@@ -196,7 +225,9 @@ This will:
 ## Troubleshooting
 
 ### Configuration Issues
+
 **Recommended**: Use the setup utility to diagnose and fix configuration problems:
+
 ```bash
 # From project root (recommended)
 pnpm --filter airo-setup start
@@ -211,6 +242,7 @@ cd setup && pnpm start
 **Issue**: The development server fails to start for new apps  
 **Cause**: App template dependencies are not installed  
 **Solution**: Install all dependencies using workspace:
+
 ```bash
 pnpm install
 ```
@@ -220,6 +252,7 @@ pnpm install
 **Issue**: "Template directory not found" warnings  
 **Cause**: The `APP_TEMPLATE_DIR` environment variable points to wrong location  
 **Solution**: Use the setup utility or ensure your `agents/.env` has:
+
 ```bash
 APP_TEMPLATE_DIR=app-templates/v8
 ```
@@ -229,6 +262,7 @@ APP_TEMPLATE_DIR=app-templates/v8
 **Issue**: Getty Images search returns errors or no results  
 **Cause**: Missing or expired AWS credentials, incorrect token  
 **Solution**: Use the setup utility:
+
 ```bash
 # From project root (recommended)
 pnpm --filter airo-setup start
@@ -243,6 +277,7 @@ cd setup && pnpm start
 **Issue**: MySQL connection failures  
 **Cause**: MySQL container not running or wrong credentials  
 **Solution**: Use the setup utility or manually start container:
+
 ```bash
 # Via setup utility (from project root)
 pnpm --filter airo-setup start
@@ -251,7 +286,7 @@ pnpm --filter airo-setup start
 # Or from setup directory
 cd setup && pnpm start
 
-# Manual alternative  
+# Manual alternative
 docker compose up app-mysql -d
 ```
 
@@ -259,13 +294,15 @@ docker compose up app-mysql -d
 
 **Issue**: Development servers fail to start due to port conflicts  
 **Solution**: The system automatically assigns ports starting from 5001. Kill any conflicting processes:
+
 ```bash
 lsof -ti:5001 | xargs kill -9
 ```
 
 ---
 
-Need help? 
-- 🛠️ Use the setup utility: `./setup.sh` or `pnpm --filter airo-setup start`  
-- 📖 Check the full [README.md](./README.md) 
+Need help?
+
+- 🛠️ Use the setup utility: `./setup.sh` or `pnpm --filter airo-setup start`
+- 📖 Check the full [README.md](./README.md)
 - 📚 Browse [documentation](./docs/)
