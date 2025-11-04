@@ -10,21 +10,29 @@ RUN apk add --no-cache curl git ca-certificates tzdata
 
 # Create the group and user with dynamic UID/GID
 # This allows the container user to match the host user for proper file permissions
-# First, check if HOST_GID is already in use and reassign the conflicting group
-RUN if getent group ${HOST_GID} >/dev/null 2>&1; then \
-    echo "GID ${HOST_GID} is already in use, reassigning to GID 9999"; \
-    sed -i "/^[^:]*:[^:]*:${HOST_GID}:/s/:${HOST_GID}:/:9999:/" /etc/group; \
-    fi
+# Validate and adjust GID if it's outside Alpine's supported range (0-256000)
+RUN CONTAINER_GID=${HOST_GID}; \
+    if [ ${HOST_GID} -gt 256000 ]; then \
+        echo "Host GID ${HOST_GID} exceeds Alpine limit, using fallback GID 1000"; \
+        CONTAINER_GID=1000; \
+    fi; \
+    if getent group $CONTAINER_GID >/dev/null 2>&1; then \
+        echo "GID $CONTAINER_GID is already in use, reassigning to GID 9999"; \
+        sed -i "/^[^:]*:[^:]*:$CONTAINER_GID:/s/:$CONTAINER_GID:/:9999:/" /etc/group; \
+    fi; \
+    addgroup -g $CONTAINER_GID agent
 
-# Check if HOST_UID is already in use and reassign the conflicting user
-RUN if getent passwd ${HOST_UID} >/dev/null 2>&1; then \
-    echo "UID ${HOST_UID} is already in use, reassigning to UID 9999"; \
-    sed -i "/^[^:]*:[^:]*:${HOST_UID}:/s/:${HOST_UID}:/:9999:/" /etc/passwd; \
-    fi
-
-# Now create our agent group and user with the required HOST_GID and HOST_UID
-RUN addgroup -g ${HOST_GID} agent
-RUN adduser -D -G agent -u ${HOST_UID} agent
+# Validate and adjust UID if it's outside Alpine's supported range
+RUN CONTAINER_UID=${HOST_UID}; \
+    if [ ${HOST_UID} -gt 256000 ]; then \
+        echo "Host UID ${HOST_UID} exceeds Alpine limit, using fallback UID 1000"; \
+        CONTAINER_UID=1000; \
+    fi; \
+    if getent passwd $CONTAINER_UID >/dev/null 2>&1; then \
+        echo "UID $CONTAINER_UID is already in use, reassigning to UID 9999"; \
+        sed -i "/^[^:]*:[^:]*:$CONTAINER_UID:/s/:$CONTAINER_UID:/:9999:/" /etc/passwd; \
+    fi; \
+    adduser -D -G agent -u $CONTAINER_UID agent
 RUN echo 'agent:agent' | chpasswd
 
 # Set working directory
