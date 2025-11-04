@@ -54,7 +54,6 @@ graph TB
     SystemTools --> ViewLogs[viewLogs]
 
     BackendTools --> MySQL[mysqlOperation]
-    BackendTools --> APIGen[autoAPIGenerator]
 
     MediaTools --> ImgSearch[imageSearch]
     MediaTools --> ImgGen[imageGenerate]
@@ -279,7 +278,7 @@ sequenceDiagram
 **Technical Expertise**:
 
 - Frontend Development: React, TypeScript, Tailwind CSS, shadcn UI, Vite
-- Backend Development: Hono.js API routes, server actions, middleware
+- Backend Development: API routes, server actions, middleware
 - Development Tools: pnpm, TypeScript compiler, Node.js environment
 
 **Model Configuration**:
@@ -867,38 +866,7 @@ async function mcpToolAdapter(mcpServerUrl: string, toolName: string) {
 
 ### Database & API Tools
 
-#### 10. autoAPIGenerator
-
-**Purpose**: Generate Hono.js API endpoints from database schemas
-
-**Capabilities**:
-
-- Analyze database schema
-- Generate TypeScript types
-- Create REST API endpoints
-- Generate CRUD operations
-- Input validation
-- Error handling
-
-**Parameters**:
-
-```typescript
-{
-  schemaPath?: string,       // Path to schema definition
-  outputPath?: string,       // Output directory for generated code
-  tableName?: string,        // Specific table to generate
-  operations?: ['create', 'read', 'update', 'delete']
-}
-```
-
-**Generates**:
-
-- `types.ts` - TypeScript interfaces
-- `routes.ts` - Hono.js route handlers
-- `validation.ts` - Zod validation schemas
-- `repository.ts` - Database access layer
-
-#### 11. mysqlOperation
+#### 10. mysqlOperation
 
 **Purpose**: MySQL database operations and management
 
@@ -1059,10 +1027,10 @@ UNSPLASH_ACCESS_KEY=...
 
 ### Tool Statistics
 
-**Total Tools**: 15  
+**Total Tools**: 14  
 **Core Tools**: 4 (fileEdit, readFile, grepSearch, directoryListing)  
 **System Tools**: 5 (terminalCommand, gitOperation, serverRestart, serverStatus, viewLogs)  
-**Backend Tools**: 2 (mysqlOperation, autoAPIGenerator)  
+**Backend Tools**: 1 (mysqlOperation)  
 **Media Tools**: 2 (imageSearch, imageGenerate)  
 **Planning Tools**: 2 (handoff, handoffHistory)
 
@@ -1662,7 +1630,6 @@ Production:
 
 #### Database & API Tools (100% In-House)
 
-- ✅ **autoAPIGenerator** - Custom Hono.js code generator
 - ✅ **mysqlOperation** - Custom MySQL management wrapper
 
 **Location**: `agents/src/tools/`

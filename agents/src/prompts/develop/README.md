@@ -16,12 +16,14 @@ The prompt system uses the `@airo/ai-lib` PromptBuilder to dynamically load and 
 The complete prompt is assembled from these files in order:
 
 ### 1. `core.md` - Core Role & Responsibilities
+
 - Agent identity and purpose
 - Development pattern and workflow
 - Technology stack expertise
 - Core responsibilities overview
 
-### 2. `tools.md` - Available Tools Documentation  
+### 2. `tools.md` - Available Tools Documentation
+
 - File Edit Tool configuration and usage
 - Git Operation Tool capabilities
 - Directory Listing Tool options
@@ -29,18 +31,20 @@ The complete prompt is assembled from these files in order:
 - Server Management Tools
 
 ### 3. `database.md` - Database Operations
+
 - Handoff procedures to Database Agent
 - Recognition patterns for database requests
 - Integration workflow examples
 - Important limitations and boundaries
 
 ### 4. `api.md` - API Development Guidelines
-- Auto API Generator Tool usage
+
 - API creation patterns and best practices
 - Common operation combinations
 - Database prerequisites and workflows
 
 ### 5. `approach.md` - Development Methodology
+
 - Planning and analysis approach
 - Implementation strategies
 - Code quality standards
@@ -48,29 +52,34 @@ The complete prompt is assembled from these files in order:
 - Supported project types
 
 ### 6. `planning.md` - Task Planning and Management
+
 - Todo List Tool usage and best practices
 - When and how to use systematic task tracking
 - Planning workflows and organization strategies
 - Progress tracking and project management principles
 
 ### 7. `visual-context.md` - Visual Context Awareness
+
 - Visual context capabilities
 - Effective usage patterns
 - Element targeting strategies
 - Best practices for contextual development
 
-### 8. `../shared/communication.md` - Communication Style *(shared)*
+### 8. `../shared/communication.md` - Communication Style _(shared)_
+
 - Interaction guidelines
 - Communication principles
 - Response formatting expectations
 
 ### 9. `design.md` - Design & Styling Guidelines
+
 - Design approach and principles
 - Color system usage (semantic vs arbitrary)
 - Image handling procedures
 - Responsive design requirements
 
-### 9. `../shared/security.md` - Security & Privacy Guidelines *(shared)*
+### 9. `../shared/security.md` - Security & Privacy Guidelines _(shared)_
+
 - Information protection policies
 - Scope limitations
 - Response constraints for sensitive requests
@@ -88,14 +97,15 @@ promptBuilder
   .file(join(developDir, 'api.md'))
   .file(join(developDir, 'approach.md'))
   .file(join(developDir, 'visual-context.md'))
-  .file(join(sharedDir, 'communication.md'))     // Shared section
+  .file(join(sharedDir, 'communication.md')) // Shared section
   .file(join(developDir, 'design.md'))
-  .file(join(sharedDir, 'security.md'))          // Shared section
+  .file(join(sharedDir, 'security.md')); // Shared section
 ```
 
 ## Testing & Customization
 
 ### Individual Section Replacement
+
 To test alternative approaches for specific areas:
 
 1. **Backup the original**: `cp tools.md tools.md.backup`
@@ -104,6 +114,7 @@ To test alternative approaches for specific areas:
 4. **Restore if needed**: `mv tools.md.backup tools.md`
 
 ### Adding New Sections
+
 To add new prompt sections:
 
 1. **Create the file**: Add `newsection.md` to either `develop/` or `shared/` directory
@@ -111,13 +122,14 @@ To add new prompt sections:
 3. **Test**: Verify the new section loads correctly
 
 ### Conditional Loading
+
 The PromptBuilder supports conditional sections. Example:
 
 ```typescript
 promptBuilder
-  .when(context => context.env.NODE_ENV === 'development')
+  .when((context) => context.env.NODE_ENV === 'development')
   .file(join(developDir, 'debug.md'))
-  .end()
+  .end();
 ```
 
 ## Maintenance

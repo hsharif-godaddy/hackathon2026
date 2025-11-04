@@ -13,7 +13,6 @@ export { grepSearchAITool } from './grep-search.js'
 export { mysqlOperationAITool } from './mysql-operation.js'
 export { serverRestartAITool, serverStatusAITool } from './server-management.js'
 export { imageSearchAITool, imageGenerateAITool } from './image-tools.js'
-export { autoAPIGeneratorAITool } from './auto-api-generator.js'
 export { iconsValidatorAITool } from './icons-validator.js'
 export { viewLogsAITool } from './view-logs.js'
 export { appPlanAITool } from './app-plan.js'
@@ -32,7 +31,6 @@ import { grepSearchAITool } from './grep-search.js'
 import { mysqlOperationAITool } from './mysql-operation.js'
 import { serverRestartAITool, serverStatusAITool } from './server-management.js'
 import { imageSearchAITool, imageGenerateAITool } from './image-tools.js'
-import { autoAPIGeneratorAITool } from './auto-api-generator.js'
 import { iconsValidatorAITool } from './icons-validator.js'
 import { viewLogsAITool } from './view-logs.js'
 import { appPlanAITool } from './app-plan.js'
@@ -57,7 +55,6 @@ export const allAILibTools = {
   serverStatus: serverStatusAITool,
   imageSearch: imageSearchAITool,
   imageGenerate: imageGenerateAITool,
-  autoAPIGenerator: autoAPIGeneratorAITool,
   iconsValidator: iconsValidatorAITool,
   viewLogs: viewLogsAITool,
   appPlan: appPlanAITool,
@@ -85,7 +82,7 @@ export const toolGroups = {
     memorySearch: memorySearchAITool,
     memoryListKeys: memoryListKeysAITool,
   },
-  
+
   // System and server tools
   system: {
     terminalCommand: terminalCommandAITool,
@@ -93,13 +90,12 @@ export const toolGroups = {
     serverRestart: serverRestartAITool,
     serverStatus: serverStatusAITool,
   },
-  
+
   // Database and API tools
   backend: {
     mysqlOperation: mysqlOperationAITool,
-    autoAPIGenerator: autoAPIGeneratorAITool,
   },
-  
+
   // Media and content tools
   media: {
     imageSearch: imageSearchAITool,
@@ -107,14 +103,14 @@ export const toolGroups = {
     iconsValidator: iconsValidatorAITool,
     ragSearch: ragSearchAITool,
   },
-  
+
   // Monitoring and debugging tools
   debug: {
     viewLogs: viewLogsAITool,
     grepSearch: grepSearchAITool,
     readFile: readFileAITool,
   },
-  
+
   // Planning and project management
   planning: {
     appPlan: appPlanAITool,

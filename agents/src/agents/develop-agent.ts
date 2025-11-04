@@ -159,12 +159,6 @@ const afterToolExecution: AfterToolExecutionHook = async (
     });
   }
 
-  if (toolName === 'autoAPIGenerator' && resultObj?.success) {
-    contextLogger.info('develop_agent.tool.api_generator.success', {
-      endpointsGenerated: resultObj.endpointsGenerated || 0
-    });
-  }
-
   if (toolName === 'terminalCommand' && resultObj?.success) {
     contextLogger.info('develop_agent.tool.terminal.success', {
       command: resultObj.command || 'unknown'
@@ -241,10 +235,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       serverStatus: allAILibTools.serverStatus,
       viewLogs: allAILibTools.viewLogs,
 
-      // Specialized development tools
-      autoAPIGenerator: allAILibTools.autoAPIGenerator,
-      imageSearch: allAILibTools.imageSearch,
-      imageGenerate: allAILibTools.imageGenerate,
+    // Specialized development tools
+    imageSearch: allAILibTools.imageSearch,
+    imageGenerate: allAILibTools.imageGenerate,
 
       // Widget rendering
       widgetRender: allAILibTools.widgetRender,

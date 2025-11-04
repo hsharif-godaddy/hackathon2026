@@ -6,7 +6,7 @@ This directory contains modular template descriptions that can be composed into 
 
 Template descriptions are **automatically selected** based on app metadata stored in the database. When an app is created, its template version is stored and used to determine which template description to include:
 
-- **v8 templates**: Includes `v8.md` (Modern Vite + React + Hono full-stack application)
+- **v8 templates**: Includes `v8.md` (Modern Vite + React full-stack application)
 - **Missing/Unknown**: Includes `default.md` (discovery-based guidance)
 
 Agents can also explicitly configure templates in their `promptComposition` property:
@@ -16,8 +16,8 @@ const config: AgentConfig = {
   // ... other config
   promptComposition: {
     templates: ['v8'], // Optional: Override the app's template
-    fragments: ['custom-fragment'] // Optional: additional prompt fragments
-  }
+    fragments: ['custom-fragment'], // Optional: additional prompt fragments
+  },
 };
 ```
 
@@ -43,12 +43,14 @@ Template descriptions are inserted into the base prompt in one of two ways:
 ## Available Templates
 
 ### `v8.md`
+
 - **Use for**: Modern full-stack applications (v8 app-template)
 - **Contains**: Complete directory structure, tech stack, configuration files, component organization
-- **Architecture**: Vite + React frontend with Hono backend, TypeScript throughout, modern tooling
+- **Architecture**: Vite + React frontend with backend API, TypeScript throughout, modern tooling
 - **Features**: Full-stack development with shared types, API routes, database integration, modern UI components
 
 ### `default.md`
+
 - **Use for**: Apps with missing or unrecognized template versions
 - **Contains**: Discovery-based development guidance and general best practices
 - **Architecture**: Adapts to discovered project structure

@@ -13,17 +13,16 @@ export { ASTTextEditor } from './ast-text-editor.js';
 export { ServerManagementTool } from './server-management-tool.js';
 export { MySQLResponseFormatter, createMySQLResponseFormatter } from './mysql-response-formatter.js';
 export { ASTStyleEditor } from './ast-style-editor.js';
-export { AutoAPIGenerator } from './auto-api-generator.js';
 export { AppPlanTool, appPlanTool } from './app-plan-tool.js';
 export { validateLucideIcons } from './icons-validator.js';
 export { DevSupervisorLogClient } from './dev-supervisor-log-client.js';
 export { ViewLogsTool } from './view-logs-tool.js';
 export { MemoryTool } from './memory-tool.js';
 // Tool definitions and execution now handled by ai-lib agents
-export type { 
-  DirectoryListingOptions, 
-  DirectoryEntry, 
-  DirectoryTreeResult 
+export type {
+  DirectoryListingOptions,
+  DirectoryEntry,
+  DirectoryTreeResult
 } from './directory-listing.js';
 export type {
   TerminalCommandOptions,
@@ -95,15 +94,6 @@ export type {
   StyleEditResult,
   ElementInfo
 } from './ast-style-editor.js';
-
-export type {
-  AutoAPIGeneratorOptions,
-  AutoAPIGeneratorResult,
-  TableSchema,
-  ColumnInfo,
-  RelationshipInfo,
-  EndpointInfo
-} from './auto-api-generator.js';
 
 export type {
   AppPlanData,
