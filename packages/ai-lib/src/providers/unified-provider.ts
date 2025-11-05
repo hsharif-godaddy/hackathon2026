@@ -16,7 +16,7 @@ import {
   isModelSupported as isModelSupportedFromNormalization,
   getFullModelName as getFullModelNameFromNormalization
 } from '../utils/model-normalization.js'
-import { getS2SProviderConfig, isS2SAuthEnabled, getDefaultAnthropicProxyEndpoint, refreshS2SToken, type S2SAuthConfig } from '../utils/s2s-auth.js'
+import { getS2SProviderConfig, isS2SAuthEnabled, getDefaultAnthropicProxyEndpoint, refreshS2SToken, getS2SToken, type S2SAuthConfig } from '../utils/s2s-auth.js'
 
 /**
  * Claude models that can be routed through OpenAI proxy
@@ -224,8 +224,7 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
     return new OpenAI({
       apiKey: s2sConfig.apiKey, // Placeholder API key
       baseURL: s2sConfig.baseURL.endsWith('/v1') ? s2sConfig.baseURL : s2sConfig.baseURL + '/v1', // Ensure /v1 suffix
-      defaultHeaders: s2sConfig.headers, // Authorization: Bearer JWT
-      fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token refresh
+      fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token injection and refresh
     })
   } else {
     // Use regular OpenAI authentication
@@ -252,7 +251,8 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
 }
 
 /**
- * Create a fetch wrapper that handles S2S token refresh on authentication errors
+ * Create a fetch wrapper that injects current S2S token on every request
+ * and handles token refresh on authentication errors
  */
 function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
   // Store reference to original fetch to avoid infinite recursion
@@ -278,8 +278,20 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
     // Check if this is already a retry attempt (case-insensitive)
     const isRetry = headersObj['x-s2s-token-retry'] === 'true'
     
-    // Make initial request
-    const response = await originalFetch(url, init)
+    // Always inject the current valid token before making the request (unless retrying)
+    if (!isRetry && isS2SAuthEnabled()) {
+      const currentToken = await getS2SToken(s2sAuthConfig)
+      headersObj['Authorization'] = `Bearer ${currentToken}`
+    }
+    
+    // Create request with updated headers
+    const requestInit = {
+      ...init,
+      headers: headersObj
+    }
+    
+    // Make request
+    const response = await originalFetch(url, requestInit)
     
     // Only attempt token refresh on first failure (not on retry)
     if (!isRetry && (response.status === 401 || response.status === 403) && isS2SAuthEnabled()) {
@@ -297,7 +309,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
       // Use lowercase to match the original header names from the AI SDK
       const updatedHeaders = {
         ...headersObj,
-        'authorization': `Bearer ${newToken}`,
+        'Authorization': `Bearer ${newToken}`,
         'x-s2s-token-retry': 'true'
       }
       
@@ -329,8 +341,7 @@ async function createOpenAIProvider(config?: ProviderConfig) {
     const openaiConfig: any = {
       apiKey: s2sConfig.apiKey, // Placeholder API key
       baseURL: s2sConfig.baseURL.endsWith('/v1') ? s2sConfig.baseURL : s2sConfig.baseURL + '/v1', // Ensure /v1 suffix
-      headers: s2sConfig.headers,   // Authorization: Bearer JWT
-      fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token refresh
+      fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token injection and refresh
     }
     
     console.log(`🔐 Using S2S authentication with GoCode endpoint: ${openaiConfig.baseURL}`)
@@ -592,8 +603,7 @@ async function createAnthropicProvider(config?: ProviderConfig) {
     const anthropicConfig: any = {
       apiKey: s2sConfig.apiKey, // Placeholder API key
       baseURL: s2sConfig.baseURL.endsWith('/v1') ? s2sConfig.baseURL : s2sConfig.baseURL + '/v1', // Ensure /v1 suffix
-      headers: s2sConfig.headers, // Authorization: Bearer JWT
-      fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token refresh
+      fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token injection and refresh
     }
     
     console.log(`🔐 Using S2S authentication with GoCode endpoint (Anthropic): ${anthropicConfig.baseURL}`)

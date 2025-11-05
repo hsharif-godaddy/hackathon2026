@@ -286,14 +286,14 @@ export async function refreshS2SToken(config?: S2SAuthConfig): Promise<string> {
 
 /**
  * Get S2S configuration for OpenAI provider
- * Returns null if S2S is not enabled, otherwise returns the config with JWT token
+ * Returns null if S2S is not enabled, otherwise returns the config WITHOUT JWT token
+ * (token will be injected by the fetch wrapper on each request)
  * 
  * @param s2sConfig - Optional S2S authentication configuration
- * @returns Promise that resolves to S2S config with JWT token, or null if S2S not enabled
+ * @returns Promise that resolves to S2S config, or null if S2S not enabled
  */
 export async function getS2SProviderConfig(s2sConfig?: S2SAuthConfig): Promise<{
   baseURL: string;
-  headers: { Authorization: string };
   apiKey: string;
 } | null> {
   if (!isS2SAuthEnabled()) {
@@ -301,12 +301,8 @@ export async function getS2SProviderConfig(s2sConfig?: S2SAuthConfig): Promise<{
   }
   
   const finalConfig = { ...getDefaultS2SConfig(), ...s2sConfig };
-  const jwt = await getS2SToken(s2sConfig);
   return {
     baseURL: finalConfig.goCodeEndpoint,
-    headers: {
-      Authorization: `Bearer ${jwt}`
-    },
     apiKey: 'gocode-s2s-placeholder' // Placeholder API key since auth is via Bearer token
   };
 }
