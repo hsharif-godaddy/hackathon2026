@@ -562,6 +562,7 @@ export interface ConversationContextLoadData {
   hasAppContext?: boolean;
   hasAiEditContext?: boolean;
   hasVisualContext?: boolean;
+  hasSelectedImages?: boolean;
 }
 
 export interface ConversationContextBuildData {
@@ -573,6 +574,7 @@ export interface ConversationContextBuildData {
   hasAppContext?: boolean | undefined;
   hasAiEditContext?: boolean;
   hasVisualContext?: boolean;
+  hasSelectedImages?: boolean;
   filteredMessages?: number;
 }
 

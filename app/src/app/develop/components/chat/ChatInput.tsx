@@ -46,7 +46,7 @@ export default function ChatInput({
             {/* Send Button */}
             <Button
               onClick={onSendMessage}
-              data-eid={ generateClickEID('develop.prompt.send') }
+              data-eid={generateClickEID('develop.prompt.send')}
               disabled={!inputValue?.trim() || isDisabled}
               aria-label="Send message"
               design="primary"

@@ -413,7 +413,8 @@ export function useStreamingWebSocket() {
    */
   const sendMessage = useCallback(async (
     content: string,
-    aiEditContext?: any
+    aiEditContext?: any,
+    selectedImage?: any
   ) => {
     if (!content.trim() || !currentAppId) return
 
@@ -458,6 +459,17 @@ export function useStreamingWebSocket() {
       // Capture visual context from iframe
       const visualContext = await captureVisualContext()
 
+      // Transform selected image to include https protocol
+      const transformedImage = selectedImage ? {
+        ...selectedImage,
+        imageUrl: selectedImage.imageUrl.startsWith('//') 
+          ? `https:${selectedImage.imageUrl}` 
+          : selectedImage.imageUrl,
+        thumbnailUrl: selectedImage.thumbnailUrl.startsWith('//') 
+          ? `https:${selectedImage.thumbnailUrl}` 
+          : selectedImage.thumbnailUrl
+      } : null
+
       // Build rich context object with proper typing
       const richContext: AgentsAppContext = {
         // Basic metadata
@@ -487,6 +499,9 @@ export function useStreamingWebSocket() {
 
         // Visual context from iframe
         ...(visualContext && { visualContext }),
+
+        // Selected images from Image Manager
+        ...(transformedImage && { selectedImages: [transformedImage] }),
       }
 
       // Send the message to start streaming with rich context

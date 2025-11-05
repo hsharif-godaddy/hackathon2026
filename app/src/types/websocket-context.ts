@@ -69,6 +69,21 @@ export interface AgentsAppContext {
     }>
   }
   
+  // Image Manager selected images context
+  selectedImages?: Array<{
+    filename: string
+    imageUrl: string
+    mediaType: string
+    sourceType: string
+    contentType: string
+    size: number
+    dimensions: {
+      width: number
+      height: number
+    }
+    thumbnailUrl: string
+  }>
+  
   // Extensibility for future context types
   [key: string]: unknown
 }

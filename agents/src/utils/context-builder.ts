@@ -7,6 +7,7 @@ export interface ContextBuildOptions {
   appId: string
   injectFakeVisual?: boolean
   injectFakeAiEdit?: boolean
+  injectFakeSelectedImages?: boolean
   userInput?: string
 }
 
@@ -15,7 +16,7 @@ export interface ContextBuildOptions {
  * Used by both WebSocket server and debug endpoint to ensure consistency
  */
 export async function buildDebugContext(options: ContextBuildOptions) {
-  const { appId, injectFakeVisual = false, injectFakeAiEdit = false, userInput } = options
+  const { appId, injectFakeVisual = false, injectFakeAiEdit = false, injectFakeSelectedImages = false, userInput } = options
   
   // Verify app exists in database (same as WebSocket)
   const appRepo = new AppRepository()
@@ -68,6 +69,23 @@ export async function buildDebugContext(options: ContextBuildOptions) {
     }
   }
 
+  // Inject fake selected images if requested (for debugging)
+  if (injectFakeSelectedImages) {
+    agentsAppContext.selectedImages = [{
+      filename: 'sample-image.jpg',
+      imageUrl: 'https://example.com/images/sample-image.jpg',
+      thumbnailUrl: 'https://example.com/images/sample-image-thumb.jpg',
+      mediaType: 'IMAGE',
+      sourceType: 'gc',
+      contentType: 'image/jpeg',
+      size: 1024000,
+      dimensions: {
+        width: 1920,
+        height: 1080
+      }
+    }]
+  }
+
   // Add conversation context if user input provided (for debugging)
   if (userInput) {
     agentsAppContext.conversation = {
@@ -82,6 +100,7 @@ export async function buildDebugContext(options: ContextBuildOptions) {
     hasAppContext: !!agentsAppContext.appContext,
     hasVisualContext: !!agentsAppContext.visualContext,
     hasAiEditContext: !!agentsAppContext.aiEditContext,
+    hasSelectedImages: !!agentsAppContext.selectedImages,
     hasConversation: !!agentsAppContext.conversation
   })
 

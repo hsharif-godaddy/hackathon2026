@@ -31,3 +31,6 @@ licenses-report.txt
 .direnv/CACHEDIR.TAG
 keys/jwt-private.pem
 keys/jwt-public.pem
+
+# IDE specific files
+.idea/

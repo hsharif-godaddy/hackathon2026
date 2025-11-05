@@ -57,7 +57,8 @@ export class AILibContextManager {
             hasMetadata: !!context.metadata,
             hasAppContext: !!context.appContext,
             hasVisualContext: !!context.visualContext,
-            hasAiEditContext: !!context.aiEditContext
+            hasAiEditContext: !!context.aiEditContext,
+            hasSelectedImages: !!context.selectedImages && context.selectedImages.length > 0
         }
         
         logger.info('context.build.start', {
@@ -71,7 +72,8 @@ export class AILibContextManager {
             logger.debug('context.build.details', {
                 ...contextSummary,
                 conversationMaxMessages: context.conversation?.maxMessages,
-                appContextDepth: context.appContext?.maxDirectoryDepth
+                appContextDepth: context.appContext?.maxDirectoryDepth,
+                selectedImagesCount: context.selectedImages?.length || 0
             })
         }
 
@@ -133,11 +135,21 @@ export class AILibContextManager {
             })
         }
 
-        // Add AI edit context as user message (LAST - most specific/immediate)
+        // Add AI edit context as user message (high priority - specific element)
         if (aiEditMessages.length > 0) {
             conversationContextMessages.push({
                 role: 'user',
                 content: aiEditMessages.map(msg => msg.content).join('\n\n'),
+                insertionOrder: 'after_history'
+            })
+        }
+
+        // Add selected images context as user message (LAST - most immediate/recent)
+        const selectedImagesMessages = contextMessages.filter(msg => msg.type === 'selected_images_context')
+        if (selectedImagesMessages.length > 0) {
+            conversationContextMessages.push({
+                role: 'user',
+                content: selectedImagesMessages.map(msg => msg.content).join('\n\n'),
                 insertionOrder: 'after_history'
             })
         }
@@ -156,6 +168,9 @@ export class AILibContextManager {
         }
         if (aiEditMessages.length > 0) {
             messageTypes[typeIndex++] = 'element'
+        }
+        if (selectedImagesMessages.length > 0) {
+            messageTypes[typeIndex++] = 'images'
         }
 
         logger.info('context.build.success', {
@@ -259,6 +274,14 @@ export class AILibContextManager {
                 const visualMessage = this.buildVisualContextMessage(context.visualContext)
                 if (visualMessage) {
                     messages.push(visualMessage)
+                }
+            }
+
+            // Build selected images context
+            if (this.config.includeSelectedImages && context.selectedImages) {
+                const selectedImagesMessage = this.buildSelectedImagesContextMessage(context.selectedImages)
+                if (selectedImagesMessage) {
+                    messages.push(selectedImagesMessage)
                 }
             }
         } catch (error) {
@@ -501,6 +524,63 @@ Context Notes: ${contextNotes}`
     }
 
     /**
+     * Build selected images context message
+     */
+    private buildSelectedImagesContextMessage(selectedImages: NonNullable<EnhancedAgentContext['selectedImages']>): ContextMessage | null {
+        try {
+            if (!selectedImages || selectedImages.length === 0) {
+                return null
+            }
+
+            // Build context for each selected image
+            const imageDescriptions = selectedImages.map((image, index) => {
+                const sanitizedImage = {
+                    filename: String(image.filename || 'unknown').substring(0, 200),
+                    imageUrl: String(image.imageUrl || '').substring(0, 500),
+                    thumbnailUrl: String(image.thumbnailUrl || '').substring(0, 500),
+                    mediaType: String(image.mediaType || 'IMAGE'),
+                    sourceType: String(image.sourceType || 'unknown'),
+                    contentType: String(image.contentType || 'unknown'),
+                    size: typeof image.size === 'number' ? image.size : 0,
+                    dimensions: {
+                        width: typeof image.dimensions?.width === 'number' ? image.dimensions.width : 0,
+                        height: typeof image.dimensions?.height === 'number' ? image.dimensions.height : 0
+                    }
+                }
+
+                return `Image ${index + 1}:
+- Filename: ${sanitizedImage.filename}
+- Image URL: ${sanitizedImage.imageUrl}
+- Thumbnail URL: ${sanitizedImage.thumbnailUrl}
+- Media Type: ${sanitizedImage.mediaType}
+- Content Type: ${sanitizedImage.contentType}
+- File Size: ${(sanitizedImage.size / 1024).toFixed(2)} KB
+- Dimensions: ${sanitizedImage.dimensions.width}x${sanitizedImage.dimensions.height}px`
+            }).join('\n\n')
+
+            const content = `[Selected Images from Image Manager]
+
+The user has selected ${selectedImages.length} image${selectedImages.length > 1 ? 's' : ''} from the Image Manager:
+
+${imageDescriptions}
+
+These images are available for use in the project. You can reference them by their URLs in your code.
+When the user mentions "this image" or "the image", they are likely referring to the selected image above.`
+
+            return {
+                role: 'user',
+                content,
+                type: 'selected_images_context'
+            }
+        } catch (error) {
+            logger.error('context.selected_images.build.failure', {
+                error: error instanceof Error ? error.message : String(error)
+            })
+            return null
+        }
+    }
+
+    /**
      * Build execution context for compatibility with existing services
      */
     private buildExecutionContext(context: EnhancedAgentContext): AgentExecutionContext {
@@ -554,7 +634,8 @@ Context Notes: ${contextNotes}`
                 hasConversation: !!rawContext.conversation,
                 hasAppContext: !!rawContext.appContext,
                 hasAiEditContext: !!rawContext.aiEditContext,
-                hasVisualContext: !!rawContext.visualContext
+                hasVisualContext: !!rawContext.visualContext,
+                hasSelectedImages: !!rawContext.selectedImages
             })
         }
 
@@ -564,7 +645,8 @@ Context Notes: ${contextNotes}`
             ...(rawContext.conversation && { conversation: rawContext.conversation }),
             ...(rawContext.appContext && { appContext: rawContext.appContext }),
             ...(rawContext.aiEditContext && { aiEditContext: rawContext.aiEditContext }),
-            ...(rawContext.visualContext && { visualContext: rawContext.visualContext })
+            ...(rawContext.visualContext && { visualContext: rawContext.visualContext }),
+            ...(rawContext.selectedImages && { selectedImages: rawContext.selectedImages })
         }
 
         return enhancedContext

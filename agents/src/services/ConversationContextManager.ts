@@ -115,6 +115,12 @@ export class ConversationContextManager {
       messages.push({ role: 'user', content: visualContextMessage });
     }
 
+    // Add selected images context as a separate user message if available
+    if (executionContext?.metadata?.selectedImages) {
+      const selectedImagesMessage = this.formatSelectedImagesContextMessage(executionContext.metadata.selectedImages);
+      messages.push({ role: 'user', content: selectedImagesMessage });
+    }
+
     // Add the current user message
     messages.push({ role: 'user', content: currentUserMessage.trim() });
 
@@ -146,6 +152,7 @@ export class ConversationContextManager {
       hasAppContext,
       hasAiEditContext: !!aiEditContext,
       hasVisualContext: !!executionContext?.metadata?.visualContext,
+      hasSelectedImages: !!(executionContext?.metadata?.selectedImages && (executionContext.metadata.selectedImages as any[]).length > 0)
     });
 
     return validatedMessages;
@@ -575,6 +582,60 @@ Context Notes: ${contextNotes}`;
         error: (error as Error).message,
       });
       return '[Visual Context] User context captured (formatting error)';
+    }
+  }
+
+  /**
+   * Format selected images context into a safe user message
+   * @param selectedImages - The selected images data from Image Manager
+   * @returns Formatted context message
+   */
+  private formatSelectedImagesContextMessage(selectedImages: any): string {
+    try {
+      if (!Array.isArray(selectedImages) || selectedImages.length === 0) {
+        return '';
+      }
+
+      // Build context for each selected image
+      const imageDescriptions = selectedImages.map((image: any, index: number) => {
+        const sanitizedImage = {
+          filename: String(image.filename || 'unknown').substring(0, 200),
+          imageUrl: String(image.imageUrl || '').substring(0, 500),
+          thumbnailUrl: String(image.thumbnailUrl || '').substring(0, 500),
+          mediaType: String(image.mediaType || 'IMAGE'),
+          sourceType: String(image.sourceType || 'unknown'),
+          contentType: String(image.contentType || 'unknown'),
+          size: typeof image.size === 'number' ? image.size : 0,
+          dimensions: {
+            width: typeof image.dimensions?.width === 'number' ? image.dimensions.width : 0,
+            height: typeof image.dimensions?.height === 'number' ? image.dimensions.height : 0
+          }
+        };
+
+        return `Image ${index + 1}:
+- Filename: ${sanitizedImage.filename}
+- Image URL: ${sanitizedImage.imageUrl}
+- Thumbnail URL: ${sanitizedImage.thumbnailUrl}
+- Media Type: ${sanitizedImage.mediaType}
+- Content Type: ${sanitizedImage.contentType}
+- File Size: ${(sanitizedImage.size / 1024).toFixed(2)} KB
+- Dimensions: ${sanitizedImage.dimensions.width}x${sanitizedImage.dimensions.height}px`;
+      }).join('\n\n');
+
+      return `[Selected Images from Image Manager]
+
+The user has selected ${selectedImages.length} image${selectedImages.length > 1 ? 's' : ''} from the Image Manager:
+
+${imageDescriptions}
+
+These images are available for use in the project. You can reference them by their URLs in your code.
+When the user mentions "this image" or "the image", they are likely referring to the selected image above.`;
+
+    } catch (error) {
+      logger.warn('conversation.context.selected_images_format.failure', {
+        error: (error as Error).message,
+      });
+      return '[Selected Images Context] Images selected (formatting error)';
     }
   }
 

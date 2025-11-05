@@ -54,6 +54,21 @@ export interface EnhancedAgentContext {
     viewport?: { width: number; height: number }
     timestamp?: number
   }
+
+  // Selected images from Image Manager
+  selectedImages?: Array<{
+    filename: string
+    imageUrl: string
+    mediaType: string
+    sourceType: string
+    contentType: string
+    size: number
+    dimensions: {
+      width: number
+      height: number
+    }
+    thumbnailUrl: string
+  }>
 }
 
 /**
@@ -62,7 +77,7 @@ export interface EnhancedAgentContext {
 export interface ContextMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
-  type?: 'app_context' | 'ai_edit_context' | 'visual_context' | 'conversation_history' | 'hot_files_context'
+  type?: 'app_context' | 'ai_edit_context' | 'visual_context' | 'conversation_history' | 'hot_files_context' | 'selected_images_context'
   insertionOrder?: 'before_history' | 'after_history'
   cachePoint?: { type: 'ephemeral' }
 }
@@ -75,6 +90,7 @@ export interface ContextGenerationConfig {
   includeConversationHistory: boolean
   includeAiEditContext: boolean
   includeVisualContext: boolean
+  includeSelectedImages: boolean
   maxHistoryMessages: number
   maxDirectoryDepth: number
 }
@@ -87,6 +103,7 @@ export const DEFAULT_CONTEXT_CONFIG: ContextGenerationConfig = {
   includeConversationHistory: true,
   includeAiEditContext: true,
   includeVisualContext: true,
+  includeSelectedImages: true,
   maxHistoryMessages: 10,
   maxDirectoryDepth: 3
 }

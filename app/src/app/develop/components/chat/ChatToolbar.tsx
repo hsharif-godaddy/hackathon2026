@@ -1,8 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { generateClickEID } from '@/utils/instrumentation'
+import ImageManagerModal, { ImageManagerItem } from '@/app/develop/components/chat/ImageManagerModal'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { generateClickEID } from '@/utils/instrumentation'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import Box from '@ux/box'
 import IconButton from '@/app/develop/components/IconButton'
 import CheckboxListIcon from '@ux/icon/checkbox-list'
@@ -14,12 +17,12 @@ import SettingsIcon from '@ux/icon/settings'
 import WebsiteIcon from '@ux/icon/website'
 import { ChatTab } from '@/app/develop/components/types'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useSwitchboard } from '@/hooks/useSwitchboard';
 interface ChatToolbarProps {
   isProcessing?: boolean
+  onImageSelect?: (items: ImageManagerItem[]) => void
 }
 
-export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) {
+export default function ChatToolbar({ isProcessing = false, onImageSelect }: ChatToolbarProps) {
   const router = useRouter()
   const appId = useAppIdFromParams()
   const {
@@ -29,9 +32,18 @@ export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) 
     activeSettingsSection
   } = useDevelopPageStore()
 
-  const { featureFlags } = useSwitchboard();
+  const { featureFlags } = useSwitchboard()
+  const isImageManagerEnabled = featureFlags['appbuilder-image-manager'] ?? false
+  const isSettingsEnabled = featureFlags['appbuilder-settings'] ?? false
 
-  const isSettingsEnabled = featureFlags['appbuilder-settings'] ?? false;
+  const [isImageManagerOpen, setIsImageManagerOpen] = useState(false)
+
+  function handleImageSelect(items: ImageManagerItem[]) {
+    console.log('Images selected in ChatToolbar:', items)
+    if (onImageSelect) {
+      onImageSelect(items)
+    }
+  }
 
   const handleTabClick = (tab: ChatTab) => {
     setActiveChatTab(tab)
@@ -70,10 +82,10 @@ export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) 
       gap="sm"
       className="pt-4 md:pt-0 px-4 pb-4"
     >
-      { isMobile && (
+      {isMobile && (
         <IconButton
           icon={<WebsiteIcon />}
-          dataEid={ generateClickEID('develop.chat_toolbar.preview') }
+          dataEid={generateClickEID('develop.chat_toolbar.preview')}
           onClick={() => handleTabClick(ChatTab.PREVIEW)}
           label="Preview"
           active={activeChatTab === ChatTab.PREVIEW}
@@ -81,35 +93,36 @@ export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) 
       )}
       <IconButton
         icon={<CommentsIcon />}
-        dataEid={ generateClickEID('develop.chat_toolbar.chat') }
+        dataEid={generateClickEID('develop.chat_toolbar.chat')}
         onClick={() => handleTabClick(ChatTab.CHAT)}
         label="Chat"
         active={activeChatTab === ChatTab.CHAT}
       />
       <IconButton
         icon={<PaintBucketIcon />}
-        dataEid={ generateClickEID('develop.chat_toolbar.styles') }
+        dataEid={generateClickEID('develop.chat_toolbar.styles')}
         label="Styles"
         active={activeChatTab === ChatTab.STYLES}
         tooltip="Available soon!"
       />
       <IconButton
         icon={<ImageIcon />}
-        dataEid={ generateClickEID('develop.chat_toolbar.medias') }
-        label="Medias"
-        active={activeChatTab === ChatTab.MEDIAS}
-        tooltip="Available soon!"
+        dataEid={generateClickEID('develop.chat_toolbar.medias')}
+        onClick={() => { if (isImageManagerEnabled) setIsImageManagerOpen(true) }}
+        label="Media"
+        active={isImageManagerOpen}
+        tooltip={!isImageManagerEnabled ? 'Available soon!' : undefined}
       />
       <IconButton
         icon={<CheckboxListIcon />}
-        dataEid={ generateClickEID('develop.chat_toolbar.todo') }
+        dataEid={generateClickEID('develop.chat_toolbar.todo')}
         label="To-do"
         active={activeChatTab === ChatTab.TODO}
         tooltip="Available soon!"
       />
       <IconButton
         icon={<HistoryIcon />}
-        dataEid={ generateClickEID('develop.chat_toolbar.history') }
+        dataEid={generateClickEID('develop.chat_toolbar.history')}
         onClick={() => handleTabClick(ChatTab.HISTORY)}
         label="History"
         active={activeChatTab === ChatTab.HISTORY}
@@ -117,12 +130,17 @@ export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) 
       />
       <IconButton
         icon={<SettingsIcon />}
-        dataEid={ generateClickEID('develop.chat_toolbar.settings') }
-        onClick={ isSettingsEnabled ? () => handleTabClick(ChatTab.SETTINGS) : null}
-        tooltip={ isSettingsEnabled ? undefined : "Available soon!" }
+        dataEid={generateClickEID('develop.chat_toolbar.settings')}
+        onClick={isSettingsEnabled ? () => handleTabClick(ChatTab.SETTINGS) : undefined}
+        tooltip={isSettingsEnabled ? undefined : "Available soon!"}
         className="ml-auto"
         label="Settings"
         active={activeChatTab === ChatTab.SETTINGS}
+      />
+      <ImageManagerModal
+        isOpen={isImageManagerOpen}
+        onClose={() => { setIsImageManagerOpen(false) }}
+        onItemsSelected={handleImageSelect}
       />
     </Box>
   )
