@@ -1,7 +1,11 @@
 name: E2E Tests
 
 on:
-  # Allow manual triggering only
+  # Run every hour
+  schedule:
+    - cron: "0 * * * *" # At minute 0 of every hour
+
+  # Allow manual triggering and post-promotion triggering
   workflow_dispatch:
     inputs:
       environment:
@@ -13,6 +17,11 @@ on:
           - test
           - dev
           - prod
+      post_promotion:
+        description: "Triggered by promotion workflow (internal use)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   id-token: write # required for artifactory token login
@@ -25,8 +34,40 @@ jobs:
       group: 8606-awsx64
       labels:
         - self-hosted
+    outputs:
+      environment: ${{ steps.env-config.outputs.environment }}
+      base_url: ${{ steps.env-config.outputs.base_url }}
 
     steps:
+      - name: Determine test environment and URL
+        id: env-config
+        env:
+          # Use env to safely pass github context data (prevents shell injection)
+          INPUT_ENVIRONMENT: ${{ github.event.inputs.environment || 'prod' }}
+        run: |
+          # Use 'prod' as default for scheduled runs, otherwise use manual input
+          ENV="$INPUT_ENVIRONMENT"
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+
+          # Map environment to base URL
+          case "$ENV" in
+            prod)
+              echo "base_url=https://airo-builder.godaddy.com" >> $GITHUB_OUTPUT
+              ;;
+            dev)
+              echo "base_url=https://airo-builder.dev-godaddy.com" >> $GITHUB_OUTPUT
+              ;;
+            test)
+              echo "base_url=https://airo-builder.test-godaddy.com" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "❌ Unknown environment: $ENV"
+              exit 1
+              ;;
+          esac
+
+          echo "✅ Test environment: $ENV"
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -112,7 +153,7 @@ jobs:
           CI: true
           TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}
           TEST_PASSWORD: ${{ steps.get-credentials.outputs.password }}
-          PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.environment == 'prod' && 'https://airo-builder.godaddy.com' || (github.event.inputs.environment == 'dev' && 'https://airo-builder.dev-godaddy.com' || 'https://airo-builder.test-godaddy.com') }}
+          PLAYWRIGHT_BASE_URL: ${{ steps.env-config.outputs.base_url }}
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
@@ -203,5 +244,24 @@ jobs:
             });
         env:
           JOB_STATUS: ${{ job.status }}
-          TEST_ENVIRONMENT: ${{ github.event.inputs.environment }}
-          BASE_URL: ${{ github.event.inputs.environment == 'prod' && 'https://airo-builder.godaddy.com' || (github.event.inputs.environment == 'dev' && 'https://airo-builder.dev-godaddy.com' || 'https://airo-builder.test-godaddy.com') }}
+          TEST_ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
+          BASE_URL: ${{ steps.env-config.outputs.base_url }}
+
+  slack-notify:
+    name: Send Slack Notification
+    if: always()
+    needs: [test]
+    uses: ./.github/workflows/slack-notify.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      result: ${{ needs.test.result }}
+      environment: ${{ needs.test.outputs.environment }}
+      title: "E2E Tests"
+      message: |
+        *Environment:* ${{ needs.test.outputs.environment }}
+        *Trigger:* ${{ github.event_name == 'schedule' && 'Scheduled' || (github.event_name == 'workflow_dispatch' && github.event.inputs.post_promotion == 'true' && 'Post-Promotion' || 'Manual') }}
+        *Actor:* ${{ github.actor }}
+        *Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
+      footer: "airo-app-builder | E2E Tests"

@@ -107,84 +107,40 @@ jobs:
     name: Send Slack Notification
     if: always()
     needs: [promote]
+    uses: ./.github/workflows/slack-notify.yml
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      result: ${{ needs.promote.result }}
+      environment: ${{ inputs.environment }}
+      title: "Promotion"
+      message: |
+        *Component:* ${{ inputs.component }}
+        *Environment:* ${{ inputs.environment }}
+        *Artifact ID:* ${{ inputs.artifact_id }}
+        *Actor:* ${{ github.actor }}
+      footer: "airo-app-builder"
+
+  trigger-e2e:
+    name: Trigger E2E Tests
+    if: ${{ needs.promote.result == 'success' && inputs.environment == 'prod-ecs' && inputs.component == 'app' }}
+    needs: [promote]
     runs-on:
       group: 8606-awsx64
       labels:
         - self-hosted
     steps:
-      - name: Determine notification config
-        id: config
-        run: |
-          ENV="${{ inputs.environment }}"
-          RESULT="${{ needs.promote.result }}"
-
-          # Determine webhook secret name and environment type
-          if [[ "$ENV" == "prod-ecs" || "$ENV" == "prod" ]]; then
-            echo "secret_name=/Katana/Secrets/airobuilde/app/_katana/SLACK_WEBHOOK_PROD" >> $GITHUB_OUTPUT
-            echo "env_type=Production" >> $GITHUB_OUTPUT
-            echo "is_prod=true" >> $GITHUB_OUTPUT
-          else
-            echo "secret_name=/Katana/Secrets/airobuilde/app/_katana/SLACK_WEBHOOK_NONPROD" >> $GITHUB_OUTPUT
-            echo "env_type=Non-Production" >> $GITHUB_OUTPUT
-            echo "is_prod=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Determine message color and status
-          if [[ "$RESULT" == "success" ]]; then
-            echo "color=good" >> $GITHUB_OUTPUT
-            echo "emoji=:white_check_mark:" >> $GITHUB_OUTPUT
-            echo "status=Success" >> $GITHUB_OUTPUT
-          else
-            echo "color=danger" >> $GITHUB_OUTPUT
-            echo "emoji=:x:" >> $GITHUB_OUTPUT
-            echo "status=Failed" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Fetch webhook from AWS Secrets Manager
-        run: |
-          # Fetch the webhook URL from AWS Secrets Manager as plain text
-          WEBHOOK=$(aws secretsmanager get-secret-value \
-            --secret-id "${{ steps.config.outputs.secret_name }}" \
-            --query SecretString \
-            --output text)
-
-          # Mask the webhook URL to prevent exposure in logs
-          echo "::add-mask::$WEBHOOK"
-
-          # Set as environment variable (masked)
-          echo "SLACK_WEBHOOK_URL=$WEBHOOK" >> $GITHUB_ENV
-
-          # Log confirmation without exposing the URL
-          echo "✅ Webhook configured for ${{ steps.config.outputs.env_type }} environment"
-
-      - name: Prepare Slack message
-        id: slack-message
+      - name: Trigger E2E Test Workflow
         env:
-          COMPONENT: ${{ inputs.component }}
-          ENVIRONMENT: ${{ inputs.environment }}
-          ARTIFACT_ID: ${{ inputs.artifact_id }}
-          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # Create message text
-          MESSAGE="*Component:* $COMPONENT\n*Environment:* $ENVIRONMENT\n*Artifact ID:* $ARTIFACT_ID\n*Actor:* $ACTOR"
+          echo "🎭 Triggering E2E tests after successful production promotion..."
+          gh workflow run playwright-e2e.yml \
+            --repo ${{ github.repository }} \
+            --ref main \
+            --field environment=prod \
+            --field post_promotion=true
 
-          # Export for next step
-          echo "message=$MESSAGE" >> $GITHUB_OUTPUT
-
-      - name: Send notification to Slack
-        env:
-          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
-        run: |
-          curl -X POST "$SLACK_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "attachments": [
-                {
-                  "color": "${{ steps.config.outputs.color }}",
-                  "title": "${{ steps.config.outputs.emoji }} Promotion ${{ steps.config.outputs.status }}",
-                  "text": "${{ steps.slack-message.outputs.message }}",
-                  "footer": "airo-app-builder | ${{ steps.config.outputs.env_type }}",
-                  "footer_icon": "https://platform.slack-edge.com/img/default_application_icon.png"
-                }
-              ]
-            }'
+          echo "✅ E2E test workflow triggered successfully"
+          echo "Production promotion validation will run automatically"

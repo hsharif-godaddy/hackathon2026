@@ -2,15 +2,27 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Delete all sites on the current page
+ * @returns number of sites deleted
  */
 async function deleteAllSites(page) {
   console.log('🧹 Deleting all sites...');
   
-  // Wait 5 seconds for the page to fully load
-  await page.waitForTimeout(5000);
+  // Wait 20 seconds for the page to fully load
+  await page.waitForTimeout(20000);
   
-  // Look for all "Delete site [name]" aria-label buttons (trash icon buttons)
-  const siteDeleteButtons = page.getByRole('button', { name: /^Delete site / });
+  // Debug: Log all buttons to see what's on the page
+  const allButtons = await page.getByRole('button').all();
+  console.log(`Found ${allButtons.length} total buttons on page`);
+  for (const btn of allButtons) {
+    const ariaLabel = await btn.getAttribute('aria-label');
+    if (ariaLabel && ariaLabel.includes('Delete')) {
+      console.log(`  Delete button found: "${ariaLabel}"`);
+    }
+  }
+  
+  // Look for all delete buttons (trash icon with aria-label containing "Delete app")
+  // The button name includes the app description, e.g. "Delete app Create a simple..."
+  const siteDeleteButtons = page.getByRole('button', { name: /Delete app/i });
   const deleteCount = await siteDeleteButtons.count();
   
   if (deleteCount > 0) {
@@ -23,8 +35,8 @@ async function deleteAllSites(page) {
         await siteDeleteButtons.first().click();
         await page.waitForTimeout(500);
         
-        // Click the "Delete" button in the inline alert to confirm (use first() to avoid strict mode)
-        await page.getByRole('button', { name: 'Delete' }).first().click();
+        // Click the "Delete" button in the inline alert to confirm
+        await page.getByRole('button', { name: 'Delete', exact: true }).click();
         console.log(`✅ Deleted site ${i + 1}/${deleteCount}`);
         
         // Wait for deletion to process and UI to update
@@ -34,8 +46,10 @@ async function deleteAllSites(page) {
       }
     }
     console.log('🎯 Site cleanup completed');
+    return deleteCount;
   } else {
-    console.log('✅ No existing sites found');
+    console.log('⚠️ No existing sites found');
+    return 0;
   }
 }
 
@@ -104,10 +118,16 @@ test.describe('Complete User Journey', () => {
       console.log('✅ Site verified - found "Hello World" in page content');
     }
     
-    // Navigate to My Sites and delete the created site
-    await page.goto('/sites');
-    await page.waitForTimeout(2000); // Wait for sites page to load
-    await deleteAllSites(page);
+    // Navigate to My Apps and delete the created site
+    await page.goto('/apps');
+    await page.waitForTimeout(2000); // Wait for apps page to load
+    const deletedCount = await deleteAllSites(page);
+    
+    // Verify at least one site was deleted (if none, the test failed to create a site)
+    if (deletedCount === 0) {
+      throw new Error('❌ Test failed: No sites found to delete. Site creation may have failed.');
+    }
+    console.log(`✅ Successfully deleted ${deletedCount} site(s)`);
     
     console.log('🎉 Complete user journey with site creation and deletion finished successfully!');
   });

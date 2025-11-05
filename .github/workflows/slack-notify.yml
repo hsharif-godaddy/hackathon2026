@@ -1,0 +1,105 @@
+name: Slack Notification
+
+on:
+  workflow_call:
+    inputs:
+      result:
+        description: "Job result (success, failure, cancelled)"
+        required: true
+        type: string
+      environment:
+        description: "Environment (prod, dev, test)"
+        required: true
+        type: string
+      title:
+        description: "Notification title"
+        required: true
+        type: string
+      message:
+        description: "Notification message body"
+        required: true
+        type: string
+      footer:
+        description: "Notification footer text"
+        required: false
+        type: string
+        default: "airo-app-builder"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  notify:
+    name: Send Slack Notification
+    runs-on:
+      group: 8606-awsx64
+      labels:
+        - self-hosted
+    steps:
+      - name: Determine notification config
+        id: config
+        run: |
+          ENV="${{ inputs.environment }}"
+          RESULT="${{ inputs.result }}"
+
+          # Determine webhook secret name and environment type
+          if [[ "$ENV" == "prod" || "$ENV" == "prod-ecs" ]]; then
+            echo "secret_name=/Katana/Secrets/airobuilde/app/_katana/SLACK_WEBHOOK_PROD" >> $GITHUB_OUTPUT
+            echo "env_type=Production" >> $GITHUB_OUTPUT
+            echo "is_prod=true" >> $GITHUB_OUTPUT
+          else
+            echo "secret_name=/Katana/Secrets/airobuilde/app/_katana/SLACK_WEBHOOK_NONPROD" >> $GITHUB_OUTPUT
+            echo "env_type=Non-Production" >> $GITHUB_OUTPUT
+            echo "is_prod=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Determine message color, emoji, and status based on result
+          if [[ "$RESULT" == "success" ]]; then
+            echo "color=good" >> $GITHUB_OUTPUT
+            echo "emoji=:white_check_mark:" >> $GITHUB_OUTPUT
+            echo "status=Success" >> $GITHUB_OUTPUT
+          elif [[ "$RESULT" == "cancelled" ]]; then
+            echo "color=warning" >> $GITHUB_OUTPUT
+            echo "emoji=:warning:" >> $GITHUB_OUTPUT
+            echo "status=Cancelled" >> $GITHUB_OUTPUT
+          else
+            echo "color=danger" >> $GITHUB_OUTPUT
+            echo "emoji=:x:" >> $GITHUB_OUTPUT
+            echo "status=Failed" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fetch webhook from AWS Secrets Manager
+        run: |
+          # Fetch the webhook URL from AWS Secrets Manager as plain text
+          WEBHOOK=$(aws secretsmanager get-secret-value \
+            --secret-id "${{ steps.config.outputs.secret_name }}" \
+            --query SecretString \
+            --output text)
+
+          # Mask the webhook URL to prevent exposure in logs
+          echo "::add-mask::$WEBHOOK"
+
+          # Set as environment variable (masked)
+          echo "SLACK_WEBHOOK_URL=$WEBHOOK" >> $GITHUB_ENV
+
+          # Log confirmation without exposing the URL
+          echo "✅ Webhook configured for ${{ steps.config.outputs.env_type }} environment"
+
+      - name: Send notification to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "attachments": [
+                {
+                  "color": "${{ steps.config.outputs.color }}",
+                  "title": "${{ steps.config.outputs.emoji }} ${{ inputs.title }} ${{ steps.config.outputs.status }}",
+                  "text": "${{ inputs.message }}",
+                  "footer": "${{ inputs.footer }} | ${{ steps.config.outputs.env_type }}",
+                  "footer_icon": "https://platform.slack-edge.com/img/default_application_icon.png"
+                }
+              ]
+            }'
