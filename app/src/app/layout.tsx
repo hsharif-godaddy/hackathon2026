@@ -3,6 +3,7 @@ import { withGasketData } from '@gasket/nextjs/layout';
 import { makeLayout } from '@godaddy/gasket-next/layout';
 import AuthProvider from "@/components/providers/AuthProvider";
 import FullStoryProvider from "@/components/providers/FullStoryProvider";
+import RumProvider from "@/components/providers/RumProvider";
 import SubscriptionCacheProvider from "@/components/providers/SubscriptionCacheProvider";
 import FrameBuster from "@/components/security/FrameBuster";
 
@@ -25,15 +26,17 @@ async function RootLayout({
   return (
     <PresentationLayout>
       <FrameBuster />
-      <FullStoryProvider>
-        <AuthProvider>
-          <SubscriptionCacheProvider>
-            <main className="flex-1 min-h-screen">
-              {children}
-            </main>
-          </SubscriptionCacheProvider>
-        </AuthProvider>
-      </FullStoryProvider>
+      <RumProvider>
+        <FullStoryProvider>
+          <AuthProvider>
+            <SubscriptionCacheProvider>
+              <main className="flex-1 min-h-screen">
+                {children}
+              </main>
+            </SubscriptionCacheProvider>
+          </AuthProvider>
+        </FullStoryProvider>
+      </RumProvider>
     </PresentationLayout>
   )
 }

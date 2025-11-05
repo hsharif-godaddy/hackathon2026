@@ -30,6 +30,7 @@
     "@aws-sdk/client-secrets-manager": "3.679.0",
     "@aws-sdk/client-sqs": "3.679.0",
     "@aws-sdk/client-sts": "3.679.0",
+    "@elastic/apm-rum": "^5.17.0",
     "@fullstory/browser": "^2.0.6",
     "@gasket/assets": "^7.4.2",
     "@gasket/core": "^7.5.2",
