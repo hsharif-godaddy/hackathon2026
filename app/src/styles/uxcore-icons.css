@@ -7,6 +7,7 @@
 @import "@ux/icon/chevron-down/index.css";
 @import "@ux/icon/chevron-left/index.css";
 @import "@ux/icon/chevron-right/index.css";
+@import "@ux/icon/clipboard/index.css";
 @import "@ux/icon/clock/index.css";
 @import "@ux/icon/code/index.css";
 @import "@ux/icon/comments/index.css";
@@ -19,11 +20,14 @@
 @import "@ux/icon/folder-open/index.css";
 @import "@ux/icon/history/index.css";
 @import "@ux/icon/image/index.css";
+@import "@ux/icon/link/index.css";
+@import "@ux/icon/locked/index.css";
 @import "@ux/icon/mobile-phone/index.css";
 @import "@ux/icon/page/index.css";
 @import "@ux/icon/paint-bucket/index.css";
 @import "@ux/icon/plus/index.css";
 @import "@ux/icon/refresh/index.css";
+@import "@ux/icon/revert/index.css";
 @import "@ux/icon/send/index.css";
 @import "@ux/icon/settings/index.css";
 @import "@ux/icon/sidebar-collapse/index.css";

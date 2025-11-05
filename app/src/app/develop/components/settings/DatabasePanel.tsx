@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
+import Box from '@ux/box';
 
 interface DatabasePanelProps {
   appId: string;
@@ -33,28 +34,22 @@ export function DatabasePanel({ appId, section }: DatabasePanelProps) {
     }, 500);
   }, [appId]);
 
-  if (isLoading) {
+  if (isLoading || !dbInfo) {
     return (
-      <div className="p-6">
+      <Box
+        blockAlignChildren="center"
+        inlineAlignChildren="center"
+        className="h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg"
+      >
         <div className="text-center text-muted-foreground">
-          Loading database information...
+          {isLoading ? 'Loading database information...' : 'No database information available'}
         </div>
-      </div>
-    );
-  }
-
-  if (!dbInfo) {
-    return (
-      <div className="p-6">
-        <div className="text-center text-muted-foreground">
-          No database information available
-        </div>
-      </div>
+      </Box>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <Box className="h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg">
       <div className="flex-1 overflow-y-auto">
         {section === 'connection' && (
           <div className="p-6">
@@ -138,6 +133,6 @@ export function DatabasePanel({ appId, section }: DatabasePanelProps) {
           </div>
         )}
       </div>
-    </div>
+    </Box>
   );
 }

@@ -4,7 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 import { postMessageToIframe } from '@/utils/postMessage'
 import { appService, type App } from '@/services/AppService'
 import { type Site, useSitesStore } from '@/stores/useSitesStore'
-import { ViewMode, PreviewViewMode, ChatTab } from '@/app/develop/components/types'
+import { ViewMode, PreviewViewMode, ChatTab, SettingsSection } from '@/app/develop/components/types'
 import { logger } from '@/lib/request-context'
 import { logImpressionEvent } from '@/utils/instrumentation'
 
@@ -58,6 +58,9 @@ interface DevelopPageStore {
   // Feedback modal UI
   openFeedbackId: string | null
 
+  // Settings section UI
+  activeSettingsSection: SettingsSection
+
   // Page loading orchestration
   loadingPhase: LoadingPhase
   currentAppId: string | null
@@ -87,6 +90,9 @@ interface DevelopPageStore {
   // Feedback modal actions
   openFeedbackModal: (feedbackId: string) => void
   closeFeedbackModal: () => void
+
+  // Settings section actions
+  setActiveSettingsSection: (section: SettingsSection) => void
 
   // Page loading orchestration
   initializePage: (appId: string) => Promise<void>
@@ -137,6 +143,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Feedback modal state
     openFeedbackId: null,
+
+    // Settings section state
+    activeSettingsSection: SettingsSection.DATABASE,
 
     // Page loading orchestration state
     loadingPhase: 'idle',
@@ -215,6 +224,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.openFeedbackId = null
       })
     },
+
+    // Settings section actions
+    setActiveSettingsSection: (section) => set((state) => { state.activeSettingsSection = section }),
 
     // Page loading orchestration
     resetForNewApp: (appId: string) => {

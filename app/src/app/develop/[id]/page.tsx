@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import Button from '@ux/button'
 import Header from '@/components/layout/Header'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsDialog from '@/app/develop/components/SettingsDialog'
+import SettingsView from '@/app/develop/components/settings/SettingsView'
+import { ChatTab, SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { ProtectedRoute } from '@/components/auth'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
@@ -53,10 +54,10 @@ function DevelopPageContent() {
     hasUnsavedChanges,
     isChatPaneCollapsed,
     isMobile,
+    activeChatTab,
     setChatPaneWidth,
     setIsSelectMode,
     loadingPhase,
-    app,
     site,
     initializePage,
     initializeMobileDetection,
@@ -64,7 +65,9 @@ function DevelopPageContent() {
     settingsDialogDefaultSection,
     closeSettingsDialog,
     openFeedbackId,
-    closeFeedbackModal
+    closeFeedbackModal,
+    setActiveSettingsSection,
+    setActiveChatTab
   } = useDevelopPageStore()
 
   // Git history store - handles loading with smart retry logic
@@ -318,6 +321,41 @@ function DevelopPageContent() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [hasUnsavedChanges])
 
+  // Handle URL parameters for deep linking
+  useEffect(() => {
+    if (loadingPhase !== 'ready') return
+
+    const tabParam = searchParams.get('tab')
+    const settingsParam = searchParams.get('settings')
+
+    // Handle tab parameter
+    if (tabParam) {
+      switch (tabParam) {
+        case 'settings':
+          setActiveChatTab(ChatTab.SETTINGS)
+          // Also handle settings section if provided
+          if (settingsParam) {
+            const validSections = Object.values(SettingsSection)
+            if (validSections.includes(settingsParam as SettingsSection)) {
+              setActiveSettingsSection(settingsParam as SettingsSection)
+            }
+          }
+          break
+        case 'history':
+          setActiveChatTab(ChatTab.HISTORY)
+          break
+        case 'preview':
+          setActiveChatTab(ChatTab.PREVIEW)
+          break
+        case 'chat':
+          setActiveChatTab(ChatTab.CHAT)
+          break
+        default:
+          break
+      }
+    }
+  }, [loadingPhase, searchParams, setActiveSettingsSection, setActiveChatTab])
+
   // Handle URL message parameter - simplified logic
   useEffect(() => {
     if (loadingPhase !== 'ready') return
@@ -456,9 +494,13 @@ function DevelopPageContent() {
           <div className="flex-1 flex flex-col">
             <div className="flex-1 overflow-hidden relative">
               <div className="absolute inset-0">
-                <PreviewPane
-                  onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-                />
+                {activeChatTab !== ChatTab.SETTINGS ? (
+                  <PreviewPane
+                    onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                  />
+                ) : (
+                  <SettingsView />
+                )}
               </div>
             </div>
           </div>

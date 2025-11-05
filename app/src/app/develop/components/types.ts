@@ -76,4 +76,13 @@ export enum ChatTab {
   SETTINGS = 'settings'
 }
 
+export enum SettingsSection {
+  PROJECT = 'project',
+  DOMAIN = 'domain',
+  BACKUPS = 'backups',
+  SECURITY = 'security',
+  DATABASE = 'database',
+  FEEDBACK = 'feedback'
+}
+
 export type { VisualContext } from './visualContextCapture'

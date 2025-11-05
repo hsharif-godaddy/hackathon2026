@@ -8,6 +8,8 @@ import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import StreamingMessageList from '@/app/develop/components/StreamingMessageList'
 import VersionHistory from '@/app/develop/components/VersionHistory'
+import PreviewPane from '@/app/develop/components/preview/PreviewPane'
+import SettingsPane from '@/app/develop/components/settings/SettingsPane'
 import {
   useInputValue,
   useIsLoading,
@@ -27,7 +29,6 @@ import { logAiroHQEvent } from '@/utils/instrumentation'
 import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { postMessageToIframe } from '@/utils/postMessage'
-import PreviewPane from '../preview/PreviewPane'
 
 interface ChatPaneProps {
   onPreviewRefresh?: () => void
@@ -156,9 +157,10 @@ export default function ChatPane({
   // Get tab index for animation - matches mobile toolbar order
   const getTabIndex = (tab: ChatTab): number => {
     switch (tab) {
-      case ChatTab.PREVIEW: return 0  // First tab on mobile
-      case ChatTab.CHAT: return 1     // Second tab on mobile
-      case ChatTab.HISTORY: return 2  // Last available tab
+      case ChatTab.PREVIEW: return 0
+      case ChatTab.CHAT: return 1
+      case ChatTab.HISTORY: return 2
+      case ChatTab.SETTINGS: return 3
       default: return 1 // Default to chat
     }
   }
@@ -200,7 +202,6 @@ export default function ChatPane({
               />
             </motion.div>
 
-            {/* Chat Tab Content - Index 1 */}
             <motion.div
               className="w-full flex-shrink-0 flex flex-col min-h-0"
               initial={false}
@@ -241,7 +242,6 @@ export default function ChatPane({
               />
             </motion.div>
 
-            {/* History Tab Content - Index 2 */}
             <motion.div
               className="w-full flex-shrink-0 flex flex-col min-h-0"
               initial={false}
@@ -249,6 +249,15 @@ export default function ChatPane({
               transition={{ duration: 0.2 }}
             >
               <VersionHistory />
+            </motion.div>
+
+            <motion.div
+              className="w-full flex-shrink-0 flex flex-col min-h-0"
+              initial={false}
+              animate={{ opacity: activeChatTab === ChatTab.SETTINGS ? 1 : 0.3 }}
+              transition={{ duration: 0.2 }}
+            >
+              <SettingsPane />
             </motion.div>
           </motion.div>
         </div>
@@ -315,6 +324,10 @@ export default function ChatPane({
 
       {activeChatTab === ChatTab.HISTORY && (
         <VersionHistory />
+      )}
+
+      {activeChatTab === ChatTab.SETTINGS && (
+        <SettingsPane />
       )}
 
       <ChatToolbar isProcessing={isProcessing} />

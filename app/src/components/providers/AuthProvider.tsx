@@ -5,7 +5,6 @@ import { logger } from '@/lib/request-context';
 import { auth } from '@/lib/features';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useAuth } from '@/hooks/useAuth'
-import UnauthorizedComponent from '@/components/auth/UnauthorizedComponent'
 import AccessDisabledComponent from '@/components/auth/AccessDisabledComponent'
 import LoadingComponent from '@/components/auth/LoadingComponent';
 

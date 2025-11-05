@@ -1,6 +1,8 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { generateClickEID } from '@/utils/instrumentation'
+import { useAppIdFromParams } from '@/app/develop/components/utils'
 import Box from '@ux/box'
 import IconButton from '@/app/develop/components/IconButton'
 import CheckboxListIcon from '@ux/icon/checkbox-list'
@@ -12,17 +14,55 @@ import SettingsIcon from '@ux/icon/settings'
 import WebsiteIcon from '@ux/icon/website'
 import { ChatTab } from '@/app/develop/components/types'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 interface ChatToolbarProps {
   isProcessing?: boolean
 }
 
 export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) {
+  const router = useRouter()
+  const appId = useAppIdFromParams()
   const {
     activeChatTab,
     setActiveChatTab,
-    isMobile
+    isMobile,
+    activeSettingsSection
   } = useDevelopPageStore()
+
+  const { featureFlags } = useSwitchboard();
+
+  const isSettingsEnabled = featureFlags['appbuilder-settings'] ?? false;
+
+  const handleTabClick = (tab: ChatTab) => {
+    setActiveChatTab(tab)
+
+    // Update URL for deep linking
+    const params = new URLSearchParams()
+
+    switch (tab) {
+      case ChatTab.SETTINGS:
+        params.set('tab', 'settings')
+        params.set('settings', activeSettingsSection)
+        break
+      case ChatTab.HISTORY:
+        params.set('tab', 'history')
+        break
+      case ChatTab.PREVIEW:
+        params.set('tab', 'preview')
+        break
+      case ChatTab.CHAT:
+        // Chat is the default, no param needed
+        break
+      default:
+        break
+    }
+
+    const url = params.toString()
+      ? `/develop/${appId}?${params.toString()}`
+      : `/develop/${appId}`
+
+    router.push(url, { scroll: false })
+  }
 
   return (
     <Box
@@ -34,7 +74,7 @@ export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) 
         <IconButton
           icon={<WebsiteIcon />}
           dataEid={ generateClickEID('develop.chat_toolbar.preview') }
-          onClick={() => { setActiveChatTab(ChatTab.PREVIEW) }}
+          onClick={() => handleTabClick(ChatTab.PREVIEW)}
           label="Preview"
           active={activeChatTab === ChatTab.PREVIEW}
         />
@@ -42,7 +82,7 @@ export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) 
       <IconButton
         icon={<CommentsIcon />}
         dataEid={ generateClickEID('develop.chat_toolbar.chat') }
-        onClick={() => { setActiveChatTab(ChatTab.CHAT) }}
+        onClick={() => handleTabClick(ChatTab.CHAT)}
         label="Chat"
         active={activeChatTab === ChatTab.CHAT}
       />
@@ -70,7 +110,7 @@ export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) 
       <IconButton
         icon={<HistoryIcon />}
         dataEid={ generateClickEID('develop.chat_toolbar.history') }
-        onClick={() => { setActiveChatTab(ChatTab.HISTORY) }}
+        onClick={() => handleTabClick(ChatTab.HISTORY)}
         label="History"
         active={activeChatTab === ChatTab.HISTORY}
         disabled={isProcessing}
@@ -78,10 +118,11 @@ export default function ChatToolbar({ isProcessing = false }: ChatToolbarProps) 
       <IconButton
         icon={<SettingsIcon />}
         dataEid={ generateClickEID('develop.chat_toolbar.settings') }
+        onClick={ isSettingsEnabled ? () => handleTabClick(ChatTab.SETTINGS) : null}
+        tooltip={ isSettingsEnabled ? undefined : "Available soon!" }
         className="ml-auto"
         label="Settings"
         active={activeChatTab === ChatTab.SETTINGS}
-        tooltip="Available soon!"
       />
     </Box>
   )
