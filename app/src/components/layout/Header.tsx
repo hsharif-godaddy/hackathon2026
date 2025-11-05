@@ -1,11 +1,11 @@
 import Link from 'next/link'
 import clsx from 'clsx'
 import { UserMenu } from '@/components/auth'
+import { AiroLogo } from '@/components/layout/AiroLogo'
 import AppSelector from '@/components/layout/AppSelector'
 import { generateClickEID } from '@/utils/instrumentation'
 import { HeaderProps } from './types'
 import ChevronLeftIcon from '@ux/icon/chevron-left';
-import Image from 'next/image';
 import Box from '@ux/box'
 import Tag from '@ux/tag';
 
@@ -27,7 +27,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
             >
               <div className="flex items-center justify-center gap-4">
                 <ChevronLeftIcon />
-                <Image src="/airo.svg" alt="GoDaddy Airo" width={58} height={24} className="-top-0.5 relative" />
+                <AiroLogo className="-top-0.5 relative" design="dark" />
               </div>
             </Link>
             <Tag emphasis="info">Beta</Tag>
