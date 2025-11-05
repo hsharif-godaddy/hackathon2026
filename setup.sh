@@ -53,6 +53,11 @@ confirm_continue() {
 }
 
 main() {
+    if [ -n "$AWS_PROFILE" ]; then
+        print_error "AWS_PROFILE is set in your environment. Please remove it before running the setup, app & agents."
+        exit 1
+    fi
+
     print_header
     
     # Confirm user wants to proceed
