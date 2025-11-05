@@ -16,33 +16,31 @@ class FileContextRegistry {
 
   /**
    * Record a file modification operation
+   * NOTE: This is now a no-op. Hot files are tracked automatically from conversation history
+   * via the HotFileInclusionStrategy compression strategy.
    */
   recordFileModification(appPath: string, filePath: string, success: boolean): void {
-    if (this.contextManager) {
-      this.contextManager.recordFileModification(appPath, filePath, success);
-    }
+    // No-op: Hot files now derived from tool call history
   }
 
   /**
    * Record a file read operation
+   * NOTE: This is now a no-op. Hot files are tracked automatically from conversation history
+   * via the HotFileInclusionStrategy compression strategy.
    */
   recordFileRead(appPath: string, filePath: string): void {
-    if (this.contextManager) {
-      this.contextManager.recordFileRead(appPath, filePath);
-    }
+    // No-op: Hot files now derived from tool call history
   }
 
   /**
    * Get file context summary for an app
+   * NOTE: This method is deprecated. Hot files are managed by the history loader.
    */
   getFileContextSummary(appPath: string): {
     totalFiles: number;
     hotFiles: number;
     totalTokensUsed: number;
   } | null {
-    if (this.contextManager) {
-      return this.contextManager.getFileContextSummary(appPath);
-    }
     return null;
   }
 }

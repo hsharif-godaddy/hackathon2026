@@ -405,44 +405,18 @@ export class TerminalTool {
    * Format the command result for display
    */
   formatResult(result: TerminalCommandResult): string {
-    const lines: string[] = [];
-    
-    if (result.originalCommand) {
-      lines.push(`📝 Original Command: \`${result.originalCommand}\``);
-      lines.push(`🔄 Transformed to: \`${result.command}\``);
-    } else {
-      lines.push(`💻 Command: \`${result.command}\``);
-    }
-    
-    lines.push(`📁 Working Directory: ${result.workingDir || '.'}`);
-    lines.push(`⏱️  Execution Time: ${result.executionTime}ms`);
-    lines.push(`🔢 Exit Code: ${result.exitCode} ${result.success ? '✅' : '❌'}`);
-    
-    if (result.timedOut) {
-      lines.push(`⏰ Command timed out`);
-    }
-
-    if (result.stdout) {
-      lines.push('');
-      lines.push('📤 **Standard Output:**');
-      lines.push('```');
-      lines.push(result.stdout);
-      lines.push('```');
-    }
-
-    if (result.stderr) {
-      lines.push('');
-      lines.push('🚨 **Standard Error:**');
-      lines.push('```');
-      lines.push(result.stderr);
-      lines.push('```');
-    }
-
-    if (result.error) {
-      lines.push('');
-      lines.push(`❌ **Error:** ${result.error}`);
-    }
-
-    return lines.join('\n');
+    // Return JSON for easier parsing in custom renderers
+    return JSON.stringify({
+      originalCommand: result.originalCommand,
+      command: result.command,
+      workingDir: result.workingDir,
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      success: result.success,
+      executionTime: result.executionTime,
+      timedOut: result.timedOut,
+      error: result.error
+    }, null, 2);
   }
 }

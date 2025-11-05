@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import clsx from 'clsx'
 import StreamingIntegratedResponse from './StreamingIntegratedResponse'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
@@ -7,6 +8,7 @@ import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/st
 interface StreamingMessageProps {
   message: ChatMessage | StreamingMessageType
   isActiveStream?: boolean
+  startTime?: Date
 }
 
 // Helper function to determine if message should be rendered
@@ -47,14 +49,51 @@ function getMessageClasses(message: ChatMessage | StreamingMessageType, isActive
   }
 }
 
-// Helper function to render message content based on type and role (matching Message.tsx)
-function renderMessageContent(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean) {
-  // Assistant messages - use streaming integrated response for proper content flow
-  if (message.role === 'assistant') {
-    return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} />
+/**
+ * User message component with copy functionality
+ */
+function UserMessage({ content }: { content: string }) {
+  const [copiedToClipboard, setCopiedToClipboard] = useState(false)
+
+  const handleCopyMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopiedToClipboard(true)
+      setTimeout(() => setCopiedToClipboard(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy message:', err)
+    }
   }
 
-  // User messages and other types
+  return (
+    <div className="relative group">
+      <p className="text-sm leading-normal break-words">
+        {content}
+      </p>
+      <button
+        onClick={handleCopyMessage}
+        className="absolute -bottom-1 -right-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600 text-xs"
+        title="Copy message to clipboard"
+      >
+        {copiedToClipboard ? '✓' : '⧉'}
+      </button>
+    </div>
+  )
+}
+
+// Helper function to render message content based on type and role (matching Message.tsx)
+function renderMessageContent(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean, startTime?: Date) {
+  // Assistant messages - use streaming integrated response for proper content flow
+  if (message.role === 'assistant') {
+    return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} startTime={startTime} />
+  }
+
+  // User messages with copy functionality
+  if (message.role === 'user') {
+    return <UserMessage content={message.content} />
+  }
+
+  // Other message types
   return (
     <p className="text-sm leading-normal break-words">
       {message.content}
@@ -62,7 +101,7 @@ function renderMessageContent(message: ChatMessage | StreamingMessageType, isAct
   )
 }
 
-export default function StreamingMessage({ message, isActiveStream = false }: StreamingMessageProps) {
+export default function StreamingMessage({ message, isActiveStream = false, startTime }: StreamingMessageProps) {
   // Don't render messages that shouldn't be displayed
   if (!shouldRenderMessage(message)) {
     return null
@@ -79,7 +118,7 @@ export default function StreamingMessage({ message, isActiveStream = false }: St
       })}>
         <div className={getMessageClasses(message, isActiveStream)}>
           <div className="overflow-hidden">
-            {renderMessageContent(message, isActiveStream)}
+            {renderMessageContent(message, isActiveStream, startTime)}
           </div>
         </div>
       </div>

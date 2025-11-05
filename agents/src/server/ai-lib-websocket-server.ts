@@ -136,14 +136,26 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
   }
 
   try {
-    // Create the agent factory
+    // Create the agent factory with state manager
     const agentFactory = await createWebSocketAgentFactory()
+    const stateManager = agentFactory.stateManager
 
     // Create context manager for app context and template descriptions
     const contextManager = new AILibContextManager()
 
     // Register context manager with file context registry for tools
     fileContextRegistry.setContextManager(contextManager)
+
+    // Wire up todo list selection callback to state manager
+    const { todoListTool } = await import('../tools/todo-list-tool.js')
+    todoListTool.setOnSelectCallback((sessionId: string, listId: string) => {
+      stateManager.setSelectedTodoList(sessionId, listId)
+      logger.info('todo.list.selected', {
+        sessionId,
+        listId,
+        message: 'Todo list selected for session'
+      })
+    })
 
     // Create message persistence implementation
     const messagePersistence = new AgentsMessagePersistence()
@@ -170,6 +182,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         try {
           // Convert to enhanced context and enrich with app context and template descriptions
           const agentsAppContext = context as AgentsAppContext
+
+          // Enrich metadata with stateManager and sessionId for tool access
+          if (!agentsAppContext.metadata) {
+            agentsAppContext.metadata = {}
+          }
+          agentsAppContext.metadata.stateManager = stateManager
+          if (agentsAppContext.metadata.sessionId) {
+            // sessionId already set by client, keep it
+          } else {
+            // Fallback: use a default session ID if not provided
+            agentsAppContext.metadata.sessionId = 'default-session'
+          }
 
           // Detailed logging if enabled
           if (contextLogging.detailed) {
@@ -200,10 +224,36 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           // Build dynamic data section
           const dynamicDataMessage = buildDynamicDataMessage(agentsAppContext)
 
+          // Build todo list context if a list is selected
+          let todoContextMessage: ContextMessage | null = null
+          const sessionId = agentsAppContext.metadata?.sessionId as string
+          if (sessionId) {
+            const selectedTodoListId = stateManager.getSelectedTodoList(sessionId)
+            if (selectedTodoListId && agentsAppContext.metadata?.appId) {
+              const { getTodoContextManager } = await import('../services/TodoContextManager.js')
+              const todoContextManager = getTodoContextManager()
+              const executionContext = {
+                metadata: agentsAppContext.metadata
+              }
+              const todoContext = await todoContextManager.generateTodoContext(
+                executionContext as any,
+                selectedTodoListId
+              )
+              if (todoContext) {
+                todoContextMessage = {
+                  role: 'user',
+                  content: todoContext,
+                  insertionOrder: 'after_history'
+                }
+              }
+            }
+          }
+
           logger.info('websocket.context.provider.success', {
             message: 'Built context messages',
-            messageCount: contextResult.contextMessages.length + (dynamicDataMessage ? 1 : 0),
-            hasDynamicData: !!dynamicDataMessage
+            messageCount: contextResult.contextMessages.length + (dynamicDataMessage ? 1 : 0) + (todoContextMessage ? 1 : 0),
+            hasDynamicData: !!dynamicDataMessage,
+            hasTodoContext: !!todoContextMessage
           })
 
           // Collect all context messages
@@ -225,6 +275,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               role: dynamicDataMessage.role,
               content: dynamicDataMessage.content,
               insertionOrder: dynamicDataMessage.insertionOrder
+            })
+          }
+
+          // Add todo context message if present
+          if (todoContextMessage) {
+            allMessages.push({
+              role: todoContextMessage.role as 'user' | 'system',
+              content: todoContextMessage.content,
+              insertionOrder: todoContextMessage.insertionOrder
             })
           }
 
@@ -271,74 +330,32 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
 
         try {
-          // Use the new token-based method with model name for accurate token counting
-          // Based on model-selection.ts, all agents currently use 'claude4'
-          const modelName = 'claude4'
-          const messages = await conversationContextManager.loadAllMessagesWithTokenLimit(appId, agentName, 40000, modelName)
-
+          const appRepo = new AppRepository();
+          const app = appRepo.findById(appId);
+          const appPath = app?.path;
+          
+          const modelName = 'claude4';
+          const historyLoader = conversationContextManager.getHistoryLoader();
+          
+          const llmMessages = await historyLoader.loadMessagesWithTokenLimit(
+            appId,
+            agentName,
+            40000,
+            modelName,
+            true,
+            appPath
+          );
+          
+          const formattedMessages = historyLoader.formatMessagesForAISDK(llmMessages, appId, agentName);
+          
           if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
             logger.debug('websocket.message.provider.success', {
-              message: 'Loaded messages',
-              messageCount: messages.length
+              message: 'Loaded and formatted messages',
+              messageCount: formattedMessages.length
             })
           }
-
-          // Filter out system and tool messages, and map to the expected format
-          // Convert assistant messages with tool calls to plain text for conversation history
-          return messages
-            .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-            .map(msg => {
-              if (msg.role === 'assistant' && (msg as any).tool_calls) {
-                // Convert tool calls to readable text for conversation history
-                const toolCalls = (msg as any).tool_calls || []
-                let content = msg.content || ''
-
-                // Append tool call information as readable text
-                if (toolCalls.length > 0) {
-                  const toolDescriptions = toolCalls.map((toolCall: any) => {
-                    try {
-                      const toolName = toolCall.function?.name || 'unknown_tool'
-                      const toolArgs = toolCall.function?.arguments
-
-                      // Try to parse and format the arguments safely
-                      let formattedArgs = 'unknown_arguments'
-                      if (toolArgs) {
-                        try {
-                          const parsedArgs = typeof toolArgs === 'string' ? JSON.parse(toolArgs) : toolArgs
-                          // Create a safe, readable representation
-                          if (typeof parsedArgs === 'object' && parsedArgs !== null) {
-                            formattedArgs = Object.entries(parsedArgs)
-                              .map(([key, value]) => `${key}: ${String(value).substring(0, 100)}`)
-                              .join(', ')
-                          } else {
-                            formattedArgs = String(parsedArgs).substring(0, 100)
-                          }
-                        } catch (jsonError) {
-                          // If JSON parsing fails, use the raw string but truncate it
-                          formattedArgs = `invalid_json: ${String(toolArgs).substring(0, 100)}`
-                        }
-                      }
-
-                      return `Called ${toolName} with: ${formattedArgs}`
-                    } catch (error) {
-                      return `Called tool with invalid data`
-                    }
-                  }).join('\n')
-
-                  content = content ? `${content}\n\n[Tool calls: ${toolDescriptions}]` : `[Tool calls: ${toolDescriptions}]`
-                }
-
-                return {
-                  role: msg.role as 'user' | 'assistant',
-                  content
-                }
-              } else {
-                return {
-                  role: msg.role as 'user' | 'assistant',
-                  content: msg.content || ''
-                }
-              }
-            })
+          
+          return formattedMessages;
         } catch (error) {
           logger.error('websocket.message.provider.failure', {
             message: 'Error in MessageProvider',
@@ -352,6 +369,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     // Create the WebSocket server with the agent factory and built-in persistence
     const wsServer = createWebSocketServer(httpServer, {
       agents: agentFactory.agents,
+
+      // State manager for agent handoffs
+      stateManager: agentFactory.stateManager,
 
       // Built-in message persistence
       messagePersistence,

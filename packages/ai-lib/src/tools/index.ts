@@ -4,8 +4,12 @@ export * from './base-tool.js'
 // Export built-in tools
 export * from './built-in/index.js'
 
-// Export handoff tools
-export * from './handoff-tool.js'
+// Export delegation tools (formerly handoff tools)
+export * from './delegate-tool.js'
+
+// Export handoff helpers for agent switching
+export * from './handoff-helpers.js'
+export * from './handoff-state-manager.js'
 
 // Convenience object for easy tool access
 import { createWebSearchTool, createFileOperationTools } from './built-in/index.js'

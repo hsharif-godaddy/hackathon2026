@@ -304,17 +304,113 @@ export class ConversationRepository {
     `);
     const rows = stmt.all(conversationId) as any[];
 
-    return rows.map(row => ({
-      id: row.id,
-      conversationId: row.conversation_id,
-      sender: row.sender,
-      content: row.content,
-      messageType: row.message_type,
-      toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
-      segments: row.segments ? JSON.parse(row.segments) : undefined,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
-      createdAt: new Date(row.created_at)
-    }));
+    return rows.map(row => {
+      const segments = row.segments ? this.normalizeSegments(JSON.parse(row.segments)) : [];
+      return {
+        id: row.id,
+        conversationId: row.conversation_id,
+        sender: row.sender,
+        content: row.content,
+        messageType: row.message_type,
+        toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+        segments,
+        metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+        createdAt: new Date(row.created_at)
+      };
+    });
+  }
+
+  /**
+   * Normalize segments to support both camelCase (database) and snake_case (schema) formats
+   * Keeps both formats for backward compatibility with API clients
+   */
+  private normalizeSegments(segments: any[]): any[] {
+    return segments.map(segment => {
+      if (segment.type === 'tool_call' && segment.toolCall && !segment.tool_call) {
+        return {
+          ...segment,
+          tool_call: segment.toolCall,
+          toolCall: segment.toolCall
+        };
+      }
+      return segment;
+    });
+  }
+
+  /**
+   * Get messages for conversation history processing (LLM context)
+   * Returns normalized format with snake_case field names
+   * 
+   * This method is specifically for history loading and ensures consistent
+   * field naming regardless of how data is stored in the database.
+   */
+  async getMessagesForHistory(conversationId: string): Promise<Array<{
+    id: string;
+    conversationId: string;
+    sender: 'user' | 'agent';
+    content: string;
+    segments?: Array<{
+      id: string;
+      type: 'content' | 'tool_call';
+      content?: string;
+      tool_call?: {
+        id: string;
+        tool_name: string;
+        tool_args: any;
+        tool_result?: any;
+        error?: string;
+        status?: 'running' | 'success' | 'error';
+      };
+      timestamp: Date;
+    }>;
+    createdAt: Date;
+  }>> {
+    const stmt = this.db.prepare(`
+      SELECT * FROM conversation_messages 
+      WHERE conversation_id = ? 
+      ORDER BY created_at ASC
+    `);
+    const rows = stmt.all(conversationId) as any[];
+
+    return rows.map(row => {
+      const message: any = {
+        id: row.id,
+        conversationId: row.conversation_id,
+        sender: row.sender,
+        content: row.content,
+        createdAt: new Date(row.created_at)
+      };
+
+      if (row.segments) {
+        const rawSegments = JSON.parse(row.segments);
+        message.segments = rawSegments.map((seg: any) => {
+          const normalized: any = {
+            id: seg.id,
+            type: seg.type,
+            timestamp: new Date(seg.timestamp)
+          };
+
+          if (seg.type === 'content') {
+            normalized.content = seg.content;
+          } else if (seg.type === 'tool_call') {
+            const toolCall = seg.toolCall || seg.tool_call;
+            if (toolCall) {
+              normalized.tool_call = {
+                id: toolCall.id,
+                tool_name: toolCall.name || toolCall.tool_name,
+                tool_args: toolCall.input || toolCall.tool_args,
+                tool_result: toolCall.result || toolCall.output || toolCall.tool_result,
+                error: toolCall.error
+              };
+            }
+          }
+
+          return normalized;
+        });
+      }
+
+      return message;
+    });
   }
 
   /**
@@ -336,17 +432,20 @@ export class ConversationRepository {
     
     const rows = stmt.all(...conversationIds) as any[];
 
-    return rows.map(row => ({
-      id: row.id,
-      conversationId: row.conversation_id,
-      sender: row.sender,
-      content: row.content,
-      messageType: row.message_type,
-      toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
-      segments: row.segments ? JSON.parse(row.segments) : undefined,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
-      createdAt: new Date(row.created_at)
-    }));
+    return rows.map(row => {
+      const segments = row.segments ? this.normalizeSegments(JSON.parse(row.segments)) : [];
+      return {
+        id: row.id,
+        conversationId: row.conversation_id,
+        sender: row.sender,
+        content: row.content,
+        messageType: row.message_type,
+        toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
+        segments,
+        metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+        createdAt: new Date(row.created_at)
+      };
+    });
   }
 
   /**

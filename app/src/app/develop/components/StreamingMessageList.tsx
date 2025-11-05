@@ -182,13 +182,26 @@ export default function StreamingMessageList() {
         </div>
       )}
 
-      {allMessages.map((message) => (
-        <StreamingMessage
-          key={message.id}
-          message={message}
-          isActiveStream={'isComplete' in message && !message.isComplete}
-        />
-      ))}
+      {allMessages.map((message, index) => {
+        let startTime: Date | undefined
+        
+        // For assistant messages, find the previous user message as the start time
+        if (message.role === 'assistant' && index > 0) {
+          const prevMessage = allMessages[index - 1]
+          if (prevMessage.role === 'user') {
+            startTime = prevMessage.timestamp
+          }
+        }
+        
+        return (
+          <StreamingMessage
+            key={message.id}
+            message={message}
+            isActiveStream={'isComplete' in message && !message.isComplete}
+            startTime={startTime}
+          />
+        )
+      })}
 
       <div ref={messagesEndRef} />
     </div>

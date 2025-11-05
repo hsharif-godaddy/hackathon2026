@@ -3,12 +3,13 @@
 import { 
   createAgentFactory, 
   getModel,
-  createHandoffTool,
-  createHandoffHistoryTool,
-  addHandoffTools
+  createDelegateTool,
+  createDelegationHistoryTool,
+  addDelegationTools
 } from '../src/index.js'
 import { createTool } from '../src/tools/index.js'
 import { z } from 'zod'
+import 'dotenv/config'
 
 /**
  * Agent Handoff System Demo
@@ -168,7 +169,7 @@ You have access to general development tools and can coordinate between differen
       tools: {
         fileEdit: fileEditTool,
         terminal: terminalTool,
-        ...addHandoffTools(factory, 'developer')
+        ...addDelegationTools(factory, 'developer')
       },
       handoffs: [
         { agentName: 'database', description: 'Database design, setup, and API generation' },
@@ -191,7 +192,7 @@ You can hand back to the Developer Agent when database work is complete.`,
       tools: {
         createDatabase: createDatabaseTool,
         generateApi: generateApiTool,
-        ...addHandoffTools(factory, 'database')
+        ...addDelegationTools(factory, 'database')
       },
       handoffs: [
         { agentName: 'developer', description: 'Return to general development coordination' }
@@ -213,7 +214,7 @@ You can hand back to the Developer Agent when frontend work is complete.`,
       tools: {
         createComponent: createComponentTool,
         fileEdit: fileEditTool,
-        ...addHandoffTools(factory, 'frontend')
+        ...addDelegationTools(factory, 'frontend')
       },
       handoffs: [
         { agentName: 'developer', description: 'Return to general development coordination' }
@@ -286,7 +287,7 @@ async function demonstrateHandoffChain() {
 When you receive a project request, analyze it and hand off to the Developer Agent with a clear plan.`,
       model: await getModel('gpt4o'),
       tools: {
-        ...addHandoffTools(factory, 'planner')
+        ...addDelegationTools(factory, 'planner')
       },
       handoffs: [
         { agentName: 'developer', description: 'Execute the development plan' }
@@ -299,7 +300,7 @@ When you receive a project request, analyze it and hand off to the Developer Age
       model: await getModel('gpt4o'),
       tools: {
         fileEdit: fileEditTool,
-        ...addHandoffTools(factory, 'developer')
+        ...addDelegationTools(factory, 'developer')
       },
       handoffs: [
         { agentName: 'database', description: 'Database and API work' },
@@ -314,7 +315,7 @@ When you receive a project request, analyze it and hand off to the Developer Age
       tools: {
         createDatabase: createDatabaseTool,
         generateApi: generateApiTool,
-        ...addHandoffTools(factory, 'database')
+        ...addDelegationTools(factory, 'database')
       },
       handoffs: [
         { agentName: 'frontend', description: 'Frontend integration after database setup' }
@@ -327,7 +328,7 @@ When you receive a project request, analyze it and hand off to the Developer Age
       model: await getModel('gpt4o'),
       tools: {
         createComponent: createComponentTool,
-        ...addHandoffTools(factory, 'frontend')
+        ...addDelegationTools(factory, 'frontend')
       },
       handoffs: []
     }
@@ -376,7 +377,7 @@ async function demonstrateHandoffHistory() {
       system: 'You coordinate tasks and can view handoff history.',
       model: await getModel('gpt4o'),
       tools: {
-        ...addHandoffTools(factory, 'coordinator', true) // Include history tool
+        ...addDelegationTools(factory, 'coordinator', true) // Include history tool
       },
       handoffs: [
         { agentName: 'worker', description: 'Execute specific tasks' }
@@ -389,7 +390,7 @@ async function demonstrateHandoffHistory() {
       model: await getModel('gpt4o'),
       tools: {
         fileEdit: fileEditTool,
-        ...addHandoffTools(factory, 'worker', true)
+        ...addDelegationTools(factory, 'worker', true)
       },
       handoffs: []
     }

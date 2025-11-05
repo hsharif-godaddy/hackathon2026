@@ -13,6 +13,7 @@ import {
   useStartNewStream,
   useAppendTextSegment,
   useAddToolStartSegment,
+  useAddToolCallSegment,
   useAddToolResultSegment,
   useMarkMaxStepsReached,
   useMarkUpstreamError,
@@ -92,6 +93,7 @@ export function useStreamingWebSocket() {
   const startNewStream = useStartNewStream()
   const appendTextSegment = useAppendTextSegment()
   const addToolStartSegment = useAddToolStartSegment()
+  const addToolCallSegment = useAddToolCallSegment()
   const addToolResultSegment = useAddToolResultSegment()
   const markMaxStepsReached = useMarkMaxStepsReached()
   const markUpstreamError = useMarkUpstreamError()
@@ -188,6 +190,18 @@ export function useStreamingWebSocket() {
               startTime: Date.now()
             }
             addToolStartSegment(toolCall)
+          }
+          break
+        case 'tool_call':
+          // Tool call with complete input - update existing tool start segment
+          if (data.data?.tool) {
+            const toolCall: ToolCall = {
+              id: data.data.tool.id,
+              name: data.data.tool.name,
+              input: data.data.tool.input || {},
+              status: 'running'
+            }
+            addToolCallSegment(toolCall)
           }
           break
         case 'tool_result':

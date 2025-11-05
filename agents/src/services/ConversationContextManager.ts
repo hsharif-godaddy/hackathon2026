@@ -1,12 +1,22 @@
 import type { ConversationMessage, ToolCall, MessageSegment } from '../database/schema.js';
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
+import { AppRepository } from '../database/repositories/AppRepository.js';
 import { AppContextManager } from './AppContextManager.js';
-import { FileContextManager } from './FileContextManager.js';
+import { TodoContextManager } from './TodoContextManager.js';
 import type { AgentExecutionContext } from '../base/agent.interface.js';
 import { ToolCallRenderer } from './ToolCallRenderer.js';
 import { logger } from '../logging/index.js';
 import { conversationContextEvents, conversationHistoryEvents, conversationTokenLimitEvents } from '../logging/events/index.js';
 import { countTokens, estimateTokens } from '../utils/token-counter.js';
+import { ConversationHistoryLoader } from './ConversationHistoryLoader.js';
+import {
+  HotFileInclusionStrategy,
+  FileEditCompressionStrategy,
+  FileEditInputCompressionStrategy,
+  DuplicateFileReadStrategy,
+  TodoListRemovalStrategy,
+} from './compression/strategies/index.js';
+import { CssSuggestCompressionStrategy } from './compression/strategies/CssSuggestCompressionStrategy.js';
 
 /**
  * LLM message format for OpenAI-style APIs
@@ -34,23 +44,40 @@ export class ConversationContextManager {
   private conversationRepo: ConversationRepository;
   private readonly maxMessages: number;
   private appContextManager: AppContextManager;
-  private fileContextManagers = new Map<string, FileContextManager>();
+  private todoContextManager: TodoContextManager;
+  private historyLoader: ConversationHistoryLoader;
 
   constructor(conversationRepo: ConversationRepository, maxMessages: number = 10) {
     this.conversationRepo = conversationRepo;
     this.maxMessages = maxMessages;
     this.appContextManager = new AppContextManager();
+    this.todoContextManager = new TodoContextManager();
+    
+    this.historyLoader = new ConversationHistoryLoader(conversationRepo);
+    
+    const hotFileStrategy = new HotFileInclusionStrategy();
+    const fileEditStrategy = new FileEditCompressionStrategy(hotFileStrategy);
+    const fileEditInputStrategy = new FileEditInputCompressionStrategy(hotFileStrategy);
+    const duplicateFileReadStrategy = new DuplicateFileReadStrategy(hotFileStrategy);
+    
+    this.historyLoader.registerCompressionStrategy(hotFileStrategy);
+    this.historyLoader.registerCompressionStrategy(duplicateFileReadStrategy);
+    this.historyLoader.registerCompressionStrategy(fileEditStrategy);
+    this.historyLoader.registerCompressionStrategy(fileEditInputStrategy);
+    // Remove all todoList entries from history - persistent [Current Todo List] section is the single source of truth
+    this.historyLoader.registerCompressionStrategy(new TodoListRemovalStrategy());
+    // Compress cssSuggest results to only show palette names
+    this.historyLoader.registerCompressionStrategy(new CssSuggestCompressionStrategy());
   }
 
   /**
-   * Get or create a FileContextManager for an app
+   * Get the ConversationHistoryLoader instance for direct access
+   * @returns ConversationHistoryLoader instance
    */
-  public getFileContextManager(appPath: string): FileContextManager {
-    if (!this.fileContextManagers.has(appPath)) {
-      this.fileContextManagers.set(appPath, new FileContextManager(appPath));
-    }
-    return this.fileContextManagers.get(appPath)!;
+  getHistoryLoader(): ConversationHistoryLoader {
+    return this.historyLoader;
   }
+
 
   /**
    * Build LLM messages array with conversation history
@@ -59,6 +86,7 @@ export class ConversationContextManager {
    * @param conversationId - ID of the conversation to load history from
    * @param aiEditContext - Optional AI edit context for selected elements
    * @param executionContext - Optional execution context for app context generation
+   * @param selectedTodoListId - Optional ID of the currently selected todo list
    * @returns Array of messages formatted for LLM API
    */
   async buildMessages(
@@ -66,7 +94,8 @@ export class ConversationContextManager {
     currentUserMessage: string,
     conversationId?: string,
     aiEditContext?: any,
-    executionContext?: AgentExecutionContext
+    executionContext?: AgentExecutionContext,
+    selectedTodoListId?: string
   ): Promise<LLMMessage[]> {
     // Validate inputs
     if (!systemPrompt || systemPrompt.trim() === '') {
@@ -81,8 +110,9 @@ export class ConversationContextManager {
     ];
 
     // Load conversation history if we have a conversation ID
+    // Use compressed token-limited loader for efficiency
     if (conversationId) {
-      const historyMessages = await this.loadConversationHistory(conversationId);
+      const historyMessages = await this.loadConversationHistoryCompressed(conversationId, executionContext);
       messages.push(...historyMessages);
     }
 
@@ -94,12 +124,14 @@ export class ConversationContextManager {
       }
     }
 
-    // Add hot files context if execution context is available
-    if (executionContext?.metadata?.appPath) {
-      const fileContextManager = this.getFileContextManager(executionContext.metadata.appPath as string);
-      const hotFilesContext = await fileContextManager.getHotFilesContext();
-      if (hotFilesContext) {
-        messages.push({ role: 'user', content: hotFilesContext });
+    // Add todo list context as a separate message (always, even if no list selected)
+    if (executionContext) {
+      const todoContextMessage = await this.todoContextManager.generateTodoContext(
+        executionContext,
+        selectedTodoListId
+      );
+      if (todoContextMessage) {
+        messages.push({ role: 'user', content: todoContextMessage });
       }
     }
 
@@ -143,6 +175,7 @@ export class ConversationContextManager {
 
     // Structured logging
     const hasAppContext = executionContext && validatedMessages.some(msg => msg.content?.startsWith('[Current Project Structure]'));
+    const hasTodoContext = !!(executionContext && validatedMessages.some(msg => msg.content?.startsWith('[Current Todo List]')));
     conversationContextEvents.buildSuccess(logger, {
       conversationId,
       totalMessages: validatedMessages.length,
@@ -150,6 +183,7 @@ export class ConversationContextManager {
       currentMessageLength: currentUserMessage.length,
       hasHistory: !!conversationId && validatedMessages.length > 2,
       hasAppContext,
+      hasTodoContext,
       hasAiEditContext: !!aiEditContext,
       hasVisualContext: !!executionContext?.metadata?.visualContext,
       hasSelectedImages: !!(executionContext?.metadata?.selectedImages && (executionContext.metadata.selectedImages as any[]).length > 0)
@@ -159,76 +193,69 @@ export class ConversationContextManager {
   }
 
   /**
-   * Load conversation history from database and convert to LLM format
+   * Load conversation history with compression and token limiting
    * @param conversationId - ID of the conversation
-   * @returns Array of LLM messages from conversation history
+   * @param executionContext - Execution context containing appId and agentId in metadata
+   * @returns Array of LLMMessage messages from conversation history
    */
-  private async loadConversationHistory(conversationId: string): Promise<LLMMessage[]> {
+  private async loadConversationHistoryCompressed(
+    conversationId: string,
+    executionContext?: AgentExecutionContext
+  ): Promise<LLMMessage[]> {
     const allMessages = await this.conversationRepo.getMessages(conversationId);
+    if (allMessages.length === 0) {
+      logger.debug('conversation.history.no_messages', { conversationId });
+      return [];
+    }
+
+    const appId = executionContext?.metadata?.appId as string | undefined;
+    const agentId = executionContext?.metadata?.agentId as string | undefined;
     
-    // Structured logging for conversation history loading
-    conversationContextEvents.loadBegin(logger, { conversationId });
-    
-    // Take the last N messages (excluding the current one which we'll add separately)
-    // We want pairs of user/agent messages, so we take more and then trim appropriately
-    const recentMessages = allMessages.slice(-(this.maxMessages * 2));
-    
-    if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-      conversationContextEvents.loadSuccess(logger, {
-        conversationId,
-        messageCount: allMessages.length,
-        recentMessageCount: recentMessages.length,
-        hasHistory: allMessages.length > 0,
-        hasAppContext: false,
-        hasAiEditContext: false,
-        hasVisualContext: false,
+    if (!appId || !agentId) {
+      logger.warn('conversation.history.missing_ids', { 
+        conversationId, 
+        hasAppId: !!appId, 
+        hasAgentId: !!agentId,
+        message: 'Cannot load compressed history without appId and agentId'
       });
+      return [];
     }
     
-    const llmMessages: LLMMessage[] = [];
+    const appRepo = new AppRepository();
+    const app = appRepo.findById(appId);
+    const appPath = app?.path;
 
-    for (const message of recentMessages) {
-      if (message.sender === 'user') {
-        // For user messages, just use the content
-        if (message.content && message.content.trim() !== '') {
-          llmMessages.push({
-            role: 'user',
-            content: message.content.trim()
-          });
-        } else {
-          logger.warn('conversation.history.empty_user_message', {
-            conversationId,
-            messageId: message.id
-          });
-        }
-      } else if (message.sender === 'agent') {
-        // For agent messages, reconstruct from segments if available, fallback to old format
-        if (message.segments && message.segments.length > 0) {
-          // Use segments for proper chronological order
-          const { assistantMessages, toolMessages } = this.processMessageSegments(message.segments, conversationId);
-          llmMessages.push(...assistantMessages, ...toolMessages);
-        } else {
-          // Fallback to old format for backward compatibility
-          const assistantMessage = this.createLegacyAssistantMessage(message);
-          if (assistantMessage) {
-            llmMessages.push(assistantMessage);
-            
-            // Add tool results
-            const toolMessages = this.createLegacyToolMessages(message);
-            llmMessages.push(...toolMessages);
-          }
-        }
-      }
+    const maxTokens = 40000;
+    
+    try {
+      const llmMessages = await this.historyLoader.loadMessagesWithTokenLimit(
+        appId,
+        agentId,
+        maxTokens,
+        undefined,
+        true,
+        appPath
+      );
+      
+      logger.debug('conversation.history.compressed.loaded', {
+        conversationId,
+        appId,
+        agentId,
+        messageCount: llmMessages.length,
+      });
+      
+      return llmMessages;
+    } catch (error) {
+      logger.error('conversation.history.compressed.load_failure', {
+        conversationId,
+        appId,
+        agentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
     }
-
-    // Ensure we don't exceed the message limit
-    // Keep the most recent messages, maintaining user/assistant pairs
-    if (llmMessages.length > this.maxMessages) {
-      return llmMessages.slice(-this.maxMessages);
-    }
-
-    return llmMessages;
   }
+
 
   /**
    * Process message segments to create properly ordered LLM messages
@@ -636,227 +663,6 @@ When the user mentions "this image" or "the image", they are likely referring to
         error: (error as Error).message,
       });
       return '[Selected Images Context] Images selected (formatting error)';
-    }
-  }
-
-  /**
-   * Load all messages for an app/agent combination with token-based limiting
-   * @param appId - ID of the app
-   * @param agentId - ID of the agent
-   * @param maxTokens - Maximum tokens to include (default 40k)
-   * @param modelName - Model name for accurate token counting (optional)
-   * @returns Array of LLM messages with token limit applied
-   */
-  async loadAllMessagesWithTokenLimit(
-    appId: string, 
-    agentId: string, 
-    maxTokens: number = 40000, 
-    modelName?: string
-  ): Promise<LLMMessage[]> {
-    conversationTokenLimitEvents.loadBegin(logger, {
-      appId,
-      agentId,
-      maxTokens,
-    });
-    
-    try {
-      // Get all conversations for this app/agent
-      const conversations = await this.conversationRepo.findByAppAndAgent(appId, agentId)
-      // Log conversation discovery in debug mode
-      if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-        logger.debug('conversation.token_limit.conversations_found', {
-          appId,
-          agentId,
-          conversationsCount: conversations.length,
-        });
-      }
-      
-      // Get all messages from all conversations, ordered by timestamp
-      const allMessages: Array<{
-        id: string
-        conversationId: string
-        sender: 'user' | 'agent'
-        content: string
-        segments?: any[]
-        toolCalls?: any[]
-        createdAt: Date
-      }> = []
-      
-      for (const conversation of conversations) {
-        const messages = await this.conversationRepo.getMessages(conversation.id)
-        allMessages.push(...messages.map(msg => ({
-          ...msg,
-          conversationId: conversation.id
-        })))
-      }
-      
-      // Sort by timestamp (newest first for token limiting, then reverse for chronological)
-      allMessages.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      
-      if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-        logger.debug('conversation.token_limit.messages_found', {
-          appId,
-          agentId,
-          totalMessages: allMessages.length,
-        });
-      }
-      
-      // Apply token-based limiting
-      const limitedMessages: typeof allMessages = []
-      let currentTokenCount = 0
-      
-      for (const message of allMessages) {
-        const messageContent = message.content || ''
-        
-        // Count tokens using proper tokenizer if model name provided, otherwise use estimation
-        let messageTokens: number
-        if (modelName && messageContent.trim()) {
-          try {
-            const result = countTokens(messageContent, modelName)
-            messageTokens = result.tokenCount
-            
-            if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-              logger.debug('conversation.token_limit.token_count', {
-                messageId: message.id,
-                contentLength: messageContent.length,
-                tokenCount: messageTokens,
-                provider: result.provider,
-                modelName: result.normalizedModelName,
-              });
-            }
-          } catch (error) {
-            // Fallback to estimation if token counting fails
-            messageTokens = estimateTokens(messageContent)
-            logger.warn('conversation.token_limit.fallback_estimation', {
-              messageId: message.id,
-              error: (error as Error).message,
-              estimatedTokens: messageTokens,
-            });
-          }
-        } else {
-          // Use estimation when no model name provided
-          messageTokens = estimateTokens(messageContent)
-        }
-        
-        // Check if adding this message would exceed token limit
-        if (currentTokenCount + messageTokens > maxTokens && limitedMessages.length > 0) {
-          if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-            logger.info('conversation.token_limit.limit_reached', {
-              appId,
-              agentId,
-              processedMessages: limitedMessages.length,
-              currentTokens: currentTokenCount,
-              maxTokens,
-              modelName: modelName || 'unknown',
-            });
-          }
-          break
-        }
-        
-        limitedMessages.push(message)
-        currentTokenCount += messageTokens
-      }
-      
-      // Reverse to get chronological order (oldest first)
-      limitedMessages.reverse()
-      
-      // Convert to LLM messages
-      const llmMessages: LLMMessage[] = []
-      
-      for (const message of limitedMessages) {
-        if (message.sender === 'user') {
-          if (message.content && message.content.trim() !== '') {
-            llmMessages.push({
-              role: 'user',
-              content: message.content.trim()
-            })
-          }
-        } else if (message.sender === 'agent') {
-          // Process agent messages with segments or fallback to legacy
-          if (message.segments && message.segments.length > 0) {
-            const { assistantMessages, toolMessages } = this.processMessageSegments(message.segments, message.conversationId)
-            llmMessages.push(...assistantMessages, ...toolMessages)
-          } else {
-            // Fallback to legacy format
-            const assistantMessage = this.createLegacyAssistantMessage(message)
-            if (assistantMessage) {
-              llmMessages.push(assistantMessage)
-              const toolMessages = this.createLegacyToolMessages(message)
-              llmMessages.push(...toolMessages)
-            }
-          }
-        }
-      }
-      
-      // Debug logging
-      const messagesByRole = llmMessages.reduce((acc, msg) => {
-        acc[msg.role] = (acc[msg.role] || 0) + 1
-        return acc
-      }, {} as Record<string, number>)
-      
-      const toolMessages = llmMessages.filter(msg => msg.role === 'tool')
-      const assistantMessagesWithTools = llmMessages.filter(msg => 
-        msg.role === 'assistant' && 'tool_calls' in msg && (msg as any).tool_calls?.length > 0
-      )
-      
-      conversationTokenLimitEvents.loadSuccess(logger, {
-        appId,
-        agentId,
-        conversationsFound: conversations.length,
-        totalDbMessages: allMessages.length,
-        processedMessages: limitedMessages.length,
-        estimatedTokens: currentTokenCount,
-        maxTokens,
-        modelName: modelName || 'estimation',
-        messageDistribution: messagesByRole,
-      });
-      
-      return llmMessages
-      
-    } catch (error) {
-      conversationTokenLimitEvents.loadFailure(logger, error as Error, {
-        appId,
-        agentId,
-        maxTokens,
-      });
-      return [];
-    }
-  }
-
-  /**
-   * Record a file modification operation
-   */
-  recordFileModification(appPath: string, filePath: string, success: boolean): void {
-    const fileContextManager = this.getFileContextManager(appPath);
-    fileContextManager.recordFileModification(filePath, success);
-  }
-
-  /**
-   * Record a file read operation
-   */
-  recordFileRead(appPath: string, filePath: string): void {
-    const fileContextManager = this.getFileContextManager(appPath);
-    fileContextManager.recordFileRead(filePath);
-  }
-
-  /**
-   * Get file context summary for an app
-   */
-  getFileContextSummary(appPath: string): {
-    totalFiles: number;
-    hotFiles: number;
-    totalTokensUsed: number;
-  } {
-    const fileContextManager = this.getFileContextManager(appPath);
-    return fileContextManager.getSummary();
-  }
-
-  /**
-   * Prune old file context entries for memory management
-   */
-  pruneFileContexts(): void {
-    for (const fileContextManager of this.fileContextManagers.values()) {
-      fileContextManager.pruneOldEntries();
     }
   }
 

@@ -34,3 +34,5 @@ keys/jwt-public.pem
 
 # IDE specific files
 .idea/
+
+proxy-logs/

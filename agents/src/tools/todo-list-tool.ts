@@ -12,7 +12,7 @@ export type { TodoItem, TodoList, CreateItemInput }
 export { TodoListRepository }
 
 export interface TodoListToolOptions {
-  operation: 'create_list' | 'get_list' | 'list_all' | 'delete_list' | 'add_items' | 'update_items' | 'delete_items' | 'mark_done' | 'mark_undone'
+  operation: 'create_list' | 'get_list' | 'list_all' | 'delete_list' | 'add_items' | 'update_items' | 'delete_items' | 'mark_done' | 'mark_undone' | 'show_list' | 'select_list'
   appId?: string
   listId?: string
   listName?: string
@@ -20,6 +20,7 @@ export interface TodoListToolOptions {
   items?: CreateItemInput[]
   itemIds?: string[]
   updates?: Array<{ itemId: string; title?: string; description?: string; order?: number }>
+  sessionId?: string
 }
 
 export interface TodoListToolResult {
@@ -33,13 +34,26 @@ export interface TodoListToolResult {
 }
 
 /**
+ * Callback for when a todo list is selected
+ */
+export type TodoListSelectCallback = (sessionId: string, listId: string) => void
+
+/**
  * Todo List Tool
  */
 class TodoListTool {
   private repository: TodoListRepository
+  private onSelectCallback?: TodoListSelectCallback
 
   constructor() {
     this.repository = new TodoListRepository()
+  }
+
+  /**
+   * Set callback for when a todo list is selected
+   */
+  setOnSelectCallback(callback: TodoListSelectCallback): void {
+    this.onSelectCallback = callback
   }
 
   /**
@@ -52,6 +66,8 @@ class TodoListTool {
           return this.createList(options)
         case 'get_list':
           return this.getList(options)
+        case 'show_list':
+          return this.showList(options)
         case 'list_all':
           return this.listAll(options)
         case 'delete_list':
@@ -66,6 +82,8 @@ class TodoListTool {
           return this.markDone(options)
         case 'mark_undone':
           return this.markUndone(options)
+        case 'select_list':
+          return this.selectList(options)
         default:
           return {
             success: false,
@@ -98,10 +116,15 @@ class TodoListTool {
       options.items
     )
 
+    // Auto-select the newly created list
+    if (options.sessionId && this.onSelectCallback) {
+      this.onSelectCallback(options.sessionId, list.id)
+    }
+
     const itemCount = options.items?.length || 0
     const message = itemCount > 0
-      ? `Created todo list: ${options.listName} with ${itemCount} item${itemCount === 1 ? '' : 's'}`
-      : `Created todo list: ${options.listName}`
+      ? `Created todo list: ${options.listName} with ${itemCount} item${itemCount === 1 ? '' : 's'} (now selected)`
+      : `Created todo list: ${options.listName} (now selected)`
 
     return {
       success: true,
@@ -132,6 +155,38 @@ class TodoListTool {
 
     return {
       success: true,
+      list
+    }
+  }
+
+  /**
+   * Show a todo list with formatted display (for showing completed work)
+   * Similar to get_list but with a message indicating it's being displayed
+   */
+  private showList(options: TodoListToolOptions): TodoListToolResult {
+    if (!options.listId) {
+      return {
+        success: false,
+        error: 'List ID is required'
+      }
+    }
+
+    const list = this.repository.getListById(options.listId)
+    
+    if (!list) {
+      return {
+        success: false,
+        error: `List not found: ${options.listId}`
+      }
+    }
+
+    const totalItems = list.items?.length || 0
+    const completedItems = list.items?.filter(item => item.completed).length || 0
+    const progress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
+
+    return {
+      success: true,
+      message: `Showing todo list: ${list.name} (${completedItems}/${totalItems} complete - ${progress}%)`,
       list
     }
   }
@@ -308,6 +363,45 @@ class TodoListTool {
       success: true,
       message: `Marked ${items.length} item${items.length === 1 ? '' : 's'} as not done`,
       items
+    }
+  }
+
+  /**
+   * Select a todo list for the current session
+   */
+  private selectList(options: TodoListToolOptions): TodoListToolResult {
+    if (!options.listId) {
+      return {
+        success: false,
+        error: 'List ID is required'
+      }
+    }
+
+    if (!options.sessionId) {
+      return {
+        success: false,
+        error: 'Session ID is required to select a list'
+      }
+    }
+
+    // Verify the list exists
+    const list = this.repository.getListById(options.listId)
+    if (!list) {
+      return {
+        success: false,
+        error: `List not found: ${options.listId}`
+      }
+    }
+
+    // Call the selection callback
+    if (this.onSelectCallback) {
+      this.onSelectCallback(options.sessionId, options.listId)
+    }
+
+    return {
+      success: true,
+      message: `Selected todo list: ${list.name}`,
+      list
     }
   }
 }

@@ -943,53 +943,18 @@ export class GitTool {
    * Format the git result for display
    */
   formatResult(result: GitToolResult): string {
-    const lines: string[] = [];
-
-    const statusIcon = result.success ? '✅' : '❌';
-    lines.push(`${statusIcon} **Git ${result.operation}**`);
-
-    if (result.error) {
-      lines.push(`❌ **Error**: ${result.error}`);
-    }
-
-    if (result.warning) {
-      lines.push(`⚠️ **Warning**: ${result.warning}`);
-    }
-
-    if (result.output) {
-      lines.push('');
-      lines.push('📤 **Output**:');
-      lines.push('```');
-      lines.push(result.output);
-      lines.push('```');
-    }
-
-    if (result.diff) {
-      lines.push('');
-      lines.push('📝 **Diff**:');
-      lines.push('```diff');
-      lines.push(result.diff);
-      lines.push('```');
-    }
-
-    if (result.commits && result.commits.length > 0) {
-      lines.push('');
-      lines.push('📜 **Commit History**:');
-      result.commits.forEach((commit) => {
-        lines.push(`- ${commit.shortHash} - ${commit.message}`);
-        lines.push(`  By: ${commit.author} on ${new Date(commit.date).toLocaleDateString()}`);
-      });
-    }
-
-    if (result.branches && result.branches.length > 0) {
-      lines.push('');
-      lines.push('🌳 **Branches**:');
-      result.branches.forEach((branch) => {
-        const marker = branch === result.currentBranch ? '* ' : '  ';
-        lines.push(`${marker}${branch}`);
-      });
-    }
-
-    return lines.join('\n');
+    // Return JSON for easier parsing in custom renderers
+    return JSON.stringify({
+      success: result.success,
+      operation: result.operation,
+      output: result.output,
+      status: result.status,
+      diff: result.diff,
+      commits: result.commits,
+      branches: result.branches,
+      currentBranch: result.currentBranch,
+      error: result.error,
+      warning: result.warning
+    }, null, 2);
   }
 }

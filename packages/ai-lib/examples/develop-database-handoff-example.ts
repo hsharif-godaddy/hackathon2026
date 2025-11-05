@@ -3,7 +3,7 @@
 import { 
   createAgentFactory, 
   getModel,
-  addHandoffTools
+  addDelegationTools
 } from '../src/index.js'
 import { createTool } from '../src/tools/index.js'
 import { z } from 'zod'
@@ -151,7 +151,7 @@ Use the exact agent ID "database" when making handoffs.`,
       model: await getModel('gpt4o'),
       tools: {
         fileEdit: fileEditTool,
-        ...addHandoffTools(factory, 'develop')
+        ...addDelegationTools(factory, 'develop')
       },
       handoffs: [
         { 
@@ -185,7 +185,7 @@ You can hand back to the develop agent when database work is complete.`,
       tools: {
         createDatabase: createDatabaseTool,
         setupDatabaseIntegration: setupDatabaseIntegrationTool,
-        ...addHandoffTools(factory, 'database')
+        ...addDelegationTools(factory, 'database')
       },
       handoffs: [
         { 
@@ -277,7 +277,7 @@ async function demonstrateHandoffChain() {
       model: await getModel('gpt4o'),
       tools: {
         fileEdit: fileEditTool,
-        ...addHandoffTools(factory, 'develop')
+        ...addDelegationTools(factory, 'develop')
       },
       handoffs: [
         { agentName: 'database', description: 'Database setup and integration' }
@@ -291,7 +291,7 @@ async function demonstrateHandoffChain() {
       tools: {
         createDatabase: createDatabaseTool,
         setupDatabaseIntegration: setupDatabaseIntegrationTool,
-        ...addHandoffTools(factory, 'database')
+        ...addDelegationTools(factory, 'database')
       },
       handoffs: [
         { agentName: 'develop', description: 'Return for frontend development' }

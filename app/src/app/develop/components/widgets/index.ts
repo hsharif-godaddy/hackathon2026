@@ -6,18 +6,20 @@
  */
 
 import ColorPaletteWidget, { type ColorPaletteWidgetProps } from './ColorPaletteWidget'
+import ColorPaletteGridWidget, { type ColorPaletteGridWidgetProps } from './ColorPaletteGridWidget'
 import FontPaletteWidget, { type FontPaletteWidgetProps } from './FontPaletteWidget'
 
 /**
  * Widget component props union type
  */
-export type WidgetProps = ColorPaletteWidgetProps | FontPaletteWidgetProps
+export type WidgetProps = ColorPaletteWidgetProps | ColorPaletteGridWidgetProps | FontPaletteWidgetProps
 
 /**
  * Widget registry mapping widget types to components
  */
 export const widgetRegistry = {
   'color-palette': ColorPaletteWidget,
+  'color-palette-grid': ColorPaletteGridWidget,
   'typography': FontPaletteWidget,
 } as const
 
@@ -46,6 +48,6 @@ export function getWidgetComponent(type: string) {
 /**
  * Export widget components
  */
-export { ColorPaletteWidget, FontPaletteWidget }
-export type { ColorPaletteWidgetProps, FontPaletteWidgetProps }
+export { ColorPaletteWidget, ColorPaletteGridWidget, FontPaletteWidget }
+export type { ColorPaletteWidgetProps, ColorPaletteGridWidgetProps, FontPaletteWidgetProps }
 

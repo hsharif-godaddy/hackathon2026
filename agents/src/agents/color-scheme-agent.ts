@@ -6,6 +6,7 @@ import {
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { Logger } from '../logging/index.js'
+import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 
 const logger = Logger.create({ service: 'color-scheme-agent' })
 
@@ -26,9 +27,7 @@ async function buildColorSchemeSystemPrompt(): Promise<string> {
   // Load all modular prompt sections in order
   promptBuilder
     .file(paths.getAgentFile('color-scheme', 'core.md'))
-    .file(paths.getAgentFile('color-scheme', 'interaction-flow.md'))
-    .file(paths.getAgentFile('color-scheme', 'technical-requirements.md'))
-    .file(paths.getAgentFile('color-scheme', 'communication.md'))
+    .file(paths.getAgentFile('color-scheme', 'themes.md'))
   
   return await promptBuilder.build()
 }
@@ -46,14 +45,16 @@ export async function createColorSchemeAgent(): Promise<AgentConfig> {
     model,
     modelName,
     tools: {
-      // we don't need any tools for this agent
+      cssColor: allAILibTools.cssColor,
+      cssSuggest: allAILibTools.cssSuggest,
+      todoList: allAILibTools.todoList,
     },
     
     // Handoff configuration
     handoffs: [
       {
         agentName: 'develop',
-        description: 'Hand off to development agent to implement the chosen color scheme in the application',
+        description: 'Hand off to development agent to build the rest of the application using the updated color scheme',
       },
     ],
     

@@ -751,6 +751,110 @@ export function useDevelopmentMode() {
     }))
   }, [state.isInlineEditing, state.editingElement])
 
+  /**
+   * Apply theme preview by updating CSS custom properties
+   * Stores original values in localStorage for revert functionality
+   * 
+   * Note: This function converts hex colors to HSL format to match shadcn/ui CSS variables
+   */
+  const applyThemePreview = useCallback((palette: any) => {
+    const root = document.documentElement
+
+    /**
+     * Convert hex color to HSL format for CSS variables
+     */
+    function hexToHsl(hex: string): string {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+      if (!result) return '0 0% 0%'
+      
+      const r = parseInt(result[1], 16) / 255
+      const g = parseInt(result[2], 16) / 255
+      const b = parseInt(result[3], 16) / 255
+      
+      const max = Math.max(r, g, b)
+      const min = Math.min(r, g, b)
+      let h = 0
+      let s = 0
+      const l = (max + min) / 2
+      
+      if (max !== min) {
+        const d = max - min
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+        
+        switch (max) {
+          case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break
+          case g: h = ((b - r) / d + 2) / 6; break
+          case b: h = ((r - g) / d + 4) / 6; break
+        }
+      }
+      
+      return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`
+    }
+
+    // CSS custom properties to update (shadcn/ui format)
+    const cssVars = [
+      { key: '--primary', value: palette.primary },
+      { key: '--secondary', value: palette.secondary },
+      { key: '--accent', value: palette.accent },
+      { key: '--background', value: palette.background || '#FFFFFF' },
+      { key: '--muted', value: palette.surface || '#F8F9FA' },
+      { key: '--foreground', value: palette.text || '#212529' },
+      { key: '--destructive', value: palette.error || '#DC3545' },
+    ]
+
+    // Only store original theme if this is the first preview in the session
+    const hasOriginalTheme = localStorage.getItem('airo-dev-original-theme')
+    if (!hasOriginalTheme) {
+      const originalTheme: Record<string, string> = {}
+      cssVars.forEach(({ key }) => {
+        const currentValue = getComputedStyle(root).getPropertyValue(key)
+        if (currentValue) {
+          originalTheme[key] = currentValue.trim()
+        }
+      })
+      localStorage.setItem('airo-dev-original-theme', JSON.stringify(originalTheme))
+      console.log('💾 Stored original theme for revert')
+    }
+
+    // Apply new theme values
+    cssVars.forEach(({ key, value }) => {
+      if (value) {
+        // Convert hex to HSL and set the CSS variable
+        root.style.setProperty(key, hexToHsl(value))
+      }
+    })
+
+    // Store current preview theme
+    localStorage.setItem('airo-dev-preview-theme', JSON.stringify(palette))
+
+    console.log('🎨 Theme preview applied:', palette.name || 'Custom')
+  }, [])
+
+  /**
+   * Revert theme preview by restoring original CSS custom properties
+   */
+  const revertThemePreview = useCallback(() => {
+    const originalThemeStr = localStorage.getItem('airo-dev-original-theme')
+    if (!originalThemeStr) {
+      console.warn('⚠️ No original theme found to revert to')
+      return
+    }
+
+    const originalTheme = JSON.parse(originalThemeStr)
+    const root = document.documentElement
+
+    // Restore original values
+    Object.entries(originalTheme).forEach(([key, value]) => {
+      root.style.setProperty(key, value as string)
+    })
+
+    // Clear localStorage
+    localStorage.removeItem('airo-dev-original-theme')
+    localStorage.removeItem('airo-dev-preview-theme')
+
+    console.log('🔄 Theme preview reverted to original')
+  }, [])
+
   // Listen for messages from parent (for iframe context) and custom events
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -807,6 +911,18 @@ export function useDevelopmentMode() {
             editingElement: null
           }))
           clearHighlight()
+          break
+
+        case 'PREVIEW_THEME':
+          // Apply theme preview by updating CSS custom properties
+          if (event.data.palette) {
+            applyThemePreview(event.data.palette)
+          }
+          break
+
+        case 'REVERT_THEME':
+          // Revert to original theme
+          revertThemePreview()
           break
       }
     }

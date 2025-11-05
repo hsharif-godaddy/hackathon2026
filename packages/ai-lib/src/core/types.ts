@@ -4,6 +4,24 @@ import type { z } from 'zod'
 import type { RetryConfig } from '../utils/retry-with-backoff.js'
 
 /**
+ * Agents collection returned from AgentFactory.defineAgents()
+ * 
+ * This is the standard interface for accessing agents in a type-safe way.
+ */
+export interface AgentsCollection {
+  /** Get an agent by ID */
+  get: (id: string) => any // AgentWrapper, but avoiding circular dependency
+  /** Check if an agent exists */
+  has: (id: string) => boolean
+  /** List all agent IDs */
+  list: () => (string | number)[]
+  /** Get agent configuration without creating instance */
+  getConfig: (id: string) => AgentConfig
+  /** Additional properties from defineAgents return type */
+  [key: string]: any
+}
+
+/**
  * Global configuration for the agent factory
  */
 export interface GlobalAgentConfig {

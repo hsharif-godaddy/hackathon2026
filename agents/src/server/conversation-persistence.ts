@@ -474,12 +474,19 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             
             toolsMap.set(toolId, toolData)
             
-            segments.push({
-              id: nanoid(8),
-              type: 'tool_call',
-              timestamp,
-              toolCall: toolData
-            })
+            // Only add segment if one doesn't already exist for this tool
+            const existingSegmentIndex = segments.findIndex(s => 
+              s.type === 'tool_call' && s.toolCall?.id === toolId
+            )
+            
+            if (existingSegmentIndex === -1) {
+              segments.push({
+                id: nanoid(8),
+                type: 'tool_call',
+                timestamp,
+                toolCall: toolData
+              })
+            }
           }
           break
           

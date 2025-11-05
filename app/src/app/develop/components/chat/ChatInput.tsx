@@ -32,6 +32,7 @@ export default function ChatInput({
         <div className="flex items-stretch space-x-2 p-3 border rounded-lg focus-within:ring-2">
           <div className="flex-1">
             <textarea
+              id="chat-input-textarea"
               value={inputValue}
               onChange={(e) => onInputChange(e.target.value)}
               onKeyDown={onKeyDown}
@@ -45,6 +46,7 @@ export default function ChatInput({
           <Box className="flex flex-col justify-end space-y-2" gap="sm">
             {/* Send Button */}
             <Button
+              id="chat-send-button"
               onClick={onSendMessage}
               data-eid={generateClickEID('develop.prompt.send')}
               disabled={!inputValue?.trim() || isDisabled}

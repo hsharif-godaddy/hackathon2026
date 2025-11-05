@@ -2,7 +2,6 @@ import { createTool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { FileEditTool, FileEditOptions } from '../file-edit.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-import { fileContextRegistry } from '../../services/FileContextRegistry.js'
 
 // Constants for error message formatting
 const ERROR_TEXT_TRUNCATION_LENGTH = 100
@@ -16,14 +15,21 @@ const appRepo = new AppRepository()
  * Edit, create, or rewrite files with intelligent mode detection
  */
 export const fileEditAITool = createTool(
-  'Edit, create, or rewrite files with intelligent mode detection. Supports partial edits, full rewrites, and new file creation.',
+  `Edit, create, or rewrite files with intelligent mode detection. Supports partial edits, full rewrites, and new file creation.
+
+CRITICAL: For 'edit' mode, you MUST provide the EXACT text that you want replace in the file for the 'old' field.
+- DO NOT guess or assume what the old content is
+- DO NOT use placeholders like "existing content" or "current value"
+- You MUST read the file, search it, or check the context to get the actual current content
+- The 'old' field must match the file contents you want to replace EXACTLY (whitespace, indentation, etc.)
+- If you don't know the current content, read the file first`,
   z.object({
     path: z.string().describe('Path to the file to edit (relative to app root)'),
     mode: z.enum(['edit', 'rewrite', 'create']).optional().describe('Edit mode: edit for partial changes, rewrite for full replacement, create for new files (auto-detected if not specified)'),
     edits: z.array(z.object({
-      old: z.string().describe('The exact text to search for and replace'),
+      old: z.string().describe('The EXACT text currently in the file to search for and replace. MUST match the file content exactly - read the file first if you are unsure!'),
       new: z.string().describe('The new text to replace with')
-    })).optional().describe('Array of search-and-replace operations for partial edits'),
+    })).optional().describe('Array of search-and-replace operations for partial edits. Each "old" value MUST be the exact current content from the file.'),
     content: z.string().optional().describe('Full content for rewrite or create operations'),
     createDirs: z.boolean().default(true).describe('Create parent directories if they don\'t exist'),
     fuzzyMatch: z.boolean().default(true).describe('Use fuzzy matching for search text if exact match fails'),
@@ -45,9 +51,6 @@ export const fileEditAITool = createTool(
       appId,
       conversationId: context?.metadata?.conversationId as string
     })
-
-    // Record the file operation for hot file tracking
-    fileContextRegistry.recordFileModification(app.path, input.path, result.success)
 
     // CRITICAL FIX: If the file operation failed, throw an error so the agent knows about it
     // Previously, we were returning a formatted string even for failures, which made errors invisible

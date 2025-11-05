@@ -148,6 +148,7 @@ export interface StreamingConversationState {
   updateStreamContent: (content: string) => void
   appendTextSegment: (content: string) => void
   addToolStartSegment: (toolCall: ToolCall) => void
+  addToolCallSegment: (toolCall: ToolCall) => void
   addToolResultSegment: (toolCall: ToolCall) => void
   markMaxStepsReached: () => void
   markUpstreamError: () => void
@@ -341,6 +342,38 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     set({ activeStream: updatedStream })
   },
 
+  addToolCallSegment: (toolCall: ToolCall) => {
+    const { activeStream } = get()
+    if (!activeStream) return
+
+    // Find and update the existing tool_start segment with the input
+    const updatedSegments = activeStream.segments.map(segment => {
+      if (segment.type === 'tool_start' && segment.toolCall?.id === toolCall.id) {
+        return {
+          ...segment,
+          toolCall: {
+            ...segment.toolCall,
+            input: toolCall.input
+          }
+        }
+      }
+      return segment
+    })
+
+    // Also update the toolCall in the toolCalls array with the input
+    const updatedToolCalls = activeStream.toolCalls.map(tc =>
+      tc.id === toolCall.id ? { ...tc, input: toolCall.input } : tc
+    )
+
+    const updatedStream = {
+      ...activeStream,
+      segments: updatedSegments,
+      toolCalls: updatedToolCalls
+    }
+
+    set({ activeStream: updatedStream })
+  },
+
   addToolResultSegment: (toolCall: ToolCall) => {
     const { activeStream } = get()
     if (!activeStream) return
@@ -413,7 +446,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       content: activeStream.content,
       segments: activeStream.segments,
       toolCalls: activeStream.toolCalls,
-      timestamp: activeStream.timestamp,
+      timestamp: new Date(), // Update timestamp to completion time
       maxStepsReached: activeStream.maxStepsReached,
       upstreamError: activeStream.upstreamError,
       metadata: {
@@ -900,6 +933,7 @@ export const useWebSocketState = () => useStreamingConversationStore(state => st
 export const useStartNewStream = () => useStreamingConversationStore(state => state.startNewStream)
 export const useAppendTextSegment = () => useStreamingConversationStore(state => state.appendTextSegment)
 export const useAddToolStartSegment = () => useStreamingConversationStore(state => state.addToolStartSegment)
+export const useAddToolCallSegment = () => useStreamingConversationStore(state => state.addToolCallSegment)
 export const useAddToolResultSegment = () => useStreamingConversationStore(state => state.addToolResultSegment)
 export const useMarkMaxStepsReached = () => useStreamingConversationStore(state => state.markMaxStepsReached)
 export const useMarkUpstreamError = () => useStreamingConversationStore(state => state.markUpstreamError)

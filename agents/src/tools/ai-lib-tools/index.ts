@@ -20,6 +20,8 @@ export { todoListAITool } from './todo-list.js'
 export { memorySetAITool, memoryReadAITool, memorySearchAITool, memoryListKeysAITool } from './memory-tool.js'
 export { ragSearchAITool } from './rag-search.js'
 export { widgetRenderAITool } from './widget-render.js'
+export { cssColorAITool } from './css-color.js'
+export { cssSuggestAITool } from './css-suggest.js'
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js'
@@ -38,6 +40,8 @@ import { todoListAITool } from './todo-list.js'
 import { memorySetAITool, memoryReadAITool, memorySearchAITool, memoryListKeysAITool } from './memory-tool.js'
 import { ragSearchAITool } from './rag-search.js'
 import { widgetRenderAITool } from './widget-render.js'
+import { cssColorAITool } from './css-color.js'
+import { cssSuggestAITool } from './css-suggest.js'
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -65,6 +69,8 @@ export const allAILibTools = {
   memoryListKeys: memoryListKeysAITool,
   ragSearch: ragSearchAITool,
   widgetRender: widgetRenderAITool,
+  cssColor: cssColorAITool,
+  cssSuggest: cssSuggestAITool,
 }
 
 /**

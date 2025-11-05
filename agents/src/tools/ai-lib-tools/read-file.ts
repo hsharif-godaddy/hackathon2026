@@ -2,7 +2,6 @@ import { createTool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { ReadFileTool, ReadFileOptions } from '../read-file.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-import { fileContextRegistry } from '../../services/FileContextRegistry.js'
 
 // Initialize tool instances
 const readFileTool = new ReadFileTool()
@@ -31,11 +30,6 @@ export const readFileAITool = createTool(
     }
 
     const result = await readFileTool.readFile(input as ReadFileOptions, app.path)
-    
-    // Record the file operation for hot file tracking (only if successful)
-    if (result.success) {
-      fileContextRegistry.recordFileRead(app.path, input.path)
-    }
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to read file')

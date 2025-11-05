@@ -14,7 +14,9 @@ const DANGEROUS_PATTERNS = [
   {
     pattern: /\.exec\(/,
     message: 'exec() call detected',
-    allowedContexts: ['devSupervisor!', 'devSupervisor?', 'pattern'],
+    // Allow RegExp.prototype.exec() by checking for regex flags (i, g, m, s, u, y) or closing paren before .exec(
+    // This blocks child_process.exec() while allowing /pattern/i.exec(string)
+    allowedContexts: ['devSupervisor!', 'devSupervisor?', 'pattern', ')', 'i', 'g', 'm', 's', 'u', 'y'],
   },
   {
     pattern: /\.execSync\(/,

@@ -73,9 +73,10 @@ if (agentId) {
     }
   }
   
-  // 4. Test loadAllMessagesWithTokenLimit
-  console.log(`\n📊 Testing loadAllMessagesWithTokenLimit for '${agentId}':`)
-  const llmMessages = await contextManager.loadAllMessagesWithTokenLimit(appId, agentId, 40000)
+  // 4. Test historyLoader.loadMessagesWithTokenLimit
+  console.log(`\n📊 Testing historyLoader.loadMessagesWithTokenLimit for '${agentId}':`)
+  const historyLoader = contextManager.getHistoryLoader()
+  const llmMessages = await historyLoader.loadMessagesWithTokenLimit(appId, agentId, 40000)
   console.log(`Retrieved ${llmMessages.length} LLM message(s)`)
   
   const messagesByRole = llmMessages.reduce((acc, msg) => {

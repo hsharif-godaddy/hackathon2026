@@ -1,6 +1,7 @@
 import type { AgentExecutionContext } from '../base/agent.interface.js';
 import { DirectoryListingTool } from '../tools/directory-listing.js';
 import { ReadFileTool } from '../tools/read-file.js';
+import { appPlanTool } from '../tools/app-plan-tool.js';
 import { logger } from '../logging/index.js';
 import { appContextEvents } from '../logging/events/index.js';
 
@@ -69,8 +70,11 @@ export class AppContextManager {
       // Get package.json information
       const packageInfo = await this.getPackageInfo(context);
 
-      // Format both directory listing and package info into context message
-      const formattedContext = this.formatAppContext(directoryListing, packageInfo);
+      // Get color scheme information
+      const colorSchemeInfo = await this.getColorSchemeInfo(appId);
+
+      // Format directory listing and package info into context message
+      const formattedContext = this.formatAppContext(directoryListing, packageInfo, colorSchemeInfo);
       
       // Log successful generation
       const generateData: any = {
@@ -259,22 +263,82 @@ export class AppContextManager {
   }
 
   /**
+   * Get color scheme information for the app
+   * @param appId - The app ID
+   * @returns Color scheme information or null
+   */
+  private async getColorSchemeInfo(appId: string): Promise<any> {
+    try {
+      const result = await appPlanTool.execute({
+        appId,
+        operation: 'get'
+      });
+
+      if (result.success && result.data?.colorPalette) {
+        return result.data.colorPalette;
+      }
+      return null;
+    } catch (error) {
+      logger.warn('app.context.color_scheme.failure', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+
+  /**
    * Format directory listing and package info into a comprehensive context message
    * @param directoryListing - Raw directory listing output
    * @param packageInfo - Package information from package.json
+   * @param colorSchemeInfo - Color scheme information from app plan
    * @returns Formatted context message
    */
-  private formatAppContext(directoryListing: string, packageInfo: any): string {
+  private formatAppContext(directoryListing: string, packageInfo: any, colorSchemeInfo: any): string {
     const directorySection = this.formatDirectorySection(directoryListing);
     const packageSection = this.formatPackageSection(packageInfo);
+    const colorSchemeSection = this.formatColorSchemeSection(colorSchemeInfo);
     
     return `[Current Project Context]
 
 ${packageSection}
 
+${colorSchemeSection}
+
 ${directorySection}
 
 Note: This is the current project context including dependencies and directory structure. You don't need to run additional directory listings unless you need to explore specific subdirectories in detail.`;
+  }
+
+  /**
+   * Format color scheme information into a compact section
+   * @param colorSchemeInfo - Color scheme information or null
+   * @returns Formatted color scheme section
+   */
+  private formatColorSchemeSection(colorSchemeInfo: any): string {
+    if (!colorSchemeInfo) {
+      return 'Color Scheme: Not configured';
+    }
+
+    const parts = [];
+    
+    if (colorSchemeInfo.name) {
+      parts.push(`Name: ${colorSchemeInfo.name}`);
+    }
+    
+    if (colorSchemeInfo.primary) {
+      parts.push(`Primary: ${colorSchemeInfo.primary}`);
+    }
+    
+    if (colorSchemeInfo.secondary) {
+      parts.push(`Secondary: ${colorSchemeInfo.secondary}`);
+    }
+    
+    if (colorSchemeInfo.accent) {
+      parts.push(`Accent: ${colorSchemeInfo.accent}`);
+    }
+
+    return `Color Scheme: ${parts.join(', ')}`;
   }
 
   /**

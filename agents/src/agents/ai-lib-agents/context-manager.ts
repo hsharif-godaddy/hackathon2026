@@ -222,12 +222,29 @@ export class AILibContextManager {
             )
 
             // Filter out system and placeholder messages, convert to ai-lib format
+            // Note: We return the full LLM messages with tool_calls intact, not just content
             return llmMessages
                 .filter(msg => msg.role !== 'system' && msg.content !== 'placeholder')
-                .map(msg => ({
-                    role: msg.role as 'user' | 'assistant' | 'system',
-                    content: msg.content
-                }))
+                .map(msg => {
+                    // Preserve all message fields including tool_calls for proper history
+                    const result: any = {
+                        role: msg.role as 'user' | 'assistant' | 'system',
+                        content: msg.content
+                    }
+                    
+                    // Preserve tool calls for assistant messages
+                    if (msg.role === 'assistant' && msg.tool_calls) {
+                        result.tool_calls = msg.tool_calls
+                    }
+                    
+                    // Preserve tool result references
+                    if (msg.role === 'tool') {
+                        result.tool_call_id = msg.tool_call_id
+                        result.name = msg.name
+                    }
+                    
+                    return result
+                })
         } catch (error) {
             logger.error('context.conversation_history.build.failure', {
                 error: error instanceof Error ? error.message : String(error)
@@ -318,26 +335,13 @@ export class AILibContextManager {
                 return null
             }
 
-            const appPath = app.path
-            const fileContextManager = this.conversationContextManager.getFileContextManager(appPath)
-            const hotFilesContext = await fileContextManager.getHotFilesContext()
-
-            if (!hotFilesContext) {
-                contextLogger.debug('context.hot_files.build.empty', {
-                    reason: 'FileContextManager returned null'
-                })
-                return null
-            }
-
-            contextLogger.info('context.hot_files.build.success', {
-                contentLength: hotFilesContext.length
+            // NOTE: Hot files are now automatically included during conversation history loading
+            // via the HotFileInclusionStrategy compression strategy. This method returns null
+            // as hot files are handled by the history loader during loadAllMessagesWithTokenLimit.
+            contextLogger.debug('context.hot_files.skip', {
+                reason: 'Hot files now handled by history loader compression'
             })
-
-            return {
-                role: 'user',
-                content: hotFilesContext,
-                type: 'hot_files_context'
-            }
+            return null
         } catch (error) {
             logger.error('context.hot_files.build.failure', {
                 error: error instanceof Error ? error.message : String(error)
@@ -652,30 +656,6 @@ When the user mentions "this image" or "the image", they are likely referring to
         return enhancedContext
     }
 
-    /**
-     * Record a file modification operation
-     */
-    recordFileModification(appPath: string, filePath: string, success: boolean): void {
-        this.conversationContextManager.recordFileModification(appPath, filePath, success)
-    }
-
-    /**
-     * Record a file read operation
-     */
-    recordFileRead(appPath: string, filePath: string): void {
-        this.conversationContextManager.recordFileRead(appPath, filePath)
-    }
-
-    /**
-     * Get file context summary for an app
-     */
-    getFileContextSummary(appPath: string): {
-        totalFiles: number;
-        hotFiles: number;
-        totalTokensUsed: number;
-    } {
-        return this.conversationContextManager.getFileContextSummary(appPath)
-    }
 
     /**
      * Get conversation summary for debugging

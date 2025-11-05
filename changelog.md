@@ -11,6 +11,28 @@
 
 ### Internal Changes
 
+- **Conversation History Management System**: Intelligent context loading with compression strategies for massive token savings and improved agent performance
+  - Added `ConversationHistoryLoader`: Clean Unix pipe-like architecture for loading conversation history with verification at each step
+  - Methods: `loadDatabaseMessages()` → `convertToLLMMessages()` → `compressMessages()` → `applyTokenLimit()`
+  - Added `MessageCompressor`: Flexible strategy pattern for pluggable compression algorithms without spaghetti code
+  - Supports two-phase compression: optional `analyzeMessages()` for context gathering, then `compress()` for transformation
+  - **File Read Deduplication**: `DuplicateFileReadStrategy` removes old file reads, keeps only most recent version (saves ~500-1000 tokens per duplicate)
+  - **Todo List Compression**: Three strategies working together for comprehensive todo list optimization
+    - `DuplicateTodoCreateStrategy`: Removes old `create_list` operations, keeps only most recent
+    - `TodoCreateResultSummarizer`: Compresses verbose `create_list` results by ~70%, removing duplicate data already in tool call arguments
+    - `TodoMarkDoneAggregator`: Aggregates multiple `mark_done` operations into single progress summary
+  - **Tool Result Summarization**: Concise summaries for common tools (readFile, directoryListing, git) with tool-specific compression rules
+  - Fixed database field name mismatches: Added `getMessagesForHistory()` method to normalize `toolCall`/`tool_call` and `result`/`output` variations
+  - All changes use `message.segments` as source of truth, not legacy `message.content` field
+  - Comprehensive test suite: 40+ tests covering all strategies and edge cases
+  - Debug utility: `pnpm debug:history <appId> <agentId>` with phases for step-by-step verification
+  - Typical savings: 5,000-10,000 tokens per conversation with aggressive compression
+  - **Future Enhancements Planned**:
+    - Integrate with FileContextManager hot files list to avoid duplicate reads of tracked files
+    - Summarize file writes when file has subsequent read or is in hot files list
+    - Drop details for failed tool calls older than 2 most recent messages
+    - Identify and compress tools where inputs/outputs overlap (e.g., file edit operations)
+
 - **CORS Middleware Bug Fix**: Fixed critical bug causing 500 errors when rejecting non-allowed origins
   - Changed origin rejection from `callback(new Error(...))` to `callback(null, false)` to prevent server crashes
   - Non-allowed origins now receive 200 OK without CORS headers (browser blocks), instead of 500 error

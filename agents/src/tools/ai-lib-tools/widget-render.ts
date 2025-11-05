@@ -40,11 +40,28 @@ const typographySchema = z.object({
 })
 
 /**
+ * Color palette data schema (without type field, for reuse in grid)
+ */
+const paletteDataSchema = z.object({
+  name: z.string().optional().describe('Optional name for the color palette'),
+  colors: z.array(colorInfoSchema).min(1).max(10).describe('Array of colors (minimum 1, maximum 10)')
+})
+
+/**
+ * Color palette grid widget schema
+ */
+const colorPaletteGridSchema = z.object({
+  type: z.literal('color-palette-grid').describe('Widget type identifier'),
+  palettes: z.array(paletteDataSchema).min(1).max(8).describe('Array of color palettes (minimum 1, maximum 8)')
+})
+
+/**
  * Widget data union schema - add more widget types here
  */
 const widgetDataSchema = z.union([
   colorPaletteSchema,
-  typographySchema
+  typographySchema,
+  colorPaletteGridSchema
 ])
 
 /**
@@ -57,7 +74,8 @@ export const widgetRenderAITool = createTool(
 `Render an interactive widget in your response.
 Each widget must be defined in the widgetDataSchema.
 Supports:
-- color-palette: Display color schemes with previews
+- color-palette: Display a single color scheme with preview
+- color-palette-grid: Display multiple color schemes in a grid
 - typography: Display Google Fonts with sample text
 `,
   z.object({

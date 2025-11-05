@@ -31,27 +31,15 @@ export const imageSearchAITool = createTool(
       throw new Error(result.error || 'Failed to find image(s)')
     }
     
-    // Handle single prompt case
-    if (!Array.isArray(prompt) && result.url) {
-      return `![${prompt}](${result.url})`
-    }
-    
-    // Handle array prompts case
-    if (Array.isArray(prompt) && result.results) {
-      const markdownImages = result.results.map(r => {
-        if (r.success && r.url) {
-          return `![${r.prompt}](${r.url})`
-        } else if (r.success && r.urls && r.urls.length > 0) {
-          return r.urls.map(url => `![${r.prompt}](${url})`).join('\n')
-        } else {
-          return `<!-- Error for "${r.prompt}": ${r.error || 'No image found'} -->`
-        }
-      }).join('\n\n')
-      
-      return markdownImages
-    }
-    
-    throw new Error('Unexpected result format from image search')
+    // Return JSON for easier parsing in custom renderers
+    return JSON.stringify({
+      success: result.success,
+      prompt,
+      url: result.url,
+      urls: result.urls,
+      results: result.results,
+      error: result.error
+    }, null, 2)
   }
 )
 

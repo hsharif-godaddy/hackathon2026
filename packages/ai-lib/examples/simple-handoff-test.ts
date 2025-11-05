@@ -3,7 +3,7 @@
 import { 
   createAgentFactory, 
   getModel,
-  addHandoffTools
+  addDelegationTools
 } from '../src/index.js'
 
 /**
@@ -18,10 +18,10 @@ async function testBasicHandoff() {
   const agents = factory.defineAgents({
     coordinator: {
       name: 'Coordinator',
-      system: `You are a task coordinator. When asked to delegate work, use the handoff tool to pass tasks to the "worker" agent.`,
+      system: `You are a task coordinator. When asked to delegate work, use the delegate tool to pass tasks to the "worker" agent.`,
       model: await getModel('gpt4o'),
       tools: {
-        ...addHandoffTools(factory, 'coordinator')
+        ...addDelegationTools(factory, 'coordinator')
       },
       handoffs: [
         { agentName: 'worker', description: 'Execute specific tasks' }
@@ -86,13 +86,13 @@ async function testAgentToolHandoff() {
   const agents = factory.defineAgents({
     coordinator: {
       name: 'Coordinator',
-      system: `You are a task coordinator. You have access to a handoff tool. 
+      system: `You are a task coordinator. You have access to a delegate tool. 
       
-When asked to delegate work, use the handoff tool to pass tasks to the "worker" agent.
+When asked to delegate work, use the delegate tool to pass tasks to the "worker" agent.
 Use the exact agent ID "worker" (not "Worker" or any other variation).`,
       model: await getModel('gpt4o'),
       tools: {
-        ...addHandoffTools(factory, 'coordinator')
+        ...addDelegationTools(factory, 'coordinator')
       },
       handoffs: [
         { agentName: 'worker', description: 'Execute specific tasks' }

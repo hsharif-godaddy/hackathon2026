@@ -759,33 +759,15 @@ export class FileEditTool {
    * Format the edit result for display
    */
   formatResult(result: FileEditResult): string {
-    const lines: string[] = [];
-    
-    const statusIcon = result.success ? '✅' : '❌';
-    lines.push(`${statusIcon} **File ${result.mode}**: \`${result.path}\``);
-    
-    if (result.changes) {
-      lines.push(`📊 **Changes**: +${result.changes.additions} -${result.changes.deletions} lines (${result.changes.totalLines} total)`);
-    }
-    
-
-    
-    if (result.error) {
-      lines.push(`❌ **Error**: ${result.error}`);
-    }
-    
-    if (result.warning) {
-      lines.push(`⚠️ **Warnings**:\n${result.warning}`);
-    }
-    
-    if (result.diff && result.success) {
-      lines.push('');
-      lines.push('📝 **Diff**:');
-      lines.push('```diff');
-      lines.push(result.diff);
-      lines.push('```');
-    }
-    
-    return lines.join('\n');
+    // Return JSON for easier parsing in custom renderers
+    return JSON.stringify({
+      success: result.success,
+      mode: result.mode,
+      path: result.path,
+      changes: result.changes,
+      diff: result.diff,
+      error: result.error,
+      warning: result.warning
+    }, null, 2);
   }
 }

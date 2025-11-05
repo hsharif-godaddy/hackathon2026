@@ -144,13 +144,12 @@ export class AgentWrapper {
   }
 
   /**
-   * Wrap tools with execution hooks
+   * Wrap tools with execution hooks and context passing
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private wrapToolsWithHooks(tools: Record<string, any>): Record<string, any> {
-    if (!this.config.beforeToolExecution && !this.config.afterToolExecution) {
-      return tools
-    }
+    // ALWAYS wrap tools to pass executionContext, even if no hooks are configured
+    // This is critical for tools like fileEdit that need context (appId, etc.)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const wrappedTools: Record<string, any> = {}
@@ -200,6 +199,21 @@ export class AgentWrapper {
             }
           } catch (error) {
             // IMPROVED ERROR REPORTING: Log detailed error information for better debugging
+            // Filter out non-serializable properties from context for logging
+            let loggableContext: any = 'No context'
+            if (context?.metadata) {
+              const metadata = context.metadata as Record<string, any>
+              loggableContext = Object.keys(metadata).reduce((acc, key) => {
+                // Skip non-serializable objects like stateManager
+                if (key === 'stateManager' || typeof metadata[key] === 'function') {
+                  acc[key] = '[Non-serializable]'
+                } else {
+                  acc[key] = metadata[key]
+                }
+                return acc
+              }, {} as Record<string, any>)
+            }
+            
             console.error('❌ Tool execution failed', {
               toolName,
               args: processedArgs,
@@ -207,7 +221,7 @@ export class AgentWrapper {
                 stack: error.stack,
                 ...error,
               } : String(error),
-              context: context?.metadata || 'No context'
+              context: loggableContext
             })
             toolCallError = error
           } finally {
@@ -346,7 +360,12 @@ export class AgentWrapper {
     // Add custom context as a user message if provided
     if (options?.context) {
       messages.push(...options.context
-        .filter(msg => msg.content && msg.content.trim().length > 0)
+        .filter((msg: any) => {
+          if (!msg.content) return false;
+          if (typeof msg.content === 'string') return msg.content.trim().length > 0;
+          if (Array.isArray(msg.content)) return msg.content.length > 0;
+          return true;
+        })
         .map(msg => ({
           role: msg.role,
           content: msg.content,
@@ -365,19 +384,41 @@ export class AgentWrapper {
     // Add conversation history messages if provided
     if (options?.messages) {
       messages.push(...options.messages
-        .filter(msg => msg.content && msg.content.trim().length > 0)
-        .map(msg => ({
-          role: msg.role,
-          content: msg.content,
-          // Convert cachePoint to proper providerOptions format for Bedrock
-          ...(msg.cachePoint && {
-            providerOptions: {
-              bedrock: {
-                cachePoint: msg.cachePoint.type
+        .filter((msg: any) => {
+          if (!msg.content) return false;
+          if (typeof msg.content === 'string') return msg.content.trim().length > 0;
+          if (Array.isArray(msg.content)) return msg.content.length > 0;
+          return true;
+        })
+        .map((msg: any) => {
+          const mappedMsg: any = {
+            role: msg.role,
+            content: msg.content,
+            // Convert cachePoint to proper providerOptions format for Bedrock
+            ...(msg.cachePoint && {
+              providerOptions: {
+                bedrock: {
+                  cachePoint: msg.cachePoint.type
+                }
               }
-            }
-          })
-        }))
+            })
+          }
+          
+          // Preserve tool calls for assistant messages
+          if (msg.tool_calls) {
+            mappedMsg.tool_calls = msg.tool_calls
+          }
+          
+          // Preserve tool result references for tool messages
+          if (msg.tool_call_id) {
+            mappedMsg.tool_call_id = msg.tool_call_id
+          }
+          if (msg.name) {
+            mappedMsg.name = msg.name
+          }
+          
+          return mappedMsg
+        })
       )
     }
 

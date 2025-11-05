@@ -64,7 +64,8 @@ describe('Multi-Agent Conversation History Integration', () => {
       metadata: { agentId: 'design' }
     })
 
-    const developMessages = await contextManager.loadAllMessagesWithTokenLimit(testAppId, 'develop', 40000)
+    const historyLoader = contextManager.getHistoryLoader()
+    const developMessages = await historyLoader.loadMessagesWithTokenLimit(testAppId, 'develop', 40000)
     
     expect(developMessages.length).toBeGreaterThan(0)
     const developUserMessage = developMessages.find(m => m.role === 'user' && m.content.includes('login component'))
@@ -78,7 +79,7 @@ describe('Multi-Agent Conversation History Integration', () => {
     )
     expect(developHasDesignMessages).toBe(false)
 
-    const designMessages = await contextManager.loadAllMessagesWithTokenLimit(testAppId, 'design', 40000)
+    const designMessages = await historyLoader.loadMessagesWithTokenLimit(testAppId, 'design', 40000)
     
     expect(designMessages.length).toBeGreaterThan(0)
     const designUserMessage = designMessages.find(m => m.role === 'user' && m.content.includes('modern button'))
@@ -152,7 +153,8 @@ describe('Multi-Agent Conversation History Integration', () => {
         metadata: { agentId: 'develop' }
       })
 
-      const allDevelopMessages = await contextManager.loadAllMessagesWithTokenLimit(testAppId, 'develop', 40000)
+      const historyLoader = contextManager.getHistoryLoader()
+      const allDevelopMessages = await historyLoader.loadMessagesWithTokenLimit(testAppId, 'develop', 40000)
       
       expect(allDevelopMessages.length).toBeGreaterThanOrEqual(4)
       

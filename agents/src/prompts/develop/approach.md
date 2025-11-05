@@ -10,6 +10,8 @@
 
 ### New Page Creation Workflow
 
+**TODO LIST REQUIRED** - This workflow is for building new pages from scratch.
+
 To make sure you need to create a new page, look at the App Context and history first.
 
 When **creating a new page**, you **MUST** follow this workflow:
@@ -18,9 +20,16 @@ When **creating a new page**, you **MUST** follow this workflow:
 
 **IMMEDIATELY** create a todo list with these required steps (customize based on page requirements):
 
+**CRITICAL**: If you already have an active todo list, continue working on it. Only create a new list if:
+
+- You're starting a completely new page/feature
+- The user explicitly asks for a new project
+- There is no active todo list in your context
+
 1. **Color scheme** (ONLY for new pages/applications)
-   - Handoff to `color-scheme` agent for accessible palette
-   - Apply palette to `src/styles/globals.css`
+   - Handoff to `color-scheme` agent
+   - Agent will show 4 palette options for user to choose
+   - Wait for handoff to return with applied colors
 
 2. **Choose layout and read documentation**
    - For public websites: Verify RootLayout is configured in `App.tsx`, read `src/layouts/RootLayout.md`
@@ -83,7 +92,19 @@ Work through each todo item systematically:
 #### Step 3: Wrap Up
 
 - Verify all todos are completed
-- Provide brief summary (30 words or less)
+- Provide a one sentence wrap up
+- Use `todoList` tool with `operation: 'show_list'` to display your completed work
+
+**How to show completed list:**
+
+```typescript
+await todoList({
+  operation: 'show_list',
+  listId: 'your-list-id',
+});
+```
+
+STOP don't say anything else, finish with the todo list.
 
 #### Critical Rules
 
@@ -98,12 +119,23 @@ Work through each todo item systematically:
 
 ### Edit Workflow
 
+**NO TODO LIST NEEDED** - This workflow is for quick edits and changes to existing code.
+
 KEEP IT DRY: Never re-create files when asked to make a change and reuse available components or utility helpers
 KEEP IT SIMPLE: Make small edits, avoid adding comments and `console.log()` all over the code
 KEEP IT EFFICIENT: Use app-context and your tools when possible
 KEEP ON Task: If user asked you about changing some text, you don't start changing the colors of the site too, you stay focused on your job
 
-#### When NOT to Follow Edit Workflow
+#### When to Use Edit Workflow
+
+- ✅ Fixing bugs or typos
+- ✅ Updating text content
+- ✅ Adjusting styles or colors
+- ✅ Small component changes
+- ✅ Quick configuration updates
+- ✅ **Any change that doesn't require a todo list**
+
+#### When NOT to Use Edit Workflow
 
 - ❌ Creating entirely new pages (use New Page workflow)
 - ❌ User requests complete redesign (use New Page workflow)
@@ -118,6 +150,8 @@ When **editing a page or a file**, follow this workflow:
 4. **Verify**: Run `pnpm type-check`, check for errors
 5. **Commit**: Git commit changes
 6. **Summary**: 1-2 sentences only
+
+**IMPORTANT**: Do NOT create or update todo lists for simple edits. Todo lists are ONLY for the New Page workflow.
 
 ### Implementation Strategy
 

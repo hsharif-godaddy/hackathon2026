@@ -4,15 +4,35 @@
  */
 
 /**
+ * Tool call structure for assistant messages
+ */
+export interface ToolCall {
+  id: string
+  type: string
+  function: {
+    name: string
+    arguments: string
+  }
+}
+
+/**
  * Represents a message that can be injected into the conversation stream
+ * Supports full LLM message format including tool calls
+ * AI SDK uses OpenAI format internally (tool_calls) and converts to provider format
  */
 export interface ConversationMessage {
   /** Message role */
-  role: 'user' | 'assistant' | 'system'
-  /** Message content */
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  /** Message content - must be string (AI SDK requirement) */
   content: string
   /** Optional cache point for cost optimization */
   cachePoint?: { type: 'ephemeral' }
+  /** Tool calls made by assistant (for role='assistant', OpenAI format) */
+  tool_calls?: ToolCall[]
+  /** Tool call ID this message responds to (for role='tool') */
+  tool_call_id?: string
+  /** Tool name (for role='tool') */
+  name?: string
 }
 
 /**
@@ -34,8 +54,15 @@ export interface MessageProvider {
 
 /**
  * Represents a context message with insertion ordering
+ * Context messages use restricted roles (no 'tool' role as tools are part of conversation history)
  */
-export interface ContextMessage extends ConversationMessage {
+export interface ContextMessage {
+  /** Message role - restricted for context messages */
+  role: 'user' | 'assistant' | 'system'
+  /** Message content */
+  content: string
+  /** Optional cache point for cost optimization */
+  cachePoint?: { type: 'ephemeral' }
   /** When to insert this message relative to conversation history */
   insertionOrder: 'before_history' | 'after_history'
 }

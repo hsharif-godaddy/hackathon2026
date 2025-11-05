@@ -4,7 +4,10 @@ import {
   type BeforeToolExecutionHook,
   type AfterToolExecutionHook,
   type AgentContext,
-  createPromptBuilder
+  createPromptBuilder,
+  createHandoffTool,
+  createSessionStateManager,
+  type SessionStateManager
 } from '@airo/ai-lib'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
@@ -186,6 +189,7 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'core.md'))
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     .file(paths.getSharedFile('filesystem.md'))
+    .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules
     //.file(paths.getAgentFile('develop', 'tools.md'))
     //.file(paths.getAgentFile('develop', 'database.md'))
     .file(paths.getAgentFile('develop', 'api.md'))
@@ -196,6 +200,7 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'visual-context.md'))
     .file(paths.getAgentFile('develop', 'validation.md'))
     .file(paths.getAgentFile('develop', 'design.md'))
+    //.file(paths.getAgentFile('develop', 'widgets.md')) // purposely disabled for now
     .file(paths.getAgentFile('develop', 'planning.md'))
     .file(paths.getSharedFile('security.md'));
 
@@ -232,7 +237,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
       // Server management
       serverRestart: allAILibTools.serverRestart,
-      serverStatus: allAILibTools.serverStatus,
+      //serverStatus: allAILibTools.serverStatus,
       viewLogs: allAILibTools.viewLogs,
 
     // Specialized development tools
@@ -240,7 +245,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     imageGenerate: allAILibTools.imageGenerate,
 
       // Widget rendering
-      widgetRender: allAILibTools.widgetRender,
+      //widgetRender: allAILibTools.widgetRender,
 
       // Handoff tools will be added by the factory when needed
     },
@@ -251,10 +256,12 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
     // Handoff configuration
     handoffs: [
+      /*
       {
         agentName: 'database',
         description: 'MySQL database operations, schema design, and database integration',
       },
+      */
       {
         agentName: 'color-scheme',
         description: 'Color palette design and visual branding for applications',
@@ -268,19 +275,46 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 }
 
 /**
- * Create Develop Agent factory
+ * Create Develop Agent factory with handoff support
  */
-export async function createDevelopAgentFactory(options?: { appPath?: string }) {
+export async function createDevelopAgentFactory(options?: { 
+  appPath?: string
+  stateManager?: SessionStateManager
+  sessionId?: string
+}) {
   const factory = createAgentFactory()
 
+  // Create state manager if not provided
+  const stateManager = options?.stateManager || createSessionStateManager({
+    defaultAgentId: 'develop',
+    enableLogging: true
+  })
+
+  const developConfig = await createDevelopAgent(options)
+  
+  // Add handoff tool if sessionId is provided
+  if (options?.sessionId) {
+    const validTargets = (developConfig.handoffs || []).map(h => h.agentName)
+    developConfig.tools = {
+      ...developConfig.tools,
+      handoff: createHandoffTool({
+        sourceAgentId: 'develop',
+        validTargets,
+        stateManager,
+        sessionId: options.sessionId
+      })
+    }
+  }
+
   const agents = factory.defineAgents({
-    develop: await createDevelopAgent(options)
+    develop: developConfig
   })
 
   return {
     factory,
     agents,
     getAgent: () => agents.get('develop'),
+    stateManager,
     appPath: options?.appPath
   }
 }
@@ -291,9 +325,17 @@ export async function createDevelopAgentFactory(options?: { appPath?: string }) 
 export class DevelopAgent {
   private factory: Awaited<ReturnType<typeof createDevelopAgentFactory>>
   private appPath: string
+  private sessionId?: string
+  private stateManager?: SessionStateManager
 
-  constructor(options?: { appPath?: string }) {
+  constructor(options?: { 
+    appPath?: string
+    sessionId?: string
+    stateManager?: SessionStateManager
+  }) {
     this.appPath = options?.appPath || process.cwd()
+    if (options?.sessionId) this.sessionId = options.sessionId
+    if (options?.stateManager) this.stateManager = options.stateManager
     this.factory = null as any
   }
 
@@ -302,9 +344,21 @@ export class DevelopAgent {
    */
   async initialize(): Promise<void> {
     logger.info('develop_agent.initialization.start', {
-      appPath: this.appPath
+      appPath: this.appPath,
+      hasSessionId: !!this.sessionId,
+      hasStateManager: !!this.stateManager
     });
-    this.factory = await createDevelopAgentFactory({ appPath: this.appPath })
+    
+    const factoryOptions: {
+      appPath: string
+      sessionId?: string
+      stateManager?: SessionStateManager
+    } = { appPath: this.appPath }
+    
+    if (this.sessionId) factoryOptions.sessionId = this.sessionId
+    if (this.stateManager) factoryOptions.stateManager = this.stateManager
+    
+    this.factory = await createDevelopAgentFactory(factoryOptions)
     logger.info('develop_agent.initialization.complete', {
       appPath: this.appPath
     });
@@ -328,6 +382,16 @@ export class DevelopAgent {
       throw new Error('Agent not initialized. Call initialize() first.')
     }
     return this.factory.factory
+  }
+
+  /**
+   * Get the handoff state manager
+   */
+  getStateManager(): SessionStateManager {
+    if (!this.factory) {
+      throw new Error('Agent not initialized. Call initialize() first.')
+    }
+    return this.factory.stateManager
   }
 
   /**

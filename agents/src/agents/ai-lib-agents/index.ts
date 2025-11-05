@@ -7,9 +7,12 @@
 import { 
   createAgentFactory,
   type AgentFactory,
-  type AgentConfig
+  type AgentConfig,
+  createHandoffTool,
+  createEndConversationTool,
+  createSessionStateManager,
+  type SessionStateManager
 } from '@airo/ai-lib'
-import { addHandoffTools } from '@airo/ai-lib'
 import { 
   createDevelopAgent,
   createDatabaseAgent,
@@ -37,27 +40,81 @@ export interface AILibAgentMetadata {
 /**
  * Create a unified agent factory with all agents
  */
-export async function createUnifiedAgentFactory(): Promise<{
+export async function createUnifiedAgentFactory(options?: {
+  stateManager?: SessionStateManager
+}): Promise<{
   factory: AgentFactory
   agents: ReturnType<AgentFactory['defineAgents']>
+  stateManager: SessionStateManager
 }> {
   const factory = createAgentFactory()
   
-  // Minimal change: enable handoff tool only for develop agent
+  // Create or use provided state manager
+  const stateManager = options?.stateManager || createSessionStateManager({
+    defaultAgentId: 'develop',
+    enableLogging: true
+  })
+
   const developConfig = await createDevelopAgent()
+  const databaseConfig = await createDatabaseAgent()
+  const colorSchemeConfig = await createColorSchemeAgent()
+
+  // Create handoff tools BEFORE defining agents (using only agent IDs)
+  // Extract valid targets from handoffs configuration
+  const developHandoffTool = createHandoffTool({
+    sourceAgentId: 'develop',
+    validTargets: (developConfig.handoffs || []).map(h => h.agentName),
+    stateManager
+  })
+
+  const databaseHandoffTool = createHandoffTool({
+    sourceAgentId: 'database',
+    validTargets: (databaseConfig.handoffs || []).map(h => h.agentName),
+    stateManager
+  })
+
+  const colorSchemeHandoffTool = createHandoffTool({
+    sourceAgentId: 'color-scheme',
+    validTargets: (colorSchemeConfig.handoffs || []).map(h => h.agentName),
+    stateManager
+  })
+
+  const endConversationTool = createEndConversationTool({
+    stateManager,
+    defaultAgentId: 'develop'
+  })
+
+  // Add handoff tools to agent configs BEFORE defining
   developConfig.tools = {
     ...(developConfig.tools || {}),
-    ...addHandoffTools(factory, 'develop', true)
+    handoff: developHandoffTool
   }
+  // Stop execution after handoff tool is called
+  developConfig.stopAfterTools = ['handoff']
 
+  databaseConfig.tools = {
+    ...(databaseConfig.tools || {}),
+    handoff: databaseHandoffTool
+  }
+  // Stop execution after handoff tool is called
+  databaseConfig.stopAfterTools = ['handoff']
+
+  colorSchemeConfig.tools = {
+    ...(colorSchemeConfig.tools || {}),
+    handoff: colorSchemeHandoffTool,
+    end_conversation: endConversationTool
+  }
+  // Stop execution after handoff or end_conversation tool is called
+  colorSchemeConfig.stopAfterTools = ['handoff', 'end_conversation']
+
+  // Now define agents with handoff tools already included
   const agents = factory.defineAgents({
     develop: developConfig,
-    database: await createDatabaseAgent(),
-    'color-scheme': await createColorSchemeAgent(),
-    example: await createExampleAgent()
+    database: databaseConfig,
+    'color-scheme': colorSchemeConfig,
   })
   
-  return { factory, agents }
+  return { factory, agents, stateManager }
 }
 
 /**
@@ -181,12 +238,15 @@ export function searchAgents(query: string): AILibAgentMetadata[] {
 /**
  * Create WebSocket-compatible agent factory
  */
-export async function createWebSocketAgentFactory() {
-  const { factory, agents } = await createUnifiedAgentFactory()
+export async function createWebSocketAgentFactory(options?: {
+  stateManager?: SessionStateManager
+}) {
+  const { factory, agents, stateManager } = await createUnifiedAgentFactory(options)
   
   return {
     factory,
     agents,
+    stateManager,
     // WebSocket server compatibility methods
     getAgent: (id: string) => agents.get(id as any),
     getAvailableAgents: () => getAvailableAgentIds().map(id => ({

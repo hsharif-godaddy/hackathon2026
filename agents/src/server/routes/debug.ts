@@ -110,13 +110,14 @@ router.get('/context/:appId', async (req: Request, res: Response): Promise<void>
         
         // Load individual components separately for better visualization
         
-        // 1. Get conversation history (actual chat messages)
+        // 1. Get conversation history (actual chat messages) using compressed loader
         const conversationId = enhancedContext.conversation.conversationId
         if (conversationId) {
-          const historyMessages = await conversationContextManager['loadConversationHistory'](
-            conversationId
+          const historyMessages = await conversationContextManager['loadConversationHistoryCompressed'](
+            conversationId,
+            executionContext
           )
-          conversationHistory = historyMessages.map(msg => ({
+          conversationHistory = historyMessages.map((msg: any) => ({
             role: msg.role as 'user' | 'assistant' | 'system',
             content: msg.content
           }))
@@ -138,24 +139,10 @@ router.get('/context/:appId', async (req: Request, res: Response): Promise<void>
           }
         }
         
-        // 3. Get hot files context as separate section
-        if (executionContext?.metadata?.appPath) {
-          const fileContextManager = conversationContextManager['getFileContextManager'](executionContext.metadata.appPath as string)
-          if (fileContextManager) {
-            const hotFilesContext = await fileContextManager.getHotFilesContext()
-            if (hotFilesContext && hotFilesContext.trim()) {
-              const hotFilesTokenResult = await countTokens(hotFilesContext, TOKEN_COUNTING_MODEL)
-              const hotFilesTokenCount = typeof hotFilesTokenResult === 'object' ? hotFilesTokenResult.tokenCount : hotFilesTokenResult
-              
-              contextSections.push({
-                type: 'hot_files',
-                role: 'user',
-                content: hotFilesContext,
-                tokenCount: hotFilesTokenCount
-              })
-            }
-          }
-        }
+        // 3. Hot files context - now handled by conversation history loader
+        // Hot files are automatically included during loadAllMessagesWithTokenLimit
+        // via the HotFileInclusionStrategy compression strategy.
+        // TODO: Add debug support to show hot files from history loader
         
       } catch (error) {
         logger.warn('debug.context.conversation_history.failure', {

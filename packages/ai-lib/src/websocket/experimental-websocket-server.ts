@@ -3,6 +3,8 @@ import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper } from '../core/agent-factory.js'
 import { createAgentFactory } from '../core/agent-factory.js'
 import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '../utils/model-pricing.js'
+import type { AgentsCollection } from '../core/types.js'
+import type { HandoffStateManager } from '../tools/handoff-helpers.js'
 import type {
   MessageProvider,
   ContextProvider,
@@ -19,14 +21,13 @@ import type {
  */
 export interface WebSocketConfig {
   /** Agents object from agentFactory.defineAgents() (required) */
-  agents: {
-    get: (id: string) => AgentWrapper
-    list: () => (string | number)[]
-    [key: string]: any
-  }
+  agents: AgentsCollection
 
   /** Default agent name to use if none specified */
   defaultAgent?: string
+
+  /** Optional state manager for agent handoffs */
+  stateManager?: HandoffStateManager
 
   /** Context extractor function for processing custom context */
   contextExtractor?: (rawContext: Record<string, unknown>) => Record<string, unknown>
@@ -96,7 +97,7 @@ export interface ChatMessage {
  * WebSocket message types following the normalized event schema
  */
 export interface WebSocketMessage {
-  type: 'step_start' | 'chunk' | 'tool_start' | 'tool_result' | 'step_complete' | 'complete' | 'error' | 'agents_available'
+  type: 'step_start' | 'chunk' | 'tool_start' | 'tool_input_delta' | 'tool_call' | 'tool_result' | 'step_complete' | 'complete' | 'error' | 'agents_available'
   content: string
   data: Record<string, unknown>
 }
@@ -473,15 +474,52 @@ export class WebSocketServer {
             }
 
             case 'tool-input-delta': {
-              // Accumulate tool input
+              // Accumulate tool input - emit delta for future status updates
               const currentInput = accumulatedToolInput.get(part.id) || ''
               accumulatedToolInput.set(part.id, currentInput + part.delta)
+              
+              // Emit input delta event for future use
+              socket.emit('message', {
+                type: 'tool_input_delta',
+                content: '',
+                data: {
+                  toolId: part.id,
+                  toolName: part.toolName,
+                  delta: part.delta
+                }
+              } as WebSocketMessage)
               break
             }
 
-            case 'tool-call':
-              // Tool call is complete with full input
+            case 'tool-call': {
+              // Tool call is complete with full input - emit with accumulated input
+              const fullInput = accumulatedToolInput.get(part.toolCallId) || '{}'
+              let parsedInput: Record<string, unknown> = {}
+              
+              try {
+                parsedInput = JSON.parse(fullInput)
+              } catch (error) {
+                console.error('Failed to parse tool input:', fullInput)
+              }
+
+              const toolCallData = {
+                step: currentStep,
+                tool: {
+                  id: part.toolCallId,
+                  name: part.toolName,
+                  input: parsedInput
+                }
+              }
+
+              socket.emit('message', {
+                type: 'tool_call',
+                content: `${part.toolName} input ready`,
+                data: toolCallData
+              } as WebSocketMessage)
+
+              await this.captureStreamingEvent(socket.id, 'tool_call', `${part.toolName} input ready`, toolCallData)
               break
+            }
 
             case 'tool-result': {
               // Tool execution completed with result
@@ -723,7 +761,7 @@ export class WebSocketServer {
   }
 
   /**
-   * Handle incoming chat messages
+   * Handle incoming chat messages with handoff support
    */
   private async handleChatMessage(socket: any, data: ChatMessage): Promise<void> {
     const socketId = socket.id
@@ -737,122 +775,81 @@ export class WebSocketServer {
         throw new Error('Invalid message: message field is required and must be a string')
       }
 
-      // Determine which agent to use (support both agentId and agentName for compatibility)
-      agentName = data.agentId || data.agentName || this.config.defaultAgent
+      // 1. Determine initial agent (check state manager first for handoffs)
+      agentName = this.getActiveAgent(socketId, data)
       if (!agentName) {
         throw new Error('No agent specified and no default agent configured')
       }
 
-      // Get agent from agents
-      const agent = this.config.agents.get(agentName)
-      if (!agent) {
-        throw new Error(`Agent '${agentName}' not found`)
-      }
+      // 2. Process context (add socketId for tools)
+      processedContext = this.processContext(data, socketId)
 
-      // Process context if provided (do this BEFORE calling event handlers)
-      if (data.context && this.config.contextExtractor) {
-        processedContext = this.config.contextExtractor(data.context)
-      } else {
-        // Ensure processedContext is always defined
-        processedContext = data.context || {}
-      }
+      // 3. Setup persistence (conversation ID, tracking)
+      await this.setupPersistence(socketId, agentName, data, processedContext)
 
-      // Handle persistence if configured
-      let conversationId: string | undefined
-      if (this.config.messagePersistence) {
-        const metadata = (processedContext?.metadata as any) || {}
-        const persistenceContext: ConversationContext = {
-          socketId,
-          agentName,
-          appId: metadata.appId,
-          userId: metadata.userId,
-          sessionId: metadata.sessionId,
-          ...processedContext
-        }
+      // 4. Load conversation history
+      await this.loadConversationHistory(socketId, data, processedContext)
 
-        // Check if we already have an active conversation for this socket
-        const existingConversation = this.activeConversations.get(socketId)
+      // 5. Call message start handler
+      this.config.onMessageStart?.(socketId, data.message, agentName, processedContext)
 
-        if (existingConversation && existingConversation.agentName === agentName) {
-          // Reuse existing conversation for the same agent
-          conversationId = existingConversation.conversationId
-          if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-            console.log('🔄 Reusing existing conversation for socket:', socketId, 'conversation:', conversationId)
-          }
-
-          // Continue the existing conversation if the method is available
-          if (this.config.messagePersistence.continueConversation) {
-            await this.config.messagePersistence.continueConversation(
-              conversationId,
-              data.message,
-              persistenceContext
-            )
-          }
-
-          // Update context but keep the same conversation ID
-          existingConversation.context = persistenceContext
-          existingConversation.streamingEvents = []
-          this.initializeConversationBuffers(existingConversation)
-        } else {
-          // Create new conversation (first message or agent switch)
-          conversationId = await this.config.messagePersistence.startConversation(
-            data.message,
-            persistenceContext
-          )
-
-          if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-            console.log('🆕 Created new conversation for socket:', socketId, 'conversation:', conversationId)
-          }
-
-          // Track conversation for streaming events
-          this.activeConversations.set(socketId, {
-            conversationId,
-            agentName,
-            context: persistenceContext,
-            streamingEvents: [],
-            startTime: Date.now(),
-            pendingSegments: [],
-            pendingToolCalls: new Map(),
-            accumulatedContent: ''
-          })
-        }
-      }
-
-      // Load conversation history if provider is configured and conversation ID is available
-      if (this.config.messageProvider && !data.conversationHistory && conversationId) {
-        try {
-          console.log('📚 Loading conversation history for conversation:', conversationId)
-          const conversationHistory = await this.config.messageProvider.loadMessages(
-            conversationId,
-            processedContext || {}
-          )
-
-          // Add conversation history to the data
-          data.conversationHistory = conversationHistory
-
-          console.log('✅ Loaded conversation history:', {
-            conversationId,
-            historyLength: conversationHistory.length
-          })
-        } catch (error) {
-          console.warn('⚠️ Failed to load conversation history:', error)
-          // Continue without history - don't fail the entire request
-        }
-      }
-
-      // Call message start handler with processed context (fire-and-forget to avoid blocking)
-      Promise.resolve(this.config.onMessageStart?.(socketId, data.message, agentName, processedContext))
-        .catch(() => { /* Silently handle - tracking errors shouldn't fail requests */ })
-
-      // Create abort controller for this stream
+      // 6. Create abort controller
       const controller = new AbortController()
       this.activeStreams.set(socketId, controller)
 
-      // Start streaming
-      await this.streamAgentResponse(socket, agent, data, processedContext, agentName, startTime)
+      // 7. Execute agent(s) - loop handles handoffs
+      let currentMessage = data.message
+      let iterationCount = 0
+      const maxHandoffs = 10 // Prevent infinite loops
+
+      while (iterationCount < maxHandoffs) {
+        iterationCount++
+        
+        // Get current agent
+        const agent = this.config.agents.get(agentName)
+        if (!agent) {
+          throw new Error(`Agent '${agentName}' not found`)
+        }
+
+        // Refresh context before each iteration (important for handoffs)
+        // This ensures todo list context and other dynamic state is current
+        if (iterationCount > 1) {
+          processedContext = this.processContext(data, socketId)
+          console.log(`🔄 Refreshed context for handoff iteration ${iterationCount}`)
+        }
+
+        // Create message data for this iteration
+        const iterationData: ChatMessage = {
+          ...data,
+          message: currentMessage
+        }
+
+        // Stream agent response (tools execute here, including handoff)
+        // Never emit completion during the loop - we'll handle it after
+        await this.streamAgentResponse(socket, agent, iterationData, processedContext, agentName, startTime, false)
+
+        // Check if handoff occurred
+        const handoffDetails = this.getHandoffDetails(socketId, agentName)
+        if (!handoffDetails) {
+          // No handoff - we're done, exit loop
+          break
+        }
+
+        // Handoff occurred - prepare for next iteration
+        console.log(`🔄 Handoff detected: ${agentName} → ${handoffDetails.newAgentName}`)
+        agentName = handoffDetails.newAgentName
+        currentMessage = handoffDetails.handoffPrompt
+      }
+
+      if (iterationCount >= maxHandoffs) {
+        console.warn(`⚠️ Maximum handoff limit (${maxHandoffs}) reached`)
+      }
+
+      // 8. Complete the conversation (after all handoffs complete)
+      await this.completeConversation(socketId, socket, agentName, startTime, processedContext)
 
     } catch (error) {
-      // Handle errors following the schema
+      // Handle errors
       const errorMessage = error instanceof Error ? error.message : String(error)
       const errorType = (error as any)?.errorType
 
@@ -883,6 +880,202 @@ export class WebSocketServer {
       // Clean up
       this.activeStreams.delete(socketId)
     }
+  }
+
+  /**
+   * Get the active agent for this session
+   */
+  private getActiveAgent(socketId: string, data: ChatMessage): string | undefined {
+    // Priority: 1) State manager (for handoffs), 2) Message agentId, 3) Default agent
+    if (this.config.stateManager && this.config.stateManager.getCurrentAgent) {
+      const currentAgent = this.config.stateManager.getCurrentAgent(socketId)
+      if (currentAgent) {
+        return currentAgent
+      }
+    }
+    
+    // Fall back to message agentId or default
+    return data.agentId || data.agentName || this.config.defaultAgent
+  }
+
+  /**
+   * Process context and add socketId
+   */
+  private processContext(data: ChatMessage, socketId: string): Record<string, unknown> {
+    let context: Record<string, unknown>
+    
+    if (data.context && this.config.contextExtractor) {
+      context = this.config.contextExtractor(data.context)
+    } else {
+      context = data.context || {}
+    }
+
+    // Add socketId so it's available to tools via executionContext
+    return {
+      ...context,
+      socketId
+    }
+  }
+
+  /**
+   * Setup persistence for this conversation
+   */
+  private async setupPersistence(
+    socketId: string,
+    agentName: string,
+    data: ChatMessage,
+    processedContext: Record<string, unknown>
+  ): Promise<void> {
+    if (!this.config.messagePersistence) return
+
+    const metadata = (processedContext?.metadata as any) || {}
+    const persistenceContext: ConversationContext = {
+      socketId,
+      agentName,
+      appId: metadata.appId,
+      userId: metadata.userId,
+      sessionId: metadata.sessionId,
+      ...processedContext
+    }
+
+    // Check if we already have an active conversation for this socket
+    const existingConversation = this.activeConversations.get(socketId)
+
+    if (existingConversation && existingConversation.agentName === agentName) {
+      // Reuse existing conversation for the same agent
+      if (this.config.messagePersistence.continueConversation) {
+        await this.config.messagePersistence.continueConversation(
+          existingConversation.conversationId,
+          data.message,
+          persistenceContext
+        )
+      }
+
+      // Update context but keep the same conversation ID
+      existingConversation.context = persistenceContext
+      existingConversation.streamingEvents = []
+      this.initializeConversationBuffers(existingConversation)
+    } else {
+      // Create new conversation (first message or agent switch)
+      const conversationId = await this.config.messagePersistence.startConversation(
+        data.message,
+        persistenceContext
+      )
+
+      // Track conversation for streaming events
+      this.activeConversations.set(socketId, {
+        conversationId,
+        agentName,
+        context: persistenceContext,
+        streamingEvents: [],
+        startTime: Date.now(),
+        pendingSegments: [],
+        pendingToolCalls: new Map(),
+        accumulatedContent: ''
+      })
+    }
+  }
+
+  /**
+   * Load conversation history if available
+   */
+  private async loadConversationHistory(
+    socketId: string,
+    data: ChatMessage,
+    processedContext: Record<string, unknown>
+  ): Promise<void> {
+    if (!this.config.messageProvider || data.conversationHistory) return
+
+    const conversation = this.activeConversations.get(socketId)
+    if (!conversation) return
+
+    try {
+      const conversationHistory = await this.config.messageProvider.loadMessages(
+        conversation.conversationId,
+        processedContext
+      )
+
+      data.conversationHistory = conversationHistory
+    } catch (error) {
+      console.warn('⚠️ Failed to load conversation history:', error)
+    }
+  }
+
+  /**
+   * Check if handoff occurred and get details
+   */
+  private getHandoffDetails(
+    socketId: string,
+    currentAgentName: string
+  ): { newAgentName: string; handoffPrompt: string } | null {
+    if (!this.config.stateManager || !this.config.stateManager.getCurrentAgent) {
+      return null
+    }
+
+    const newAgentName = this.config.stateManager.getCurrentAgent(socketId)
+    if (!newAgentName || newAgentName === currentAgentName) {
+      return null
+    }
+
+    // Handoff occurred - get the prompt
+    const handoffPrompt = this.config.stateManager.getLastHandoffPrompt?.(socketId)
+    if (!handoffPrompt) {
+      console.warn(`⚠️ Handoff to ${newAgentName} detected but no prompt available`)
+      return null
+    }
+
+    // Clear the prompt so it's not reused
+    this.config.stateManager.clearLastHandoffPrompt?.(socketId)
+
+    return { newAgentName, handoffPrompt }
+  }
+
+  /**
+   * Complete the conversation after all handoffs
+   */
+  private async completeConversation(
+    socketId: string,
+    socket: any,
+    agentName: string,
+    startTime: number,
+    processedContext: Record<string, unknown>
+  ): Promise<void> {
+    const duration = `${Date.now() - startTime}ms`
+
+    // Emit final completion event to client
+    socket.emit('message', {
+      type: 'complete',
+      content: '',
+      data: {
+        totalSteps: 1, // We don't track steps across handoffs
+        usage: undefined,
+        toolCalls: [],
+        agentId: agentName,
+        duration
+      }
+    } as WebSocketMessage)
+
+    // Complete persistence if configured
+    const conversation = this.activeConversations.get(socketId)
+    if (conversation && this.config.messagePersistence) {
+      await this.config.messagePersistence.completeConversation(
+        conversation.conversationId,
+        conversation.streamingEvents,
+        { agentName, duration },
+        conversation.context
+      )
+
+      // Clean up conversation tracking
+      this.activeConversations.delete(socketId)
+    }
+
+    // Call completion handler
+    this.config.onMessageComplete?.(socketId, {
+      agentName,
+      duration,
+      usage: undefined,
+      toolCalls: []
+    }, processedContext)
   }
 
   /**
@@ -934,14 +1127,33 @@ export class WebSocketServer {
     // 1. Context messages marked "before_history" go to contextMessages
     contextMessages.push(...beforeHistoryMessages)
 
-    // 2. Conversation history (if provided) - convert to proper format
+    // 2. Conversation history (if provided) - preserve full message structure including tool calls
     if (data.conversationHistory && data.conversationHistory.length > 0) {
       console.log(`🔄 Adding ${data.conversationHistory.length} conversation history messages`)
-      const convertedHistoryMessages = data.conversationHistory.map(msg => ({
-        role: msg.role,
-        content: msg.content,
-        ...(msg.cachePoint && { cachePoint: msg.cachePoint })
-      }))
+      const convertedHistoryMessages = data.conversationHistory.map(msg => {
+        const converted: any = {
+          role: msg.role,
+          content: msg.content,
+          ...(msg.cachePoint && { cachePoint: msg.cachePoint })
+        }
+        
+        // Preserve tool calls for assistant messages
+        if (msg.role === 'assistant' && msg.tool_calls) {
+          converted.tool_calls = msg.tool_calls
+        }
+        
+        // Preserve tool result references for tool messages
+        if (msg.role === 'tool') {
+          if (msg.tool_call_id) {
+            converted.tool_call_id = msg.tool_call_id
+          }
+          if (msg.name) {
+            converted.name = msg.name
+          }
+        }
+        
+        return converted
+      })
       messages.push(...convertedHistoryMessages)
     }
 
@@ -958,6 +1170,7 @@ export class WebSocketServer {
 
   /**
    * Stream agent response to client using normalized event schema
+   * @param shouldComplete - Whether to complete the conversation (false during handoffs)
    */
   private async streamAgentResponse(
     socket: any,
@@ -965,7 +1178,8 @@ export class WebSocketServer {
     data: ChatMessage,
     context: Record<string, unknown> | undefined,
     agentName: string,
-    startTime: number
+    startTime: number,
+    shouldComplete: boolean = true
   ): Promise<void> {
     let currentStep = 1
 
@@ -1187,92 +1401,24 @@ Please try again with corrected formatting.`
       }
     } as WebSocketMessage)
 
-    // Emit final completion event
-    socket.emit('message', {
-      type: 'complete',
-      content: fullContent,
-      data: {
-        totalSteps: currentStep,
-        usage: this.config.includeUsageData ? finalResult.usage : undefined,
-        toolCalls: finalResult.toolCalls || [],
-        agentId: agentName,
-        duration
-      }
-    } as WebSocketMessage)
-
-    // Track token usage (independent of conversation state for 100% capture)
-    const conversation = this.activeConversations.get(socket.id)
-    
-    if (finalResult.usage && this.config.onTokenUsage) {
-      try {
-        // Get model name from agent config
-        let modelName = 'unknown'
-        try {
-          const agentConfig = agent.getConfig()
-          modelName = agentConfig.modelName || agentName || 'unknown'
-        } catch (error) {
-          // Silently fall back to agent name if config retrieval fails
-          modelName = agentName || 'unknown'
+    // Only emit completion events if this is the final agent (no handoff pending)
+    if (shouldComplete) {
+      // Emit final completion event
+      socket.emit('message', {
+        type: 'complete',
+        content: fullContent,
+        data: {
+          totalSteps: currentStep,
+          usage: this.config.includeUsageData ? finalResult.usage : undefined,
+          toolCalls: finalResult.toolCalls || [],
+          agentId: agentName,
+          duration
         }
-
-        // Extract appId from multiple sources (fallback chain for reliability)
-        const appId = conversation?.context?.appId || (context as any)?.metadata?.appId
-        
-        // Call token tracking callback with usage data (fire-and-forget to avoid blocking)
-        Promise.resolve(this.config.onTokenUsage(
-          {
-            inputTokens: finalResult.usage.inputTokens || 0,
-            outputTokens: finalResult.usage.outputTokens || 0,
-            totalTokens: finalResult.usage.totalTokens || 0,
-            cachedInputTokens: (finalResult as any).caching?.cachedInputTokens,
-            cacheWriteInputTokens: (finalResult as any).caching?.cacheWriteInputTokens
-          },
-          {
-            agentName,
-            modelName,
-            ...(conversation?.conversationId && { conversationId: conversation.conversationId }),
-            ...(appId && { appId }),
-            ...(context && { context })
-          }
-        )).catch(() => { /* Silently handle - tracking errors shouldn't fail requests */ })
-      } catch (tokenError) {
-        // Don't fail the entire request if token tracking setup fails
-        this.config.onError?.(
-          socket.id,
-          tokenError instanceof Error ? tokenError : new Error(String(tokenError)),
-          'Failed to track token usage',
-          context
-        )
-      }
+      } as WebSocketMessage)
     }
-
-    // Complete conversation persistence if configured
-    if (conversation && this.config.messagePersistence) {
-      const result = {
-        agentName,
-        duration,
-        usage: finalResult.usage,
-        toolCalls: finalResult.toolCalls
-      }
-
-      await this.config.messagePersistence.completeConversation(
-        conversation.conversationId,
-        conversation.streamingEvents,
-        result,
-        conversation.context
-      )
-
-      // Clean up conversation tracking
-      this.activeConversations.delete(socket.id)
-    }
-
-    // Call completion handler with context
-    this.config.onMessageComplete?.(socket.id, {
-      agentName,
-      duration,
-      usage: finalResult.usage,
-      toolCalls: finalResult.toolCalls
-    }, context)
+    
+    // Note: Conversation completion is now handled by completeConversation()
+    // This allows multiple agents to contribute to the same conversation during handoffs
   }
 
   /**
