@@ -88,10 +88,8 @@ main() {
     echo -e "${BLUE}Starting Docker checks and environment configuration...${NC}"
     echo ""
     
-    cd setup
-    
     # Check if dependencies are installed for the setup app
-    if [ ! -d "node_modules" ]; then
+    if [ ! -d "setup/node_modules" ]; then
         echo -e "${BLUE}🔑 Authenticating with Artifactory...${NC}"
         pnpm login --progress true --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ --auth-type web
         echo -e "${BLUE}📦 Installing setup dependencies...${NC}"
@@ -100,11 +98,9 @@ main() {
     fi
     
     # Run the advanced setup
-    if pnpm start; then
-        cd ..
+    if pnpm --filter airo-setup start; then
         print_success "Advanced setup completed successfully"
     else
-        cd ..
         print_error "Advanced setup failed"
         exit 1
     fi
