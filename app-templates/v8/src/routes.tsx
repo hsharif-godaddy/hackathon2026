@@ -3,7 +3,8 @@ import { lazy } from 'react';
 import HomePage from './pages/index';
 
 // Lazy load components for code splitting (except HomePage for instant loading)
-const NotFoundPage = lazy(() => import('./pages/_404'));
+const isDevelopment = (import.meta.env as any).DEV;
+const NotFoundPage = isDevelopment ? lazy(() => import('../dev-tools/src/PageNotFound')) : lazy(() => import('./pages/_404'));
 
 export const routes: RouteObject[] = [
   {

@@ -300,6 +300,18 @@ function DevelopPageContent() {
             }, 500)
           }
           break
+        case 'build-page-request':
+          // Handle build page requests from the 404 page
+          if (event.data.pathToBuild) {
+            console.log('Build page request received:', event.data.pathToBuild)
+            const messageContent = `The page at path ${event.data.pathToBuild} doesn't exist yet, please build it with appropriate content.`;
+            setInputValue(messageContent);
+            // Auto-send the build page request
+            setTimeout(() => {
+              sendMessage(messageContent, null)
+            }, 500)
+          }
+          break
       }
     }
 
