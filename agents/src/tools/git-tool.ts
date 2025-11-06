@@ -36,7 +36,7 @@ export interface GitToolOptions {
     /** Include all files (for add, commit) */
     all?: boolean;
     /** Commit hash (for revert/restore operation) */
-    shorthash?: string;
+    hash?: string;
     /** Amend last commit (for commit) */
     amend?: boolean;
     /** Force operation (for push, checkout) */
@@ -103,30 +103,30 @@ export class GitTool {
     this.devSupervisor = devSupervisor || null;
     this.gitUtils = new GitUtils(devSupervisor);
   }
-  
+
   // Per-repository operation queues to prevent concurrent git operations
   private static operationQueues = new Map<string, Promise<any>>();
-  
+
   /**
    * Queue a git operation for a specific repository to prevent concurrent operations
    */
   private async queueGitOperation<T>(appPath: string, operation: () => Promise<T>): Promise<T> {
     // Normalize the path to use as key
     const repoKey = appPath.replace(/\\/g, '/');
-    
+
     // Get or create a promise chain for this repository
     const currentQueue = GitTool.operationQueues.get(repoKey) || Promise.resolve();
-    
+
     // Chain the new operation after the current queue
     const newQueue = currentQueue
       .catch(() => {
         // Ignore errors from previous operations - they shouldn't affect new ones
       })
       .then(() => operation());
-    
+
     // Update the queue
     GitTool.operationQueues.set(repoKey, newQueue);
-    
+
     // Clean up completed operations
     newQueue.finally(() => {
       // Only clean up if this is still the current queue
@@ -134,10 +134,10 @@ export class GitTool {
         GitTool.operationQueues.delete(repoKey);
       }
     });
-    
+
     return newQueue;
   }
-  
+
   /**
    * Extract app ID from app path
    * App paths are typically in format: /tmp/apps/{appId} or {customerDataDir}/{appId}
@@ -148,15 +148,15 @@ export class GitTool {
       // Development: /tmp/apps/{appId}
       // Production: /customer-data/{appId} or similar
       const pathParts = appPath.split('/').filter(part => part.length > 0);
-      
+
       // The app ID is typically the last part of the path
       const potentialAppId = pathParts[pathParts.length - 1];
-      
+
       // Basic validation - app IDs are typically UUIDs or similar identifiers
       if (potentialAppId && potentialAppId.length > 5) {
         return potentialAppId;
       }
-      
+
       return null;
     } catch (error) {
       logger.warn('Failed to extract app ID from path', { appPath, error });
@@ -387,7 +387,7 @@ export class GitTool {
                 const commits = await this.gitUtils.getCommitHistory(appPath, MAX_COMMITS_FOR_INITIAL_BUILD);
                 const commitCount = commits.length;
                 const isFirstRealCommit = commitCount <= MAX_COMMITS_FOR_INITIAL_BUILD;
-                
+
                 if (isFirstRealCommit) {
                   appRepository.markInitialBuildComplete(appId);
                   logger.info('Initial build marked as complete after first commit', {
@@ -451,11 +451,11 @@ export class GitTool {
 
       // Build git diff command
       const args = ['git', 'diff'];
-      
+
       if (options.options?.verbose) {
         args.push('--staged');
       }
-      
+
       if (options.files && options.files.length > 0) {
         args.push(...options.files);
       }
@@ -629,11 +629,8 @@ export class GitTool {
    */
   private async handleRevert(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
-      let commitHash = options.options?.shorthash;
+      let commitHash = options.options?.hash;
 
-      if (!commitHash && options.options?.shorthash) {
-        commitHash = options.options.shorthash;
-      }
       if (!commitHash && options.options?.count) {
         try {
           const count = options.options.count;
@@ -671,7 +668,7 @@ export class GitTool {
           success: false,
           operation: 'revert',
           error:
-            'Commit hash or reference is required for revert operation. Please provide a commit hash through options.shorthash or options.options.shorthash, or specify the commit number with options.options.count.',
+            'Commit hash is required for revert operation. Please provide a commit hash through options.hash, or specify the commit number with options.count.',
         };
       }
 
@@ -690,7 +687,7 @@ export class GitTool {
         args.push('--no-gpg-sign');
       }
       args.push(commitHash);
-      
+
       // Always use /app as the working directory since all deployments are containerized
       const execResult = await this.devSupervisor!.exec({
         command: buildShellCommand(args),
@@ -742,13 +739,13 @@ export class GitTool {
    */
   private async handleRestore(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
-      const commitHash = options.options?.shorthash;
+      const commitHash = options.options?.hash;
 
       if (!commitHash) {
         return {
           success: false,
           operation: 'restore',
-          error: 'Commit hash is required for restore operation. Please provide a commit hash through options.shorthash.',
+          error: 'Commit hash is required for restore operation. Please provide a commit hash through options.hash.',
         };
       }
 
@@ -796,7 +793,7 @@ export class GitTool {
 
       // Create git restore command with appropriate options
       const args = ['git', 'restore', `--source=${commitHash}`, '--staged', '--worktree', '.'];
-      
+
       // Execute the git restore command
       // Always use /app as the working directory since all deployments are containerized
       const result = await this.devSupervisor!.exec({

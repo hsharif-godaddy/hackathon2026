@@ -26,7 +26,8 @@ export const gitOperationAITool = createTool(
       count: z.number().optional().describe('Number of commits (for log, reset)'),
       createBranch: z.boolean().optional().describe('Create new branch (for checkout)'),
       includeUntracked: z.boolean().optional().describe('Include untracked files (for stash)'),
-      verbose: z.boolean().optional().describe('Verbose output')
+      verbose: z.boolean().optional().describe('Verbose output'),
+      hash: z.string().optional().describe('Commit hash (for revert, restore operations)')
     }).optional(),
     autoMessage: z.boolean().default(false).describe('Auto-generate commit message from recent file changes'),
     dryRun: z.boolean().default(false).describe('Preview operation without executing')
@@ -45,7 +46,7 @@ export const gitOperationAITool = createTool(
     // Create git tool with dev-supervisor for this specific app
     const devSupervisor = DevSupervisorClientFactory.createForApp(appId)
     const gitTool = new GitTool(devSupervisor || undefined)
-    
+
     const result = await gitTool.executeGitOperation(app.path, input as GitToolOptions)
     return gitTool.formatResult(result)
   }

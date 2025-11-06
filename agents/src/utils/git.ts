@@ -63,6 +63,13 @@ export interface GitCommitInfo {
   date: Date;
 }
 
+export interface GitArchiveResult {
+  /** Path to the created archive file */
+  path: string;
+  /** Commit hash that was archived */
+  commitHash: string;
+}
+
 /**
  * Git Utility Class
  * Provides convenient methods for common Git operations
@@ -181,17 +188,17 @@ export class GitUtils {
   }
 
   /**
-   * Get commit history
+   * Get commit history with full hashes
    */
   async getCommitHistory(
     repoPath: string,
     limit: number = 10,
     options: GitCommandOptions = {}
   ): Promise<GitCommitInfo[]> {
-    // Use simpler git log command to avoid dev-supervisor validation issues
-    // Execute the log command with basic options only
+    // Use custom format to get full hash and all commit information
+    // Format: <full-hash>|<author-name>|<author-email>|<iso-date>|<commit-message>
     const result = await this.executeGitCommand(
-      ['log', 'main', '--oneline', `--max-count=${limit}`],
+      ['log', 'main', `--pretty=format:%H|%an|%ae|%aI|%s`, `--max-count=${limit}`],
       repoPath,
       options
     );
@@ -204,16 +211,18 @@ export class GitUtils {
       .split('\n')
       .filter(line => line.trim())
       .map(line => {
-        // Parse --oneline format: "<short-hash> <commit-message>"
-        const match = line.trim().match(/^([a-f0-9]+)\s+(.+)$/);
-        if (match) {
-          const [, shortHash, message] = match;
+        // Parse custom format: "<full-hash>|<author>|<email>|<date>|<message>"
+        const parts = line.trim().split('|');
+        if (parts.length >= 5) {
+          const [hash, author, email, dateStr, ...messageParts] = parts;
+          // Join message parts back in case the message contained pipes
+          const message = messageParts.join('|');
           return {
-            hash: shortHash || '', // We only have short hash from --oneline
+            hash: hash || '',
             message: message || '',
-            author: 'Unknown', // Not available in --oneline format
-            email: '',
-            date: new Date(), // Not available in --oneline format
+            author: author || 'Unknown',
+            email: email || '',
+            date: dateStr ? new Date(dateStr) : new Date(),
           };
         }
         // Fallback for unexpected format
@@ -315,6 +324,106 @@ export class GitUtils {
     }
   }
 
+ /**
+   * Resolve a commit reference (short hash, tag, branch) to its full SHA
+   *
+   * @param repoPath - Path to the git repository
+   * @param commitRef - The commit reference to resolve (short hash, tag, branch, etc.)
+   * @param options - Git command options
+   * @returns The full SHA-1 hash (40 characters)
+   * @throws Error if the commit reference cannot be resolved
+   */
+  async resolveCommitHash(
+    repoPath: string,
+    commitRef: string,
+    options: GitCommandOptions = {}
+  ): Promise<string> {
+    const result = await this.executeGitCommand(
+      ['rev-parse', commitRef],
+      repoPath,
+      options
+    );
+
+    if (!result.success) {
+      throw new Error(
+        `Failed to resolve commit reference '${commitRef}': ${result.stderr || 'Unknown error'}`
+      );
+    }
+
+    const fullHash = result.stdout.trim();
+
+    // Validate that we got a valid SHA (40 hex characters)
+    if (!/^[0-9a-f]{40}$/i.test(fullHash)) {
+      throw new Error(
+        `Invalid commit hash returned: ${fullHash}`
+      );
+    }
+
+    return fullHash;
+  }
+
+  /**
+   * Create a git archive tarball of the repository at a specific commit
+   * Archives are created in /publish/dist/{commitHash}.tar.gz
+   * The output directory will be created if it doesn't exist.
+   *
+   * @param repoPath - Path to the git repository
+   * @param commitHash - The commit hash to archive (short or full)
+   * @param outputDir - Directory to store the archive (default: '/publish/dist'). Will be created if it doesn't exist.
+   * @param options - Git command options
+   * @returns GitArchiveResult with the archive path and commit hash
+   * @throws Error if dev-supervisor is not available or command fails
+   */
+  async createArchive(
+    repoPath: string,
+    commitHash: string,
+    outputDir: string = '/publish/dist',
+    options: GitCommandOptions = {}
+  ): Promise<GitArchiveResult> {
+    const timeout = options.timeout || 60000; // 60 seconds for large repos
+
+    if (!this.isDevSupervisorAvailable()) {
+      throw new Error(
+        'Git archive requires dev-supervisor to be available for command execution.'
+      );
+    }
+
+    // Create archive filename and path
+    const archiveFilename = `${commitHash}.tar.gz`;
+    const archivePath = `${outputDir}/${archiveFilename}`;
+
+    // Build git archive command
+    const args = [
+      'git',
+      'archive',
+      '--format=tar.gz',
+      `--output=${archivePath}`,
+      commitHash
+    ];
+
+    const command = buildShellCommand(args);
+
+    // Execute via dev-supervisor
+    // Always use /app as the working directory since all deployments are containerized
+    const execResult = await this.devSupervisor!.exec({
+      command,
+      working_dir: '/app',
+      timeout: Math.floor(timeout / 1000),
+      capture_output: true
+    });
+
+    if (!execResult.success) {
+      throw new Error(
+        `Failed to create git archive: ${execResult.stderr || 'Unknown error'}`
+      );
+    }
+
+    return {
+      path: archivePath,
+      commitHash: commitHash
+    };
+  }
+
   /**
    * Check if dev-supervisor is available for command execution
    */
@@ -370,7 +479,7 @@ export class GitUtils {
         timeout: Math.floor(timeout / 1000),
         capture_output: true
       });
-      
+
       result.exitCode = execResult.exit_code;
       result.stdout = execResult.stdout;
       result.stderr = execResult.stderr;

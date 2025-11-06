@@ -24,20 +24,20 @@ if (isApmEnabled) {
   global.fetch = async function apmFetch(this: any, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     // Extract URL and method
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    const method = 
+    const method =
       init?.method ||
       (input instanceof Request ? input.method : undefined) ||
       'GET';
-    
+
     // Check if URL is absolute (has protocol)
     const isAbsoluteUrl = url.startsWith('http://') || url.startsWith('https://');
-    
+
     // For relative URLs, we need a base URL to parse them
     let urlObj: URL;
     let hostname: string;
     let path: string;
     let isExternal: boolean;
-    
+
     if (!isAbsoluteUrl) {
       // Relative URL - assume it's to localhost (internal call)
       // Use a dummy base URL just for parsing the path
@@ -58,15 +58,15 @@ if (isApmEnabled) {
       // Consider localhost, 127.0.0.1, and same hostname as internal
       isExternal = !['localhost', '127.0.0.1', '::1'].includes(hostname.toLowerCase());
     }
-    
+
     // Create custom span name with full URL path
     const spanName = `${method} ${hostname}${path}`;
-    
+
     // Start custom APM span
     // Use 'external' for external calls, 'internal' for local calls
     const spanType = isExternal ? 'external' : 'internal';
     const span = apmAgent.startSpan(spanName, spanType, 'http');
-    
+
     if (span) {
       // Add span labels for better filtering and searching (use underscores, not dots)
       span.addLabels({
@@ -77,21 +77,21 @@ if (isApmEnabled) {
         'http_is_external': isExternal,
         'destination_service_resource': `${hostname}${path}`
       });
-      
+
       // Set span type for proper categorization
       span.setType(spanType, 'http', hostname);
     }
-    
+
     try {
       // Execute the actual fetch with proper context binding
       const response = await originalFetch.call(this, input, init);
-      
+
       if (span) {
         // Add response status to span
         span.addLabels({ 'http_status_code': response.status });
         span.setOutcome(response.ok ? 'success' : 'failure');
       }
-      
+
       // Clone the response to ensure the caller can still read the body
       // (Response bodies can only be read once)
       return response.clone();
@@ -111,7 +111,7 @@ if (isApmEnabled) {
       }
     }
   } as typeof fetch;
-  
+
   logger.info('server.apm.fetch_instrumentation', {
     message: 'Global fetch patched with APM instrumentation for full URL path tracking'
   });
@@ -151,7 +151,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter, filesRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, gitRouter, debugRouter, filesRouter, publishRouter } from './routes/index.js';
 import { auth } from '../services/features.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
@@ -210,7 +210,7 @@ if (isApmEnabled) {
           transaction.name = `${req.method} ${fullRoute}`;
           transaction.setLabel('route_template', fullRoute);
           transaction.setLabel('actual_path', req.path);
-          
+
           // Log route template usage for debugging
           if (req.route.path.includes(':')) {
             logger.debug('apm.route.template', {
@@ -221,7 +221,7 @@ if (isApmEnabled) {
             });
           }
         }
-        
+
         transaction.result = `HTTP ${res.statusCode}`;
         transaction.setOutcome(res.statusCode >= 400 ? 'failure' : 'success');
         transaction.end();
@@ -261,6 +261,7 @@ app.use('/agent', jwtAuthMiddleware.authenticate, chatRouter);
 app.use('/files', jwtAuthMiddleware.authenticate, filesRouter);
 app.use('/debug', jwtAuthMiddleware.authenticate, debugRouter);
 app.use('/', jwtAuthMiddleware.authenticate, gitRouter);
+app.use('/', jwtAuthMiddleware.authenticate, publishRouter);
 
 // Error handling
 app.use(notFoundHandler);

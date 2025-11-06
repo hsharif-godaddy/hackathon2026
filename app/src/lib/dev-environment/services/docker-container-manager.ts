@@ -337,7 +337,6 @@ export class DockerContainerManager {
 						`-e PORT=${port}`,
 						`-e VITE_HOST=0.0.0.0`,
 						`-e ALLOWED_ORIGINS=http://localhost:3000,https://localhost:3000`,
-						`-v /app/dist`,
 						`-p ${port}:${port}`
 					);
 					break;
@@ -598,7 +597,7 @@ export class DockerContainerManager {
 		// Get all container records from database
 		const runningRecords = this.devDb.getRunningProcesses();
 		const useTcp = shouldUseTcpMode();
-		
+
 		return runningRecords.map((record) => {
 			const sanitizedId = this.sanitizeAppId(record.appId);
 			const containerInfo: ContainerInfo = {
@@ -630,7 +629,7 @@ export class DockerContainerManager {
 		if (!containerInfo) {
 			return null;
 		}
-		
+
 		return containerInfo.tcpConnectionUrl || containerInfo.hostSocketPath || null;
 	}
 
@@ -803,7 +802,7 @@ export class DockerContainerManager {
 
 		const sanitizedId = this.sanitizeAppId(record.appId);
 		const useTcp = shouldUseTcpMode();
-		
+
 		const containerInfo: ContainerInfo = {
 			appId: record.appId,
 			containerId: `container-${record.appId}`,

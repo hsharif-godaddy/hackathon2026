@@ -63,7 +63,8 @@ RUN mkdir -p logs /tmp/supervisor
 RUN chown -R agent:agent logs /tmp/supervisor
 
 # Make sure the agent user owns the app directory initially
-RUN chown -R agent:agent /app
+RUN mkdir -p /publish/dist /app/dist \
+    && chown -R agent:agent /app /publish
 
 # Switch to the agent user so we are not running as root
 USER agent
