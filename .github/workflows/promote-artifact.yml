@@ -126,6 +126,9 @@ jobs:
     name: Trigger E2E Tests
     if: ${{ needs.promote.result == 'success' && inputs.environment == 'prod-ecs' && inputs.component == 'app' }}
     needs: [promote]
+    permissions:
+      actions: write # Required to trigger other workflows
+      contents: read
     runs-on:
       group: 8606-awsx64
       labels:

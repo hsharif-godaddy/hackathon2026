@@ -38,7 +38,7 @@ export default function RumProvider({
     
     const serverUrl = process.env.NEXT_PUBLIC_ELASTIC_APM_SERVER_URL || 
       (isProduction 
-        ? 'https://144cf897be249269f7818244b522144.apm.us-west-2.aws.cloud.es.io:443'
+        ? 'https://144cf045186b41c4a2a4aa3df8f92131.apm.us-west-2.aws.cloud.es.io:443'
         : 'https://0556df897be249269f7818244b522474.apm.us-west-2.aws.cloud.es.io:443'
       );
     
