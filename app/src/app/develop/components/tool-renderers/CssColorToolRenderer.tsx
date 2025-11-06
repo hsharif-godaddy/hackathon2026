@@ -17,6 +17,7 @@ interface ColorInfo {
   name: string
   hex: string
   role?: string
+  foreground?: string
 }
 
 /**
@@ -207,23 +208,35 @@ export default function CssColorToolRenderer({
                         className="flex items-center gap-4 p-3 rounded-lg border"
                         style={{ backgroundColor: `${color.hex}15` }}
                       >
-                        {/* Color swatch */}
-                        <div
-                          className="w-16 h-16 rounded-md shadow-sm flex items-center justify-center text-xs font-mono"
-                          style={{
-                            backgroundColor: color.hex,
-                            color: getContrastColor(color.hex)
-                          }}
-                        >
-                          Aa
+                        {/* Color swatch with foreground text */}
+                        <div className="flex flex-col gap-2">
+                          <div
+                            className="w-24 h-24 rounded-md shadow-sm flex items-center justify-center text-sm font-mono font-semibold"
+                            style={{
+                              backgroundColor: color.hex,
+                              color: color.foreground || getContrastColor(color.hex)
+                            }}
+                          >
+                            Aa Text
+                          </div>
+                          <div className="text-xs text-center text-muted-foreground">
+                            Background
+                          </div>
                         </div>
 
                         {/* Color info */}
                         <div className="flex-1">
                           <div className="font-semibold text-base">{color.name}</div>
-                          <div className="text-sm text-muted-foreground font-mono">{color.hex}</div>
+                          <div className="text-sm text-muted-foreground font-mono mt-1">
+                            Background: {color.hex}
+                          </div>
+                          {color.foreground && (
+                            <div className="text-sm text-muted-foreground font-mono">
+                              Foreground: {color.foreground}
+                            </div>
+                          )}
                           {color.role && (
-                            <div className="text-xs text-muted-foreground/70 mt-1">{color.role}</div>
+                            <div className="text-xs text-muted-foreground/70 mt-2">{color.role}</div>
                           )}
                         </div>
                       </div>

@@ -10,6 +10,7 @@ export interface ColorInfo {
     name: string
     hex: string
     role?: string
+    foreground?: string
 }
 
 /**

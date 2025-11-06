@@ -163,9 +163,20 @@ function adjustSaturation(hex: string, amount: number): string {
  */
 function complementary(hex: string): string {
   const { r, g, b } = hexToRgb(hex)
-  const { h, s, l } = rgbToHsl(r, g, b)
-  const newH = (h + 180) % 360
-  const rgb = hslToRgb(newH, s, l)
+  let { h, s, l } = rgbToHsl(r, g, b)
+  
+  if (l < 15) {
+    l = 50
+    s = 60
+    h = (h + 180) % 360
+  } else if (s < 10) {
+    s = 60
+    h = (h + 180) % 360
+  } else {
+    h = (h + 180) % 360
+  }
+  
+  const rgb = hslToRgb(h, s, l)
   return rgbToHex(rgb.r, rgb.g, rgb.b)
 }
 
@@ -174,7 +185,17 @@ function complementary(hex: string): string {
  */
 function analogous(hex: string): { color1: string; color2: string } {
   const { r, g, b } = hexToRgb(hex)
-  const { h, s, l } = rgbToHsl(r, g, b)
+  const { h, s: origS, l: origL } = rgbToHsl(r, g, b)
+  
+  let s = origS
+  let l = origL
+  
+  if (l < 15) {
+    l = 45
+    s = 50
+  } else if (s < 10) {
+    s = 50
+  }
   
   const h1 = (h + 30) % 360
   const h2 = (h - 30 + 360) % 360
@@ -190,7 +211,10 @@ function analogous(hex: string): { color1: string; color2: string } {
 
 /**
  * Generate triadic colors (120° apart on color wheel)
+ * 
+ * Note: Currently unused but kept for potential future use
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function triadic(hex: string): { color1: string; color2: string } {
   const { r, g, b } = hexToRgb(hex)
   const { h, s, l } = rgbToHsl(r, g, b)
@@ -270,7 +294,7 @@ export interface GeneratedPalette {
   destructiveForeground: string
   successForeground: string
   warningForeground: string
-  displayColors: Array<{ name: string; hex: string; role: string }>
+  displayColors: Array<{ name: string; hex: string; role: string; foreground: string }>
 }
 
 /**
@@ -309,12 +333,12 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
   
   // Generate display colors (6 most important)
   const displayColors = [
-    { name: 'Primary', hex: primary, role: 'Main brand color' },
-    { name: 'Secondary', hex: secondary, role: 'Secondary brand color' },
-    { name: 'Accent', hex: accent, role: 'Accent and highlights' },
-    { name: 'Muted', hex: muted, role: 'Subtle backgrounds' },
-    { name: 'Success', hex: success, role: 'Success states' },
-    { name: 'Destructive', hex: destructive, role: 'Error states' }
+    { name: 'Primary', hex: primary, role: 'Main brand color', foreground: primaryForeground },
+    { name: 'Secondary', hex: secondary, role: 'Secondary brand color', foreground: secondaryForeground },
+    { name: 'Accent', hex: accent, role: 'Accent and highlights', foreground: accentForeground },
+    { name: 'Muted', hex: muted, role: 'Subtle backgrounds', foreground: mutedForeground },
+    { name: 'Success', hex: success, role: 'Success states', foreground: successForeground },
+    { name: 'Destructive', hex: destructive, role: 'Error states', foreground: destructiveForeground }
   ]
   
   const result: GeneratedPalette = {

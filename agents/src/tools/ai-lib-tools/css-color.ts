@@ -12,11 +12,15 @@ const appRepo = new AppRepository()
 function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, name: string) {
   return {
     name,
-    colors: palette.displayColors.map(c => ({
-      name: c.name,
-      hex: c.hex,
-      role: c.role
-    }))
+    colors: palette.displayColors.map(function mapColor(c) {
+      const fgKey = `${c.name.toLowerCase()}Foreground` as keyof typeof palette
+      return {
+        name: c.name,
+        hex: c.hex,
+        role: c.role,
+        foreground: palette[fgKey] as string
+      }
+    })
   }
 }
 
