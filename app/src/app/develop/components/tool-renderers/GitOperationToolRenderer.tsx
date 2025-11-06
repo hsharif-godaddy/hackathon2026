@@ -1,10 +1,8 @@
 'use client'
 
 import React, { useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { createPortal } from 'react-dom'
-import Button from '@ux/button'
-import XThickIcon from '@ux/icon/x-thick'
+import ToolHeader from './ToolHeader'
+import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 
 /**
@@ -76,32 +74,32 @@ export default function GitOperationToolRenderer({
    */
   function renderResultHTML(): React.JSX.Element {
     if (!parsedResult) {
-      return <div className="text-sm text-gray-500">No result data</div>
+      return <div className="text-sm text-muted-foreground">No result data</div>
     }
 
     return (
       <div className="space-y-4">
         {/* Error */}
         {parsedResult.error && (
-          <div className="bg-red-50 border border-red-200 rounded p-3">
-            <div className="text-sm font-semibold text-red-800 mb-1">Error</div>
-            <div className="text-sm text-red-700">{parsedResult.error}</div>
+          <div className="bg-destructive/10 border border-destructive/30 rounded p-3">
+            <div className="text-sm font-semibold text-destructive mb-1">Error</div>
+            <div className="text-sm text-destructive-foreground">{parsedResult.error}</div>
           </div>
         )}
 
         {/* Warning */}
         {parsedResult.warning && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
-            <div className="text-sm font-semibold text-yellow-800 mb-1">Warning</div>
-            <div className="text-sm text-yellow-700">{parsedResult.warning}</div>
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-3">
+            <div className="text-sm font-semibold text-yellow-700 mb-1">Warning</div>
+            <div className="text-sm text-yellow-700/90">{parsedResult.warning}</div>
           </div>
         )}
 
         {/* Status */}
         {parsedResult.status && (
           <div>
-            <h3 className="text-base font-semibold text-gray-800 mb-2">Status</h3>
-            <div className="bg-gray-50 rounded p-3 space-y-1 text-sm">
+            <h3 className="text-base font-semibold text-foreground/90 mb-2">Status</h3>
+            <div className="bg-muted rounded p-3 space-y-1 text-sm">
               {parsedResult.status.branch && (
                 <div><strong>Branch:</strong> {parsedResult.status.branch}</div>
               )}
@@ -121,20 +119,20 @@ export default function GitOperationToolRenderer({
         {/* Commits */}
         {parsedResult.commits && parsedResult.commits.length > 0 && (
           <div>
-            <h3 className="text-base font-semibold text-gray-800 mb-2">
+            <h3 className="text-base font-semibold text-foreground/90 mb-2">
               Commits ({parsedResult.commits.length})
             </h3>
             <div className="space-y-2">
               {parsedResult.commits.map((commit: any, index: number) => (
-                <div key={commit.hash || index} className="bg-gray-50 rounded p-3 border border-gray-200">
+                <div key={commit.hash || index} className="bg-muted rounded p-3 border border-border">
                   <div className="flex items-start gap-2 mb-1">
-                    <span className="font-mono text-xs bg-gray-200 px-2 py-0.5 rounded">
+                    <span className="font-mono text-xs bg-muted-foreground/20 px-2 py-0.5 rounded">
                       {commit.hash?.substring(0, 7) || 'unknown'}
                     </span>
-                    <span className="text-xs text-gray-600">{commit.date}</span>
+                    <span className="text-xs text-muted-foreground">{commit.date}</span>
                   </div>
-                  <div className="text-sm text-gray-900 mb-1">{commit.message}</div>
-                  <div className="text-xs text-gray-600">{commit.author}</div>
+                  <div className="text-sm text-foreground mb-1">{commit.message}</div>
+                  <div className="text-xs text-muted-foreground">{commit.author}</div>
                 </div>
               ))}
             </div>
@@ -144,18 +142,18 @@ export default function GitOperationToolRenderer({
         {/* Branches */}
         {parsedResult.branches && parsedResult.branches.length > 0 && (
           <div>
-            <h3 className="text-base font-semibold text-gray-800 mb-2">
+            <h3 className="text-base font-semibold text-foreground/90 mb-2">
               Branches ({parsedResult.branches.length})
             </h3>
-            <div className="bg-gray-50 rounded p-3">
+            <div className="bg-muted rounded p-3">
               <div className="space-y-1">
                 {parsedResult.branches.map((branch: string, index: number) => {
                   const isCurrent = branch.startsWith('* ')
                   const branchName = isCurrent ? branch.substring(2) : branch
                   return (
                     <div key={index} className="text-sm font-mono">
-                      {isCurrent && <span className="text-green-600 font-bold">* </span>}
-                      <span className={isCurrent ? 'text-green-700 font-semibold' : 'text-gray-700'}>
+                      {isCurrent && <span className="text-success font-bold">* </span>}
+                      <span className={isCurrent ? 'text-success font-semibold' : 'text-foreground/70'}>
                         {branchName}
                       </span>
                     </div>
@@ -169,8 +167,8 @@ export default function GitOperationToolRenderer({
         {/* Diff */}
         {parsedResult.diff && (
           <div>
-            <h3 className="text-base font-semibold text-gray-800 mb-2">Diff</h3>
-            <pre className="text-xs font-mono whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-200 overflow-x-auto">
+            <h3 className="text-base font-semibold text-foreground/90 mb-2">Diff</h3>
+            <pre className="text-xs font-mono whitespace-pre-wrap bg-muted p-3 rounded border border-border overflow-x-auto">
               {parsedResult.diff}
             </pre>
           </div>
@@ -179,8 +177,8 @@ export default function GitOperationToolRenderer({
         {/* Output */}
         {parsedResult.output && !parsedResult.diff && (
           <div>
-            <h3 className="text-base font-semibold text-gray-800 mb-2">Output</h3>
-            <pre className="text-sm font-mono whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-200">
+            <h3 className="text-base font-semibold text-foreground/90 mb-2">Output</h3>
+            <pre className="text-sm font-mono whitespace-pre-wrap bg-muted p-3 rounded border border-border">
               {parsedResult.output}
             </pre>
           </div>
@@ -189,86 +187,29 @@ export default function GitOperationToolRenderer({
     )
   }
 
-  const modalContent = mounted && (
-    <AnimatePresence>
-      {isModalOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            className="fixed inset-0 z-50 bg-intents-ux-boxHighContrastOverlay-backgroundColor"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onClick={() => setIsModalOpen(false)}
-          />
-
-          {/* Modal Container */}
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            onClick={() => setIsModalOpen(false)}
-          >
-            <motion.div
-              className="max-w-3xl w-full bg-intents-ux-box-backgroundColor p-6 rounded-lg shadow-xl relative max-h-[85vh] flex flex-col"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: 'tween', duration: 0.2, ease: 'easeOut' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Close button */}
-              <div className="absolute top-3 right-3">
-                <Button
-                  onClick={() => setIsModalOpen(false)}
-                  icon={<XThickIcon className="h-6 w-6" />}
-                  design="control"
-                  aria-label="Close"
-                  size="sm"
-                />
-              </div>
-
-              {/* Title */}
-              <h2 className="text-xl font-bold mb-4">
-                Git: {operation}
-              </h2>
-
-              {/* Content */}
-              <div className="flex-1 overflow-y-auto">
-                {renderResultHTML()}
-              </div>
-            </motion.div>
-          </div>
-        </>
-      )}
-    </AnimatePresence>
+  const modalContent = (
+    <ToolModal
+      isOpen={isModalOpen}
+      onClose={() => setIsModalOpen(false)}
+      title={`Git: ${operation}`}
+      mounted={mounted}
+    >
+      <div className="flex-1 overflow-y-auto">
+        {renderResultHTML()}
+      </div>
+    </ToolModal>
   )
 
   return (
     <div className="-my-2">
-      <span className="text-gray-300 text-xs">
-        {/* Git icon */}
-        <span className="text-gray-400">🔀</span>
-        {' '}
-        {toolStatus === 'completed' && hasDetails ? (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="text-gray-300 hover:text-gray-400 hover:underline cursor-pointer"
-          >
-            {displayMessage}
-          </button>
-        ) : toolStatus === 'running' ? (
-          <span className="inline-flex items-center gap-1">
-            <span className="animate-spin">⏳</span>
-            {displayMessage}
-          </span>
-        ) : (
-          <span>
-            {displayMessage}
-          </span>
-        )}
-      </span>
-
-      {mounted && createPortal(modalContent, document.body)}
+      <ToolHeader
+        icon="🔀"
+        displayName={displayMessage}
+        toolStatus={toolStatus}
+        hasDetails={hasDetails}
+        onOpenModal={() => setIsModalOpen(true)}
+      />
+      {modalContent}
     </div>
   )
 }

@@ -35,10 +35,10 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
    */
   const formatDuration = (ms: number) => {
     if (ms < 1000) return `${ms}ms`
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+    if (ms < 60000) return `${(ms / 1000).toFixed(0)}s`
 
     const minutes = Math.floor(ms / 60000)
-    const seconds = ((ms % 60000) / 1000).toFixed(1)
+    const seconds = ((ms % 60000) / 1000).toFixed(0)
     return `${minutes}m ${seconds}s`
   }
 
@@ -56,13 +56,13 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
   }
 
   return (
-    <div className="flex items-center justify-between mt-3 text-[10px] text-gray-100">
+    <div className="flex items-center justify-between mt-3 text-[10px] hover:text-muted-foreground text-muted-foreground/50">
       <span>
         Completed in {formatDuration(duration)}
       </span>
       <button
         onClick={handleCopyResponse}
-        className="hover:text-gray-600 transition-colors cursor-pointer"
+        className="hover:text-muted-foreground transition-colors cursor-pointer"
         title="Copy response to clipboard"
       >
         {copiedToClipboard ? '✓' : '⧉'}

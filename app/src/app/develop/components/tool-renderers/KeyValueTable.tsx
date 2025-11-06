@@ -22,12 +22,12 @@ export default function KeyValueTable({ data, title }: { data: Record<string, an
             {Object.entries(data).map(([key, value], index) => (
               <tr
                 key={key}
-                className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}
+                className={index % 2 === 0 ? 'bg-muted/50' : 'bg-background'}
               >
-                <td className="px-3 py-2 font-medium text-gray-700 border-r w-1/3">
+                <td className="px-3 py-2 font-medium text-foreground/70 border-r border-border w-1/3">
                   {key}
                 </td>
-                <td className="px-3 py-2 text-gray-900 font-mono text-xs break-all">
+                <td className="px-3 py-2 text-foreground font-mono text-xs break-all">
                   {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
                 </td>
               </tr>

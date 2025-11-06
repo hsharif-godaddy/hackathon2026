@@ -1,12 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { createPortal } from 'react-dom'
-import Button from '@ux/button'
-import XThickIcon from '@ux/icon/x-thick'
 import KeyValueTable from './KeyValueTable'
 import MarkdownRenderer from '../MarkdownRenderer'
+import ToolHeader from './ToolHeader'
+import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 
 /**
@@ -36,7 +34,7 @@ function getModeVerb(mode: string): string {
  * Clickable to show modal with full diff and metadata.
  */
 export default function FileEditToolRenderer({
-  toolName,
+  toolName: _toolName,
   toolStatus,
   input,
   result
@@ -47,44 +45,6 @@ export default function FileEditToolRenderer({
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  useEffect(() => {
-    if (isModalOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = 'unset'
-    }
-
-    return () => {
-      document.body.style.overflow = 'unset'
-    }
-  }, [isModalOpen])
-
-  const getStatusIndicator = () => {
-    if (toolStatus === 'running') {
-      return (
-        <svg className="w-2.5 h-2.5 animate-spin" viewBox="0 0 24 24">
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-            fill="none"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
-      )
-    }
-    return null
-  }
-
-  const statusIndicator = getStatusIndicator()
 
   // Parse result - can be JSON (new format) or Markdown (old format)
   let parsedResult: any = null
@@ -164,125 +124,72 @@ export default function FileEditToolRenderer({
     metadata['Total Lines'] = changes.totalLines
   }
 
-  const modalContent = mounted && (
-    <AnimatePresence>
-      {isModalOpen && (
+  const modalContent = (
+    <ToolModal
+      isOpen={isModalOpen}
+      onClose={() => setIsModalOpen(false)}
+      title={`${verb} ${filename}`}
+      mounted={mounted}
+    >
+      {/* Markdown format (backwards compatibility) */}
+      {isMarkdownFormat && (
+        <div className="flex-1 overflow-y-auto">
+          <MarkdownRenderer content={markdownContent} fullscreen={true} />
+        </div>
+      )}
+
+      {/* JSON format (new) */}
+      {!isMarkdownFormat && (
         <>
-          {/* Backdrop */}
-          <motion.div
-            className="fixed inset-0 z-50 bg-intents-ux-boxHighContrastOverlay-backgroundColor"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onClick={() => setIsModalOpen(false)}
-          />
+          {/* Metadata */}
+          {Object.keys(metadata).length > 0 && (
+            <div className="mb-4">
+              <KeyValueTable data={metadata} />
+            </div>
+          )}
 
-          {/* Modal Container */}
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            onClick={() => setIsModalOpen(false)}
-          >
-            <motion.div
-              className="max-w-4xl w-full bg-intents-ux-box-backgroundColor p-6 rounded-lg shadow-xl relative max-h-[85vh] flex flex-col"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: 'tween', duration: 0.2, ease: 'easeOut' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Close button */}
-              <div className="absolute top-3 right-3">
-                <Button
-                  onClick={() => setIsModalOpen(false)}
-                  icon={<XThickIcon className="h-6 w-6" />}
-                  design="control"
-                  aria-label="Close"
-                  size="sm"
-                />
+          {/* Error */}
+          {error && (
+            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-md">
+              <div className="text-sm font-bold text-destructive mb-1">Error</div>
+              <div className="text-sm text-destructive-foreground whitespace-pre-wrap">{error}</div>
+            </div>
+          )}
+
+          {/* Warning */}
+          {warning && (
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+              <div className="text-sm font-bold text-yellow-800 mb-1">Warning</div>
+              <div className="text-sm text-yellow-700 whitespace-pre-wrap">{warning}</div>
+            </div>
+          )}
+
+          {/* Diff */}
+          {diff && (
+            <div className="flex-1 overflow-y-auto">
+              <div className="text-sm font-bold mb-2">Diff</div>
+              <div className="border border-border rounded-md p-4 bg-muted">
+                <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                  {diff}
+                </pre>
               </div>
-
-              {/* Title */}
-              <h2 className="text-xl font-bold mb-4">{verb} {filename}</h2>
-
-              {/* Markdown format (backwards compatibility) */}
-              {isMarkdownFormat && (
-                <div className="flex-1 overflow-y-auto">
-                  <MarkdownRenderer content={markdownContent} fullscreen={true} />
-                </div>
-              )}
-
-              {/* JSON format (new) */}
-              {!isMarkdownFormat && (
-                <>
-                  {/* Metadata */}
-                  {Object.keys(metadata).length > 0 && (
-                    <div className="mb-4">
-                      <KeyValueTable data={metadata} />
-                    </div>
-                  )}
-
-                  {/* Error */}
-                  {error && (
-                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-                      <div className="text-sm font-bold text-red-800 mb-1">Error</div>
-                      <div className="text-sm text-red-700 whitespace-pre-wrap">{error}</div>
-                    </div>
-                  )}
-
-                  {/* Warning */}
-                  {warning && (
-                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                      <div className="text-sm font-bold text-yellow-800 mb-1">Warning</div>
-                      <div className="text-sm text-yellow-700 whitespace-pre-wrap">{warning}</div>
-                    </div>
-                  )}
-
-                  {/* Diff */}
-                  {diff && (
-                    <div className="flex-1 overflow-y-auto">
-                      <div className="text-sm font-bold mb-2">Diff</div>
-                      <div className="border rounded-md p-4 bg-gray-50">
-                        <pre className="text-xs font-mono whitespace-pre-wrap break-words">
-                          {diff}
-                        </pre>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </motion.div>
-          </div>
+            </div>
+          )}
         </>
       )}
-    </AnimatePresence>
+    </ToolModal>
   )
 
   return (
     <div className="-my-2">
-      <span className="text-gray-300 text-xs">
-        {/* File icon */}
-        <span className="text-gray-400">📝</span>
-        {' '}
-        {toolStatus === 'completed' && hasDetails ? (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="text-gray-300 hover:text-gray-400 hover:underline cursor-pointer"
-          >
-            {displayMessage}
-          </button>
-        ) : (
-          <span>
-            {displayMessage}
-          </span>
-        )}
-        {statusIndicator && (
-          <span className="inline-flex ml-1.5 text-gray-300">
-            {statusIndicator}
-          </span>
-        )}
-      </span>
-      {mounted && createPortal(modalContent, document.body)}
+      <ToolHeader
+        icon="📝"
+        displayName={displayMessage}
+        toolStatus={toolStatus}
+        hasDetails={hasDetails}
+        onOpenModal={() => setIsModalOpen(true)}
+      />
+      {modalContent}
     </div>
   )
 }

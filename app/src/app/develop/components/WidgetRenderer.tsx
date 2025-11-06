@@ -27,7 +27,7 @@ export default function WidgetRenderer({ widgetData, className = '' }: WidgetRen
   }
 
   // Extract all props except 'type' to pass to the widget component
-  const { type, ...widgetProps } = widgetData
+  const { type: _type, ...widgetProps } = widgetData
 
   return (
     <div className={className}>

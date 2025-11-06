@@ -13,10 +13,10 @@ import type { DefaultToolRendererProps } from './DefaultToolRenderer'
  * This tool is intentionally invisible - it performs internal state management
  * (ending conversation, resetting to default agent) without any UI output.
  * 
- * @param props - Tool renderer props (unused)
+ * @param _props - Tool renderer props (unused)
  * @returns null (renders nothing)
  */
-export default function EndConversationToolRenderer(props: DefaultToolRendererProps) {
+export default function EndConversationToolRenderer(_props: DefaultToolRendererProps) {
   // Intentionally render nothing - this tool is for internal state management only
   return null
 }

@@ -6,17 +6,9 @@ import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import XThickIcon from '@ux/icon/x-thick'
 import ColorPaletteGridWidget, { type PaletteData } from '../widgets/ColorPaletteGridWidget'
+import ToolHeader from './ToolHeader'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import { getContrastColor } from '@/utils/color'
-
-/**
- * Color info structure
- */
-interface ColorInfo {
-  name: string
-  hex: string
-  role?: string
-}
 
 /**
  * Custom renderer for cssSuggest tool
@@ -26,7 +18,7 @@ interface ColorInfo {
  * Clickable to open modal with tabs for each palette option.
  */
 export default function CssSuggestToolRenderer({
-  toolName,
+  toolName: _toolName,
   toolStatus,
   result
 }: DefaultToolRendererProps) {
@@ -55,31 +47,6 @@ export default function CssSuggestToolRenderer({
     return null
   }
 
-  const getStatusIndicator = () => {
-    if (toolStatus === 'running') {
-      return (
-        <svg className="w-2.5 h-2.5 animate-spin" viewBox="0 0 24 24">
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-            fill="none"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
-      )
-    }
-    return null
-  }
-
-  const statusIndicator = getStatusIndicator()
 
   // Extract palettes from result
   let palettes: PaletteData[] = []
@@ -148,7 +115,7 @@ export default function CssSuggestToolRenderer({
                     className={`pb-2 px-1 text-sm font-medium transition-colors whitespace-nowrap ${
                       activeTab === index
                         ? 'border-b-2 border-blue-500 text-blue-600'
-                        : 'text-gray-500 hover:text-gray-700'
+                        : 'text-muted-foreground hover:text-foreground/70'
                     }`}
                   >
                     {palette.name}
@@ -180,9 +147,9 @@ export default function CssSuggestToolRenderer({
                       {/* Color info */}
                       <div className="flex-1">
                         <div className="font-semibold text-base">{color.name}</div>
-                        <div className="text-sm text-gray-600 font-mono">{color.hex}</div>
+                        <div className="text-sm text-muted-foreground font-mono">{color.hex}</div>
                         {color.role && (
-                          <div className="text-xs text-gray-500 mt-1">{color.role}</div>
+                          <div className="text-xs text-muted-foreground/70 mt-1">{color.role}</div>
                         )}
                       </div>
                     </div>
@@ -196,31 +163,19 @@ export default function CssSuggestToolRenderer({
     </AnimatePresence>
   )
 
+  const displayName = (toolStatus === 'completed' && hasPalettes)
+    ? `Color Scheme Suggestions (${palettes.length} options)`
+    : 'Color Scheme Suggestions'
+
   return (
     <div className="-my-2">
-      {/* Tool header */}
-      <span className="text-gray-300 text-xs">
-        <span className="text-gray-400">🎨</span>
-        {' '}
-        {toolStatus === 'completed' && hasPalettes ? (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="text-gray-300 hover:text-gray-400 hover:underline cursor-pointer"
-          >
-            Color Scheme Suggestions ({palettes.length} options)
-          </button>
-        ) : (
-          <span>
-            Color Scheme Suggestions
-            {toolStatus === 'completed' && hasPalettes && ` (${palettes.length} options)`}
-          </span>
-        )}
-        {statusIndicator && (
-          <span className="inline-flex ml-1.5 text-gray-300">
-            {statusIndicator}
-          </span>
-        )}
-      </span>
+      <ToolHeader
+        icon="🎨"
+        displayName={displayName}
+        toolStatus={toolStatus}
+        hasDetails={hasPalettes}
+        onOpenModal={() => setIsModalOpen(true)}
+      />
 
       {/* Display palette grid when completed */}
       {toolStatus === 'completed' && hasPalettes && (

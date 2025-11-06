@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import XThickIcon from '@ux/icon/x-thick'
 import ColorPaletteWidget from '../widgets/ColorPaletteWidget'
+import ToolHeader from './ToolHeader'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import { getContrastColor } from '@/utils/color'
 
@@ -29,7 +30,7 @@ interface ColorInfo {
  * @returns Rendered cssColor tool component
  */
 export default function CssColorToolRenderer({
-  toolName,
+  toolName: _toolName,
   toolStatus,
   input,
   result
@@ -95,31 +96,6 @@ export default function CssColorToolRenderer({
     return null
   }
 
-  const getStatusIndicator = () => {
-    if (toolStatus === 'running') {
-      return (
-        <svg className="w-2.5 h-2.5 animate-spin" viewBox="0 0 24 24">
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-            fill="none"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
-      )
-    }
-    return null
-  }
-
-  const statusIndicator = getStatusIndicator()
 
   // Extract colors from result
   const colors: ColorInfo[] = []
@@ -202,7 +178,7 @@ export default function CssColorToolRenderer({
                     className={`pb-2 px-1 text-sm font-medium transition-colors ${
                       activeTab === 'colors'
                         ? 'border-b-2 border-blue-500 text-blue-600'
-                        : 'text-gray-500 hover:text-gray-700'
+                        : 'text-muted-foreground hover:text-foreground/70'
                     }`}
                   >
                     Colors
@@ -212,7 +188,7 @@ export default function CssColorToolRenderer({
                     className={`pb-2 px-1 text-sm font-medium transition-colors ${
                       activeTab === 'details'
                         ? 'border-b-2 border-blue-500 text-blue-600'
-                        : 'text-gray-500 hover:text-gray-700'
+                        : 'text-muted-foreground hover:text-foreground/70'
                     }`}
                   >
                     Details
@@ -245,9 +221,9 @@ export default function CssColorToolRenderer({
                         {/* Color info */}
                         <div className="flex-1">
                           <div className="font-semibold text-base">{color.name}</div>
-                          <div className="text-sm text-gray-600 font-mono">{color.hex}</div>
+                          <div className="text-sm text-muted-foreground font-mono">{color.hex}</div>
                           {color.role && (
-                            <div className="text-xs text-gray-500 mt-1">{color.role}</div>
+                            <div className="text-xs text-muted-foreground/70 mt-1">{color.role}</div>
                           )}
                         </div>
                       </div>
@@ -269,30 +245,19 @@ export default function CssColorToolRenderer({
     </AnimatePresence>
   )
 
+  const displayName = toolStatus === 'completed'
+    ? `Color Scheme: ${paletteName} ${mode}`
+    : 'Color Scheme'
+
   return (
     <div className="-my-2">
-      <span className="text-gray-300 text-xs">
-        <span className="text-gray-400">🎨</span>
-        {' '}
-        {toolStatus === 'completed' && hasColors ? (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="text-gray-300 hover:text-gray-400 hover:underline cursor-pointer"
-          >
-            Color Scheme: {paletteName} {mode}
-          </button>
-        ) : (
-          <span>
-            Color Scheme
-            {toolStatus === 'completed' && `: ${paletteName} ${mode}`}
-          </span>
-        )}
-        {statusIndicator && (
-          <span className="inline-flex ml-1.5 text-gray-300">
-            {statusIndicator}
-          </span>
-        )}
-      </span>
+      <ToolHeader
+        icon="🎨"
+        displayName={displayName}
+        toolStatus={toolStatus}
+        hasDetails={hasColors}
+        onOpenModal={() => setIsModalOpen(true)}
+      />
 
       {/* Display palette widget beneath when applied (not generate-only) */}
       {toolStatus === 'completed' && !isGenerateOnly && hasColors && (

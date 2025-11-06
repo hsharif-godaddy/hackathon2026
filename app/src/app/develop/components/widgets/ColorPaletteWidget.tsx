@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { postMessageToIframe } from '@/utils/postMessage'
-import { getContrastColor } from '@/utils/color'
 
 /**
  * Color data structure

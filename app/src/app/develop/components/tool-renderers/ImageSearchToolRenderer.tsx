@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import XThickIcon from '@ux/icon/x-thick'
 import MarkdownRenderer from '../MarkdownRenderer'
+import ToolHeader from './ToolHeader'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 
 interface ImageResult {
@@ -21,9 +22,9 @@ interface ImageResult {
  * Click to open modal with larger view.
  */
 export default function ImageSearchToolRenderer({
-  toolName,
+  toolName: _toolName,
   toolStatus,
-  input,
+  input: _input,
   result
 }: DefaultToolRendererProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -34,48 +35,9 @@ export default function ImageSearchToolRenderer({
     setMounted(true)
   }, [])
 
-  useEffect(() => {
-    if (isModalOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = 'unset'
-    }
-
-    return () => {
-      document.body.style.overflow = 'unset'
-    }
-  }, [isModalOpen])
-
-  const getStatusIndicator = () => {
-    if (toolStatus === 'running') {
-      return (
-        <svg className="w-2.5 h-2.5 animate-spin" viewBox="0 0 24 24">
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-            fill="none"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
-      )
-    }
-    return null
-  }
-
-  const statusIndicator = getStatusIndicator()
-
   // Parse result - can be JSON (new format) or Markdown (old format)
   let parsedResult: any = null
   const images: ImageResult[] = []
-  let searchTerm = ''
   let isMarkdownFormat = false
   let markdownContent = ''
 
@@ -95,7 +57,6 @@ export default function ImageSearchToolRenderer({
           while ((match = imgRegex.exec(result)) !== null) {
             images.push({ prompt: match[1] || 'Image', url: match[2] })
           }
-          searchTerm = 'Image Search Results'
         }
       } else if (typeof result === 'object') {
         parsedResult = result
@@ -106,12 +67,10 @@ export default function ImageSearchToolRenderer({
         if (parsedResult.url) {
           const prompt = typeof parsedResult.prompt === 'string' ? parsedResult.prompt : 'Image'
           images.push({ prompt, url: parsedResult.url })
-          searchTerm = prompt
         }
         // Handle multiple URLs for single prompt
         else if (parsedResult.urls && Array.isArray(parsedResult.urls)) {
           const prompt = typeof parsedResult.prompt === 'string' ? parsedResult.prompt : 'Image'
-          searchTerm = prompt
           parsedResult.urls.forEach((url: string) => {
             images.push({ prompt, url })
           })
@@ -127,7 +86,6 @@ export default function ImageSearchToolRenderer({
               })
             }
           })
-          searchTerm = Array.isArray(parsedResult.prompt) ? parsedResult.prompt.join(', ') : 'Images'
         }
       }
     } catch (e) {
@@ -207,9 +165,10 @@ export default function ImageSearchToolRenderer({
                           key={index}
                           onClick={() => setSelectedImageIndex(index)}
                           className={`flex-shrink-0 w-20 h-20 rounded border-2 overflow-hidden ${
-                            selectedImageIndex === index ? 'border-blue-500' : 'border-gray-300'
+                            selectedImageIndex === index ? 'border-primary' : 'border-border'
                           }`}
                         >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={img.url}
                             alt={img.prompt}
@@ -222,9 +181,10 @@ export default function ImageSearchToolRenderer({
 
                   {/* Main image display */}
                   <div className="flex-1 overflow-y-auto flex flex-col items-center">
-                    <div className="text-sm font-semibold mb-2 text-gray-700">
+                    <div className="text-sm font-semibold mb-2 text-foreground/70">
                       {images[selectedImageIndex]?.prompt}
                     </div>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={images[selectedImageIndex]?.url}
                       alt={images[selectedImageIndex]?.prompt}
@@ -240,39 +200,24 @@ export default function ImageSearchToolRenderer({
     </AnimatePresence>
   )
 
+  const displayName = (toolStatus === 'completed' && hasImages && !isMarkdownFormat)
+    ? `Found ${imageCount} ${imageCount === 1 ? 'image' : 'images'}`
+    : 'Image Search'
+
   return (
     <div className="-my-2">
-      {/* Tool header */}
-      <span className="text-gray-300 text-xs">
-        <span className="text-gray-400">🖼️</span>
-        {' '}
-        {toolStatus === 'completed' && hasDetails ? (
-          <button
-            onClick={handleHeaderClick}
-            className="text-gray-300 hover:text-gray-400 hover:underline cursor-pointer"
-          >
-            {isMarkdownFormat && !hasImages ? (
-              'Image Search'
-            ) : (
-              <>Found {imageCount} {imageCount === 1 ? 'image' : 'images'}</>
-            )}
-          </button>
-        ) : (
-          <span>
-            Image Search
-          </span>
-        )}
-        {statusIndicator && (
-          <span className="inline-flex ml-1.5 text-gray-300">
-            {statusIndicator}
-          </span>
-        )}
-      </span>
+      <ToolHeader
+        icon="🖼️"
+        displayName={displayName}
+        toolStatus={toolStatus}
+        hasDetails={hasDetails}
+        onOpenModal={handleHeaderClick}
+      />
 
       {/* Image gallery - always showing when completed */}
       {toolStatus === 'completed' && hasImages && (
         <div className="mt-3 mb-3">
-          <div className="flex gap-3 overflow-x-auto pb-2 border rounded-lg p-3 bg-gray-50">
+          <div className="flex gap-3 overflow-x-auto pb-2 border border-border rounded-lg p-3 bg-muted">
             {images.map((img, index) => (
               <button
                 key={index}
@@ -280,6 +225,7 @@ export default function ImageSearchToolRenderer({
                 className="flex-shrink-0 group cursor-pointer"
                 title={img.prompt}
               >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={img.url}
                   alt={img.prompt}

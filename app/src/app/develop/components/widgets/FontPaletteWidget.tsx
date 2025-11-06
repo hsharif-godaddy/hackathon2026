@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 
 /**
  * Font data structure
@@ -31,8 +31,8 @@ export interface FontPaletteWidgetProps {
  * - Displays different font sizes and weights
  */
 export default function FontPaletteWidget({ name, fonts, className = '' }: FontPaletteWidgetProps) {
-  // Safely extract font data with fallbacks
-  const safeFonts = fonts || []
+  // Safely extract font data with fallbacks - memoized to prevent useEffect dependency changes
+  const safeFonts = useMemo(() => fonts || [], [fonts])
   const hasFonts = safeFonts.length > 0
 
   useEffect(function loadGoogleFonts() {
@@ -81,7 +81,6 @@ export default function FontPaletteWidget({ name, fonts, className = '' }: FontP
         {safeFonts.map((font, index) => {
           const fontFamily = font?.name || 'Arial'
           const fontWeight = font?.weight || '400'
-          const fontCategory = font?.category || 'sans-serif'
           const fontFallback = font?.fallback || 'sans-serif'
           const fontDescription = font?.description || 'The quick brown fox jumps over the lazy dog'
 
