@@ -247,9 +247,10 @@ export async function getS2SToken(config?: S2SAuthConfig): Promise<string> {
       
       // Cache the token with its expiration time
       const payload = decodeJWTPayload(token);
+
       cachedToken = {
         jwt: token,
-        expiresAt: payload.exp * 1000, // Convert to milliseconds
+        expiresAt: (payload.iat + 30 * 60) * 1000, // iat + 30 minutes, convert to milliseconds
         config: finalConfig
       };
       
