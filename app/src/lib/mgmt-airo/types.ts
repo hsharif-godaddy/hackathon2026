@@ -126,6 +126,25 @@ export interface AiroDeployAppResponse {
 }
 
 /**
+ * Deployment status enum for publish operations
+ */
+export type AiroDeploymentStatus = 'pending' | 'deploying' | 'deployed' | 'failed';
+
+/**
+ * Publish app response - notifies mgmt-airo of new git archive
+ */
+export interface AiroPublishAppResponse {
+  statusJobId: string;
+  deploymentId: string;
+  status: AiroDeploymentStatus;
+  message: string;
+  subscriptionId: string;
+  systemId: string;
+  appId: string;
+  gitHash: string;
+}
+
+/**
  * Delete app response
  */
 export interface AiroDeleteAppResponse {

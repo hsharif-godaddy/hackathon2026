@@ -1,6 +1,6 @@
 /**
  * mgmt-airo API client
- * 
+ *
  * Provides a clean, type-safe interface to the mgmt-airo and mgmt-hosting APIs.
  */
 
@@ -20,6 +20,8 @@ export type {
   AiroCreateAppResponse,
   AiroUpdateAppPayload,
   AiroDeployAppResponse,
+  AiroPublishAppResponse,
+  AiroDeploymentStatus,
   AiroDeleteAppResponse,
   AiroApiError
 } from './types';

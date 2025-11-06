@@ -8,6 +8,7 @@ import { agentFetch } from '@/lib/agent-fetch'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { buildApiUrl } from '@/config/api'
+import { type AiroDeploymentStatus } from '@/lib/mgmt-airo'
 
 export interface App {
   id: string
@@ -142,7 +143,7 @@ export class AppService {
   async getConfig(siteId?: string): Promise<{ config: AppConfig }> {
     let url: string
     let response: Response
-    
+
     if (siteId) {
       // Config is global, but we need to use the correct agent base URL
       const { dynamicApiConfigService } = await import('@/config/dynamic-api')
@@ -150,12 +151,12 @@ export class AppService {
       // Remove the app-specific path and use the base agent URL
       const baseAgentUrl = config.agentUrl.replace(`/apps/${siteId}`, '')
       url = `${baseAgentUrl}/apps/config`
-      
+
       // Use agentFetch for agent API calls
       response = await agentFetch(url, { siteId })
     } else {
       url = buildApiUrl('apps/config')
-      
+
       // Use appFetch for app backend API calls
       response = await appFetch(url)
     }
@@ -263,6 +264,52 @@ export class AppService {
 
     if (!response.ok) {
       throw new Error(`Failed to restore files from commit: ${response.status}`)
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Publish app by creating an archive and triggering deployment
+   *
+   * This method calls the app service's publish endpoint which:
+   * 1. Creates a git archive via the agents service
+   * 2. Notifies mgmt-airo to trigger deployment (if V2 site)
+   *
+   * @param {string} appId - The ID of the app to publish
+   * @param {string} commitHash - The git commit hash to publish (can be short or full hash)
+   * @returns {Promise<Object>} Response containing success status, commitHash, archive path, and optional deployment info
+   * @throws {Error} If the publish operation fails
+   *
+   * @example
+   * ```typescript
+   * const result = await appService.publishApp('app-123', 'a1b2c3d4');
+   * console.log('Archive created:', result.archive.path);
+   * if (result.deployment) {
+   *   console.log('Deployment ID:', result.deployment.deploymentId);
+   * }
+   * ```
+   */
+  async publishApp(appId: string, commitHash: string): Promise<{
+    success: boolean;
+    commitHash: string;
+    archive: { path: string };
+    deployment?: {
+      deploymentId: string;
+      statusJobId: string;
+      status: AiroDeploymentStatus;
+      message: string;
+    }
+  }> {
+    const response = await appFetch(`/api/apps/${appId}/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ commitHash })
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(errorData.error || `Failed to publish app: ${response.status}`)
     }
 
     return response.json()
@@ -511,15 +558,15 @@ export class AppService {
 
   /**
    * Update app name with AI suggestion and register the app
-   * 
+   *
    * This function performs three main operations:
    * 1. Gets an AI-suggested name based on the initial prompt
    * 2. Updates the name in the database and UI stores
    * 3. Registers the app with the agent
-   * 
+   *
    * @param appId - The ID of the app to update and register
    * @returns Promise that resolves when all operations are complete
-   * 
+   *
    * @throws {Error} If any of the API calls fail
    */
   async updateNameAndRegister(appId: string): Promise<void> {

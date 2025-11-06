@@ -15,6 +15,7 @@ import {
   type AiroCreateAppResponse,
   type AiroUpdateAppPayload,
   type AiroDeployAppResponse,
+  type AiroPublishAppResponse,
   type AiroDeleteAppResponse,
   type AiroBulkAppsResponse,
   type CustomerTree,
@@ -29,13 +30,13 @@ const MGMT_AIRO_AUTH_SCHEME = 'sso-jwt';
 
 /**
  * Low-level HTTP client for mgmt-airo API
- * 
+ *
  * Handles:
  * - HTTP requests with proper authentication
  * - Retry logic with exponential backoff
  * - Error logging and transformation
  * - Type-safe API methods
- * 
+ *
  * Does NOT handle:
  * - Business logic
  * - Data mapping/transformation
@@ -49,7 +50,7 @@ export class AiroMgmtClient {
 
   /**
    * Create a new mgmt-airo API client
-   * 
+   *
    * @param config - Client configuration
    */
   constructor(config: AiroMgmtClientConfig) {
@@ -70,11 +71,11 @@ export class AiroMgmtClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const { retryOn404 = false, logEvent = 'api.request' } = options;
-    
+
     // Start timing for this specific API call
     const apiCallStart = Date.now();
     const apiCallId = `${method} ${path}`;
-    
+
     logger.info('mgmt-airo.api.start', {
       message: `🚀 Starting API call: ${apiCallId}`,
       url,
@@ -84,7 +85,7 @@ export class AiroMgmtClient {
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       const attemptStart = Date.now();
-      
+
       try {
         const response = await fetch(url, {
           method,
@@ -134,10 +135,10 @@ export class AiroMgmtClient {
 
         // Success - parse and return
         const result = await response.json() as T;
-        
+
         const attemptDuration = Date.now() - attemptStart;
         const totalDuration = Date.now() - apiCallStart;
-        
+
         // Log successful API call with timing
         logger.info('mgmt-airo.api.success', {
           message: `✅ ${apiCallId} completed successfully`,
@@ -148,12 +149,12 @@ export class AiroMgmtClient {
           totalDuration,
           ...(method === 'PATCH' ? { responseBody: result } : {})
         });
-        
+
         return result;
       } catch (error) {
         const attemptDuration = Date.now() - attemptStart;
         const totalDuration = Date.now() - apiCallStart;
-        
+
         logger.error('mgmt-airo.api.attempt-error', {
           message: `❌ ${apiCallId} attempt ${attempt} failed`,
           url,
@@ -162,7 +163,7 @@ export class AiroMgmtClient {
           totalDuration,
           error: error instanceof Error ? error.message : String(error)
         });
-        
+
         if (attempt === this.maxRetries) {
           logger.error(`${logEvent}.final-error`, {
             url,
@@ -200,7 +201,7 @@ export class AiroMgmtClient {
 
   /**
    * Extract customer ID from JWT using shared jwt-utils
-   * 
+   *
    * Note: This uses the jwt-utils module for proper JWT parsing without signature verification.
    * Signature verification is handled by mgmt-airo when the JWT is passed in the Authorization header.
    */
@@ -210,7 +211,7 @@ export class AiroMgmtClient {
 
   /**
    * Check if customer exists in mgmt-airo
-   * 
+   *
    * @throws {AiroHttpError} Re-throws 401 errors for authentication redirect
    * @returns Customer info with exists status
    */
@@ -270,7 +271,7 @@ export class AiroMgmtClient {
     );
 
     const systems = Array.isArray(response) ? response : response.systems || [];
-    
+
     // Map systemId to id for consistency
     return systems.map(s => ({
       ...s,
@@ -318,7 +319,7 @@ export class AiroMgmtClient {
       'GET',
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}`,
       undefined,
-      { 
+      {
         logEvent: 'mgmt-airo.get-app',
         retryOn404: true // App might not be synced yet
       }
@@ -399,6 +400,31 @@ export class AiroMgmtClient {
   }
 
   /**
+   * Publish app - notify mgmt-airo of new git archive
+   *
+   * PUT /api/airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/publish
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @param gitHash - Full git SHA-1 hash (40 characters)
+   * @returns Deployment job information with status tracking IDs
+   */
+  async publishApp(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    gitHash: string
+  ): Promise<AiroPublishAppResponse> {
+    return this.request<AiroPublishAppResponse>(
+      'PUT',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/publish`,
+      { gitHash },
+      { logEvent: 'mgmt-airo.publish-app' }
+    );
+  }
+
+  /**
    * Delete app
    */
   async deleteApp(
@@ -416,7 +442,7 @@ export class AiroMgmtClient {
 
   /**
    * Get all apps for customer across all subscriptions and systems (bulk endpoint)
-   * 
+   *
    * This is a performance optimization that replaces the N+1 query pattern:
    * - Old: GET /subscriptions → N * GET /systems → N*M * GET /apps
    * - New: GET /customers/me/apps (single request)
@@ -434,16 +460,16 @@ export class AiroMgmtClient {
 
   /**
    * Get complete customer tree (subscriptions → systems → apps)
-   * 
+   *
    * This is the ultimate performance optimization that replaces many sequential API calls:
    * - Old: GET /customers/me + GET /subscriptions + N * GET /systems + N*M * GET /apps
    * - New: GET /customers/me/tree (single request)
-   * 
+   *
    * Expected performance improvement:
    * - API calls: many → 1 (99.2% reduction)
    * - Load time: many seconds → ~800ms (97% faster)
    * - Backend hops: many → 1 (98% reduction)
-   * 
+   *
    * @returns Promise resolving to complete customer tree with all subscriptions, systems, and apps
    */
   async getCustomerTree(): Promise<CustomerTree> {
