@@ -21,7 +21,7 @@
       "@/*": ["./src/*"],
       "@/components/*": ["./src/components/*"],
       "@/lib/*": ["./src/lib/*"],
-      "@/api/*": ["./src/api/*"],
+      "@/api/*": ["./src/server/api/*"],
       "@/layouts/*": ["./src/layouts/*"],
       "@/patterns/*": ["./src/patterns/*"],
       "@/pages/*": ["./src/pages/*"],

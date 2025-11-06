@@ -61,3 +61,7 @@ pids
 
 # Public Assets
 public/assets
+
+# Generated API
+.api/
+

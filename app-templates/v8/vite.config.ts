@@ -30,8 +30,8 @@ export default defineConfig(({ mode }) => ({
 		}),
 		apiRoutes({
 			mode: 'isolated',
-			routeBase: '/api',
-			dirs: [{ dir: './src/api', route: '' }],
+      configure: 'src/server/configure.js',
+			dirs: [{ dir: './src/server/api', route: '' }],
 		}),
 		...(mode === "development" ? [
 			devToolsPlugin() as Plugin,
@@ -46,7 +46,7 @@ export default defineConfig(({ mode }) => ({
 			"@/": path.resolve(__dirname, "./src/"),
 			"@/components": path.resolve(__dirname, "./src/components"),
 			"@/lib": path.resolve(__dirname, "./src/lib"),
-			"@/api": path.resolve(__dirname, "./src/api"),
+			"@/api": path.resolve(__dirname, "./src/server/api"),
 			"@/layouts": path.resolve(__dirname, "./src/layouts"),
 			"@/patterns": path.resolve(__dirname, "./src/patterns"),
 			"@/pages": path.resolve(__dirname, "./src/pages"),

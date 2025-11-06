@@ -8,7 +8,7 @@ The template uses:
 
 - **vite-plugin-api-routes** in ISOLATED mode for automatic route detection
 - **Express Request/Response** handlers (not Next.js App Router)
-- **File structure**: Routes live in `src/api/` directory
+- **File structure**: Routes live in `src/server/api/` directory
 - **HTTP methods**: Use uppercase file names (`GET.ts`, `POST.ts`, etc.)
 
 ### Configuration
@@ -19,16 +19,16 @@ The Vite config is set up with:
 apiRoutes({
   mode: 'isolated',
   routeBase: '/api',
-  dirs: [{ dir: './src/api', route: '' }],
+  dirs: [{ dir: './src/server/api', route: '' }],
 });
 ```
 
 ### File-Based Routing Structure
 
-API routes are automatically mapped from files in `src/api/`:
+API routes are automatically mapped from files in `src/server/api/`:
 
 ```
-src/api/
+src/server/api/
 ├── health/
 │   └── GET.ts                → GET /api/health
 ├── users/
@@ -43,13 +43,13 @@ src/api/
 
 To create a new API endpoint:
 
-1. **Create a directory** under `src/api/` with your endpoint name
+1. **Create a directory** under `src/server/api/` with your endpoint name
 2. **Add HTTP method files** (uppercase: `GET.ts`, `POST.ts`, etc.)
 3. **Export a default handler function** using Express-style signature
 
 #### Example: Health Check Endpoint
 
-File: `src/api/health/GET.ts`
+File: `src/server/api/health/GET.ts`
 
 ```typescript
 import type { Request, Response } from 'express';
@@ -67,7 +67,7 @@ This creates a `GET /api/health` endpoint.
 
 #### Example: Data Retrieval with Query Parameters
 
-File: `src/api/users/GET.ts`
+File: `src/server/api/users/GET.ts`
 
 ```typescript
 import type { Request, Response } from 'express';
@@ -86,7 +86,7 @@ export default async function handler(req: Request, res: Response) {
 
 #### Example: Creating Resources
 
-File: `src/api/users/POST.ts`
+File: `src/server/api/users/POST.ts`
 
 ```typescript
 import type { Request, Response } from 'express';
@@ -114,7 +114,7 @@ export default async function handler(req: Request, res: Response) {
 
 Use `[paramName]` directories for dynamic segments:
 
-File: `src/api/users/[userId]/GET.ts`
+File: `src/server/api/users/[userId]/GET.ts`
 
 ```typescript
 import type { Request, Response } from 'express';
