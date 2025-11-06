@@ -10,7 +10,6 @@ import { logImpressionEvent } from '@/utils/instrumentation'
 
 interface GitCommit {
   hash: string
-  shortHash: string
   message: string
   author: string
   date: string
@@ -467,17 +466,17 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
         logger.info('develop-store.commit-selection.view', {
           message: 'Viewing commit',
-          commitHash: commit.shortHash,
+          commitHash: commit.hash.substring(0, 7),
           commitMessage: commit.message,
           date: commit.date
         })
         logger.warn('develop-store.commit-selection.note', { message: 'Changes requested after this will be made on latest commit, not the viewed commit' })
 
         // Checkout specific commit
-        logger.info('develop-store.commit-selection.checkout', { message: 'Checking out commit', commitHash: commit.shortHash });
+        logger.info('develop-store.commit-selection.checkout', { message: 'Checking out commit', commitHash: commit.hash.substring(0, 7) });
         await appService.checkoutCommit(appId, commit.hash)
         set((state) => { state.selectedCommit = commit })
-        logger.info('develop-store.commit-selection.checkout-success', { message: 'Checked out commit', commitHash: commit.shortHash })
+        logger.info('develop-store.commit-selection.checkout-success', { message: 'Checked out commit', commitHash: commit.hash.substring(0, 7) })
 
       } catch (error) {
         logger.error('develop-store.commit-selection.error', { message: 'Error selecting commit', error: error instanceof Error ? error.message : String(error) })

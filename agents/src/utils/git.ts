@@ -53,8 +53,6 @@ export interface GitStatus {
 export interface GitCommitInfo {
   /** Commit hash */
   hash: string;
-  /** Short commit hash */
-  shortHash: string;
   /** Commit message */
   message: string;
   /** Author name */
@@ -212,7 +210,6 @@ export class GitUtils {
           const [, shortHash, message] = match;
           return {
             hash: shortHash || '', // We only have short hash from --oneline
-            shortHash: shortHash || '',
             message: message || '',
             author: 'Unknown', // Not available in --oneline format
             email: '',
@@ -222,7 +219,6 @@ export class GitUtils {
         // Fallback for unexpected format
         return {
           hash: '',
-          shortHash: '',
           message: line.trim(),
           author: 'Unknown',
           email: '',

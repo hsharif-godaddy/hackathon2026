@@ -12,7 +12,6 @@ import { formatDate } from '@/utils/common'
 
 interface Commit {
   hash: string
-  shortHash: string
   message: string
   author: string
   date: string
@@ -146,7 +145,7 @@ export default function VersionHistory() {
               message: commit.message,
               description: (
                 <div className="flex items-center gap-2">
-                  <Tag type="info">{commit.shortHash}</Tag>
+                  <Tag type="info">{commit.hash.substring(0, 7)}</Tag>
                   <span className="text-xs">
                     {formatDate(commit.date, true)}
                   </span>

@@ -22,7 +22,6 @@ export interface App {
 
 export interface GitCommit {
   hash: string
-  shortHash: string
   message: string
   author: string
   date: string

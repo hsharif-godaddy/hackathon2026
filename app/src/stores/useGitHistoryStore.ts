@@ -9,7 +9,6 @@ const RETRY_DELAYS = [0, 2000, 4000, 8000] // Progressive delays in milliseconds
 
 interface GitCommit {
   hash: string
-  shortHash: string
   message: string
   author: string
   date: string

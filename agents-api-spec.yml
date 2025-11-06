@@ -300,10 +300,6 @@ components:
           type: string
           description: Full commit SHA hash
           example: "a1b2c3d4e5f6789012345678901234567890abcd"
-        shortHash:
-          type: string
-          description: Abbreviated commit hash
-          example: "a1b2c3d"
         message:
           type: string
           description: Commit message
@@ -892,13 +888,11 @@ paths:
                 success: true
                 commits:
                   - hash: "a1b2c3d4e5f6789012345678901234567890abcd"
-                    shortHash: "a1b2c3d"
                     message: "Add user authentication system"
                     author: "AI Agent <agent@airo.build>"
                     date: "2024-12-28T11:30:00Z"
                     isCurrent: true
                   - hash: "b2c3d4e5f6789012345678901234567890abcdef"
-                    shortHash: "b2c3d4e"
                     message: "Initial project setup"
                     author: "AI Agent <agent@airo.build>"
                     date: "2024-12-28T10:30:00Z"

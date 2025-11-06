@@ -79,7 +79,7 @@ export default function OptionsSheet({
               title="Restore files from this commit"
               className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-200 hover:border-purple-300 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {restoring ? 'Restoring...' : `Restore to ${selectedCommit.shortHash}`}
+              {restoring ? 'Restoring...' : `Restore to ${selectedCommit.hash.substring(0, 7)}`}
             </Button>
           </div>
         )}

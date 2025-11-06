@@ -4,7 +4,6 @@ import { logger } from '@/lib/request-context'
 
 interface GitCommit {
   hash: string
-  shortHash: string
   message: string
   author: string
   date: string

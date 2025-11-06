@@ -77,7 +77,6 @@ export interface GitToolResult {
   /** Commit history */
   commits?: Array<{
     hash: string;
-    shortHash: string;
     author: string;
     date: string;
     message: string;
@@ -509,7 +508,7 @@ export class GitTool {
       const output = commits
         .map(
           (commit) =>
-            `${commit.shortHash} - ${commit.message} (${commit.author}, ${commit.date.toDateString()})`
+            `${commit.hash.substring(0, 7)} - ${commit.message} (${commit.author}, ${commit.date.toDateString()})`
         )
         .join('\n');
 
@@ -518,7 +517,6 @@ export class GitTool {
         operation: 'log',
         commits: commits.map((commit) => ({
           hash: commit.hash,
-          shortHash: commit.shortHash,
           author: commit.author,
           date: commit.date.toISOString(),
           message: commit.message,

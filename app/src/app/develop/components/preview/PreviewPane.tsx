@@ -320,7 +320,7 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
                 disabled={restoring}
                 title="Restore files from this commit"
               >
-                {restoring ? 'Restoring...' : `Restore to ${selectedCommit?.shortHash || 'this commit'}`}
+                {restoring ? 'Restoring...' : `Restore to ${selectedCommit ? selectedCommit.hash.substring(0, 7) : 'this commit'}`}
               </Button>
             </div>
           </div>

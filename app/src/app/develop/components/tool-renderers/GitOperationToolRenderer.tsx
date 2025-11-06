@@ -129,7 +129,7 @@ export default function GitOperationToolRenderer({
                 <div key={commit.hash || index} className="bg-gray-50 rounded p-3 border border-gray-200">
                   <div className="flex items-start gap-2 mb-1">
                     <span className="font-mono text-xs bg-gray-200 px-2 py-0.5 rounded">
-                      {commit.shortHash || commit.hash?.substring(0, 7)}
+                      {commit.hash?.substring(0, 7) || 'unknown'}
                     </span>
                     <span className="text-xs text-gray-600">{commit.date}</span>
                   </div>

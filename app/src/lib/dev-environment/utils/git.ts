@@ -52,8 +52,6 @@ export interface GitStatus {
 export interface GitCommitInfo {
   /** Commit hash */
   hash: string;
-  /** Short commit hash */
-  shortHash: string;
   /** Commit message */
   message: string;
   /** Author name */
@@ -205,10 +203,9 @@ export class GitUtils {
       .split('\n')
       .filter(line => line.trim())
       .map(line => {
-        const [hash, shortHash, message, author, email, dateStr] = line.split('|');
+        const [hash, , message, author, email, dateStr] = line.split('|');
         return {
           hash: hash || '',
-          shortHash: shortHash || '',
           message: message || '',
           author: author || '',
           email: email || '',
