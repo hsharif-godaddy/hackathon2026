@@ -10,7 +10,6 @@ import { HeroSectionProps, HeroSectionRef } from './types'
 import { generateClickEID } from '@/utils/instrumentation'
 import { MAX_PROMPT_LENGTH } from '@/lib/features'
 import ExamplesSection from '@/app/components/HeroExamples'
-import GradientText from '@/lib/shadcn/GradientText'
 
 const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   promptText,
@@ -138,17 +137,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         size={5}
         className="gd-sage !font-bold"
       >
-        What would you like to{' '}
-        <text.span as='heading' size={5} className='block'>
-          <GradientText
-            colors={["#FF75BC", "#C290FF", "#8EF9FF"]}
-            animationSpeed={3}
-            showBorder={false}
-            className='gd-sage !font-bold'
-          >
-            Build Today?
-          </GradientText>
-        </text.span>
+        What would you like to
+        <br />
+        build today?
       </text.h1>
 
       <text.p
