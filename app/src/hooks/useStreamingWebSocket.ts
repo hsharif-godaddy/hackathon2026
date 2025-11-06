@@ -428,7 +428,7 @@ export function useStreamingWebSocket() {
   const sendMessage = useCallback(async (
     content: string,
     aiEditContext?: any,
-    selectedImage?: any
+    selectedAsset?: any
   ) => {
     if (!content.trim() || !currentAppId) return
 
@@ -473,15 +473,22 @@ export function useStreamingWebSocket() {
       // Capture visual context from iframe
       const visualContext = await captureVisualContext()
 
-      // Transform selected image to include https protocol
-      const transformedImage = selectedImage ? {
-        ...selectedImage,
-        imageUrl: selectedImage.imageUrl.startsWith('//') 
-          ? `https:${selectedImage.imageUrl}` 
-          : selectedImage.imageUrl,
-        thumbnailUrl: selectedImage.thumbnailUrl.startsWith('//') 
-          ? `https:${selectedImage.thumbnailUrl}` 
-          : selectedImage.thumbnailUrl
+      // Transform selected asset to include https protocol
+      const transformedAsset = selectedAsset ? {
+        ...selectedAsset,
+        imageUrl: selectedAsset.imageUrl.startsWith('//') 
+          ? `https:${selectedAsset.imageUrl}` 
+          : selectedAsset.imageUrl,
+        ...(selectedAsset.thumbnailUrl && {
+          thumbnailUrl: selectedAsset.thumbnailUrl.startsWith('//') 
+            ? `https:${selectedAsset.thumbnailUrl}` 
+            : selectedAsset.thumbnailUrl
+        }),
+        ...(selectedAsset.videoUrl && {
+          videoUrl: selectedAsset.videoUrl.startsWith('//') 
+            ? `https:${selectedAsset.videoUrl}` 
+            : selectedAsset.videoUrl
+        })
       } : null
 
       // Build rich context object with proper typing
@@ -514,8 +521,8 @@ export function useStreamingWebSocket() {
         // Visual context from iframe
         ...(visualContext && { visualContext }),
 
-        // Selected images from Image Manager
-        ...(transformedImage && { selectedImages: [transformedImage] }),
+        // Selected assets from Asset Manager
+        ...(transformedAsset && { selectedAssets: [transformedAsset] }),
       }
 
       // Send the message to start streaming with rich context

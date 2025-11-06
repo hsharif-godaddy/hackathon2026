@@ -204,7 +204,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               hasAppContext: !!agentsAppContext.appContext,
               hasVisualContext: !!agentsAppContext.visualContext,
               hasAiEditContext: !!agentsAppContext.aiEditContext,
-              hasSelectedImages: !!agentsAppContext.selectedImages
+              hasSelectedAssets: !!agentsAppContext.selectedAssets
             })
           }
 
@@ -491,7 +491,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           hasAppContext: !!rawContext.appContext,
           hasVisualContext: !!rawContext.visualContext,
           hasAiEditContext: !!rawContext.aiEditContext,
-          hasSelectedImages: !!(rawContext as any).selectedImages,
+          hasSelectedAssets: !!(rawContext as any).selectedAssets,
           hasConversation: !!rawContext.conversation,
           messageLength: message?.length || 0
         });

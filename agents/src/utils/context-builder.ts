@@ -69,9 +69,9 @@ export async function buildDebugContext(options: ContextBuildOptions) {
     }
   }
 
-  // Inject fake selected images if requested (for debugging)
+  // Inject fake selected assets if requested (for debugging)
   if (injectFakeSelectedImages) {
-    agentsAppContext.selectedImages = [{
+    agentsAppContext.selectedAssets = [{
       filename: 'sample-image.jpg',
       imageUrl: 'https://example.com/images/sample-image.jpg',
       thumbnailUrl: 'https://example.com/images/sample-image-thumb.jpg',
@@ -100,7 +100,7 @@ export async function buildDebugContext(options: ContextBuildOptions) {
     hasAppContext: !!agentsAppContext.appContext,
     hasVisualContext: !!agentsAppContext.visualContext,
     hasAiEditContext: !!agentsAppContext.aiEditContext,
-    hasSelectedImages: !!agentsAppContext.selectedImages,
+    hasSelectedAssets: !!agentsAppContext.selectedAssets,
     hasConversation: !!agentsAppContext.conversation
   })
 

@@ -4,17 +4,24 @@ import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 
 /**
- * Represents an image item from the Image Manager
+ * Base properties common to all asset types
  */
-export interface ImageManagerItem {
+interface BaseAsset {
+  /** The type of media */
+  mediaType: 'IMAGE' | 'VIDEO' | 'PDF'
+  /** The source type (e.g., 'gc', 'vimeo') */
+  sourceType: string
+  /** The URL to the thumbnail or preview image (protocol-relative) */
+  imageUrl: string
+}
+
+/**
+ * Represents an image asset from the Asset Manager
+ */
+export interface ImageAsset extends BaseAsset {
+  mediaType: 'IMAGE'
   /** The filename of the image */
   filename: string
-  /** The URL to the full-size image (protocol-relative) */
-  imageUrl: string
-  /** The type of media (e.g., 'IMAGE') */
-  mediaType: string
-  /** The source type (e.g., 'gc') */
-  sourceType: string
   /** The MIME content type */
   contentType: string
   /** File size in bytes */
@@ -26,22 +33,61 @@ export interface ImageManagerItem {
   }
   /** The URL to the thumbnail image (protocol-relative) */
   thumbnailUrl: string
+  /** Alt text for accessibility */
+  altText?: string
 }
 
 /**
- * Props for ImageManagerModal component
+ * Represents a video asset from the Asset Manager
  */
-interface ImageManagerModalProps {
+export interface VideoAsset extends BaseAsset {
+  mediaType: 'VIDEO'
+  /** The video URL */
+  videoUrl: string
+  /** Video ID */
+  id: string
+  /** URL hash */
+  urlHash: string
+  /** Video width */
+  width: number
+  /** Video height */
+  height: number
+}
+
+/**
+ * Represents a PDF asset from the Asset Manager
+ */
+export interface PDFAsset extends BaseAsset {
+  mediaType: 'PDF'
+  /** The filename of the PDF */
+  filename: string
+  /** The MIME content type */
+  contentType: string
+  /** File size in bytes */
+  size: number
+  /** The URL to the thumbnail image (protocol-relative) */
+  thumbnailUrl: string
+}
+
+/**
+ * Union type representing any asset from the Asset Manager
+ */
+export type AssetManagerItem = ImageAsset | VideoAsset | PDFAsset
+
+/**
+ * Props for AssetManagerModal component
+ */
+interface AssetManagerModalProps {
   /** Whether the modal is open */
   isOpen: boolean
   /** Callback when modal is closed */
   onClose: () => void
   /** Callback when items are selected */
-  onItemsSelected: (items: ImageManagerItem[]) => void
+  onItemsSelected: (items: AssetManagerItem[]) => void
 }
 
 /**
- * Get the hostname for the Image Manager
+ * Get the hostname for the Asset Manager
  *
  * @returns The root domain (last two parts of hostname)
  */
@@ -66,23 +112,24 @@ const ImageManagerLoader = dynamic(
 ) as any
 
 /**
- * Modal component for managing images using the GoDaddy Image Manager
+ * Modal component for managing assets (images, videos, PDFs) using the GoDaddy Asset Manager
  *
- * Provides a full-screen modal interface for selecting and uploading images.
- * Uses the @wsb/image-manager-loader package to provide the image management UI.
+ * Provides a full-screen modal interface for selecting and uploading various media assets.
+ * Uses the @wsb/image-manager-loader package to provide the asset management UI.
+ * Supports IMAGE, VIDEO, and PDF media types.
  *
  * @example
  * ```tsx
  * const [isOpen, setIsOpen] = useState(false)
  *
- * <ImageManagerModal
+ * <AssetManagerModal
  *   isOpen={isOpen}
  *   onClose={() => setIsOpen(false)}
  *   onItemsSelected={(items) => console.log('Selected:', items)}
  * />
  * ```
  */
-export default function ImageManagerModal({ isOpen, onClose, onItemsSelected }: ImageManagerModalProps) {
+export default function AssetManagerModal({ isOpen, onClose, onItemsSelected }: AssetManagerModalProps) {
   const [isReady, setIsReady] = useState(false)
   const [ventureId, setVentureId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);

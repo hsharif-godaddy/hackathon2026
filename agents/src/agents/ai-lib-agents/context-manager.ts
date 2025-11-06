@@ -10,6 +10,7 @@ import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig } fr
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
 import { logger, log } from '../../logging/index.js'
 import { getAgentConfig } from '../../services/features.js'
+import { ContextFormatter } from '../../services/helpers/ContextFormatter.js'
 
 import type { AgentExecutionContext } from '../../base/agent.interface.js'
 import type { AgentsAppContext } from '../../types/websocket-context.js'
@@ -58,7 +59,7 @@ export class AILibContextManager {
             hasAppContext: !!context.appContext,
             hasVisualContext: !!context.visualContext,
             hasAiEditContext: !!context.aiEditContext,
-            hasSelectedImages: !!context.selectedImages && context.selectedImages.length > 0
+            hasSelectedAssets: !!context.selectedAssets && context.selectedAssets.length > 0
         }
         
         logger.info('context.build.start', {
@@ -73,7 +74,7 @@ export class AILibContextManager {
                 ...contextSummary,
                 conversationMaxMessages: context.conversation?.maxMessages,
                 appContextDepth: context.appContext?.maxDirectoryDepth,
-                selectedImagesCount: context.selectedImages?.length || 0
+                selectedAssetsCount: context.selectedAssets?.length || 0
             })
         }
 
@@ -144,12 +145,12 @@ export class AILibContextManager {
             })
         }
 
-        // Add selected images context as user message (LAST - most immediate/recent)
-        const selectedImagesMessages = contextMessages.filter(msg => msg.type === 'selected_images_context')
-        if (selectedImagesMessages.length > 0) {
+        // Add selected assets context as user message (LAST - most immediate/recent)
+        const selectedAssetsMessages = contextMessages.filter(msg => msg.type === 'selected_assets_context')
+        if (selectedAssetsMessages.length > 0) {
             conversationContextMessages.push({
                 role: 'user',
-                content: selectedImagesMessages.map(msg => msg.content).join('\n\n'),
+                content: selectedAssetsMessages.map(msg => msg.content).join('\n\n'),
                 insertionOrder: 'after_history'
             })
         }
@@ -169,8 +170,8 @@ export class AILibContextManager {
         if (aiEditMessages.length > 0) {
             messageTypes[typeIndex++] = 'element'
         }
-        if (selectedImagesMessages.length > 0) {
-            messageTypes[typeIndex++] = 'images'
+        if (selectedAssetsMessages.length > 0) {
+            messageTypes[typeIndex++] = 'assets'
         }
 
         logger.info('context.build.success', {
@@ -280,25 +281,37 @@ export class AILibContextManager {
 
             // Build AI edit context
             if (this.config.includeAiEditContext && context.aiEditContext) {
-                const aiEditMessage = this.buildAiEditContextMessage(context.aiEditContext)
-                if (aiEditMessage) {
-                    messages.push(aiEditMessage)
+                const formatted = ContextFormatter.formatAiEditContext(context.aiEditContext)
+                if (formatted) {
+                    messages.push({
+                        role: 'user',
+                        content: formatted.content,
+                        type: formatted.type
+                    })
                 }
             }
 
             // Build visual context
             if (this.config.includeVisualContext && context.visualContext) {
-                const visualMessage = this.buildVisualContextMessage(context.visualContext)
-                if (visualMessage) {
-                    messages.push(visualMessage)
+                const formatted = ContextFormatter.formatVisualContext(context.visualContext)
+                if (formatted) {
+                    messages.push({
+                        role: 'user',
+                        content: formatted.content,
+                        type: formatted.type
+                    })
                 }
             }
 
-            // Build selected images context
-            if (this.config.includeSelectedImages && context.selectedImages) {
-                const selectedImagesMessage = this.buildSelectedImagesContextMessage(context.selectedImages)
-                if (selectedImagesMessage) {
-                    messages.push(selectedImagesMessage)
+            // Build selected assets context
+            if (this.config.includeSelectedImages && context.selectedAssets) {
+                const formatted = ContextFormatter.formatSelectedAssets(context.selectedAssets)
+                if (formatted) {
+                    messages.push({
+                        role: 'user',
+                        content: formatted.content,
+                        type: formatted.type
+                    })
                 }
             }
         } catch (error) {
@@ -406,185 +419,6 @@ export class AILibContextManager {
     }
 
     /**
-     * Build AI edit context message
-     */
-    private buildAiEditContextMessage(aiEditContext: NonNullable<EnhancedAgentContext['aiEditContext']>): ContextMessage | null {
-        try {
-            const elementInfo = aiEditContext.elementInfo || {}
-            const devContext = aiEditContext.devContext || {}
-
-            // Sanitize and validate the context data
-            const sanitizedContext = {
-                element: {
-                    tag: String(elementInfo.tagName || 'unknown').replace(/[<>]/g, ''),
-                    classes: String(elementInfo.className || 'none').substring(0, 200),
-                    id: String(elementInfo.id || 'none').substring(0, 100),
-                    textContent: String(elementInfo.textContent || 'none').substring(0, 300),
-                    selector: String(aiEditContext.selector || 'unknown').substring(0, 200)
-                },
-                source: {
-                    fileName: String(devContext.fileName || 'unknown').substring(0, 200),
-                    componentName: String(devContext.componentName || 'unknown').substring(0, 100),
-                    lineNumber: Number.isInteger(devContext.lineNumber) ? devContext.lineNumber : 'unknown'
-                }
-            }
-
-            const content = `[AI Edit Context]
-I have selected the following element:
-- Tag: ${sanitizedContext.element.tag}
-- Classes: ${sanitizedContext.element.classes}
-- ID: ${sanitizedContext.element.id}
-- Text Content: "${sanitizedContext.element.textContent}"
-- CSS Selector: ${sanitizedContext.element.selector}
-
-Source Code Location:
-- File: ${sanitizedContext.source.fileName}
-- Component: ${sanitizedContext.source.componentName}
-- Line: ${sanitizedContext.source.lineNumber}
-
-Focus your edits on the code at the specified file and location.
-DO NOT MAKE ANY CHANGES TO THE CODE THAT IS NOT SPECIFIED IN THE AI EDIT CONTEXT.`
-
-            return {
-                role: 'user',
-                content,
-                type: 'ai_edit_context'
-            }
-        } catch (error) {
-            logger.error('context.ai_edit.build.failure', {
-                error: error instanceof Error ? error.message : String(error)
-            })
-            return null
-        }
-    }
-
-    /**
-     * Build visual context message
-     */
-    private buildVisualContextMessage(visualContext: NonNullable<EnhancedAgentContext['visualContext']>): ContextMessage | null {
-        try {
-            // Sanitize and validate the visual context data
-            const sanitizedContext = {
-                page: String(visualContext.page || '/').substring(0, 200),
-                scroll_position: {
-                    x: typeof visualContext.scroll_position?.x === 'number' && !isNaN(visualContext.scroll_position.x) ? visualContext.scroll_position.x : 0,
-                    y: typeof visualContext.scroll_position?.y === 'number' && !isNaN(visualContext.scroll_position.y) ? visualContext.scroll_position.y : 0
-                },
-                active_section: visualContext.active_section ? String(visualContext.active_section).substring(0, 100) : 'unknown',
-                viewport: {
-                    width: (typeof visualContext.viewport?.width === 'number' && !isNaN(visualContext.viewport.width)) ? visualContext.viewport.width : 0,
-                    height: (typeof visualContext.viewport?.height === 'number' && !isNaN(visualContext.viewport.height)) ? visualContext.viewport.height : 0
-                },
-                timestamp: visualContext.timestamp || Date.now()
-            }
-
-            let activePageSection = ''
-            let contextNotes = ''
-
-            if (sanitizedContext.active_section === 'dev-tools-initializing') {
-                activePageSection = 'The user\'s preview application is loaded but visual context capture is still initializing.'
-                contextNotes = 'The preview app is running and dev-tools are loading. The visual context system should be available shortly. Focus on understanding the user\'s intent from their message. When they say "this" or "here", ask for clarification about which specific element or section they\'re referring to.'
-            } else if (sanitizedContext.active_section === 'iframe-blocked') {
-                activePageSection = 'The user\'s preview application access is blocked or restricted.'
-                contextNotes = 'Visual context cannot be captured due to technical restrictions. Focus on understanding the user\'s intent from their message context. When they use terms like "this" or "here", ask for clarification or provide general guidance.'
-            } else if (sanitizedContext.active_section === 'no-iframe') {
-                activePageSection = 'No preview application iframe was found.'
-                contextNotes = 'The user may be referring to code or functionality in general. Focus on understanding their development needs and provide appropriate guidance.'
-            } else if (sanitizedContext.active_section === 'unknown') {
-                activePageSection = 'The active page section could not be determined.'
-                contextNotes = `The user's message refers to content visible at their current scroll position (${sanitizedContext.scroll_position.y}px from top). When they say "this" or "here", try to understand from context what they're referring to.`
-            } else {
-                activePageSection = `The user is currently viewing the "${sanitizedContext.active_section}" section.`
-                contextNotes = `The user's message refers to content visible at their current scroll position (${sanitizedContext.scroll_position.y}px from top). When they say "this" or "here", they likely mean elements visible in the "${sanitizedContext.active_section}" section around this scroll position.`
-            }
-
-            const content = `[User's Current Visual Context]
-
-Page Information:
-- Current Page: ${sanitizedContext.page}
-- ${activePageSection}
-
-Scroll Position:
-- Horizontal: ${sanitizedContext.scroll_position.x}px
-- Vertical: ${sanitizedContext.scroll_position.y}px
-
-Viewport Size:
-- Width: ${sanitizedContext.viewport.width}px
-- Height: ${sanitizedContext.viewport.height}px
-
-Context Notes: ${contextNotes}`
-
-            return {
-                role: 'user',
-                content,
-                type: 'visual_context'
-            }
-        } catch (error) {
-            logger.error('context.visual.build.failure', {
-                error: error instanceof Error ? error.message : String(error)
-            })
-            return null
-        }
-    }
-
-    /**
-     * Build selected images context message
-     */
-    private buildSelectedImagesContextMessage(selectedImages: NonNullable<EnhancedAgentContext['selectedImages']>): ContextMessage | null {
-        try {
-            if (!selectedImages || selectedImages.length === 0) {
-                return null
-            }
-
-            // Build context for each selected image
-            const imageDescriptions = selectedImages.map((image, index) => {
-                const sanitizedImage = {
-                    filename: String(image.filename || 'unknown').substring(0, 200),
-                    imageUrl: String(image.imageUrl || '').substring(0, 500),
-                    thumbnailUrl: String(image.thumbnailUrl || '').substring(0, 500),
-                    mediaType: String(image.mediaType || 'IMAGE'),
-                    sourceType: String(image.sourceType || 'unknown'),
-                    contentType: String(image.contentType || 'unknown'),
-                    size: typeof image.size === 'number' ? image.size : 0,
-                    dimensions: {
-                        width: typeof image.dimensions?.width === 'number' ? image.dimensions.width : 0,
-                        height: typeof image.dimensions?.height === 'number' ? image.dimensions.height : 0
-                    }
-                }
-
-                return `Image ${index + 1}:
-- Filename: ${sanitizedImage.filename}
-- Image URL: ${sanitizedImage.imageUrl}
-- Thumbnail URL: ${sanitizedImage.thumbnailUrl}
-- Media Type: ${sanitizedImage.mediaType}
-- Content Type: ${sanitizedImage.contentType}
-- File Size: ${(sanitizedImage.size / 1024).toFixed(2)} KB
-- Dimensions: ${sanitizedImage.dimensions.width}x${sanitizedImage.dimensions.height}px`
-            }).join('\n\n')
-
-            const content = `[Selected Images from Image Manager]
-
-The user has selected ${selectedImages.length} image${selectedImages.length > 1 ? 's' : ''} from the Image Manager:
-
-${imageDescriptions}
-
-These images are available for use in the project. You can reference them by their URLs in your code.
-When the user mentions "this image" or "the image", they are likely referring to the selected image above.`
-
-            return {
-                role: 'user',
-                content,
-                type: 'selected_images_context'
-            }
-        } catch (error) {
-            logger.error('context.selected_images.build.failure', {
-                error: error instanceof Error ? error.message : String(error)
-            })
-            return null
-        }
-    }
-
-    /**
      * Build execution context for compatibility with existing services
      */
     private buildExecutionContext(context: EnhancedAgentContext): AgentExecutionContext {
@@ -639,7 +473,7 @@ When the user mentions "this image" or "the image", they are likely referring to
                 hasAppContext: !!rawContext.appContext,
                 hasAiEditContext: !!rawContext.aiEditContext,
                 hasVisualContext: !!rawContext.visualContext,
-                hasSelectedImages: !!rawContext.selectedImages
+                hasSelectedAssets: !!rawContext.selectedAssets
             })
         }
 
@@ -650,7 +484,7 @@ When the user mentions "this image" or "the image", they are likely referring to
             ...(rawContext.appContext && { appContext: rawContext.appContext }),
             ...(rawContext.aiEditContext && { aiEditContext: rawContext.aiEditContext }),
             ...(rawContext.visualContext && { visualContext: rawContext.visualContext }),
-            ...(rawContext.selectedImages && { selectedImages: rawContext.selectedImages })
+            ...(rawContext.selectedAssets && { selectedAssets: rawContext.selectedAssets })
         }
 
         return enhancedContext

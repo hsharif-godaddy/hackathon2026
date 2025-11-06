@@ -6,7 +6,7 @@ import Apps from '@/app/develop/components/Apps'
 import PlanTracker from '@/app/develop/components/PlanTracker'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
-import { ImageManagerItem } from '@/app/develop/components/chat/ImageManagerModal'
+import { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
 import StreamingMessageList from '@/app/develop/components/StreamingMessageList'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
@@ -33,7 +33,7 @@ import { postMessageToIframe } from '@/utils/postMessage'
 
 interface ChatPaneProps {
   onPreviewRefresh?: () => void
-  sendMessage: (content: string, aiEditContext?: any, selectedImage?: ImageManagerItem | null) => Promise<void>
+  sendMessage: (content: string, aiEditContext?: any, selectedAsset?: AssetManagerItem | null) => Promise<void>
 }
 
 export default function ChatPane({
@@ -63,8 +63,8 @@ export default function ChatPane({
 
   const appId = useAppIdFromParams()
 
-  // State for selected image from ImageManager
-  const [selectedImage, setSelectedImage] = useState<ImageManagerItem | null>(null)
+  // State for selected asset from AssetManager
+  const [selectedAsset, setSelectedAsset] = useState<AssetManagerItem | null>(null)
 
   // Combine messages and activeStream with useMemo to prevent infinite loops
   const allMessages = useMemo(() => {
@@ -116,16 +116,16 @@ export default function ChatPane({
       }
 
       // Send the message using the streaming WebSocket
-      sendMessage(inputValue, safeAiEditContext, selectedImage)
+      sendMessage(inputValue, safeAiEditContext, selectedAsset)
 
       // Clear the AI edit context after sending
       if (safeAiEditContext) {
         handleClearAiEditContext()
       }
 
-      // Clear the selected image after sending
-      if (selectedImage) {
-        handleClearSelectedImage()
+      // Clear the selected asset after sending
+      if (selectedAsset) {
+        handleClearSelectedAsset()
       }
     }
   }
@@ -143,16 +143,16 @@ export default function ChatPane({
     setAiEditContext(null)
   }, [setAiEditContext])
 
-  // Handle image selection from ImageManager
-  const handleImageSelect = useCallback((items: ImageManagerItem[]) => {
+  // Handle asset selection from AssetManager
+  const handleAssetSelect = useCallback((items: AssetManagerItem[]) => {
     if (items && items.length > 0) {
-      setSelectedImage(items[0])
+      setSelectedAsset(items[0])
     }
   }, [])
 
-  // Handle clearing selected image
-  const handleClearSelectedImage = useCallback(() => {
-    setSelectedImage(null)
+  // Handle clearing selected asset
+  const handleClearSelectedAsset = useCallback(() => {
+    setSelectedAsset(null)
   }, [])
 
   // Listen for error fix requests from PreviewPaneSimple
@@ -160,16 +160,16 @@ export default function ChatPane({
     const handleErrorFixEvent = (event: CustomEvent) => {
       if (event.detail.appId === appId && inputValue?.trim()) {
         // Use the actual sendMessage function from WebSocket hook
-        sendMessage(inputValue, safeAiEditContext, selectedImage)
+        sendMessage(inputValue, safeAiEditContext, selectedAsset)
 
         // Clear the AI edit context after sending
         if (safeAiEditContext) {
           handleClearAiEditContext()
         }
 
-        // Clear the selected image after sending
-        if (selectedImage) {
-          handleClearSelectedImage()
+        // Clear the selected asset after sending
+        if (selectedAsset) {
+          handleClearSelectedAsset()
         }
       }
     }
@@ -179,7 +179,7 @@ export default function ChatPane({
     return () => {
       window.removeEventListener('airo-error-fix', handleErrorFixEvent as EventListener)
     }
-  }, [appId, inputValue, sendMessage, safeAiEditContext, selectedImage, handleClearAiEditContext, handleClearSelectedImage])
+  }, [appId, inputValue, sendMessage, safeAiEditContext, selectedAsset, handleClearAiEditContext, handleClearSelectedAsset])
 
 
   // Get tab index for animation - matches mobile toolbar order
@@ -190,6 +190,27 @@ export default function ChatPane({
       case ChatTab.HISTORY: return 2
       case ChatTab.SETTINGS: return 3
       default: return 1 // Default to chat
+    }
+  }
+
+  // Helper function to get the display URL for an asset
+  const getAssetDisplayUrl = (asset: AssetManagerItem): string => {
+    // Ensure protocol is https
+    const url = asset.imageUrl.startsWith('//') ? `https:${asset.imageUrl}` : asset.imageUrl
+    return url
+  }
+
+  // Helper function to get the asset label
+  const getAssetLabel = (asset: AssetManagerItem): string => {
+    switch (asset.mediaType) {
+      case 'IMAGE':
+        return asset.filename || 'Selected image'
+      case 'VIDEO':
+        return 'Selected video'
+      case 'PDF':
+        return asset.filename || 'Selected PDF'
+      default:
+        return 'Selected asset'
     }
   }
 
@@ -263,20 +284,20 @@ export default function ChatPane({
                 </div>
               )}
 
-              {selectedImage && (
+              {selectedAsset && (
                 <div className="mx-4 rounded-md overflow-hidden bg-white">
                   <div className="p-2">
                     <div className="relative inline-block">
                       <img // eslint-disable-line @next/next/no-img-element
-                        src={`https:${selectedImage.imageUrl}`}
-                        alt={selectedImage.filename || "Selected image"}
+                        src={getAssetDisplayUrl(selectedAsset)}
+                        alt={getAssetLabel(selectedAsset)}
                         className="max-h-[120px] object-contain rounded border"
                       />
                       <button
-                        onClick={handleClearSelectedImage}
+                        onClick={handleClearSelectedAsset}
                         className="absolute -top-2 -right-2 w-6 h-6 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
                         style={{ backgroundColor: '#ffffff' }}
-                        title="Clear image"
+                        title="Clear asset"
                       >
                         ×
                       </button>
@@ -315,7 +336,7 @@ export default function ChatPane({
 
         <ChatToolbar
           isProcessing={isProcessing}
-          onImageSelect={handleImageSelect}
+          onAssetSelect={handleAssetSelect}
         />
       </div>
     )
@@ -368,20 +389,20 @@ export default function ChatPane({
             </div>
           )}
 
-          {selectedImage && (
+          {selectedAsset && (
             <div className="mx-4 rounded-md overflow-hidden bg-white">
               <div className="p-2">
                 <div className="relative inline-block">
                   <img // eslint-disable-line @next/next/no-img-element
-                    src={`https:${selectedImage.imageUrl}`}
-                    alt={selectedImage.filename || "Selected image"}
+                    src={getAssetDisplayUrl(selectedAsset)}
+                    alt={getAssetLabel(selectedAsset)}
                     className="max-h-[120px] object-contain rounded border"
                   />
                   <button
-                    onClick={handleClearSelectedImage}
+                    onClick={handleClearSelectedAsset}
                     className="absolute -top-2 -right-2 w-6 h-6 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
                     style={{ backgroundColor: '#ffffff' }}
-                    title="Clear image"
+                    title="Clear asset"
                   >
                     ×
                   </button>
@@ -408,7 +429,7 @@ export default function ChatPane({
 
       <ChatToolbar
         isProcessing={isProcessing}
-        onImageSelect={handleImageSelect}
+        onAssetSelect={handleAssetSelect}
       />
     </div>
   )

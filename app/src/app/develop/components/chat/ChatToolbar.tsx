@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import ImageManagerModal, { ImageManagerItem } from '@/app/develop/components/chat/ImageManagerModal'
+import AssetManagerModal, { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { generateClickEID } from '@/utils/instrumentation'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -19,10 +19,10 @@ import { ChatTab } from '@/app/develop/components/types'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 interface ChatToolbarProps {
   isProcessing?: boolean
-  onImageSelect?: (items: ImageManagerItem[]) => void
+  onAssetSelect?: (items: AssetManagerItem[]) => void
 }
 
-export default function ChatToolbar({ isProcessing = false, onImageSelect }: ChatToolbarProps) {
+export default function ChatToolbar({ isProcessing = false, onAssetSelect }: ChatToolbarProps) {
   const router = useRouter()
   const appId = useAppIdFromParams()
   const {
@@ -33,15 +33,15 @@ export default function ChatToolbar({ isProcessing = false, onImageSelect }: Cha
   } = useDevelopPageStore()
 
   const { featureFlags } = useSwitchboard()
-  const isImageManagerEnabled = featureFlags['appbuilder-image-manager'] ?? false
+  const isAssetManagerEnabled = featureFlags['appbuilder-image-manager'] ?? false
   const isSettingsEnabled = featureFlags['appbuilder-settings'] ?? false
 
-  const [isImageManagerOpen, setIsImageManagerOpen] = useState(false)
+  const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false)
 
-  function handleImageSelect(items: ImageManagerItem[]) {
-    console.log('Images selected in ChatToolbar:', items)
-    if (onImageSelect) {
-      onImageSelect(items)
+  function handleAssetSelect(items: AssetManagerItem[]) {
+    console.log('Assets selected in ChatToolbar:', items)
+    if (onAssetSelect) {
+      onAssetSelect(items)
     }
   }
 
@@ -108,10 +108,11 @@ export default function ChatToolbar({ isProcessing = false, onImageSelect }: Cha
       <IconButton
         icon={<ImageIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.medias')}
-        onClick={() => { if (isImageManagerEnabled) setIsImageManagerOpen(true) }}
+        onClick={() => { if (isAssetManagerEnabled) setIsAssetManagerOpen(true) }}
         label="Media"
-        active={isImageManagerOpen}
-        tooltip={!isImageManagerEnabled ? 'Available soon!' : undefined}
+        active={isAssetManagerOpen}
+        tooltip={!isAssetManagerEnabled ? 'Available soon!' : undefined}
+        disabled={isProcessing}
       />
       <IconButton
         icon={<CheckboxListIcon />}
@@ -137,10 +138,10 @@ export default function ChatToolbar({ isProcessing = false, onImageSelect }: Cha
         label="Settings"
         active={activeChatTab === ChatTab.SETTINGS}
       />
-      <ImageManagerModal
-        isOpen={isImageManagerOpen}
-        onClose={() => { setIsImageManagerOpen(false) }}
-        onItemsSelected={handleImageSelect}
+      <AssetManagerModal
+        isOpen={isAssetManagerOpen}
+        onClose={() => { setIsAssetManagerOpen(false) }}
+        onItemsSelected={handleAssetSelect}
       />
     </Box>
   )

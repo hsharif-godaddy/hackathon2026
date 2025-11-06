@@ -575,7 +575,7 @@ export interface ConversationContextBuildData {
   hasTodoContext?: boolean | undefined;
   hasAiEditContext?: boolean;
   hasVisualContext?: boolean;
-  hasSelectedImages?: boolean;
+  hasSelectedAssets?: boolean;
   filteredMessages?: number;
 }
 

@@ -69,19 +69,27 @@ export interface AgentsAppContext {
     }>
   }
   
-  // Image Manager selected images context
-  selectedImages?: Array<{
-    filename: string
-    imageUrl: string
-    mediaType: string
+  // Asset Manager selected assets context (IMAGE, VIDEO, PDF)
+  selectedAssets?: Array<{
+    mediaType: 'IMAGE' | 'VIDEO' | 'PDF'
     sourceType: string
-    contentType: string
-    size: number
-    dimensions: {
+    imageUrl: string
+    // IMAGE specific fields
+    filename?: string
+    contentType?: string
+    size?: number
+    dimensions?: {
       width: number
       height: number
     }
-    thumbnailUrl: string
+    thumbnailUrl?: string
+    altText?: string
+    // VIDEO specific fields
+    videoUrl?: string
+    id?: string
+    urlHash?: string
+    width?: number
+    height?: number
   }>
   
   // Extensibility for future context types

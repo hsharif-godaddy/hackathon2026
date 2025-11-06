@@ -55,19 +55,27 @@ export interface EnhancedAgentContext {
     timestamp?: number
   }
 
-  // Selected images from Image Manager
-  selectedImages?: Array<{
-    filename: string
-    imageUrl: string
-    mediaType: string
+  // Selected assets from Asset Manager (IMAGE, VIDEO, PDF)
+  selectedAssets?: Array<{
+    mediaType: 'IMAGE' | 'VIDEO' | 'PDF'
     sourceType: string
-    contentType: string
-    size: number
-    dimensions: {
+    imageUrl: string
+    // IMAGE specific fields
+    filename?: string
+    contentType?: string
+    size?: number
+    dimensions?: {
       width: number
       height: number
     }
-    thumbnailUrl: string
+    thumbnailUrl?: string
+    altText?: string
+    // VIDEO specific fields
+    videoUrl?: string
+    id?: string
+    urlHash?: string
+    width?: number
+    height?: number
   }>
 }
 
@@ -77,7 +85,7 @@ export interface EnhancedAgentContext {
 export interface ContextMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
-  type?: 'app_context' | 'ai_edit_context' | 'visual_context' | 'conversation_history' | 'hot_files_context' | 'selected_images_context'
+  type?: 'app_context' | 'ai_edit_context' | 'visual_context' | 'conversation_history' | 'hot_files_context' | 'selected_assets_context'
   insertionOrder?: 'before_history' | 'after_history'
   cachePoint?: { type: 'ephemeral' }
 }
