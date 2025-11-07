@@ -67,6 +67,16 @@ const MODELS: Record<string, ModelDefinition> = {
   },
 
   // Claude Models (available on multiple providers)
+  'claude-sonnet-4-5': {
+    normalizedName: 'claude-sonnet-4-5',
+    anthropic: 'claude-sonnet-4-5-20250929',
+    bedrock: 'global.anthropic.claude-sonnet-4-5-20250929-v1:0'
+  },
+  'claude-haiku-4-5': {
+    normalizedName: 'claude-haiku-4-5',
+    anthropic: 'claude-haiku-4-5-20251001',
+    bedrock: 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
+  },
   'claude-sonnet-4': {
     normalizedName: 'claude-sonnet-4',
     anthropic: 'claude-sonnet-4',
@@ -111,11 +121,13 @@ const ALIASES: Record<string, string> = {
   'claude4': 'claude-sonnet-4',
   'sonnet4': 'claude-sonnet-4',
   'claude-sonnet-4-20250514': 'claude-sonnet-4',
+  'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5',
+  'claude-haiku-4-5-20251001': 'claude-haiku-4-5',
   'claude-3.5-sonnet': 'claude-3-5-sonnet',
   'claude35-sonnet': 'claude-3-5-sonnet',
-  'sonnet': 'claude-3-5-sonnet',
+  'sonnet': 'claude-sonnet-4-5',
   'claude-haiku': 'claude-3-5-haiku',
-  'haiku': 'claude-3-5-haiku',
+  'haiku': 'claude-haiku-4-5',
   'claude3-haiku': 'claude-3-haiku'
 }
 
@@ -310,6 +322,8 @@ export { MODELS, ALIASES }
  * Legacy export for Bedrock model constants (for backward compatibility)
  */
 export const BEDROCK_MODELS = {
+  sonnet45: MODELS['claude-sonnet-4-5']?.bedrock || 'global.anthropic.claude-sonnet-4-5-20250929-v1:0',
+  haiku45: MODELS['claude-haiku-4-5']?.bedrock || 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
   claude4: MODELS['claude-sonnet-4']?.bedrock || 'global.anthropic.claude-sonnet-4-20250514-v1:0',
   claude35: MODELS['claude-3-5-sonnet']?.bedrock || 'us.anthropic.claude-3-5-sonnet-20240620-v1:0',
   claude3haiku: MODELS['claude-3-5-haiku']?.bedrock || 'us.anthropic.claude-3-5-haiku-20241022-v1:0'

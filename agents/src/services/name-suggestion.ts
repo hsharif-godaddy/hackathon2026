@@ -22,7 +22,7 @@ export class NameSuggestionService {
       }
 
       // Get the model using ai-lib's unified provider
-      const model = await getModel('claude-haiku')
+      const model = await getModel('haiku')
 
       // Generate name using AI
       const result = await generateText({

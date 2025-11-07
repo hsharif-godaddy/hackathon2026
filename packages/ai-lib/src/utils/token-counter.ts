@@ -19,6 +19,8 @@ export type SupportedModel =
   | 'claude-3-5-sonnet'
   | 'claude-3-5-haiku'
   | 'claude-sonnet-4'
+  | 'claude-sonnet-4-5'
+  | 'claude-haiku-4-5'
   // Bedrock Claude Models (full names)
   | 'us.anthropic.claude-3-5-sonnet-20240620-v1:0'
   | 'us.anthropic.claude-3-5-haiku-20241022-v1:0'

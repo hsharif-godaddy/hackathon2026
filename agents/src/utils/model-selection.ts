@@ -15,16 +15,16 @@ export type ModelTier = 'full' | 'fast'
  */
 const MODEL_MAPPINGS = {
   full: {
-    // Always use Claude 4 for consistent experience
-    bedrock: 'claude4',           // Claude Sonnet 4 (latest)
-    openai: 'claude4',            // Claude 4 through proxy/Anthropic
-    fallback: 'claude4'           // Always Claude 4
+    // Always use Claude Sonnet for consistent experience
+    bedrock: 'sonnet',            // Claude Sonnet (latest)
+    openai: 'sonnet',             // Claude Sonnet through proxy/Anthropic
+    fallback: 'sonnet'            // Always Claude Sonnet
   },
   fast: {
-    // Always use Claude 4 for consistent experience
-    bedrock: 'claude4',           // Claude 4 (consistent experience)
-    openai: 'claude4',            // Claude 4 through proxy/Anthropic
-    fallback: 'claude4'           // Always Claude 4
+    // Always use Claude Sonnet for consistent experience
+    bedrock: 'sonnet',             // Claude Sonnet (consistent experience)
+    openai: 'sonnet',              // Claude Sonnet through proxy/Anthropic
+    fallback: 'sonnet'             // Always Claude Sonnet
   }
 } as const
 
@@ -45,7 +45,7 @@ async function isBedrockAvailable(): Promise<boolean> {
     }
     
     // Test with a simple model info call - pass AWS region to force Bedrock provider detection
-    const modelInfo = getModelInfo('claude4', { awsRegion: process.env.AWS_REGION || 'us-east-1' })
+    const modelInfo = getModelInfo('sonnet', { awsRegion: process.env.AWS_REGION || 'us-east-1' })
     return modelInfo.provider === 'bedrock'
   } catch {
     return false

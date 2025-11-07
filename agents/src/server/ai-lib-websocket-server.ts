@@ -334,7 +334,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const app = appRepo.findById(appId);
           const appPath = app?.path;
           
-          const modelName = 'claude4';
+          const modelName = metadata.modelName || 'sonnet';
           const historyLoader = conversationContextManager.getHistoryLoader();
           
           const llmMessages = await historyLoader.loadMessagesWithTokenLimit(

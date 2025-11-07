@@ -90,6 +90,20 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   },
 
   // Anthropic Models (via Anthropic API)
+  'claude-sonnet-4-5': {
+    inputCostPer1K: 0.003,
+    outputCostPer1K: 0.015,
+    cachedInputReadCostPer1K: 0.0003,
+    cachedInputWriteCostPer1K: 0.00375,
+    currency: 'USD'
+  },
+  'claude-haiku-4-5': {
+    inputCostPer1K: 0.001,
+    outputCostPer1K: 0.005,
+    cachedInputReadCostPer1K: 0.0001,
+    cachedInputWriteCostPer1K: 0.00125,
+    currency: 'USD'
+  },
   'claude-sonnet-4': {
     inputCostPer1K: 0.003,
     outputCostPer1K: 0.015,
@@ -118,6 +132,20 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
  * Note: Input pricing for Claude Sonnet 4 is the same on both platforms
  */
 const BEDROCK_PRICING: Record<string, ModelPricing> = {
+  'claude-sonnet-4-5': {
+    inputCostPer1K: 0.003,
+    outputCostPer1K: 0.015,
+    cachedInputReadCostPer1K: 0.0003,
+    cachedInputWriteCostPer1K: 0.00375,
+    currency: 'USD'
+  },
+  'claude-haiku-4-5': {
+    inputCostPer1K: 0.001,
+    outputCostPer1K: 0.005,
+    cachedInputReadCostPer1K: 0.0001,
+    cachedInputWriteCostPer1K: 0.00125,
+    currency: 'USD'
+  },
   'claude-sonnet-4': {
     inputCostPer1K: 0.003,
     outputCostPer1K: 0.015,
@@ -132,7 +160,7 @@ const BEDROCK_PRICING: Record<string, ModelPricing> = {
   },
   'claude-3-5-haiku': {
     inputCostPer1K: 0.0008,
-    outputCostPer1K: 0.015,
+    outputCostPer1K: 0.004,
     cachedInputReadCostPer1K: 0.0003,
     cachedInputWriteCostPer1K: 0.00375,
     currency: 'USD'

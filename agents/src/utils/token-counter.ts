@@ -50,7 +50,13 @@ function normalizeModelName(modelName: string): { normalizedName: string; provid
   
   // Bedrock Claude model patterns (full ARN-like names)
   if (lowerModel.includes('anthropic.claude')) {
-    // Extract the base model type from bedrock ARNs
+    // Extract the base model type from bedrock ARNs (check newer models first)
+    if (lowerModel.includes('claude-sonnet-4-5')) {
+      return { normalizedName: 'claude-sonnet-4-5', provider: 'bedrock-claude' }
+    }
+    if (lowerModel.includes('claude-haiku-4-5')) {
+      return { normalizedName: 'claude-haiku-4-5', provider: 'bedrock-claude' }
+    }
     if (lowerModel.includes('claude-sonnet-4')) {
       return { normalizedName: 'claude-sonnet-4', provider: 'bedrock-claude' }
     }
@@ -81,14 +87,18 @@ function normalizeModelName(modelName: string): { normalizedName: string; provid
     'claude-3-5-haiku': 'claude-3-5-haiku',
     'claude-sonnet-4': 'claude-sonnet-4',
     'claude-sonnet-4-20250514': 'claude-sonnet-4',
+    'claude-sonnet-4-5': 'claude-sonnet-4-5',
+    'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5',
+    'claude-haiku-4-5': 'claude-haiku-4-5',
+    'claude-haiku-4-5-20251001': 'claude-haiku-4-5',
     // Aliases
     'claude4': 'claude-sonnet-4',
     'sonnet4': 'claude-sonnet-4',
     'claude35-sonnet': 'claude-3-5-sonnet',
     'claude-haiku': 'claude-3-5-haiku',
     'claude3-haiku': 'claude-3-haiku',
-    'haiku': 'claude-3-5-haiku',
-    'sonnet': 'claude-3-5-sonnet'
+    'haiku': 'claude-haiku-4-5',
+    'sonnet': 'claude-sonnet-4-5'
   }
   
   if (anthropicModels[lowerModel]) {
