@@ -15,6 +15,13 @@ import type {
   ConversationContext
 } from './interfaces.js'
 
+/**
+ * APM agent type for tool execution tracking
+ * Using 'any' to avoid strict type dependency on elastic-apm-node
+ */
+type APMAgent = any
+type APMSpan = any
+
 
 /**
  * WebSocket Server Configuration for AgentFactory
@@ -52,6 +59,12 @@ export interface WebSocketConfig {
 
   /** Context provider for loading system context and other contextual messages */
   contextProvider?: ContextProvider
+
+  /** Optional APM agent for tool execution tracking */
+  apmAgent?: APMAgent
+
+  /** Optional function to get active websocket transaction by socket ID */
+  getActiveTransaction?: (socketId: string) => APMAgent | undefined
 
   /** Event handlers */
   onConnection?: (socketId: string) => void
@@ -123,6 +136,12 @@ export class WebSocketServer {
     accumulatedContent?: string
   }> = new Map()
 
+  /**
+   * Track active APM spans for tool executions
+   * Key format: "socketId:toolId"
+   */
+  private activeToolSpans: Map<string, APMSpan> = new Map()
+
   constructor(httpServer: HTTPServer, config: WebSocketConfig) {
     this.config = config
 
@@ -177,6 +196,22 @@ export class WebSocketServer {
         if (controller) {
           controller.abort()
           this.activeStreams.delete(socketId)
+        }
+
+        // Clean up any active tool spans for this socket
+        // Note: For high-concurrency scenarios, consider using Map<socketId, Set<spanKey>>
+        // Current approach is O(n) but acceptable for typical usage (few concurrent tools per socket)
+        for (const [spanKey, span] of this.activeToolSpans.entries()) {
+          if (spanKey.startsWith(`${socketId}:`)) {
+            try {
+              span.setOutcome('unknown')
+              span.addLabels({ disconnect_cleanup: true })
+              span.end()
+            } catch {
+              // Silently fail - APM cleanup should not disrupt disconnect handling
+            }
+            this.activeToolSpans.delete(spanKey)
+          }
         }
 
         // Handle persistence cleanup
@@ -375,6 +410,71 @@ export class WebSocketServer {
   }
 
   /**
+   * Start APM span for tool execution
+   * 
+   * Creates a span as a child of the active WebSocket transaction if available,
+   * otherwise creates a standalone span. Tool input is added later via the tool-call event.
+   */
+  private startToolSpan(socketId: string, toolId: string, toolName: string): void {
+    if (!this.config.apmAgent && !this.config.getActiveTransaction) {
+      return
+    }
+
+    try {
+      const apmAgent = this.config.apmAgent
+      const transaction = this.config.getActiveTransaction?.(socketId)
+
+      if (!apmAgent) {
+        return
+      }
+
+      // Create span as child of transaction if available, otherwise standalone
+      // In Elastic APM, transaction.startSpan() creates a child span
+      const span = transaction 
+        ? transaction.startSpan(`Tool: ${toolName}`, 'tool_execution', 'agent')
+        : apmAgent.startSpan(`Tool: ${toolName}`, 'tool_execution', 'agent')
+
+      if (span) {
+        span.addLabels({
+          tool_id: toolId,
+          tool_name: toolName,
+          socket_id: socketId
+        })
+
+        const spanKey = `${socketId}:${toolId}`
+        this.activeToolSpans.set(spanKey, span)
+      }
+    } catch {
+      // Silently fail - APM tracking should not break the application
+    }
+  }
+
+  /**
+   * End APM span for tool execution
+   */
+  private endToolSpan(socketId: string, toolId: string, success: boolean, errorMessage?: string): void {
+    const spanKey = `${socketId}:${toolId}`
+    const span = this.activeToolSpans.get(spanKey)
+
+    if (span) {
+      try {
+        span.setOutcome(success ? 'success' : 'failure')
+
+        if (!success && errorMessage) {
+          span.addLabels({
+            error_message: errorMessage
+          })
+        }
+
+        span.end()
+        this.activeToolSpans.delete(spanKey)
+      } catch {
+        // Silently fail - APM tracking should not break the application
+      }
+    }
+  }
+
+  /**
    * Process stream with real-time tool events from baseStream
    */
   private async processStreamWithToolEvents(socket: any, streamResult: any, currentStep: number): Promise<void> {
@@ -463,6 +563,9 @@ export class WebSocketServer {
                 }
               }
 
+              // Start APM span for tool execution
+              this.startToolSpan(socket.id, part.id, part.toolName)
+
               socket.emit('message', {
                 type: 'tool_start',
                 content: `Using ${part.toolName}...`,
@@ -493,7 +596,7 @@ export class WebSocketServer {
 
             case 'tool-call': {
               // Tool call is complete with full input - emit with accumulated input
-              const fullInput = accumulatedToolInput.get(part.toolCallId) || '{}'
+              const fullInput = accumulatedToolInput.get(part.id) || '{}'
               let parsedInput: Record<string, unknown> = {}
               
               try {
@@ -505,7 +608,7 @@ export class WebSocketServer {
               const toolCallData = {
                 step: currentStep,
                 tool: {
-                  id: part.toolCallId,
+                  id: part.id,
                   name: part.toolName,
                   input: parsedInput
                 }
@@ -518,6 +621,15 @@ export class WebSocketServer {
               } as WebSocketMessage)
 
               await this.captureStreamingEvent(socket.id, 'tool_call', `${part.toolName} input ready`, toolCallData)
+              
+              // Update APM span with input data now that we have it
+              const spanKey = `${socket.id}:${part.id}`
+              const span = this.activeToolSpans.get(spanKey)
+              if (span && parsedInput && Object.keys(parsedInput).length > 0) {
+                span.addLabels({
+                  tool_input_keys: Object.keys(parsedInput).join(',')
+                })
+              }
               break
             }
 
@@ -527,12 +639,15 @@ export class WebSocketServer {
               const toolResultData = {
                 step: currentStep,
                 tool: {
-                  id: part.toolCallId,
+                  id: part.id,
                   name: part.toolName,
                   input: part.input,
                   output: part.output
                 }
               }
+
+              // End APM span for successful tool execution
+              this.endToolSpan(socket.id, part.id, true)
 
               socket.emit('message', {
                 type: 'tool_result',
@@ -551,7 +666,7 @@ export class WebSocketServer {
               const toolErrorData = {
                 step: currentStep,
                 tool: {
-                  id: part.toolId || part.toolCallId || part.id,
+                  id: part.id,
                   name: part.toolName,
                   input: part.input || {},
                   output: {},
@@ -559,6 +674,9 @@ export class WebSocketServer {
                   is_error: true
                 }
               }
+
+              // End APM span for failed tool execution
+              this.endToolSpan(socket.id, part.id, false, errorMessage)
 
               socket.emit('message', {
                 type: 'tool_result',

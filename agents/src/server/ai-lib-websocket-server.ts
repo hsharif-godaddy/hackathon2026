@@ -382,6 +382,14 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       // Context provider for app context and templates
       contextProvider,
 
+      // APM agent for tool execution tracking
+      apmAgent: apm,
+
+      // Function to get active transaction for a socket
+      getActiveTransaction: (socketId: string) => {
+        return activeWebSocketTransactions.get(`${socketId}:message`)
+      },
+
       // File path resolver for uploaded files
       filePathResolver: (appId: string, uploadId: string, filename: string) => {
         return fileUploadService.getFilePath(appId, uploadId, filename)
@@ -542,7 +550,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         // Start APM transaction for message processing
         const messageTransaction = apm.startTransaction(
-          `WebSocket Message: ${agentName || 'default'}`,
+          'WebSocket Message',
           'websocket-message'
         )
         if (messageTransaction) {
