@@ -78,7 +78,7 @@ const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
 
 export function useStreamingWebSocket() {
   const socketRef = useRef<Socket | null>(null)
-  
+
   // Track retry state for APP_NOT_FOUND errors (race condition during app registration)
   const retryStateRef = useRef<{
     pendingMessage?: { content: string; aiEditContext?: any; startTime: number }
@@ -87,6 +87,8 @@ export function useStreamingWebSocket() {
   }>({ retryCount: 0 })
   // Guard flag to prevent concurrent initialization attempts
   const initializingRef = useRef<boolean>(false)
+  // Timer ref for delayed initialization
+  const initTimerRef = useRef<NodeJS.Timeout | null>(null)
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
   // Hook setters & streaming state (declared early for use in callbacks)
@@ -233,7 +235,7 @@ export function useStreamingWebSocket() {
             clearTimeout(retryStateRef.current.retryTimer)
           }
           retryStateRef.current = { retryCount: 0 }
-          
+
           finalizeStream({
             agentId: data.data?.agentId,
             usage: data.data?.usage,
@@ -254,46 +256,46 @@ export function useStreamingWebSocket() {
           const errorType = data.data?.errorType
           const isAppNotFound = errorType === 'APP_NOT_FOUND'
           const retryState = retryStateRef.current
-          const elapsedTime = retryState.pendingMessage 
-            ? Date.now() - retryState.pendingMessage.startTime 
+          const elapsedTime = retryState.pendingMessage
+            ? Date.now() - retryState.pendingMessage.startTime
             : 0
           const shouldRetry = isAppNotFound && elapsedTime < 10000 // Retry for up to 10 seconds
-          
+
           if (shouldRetry && retryState.pendingMessage) {
             retryState.retryCount++
             const retryDelay = Math.min(500 * Math.pow(2, retryState.retryCount - 1), 2000) // Exponential backoff, max 2s
-            
-            logger.warn('websocket.error.app_not_found.retry', { 
+
+            logger.warn('websocket.error.app_not_found.retry', {
               message: 'App not found, will retry',
               retryCount: retryState.retryCount,
               retryDelay,
               elapsedTime,
-              data 
+              data
             })
-            
+
             // Clear any existing retry timer
             if (retryState.retryTimer) {
               clearTimeout(retryState.retryTimer)
             }
-            
+
             // Schedule retry
             retryState.retryTimer = setTimeout(() => {
               logger.info('websocket.error.app_not_found.retrying', {
                 message: 'Retrying message after APP_NOT_FOUND error',
                 retryCount: retryState.retryCount
               })
-              
+
               // Re-send the message using the stored pending message
               const { content, aiEditContext } = retryState.pendingMessage!
               const socket = socketRef.current
-              
+
               if (socket && socket.connected) {
                 // Build the same rich context as in sendMessage
                 const state = useStreamingConversationStore.getState()
                 const { conversations } = state
                 const currentConversation = conversations.find((conv: any) => conv.appId === currentAppId)
                 const conversationId = currentConversation?.id
-                
+
                 const richContext: AgentsAppContext = {
                   metadata: {
                     appId: currentAppId,
@@ -313,14 +315,14 @@ export function useStreamingWebSocket() {
                   },
                   ...(aiEditContext && { aiEditContext })
                 }
-                
+
                 const chatMessage: AgentsAppChatMessage = {
                   message: content,
                   timestamp: new Date().toISOString(),
                   agentId: 'develop',
                   context: richContext
                 }
-                
+
                 socket.emit('chat_message', chatMessage)
               }
             }, retryDelay)
@@ -335,13 +337,13 @@ export function useStreamingWebSocket() {
             } else {
               logger.error('websocket.error', { message: 'Socket.IO error', data })
             }
-            
+
             // Clear retry state
             if (retryState.retryTimer) {
               clearTimeout(retryState.retryTimer)
             }
             retryStateRef.current = { retryCount: 0 }
-            
+
             markUpstreamError();
             sendToolImpression('error')
             setWebSocketState({ status: 'error', error: data.content })
@@ -371,13 +373,28 @@ export function useStreamingWebSocket() {
     if (!currentAppId) return
 
     const initializeConnection = async () => {
+      const initAppId = currentAppId
       try {
         logger.info('websocket.connection.initialize', {
           message: 'Initializing persistent WebSocket connection',
-          appId: currentAppId
+          appId: initAppId
         })
 
-        const socket = await createConnection(currentAppId)
+        const socket = await createConnection(initAppId)
+
+        // Check if app changed during async initialization
+        const currentState = useStreamingConversationStore.getState()
+        if (currentState.currentAppId !== initAppId) {
+          logger.info('websocket.connection.abort', {
+            message: 'App changed during initialization, aborting socket setup',
+            initAppId,
+            currentAppId: currentState.currentAppId
+          })
+          socket.removeAllListeners()
+          socket.disconnect()
+          return
+        }
+
         socketRef.current = socket
 
         // Set up event handlers once for the lifetime of this connection
@@ -385,14 +402,14 @@ export function useStreamingWebSocket() {
 
         logger.info('websocket.connection.ready', {
           message: 'Persistent WebSocket connection established and ready',
-          appId: currentAppId,
+          appId: initAppId,
           socketId: socket.id
         })
       } catch (error) {
         logger.error('websocket.connection.init_failed', {
           message: 'Failed to initialize persistent connection',
           error: error instanceof Error ? error.message : String(error),
-          appId: currentAppId
+          appId: initAppId
         })
       } finally {
         initializingRef.current = false
@@ -402,11 +419,22 @@ export function useStreamingWebSocket() {
     // Only create connection if we don't have one and not already initializing
     if (!socketRef.current && !initializingRef.current) {
       initializingRef.current = true
-      void initializeConnection()
+      // Delay initialization by 500ms for eliminating race condition during app switch
+      initTimerRef.current = setTimeout(() => {
+        void initializeConnection()
+      }, 500)
     }
 
     // Cleanup when app changes or component unmounts
     return () => {
+      // Clear initialization timer if pending
+      if (initTimerRef.current) {
+        clearTimeout(initTimerRef.current)
+        initTimerRef.current = null
+        // Reset initialization flag if timer is cleared before initialization
+        initializingRef.current = false
+      }
+
       if (socketRef.current) {
         logger.info('websocket.cleanup', {
           message: 'Cleaning up Socket.IO connection',
@@ -417,6 +445,8 @@ export function useStreamingWebSocket() {
         socketRef.current.disconnect()
         socketRef.current = null
       }
+      // Reset initialization flag to allow re-initialization with new appId
+      initializingRef.current = false
     }
     // Including createConnection & setupEventHandlers satisfies exhaustive-deps; guard prevents duplicate initialization.
   }, [currentAppId, createConnection, setupEventHandlers])
@@ -476,17 +506,17 @@ export function useStreamingWebSocket() {
       // Transform selected asset to include https protocol
       const transformedAsset = selectedAsset ? {
         ...selectedAsset,
-        imageUrl: selectedAsset.imageUrl.startsWith('//') 
-          ? `https:${selectedAsset.imageUrl}` 
+        imageUrl: selectedAsset.imageUrl.startsWith('//')
+          ? `https:${selectedAsset.imageUrl}`
           : selectedAsset.imageUrl,
         ...(selectedAsset.thumbnailUrl && {
-          thumbnailUrl: selectedAsset.thumbnailUrl.startsWith('//') 
-            ? `https:${selectedAsset.thumbnailUrl}` 
+          thumbnailUrl: selectedAsset.thumbnailUrl.startsWith('//')
+            ? `https:${selectedAsset.thumbnailUrl}`
             : selectedAsset.thumbnailUrl
         }),
         ...(selectedAsset.videoUrl && {
-          videoUrl: selectedAsset.videoUrl.startsWith('//') 
-            ? `https:${selectedAsset.videoUrl}` 
+          videoUrl: selectedAsset.videoUrl.startsWith('//')
+            ? `https:${selectedAsset.videoUrl}`
             : selectedAsset.videoUrl
         })
       } : null
