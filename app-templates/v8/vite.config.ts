@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import fs from "fs";
 import sourceMapperPlugin from "./source-mapper/src/index";
 import { devToolsPlugin } from "./dev-tools/src/vite-plugin";
 import { fullStoryPlugin } from "./fullstory-plugin";
@@ -60,6 +61,20 @@ export default defineConfig(({ mode }) => ({
 		port: parseInt(process.env.PORT || "5173"),
 		strictPort: !!process.env.PORT, // Prevent auto-port selection when PORT is explicitly set
 		allowedHosts,
+		https: (() => {
+			// Check if SSL certificates exist
+			const certPath = path.resolve(__dirname, ".ssl/cert.pem");
+			const keyPath = path.resolve(__dirname, ".ssl/key.pem");
+
+			if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+				return {
+					cert: fs.readFileSync(certPath),
+					key: fs.readFileSync(keyPath)
+				};
+			}
+
+			return undefined; // Fall back to HTTP if certificates don't exist
+		})(),
 		cors: {
 			origin: allowedHosts,
 			credentials: true,

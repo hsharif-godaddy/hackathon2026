@@ -437,7 +437,7 @@ export class DockerContainerManager {
 					templateSpecific.push(
 						`-e PORT=${port}`,
 						`-e VITE_HOST=0.0.0.0`,
-						`-e ALLOWED_ORIGINS=http://localhost:3000,https://localhost:3000`,
+						`-e ALLOWED_ORIGINS=http://localhost:3000,https://localhost:3000,https://airo-builder.godaddy.com,https://airo-builder.test-godaddy.com,https://airo-builder.dev-godaddy.com`,
 						`-p ${port}:${port}`
 					);
 					break;
@@ -984,7 +984,7 @@ export class DockerContainerManager {
 			runningServers.push({
 				appId: record.appId,
 				port: record.port,
-				url: `http://localhost:${record.port}`,
+				url: `https://localhost:${record.port}`,
 				status: record.status,
 				containerId: `container-${record.appId}`,
 				imageName: `airo-app-${record.appId}:dev`,
@@ -1048,7 +1048,7 @@ export class DockerContainerManager {
 				containerId: containerInfo.containerId,
 				port: containerInfo.port,
 				imageName: containerInfo.imageName,
-				url: `http://localhost:${containerInfo.port}`,
+				url: `https://localhost:${containerInfo.port}`,
 			};
 		} catch (error) {
 			// Container record exists in DB but Docker container is gone - should rebuild

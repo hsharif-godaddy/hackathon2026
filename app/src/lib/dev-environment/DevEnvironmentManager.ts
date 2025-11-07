@@ -91,8 +91,8 @@ export class DevEnvironmentManager {
 
         // Generate URLs for existing app
         const urls = {
-          frontend: `http://localhost:${existingApp.port}`,
-          ...(templateVersion === 'v3' && { backend: `http://localhost:${existingApp.port + 1000}` })
+          frontend: `https://localhost:${existingApp.port}`,
+          ...(templateVersion === 'v3' && { backend: `https://localhost:${existingApp.port + 1000}` })
         };
 
         return {
@@ -151,8 +151,8 @@ export class DevEnvironmentManager {
 
       // 7. Generate URLs
       const urls = {
-        frontend: `http://localhost:${port}`,
-        ...(templateVersion === 'v3' && { backend: `http://localhost:${port + 1000}` })
+        frontend: `https://localhost:${port}`,
+        ...(templateVersion === 'v3' && { backend: `https://localhost:${port + 1000}` })
       };
 
       logger.info(`✅ Dev app ${siteId} created successfully`);
