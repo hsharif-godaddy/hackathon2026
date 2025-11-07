@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { withGasketData } from '@gasket/nextjs/layout';
 import { makeLayout } from '@godaddy/gasket-next/layout';
+import { QueryClientProvider } from "@/providers/QueryClientProvider";
 import AuthProvider from "@/components/providers/AuthProvider";
 import FullStoryProvider from "@/components/providers/FullStoryProvider";
 import RumProvider from "@/components/providers/RumProvider";
@@ -29,11 +30,13 @@ async function RootLayout({
       <RumProvider>
         <FullStoryProvider>
           <AuthProvider>
-            <SubscriptionCacheProvider>
-              <main className="flex-1 min-h-screen">
-                {children}
-              </main>
-            </SubscriptionCacheProvider>
+            <QueryClientProvider>
+              <SubscriptionCacheProvider>
+                <main className="flex-1 min-h-screen">
+                  {children}
+                </main>
+              </SubscriptionCacheProvider>
+            </QueryClientProvider>
           </AuthProvider>
         </FullStoryProvider>
       </RumProvider>

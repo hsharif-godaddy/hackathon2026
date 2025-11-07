@@ -1,25 +1,26 @@
 import { logger } from '@/lib/request-context';
 import { extractCustomerId as extractCustomerIdFromJWT } from '@/lib/utils/jwt-utils';
 import {
-  AiroHttpError,
+  type AiroDeploymentsResponse,
+  type AiroBulkAppsResponse,
+  type AiroDeleteAppResponse,
+  type AiroUpdateAppPayload,
+  type AiroCreateAppResponse,
+  type AiroCreateAppPayload,
+  type AiroSignupResponse,
+  type AiroDeployAppResponse,
   type AiroMgmtClientConfig,
   type AiroSubscription,
-  type AiroSystem,
-  type AiroApp,
+  type AiroSignupPayload,
   type AiroAppDetails,
   type AiroJobStatus,
   type AiroCustomer,
-  type AiroSignupPayload,
-  type AiroSignupResponse,
-  type AiroCreateAppPayload,
-  type AiroCreateAppResponse,
-  type AiroUpdateAppPayload,
-  type AiroDeployAppResponse,
   type AiroPublishAppResponse,
-  type AiroDeleteAppResponse,
-  type AiroBulkAppsResponse,
   type CustomerTree,
-  type AiroApiError
+  type AiroApiError,
+  type AiroSystem,
+  AiroHttpError,
+  type AiroApp
 } from './types';
 
 /**
@@ -478,6 +479,36 @@ export class AiroMgmtClient {
       '/api/airo/v1/customers/me/tree',
       undefined,
       { logEvent: 'mgmt-airo.get-customer-tree' }
+    );
+  }
+
+  /**
+   * Get deployments for a specific app
+   * 
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @param limit - Maximum number of deployments to return (default: 20)
+   * @param includeJobData - Whether to include job data in response (default: true)
+   * @returns Promise resolving to deployments response
+   */
+  async getDeployments(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    limit = 20,
+    includeJobData = true
+  ): Promise<AiroDeploymentsResponse> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      includeJobData: includeJobData.toString()
+    });
+
+    return this.request<AiroDeploymentsResponse>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/deployments?${params.toString()}`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-deployments' }
     );
   }
 }

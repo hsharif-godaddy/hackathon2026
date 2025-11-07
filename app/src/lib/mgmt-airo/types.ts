@@ -160,6 +160,53 @@ export interface AiroBulkAppsResponse {
 }
 
 /**
+ * Deployment job data structure
+ */
+export interface AiroDeploymentJob {
+  id: string;
+  status: string;
+  completedAt: string;
+  errorMessage: string | null;
+}
+
+/**
+ * Deployment metadata structure
+ */
+export interface AiroDeploymentMetadata {
+  errorMessage?: string | null;
+  deploymentNotes?: string;
+  triggeredBy?: string;
+  lastAttemptAt?: string;
+  [key: string]: any;
+}
+
+/**
+ * Deployment data structure
+ */
+export interface AiroDeployment {
+  id: string;
+  appId: string;
+  gitHash: string;
+  variant: string;
+  status: string;
+  statusJobId: string;
+  attempts: number;
+  metadata: AiroDeploymentMetadata;
+  createdAt: string;
+  updatedAt: string;
+  job?: AiroDeploymentJob;
+}
+
+/**
+ * Deployments response
+ */
+export interface AiroDeploymentsResponse {
+  appId: string;
+  deployments: AiroDeployment[];
+  total: number;
+}
+
+/**
  * Customer tree response - optimized endpoint that returns complete hierarchy
  * Replaces 119 sequential API calls with a single request
  */

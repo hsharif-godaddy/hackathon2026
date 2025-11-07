@@ -5,24 +5,28 @@ An AI-powered application development platform that combines artificial intellig
 ## Pages
 
 ### 🏠 Homepage (`/`)
+
 - Landing page with hero section and examples
 - Navigation to create new sites or browse existing ones
 - Built with section showcasing platform capabilities
 - Clean, modern design with UXCore design system
 
 ### 🏗️ Sites Management (`/sites`)
+
 - View all user sites and their status
 - Create new sites with initial prompts
 - Site status tracking (creating, running, stopped, error)
 - Quick actions for site management
 
 ### ⚡ Site Creation (`/create/[id]`)
+
 - Real-time site creation progress tracking
 - Animated phase progression with queuing system
 - Background orb animations during creation
 - Automatic redirect to development environment
 
 ### 💻 Development Environment (`/develop/[id]`)
+
 - Full-featured IDE with Monaco editor
 - Real-time chat interface with AI agents
 - Live preview pane with hot reloading
@@ -31,16 +35,19 @@ An AI-powered application development platform that combines artificial intellig
 - Token usage tracking and analytics
 
 ### 🎨 Design Tools (`/design`, `/color-scheme`)
+
 - Color scheme generation and customization
 - Design guidance and component documentation
 - Interactive design flows and questionnaires
 
 ### 📱 Apps Dashboard (`/apps`)
+
 - Application management and deployment
 - Server status monitoring and controls
 - Integration with development workflow
 
 ### 🖼️ Gallery (`/gallery`)
+
 - Showcase of example applications and templates
 - Browse and discover different app types
 
@@ -81,11 +88,66 @@ pnpm run build
 # For complete setup instructions, see GETTING_STARTED.md
 ```
 
+The application supports two deployment modes:
+
+- **Legacy Mode**: Uses local database + Nomad/SQS (default)
+- **V2 Mode**: Uses mgmt-airo + mgmt-hosting APIs (test environment)
+
+#### Setting Up V2 Mode for Testing
+
+1. **Create/Edit `.env`:**
+
+```bash
+# Enable V2 Control Plane
+USE_V2_CONTROL_PLANE=true
+
+# V2 requires test SSO environment (not dev)
+SSO_LOGIN_URL=https://sso.test-godaddy.com/login
+SSO_LOGOUT_URL=https://sso.test-godaddy.com/logout
+LOGIN_REDIRECT_URL=https://airo-builder.test-godaddy.com/
+LOGOUT_REDIRECT_URL=https://airo-builder.test-godaddy.com/
+
+# mgmt-airo API Configuration
+MGMT_AIRO_BASE_URL=https://mgmt.nstk.net
+
+# Authentication mode
+AUTH_TYPE=jwt
+```
+
+2. **Restart your development server:**
+
+```bash
+pnpm run dev:app
+```
+
+3. **Verify V2 Mode is Active:**
+   - Create a new site - it should have `controlPlane: "v2"`
+   - Check browser console for `control-plane.factory` logs
+   - The Publish button should appear on `/develop` pages for V2 sites
+
+#### Features Available in V2 Mode
+
+- ✅ **App Publish Button**: Trigger deployments from the UI
+- ✅ **Deployment History**: View past deployments with React Query polling
+- ✅ **Real-time Status**: Automatic polling during deployment (every 3s)
+- ✅ **mgmt-airo Integration**: Uses production-like infrastructure APIs
+
+#### Differences Between Modes
+
+| Feature         | Legacy Mode                      | V2 Mode                  |
+| --------------- | -------------------------------- | ------------------------ |
+| Control Plane   | Database + Nomad                 | mgmt-airo + mgmt-hosting |
+| SSO Environment | `sso.dev-godaddy.com`            | `sso.test-godaddy.com`   |
+| Deployment      | Manual via SQS                   | API-triggered            |
+| Publish Button  | Hidden                           | Visible for V2 sites     |
+| Site Fields     | No `subscription_id`/`system_id` | Has V2 metadata          |
+
 ## Technology Stack
 
 ### Frontend (Port 3000)
+
 - **Framework**: Next.js 14 with App Router
-- **Language**: TypeScript  
+- **Language**: TypeScript
 - **Styling**: Tailwind CSS + UXCore Design System
 - **State Management**: Zustand stores
 - **Real-time**: WebSocket connections
@@ -93,6 +155,7 @@ pnpm run build
 - **Package Manager**: pnpm
 
 ### Backend (Port 4000)
+
 - **Runtime**: Node.js with Express.js
 - **Database**: SQLite with Prisma ORM
 - **AI Integration**: OpenAI API

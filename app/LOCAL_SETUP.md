@@ -36,6 +36,62 @@ Use any preferred editor to modify the `/etc/hosts` file and add the following l
 
 Note: This will point `airo-builder.dev-godaddy.com` to your localhost, so if you want to access the actual application which is hosted in the cloud, ensure to delete the above mentioned entry from the `/etc/hosts`
 
+For running local against an environment, you may need to configure CORS origins for agent communication:
+
+```bash
+# Add to your .env.local file
+ALLOWED_ORIGINS_FOR_AGENTS={retrieve from katana secrets}
+```
+
+This environment variable allows the agent containers to communicate with your local development server and test environments.
+
+The application supports two deployment modes:
+
+- **Legacy Mode**: Uses local database + Nomad/SQS (default)
+- **V2 Mode**: Uses mgmt-airo + mgmt-hosting APIs (test environment)
+
+#### Setting Up V2 Mode for Testing
+
+1. **Create/Edit `.env`:**
+
+```bash
+# Enable V2 Control Plane
+USE_V2_CONTROL_PLANE=true
+
+# V2 requires test SSO environment (not dev)
+SSO_LOGIN_URL=https://sso.test-godaddy.com/login
+SSO_LOGOUT_URL=https://sso.test-godaddy.com/logout
+LOGIN_REDIRECT_URL=https://airo-builder.test-godaddy.com/
+LOGOUT_REDIRECT_URL=https://airo-builder.test-godaddy.com/
+
+# mgmt-airo API Configuration
+MGMT_AIRO_BASE_URL=https://mgmt.nstk.net
+
+# Authentication mode
+AUTH_TYPE=jwt
+```
+
+2. **Restart your development server:**
+
+```bash
+pnpm run dev:app
+```
+
+3. **Verify V2 Mode is Active:**
+   - Create a new site - it should have `controlPlane: "v2"`
+   - Check browser console for `control-plane.factory` logs
+   - The Publish button should appear on `/develop` pages for V2 sites
+
+#### Differences Between Modes
+
+| Feature         | Legacy Mode                      | V2 Mode                  |
+| --------------- | -------------------------------- | ------------------------ |
+| Control Plane   | Database + Nomad                 | mgmt-airo + mgmt-hosting |
+| SSO Environment | `sso.dev-godaddy.com`            | `sso.test-godaddy.com`   |
+| Deployment      | Manual via SQS                   | API-triggered            |
+| Publish Button  | Hidden                           | Visible for V2 sites     |
+| Site Fields     | No `subscription_id`/`system_id` | Has V2 metadata          |
+
 ### 3. For publishing the job to nomad, you would need to authenticate to the airo-builder dev private AWS account
 
 Note: Ensure you have access to the `GD-AWS-USA-GD-AiroBuilde-Dev-Private (694282668781)` AWS account

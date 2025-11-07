@@ -7,22 +7,26 @@
 export { AiroMgmtClient } from './client';
 export { AiroHttpError } from './types';
 export type {
+  AiroDeploymentsResponse,
+  AiroDeploymentMetadata,
   AiroMgmtClientConfig,
+  AiroDeleteAppResponse,
+  AiroUpdateAppPayload,
+  AiroCreateAppResponse,
+  AiroCreateAppPayload,
+  AiroSignupResponse,
+  AiroDeployAppResponse,
+  AiroDeploymentJob,
+  AiroDeployment,
   AiroSubscription,
-  AiroSystem,
-  AiroApp,
+  AiroSignupPayload,
   AiroAppDetails,
   AiroJobStatus,
   AiroCustomer,
-  AiroSignupPayload,
-  AiroSignupResponse,
-  AiroCreateAppPayload,
-  AiroCreateAppResponse,
-  AiroUpdateAppPayload,
-  AiroDeployAppResponse,
   AiroPublishAppResponse,
   AiroDeploymentStatus,
-  AiroDeleteAppResponse,
-  AiroApiError
+  AiroApiError,
+  AiroSystem,
+  AiroApp
 } from './types';
 

@@ -5,6 +5,7 @@ import { postMessageToIframe } from '@/utils/postMessage'
 import { appService, type App } from '@/services/AppService'
 import { type Site, useSitesStore } from '@/stores/useSitesStore'
 import { ViewMode, PreviewViewMode, ChatTab, SettingsSection } from '@/app/develop/components/types'
+import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { logImpressionEvent } from '@/utils/instrumentation'
 
@@ -60,6 +61,14 @@ interface DevelopPageStore {
   // Settings section UI
   activeSettingsSection: SettingsSection
 
+  // Publish status UI (per-app state keyed by appId)
+  publishStates: Record<string, {
+    isPublishing: boolean
+    publishError: boolean
+    lastPublishedCommitHash: string | null
+    deploymentsRefetch: (() => Promise<any>) | null
+  }>
+
   // Page loading orchestration
   loadingPhase: LoadingPhase
   currentAppId: string | null
@@ -92,6 +101,19 @@ interface DevelopPageStore {
 
   // Settings section actions
   setActiveSettingsSection: (section: SettingsSection) => void
+
+  // Publish status actions (per-app)
+  setIsPublishing: (appId: string, isPublishing: boolean) => void
+  setPublishError: (appId: string, hasError: boolean) => void
+  setLastPublishedCommitHash: (appId: string, commitHash: string | null) => void
+  setDeploymentsRefetch: (appId: string, refetch: (() => Promise<any>) | null) => void
+  clearPublishStatus: (appId: string) => void
+  getPublishState: (appId: string) => {
+    isPublishing: boolean
+    publishError: boolean
+    lastPublishedCommitHash: string | null
+    deploymentsRefetch: (() => Promise<any>) | null
+  }
 
   // Page loading orchestration
   initializePage: (appId: string) => Promise<void>
@@ -145,6 +167,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Settings section state
     activeSettingsSection: SettingsSection.DATABASE,
+
+    // Publish status state (per-app, keyed by appId)
+    publishStates: {},
 
     // Page loading orchestration state
     loadingPhase: 'idle',
@@ -226,6 +251,70 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Settings section actions
     setActiveSettingsSection: (section) => set((state) => { state.activeSettingsSection = section }),
+
+    // Publish status actions (per-app)
+    getPublishState: (appId: string) => {
+      const state = get().publishStates[appId];
+      return state || {
+        isPublishing: false,
+        publishError: false,
+        lastPublishedCommitHash: null,
+        deploymentsRefetch: null,
+      };
+    },
+    setIsPublishing: (appId: string, isPublishing: boolean) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = {
+          isPublishing: false,
+          publishError: false,
+          lastPublishedCommitHash: null,
+          deploymentsRefetch: null,
+        };
+      }
+      state.publishStates[appId].isPublishing = isPublishing;
+    }),
+    setPublishError: (appId: string, hasError: boolean) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = {
+          isPublishing: false,
+          publishError: false,
+          lastPublishedCommitHash: null,
+          deploymentsRefetch: null,
+        };
+      }
+      state.publishStates[appId].publishError = hasError;
+    }),
+    setLastPublishedCommitHash: (appId: string, commitHash: string | null) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = {
+          isPublishing: false,
+          publishError: false,
+          lastPublishedCommitHash: null,
+          deploymentsRefetch: null,
+        };
+      }
+      state.publishStates[appId].lastPublishedCommitHash = commitHash;
+    }),
+    setDeploymentsRefetch: (appId: string, refetch: (() => Promise<any>) | null) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = {
+          isPublishing: false,
+          publishError: false,
+          lastPublishedCommitHash: null,
+          deploymentsRefetch: null,
+        };
+      }
+      state.publishStates[appId].deploymentsRefetch = refetch;
+    }),
+    clearPublishStatus: (appId: string) => set((state) => {
+      if (state.publishStates[appId]) {
+        state.publishStates[appId].isPublishing = false;
+        state.publishStates[appId].publishError = false;
+        // Keep lastPublishedCommitHash and deploymentsRefetch for retry functionality
+      }
+    }),
+
+
 
     // Page loading orchestration
     resetForNewApp: (appId: string) => {

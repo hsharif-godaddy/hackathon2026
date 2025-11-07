@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Header from '@/components/layout/Header'
+import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
@@ -12,6 +13,7 @@ import { ChatTab, SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { ProtectedRoute } from '@/components/auth'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { appService } from '@/services/AppService'
 import {
   useConversations,
@@ -35,6 +37,9 @@ function DevelopPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const appId = useAppIdFromParams()
+
+  const { featureFlags } = useSwitchboard();
+  const isPublishButtonEnabled = featureFlags['appbuilder-publish-button'] ?? false;
 
   // Server polling store - unified server status management
   const { startPollingForServer, stopPollingForServer, cleanup: cleanupServerPolling } = useServerPollingStore()
@@ -504,6 +509,7 @@ function DevelopPageContent() {
           )}
 
           <div className="flex-1 flex flex-col">
+            {isPublishButtonEnabled && <PublishStatusAlert />}
             <div className="flex-1 overflow-hidden relative">
               <div className="absolute inset-0">
                 {activeChatTab !== ChatTab.SETTINGS ? (

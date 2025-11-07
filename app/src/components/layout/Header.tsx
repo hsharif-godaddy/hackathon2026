@@ -1,15 +1,22 @@
+'use client';
+
 import Link from 'next/link'
 import clsx from 'clsx'
-import { UserMenu } from '@/components/auth'
-import { AiroLogo } from '@/components/layout/AiroLogo'
-import AppSelector from '@/components/layout/AppSelector'
-import { generateClickEID } from '@/utils/instrumentation'
-import { HeaderProps } from './types'
-import ChevronLeftIcon from '@ux/icon/chevron-left';
 import Box from '@ux/box'
 import Tag from '@ux/tag';
+import ChevronLeftIcon from '@ux/icon/chevron-left';
+import { UserMenu } from '@/components/auth'
+import { useAuthContext } from '@/components/providers/AuthProvider'
+import AppSelector from '@/components/layout/AppSelector'
+import AppPublish from '@/components/layout/AppPublish'
+import { generateClickEID } from '@/utils/instrumentation'
+import { HeaderProps } from './types'
+import { AiroLogo } from './AiroLogo';
 
 export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
+  const { isAuthenticated, isAuthDisabled } = useAuthContext();
+  const showAuthenticatedUI = isAuthenticated || isAuthDisabled;
+
   return (
     <header className={clsx(
       "text-intents-ux-boxHighContrast-foregroundColor",
@@ -34,11 +41,13 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
           </div>
           <Box orientation="horizontal" gap="md">
             {actions && actions}
-            <AppSelector location={location} />
             <UserMenu
               onShowMockLogin={onShowMockLogin}
               location={location}
             />
+            { showAuthenticatedUI && <div className="h-6 w-px bg-ai-dark self-center" /> }
+            <AppSelector location={location} />
+            <AppPublish location={location} />
           </Box>
         </div>
       </div>
