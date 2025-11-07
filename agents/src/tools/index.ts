@@ -11,7 +11,6 @@ export { GettyImageTool, findGettyImage } from './image-search-driver/index.js';
 export { ASTEditorBase } from './ast-editor-base.js';
 export { ASTTextEditor } from './ast-text-editor.js';
 export { ServerManagementTool } from './server-management-tool.js';
-export { MySQLResponseFormatter, createMySQLResponseFormatter } from './mysql-response-formatter.js';
 export { ASTStyleEditor } from './ast-style-editor.js';
 export { AppPlanTool, appPlanTool } from './app-plan-tool.js';
 export { validateLucideIcons } from './icons-validator.js';
@@ -45,10 +44,6 @@ export type {
   GrepResult,
   Match
 } from './grep-tool.js';
-export type {
-  MySQLToolOptions,
-  MySQLToolResult
-} from './mysql-tool.js';
 
 export type {
   ImageSearchOptions,
@@ -83,11 +78,6 @@ export type {
   RestartServerResult
 } from './server-management-tool.js';
 
-export type {
-  MySQLOperationData,
-  MySQLOperationResult,
-  EnvironmentCredentials
-} from './mysql-response-formatter.js';
 export type {
   StyleEditContext,
   StyleEditRequest,

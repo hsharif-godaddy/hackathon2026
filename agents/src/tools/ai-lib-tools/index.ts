@@ -10,7 +10,6 @@ export { terminalCommandAITool } from './terminal-command.js'
 export { gitOperationAITool } from './git-operation.js'
 export { readFileAITool } from './read-file.js'
 export { grepSearchAITool } from './grep-search.js'
-export { mysqlOperationAITool } from './mysql-operation.js'
 export { serverRestartAITool, serverStatusAITool } from './server-management.js'
 export { imageSearchAITool, imageGenerateAITool } from './image-tools.js'
 export { iconsValidatorAITool } from './icons-validator.js'
@@ -30,7 +29,6 @@ import { terminalCommandAITool } from './terminal-command.js'
 import { gitOperationAITool } from './git-operation.js'
 import { readFileAITool } from './read-file.js'
 import { grepSearchAITool } from './grep-search.js'
-import { mysqlOperationAITool } from './mysql-operation.js'
 import { serverRestartAITool, serverStatusAITool } from './server-management.js'
 import { imageSearchAITool, imageGenerateAITool } from './image-tools.js'
 import { iconsValidatorAITool } from './icons-validator.js'
@@ -54,7 +52,6 @@ export const allAILibTools = {
   gitOperation: gitOperationAITool,
   readFile: readFileAITool,
   grepSearch: grepSearchAITool,
-  mysqlOperation: mysqlOperationAITool,
   serverRestart: serverRestartAITool,
   serverStatus: serverStatusAITool,
   imageSearch: imageSearchAITool,
@@ -97,10 +94,8 @@ export const toolGroups = {
     serverStatus: serverStatusAITool,
   },
 
-  // Database and API tools
-  backend: {
-    mysqlOperation: mysqlOperationAITool,
-  },
+  // Backend tools (empty - database operations removed)
+  backend: {},
 
   // Media and content tools
   media: {

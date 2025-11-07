@@ -99,7 +99,6 @@ export async function createDatabaseAgent(options?: { appPath?: string }): Promi
     model,
     modelName,
     tools: {
-      mysqlOperation: allAILibTools.mysqlOperation,
       serverRestart: allAILibTools.serverRestart,
       serverStatus: allAILibTools.serverStatus,
       fileEdit: allAILibTools.fileEdit,
