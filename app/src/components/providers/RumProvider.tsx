@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { logger } from '@/lib/request-context';
 
 /**
  * Elastic APM Real User Monitoring (RUM) Provider
@@ -69,13 +70,24 @@ export default function RumProvider({
           logLevel: environment === 'development' ? 'debug' : 'warn',
         });
 
+        // Store APM instance globally for access by custom hooks
+        if (typeof window !== 'undefined' && apm) {
+          (window as any).__apmInstance = apm;
+          logger.info('rum.provider.init.success', {
+            message: 'APM instance stored globally',
+            is_active: apm.isActive(),
+            has_start_transaction: typeof apm.startTransaction === 'function',
+            has_get_current_transaction: typeof apm.getCurrentTransaction === 'function'
+          });
+        }
+
         return apm;
       } catch (error) {
-        // Log RUM initialization errors in development for visibility
-        if (environment === 'development') {
-          console.error('Elastic APM RUM initialization failed:', error);
-        }
-        // In production, suppress logging to comply with workspace standards
+        logger.error('rum.provider.init.failure', {
+          message: 'Elastic APM RUM initialization failed',
+          environment,
+          error: error instanceof Error ? error.message : String(error)
+        });
       }
     };
 

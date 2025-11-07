@@ -13,6 +13,7 @@ import { ChatTab, SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { ProtectedRoute } from '@/components/auth'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
+import { usePageTiming } from '@/hooks/usePageTiming'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { appService } from '@/services/AppService'
 import {
@@ -79,6 +80,9 @@ function DevelopPageContent() {
   const {
     loadGitHistory,
   } = useGitHistoryStore()
+
+  // Track page timing with RUM
+  usePageTiming('develop-page', appId)
 
   // Local state (only what's not in stores)
   const [selectedElement, setSelectedElement] = useState<unknown>(null)

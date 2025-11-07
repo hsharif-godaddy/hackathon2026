@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useSiteCreationStore, cleanupSiteCreationStore, type SiteCreationPhase } from '@/stores/useSiteCreationStore'
 import { useSites } from '@/stores/useSitesStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
+import { usePageTiming } from '@/hooks/usePageTiming'
 import Box from '@ux/box'
 import Button from '@ux/button'
 
@@ -29,6 +30,9 @@ export default function CreateAppStatus() {
   const {
     refreshSites
   } = useSites()
+
+  // Track page timing with RUM
+  const { endTransaction } = usePageTiming('create-page', siteId)
 
   // Track if we've updated the URL with the real app ID
   const [urlUpdated, setUrlUpdated] = useState(false)
@@ -141,6 +145,9 @@ export default function CreateAppStatus() {
     }
 
     const redirectTimer = setTimeout(() => {
+      // End RUM transaction before redirect to capture page timing
+      endTransaction()
+
       // Stop polling before redirect to prevent overlapping requests
       if (process.env.NODE_ENV === 'development') {
         console.log('[CREATE] 🛑 Stopping site creation polling before redirect')
@@ -158,7 +165,7 @@ export default function CreateAppStatus() {
     }, 1000) // Reduced from 3000ms to 1000ms - develop page shows loading state anyway
 
     return () => clearTimeout(redirectTimer)
-  }, [seenPhases, siteId, realAppId, router, phase])
+  }, [seenPhases, siteId, realAppId, router, phase, endTransaction])
 
   // Initialize the creation flow
   useEffect(() => {
@@ -205,7 +212,10 @@ export default function CreateAppStatus() {
             >
               <Button
                 design="secondary"
-                onClick={() => router.push('/')}
+                onClick={() => {
+                  endTransaction()
+                  router.push('/')
+                }}
                 text="Go Back Home"
               />
               {retryCount < maxRetries && (
@@ -287,6 +297,7 @@ export default function CreateAppStatus() {
             <Box className="mx-auto">
               <Button
                 onClick={() => {
+                  endTransaction()
                   cleanupSiteCreationStore()
                   router.push('/')
                 }}
