@@ -1,11 +1,12 @@
 import { logger } from '../../request-context';
 import { exec } from "child_process";
 import { promisify } from "util";
-import path from "path";
-import { existsSync, readFileSync, mkdirSync } from "fs";
+import path from "node:path";
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 import { DevDatabase } from '../database/DevDatabase';
 import { devSupervisor } from '../../features';
 import { userInfo } from "node:os";
+import { DockerDatabaseManager, type DatabaseInfo } from './docker-database-manager';
 
 const execAsync = promisify(exec);
 
@@ -34,6 +35,7 @@ export interface ContainerInfo {
 	hostSocketPath?: string; // Path to dev-supervisor socket on host filesystem (Unix mode)
 	tcpConnectionUrl?: string; // TCP connection URL (TCP mode)
 	supervisorPort?: number; // TCP port for dev-supervisor (TCP mode)
+	databaseInfo?: DatabaseInfo; // Database container information
 }
 
 /**
@@ -42,12 +44,14 @@ export interface ContainerInfo {
  */
 export class DockerContainerManager {
 	private devDb: DevDatabase;
+	private databaseManager: DockerDatabaseManager;
 	private containers = new Map<string, ContainerInfo>();
 	private initialized = false;
 	private activeRebuilds = new Set<string>(); // Track ongoing rebuilds
 
 	constructor(devDb: DevDatabase) {
 		this.devDb = devDb;
+		this.databaseManager = new DockerDatabaseManager();
 	}
 
 	/**
@@ -61,6 +65,7 @@ export class DockerContainerManager {
 			.replace(/^[.-]+|[.-]+$/g, "") // Remove leading/trailing dots or dashes
 			.substring(0, 63); // Limit length
 	}
+
 
 	/**
 	 * Detect template version from app path
@@ -116,6 +121,86 @@ export class DockerContainerManager {
 			});
 			// Fallback to default values if we can't get user info
 			return { uid: 790, gid: 790 };
+		}
+	}
+
+	/**
+	 * Write database credentials to .env file for host machine access
+	 * This allows the agents service (running on host) to read DB credentials
+	 */
+	private writeDatabaseEnvFile(appPath: string, databaseInfo: DatabaseInfo): void {
+		try {
+			const envPath = path.join(appPath, '.env');
+			const envExamplePath = path.join(appPath, 'env.example');
+
+			logger.info("database.env.write.begin", {
+				appId: databaseInfo.appId,
+				envPath,
+			});
+
+			// Get database environment variables
+			const dbEnvVars = this.databaseManager.getEnvironmentVariables(databaseInfo);
+
+			// Read existing env.example if it exists to preserve other variables
+			let existingEnvContent = '';
+			if (existsSync(envExamplePath)) {
+				existingEnvContent = readFileSync(envExamplePath, 'utf-8');
+			}
+
+			// Parse existing content to preserve non-database variables
+			const existingLines = existingEnvContent.split('\n');
+			const preservedLines: string[] = [];
+
+			for (const line of existingLines) {
+				const trimmed = line.trim();
+				// Skip empty lines, comments, and database-related variables
+				if (!trimmed || trimmed.startsWith('#')) {
+					preservedLines.push(line);
+				} else if (!trimmed.startsWith('MYSQL_') &&
+				           !trimmed.startsWith('DATABASE_URL') &&
+				           !trimmed.startsWith('DB_')) {
+					preservedLines.push(line);
+				}
+			}
+
+			// Build the new .env content
+			const envLines: string[] = [
+				...preservedLines,
+				'',
+				'# Database credentials (auto-generated)',
+				`DATABASE_URL=${dbEnvVars.DATABASE_URL}`,
+				'',
+				'# Internal Docker network endpoint (for app container)',
+				`MYSQL_HOST=${dbEnvVars.MYSQL_HOST}`,
+				`MYSQL_PORT=${dbEnvVars.MYSQL_PORT}`,
+				'',
+				'# External host machine endpoint (for agents service)',
+				`MYSQL_HOST_EXTERNAL=${dbEnvVars.MYSQL_HOST_EXTERNAL}`,
+				`MYSQL_PORT_EXTERNAL=${dbEnvVars.MYSQL_PORT_EXTERNAL}`,
+				'',
+				'# Database credentials',
+				`MYSQL_DATABASE=${dbEnvVars.MYSQL_DATABASE}`,
+				`MYSQL_USER=${dbEnvVars.MYSQL_USER}`,
+				`MYSQL_PASSWORD=${dbEnvVars.MYSQL_PASSWORD}`,
+				`MYSQL_ROOT_PASSWORD=${dbEnvVars.MYSQL_ROOT_PASSWORD}`,
+				''
+			];
+
+			// Write the .env file
+			writeFileSync(envPath, envLines.join('\n'), 'utf-8');
+
+			logger.info("database.env.write.success", {
+				appId: databaseInfo.appId,
+				envPath,
+				varCount: Object.keys(dbEnvVars).length,
+			});
+		} catch (error) {
+			logger.error("database.env.write.failure", {
+				appId: databaseInfo.appId,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			// Don't throw - this is not critical for container operation
+			// The container gets env vars via -e flags, .env is only for host access
 		}
 	}
 
@@ -276,6 +361,22 @@ export class DockerContainerManager {
 				await this.ensureContainerRemoved(containerName);
 			}
 
+			// Create database container first (local dev only - for v8 and later templates)
+			let databaseInfo: DatabaseInfo | undefined;
+			if (templateVersion === 'v8') {
+				try {
+					logger.info(`🗄️ Creating MySQL database container for app ${appId}`);
+					databaseInfo = await this.databaseManager.createDatabaseContainer(appId);
+					logger.info(`✅ MySQL database container created for app ${appId}`);
+
+				// Write database credentials to .env file for host machine access
+				this.writeDatabaseEnvFile(appPath, databaseInfo);
+				} catch (error) {
+					logger.error(`❌ Failed to create database container for app ${appId}:`, error);
+					throw new Error(`Database container creation failed: ${error instanceof Error ? error.message : String(error)}`);
+				}
+			}
+
 			// Create and start the container with volume mounting for live development
 			logger.info(`🚀 Starting Docker container: ${containerName} on port ${port}`);
 
@@ -368,10 +469,22 @@ export class DockerContainerManager {
 				);
 			}
 
+			// Add database environment variables if database was created
+			const databaseEnvVars = [];
+			if (databaseInfo) {
+				const dbEnvVars = this.databaseManager.getEnvironmentVariables(databaseInfo);
+				for (const [key, value] of Object.entries(dbEnvVars)) {
+					databaseEnvVars.push(`-e ${key}="${value}"`);
+				}
+				// Connect app container to database network
+				baseCommand.push(`--network ${databaseInfo.networkId}`);
+			}
+
 			const runCommand = [
 				...baseCommand,
 				...devSupervisorConfig,
 				...templateSpecific,
+				...databaseEnvVars,
 				"-e HOST=0.0.0.0",
 				"-e NODE_ENV=development",
 				"--restart unless-stopped",
@@ -391,6 +504,7 @@ export class DockerContainerManager {
 				hostSocketPath,
 				tcpConnectionUrl,
 				supervisorPort,
+				databaseInfo,
 			};
 
 			// Store in memory and database
@@ -469,6 +583,19 @@ export class DockerContainerManager {
 				logger.info(`🗑️ Docker image removed: ${containerInfo.imageName}`);
 			} catch (imageError) {
 				logger.info(`ℹ️ Docker image may be in use, skipping removal: ${containerInfo.imageName}`);
+			}
+
+			// Remove database container if it exists
+			try {
+				const dbStatus = await this.databaseManager.getDatabaseStatus(appId);
+				if (dbStatus.status !== 'not_found') {
+					logger.info(`🗄️ Removing database container for app ${appId}`);
+					await this.databaseManager.removeDatabaseContainer(appId);
+					logger.info(`✅ Database container removed for app ${appId}`);
+				}
+			} catch (dbError) {
+				logger.warn(`⚠️ Failed to remove database container for app ${appId}:`, dbError);
+				// Continue with app container removal even if database removal fails
 			}
 
 			// Remove from memory and database
@@ -1138,6 +1265,10 @@ export class DockerContainerManager {
 					logger.info(`🧹 Cleaned up orphaned database record for app ${containerRecord.appId}`);
 				}
 			}
+
+			// Clean up orphaned database containers
+			const dbCleanedCount = await this.databaseManager.cleanupOrphans();
+			cleanedCount += dbCleanedCount;
 
 			const duration = Date.now() - startTime;
 
