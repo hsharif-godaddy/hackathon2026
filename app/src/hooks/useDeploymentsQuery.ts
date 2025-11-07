@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import type { AiroDeployment } from '@/lib/mgmt-airo';
 
 const INITIAL_POLL_DELAY_MS = 5000;  // Wait 5 seconds before first poll
@@ -32,6 +33,9 @@ export interface UseDeploymentsQueryOptions {
  * - Then every 2 seconds for the first 3 minutes
  * - Then every 10 seconds until deployment completes or 5 minute timeout
  * - Stops polling after 5 minutes max (prevents infinite polling on stuck deployments)
+ * 
+ * When a deployment completes successfully (reaches 'deployed' status), this hook
+ * automatically triggers a success alert via the useDevelopPageStore.
  *
  * @param options - Configuration options
  * @param options.appId - App ID (required)
@@ -65,11 +69,14 @@ export function useDeploymentsQuery({
   limit = 20,
   includeJobData = true,
   enabled = true,
-  refetchInterval = false,
-  shouldPoll,
 }: UseDeploymentsQueryOptions) {
   // Track when polling started for progressive intervals
   const pollingStartTimeRef = useRef<number | null>(null);
+  
+  // Get store methods to check and clear deployment in progress
+  const getPublishState = useDevelopPageStore((state) => state.getPublishState);
+  const setDeploymentInProgressId = useDevelopPageStore((state) => state.setDeploymentInProgressId);
+  const setPublishSuccess = useDevelopPageStore((state) => state.setPublishSuccess);
 
   return useQuery({
     queryKey: ['deployments', appId, limit, includeJobData],
@@ -91,7 +98,8 @@ export function useDeploymentsQuery({
       });
 
       const response = await appFetch(
-        `/api/apps/${appId}/deployments?${queryParams.toString()}`
+        `/api/apps/${appId}/deployments?${queryParams.toString()}`,
+        { cache: 'no-store' }
       );
 
       if (!response.ok) {
@@ -115,33 +123,69 @@ export function useDeploymentsQuery({
       return deployments;
     },
     enabled: enabled && !!appId,
-    // Use progressive polling if shouldPoll is provided, otherwise use refetchInterval
-    refetchInterval: shouldPoll 
-      ? (query) => {
+    refetchInterval: (query) => {
           const data = query.state.data;
-          const shouldContinuePolling = shouldPoll(data);
           
-          // Start/stop tracking polling time
-          if (shouldContinuePolling && !pollingStartTimeRef.current) {
-            pollingStartTimeRef.current = Date.now();
-            const latestDeployment = data?.[0];
-            logger.info('deployments-query.polling.started', {
-              appId,
-              deploymentId: latestDeployment?.id,
-              status: latestDeployment?.status
-            });
-          } else if (!shouldContinuePolling && pollingStartTimeRef.current) {
-            const duration = Date.now() - pollingStartTimeRef.current;
-            logger.info('deployments-query.polling.stopped', {
-              appId,
-              durationMs: duration,
-              durationSeconds: Math.round(duration / 1000)
-            });
+          // Check if we have a deployment in progress from publish
+          const publishState = getPublishState(appId);
+          const deploymentInProgressId = publishState.deploymentInProgressId;
+          
+          // If no deployment being tracked, don't poll
+          if (!deploymentInProgressId) {
             pollingStartTimeRef.current = null;
+            return false;
           }
           
-          if (!shouldContinuePolling) {
+          logger.info('deployments-query.polling.check', {
+            appId,
+            deploymentInProgressId,
+            hasData: !!data,
+            deploymentsCount: data?.length || 0,
+            deploymentIds: data?.map(d => d.id) || [],
+          });
+          
+          // Find the deployment in progress if it exists in current data
+          const deploymentInProgress = data?.find(d => d.id === deploymentInProgressId);
+          
+          logger.info('deployments-query.polling.deployment-check', {
+            appId,
+            deploymentInProgressId,
+            found: !!deploymentInProgress,
+            status: deploymentInProgress?.status,
+            allStatuses: data?.map(d => ({ id: d.id, status: d.status })) || [],
+          });
+          
+          // If deployment is in final state, clear it and stop polling
+          if (deploymentInProgress && ['deployed', 'failed'].includes(deploymentInProgress.status)) {
+            // If successfully deployed, show success alert
+            if (deploymentInProgress.status === 'deployed') {
+              logger.info('deployments-query.polling.complete', {
+                appId,
+                deploymentId: deploymentInProgressId,
+                status: 'deployed',
+              });
+              setPublishSuccess(appId, true);
+            } else {
+              logger.info('deployments-query.polling.complete', {
+                appId,
+                deploymentId: deploymentInProgressId,
+                status: 'failed',
+              });
+            }
+            
+            setDeploymentInProgressId(appId, null);
+            pollingStartTimeRef.current = null;
             return false;
+          }
+          
+          // Start polling immediately if we have a deploymentInProgressId
+          // (even if deployment hasn't appeared in list yet)
+          if (!pollingStartTimeRef.current) {
+            pollingStartTimeRef.current = Date.now();
+            logger.info('deployments-query.polling.started', {
+              appId,
+              deploymentId: deploymentInProgressId,
+            });
           }
           
           // Calculate progressive interval
@@ -173,8 +217,7 @@ export function useDeploymentsQuery({
           
           // After 3 minutes, poll every 10 seconds (until 5 minute timeout)
           return SLOW_POLLING_INTERVAL_MS;
-        }
-      : refetchInterval,
+        },
     staleTime: 0,
   });
 }

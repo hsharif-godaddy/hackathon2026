@@ -44,10 +44,10 @@ interface PublishResult {
  * Handles fetching the latest commit hash if not provided and making the publish request.
  * Stores the last published commit hash in the store for retry functionality.
  * 
- * After successful publish, efficiently polls for the new deployment by:
- * 1. Fetching only the 4 most recent deployments (lightweight polling)
- * 2. Checking if deploymentId appears in the response
- * 3. Once found, refetches ALL matching deployments queries with fresh data
+ * After successful publish:
+ * - Sets deploymentInProgressId in store to track the new deployment
+ * - useDeploymentsQuery detects this ID and starts polling
+ * - Polling continues until deployment status is 'deployed' or 'failed'
  * 
  * @returns Mutation object with mutate, mutateAsync, isLoading, isError, error, data
  * 
@@ -68,6 +68,7 @@ interface PublishResult {
 export function usePublishApp() {
   const queryClient = useQueryClient();
   const setLastPublishedCommitHash = useDevelopPageStore((state) => state.setLastPublishedCommitHash);
+  const setDeploymentInProgressId = useDevelopPageStore((state) => state.setDeploymentInProgressId);
 
   return useMutation<PublishResult, Error, PublishParams>({
     mutationFn: async ({ appId, commitHash }) => {
@@ -120,78 +121,21 @@ export function usePublishApp() {
         deploymentId: data.result.deployment?.deploymentId,
       });
 
-      // Poll deployments endpoint until the new deployment appears
+      // Set deployment ID in store to trigger polling in useDeploymentsQuery
       if (data.result.deployment?.deploymentId) {
-        const deploymentId = data.result.deployment.deploymentId;
-        let attempts = 0;
-
-        logger.debug('publish.polling-for-deployment', {
+        setDeploymentInProgressId(variables.appId, data.result.deployment.deploymentId);
+        
+        logger.info('publish.deployment-tracking-started', {
           appId: variables.appId,
-          deploymentId,
-        });
-
-        while (true) {
-          attempts++;
-
-          // Fetch only the 4 most recent deployments for efficient polling
-          const deployments = await queryClient.fetchQuery<AiroDeployment[]>({
-            queryKey: ['deployments', variables.appId, 4, true],
-            queryFn: async (): Promise<AiroDeployment[]> => {
-              const queryParams = new URLSearchParams({
-                limit: '1',
-                includeJobData: 'true',
-              });
-
-              const response = await appFetch(
-                `/api/apps/${variables.appId}/deployments?${queryParams.toString()}`
-              );
-
-              if (!response.ok) {
-                const errorMessage = `Failed to fetch deployments: ${response.status} ${response.statusText}`;
-                throw new Error(errorMessage);
-              }
-
-              const responseData = await response.json();
-              return Array.isArray(responseData) ? responseData : responseData.deployments || [];
-            },
-          });
-
-          // Check if our deployment appears in the recent deployments
-          const hasNewDeployment = deployments.some(d => d.id === deploymentId);
-
-          if (hasNewDeployment) {
-            logger.info('publish.deployment-found', {
-              appId: variables.appId,
-              deploymentId,
-              attempts,
-            });
-
-            // Refetch ALL deployments queries to get fresh data
-            await queryClient.refetchQueries({
-              queryKey: ['deployments', variables.appId],
-              type: 'all', // Refetch all queries (active and inactive)
-            });
-
-            logger.debug('publish.queries-refetched', {
-              appId: variables.appId,
-              deploymentId,
-            });
-            break;
-          }
-
-          logger.debug('publish.deployment-not-found-yet', {
-            appId: variables.appId,
-            deploymentId,
-            attempts,
-          });
-        }
-      } else {
-        // No deployment info - just refetch once
-        await queryClient.refetchQueries({
-          queryKey: ['deployments', variables.appId],
-          type: 'all',
+          deploymentId: data.result.deployment.deploymentId,
         });
       }
+
+      // Invalidate deployments queries to trigger immediate refetch with polling
+      await queryClient.invalidateQueries({
+        queryKey: ['deployments', variables.appId],
+        refetchType: 'active',
+      });
     },
     onError: (error, variables) => {
       logger.error('publish.error', {

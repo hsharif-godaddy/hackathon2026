@@ -68,10 +68,10 @@ export class AiroMgmtClient {
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     path: string,
     body?: any,
-    options: { retryOn404?: boolean; logEvent?: string } = {}
+    options: { retryOn404?: boolean; logEvent?: string; noCache?: boolean } = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const { retryOn404 = false, logEvent = 'api.request' } = options;
+    const { retryOn404 = false, logEvent = 'api.request', noCache = false } = options;
 
     // Start timing for this specific API call
     const apiCallStart = Date.now();
@@ -96,6 +96,7 @@ export class AiroMgmtClient {
             'Authorization': `${MGMT_AIRO_AUTH_SCHEME} ${this.jwt}`,
             ...(body ? { 'Content-Type': 'application/json' } : {})
           },
+          ...(noCache ? { cache: 'no-store' as RequestCache } : {}),
           ...(body ? { body: JSON.stringify(body) } : {})
         });
 
@@ -508,7 +509,7 @@ export class AiroMgmtClient {
       'GET',
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/deployments?${params.toString()}`,
       undefined,
-      { logEvent: 'mgmt-airo.get-deployments' }
+      { logEvent: 'mgmt-airo.get-deployments', noCache: true }
     );
   }
 }

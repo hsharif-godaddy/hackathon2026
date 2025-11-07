@@ -41,6 +41,7 @@ export interface AiroApp {
   urls?: {
     agent?: string;
     preview?: string;
+    publish?: string;
   };
   variables?: Record<string, any>;
 }
@@ -229,6 +230,7 @@ export interface CustomerTree {
           agent: string;
           backend: string;
           preview: string;
+          publish?: string;
         };
         variables: Record<string, any>;
         createdAt: string;

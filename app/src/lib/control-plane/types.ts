@@ -9,6 +9,18 @@
 export type SiteStatus = 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
 
 /**
+ * Domain information for a site
+ */
+export interface SiteDomain {
+  fqdn: string;
+  isPrimary: boolean;
+  domainType?: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * Site information returned by control plane
  */
 export interface SiteInfo {
@@ -20,12 +32,14 @@ export interface SiteInfo {
   agent_url?: string;
   backend_url?: string;
   preview_url?: string;
+  published_url?: string;
   ceph_mount_id?: string;
   ceph_dir_number?: string;
   created_at: Date;
   updated_at: Date;
   system_id?: string; // V2 only: systemId from mgmt-hosting (needed for deploy/delete/update)
   subscription_id?: string; // V2 only: subscriptionId from mgmt-hosting (needed for hierarchical URLs)
+  domains?: SiteDomain[]; // V2 only: Custom domains from mgmt-hosting
 }
 
 /**

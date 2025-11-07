@@ -1123,21 +1123,26 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
    *
    * CRITICAL: Uses app.id (the real appId from hosting_apps) as the siteId
    * NOT the jobId - that's just a temporary handle during creation
+   * 
+   * Includes custom domains from mgmt-hosting if available (app.domains)
    */
   private mapAppToSiteInfo(app: any): SiteInfo {
     // Use URLs from V2 response if available, otherwise construct them as fallback
     let agent_url: string | undefined;
     let preview_url: string | undefined;
+    let published_url: string | undefined;
 
     if (app.urls) {
       // V2 provides URLs in the response - use them directly
       agent_url = app.urls.agent;
       preview_url = app.urls.preview;
+      published_url = app.urls.publish;
     } else {
       // Fallback: construct URLs if not provided (shouldn't happen in V2)
       const urls = this.constructUrls(app.id, app.status, app.cellId);
       agent_url = urls.agent;
       preview_url = urls.preview;
+      published_url = urls.publish;
     }
 
     return {
@@ -1148,12 +1153,14 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       initial_prompt: app.variables?.initialPrompt,
       agent_url,
       preview_url,
+      published_url,
       ceph_mount_id: app.infrastructure?.cephMountId,
       ceph_dir_number: app.infrastructure?.cephDirNumber,
       created_at: new Date(app.createdAt),
       updated_at: new Date(app.updatedAt),
       system_id: app.systemId, // Store systemId for delete/update/deploy operations
-      subscription_id: app.subscriptionId // Store subscriptionId for hierarchical URLs
+      subscription_id: app.subscriptionId, // Store subscriptionId for hierarchical URLs
+      domains: app.domains // Custom domains from mgmt-hosting
     };
   }
 
@@ -1167,6 +1174,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
   private constructUrls(appId: string, appStatus: string | null, cellId?: string): {
     agent?: string;
     preview?: string;
+    publish?: string;
   } {
     // Return URLs for pending, provisioning, and active statuses
     // Don't return URLs for error or null status
@@ -1188,7 +1196,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
     return {
       agent: `https://${appId}.agent.${domain}`,
-      preview: `https://${appId}.preview.${domain}`
+      preview: `https://${appId}.preview.${domain}`,
+      publish: `https://${appId}.${domain}`
     };
   }
 

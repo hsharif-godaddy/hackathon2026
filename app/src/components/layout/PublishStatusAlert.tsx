@@ -3,22 +3,35 @@
 import { useCallback } from 'react';
 import Alert from '@ux/alert';
 import Button from '@ux/button';
+import text from '@ux/text';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useSiteStore } from '@/stores/useSiteStore';
 import { logger } from '@/lib/request-context';
+import { generateClickEID } from '@/utils/instrumentation';
 
 /**
  * PublishStatusAlert Component
- *
- * - Publishing in progress (info alert with spinner)
+ * 
+ * Displays alerts for various publish states:
+ * - Publishing in progress (info alert)
  * - Publish failed (error alert with 'Try Again' button)
- * - Automatically hides when publish succeeds
+ * - Publish succeeded (success alert with FQDN link to view app)
+ * 
+ * The success alert appears when a deployment completes successfully and
+ * displays the app's FQDN with the following priority:
+ * 1. Primary custom domain (site.domains[].fqdn where isPrimary=true)
+ * 2. First custom domain (site.domains[0].fqdn)
+ * 3. Preview URL as fallback (site.preview_url)
+ * 
+ * The alert can be dismissed by the user and does not persist across refreshes.
  */
 export default function PublishStatusAlert() {
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const getPublishState = useDevelopPageStore((state) => state.getPublishState);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
+  const dismissPublishSuccess = useDevelopPageStore((state) => state.dismissPublishSuccess);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
 
   // Get publish state for current app
@@ -27,8 +40,13 @@ export default function PublishStatusAlert() {
     publishError: false,
     lastPublishedCommitHash: null,
     deploymentsRefetch: null,
+    deploymentInProgressId: null,
+    showSuccessAlert: false,
   };
-  const { isPublishing, publishError, lastPublishedCommitHash, deploymentsRefetch } = publishState;
+  const { isPublishing, publishError, showSuccessAlert, lastPublishedCommitHash, deploymentsRefetch } = publishState;
+
+  // Get site to extract FQDN for success alert
+  const site = useSiteStore((state) => currentAppId ? state.getSite(currentAppId) : null);
 
   const publishMutation = usePublishApp();
 
@@ -92,8 +110,46 @@ export default function PublishStatusAlert() {
     clearPublishStatus(currentAppId);
   }, [currentAppId, clearPublishStatus]);
 
-  if (!isPublishing && !publishError) {
+  if (!isPublishing && !publishError && !showSuccessAlert) {
     return null;
+  }
+
+  // Show success alert when deployment completes
+  if (showSuccessAlert && currentAppId) {
+    // Get the FQDN with fallback priority:
+    // 1. Custom domain where domainType != 'prefix'
+    // 2. Prefix domain where domainType = 'prefix'
+    // 3. Published URL from site.published_url
+    const customDomain = site?.domains?.find(d => d.domainType && d.domainType !== 'prefix');
+    const prefixDomain = site?.domains?.find(d => d.domainType === 'prefix');
+    const publishedFqdn = site?.published_url;
+    
+    const fqdn = customDomain?.fqdn || prefixDomain?.fqdn || publishedFqdn;
+    
+    return (
+      <div className='px-4 pt-4'>
+        <Alert
+          emphasis='success'
+          onClose={() => currentAppId && dismissPublishSuccess(currentAppId)}
+          actions={
+            <Button
+              design="primary"
+              as='external'
+              text='View Now'
+              data-eid={generateClickEID(`publish-alert.success.view-now`)}
+              className="!hover:bg-transparent"
+              href={fqdn}
+              external
+            />
+          }
+        >
+          <text.h3 as='title' size={1}>Published Successfully!</text.h3>
+          <text.p>
+            Your app is now live at: <text.strong className='font-mono'>{fqdn}</text.strong>
+          </text.p>
+        </Alert>
+      </div>
+    );
   }
 
   if (isPublishing) {

@@ -5,7 +5,6 @@ import { postMessageToIframe } from '@/utils/postMessage'
 import { appService, type App } from '@/services/AppService'
 import { type Site, useSitesStore } from '@/stores/useSitesStore'
 import { ViewMode, PreviewViewMode, ChatTab, SettingsSection } from '@/app/develop/components/types'
-import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { logImpressionEvent } from '@/utils/instrumentation'
 
@@ -67,6 +66,8 @@ interface DevelopPageStore {
     publishError: boolean
     lastPublishedCommitHash: string | null
     deploymentsRefetch: (() => Promise<any>) | null
+    deploymentInProgressId: string | null
+    showSuccessAlert: boolean
   }>
 
   // Page loading orchestration
@@ -107,12 +108,17 @@ interface DevelopPageStore {
   setPublishError: (appId: string, hasError: boolean) => void
   setLastPublishedCommitHash: (appId: string, commitHash: string | null) => void
   setDeploymentsRefetch: (appId: string, refetch: (() => Promise<any>) | null) => void
+  setDeploymentInProgressId: (appId: string, deploymentId: string | null) => void
+  setPublishSuccess: (appId: string, showSuccess: boolean) => void
+  dismissPublishSuccess: (appId: string) => void
   clearPublishStatus: (appId: string) => void
   getPublishState: (appId: string) => {
     isPublishing: boolean
     publishError: boolean
     lastPublishedCommitHash: string | null
     deploymentsRefetch: (() => Promise<any>) | null
+    deploymentInProgressId: string | null
+    showSuccessAlert: boolean
   }
 
   // Page loading orchestration
@@ -260,6 +266,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         publishError: false,
         lastPublishedCommitHash: null,
         deploymentsRefetch: null,
+        deploymentInProgressId: null,
+        showSuccessAlert: false,
       };
     },
     setIsPublishing: (appId: string, isPublishing: boolean) => set((state) => {
@@ -269,6 +277,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           publishError: false,
           lastPublishedCommitHash: null,
           deploymentsRefetch: null,
+          deploymentInProgressId: null,
+          showSuccessAlert: false,
         };
       }
       state.publishStates[appId].isPublishing = isPublishing;
@@ -280,6 +290,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           publishError: false,
           lastPublishedCommitHash: null,
           deploymentsRefetch: null,
+          deploymentInProgressId: null,
+          showSuccessAlert: false,
         };
       }
       state.publishStates[appId].publishError = hasError;
@@ -291,6 +303,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           publishError: false,
           lastPublishedCommitHash: null,
           deploymentsRefetch: null,
+          deploymentInProgressId: null,
+          showSuccessAlert: false,
         };
       }
       state.publishStates[appId].lastPublishedCommitHash = commitHash;
@@ -302,14 +316,50 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           publishError: false,
           lastPublishedCommitHash: null,
           deploymentsRefetch: null,
+          deploymentInProgressId: null,
+          showSuccessAlert: false,
         };
       }
       state.publishStates[appId].deploymentsRefetch = refetch;
+    }),
+    setDeploymentInProgressId: (appId: string, deploymentId: string | null) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = {
+          isPublishing: false,
+          publishError: false,
+          lastPublishedCommitHash: null,
+          deploymentsRefetch: null,
+          deploymentInProgressId: null,
+          showSuccessAlert: false,
+        };
+      }
+      state.publishStates[appId].deploymentInProgressId = deploymentId;
+    }),
+    setPublishSuccess: (appId: string, showSuccess: boolean) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = {
+          isPublishing: false,
+          publishError: false,
+          lastPublishedCommitHash: null,
+          deploymentsRefetch: null,
+          deploymentInProgressId: null,
+          showSuccessAlert: false,
+        };
+      }
+      state.publishStates[appId].showSuccessAlert = showSuccess;
+      state.publishStates[appId].isPublishing = false;
+      state.publishStates[appId].publishError = false;
+    }),
+    dismissPublishSuccess: (appId: string) => set((state) => {
+      if (state.publishStates[appId]) {
+        state.publishStates[appId].showSuccessAlert = false;
+      }
     }),
     clearPublishStatus: (appId: string) => set((state) => {
       if (state.publishStates[appId]) {
         state.publishStates[appId].isPublishing = false;
         state.publishStates[appId].publishError = false;
+        state.publishStates[appId].showSuccessAlert = false;
         // Keep lastPublishedCommitHash and deploymentsRefetch for retry functionality
       }
     }),

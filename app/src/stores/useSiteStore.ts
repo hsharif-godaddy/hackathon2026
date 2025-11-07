@@ -4,6 +4,15 @@ import { immer } from 'zustand/middleware/immer'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 
+export interface SiteDomain {
+  fqdn: string
+  isPrimary: boolean
+  domainType?: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Site {
   id: string
   name: string
@@ -11,6 +20,7 @@ export interface Site {
   agent_url?: string
   backend_url?: string
   preview_url?: string
+  published_url?: string
   account_id: string
   created_at: string
   updated_at: string
@@ -18,6 +28,7 @@ export interface Site {
   system_id?: string // V2 only: systemId from mgmt-hosting
   subscription_id?: string // V2 only: subscriptionId from mgmt-hosting
   controlPlane?: 'v2' | 'legacy' // Control plane type (v2 or legacy)
+  domains?: SiteDomain[] // Custom domains from mgmt-hosting
 }
 
 interface SiteStore {

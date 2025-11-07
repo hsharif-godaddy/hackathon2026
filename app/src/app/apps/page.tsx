@@ -8,6 +8,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { ProtectedRoute } from '@/components/auth'
 import Header from '@/components/layout/Header'
+import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
 import { DevelopmentAdminSection } from '@/components/development'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { useSites } from '@/stores/useSitesStore'
@@ -96,6 +97,7 @@ function SitesPageContent() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
+        <AppInactivityAlert />
         <div className="mb-8">
           <Box orientation="horizontal" gap="md">
             Manage your AI-powered websites and applications
