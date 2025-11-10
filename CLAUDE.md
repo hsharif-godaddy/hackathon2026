@@ -124,9 +124,28 @@ This is a **pnpm workspace monorepo** with multiple interconnected services. All
 
 **Deployment Adapter Pattern:**
 
-- Docker containers for development and local deployments
+- Docker Compose for development and local deployments
 - Production uses different adapter for enterprise infrastructure
 - Key files: `app/src/lib/dev-environment/adapters/` containing `DockerAppService.ts`
+
+**Container Orchestration (Docker Compose):**
+
+- **Generator Service:** `app/src/lib/dev-environment/services/docker-compose-generator.ts`
+  - Generates docker-compose.yml files for each app
+  - Configures app + database services
+  - Handles environment variables and networking
+  - Supports TCP and Unix socket modes for dev-supervisor
+
+- **Manager Service:** `app/src/lib/dev-environment/services/docker-compose-manager.ts`
+  - Lifecycle operations: up, down, start, stop, restart
+  - Log streaming and status monitoring
+  - Health checks and service discovery
+
+- **Container Manager:** `app/src/lib/dev-environment/services/docker-container-manager.ts`
+  - Uses Docker Compose for all container operations
+  - Manages app + database stacks as single units
+  - Automatic recovery and orphan cleanup
+  - Generated compose files in `/tmp/apps/{appId}/docker-compose.yml`
 
 **Workspace Dependencies:**
 

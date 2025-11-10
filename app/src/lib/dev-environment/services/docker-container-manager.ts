@@ -1,14 +1,38 @@
 import { logger } from '../../request-context';
 import { exec } from "child_process";
 import { promisify } from "util";
-import path from "node:path";
+import * as path from "node:path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 import { DevDatabase } from '../database/DevDatabase';
 import { devSupervisor } from '../../features';
 import { userInfo } from "node:os";
-import { DockerDatabaseManager, type DatabaseInfo } from './docker-database-manager';
+import { DockerComposeGenerator, type ComposeServiceConfig, type DatabaseConfig } from './docker-compose-generator';
+import { DockerComposeManager } from './docker-compose-manager';
+import * as net from "net";
 
 const execAsync = promisify(exec);
+
+/**
+ * Database information for apps with database containers
+ */
+export interface DatabaseInfo {
+	appId: string;
+	containerId: string;
+	networkId: string;
+	volumeName: string;
+	credentials: {
+		host: string;               // Container hostname for Docker network
+		port: number;               // Container port (3306)
+		hostMachineHost: string;    // Host for external access (localhost/host.docker.internal)
+		hostMachinePort: number;    // Mapped port on host machine
+		database: string;
+		user: string;
+		password: string;
+		rootPassword: string;
+	};
+	status: "creating" | "running" | "stopped" | "error";
+	createdAt: Date;
+}
 
 /**
  * Determine if TCP mode should be used for dev-supervisor
@@ -28,6 +52,7 @@ function getTcpPort(): string {
 export interface ContainerInfo {
 	appId: string;
 	containerId: string;
+	appPath: string; // Path to app directory (needed for compose operations)
 	port: number;
 	status: "building" | "running" | "stopped" | "error";
 	imageName: string;
@@ -44,14 +69,17 @@ export interface ContainerInfo {
  */
 export class DockerContainerManager {
 	private devDb: DevDatabase;
-	private databaseManager: DockerDatabaseManager;
+	private composeGenerator: DockerComposeGenerator;
+	private composeManager: DockerComposeManager;
 	private containers = new Map<string, ContainerInfo>();
 	private initialized = false;
 	private activeRebuilds = new Set<string>(); // Track ongoing rebuilds
+	private allocatedPorts = new Set<number>(); // Track allocated database ports
 
 	constructor(devDb: DevDatabase) {
 		this.devDb = devDb;
-		this.databaseManager = new DockerDatabaseManager();
+		this.composeGenerator = new DockerComposeGenerator();
+		this.composeManager = new DockerComposeManager();
 	}
 
 	/**
@@ -125,21 +153,88 @@ export class DockerContainerManager {
 	}
 
 	/**
+	 * Get the app path for a given appId
+	 * Centralizes the logic for constructing app paths
+	 */
+	private getAppPath(appId: string): string {
+		return `/tmp/apps/${appId}`;
+	}
+
+	/**
+	 * Check if a port is available on the host machine
+	 */
+	private async isPortAvailable(port: number): Promise<boolean> {
+		return new Promise((resolve) => {
+			const server = net.createServer();
+
+			server.once('error', (_err: NodeJS.ErrnoException) => {
+				resolve(false);
+			});
+
+			server.once('listening', () => {
+				server.close();
+				resolve(true);
+			});
+
+			server.listen(port, '127.0.0.1');
+		});
+	}
+
+	/**
+	 * Find an available port for MySQL host mapping
+	 * Starts from 33060 and increments until an available port is found
+	 */
+	private async findAvailablePort(startPort: number = 33060): Promise<number> {
+		let port = startPort;
+		const maxAttempts = 1000;
+		let attempts = 0;
+
+		while (attempts < maxAttempts) {
+			// Skip if already allocated in this session
+			if (this.allocatedPorts.has(port)) {
+				port++;
+				attempts++;
+				continue;
+			}
+
+			// Check if port is actually available
+			if (await this.isPortAvailable(port)) {
+				this.allocatedPorts.add(port);
+				logger.info("database.port.allocated", {
+					port,
+					startPort,
+					attempts: attempts + 1,
+				});
+				return port;
+			}
+
+			port++;
+			attempts++;
+		}
+
+		throw new Error(`Unable to find available port after ${maxAttempts} attempts starting from ${startPort}`);
+	}
+
+	/**
+	 * Release a port from the allocation set
+	 */
+	private releasePort(port: number): void {
+		this.allocatedPorts.delete(port);
+		logger.info("database.port.released", { port });
+	}
+
+	/**
 	 * Write database credentials to .env file for host machine access
 	 * This allows the agents service (running on host) to read DB credentials
 	 */
-	private writeDatabaseEnvFile(appPath: string, databaseInfo: DatabaseInfo): void {
+	private writeDatabaseEnvFile(appPath: string, dbConfig: DatabaseConfig): void {
 		try {
 			const envPath = path.join(appPath, '.env');
 			const envExamplePath = path.join(appPath, 'env.example');
 
 			logger.info("database.env.write.begin", {
-				appId: databaseInfo.appId,
 				envPath,
 			});
-
-			// Get database environment variables
-			const dbEnvVars = this.databaseManager.getEnvironmentVariables(databaseInfo);
 
 			// Read existing env.example if it exists to preserve other variables
 			let existingEnvContent = '';
@@ -147,60 +242,21 @@ export class DockerContainerManager {
 				existingEnvContent = readFileSync(envExamplePath, 'utf-8');
 			}
 
-			// Parse existing content to preserve non-database variables
-			const existingLines = existingEnvContent.split('\n');
-			const preservedLines: string[] = [];
-
-			for (const line of existingLines) {
-				const trimmed = line.trim();
-				// Skip empty lines, comments, and database-related variables
-				if (!trimmed || trimmed.startsWith('#')) {
-					preservedLines.push(line);
-				} else if (!trimmed.startsWith('MYSQL_') &&
-				           !trimmed.startsWith('DATABASE_URL') &&
-				           !trimmed.startsWith('DB_')) {
-					preservedLines.push(line);
-				}
-			}
-
-			// Build the new .env content
-			const envLines: string[] = [
-				...preservedLines,
-				'',
-				'# Database credentials (auto-generated)',
-				`DATABASE_URL=${dbEnvVars.DATABASE_URL}`,
-				'',
-				'# Internal Docker network endpoint (for app container)',
-				`MYSQL_HOST=${dbEnvVars.MYSQL_HOST}`,
-				`MYSQL_PORT=${dbEnvVars.MYSQL_PORT}`,
-				'',
-				'# External host machine endpoint (for agents service)',
-				`MYSQL_HOST_EXTERNAL=${dbEnvVars.MYSQL_HOST_EXTERNAL}`,
-				`MYSQL_PORT_EXTERNAL=${dbEnvVars.MYSQL_PORT_EXTERNAL}`,
-				'',
-				'# Database credentials',
-				`MYSQL_DATABASE=${dbEnvVars.MYSQL_DATABASE}`,
-				`MYSQL_USER=${dbEnvVars.MYSQL_USER}`,
-				`MYSQL_PASSWORD=${dbEnvVars.MYSQL_PASSWORD}`,
-				`MYSQL_ROOT_PASSWORD=${dbEnvVars.MYSQL_ROOT_PASSWORD}`,
-				''
-			];
+			// Generate env file content
+			const envContent = this.composeGenerator.generateEnvFile(dbConfig, existingEnvContent);
 
 			// Write the .env file
-			writeFileSync(envPath, envLines.join('\n'), 'utf-8');
+			writeFileSync(envPath, envContent, 'utf-8');
 
 			logger.info("database.env.write.success", {
-				appId: databaseInfo.appId,
 				envPath,
-				varCount: Object.keys(dbEnvVars).length,
 			});
 		} catch (error) {
 			logger.error("database.env.write.failure", {
-				appId: databaseInfo.appId,
 				error: error instanceof Error ? error.message : String(error),
 			});
 			// Don't throw - this is not critical for container operation
-			// The container gets env vars via -e flags, .env is only for host access
+			// The container gets env vars via compose file, .env is only for host access
 		}
 	}
 
@@ -219,6 +275,10 @@ export class DockerContainerManager {
 			await execAsync("docker --version");
 			logger.info('✅ Docker availability verified');
 
+			// Check if Docker Compose is available
+			await execAsync("docker compose version");
+			logger.info('✅ Docker Compose availability verified');
+
 			// Build dev-supervisor image if needed
 			await this.ensureDevSupervisorImage();
 
@@ -236,54 +296,25 @@ export class DockerContainerManager {
 		} catch (error) {
 			logger.error('❌ Docker Container Manager initialization failed:', error);
 
-			throw new Error("Docker is not installed or not available in PATH");
+			throw new Error("Docker or Docker Compose is not installed or not available in PATH");
 		}
 	}
 
 	/**
-	 * Ensure a container is completely removed with proper wait time
+	 * Ensure a compose stack is completely removed with proper cleanup
+	 * Replaces the old ensureContainerRemoved method
 	 */
-	private async ensureContainerRemoved(containerName: string): Promise<void> {
+	private async ensureComposeStackRemoved(appPath: string): Promise<void> {
 		try {
-			// Get all containers (running and stopped) with this exact name
-			const { stdout } = await execAsync(
-				`docker ps -aq --filter name=^${containerName}$`,
-			);
-			const containerIds = stdout
-				.trim()
-				.split("\n")
-				.filter((id) => id.length > 0);
+			logger.info(`🗑️ Ensuring compose stack is removed: ${appPath}`);
 
-			if (containerIds.length > 0) {
-				logger.info(`🗑️ Removing existing Docker containers: ${containerName}`);
+			await this.composeManager.down(appPath, true);
 
-				await execAsync(`docker rm -f ${containerIds.join(" ")}`);
-
-				logger.info(`⏳ Waiting for Docker daemon to release name: ${containerName}`);
-
-				// Wait for Docker daemon to fully release the name
-				await new Promise((resolve) => setTimeout(resolve, 2000));
-
-				// Verify the name is actually free
-				const { stdout: verifyStdout } = await execAsync(
-					`docker ps -aq --filter name=^${containerName}$`,
-				);
-				if (verifyStdout.trim()) {
-					throw new Error(
-						`Container name ${containerName} is still in use after removal`,
-					);
-				}
-			}
+			logger.info(`✅ Compose stack removed: ${appPath}`);
 		} catch (error: any) {
-			if (
-				!error.message?.includes("Container name") &&
-				!error.message?.includes("No such container")
-			) {
-				// Only log if it's not a "name still in use" error (which we want to propagate)
-				// or "no such container" error (which is expected)
-				logger.info(`ℹ️ Container cleanup info for ${containerName}:`, error.message || "completed");
-			} else {
-				throw error; // Re-throw critical errors
+			if (!error.message?.includes("No such file") && !error.message?.includes("not found")) {
+				// Only log if it's not a "file not found" error (which is expected)
+				logger.info(`ℹ️ Compose stack cleanup info:`, error.message || "completed");
 			}
 		}
 	}
@@ -312,6 +343,7 @@ export class DockerContainerManager {
 
 	/**
 	 * Internal method to create and start a container with optional cleanup skip
+	 * Now uses Docker Compose for orchestration
 	 */
 	private async createAndStartContainerInternal(
 		appId: string,
@@ -326,9 +358,8 @@ export class DockerContainerManager {
 		const dockerSafeId = this.sanitizeAppId(appId);
 
 		const imageName = `airo-app-${dockerSafeId}:dev`;
-		const containerName = `airo-app-${dockerSafeId}`;
 
-		logger.info(`🏗️ Creating Docker container for app ${appId} (${templateVersion})`);
+		logger.info(`🏗️ Creating Docker Compose stack for app ${appId} (${templateVersion})`);
 
 		try {
 			// Ensure dev-supervisor image is available before building app image
@@ -337,48 +368,6 @@ export class DockerContainerManager {
 			// Get host user info for proper file permissions
 			const { uid, gid } = this.getHostUserInfo();
 			logger.info(`📋 Building with host user mapping: UID=${uid}, GID=${gid}`);
-
-			// Build the Docker image
-			logger.info(`📦 Building Docker image: ${imageName}`);
-
-			const buildCommand = `docker build -f Dockerfile.dev --build-arg HOST_UID=${uid} --build-arg HOST_GID=${gid} -t ${imageName} .`;
-
-			const buildProcess = execAsync(buildCommand, {
-				cwd: appPath,
-				maxBuffer: 1024 * 1024 * 10, // 10MB buffer for build output
-			});
-
-			// Show build progress (keep minimal logging during build)
-			buildProcess.child.stdout?.on("data", (data) => {
-				logger.info(`[BUILD ${appId}] ${data.toString().trim().substring(0, 200)}`);
-			});
-
-			await buildProcess;
-			logger.info(`✅ Docker image built successfully: ${imageName}`);
-
-			// Ensure any existing container is properly removed (unless skipping cleanup)
-			if (!skipCleanup) {
-				await this.ensureContainerRemoved(containerName);
-			}
-
-			// Create database container first (local dev only - for v8 and later templates)
-			let databaseInfo: DatabaseInfo | undefined;
-			if (templateVersion === 'v8') {
-				try {
-					logger.info(`🗄️ Creating MySQL database container for app ${appId}`);
-					databaseInfo = await this.databaseManager.createDatabaseContainer(appId);
-					logger.info(`✅ MySQL database container created for app ${appId}`);
-
-				// Write database credentials to .env file for host machine access
-				this.writeDatabaseEnvFile(appPath, databaseInfo);
-				} catch (error) {
-					logger.error(`❌ Failed to create database container for app ${appId}:`, error);
-					throw new Error(`Database container creation failed: ${error instanceof Error ? error.message : String(error)}`);
-				}
-			}
-
-			// Create and start the container with volume mounting for live development
-			logger.info(`🚀 Starting Docker container: ${containerName} on port ${port}`);
 
 			// Determine connection mode for dev-supervisor
 			const useTcp = shouldUseTcpMode();
@@ -406,97 +395,122 @@ export class DockerContainerManager {
 				logger.info(`🔌 Using Unix socket mode for dev-supervisor: ${hostSocketPath}`);
 			}
 
-			const templateSpecific = [];
-			switch (templateVersion) {
-				case "v2":
-					templateSpecific.push(
-						"-e NEXT_TELEMETRY_DISABLED=1",
-						`-v /app/.next`, // anonymous volume for Next.js .next directory
-						`-p ${port}:3000`,
-					);
-					break;
-				case "v3":
-					templateSpecific.push(
-						`-e PREFERRED_FRONTEND_PORT=${port}`,
-						`-e VITE_HOST=0.0.0.0`, // Make Vite accessible from outside container
-						`-e RUNNING_IN_DOCKER=true`, // Flag for v3 template to detect Docker environment
-						`-e VITE_PARENT_ORIGIN=http://localhost:3000`, // Set secure parent origin for postMessage
-						`-v /app/dist`,
-						`-p ${port}:${port}`
-					);
-					break;
-				case "v7":
-					templateSpecific.push(
-						`-e PORT=${port}`,
-						`-e VITE_HOST=0.0.0.0`,
-						`-v /app/dist`,
-						`-p ${port}:${port}`
-					);
-					break;
-				case "v8":
-					templateSpecific.push(
-						`-e PORT=${port}`,
-						`-e VITE_HOST=0.0.0.0`,
-						`-e ALLOWED_ORIGINS=http://localhost:3000,https://localhost:3000,https://airo-builder.godaddy.com,https://airo-builder.test-godaddy.com,https://airo-builder.dev-godaddy.com`,
-						`-p ${port}:${port}`
-					);
-					break;
+			// Generate database configuration if needed (v8 template)
+			const needsDatabase = templateVersion === 'v8';
+			let dbConfig: DatabaseConfig | undefined;
+			let databaseInfo: DatabaseInfo | undefined;
+
+			if (needsDatabase) {
+				// Allocate port for database
+				const dbPort = await this.findAvailablePort();
+
+				// Generate database configuration
+				dbConfig = this.composeGenerator.generateDatabaseConfig(appId, dbPort);
+
+				// Write database credentials to .env file for host machine access
+				this.writeDatabaseEnvFile(appPath, dbConfig);
+
+				logger.info(`🗄️ Generated database configuration for app ${appId}`);
+
+				// Create DatabaseInfo for compatibility with existing code
+				databaseInfo = {
+					appId,
+					containerId: '', // Will be set after compose up
+					networkId: `airo-app-${dockerSafeId}-network`,
+					volumeName: `airo-app-${dockerSafeId}-mysql-data`,
+					credentials: {
+						host: dbConfig.host,
+						port: dbConfig.port,
+						hostMachineHost: 'localhost',
+						hostMachinePort: dbConfig.hostMachinePort,
+						database: dbConfig.database,
+						user: dbConfig.user,
+						password: dbConfig.password,
+						rootPassword: dbConfig.rootPassword,
+					},
+					status: 'creating',
+					createdAt: new Date(),
+				};
 			}
 
-			// Build Docker run command based on connection mode
-			const baseCommand = [
-				"docker run -d",
-				`--name ${containerName}`,
-				`-v "${appPath}:/app"`, // Mount app directory for live editing
-				`-v /app/node_modules`, // Anonymous volume for node_modules to avoid conflicts
-			];
-
-			// Add dev-supervisor configuration based on mode
-			const devSupervisorConfig = [];
-			if (useTcp) {
-				// TCP mode configuration
-				devSupervisorConfig.push(
-					`-p ${supervisorPort}:${supervisorPort}`, // Map dev-supervisor TCP port
-					"-e DEV_SUPERVISOR_USE_TCP=true",
-					`-e DEV_SUPERVISOR_TCP_PORT=${supervisorPort}`
-				);
-			} else {
-				// Unix socket mode configuration
-				const hostSocketDir = path.dirname(hostSocketPath!);
-				devSupervisorConfig.push(
-					`-v "${hostSocketDir}:/tmp/supervisor"`, // Mount socket directory for dev-supervisor communication
-					"-e DEV_SUPERVISOR_SOCKET_PATH=/tmp/supervisor/dev-supervisor.sock"
-				);
-			}
-
-			// Add database environment variables if database was created
-			const databaseEnvVars = [];
-			if (databaseInfo) {
-				const dbEnvVars = this.databaseManager.getEnvironmentVariables(databaseInfo);
-				for (const [key, value] of Object.entries(dbEnvVars)) {
-					databaseEnvVars.push(`-e ${key}="${value}"`);
-				}
-				// Connect app container to database network
-				baseCommand.push(`--network ${databaseInfo.networkId}`);
-			}
-
-			const runCommand = [
-				...baseCommand,
-				...devSupervisorConfig,
-				...templateSpecific,
-				...databaseEnvVars,
-				"-e HOST=0.0.0.0",
-				"-e NODE_ENV=development",
-				"--restart unless-stopped",
+			// Generate compose configuration
+			const composeConfig: ComposeServiceConfig = {
+				appId,
+				appPort: port,
+				templateVersion,
+				appPath,
 				imageName,
-			].join(" ");
+				uid,
+				gid,
+				useTcp,
+				supervisorPort,
+				socketPath: hostSocketPath,
+				needsDatabase,
+			};
 
-			const { stdout: containerId } = await execAsync(runCommand);
-			const cleanContainerId = containerId.trim();
+			// Generate docker-compose.yml
+			const composeContent = this.composeGenerator.generateComposeFile(composeConfig, dbConfig);
+
+			// Write docker-compose.yml to app directory
+			const composeFilePath = path.join(appPath, 'docker-compose.yml');
+			writeFileSync(composeFilePath, composeContent, 'utf-8');
+
+			logger.info(`✅ Generated docker-compose.yml for app ${appId}`);
+
+			// Ensure any existing compose stack is removed (unless skipping cleanup)
+			if (!skipCleanup) {
+				try {
+					await this.composeManager.down(appPath, true);
+					logger.info(`🧹 Cleaned up existing compose stack for app ${appId}`);
+				} catch (error) {
+					// Stack doesn't exist, that's fine
+					logger.info(`ℹ️ No existing compose stack to clean up for app ${appId}`);
+				}
+			}
+
+			// Build the Docker image using Docker Compose
+			logger.info(`📦 Building Docker image: ${imageName}`);
+			await this.composeManager.build(appPath, false);
+			logger.info(`✅ Docker image built successfully: ${imageName}`);
+
+			// Start the compose stack
+			logger.info(`🚀 Starting Docker Compose stack for app ${appId}`);
+			await this.composeManager.up(appPath, true);
+
+			logger.info(`✅ Docker Compose stack started for app ${appId}`);
+
+			// Wait for database to be ready if needed
+			if (needsDatabase && databaseInfo) {
+				logger.info(`⏳ Waiting for database to be ready for app ${appId}`);
+				const dbReady = await this.composeManager.waitForDatabase(appPath);
+
+				if (!dbReady) {
+					throw new Error('Database failed to become ready');
+				}
+
+				logger.info(`✅ Database ready for app ${appId}`);
+
+				// Get database container ID
+				const dbContainerId = await this.composeManager.getContainerId(appPath, 'db');
+				if (dbContainerId) {
+					databaseInfo.containerId = dbContainerId;
+					databaseInfo.status = 'running';
+				}
+			}
+
+			// Get app container ID
+			const containerId = await this.composeManager.getContainerId(appPath, 'app');
+
+			if (!containerId) {
+				throw new Error('Failed to get container ID from compose stack');
+			}
+
+			logger.info(`✅ App container ID: ${containerId}`);
 
 			const containerInfo: ContainerInfo = {
 				appId,
-				containerId: cleanContainerId,
+				containerId,
+				appPath,
 				port,
 				status: "running",
 				imageName,
@@ -513,7 +527,7 @@ export class DockerContainerManager {
 
 			const duration = Date.now() - startTime;
 
-			logger.info(`✅ Docker container created successfully for app ${appId} (${duration}ms)`);
+			logger.info(`✅ Docker Compose stack created successfully for app ${appId} (${duration}ms)`);
 
 			return containerInfo;
 		} catch (error: any) {
@@ -524,7 +538,7 @@ export class DockerContainerManager {
 	}
 
 	/**
-	 * Stop a container
+	 * Stop a container (uses Docker Compose)
 	 */
 	async stopContainer(appId: string): Promise<boolean> {
 		const startTime = Date.now();
@@ -538,28 +552,29 @@ export class DockerContainerManager {
 			return false;
 		}
 
-		logger.info(`🛑 Stopping Docker container for app ${appId}`);
+		logger.info(`🛑 Stopping Docker Compose stack for app ${appId}`);
 
 		try {
-			await execAsync(`docker stop ${containerInfo.containerId}`);
+			const appPath = this.getAppPath(appId);
+			await this.composeManager.stop(appPath);
 
 			containerInfo.status = "stopped";
 			this.saveContainerToDb(containerInfo);
 
 			const duration = Date.now() - startTime;
 
-			logger.info(`✅ Container stopped for app ${appId} (${duration}ms)`);
+			logger.info(`✅ Compose stack stopped for app ${appId} (${duration}ms)`);
 
 			return true;
 		} catch (error: any) {
-			logger.error(`❌ Failed to stop container for app ${appId}:`, error);
+			logger.error(`❌ Failed to stop compose stack for app ${appId}:`, error);
 
 			return false;
 		}
 	}
 
 	/**
-	 * Remove container completely
+	 * Remove container completely (uses Docker Compose down)
 	 */
 	async removeContainer(appId: string): Promise<boolean> {
 		const startTime = Date.now();
@@ -571,11 +586,15 @@ export class DockerContainerManager {
 			return false;
 		}
 
-		logger.info(`🗑️ Removing Docker container for app ${appId}`);
+		logger.info(`🗑️ Removing Docker Compose stack for app ${appId}`);
 
 		try {
-			// Force remove container (stops if running)
-			await execAsync(`docker rm -f ${containerInfo.containerId}`);
+			const appPath = this.getAppPath(appId);
+
+			// Remove compose stack (includes all services, networks, and volumes)
+			await this.composeManager.down(appPath, true);
+
+			logger.info(`✅ Docker Compose stack removed for app ${appId}`);
 
 			// Remove image
 			try {
@@ -585,17 +604,9 @@ export class DockerContainerManager {
 				logger.info(`ℹ️ Docker image may be in use, skipping removal: ${containerInfo.imageName}`);
 			}
 
-			// Remove database container if it exists
-			try {
-				const dbStatus = await this.databaseManager.getDatabaseStatus(appId);
-				if (dbStatus.status !== 'not_found') {
-					logger.info(`🗄️ Removing database container for app ${appId}`);
-					await this.databaseManager.removeDatabaseContainer(appId);
-					logger.info(`✅ Database container removed for app ${appId}`);
-				}
-			} catch (dbError) {
-				logger.warn(`⚠️ Failed to remove database container for app ${appId}:`, dbError);
-				// Continue with app container removal even if database removal fails
+			// Release database port if allocated
+			if (containerInfo.databaseInfo) {
+				this.releasePort(containerInfo.databaseInfo.credentials.hostMachinePort);
 			}
 
 			// Remove from memory and database
@@ -604,18 +615,18 @@ export class DockerContainerManager {
 
 			const duration = Date.now() - startTime;
 
-			logger.info(`✅ Container removed for app ${appId} (${duration}ms)`);
+			logger.info(`✅ Compose stack removed for app ${appId} (${duration}ms)`);
 
 			return true;
 		} catch (error: any) {
-			logger.error(`❌ Failed to remove container for app ${appId}:`, error);
+			logger.error(`❌ Failed to remove compose stack for app ${appId}:`, error);
 
 			return false;
 		}
 	}
 
 	/**
-	 * Get container status
+	 * Get container status (uses Docker Compose ps)
 	 */
 	async getContainerStatus(appId: string): Promise<ContainerInfo | null> {
 		const containerInfo =
@@ -626,15 +637,20 @@ export class DockerContainerManager {
 		}
 
 		try {
-			// Check actual Docker status
-			const { stdout } = await execAsync(
-				`docker inspect --format='{{.State.Status}}' ${containerInfo.containerId}`,
-			);
-			const dockerStatus = stdout.trim();
+			const appPath = this.getAppPath(appId);
+			const composeStatus = await this.composeManager.ps(appPath);
 
-			// Map Docker status to our status
+			// Find app service status
+			const appService = composeStatus.services.find(s => s.name === 'app' || s.name.includes('app'));
+
+			if (!appService) {
+				containerInfo.status = "error";
+				return containerInfo;
+			}
+
+			// Map compose status to our status
 			let status: ContainerInfo["status"];
-			switch (dockerStatus) {
+			switch (appService.state) {
 				case "running":
 					status = "running";
 					break;
@@ -661,7 +677,7 @@ export class DockerContainerManager {
 	}
 
 	/**
-	 * Get container logs
+	 * Get container logs (uses Docker Compose)
 	 */
 	async getContainerLogs(
 		appId: string,
@@ -675,17 +691,19 @@ export class DockerContainerManager {
 		}
 
 		try {
-			const { stdout } = await execAsync(
-				`docker logs --tail ${tailLines} ${containerInfo.containerId}`,
-			);
-			return stdout;
+			const appPath = this.getAppPath(appId);
+			const logs = await this.composeManager.logs(appPath, {
+				tail: tailLines,
+				service: 'app',
+			});
+			return logs;
 		} catch (error: any) {
 			throw new Error(`Failed to get container logs: ${error.message}`);
 		}
 	}
 
 	/**
-	 * Restart container
+	 * Restart container (uses Docker Compose)
 	 */
 	async restartContainer(appId: string): Promise<boolean> {
 		const startTime = Date.now();
@@ -697,21 +715,22 @@ export class DockerContainerManager {
 			return false;
 		}
 
-		logger.info(`🔄 Restarting Docker container for app ${appId}`);
+		logger.info(`🔄 Restarting Docker Compose stack for app ${appId}`);
 
 		try {
-			await execAsync(`docker restart ${containerInfo.containerId}`);
+			const appPath = this.getAppPath(appId);
+			await this.composeManager.restart(appPath);
 
 			containerInfo.status = "running";
 			this.saveContainerToDb(containerInfo);
 
 			const duration = Date.now() - startTime;
 
-			logger.info(`✅ Container restarted for app ${appId} (${duration}ms)`);
+			logger.info(`✅ Compose stack restarted for app ${appId} (${duration}ms)`);
 
 			return true;
 		} catch (error: any) {
-			logger.error(`❌ Failed to restart container for app ${appId}:`, error);
+			logger.error(`❌ Failed to restart compose stack for app ${appId}:`, error);
 
 			return false;
 		}
@@ -730,6 +749,7 @@ export class DockerContainerManager {
 			const containerInfo: ContainerInfo = {
 				appId: record.appId,
 				containerId: `container-${record.appId}`, // Docker containers would have real IDs
+				appPath: this.getAppPath(record.appId),
 				port: record.port,
 				status: "running" as const,
 				imageName: `airo-app-${sanitizedId}:dev`,
@@ -761,12 +781,12 @@ export class DockerContainerManager {
 	}
 
 	/**
-	 * Recover existing running containers from previous session
+	 * Recover existing running compose stacks from previous session
 	 */
 	private async recoverExistingContainers(): Promise<void> {
 		const startTime = Date.now();
 
-		logger.info('🔍 Starting container recovery process...');
+		logger.info('🔍 Starting compose stack recovery process...');
 
 		try {
 		// Get all container records from database
@@ -779,46 +799,55 @@ export class DockerContainerManager {
 
 			for (const record of containerRecords) {
 				try {
-					// Check if container is still running
-					const { stdout } = await execAsync(
-						`docker inspect ${record.containerId} --format='{{.State.Status}}'`,
-					);
-					const dockerStatus = stdout.trim();
+					const appPath = this.getAppPath(record.appId);
 
-					if (dockerStatus === "running") {
-						// Container is running - recover it
+					// Check if compose stack exists and is running
+					const composeStatus = await this.composeManager.ps(appPath);
+
+					if (composeStatus.anyRunning) {
+						// Stack is running - recover it
 						const safeAppId = this.sanitizeAppId(record.appId);
-						const hostSocketPath =
-							record.hostSocketPath ||
-							`/tmp/dev-supervisor-${safeAppId}/dev-supervisor.sock`;
+						const useTcp = shouldUseTcpMode();
+
 						const containerInfo: ContainerInfo = {
 							appId: record.appId,
 							containerId: record.containerId,
+							appPath,
 							port: record.port,
 							status: "running",
 							imageName: record.imageName,
-							hostSocketPath,
 							createdAt: record.createdAt,
 						};
 
-						// Add to in-memory tracking
+					// Set supervisor connection info
+					if (useTcp) {
+						const tcpPortRaw = parseInt(getTcpPort());
+						const appIdSuffix = parseInt(safeAppId.slice(-3));
+						const supervisorPort = (Number.isNaN(tcpPortRaw) || Number.isNaN(appIdSuffix))
+							? 8877
+							: tcpPortRaw + appIdSuffix;
+						containerInfo.tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
+						containerInfo.supervisorPort = supervisorPort;
+					} else {
+						containerInfo.hostSocketPath = `/tmp/dev-supervisor-${safeAppId}/dev-supervisor.sock`;
+					}						// Add to in-memory tracking
 						this.containers.set(record.appId, containerInfo);
 
 						recoveredCount++;
-						logger.info(`✅ Recovered running container for app ${record.appId}`);
-					} else if (dockerStatus === "exited" || dockerStatus === "dead") {
-						// Container exists but stopped - remove it and clean database
+						logger.info(`✅ Recovered running compose stack for app ${record.appId}`);
+					} else {
+						// Stack exists but stopped - clean it up
 						try {
-							await execAsync(`docker rm -f ${record.containerId}`);
+							await this.composeManager.down(appPath, false);
 							this.removeContainerFromDb(record.appId);
 							cleanedCount++;
-							logger.info(`🧹 Cleaned up stopped container for app ${record.appId}`);
+							logger.info(`🧹 Cleaned up stopped compose stack for app ${record.appId}`);
 						} catch (cleanupError) {
-							logger.warn(`⚠️ Failed to clean up stopped container for app ${record.appId}:`, cleanupError);
+							logger.warn(`⚠️ Failed to clean up stopped compose stack for app ${record.appId}:`, cleanupError);
 						}
 					}
 				} catch (inspectError) {
-					// Container doesn't exist - clean up database record
+					// Compose stack doesn't exist - clean up database record
 					this.removeContainerFromDb(record.appId);
 					cleanedCount++;
 					logger.info(`🧹 Cleaned up orphaned database record for app ${record.appId}`);
@@ -827,9 +856,9 @@ export class DockerContainerManager {
 
 			const duration = Date.now() - startTime;
 
-			logger.info(`✅ Container recovery completed: ${recoveredCount} recovered, ${cleanedCount} cleaned (${duration}ms)`);
+			logger.info(`✅ Compose stack recovery completed: ${recoveredCount} recovered, ${cleanedCount} cleaned (${duration}ms)`);
 		} catch (error) {
-			logger.error('❌ Container recovery failed:', error);
+			logger.error('❌ Compose stack recovery failed:', error);
 		}
 	}
 
@@ -902,7 +931,7 @@ export class DockerContainerManager {
 				this.devDb.createDevApp({
 					appId: containerInfo.appId,
 					port: containerInfo.port,
-					appPath: `/tmp/apps/${containerInfo.appId}`, // Standard app path
+					appPath: this.getAppPath(containerInfo.appId), // Standard app path
 					templateVersion: 'v8', // Default to latest template version
 					status: 'running'
 				});
@@ -933,6 +962,7 @@ export class DockerContainerManager {
 		const containerInfo: ContainerInfo = {
 			appId: record.appId,
 			containerId: `container-${record.appId}`,
+			appPath: this.getAppPath(record.appId),
 			port: record.port,
 			status: "running",
 			imageName: `airo-app-${sanitizedId}:dev`,
@@ -1023,7 +1053,7 @@ export class DockerContainerManager {
 	}
 
 	/**
-	 * Get container status for a specific app
+	 * Get container status for a specific app (uses Docker Compose)
 	 */
 	async getAppContainerStatus(appId: string) {
 		const containerInfo =
@@ -1037,22 +1067,32 @@ export class DockerContainerManager {
 		}
 
 		try {
-			// Check actual container status with Docker
-			const { stdout } = await execAsync(
-				`docker inspect ${containerInfo.containerId} --format='{{.State.Status}}'`,
-			);
-			const dockerStatus = stdout.trim();
+			const appPath = this.getAppPath(appId);
+			const composeStatus = await this.composeManager.ps(appPath);
+
+			// Find app service
+			const appService = composeStatus.services.find(s => s.name === 'app' || s.name.includes('app'));
+
+			if (!appService) {
+				// Clean up orphaned database record
+				this.removeContainerFromDb(appId);
+
+				return {
+					status: "container_missing",
+					message: "Compose stack record exists but service is missing - needs rebuild",
+				};
+			}
 
 			return {
-				status: dockerStatus, // Will be 'running', 'exited', 'dead', etc.
+				status: appService.state, // Will be 'running', 'exited', 'dead', etc.
 				containerId: containerInfo.containerId,
 				port: containerInfo.port,
 				imageName: containerInfo.imageName,
 				url: `https://localhost:${containerInfo.port}`,
 			};
 		} catch (error) {
-			// Container record exists in DB but Docker container is gone - should rebuild
-			logger.warn(`⚠️ Container record exists but Docker container is missing for app ${appId}`);
+			// Container record exists in DB but compose stack is gone - should rebuild
+			logger.warn(`⚠️ Container record exists but compose stack is missing for app ${appId}`);
 
 			// Clean up orphaned database record
 			this.removeContainerFromDb(appId);
@@ -1060,7 +1100,7 @@ export class DockerContainerManager {
 			return {
 				status: "container_missing",
 				message:
-					"Container record exists but Docker container is missing - needs rebuild",
+					"Container record exists but compose stack is missing - needs rebuild",
 				error: error instanceof Error ? error.message : String(error),
 			};
 		}
@@ -1081,10 +1121,11 @@ export class DockerContainerManager {
 		}
 
 		try {
-			const { stdout } = await execAsync(
-				`docker logs --tail ${lines} ${containerInfo.containerId}`,
-			);
-			return stdout;
+			// Use Docker Compose to get logs for the app service
+			return await this.composeManager.logs(containerInfo.appPath, {
+				tail: lines,
+				service: 'app',
+			});
 		} catch (error) {
 			throw new Error(
 				`Failed to get container logs: ${error instanceof Error ? error.message : String(error)}`,
@@ -1108,7 +1149,8 @@ export class DockerContainerManager {
 		logger.info(`🔄 Restarting container for app ${appId}`);
 
 		try {
-			await execAsync(`docker restart ${containerInfo.containerId}`);
+			// Use Docker Compose to restart all services (app + db if present)
+			await this.composeManager.restart(containerInfo.appPath);
 
 			const duration = Date.now() - startTime;
 
@@ -1195,16 +1237,16 @@ export class DockerContainerManager {
 	}
 
 	/**
-	 * Clean up container and associated image
+	 * Clean up compose stack and associated image
 	 */
 	private async cleanupContainerAndImage(appId: string): Promise<void> {
 		const dockerSafeId = this.sanitizeAppId(appId);
+		const appPath = this.getAppPath(appId);
 
 		const imageName = `airo-app-${dockerSafeId}:dev`;
-		const containerName = `airo-app-${dockerSafeId}`;
 
-		// Remove any existing containers using the robust method
-		await this.ensureContainerRemoved(containerName);
+		// Remove any existing compose stack
+		await this.ensureComposeStackRemoved(appPath);
 
 		try {
 			// Remove image if it exists to force rebuild
@@ -1229,13 +1271,13 @@ export class DockerContainerManager {
 	}
 
 	/**
-	 * Force cleanup orphaned containers
+	 * Force cleanup orphaned compose stacks
 	 */
 	async forceCleanupOrphans(): Promise<number> {
 		const startTime = Date.now();
 		let cleanedCount = 0;
 
-		logger.info('🧹 Starting force cleanup of orphaned containers...');
+		logger.info('🧹 Starting force cleanup of orphaned compose stacks...');
 
 		try {
 			// Get all containers from database
@@ -1245,30 +1287,23 @@ export class DockerContainerManager {
 
 			for (const containerRecord of allContainers) {
 				try {
-					// Check if container actually exists
-					const { stdout } = await execAsync(
-						`docker inspect ${containerRecord.containerId} --format='{{.State.Status}}'`,
-					);
-					const dockerStatus = stdout.trim();
+					const appPath = this.getAppPath(containerRecord.appId);
+					const composeStatus = await this.composeManager.ps(appPath);
 
-					if (dockerStatus === "exited" || dockerStatus === "dead") {
-						// Container exists but is stopped, remove it
-						await execAsync(`docker rm -f ${containerRecord.containerId}`);
+					if (!composeStatus.anyRunning) {
+						// Stack exists but is stopped, remove it
+						await this.composeManager.down(appPath, true);
 						this.removeContainerFromDb(containerRecord.appId);
 						cleanedCount++;
-						logger.info(`🧹 Cleaned up stopped container for app ${containerRecord.appId}`);
+						logger.info(`🧹 Cleaned up stopped compose stack for app ${containerRecord.appId}`);
 					}
 				} catch (error) {
-					// Container doesn't exist, remove database record
+					// Stack doesn't exist, remove database record
 					this.removeContainerFromDb(containerRecord.appId);
 					cleanedCount++;
 					logger.info(`🧹 Cleaned up orphaned database record for app ${containerRecord.appId}`);
 				}
 			}
-
-			// Clean up orphaned database containers
-			const dbCleanedCount = await this.databaseManager.cleanupOrphans();
-			cleanedCount += dbCleanedCount;
 
 			const duration = Date.now() - startTime;
 
