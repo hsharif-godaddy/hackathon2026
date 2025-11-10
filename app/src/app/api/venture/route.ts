@@ -23,8 +23,6 @@ export const GET = withCustomerAuth(
     async (request: NextRequest, authContext: CustomerAuthContext) => {
         try {
             const { user } = authContext;
-            const { searchParams } = new URL(request.url);
-            const projectGroup = searchParams.get('projectGroup') || 'vnext';
 
             if (!user.shopperId) {
                 return NextResponse.json(
@@ -36,10 +34,9 @@ export const GET = withCustomerAuth(
             // Create venture service (uses certificate-based S2S auth internally)
             const ventureService = new VentureService();
 
-            // Get or create venture ID by project group (searches existing ventures)
-            const ventureId = await ventureService.getOrCreateVentureByProjectGroup(
-                user.shopperId,
-                projectGroup
+            // Get or create venture ID (gets latest shopper venture or creates new profile)
+            const ventureId = await ventureService.getOrCreateVentureForShopper(
+                user.shopperId
             );
 
             return NextResponse.json({
