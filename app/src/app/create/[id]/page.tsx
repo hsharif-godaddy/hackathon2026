@@ -32,7 +32,17 @@ export default function CreateAppStatus() {
   } = useSites()
 
   // Track page timing with RUM
-  const { endTransaction } = usePageTiming('create-page', siteId)
+  const { endTransaction, updateLabels } = usePageTiming('create-page', siteId)
+
+  // Update transaction label when real app ID becomes available
+  useEffect(() => {
+    if (realAppId && realAppId !== siteId) {
+      updateLabels({
+        app_id: realAppId,
+        updated_from_job_id: true
+      })
+    }
+  }, [realAppId, siteId, updateLabels])
 
   // Track if we've updated the URL with the real app ID
   const [urlUpdated, setUrlUpdated] = useState(false)

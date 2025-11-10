@@ -18,6 +18,30 @@ interface ApmAgent {
 }
 
 /**
+ * Global storage structure for APM page timing transactions
+ * Stored on window object to survive component remounts
+ */
+interface ApmTransactionStorage {
+  transaction: ApmTransaction;
+  startTime: number;
+}
+
+/**
+ * Extend Window interface to include APM-related global properties
+ */
+declare global {
+  interface Window {
+    __apmInstance?: ApmAgent;
+    [key: string]: any; // Allow dynamic keys for page timing storage
+  }
+}
+
+// Type guard for APM transaction storage
+function isApmTransactionStorage(value: any): value is ApmTransactionStorage {
+  return value && typeof value === 'object' && 'transaction' in value && 'startTime' in value;
+}
+
+/**
  * Get the APM agent instance with proper typing
  * 
  * The APM RUM agent is a singleton initialized by RumProvider
@@ -30,7 +54,7 @@ function getApmAgent(): ApmAgent | null {
     return null;
   }
 
-  const apm = (window as any).__apmInstance as ApmAgent | undefined;
+  const apm = window.__apmInstance;
   
   // Check if APM exists and is active
   if (!apm || !apm.isActive || !apm.isActive()) {
@@ -56,30 +80,41 @@ function getApmAgent(): ApmAgent | null {
  * user engagement time (how long they stay on the page) rather than
  * technical performance metrics.
  * 
+ * IMPORTANT: The transaction survives component remounts by storing it globally.
+ * This ensures a single continuous transaction even if the URL changes via
+ * router.replace() (e.g., job ID → real app ID transition).
+ * 
  * The hook handles multiple types of navigation:
  * - Client-side Next.js navigation (via manual endTransaction call)
  * - SSO redirects (via beforeunload event)
  * - Tab closes and browser navigation (via beforeunload event)
- * - Component unmount (via useEffect cleanup)
+ * - Component remounts (reuses existing transaction)
  * 
  * @param pageName - Name of the page (e.g., 'create-page', 'develop-page')
- * @param pageId - Optional app ID to add as app_id label
+ * @param pageId - Optional app ID to add as app_id label (can be updated later via updateLabels)
  * @param additionalLabels - DEPRECATED: Not used due to React dependency limitations.
  *   Adding object parameters to useEffect dependencies causes infinite re-renders.
  *   Labels are captured at component mount time only.
- * @returns Object with endTransaction function to manually end the transaction before component unmount
+ * @returns Object with endTransaction and updateLabels functions
  * 
  * Transaction name format: `page-{pageName}` (e.g., 'page-create-page', 'page-develop-page')
  * 
  * Labels added to transaction:
  * - page_name: The pageName parameter
- * - app_id: The pageId parameter (if provided)
+ * - app_id: The pageId parameter (if provided, can be updated dynamically)
  * 
  * @example
  * ```tsx
  * function CreatePage() {
- *   const { endTransaction } = usePageTiming('create-page', appId);
- *   // Creates transaction: "page-create-page" with labels: { page_name: 'create-page', app_id: appId }
+ *   const { endTransaction, updateLabels } = usePageTiming('create-page', jobId);
+ *   // Creates transaction: "page-create-page" with labels: { page_name: 'create-page', app_id: jobId }
+ *   
+ *   // Update labels when real app ID becomes available
+ *   useEffect(() => {
+ *     if (realAppId) {
+ *       updateLabels({ app_id: realAppId, updated_from_job_id: true });
+ *     }
+ *   }, [realAppId, updateLabels]);
  *   
  *   const handleRedirect = () => {
  *     endTransaction(); // End transaction before navigating away
@@ -94,16 +129,57 @@ export function usePageTiming(
   pageName: string,
   pageId?: string,
   additionalLabels?: Record<string, string | number | boolean>
-): { endTransaction: () => void } {
+): { endTransaction: () => void; updateLabels: (labels: Record<string, string | number | boolean>) => void } {
   const transactionRef = useRef<ApmTransaction | null>(null);
   const startTimeRef = useRef<number>(0);
   const initAttemptedRef = useRef<boolean>(false);
+  
+  // Helper to get consistent global storage key
+  const getGlobalKey = useCallback(() => `__apm_page_timing_${pageName}`, [pageName]);
+
+  const updateLabels = useCallback((labels: Record<string, string | number | boolean>) => {
+    // Try ref first, then check global storage
+    const globalKey = getGlobalKey();
+    const stored = window[globalKey];
+    const storedTransaction = isApmTransactionStorage(stored) ? stored : undefined;
+    const transaction = transactionRef.current || storedTransaction?.transaction;
+    
+    if (transaction) {
+      try {
+        transaction.addLabels(labels);
+        logger.debug('hooks.usePageTiming.labels.updated', {
+          message: 'Updated transaction labels',
+          page_name: pageName,
+          labels
+        });
+      } catch (error) {
+        logger.error('hooks.usePageTiming.labels.error', {
+          message: 'Failed to update transaction labels',
+          page_name: pageName,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    } else {
+      logger.warn('hooks.usePageTiming.labels.no-transaction', {
+        message: 'Cannot update labels - no active transaction',
+        page_name: pageName,
+        labels
+      });
+    }
+  }, [pageName, getGlobalKey]);
 
   const endTransaction = useCallback(() => {
-    if (transactionRef.current) {
+    // Try ref first, then check global storage
+    const globalKey = getGlobalKey();
+    const stored = window[globalKey];
+    const storedTransaction = isApmTransactionStorage(stored) ? stored : undefined;
+    const transaction = transactionRef.current || storedTransaction?.transaction;
+    const startTime = startTimeRef.current || storedTransaction?.startTime;
+    
+    if (transaction) {
       try {
-        const duration = Date.now() - startTimeRef.current;
-        transactionRef.current.end();
+        const duration = Date.now() - startTime;
+        transaction.end();
         
         logger.info('hooks.usePageTiming.transaction.ended.manual', {
           message: 'Manually ended page timing transaction',
@@ -112,6 +188,8 @@ export function usePageTiming(
           duration_ms: duration
         });
 
+        // Clean up global storage
+        delete window[globalKey];
         transactionRef.current = null;
       } catch (error) {
         logger.error('hooks.usePageTiming.transaction.end.error', {
@@ -121,10 +199,28 @@ export function usePageTiming(
         });
       }
     }
-  }, [pageName]);
+  }, [pageName, getGlobalKey]);
 
   useEffect(() => {
-    // Only attempt initialization once
+    // Use global flag that survives component remounts
+    const globalKey = getGlobalKey();
+    const stored = window[globalKey];
+    const existingTransaction = isApmTransactionStorage(stored) ? stored : undefined;
+    
+    // If transaction already exists (from previous mount), reuse it
+    if (existingTransaction) {
+      transactionRef.current = existingTransaction.transaction;
+      startTimeRef.current = existingTransaction.startTime;
+      
+      logger.debug('hooks.usePageTiming.transaction.reused', {
+        message: 'Reusing existing transaction after remount',
+        page_name: pageName
+      });
+      
+      return; // Don't create a new transaction
+    }
+    
+    // Only attempt initialization once (check ref as backup)
     if (initAttemptedRef.current) return;
     initAttemptedRef.current = true;
 
@@ -139,7 +235,7 @@ export function usePageTiming(
             page_name: pageName,
             app_id: pageId,
             window_defined: typeof window !== 'undefined',
-            has_apm_instance: !!(window as any).__apmInstance
+            has_apm_instance: !!window.__apmInstance
           });
           return;
         }
@@ -154,6 +250,12 @@ export function usePageTiming(
 
           if (transaction) {
             transactionRef.current = transaction;
+            
+            // Store globally to survive remounts
+            window[globalKey] = {
+              transaction,
+              startTime: startTimeRef.current
+            };
 
             // Add labels for filtering in Kibana
             // Note: Only pageName and pageId are used as labels since additionalLabels
@@ -190,9 +292,15 @@ export function usePageTiming(
 
     // Add beforeunload event listener to catch SSO redirects, tab closes, and other unload events
     const handleBeforeUnload = () => {
-      if (transactionRef.current) {
-        const duration = Date.now() - startTimeRef.current;
-        transactionRef.current.end();
+      const globalKey = getGlobalKey();
+      const stored = window[globalKey];
+      const storedTransaction = isApmTransactionStorage(stored) ? stored : undefined;
+      const transaction = transactionRef.current || storedTransaction?.transaction;
+      const startTime = startTimeRef.current || storedTransaction?.startTime;
+      
+      if (transaction) {
+        const duration = Date.now() - startTime;
+        transaction.end();
         
         logger.info('hooks.usePageTiming.transaction.ended.beforeunload', {
           message: 'Ended page timing transaction on page unload',
@@ -202,39 +310,27 @@ export function usePageTiming(
           trigger: 'beforeunload'
         });
         
+        // Clean up global storage
+        delete window[globalKey];
         transactionRef.current = null;
       }
     };
     
     window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // Cleanup: End transaction when component unmounts
+    // Cleanup: Don't end transaction on unmount (might be a remount!)
+    // Transaction stays alive in global storage for reuse
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      
-      if (transactionRef.current) {
-        try {
-          const duration = Date.now() - startTimeRef.current;
-          transactionRef.current.end();
-          
-          logger.info('hooks.usePageTiming.transaction.ended', {
-            message: 'Ended page timing transaction',
-            page_name: pageName,
-            duration_seconds: Math.round(duration / 1000),
-            duration_ms: duration
-          });
-        } catch (error) {
-          logger.warn('hooks.usePageTiming.transaction.end.failure', {
-            message: 'Failed to end transaction',
-            page_name: pageName,
-            error: error instanceof Error ? error.message : String(error)
-          });
-        }
-      }
+      // Note: We don't end the transaction here because component might remount
+      // Transaction will be ended via:
+      // 1. Manual endTransaction() call, or
+      // 2. beforeunload event, or
+      // 3. Navigation to a different page
     };
-  }, [pageName, pageId]);
+  }, []); // Empty array - only run once per page visit
 
-  return { endTransaction };
+  return { endTransaction, updateLabels };
 }
 
 /**

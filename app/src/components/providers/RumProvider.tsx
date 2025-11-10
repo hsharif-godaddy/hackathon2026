@@ -70,16 +70,16 @@ export default function RumProvider({
           logLevel: environment === 'development' ? 'debug' : 'warn',
         });
 
-        // Store APM instance globally for access by custom hooks
-        if (typeof window !== 'undefined' && apm) {
-          (window as any).__apmInstance = apm;
-          logger.info('rum.provider.init.success', {
-            message: 'APM instance stored globally',
-            is_active: apm.isActive(),
-            has_start_transaction: typeof apm.startTransaction === 'function',
-            has_get_current_transaction: typeof apm.getCurrentTransaction === 'function'
-          });
-        }
+      // Store APM instance globally for access by custom hooks
+      if (typeof window !== 'undefined' && apm) {
+        window.__apmInstance = apm as any;
+        logger.info('rum.provider.init.success', {
+          message: 'APM instance stored globally',
+          is_active: apm.isActive(),
+          has_start_transaction: typeof apm.startTransaction === 'function',
+          has_get_current_transaction: typeof apm.getCurrentTransaction === 'function'
+        });
+      }
 
         return apm;
       } catch (error) {
