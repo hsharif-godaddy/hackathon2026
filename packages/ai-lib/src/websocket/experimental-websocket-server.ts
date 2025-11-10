@@ -596,7 +596,8 @@ export class WebSocketServer {
 
             case 'tool-call': {
               // Tool call is complete with full input - emit with accumulated input
-              const fullInput = accumulatedToolInput.get(part.id) || '{}'
+              const toolId = part.id || part.toolCallId
+              const fullInput = accumulatedToolInput.get(toolId) || '{}'
               let parsedInput: Record<string, unknown> = {}
               
               try {
@@ -608,7 +609,7 @@ export class WebSocketServer {
               const toolCallData = {
                 step: currentStep,
                 tool: {
-                  id: part.id,
+                  id: toolId,
                   name: part.toolName,
                   input: parsedInput
                 }
@@ -623,7 +624,7 @@ export class WebSocketServer {
               await this.captureStreamingEvent(socket.id, 'tool_call', `${part.toolName} input ready`, toolCallData)
               
               // Update APM span with input data now that we have it
-              const spanKey = `${socket.id}:${part.id}`
+              const spanKey = `${socket.id}:${toolId}`
               const span = this.activeToolSpans.get(spanKey)
               if (span && parsedInput && Object.keys(parsedInput).length > 0) {
                 span.addLabels({
@@ -635,11 +636,12 @@ export class WebSocketServer {
 
             case 'tool-result': {
               // Tool execution completed with result
+              const toolId = part.id || part.toolCallId
 
               const toolResultData = {
                 step: currentStep,
                 tool: {
-                  id: part.id,
+                  id: toolId,
                   name: part.toolName,
                   input: part.input,
                   output: part.output
@@ -647,7 +649,7 @@ export class WebSocketServer {
               }
 
               // End APM span for successful tool execution
-              this.endToolSpan(socket.id, part.id, true)
+              this.endToolSpan(socket.id, toolId, true)
 
               socket.emit('message', {
                 type: 'tool_result',
@@ -661,12 +663,13 @@ export class WebSocketServer {
 
             case 'tool-error': {
               // Tool execution failed with error - communicate this clearly to frontend and LLM
+              const toolId = part.id || part.toolCallId || part.toolId
 
               const errorMessage = part.error?.message || (typeof part.error === 'string' ? part.error : String(part.error)) || 'Tool execution error'
               const toolErrorData = {
                 step: currentStep,
                 tool: {
-                  id: part.id,
+                  id: toolId,
                   name: part.toolName,
                   input: part.input || {},
                   output: {},
@@ -676,7 +679,7 @@ export class WebSocketServer {
               }
 
               // End APM span for failed tool execution
-              this.endToolSpan(socket.id, part.id, false, errorMessage)
+              this.endToolSpan(socket.id, toolId, false, errorMessage)
 
               socket.emit('message', {
                 type: 'tool_result',
