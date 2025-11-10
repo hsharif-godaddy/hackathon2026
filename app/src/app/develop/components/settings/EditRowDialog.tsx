@@ -1,0 +1,269 @@
+'use client'
+
+import React, { useState, useEffect } from 'react';
+import Modal from '@ux/modal';
+import Button from '@ux/button';
+import TextInput from '@ux/text-input';
+
+interface EditRowDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+  appId: string;
+  tableName: string;
+  schema: {
+    name: string;
+    type: string;
+    nullable: boolean;
+    key: string;
+    default: string | null;
+    extra: string;
+  }[];
+  row: Record<string, any> | null;
+}
+
+export function EditRowDialog({
+  isOpen,
+  onClose,
+  onSuccess,
+  appId,
+  tableName,
+  schema,
+  row,
+}: EditRowDialogProps) {
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (row) {
+      // Initialize form with existing row data
+      const initialData: Record<string, string> = {};
+      Object.entries(row).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          initialData[key] = String(value);
+        }
+      });
+      setFormData(initialData);
+    }
+  }, [row]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      if (!row) {
+        throw new Error('No row data provided');
+      }
+
+      // Extract primary key
+      const primaryKey: Record<string, any> = {};
+      schema.forEach(col => {
+        if (col.key === 'PRI') {
+          primaryKey[col.name] = row[col.name];
+        }
+      });
+
+      if (Object.keys(primaryKey).length === 0) {
+        throw new Error('No primary key found for this table');
+      }
+
+      // Convert form data to appropriate types
+      const data: Record<string, any> = {};
+
+      schema.forEach(col => {
+        // Skip primary key columns (they shouldn't be editable)
+        if (col.key === 'PRI') {
+          return;
+        }
+
+        // Skip auto-managed timestamp fields
+        if (isAutoManagedTimestamp(col)) {
+          return;
+        }
+
+        const value = formData[col.name];
+
+        // Handle empty values
+        if (value === '' || value === undefined) {
+          if (col.nullable) {
+            data[col.name] = null;
+          }
+          return;
+        }
+
+        // Type conversion based on MySQL type
+        const type = col.type.toLowerCase();
+        if (type.includes('int') || type.includes('decimal') || type.includes('float') || type.includes('double')) {
+          data[col.name] = Number(value);
+        } else if (type.includes('bool') || type.includes('tinyint(1)')) {
+          data[col.name] = value === 'true' || value === '1';
+        } else {
+          data[col.name] = value;
+        }
+      });
+
+      const response = await fetch(`/api/database/${appId}/tables/${tableName}/rows`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ primaryKey, data }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update row');
+      }
+
+      setFormData({});
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleChange = (columnName: string, value: string) => {
+    setFormData(prev => ({ ...prev, [columnName]: value }));
+  };
+
+  /**
+   * Checks if a column is an auto-managed timestamp field (like created_at, updated_at)
+   * that should not be editable by users.
+   *
+   * @param col - Column information from database schema
+   * @returns True if the field is auto-managed and should be hidden from editing
+   */
+  const isAutoManagedTimestamp = (col: {
+    name: string;
+    type: string;
+    default: string | null;
+    extra: string;
+  }): boolean => {
+    const columnName = col.name.toLowerCase();
+    const isTimestampType = col.type.toLowerCase().includes('timestamp') ||
+                           col.type.toLowerCase().includes('datetime');
+
+    // Check if it's a common timestamp field name
+    if ((columnName === 'created_at' || columnName === 'updated_at') && isTimestampType) {
+      return true;
+    }
+
+    // Check if it has CURRENT_TIMESTAMP in default or extra
+    const hasAutoTimestamp =
+      (col.default && col.default.includes('CURRENT_TIMESTAMP')) ||
+      (col.extra && (col.extra.includes('CURRENT_TIMESTAMP') || col.extra.includes('DEFAULT_GENERATED')));
+
+    return isTimestampType && hasAutoTimestamp;
+  };
+
+  const renderInput = (col: {
+    name: string;
+    type: string;
+    nullable: boolean;
+    key: string;
+    default: string | null;
+    extra: string;
+  }) => {
+    const type = col.type.toLowerCase();
+    let inputType = 'text';
+    let isMultiline = false;
+
+    if (type.includes('int') || type.includes('decimal') || type.includes('float') || type.includes('double')) {
+      inputType = 'number';
+    } else if (type.includes('date') && !type.includes('time')) {
+      inputType = 'date';
+    } else if (type.includes('time') && !type.includes('stamp')) {
+      inputType = 'time';
+    } else if (type.includes('datetime') || type.includes('timestamp')) {
+      inputType = 'datetime-local';
+    } else if (type.includes('text')) {
+      // TEXT, TINYTEXT, MEDIUMTEXT, LONGTEXT columns should use multiline
+      isMultiline = true;
+    }
+
+    const isRequired = !col.nullable && col.default === null && col.key !== 'PRI';
+    const labelText = `${col.name}${col.key === 'PRI' ? ' (PK)' : ''}`;
+
+    // Primary keys should be read-only
+    if (col.key === 'PRI') {
+      return (
+        <div key={col.name}>
+          <TextInput
+            id={`edit-row-${col.name}`}
+            label={labelText}
+            value={formData[col.name] || ''}
+            disabled
+            helpMessage="Primary key (read-only)"
+            stretch
+          />
+        </div>
+      );
+    }
+
+    const helpText = `${col.type}${col.nullable ? ' (nullable)' : ''}`;
+
+    return (
+      <div key={col.name}>
+        <TextInput
+          id={`edit-row-${col.name}`}
+          label={labelText}
+          placeholder={col.nullable ? 'NULL' : ''}
+          value={formData[col.name] || ''}
+          onChange={(value) => handleChange(col.name, value)}
+          required={isRequired}
+          helpMessage={helpText}
+          stretch
+          multiline={isMultiline}
+        />
+      </div>
+    );
+  };
+
+  if (!row || !isOpen) return null;
+
+  return (
+    <Modal
+      title={`Edit Row in ${tableName}`}
+      onClose={onClose}
+      className="max-w-2xl"
+      actions={
+        <>
+          <Button
+            design="secondary"
+            text="Cancel"
+            onClick={onClose}
+            disabled={isSubmitting}
+          />
+          <Button
+            design="primary"
+            text={isSubmitting ? 'Updating...' : 'Update Row'}
+            type="submit"
+            disabled={isSubmitting}
+            onClick={handleSubmit}
+          />
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} id="edit-row-form">
+        <div className="space-y-4">
+          {schema
+            .filter(col => !isAutoManagedTimestamp(col))
+            .map(col => (
+              <div key={col.name}>
+                {renderInput(col)}
+              </div>
+            ))}
+        </div>
+
+        {error && (
+          <div className="bg-destructive/10 text-destructive rounded-lg p-3 mt-4 text-sm">
+            {error}
+          </div>
+        )}
+      </form>
+    </Modal>
+  );
+}

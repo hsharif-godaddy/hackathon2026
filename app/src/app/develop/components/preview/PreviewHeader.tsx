@@ -1,10 +1,13 @@
 import clsx from 'clsx'
+import { useRouter } from 'next/navigation'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation'
 import IconButton from '@/app/develop/components/IconButton'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import CodeIcon from '@ux/icon/code'
+import DatabaseIcon from '@ux/icon/database'
 import DesktopIcon from '@ux/icon/desktop'
 import EditIcon from '@ux/icon/edit'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
@@ -13,10 +16,13 @@ import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
 import SidebarExpandIcon from '@ux/icon/sidebar-expand'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WindowNewIcon from '@ux/icon/window-new'
-import { ViewMode, PreviewViewMode } from '../types'
+import { ViewMode, PreviewViewMode, ChatTab, SettingsSection } from '../types'
 
 export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
+  const router = useRouter()
   const appId = useAppIdFromParams()
+  const { featureFlags } = useSwitchboard()
+  const showDatabaseSettings = featureFlags['appbuilder-settings-database'] ?? false
 
   const {
     viewMode,
@@ -32,8 +38,8 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
     isChatPaneCollapsed,
     toggleChatPaneCollapse,
     openFeedbackModal,
-    // TODO: re-enable settings dialog when ready
-    //openSettingsDialog,
+    setActiveChatTab,
+    setActiveSettingsSection,
     site
   } = useDevelopPageStore()
 
@@ -82,6 +88,23 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         active={viewMode === ViewMode.CODE}
         tooltip="Code Editor"
       />
+      {showDatabaseSettings && (
+        <IconButton
+          icon={<DatabaseIcon />}
+          onClick={() => {
+            setActiveChatTab(ChatTab.SETTINGS)
+            setActiveSettingsSection(SettingsSection.DATABASE)
+            const params = new URLSearchParams({
+              tab: 'settings',
+              settings: 'database'
+            })
+            router.push(`/develop/${appId}?${params.toString()}`, { scroll: false })
+          }}
+          label="Database"
+          dataEid={generateClickEID('develop.preview.database')}
+          separator
+        />
+      )}
       <IconButton
         icon={<EditIcon />}
         disabled={viewMode === ViewMode.CODE}

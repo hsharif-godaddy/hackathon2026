@@ -26,7 +26,7 @@ export default function SettingsView() {
       case SettingsSection.SECURITY:
         return featureFlags['appbuilder-settings-security'] ? <SecurityPanel /> : null;
       case SettingsSection.DATABASE:
-        return featureFlags['appbuilder-settings-database'] ? <DatabasePanel appId={appId} section="connection" /> : null;
+        return featureFlags['appbuilder-settings-database'] ? <DatabasePanel appId={appId} /> : null;
       case SettingsSection.FEEDBACK:
       default:
         return featureFlags['appbuilder-settings-project'] ? <ProjectPanel /> : null;

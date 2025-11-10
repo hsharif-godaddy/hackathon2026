@@ -7,7 +7,6 @@ import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
-import SettingsDialog from '@/app/develop/components/SettingsDialog'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
 import { ChatTab, SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
@@ -67,9 +66,6 @@ function DevelopPageContent() {
     site,
     initializePage,
     initializeMobileDetection,
-    isSettingsDialogOpen,
-    settingsDialogDefaultSection,
-    closeSettingsDialog,
     openFeedbackId,
     closeFeedbackModal,
     setActiveSettingsSection,
@@ -470,13 +466,6 @@ function DevelopPageContent() {
   return (
     <div className="h-screen flex flex-col">
       <Header location="develop" />
-
-      <SettingsDialog
-        isOpen={isSettingsDialogOpen}
-        onClose={closeSettingsDialog}
-        defaultSection={settingsDialogDefaultSection || 'database'}
-        appId={appId}
-      />
 
       {isMobile ? (
         // Mobile layout with tabs
