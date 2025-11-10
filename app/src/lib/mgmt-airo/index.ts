@@ -25,8 +25,10 @@ export type {
   AiroCustomer,
   AiroPublishAppResponse,
   AiroDeploymentStatus,
+  AiroAttribute,
+  AiroCreateAttributePayload,
+  AiroUpdateAttributePayload,
   AiroApiError,
   AiroSystem,
   AiroApp
 } from './types';
-

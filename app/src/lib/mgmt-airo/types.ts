@@ -268,6 +268,35 @@ export class AiroHttpError extends Error {
 }
 
 /**
+ * Attribute response from mgmt-airo
+ */
+export interface AiroAttribute {
+  id: string;
+  ownerType: string;
+  ownerId: string;
+  key: string;
+  value: Record<string, any>;
+  customerId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Create attribute request payload
+ */
+export interface AiroCreateAttributePayload {
+  key: string;
+  value: Record<string, any>;
+}
+
+/**
+ * Update attribute request payload
+ */
+export interface AiroUpdateAttributePayload {
+  value: Record<string, any>;
+}
+
+/**
  * Client configuration
  */
 export interface AiroMgmtClientConfig {

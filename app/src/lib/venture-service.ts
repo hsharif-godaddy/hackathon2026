@@ -1,9 +1,11 @@
 /**
  * Venture Management Service
  *
- * Handles fetching and creating venture profiles via GraphQL API.
+ * Handles fetching and creating venture profiles via mgmt-airo attributes API.
+ * Falls back to GraphQL API for creating new ventures when needed.
  */
 
+import { AiroMgmtClient, AiroHttpError } from '@/lib/mgmt-airo';
 import { createGraphQLClientWithS2SAuth, GraphQLClient } from './product-graph/client';
 import { logger } from '@/lib/request-context';
 
@@ -14,79 +16,47 @@ export interface Profile {
 }
 
 /**
- * Service for managing venture data via GraphQL
+ * Service for managing venture data via mgmt-airo attributes API
  */
 export class VentureService {
-    private client: GraphQLClient;
-    private clientPromise: Promise<GraphQLClient> | null = null;
+    private graphqlClient: GraphQLClient;
+    private graphqlClientPromise: Promise<GraphQLClient> | null = null;
+    private mgmtAiroClient: AiroMgmtClient | null = null;
 
     /**
-     * Create venture service instance with certificate-based S2S authentication
+     * Create venture service instance
+     *
+     * @param jwt - Optional JWT token for mgmt-airo API calls. If not provided,
+     *              only GraphQL operations will be available.
      */
-    constructor() {
-        // Initialize client asynchronously
-        this.clientPromise = createGraphQLClientWithS2SAuth();
-        this.client = null as any; // Will be set on first use
+    constructor(jwt?: string) {
+        // Initialize GraphQL client asynchronously (for creating new ventures)
+        this.graphqlClientPromise = createGraphQLClientWithS2SAuth();
+        this.graphqlClient = null as any; // Will be set on first use
+
+        // Initialize mgmt-airo client if JWT is provided
+        if (jwt) {
+            const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
+            this.mgmtAiroClient = new AiroMgmtClient({
+                baseUrl,
+                jwt,
+                maxRetries: 3,
+                retryDelayMs: 1000
+            });
+        }
     }
 
     /**
-     * Ensure client is initialized
+     * Ensure GraphQL client is initialized
      *
      * @returns Promise resolving to GraphQL client
      */
-    private async ensureClient(): Promise<GraphQLClient> {
-        if (this.clientPromise) {
-            this.client = await this.clientPromise;
-            this.clientPromise = null;
+    private async ensureGraphQLClient(): Promise<GraphQLClient> {
+        if (this.graphqlClientPromise) {
+            this.graphqlClient = await this.graphqlClientPromise;
+            this.graphqlClientPromise = null;
         }
-        return this.client;
-    }
-
-    /**
-     * Get latest venture for a shopper
-     *
-     * @param shopperId - Shopper ID
-     * @returns Promise resolving to venture ID or null if not found
-     *
-     * @throws {Error} If GraphQL request fails
-     */
-    async getLatestShopperVenture(shopperId: string): Promise<string | null> {
-        const query = `
-      query GetLatestShopperVenture($shopperId: String!) {
-        latestShopperVenture(shopperId: $shopperId) {
-          id
-          profile {
-            id
-          }
-        }
-      }
-    `;
-
-        try {
-            const client = await this.ensureClient();
-            const response = await client.request<{
-                latestShopperVenture?: {
-                    id: string;
-                    profile?: {
-                        id: string;
-                    };
-                };
-            }>({
-                query,
-                variables: { shopperId },
-                operationName: 'GetLatestShopperVenture',
-            });
-
-            const ventureId = response.data?.latestShopperVenture?.id;
-            return ventureId || null;
-        } catch (error) {
-            logger.error('venture.getLatestShopperVenture.failed', {
-                message: 'Failed to get latest shopper venture',
-                shopperId,
-                error: error instanceof Error ? error.message : String(error),
-            });
-            throw error;
-        }
+        return this.graphqlClient;
     }
 
     /**
@@ -119,7 +89,7 @@ export class VentureService {
     `;
 
         try {
-            const client = await this.ensureClient();
+            const client = await this.ensureGraphQLClient();
             const response = await client.request<{
                 createProfileForShopper?: {
                     id: string;
@@ -159,20 +129,123 @@ export class VentureService {
     }
 
     /**
-     * Get or create venture for a shopper
+     * Get or create venture for a customer
      *
-     * First tries to get the latest shopper venture. If none exists, creates a new profile.
+     * First tries to get venture ID from mgmt-airo attributes API.
+     * If not found, creates a new venture via GraphQL and stores it in mgmt-airo.
      *
-     * @param shopperId - Shopper ID
+     * @param customerId - Customer ID (used as ownerId in mgmt-airo)
+     * @param shopperId - Optional shopper ID (used for GraphQL operations)
      * @returns Promise resolving to venture ID
      *
      * @throws {Error} If query or creation fails
      */
-    async getOrCreateVentureForShopper(
-        shopperId: string
+    async getOrCreateVentureForCustomer(
+        customerId: string,
+        shopperId?: string
     ): Promise<string> {
+        // Step 1: Try to get venture ID from mgmt-airo attributes
+        if (this.mgmtAiroClient) {
+            try {
+                const attribute = await this.mgmtAiroClient.getAttribute(
+                    'user',
+                    customerId,
+                    'ventures'
+                );
+
+                if (attribute && attribute.value?.image_manager_venture_id) {
+                    logger.info('venture.getOrCreate.found', {
+                        message: 'Found existing venture in mgmt-airo attributes',
+                        customerId,
+                        ventureId: attribute.value.image_manager_venture_id,
+                    });
+                    return attribute.value.image_manager_venture_id as string;
+                }
+            } catch (error) {
+                logger.warn('venture.getOrCreate.attribute-query-failed', {
+                    message: 'Failed to get venture from mgmt-airo attributes, will create new',
+                    customerId,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        }
+
+        // Step 2: No venture found in attributes, create a new one via GraphQL
+        if (!shopperId) {
+            throw new Error('Shopper ID is required to create a new venture');
+        }
+
+        logger.info('venture.getOrCreate.creating', {
+            message: 'No existing venture found, creating new profile',
+            customerId,
+            shopperId,
+        });
 
         const ventureId = await this.createProfileForShopper(shopperId);
+
+        // Step 3: Store the venture ID in mgmt-airo attributes
+        if (this.mgmtAiroClient) {
+            try {
+                // Try to create the attribute
+                await this.mgmtAiroClient.createAttribute(
+                    'user',
+                    customerId,
+                    {
+                        key: 'ventures',
+                        value: { image_manager_venture_id: ventureId }
+                    }
+                );
+
+                logger.info('venture.getOrCreate.attribute-created', {
+                    message: 'Successfully stored venture ID in mgmt-airo attributes',
+                    customerId,
+                    ventureId,
+                });
+            } catch (error: any) {
+                // If attribute already exists (409 conflict), try to update it
+                if (error instanceof AiroHttpError && error.status === 409) {
+                    try {
+                        // Get the existing attribute to get its ID
+                        const existingAttribute = await this.mgmtAiroClient.getAttribute(
+                            'user',
+                            customerId,
+                            'ventures'
+                        );
+
+                        if (existingAttribute) {
+                            await this.mgmtAiroClient.updateAttribute(
+                                existingAttribute.id,
+                                {
+                                    value: { image_manager_venture_id: ventureId }
+                                }
+                            );
+
+                            logger.info('venture.getOrCreate.attribute-updated', {
+                                message: 'Successfully updated venture ID in mgmt-airo attributes',
+                                customerId,
+                                ventureId,
+                            });
+                        }
+                    } catch (updateError) {
+                        logger.error('venture.getOrCreate.attribute-update-failed', {
+                            message: 'Failed to update venture in mgmt-airo attributes',
+                            customerId,
+                            ventureId,
+                            error: updateError instanceof Error ? updateError.message : String(updateError),
+                        });
+                        // Don't throw - venture was created successfully, just attribute update failed
+                    }
+                } else {
+                    logger.error('venture.getOrCreate.attribute-create-failed', {
+                        message: 'Failed to store venture in mgmt-airo attributes',
+                        customerId,
+                        ventureId,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                    // Don't throw - venture was created successfully, just attribute storage failed
+                }
+            }
+        }
 
         return ventureId;
     }

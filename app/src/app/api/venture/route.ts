@@ -13,7 +13,8 @@ export const dynamic = 'force-dynamic';
 /**
  * GET /api/venture - Get or create venture ID for authenticated user
  *
- * Uses certificate-based S2S authentication to query GraphQL API.
+ * Uses mgmt-airo attributes API to fetch existing venture ID.
+ * Falls back to GraphQL API to create new venture if not found.
  *
  * @param request - Next.js request object
  * @param authContext - Authenticated customer context
@@ -22,7 +23,14 @@ export const dynamic = 'force-dynamic';
 export const GET = withCustomerAuth(
     async (request: NextRequest, authContext: CustomerAuthContext) => {
         try {
-            const { user } = authContext;
+            const { user, jwt } = authContext;
+
+            if (!user.customerId) {
+                return NextResponse.json(
+                    { error: 'Customer ID not available' },
+                    { status: 400 }
+                );
+            }
 
             if (!user.shopperId) {
                 return NextResponse.json(
@@ -31,11 +39,20 @@ export const GET = withCustomerAuth(
                 );
             }
 
-            // Create venture service (uses certificate-based S2S auth internally)
-            const ventureService = new VentureService();
+            if (!jwt) {
+                return NextResponse.json(
+                    { error: 'JWT token not available' },
+                    { status: 401 }
+                );
+            }
 
-            // Get or create venture ID (gets latest shopper venture or creates new profile)
-            const ventureId = await ventureService.getOrCreateVentureForShopper(
+            // Create venture service with JWT for mgmt-airo API calls
+            const ventureService = new VentureService(jwt);
+
+            // Get or create venture ID
+            // First tries mgmt-airo attributes API, then creates via GraphQL if needed
+            const ventureId = await ventureService.getOrCreateVentureForCustomer(
+                user.customerId,
                 user.shopperId
             );
 

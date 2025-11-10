@@ -17,6 +17,9 @@ import {
   type AiroCustomer,
   type AiroPublishAppResponse,
   type CustomerTree,
+  type AiroAttribute,
+  type AiroCreateAttributePayload,
+  type AiroUpdateAttributePayload,
   type AiroApiError,
   type AiroSystem,
   AiroHttpError,
@@ -485,7 +488,7 @@ export class AiroMgmtClient {
 
   /**
    * Get deployments for a specific app
-   * 
+   *
    * @param subscriptionId - Subscription ID
    * @param systemId - System ID
    * @param appId - App ID
@@ -512,5 +515,76 @@ export class AiroMgmtClient {
       { logEvent: 'mgmt-airo.get-deployments', noCache: true }
     );
   }
-}
 
+  /**
+   * Get attribute by key for owner
+   *
+   * @param ownerType - Type of owner (e.g., 'user')
+   * @param ownerId - ID of the owner (e.g., customer ID)
+   * @param key - Attribute key (e.g., 'ventures')
+   * @returns Promise resolving to attribute or null if not found
+   */
+  async getAttribute(
+    ownerType: string,
+    ownerId: string,
+    key: string
+  ): Promise<AiroAttribute | null> {
+    try {
+      return await this.request<AiroAttribute>(
+        'GET',
+        `/api/airo/v1/attributes/${ownerType}/${ownerId}/${key}`,
+        undefined,
+        {
+          logEvent: 'mgmt-airo.get-attribute',
+          retryOn404: false
+        }
+      );
+    } catch (error: any) {
+      // Return null for 404 (attribute doesn't exist)
+      if (error instanceof AiroHttpError && error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Create attribute for owner
+   *
+   * @param ownerType - Type of owner (e.g., 'user')
+   * @param ownerId - ID of the owner (e.g., customer ID)
+   * @param payload - Attribute payload with key and value
+   * @returns Promise resolving to created attribute
+   */
+  async createAttribute(
+    ownerType: string,
+    ownerId: string,
+    payload: AiroCreateAttributePayload
+  ): Promise<AiroAttribute> {
+    return this.request<AiroAttribute>(
+      'POST',
+      `/api/airo/v1/attributes/${ownerType}/${ownerId}`,
+      payload,
+      { logEvent: 'mgmt-airo.create-attribute' }
+    );
+  }
+
+  /**
+   * Update attribute by ID
+   *
+   * @param attributeId - ID of the attribute
+   * @param payload - Attribute update payload with value
+   * @returns Promise resolving to updated attribute
+   */
+  async updateAttribute(
+    attributeId: string,
+    payload: AiroUpdateAttributePayload
+  ): Promise<AiroAttribute> {
+    return this.request<AiroAttribute>(
+      'PUT',
+      `/api/airo/v1/attributes/${attributeId}`,
+      payload,
+      { logEvent: 'mgmt-airo.update-attribute' }
+    );
+  }
+}
