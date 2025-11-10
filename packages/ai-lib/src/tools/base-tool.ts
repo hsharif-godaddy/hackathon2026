@@ -2,6 +2,8 @@ import { tool, type Tool } from 'ai'
 import type { z } from 'zod'
 import type { ToolDefinition, AgentContext } from '../core/types.js'
 
+export type { Tool } from 'ai'
+
 /**
  * Base class for creating tools
  */

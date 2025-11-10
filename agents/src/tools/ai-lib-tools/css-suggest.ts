@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { generatePalette, type ColorPalette } from '../css-color-tool.js'
 
@@ -34,7 +34,7 @@ function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, nam
  * 
  * Use this when showing multiple palette options to users.
  */
-export const cssSuggestAITool = createTool(
+export const cssSuggestAITool: Tool = createTool(
   `Generate multiple color palette suggestions and display them in a grid.
 
 This tool is optimized for showing color options to users. It:

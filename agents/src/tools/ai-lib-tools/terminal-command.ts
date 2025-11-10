@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { TerminalTool, TerminalCommandOptions } from '../terminal.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -11,7 +11,7 @@ const appRepo = new AppRepository()
  * Terminal Command Tool for AI-Lib
  * Execute shell commands within the app directory
  */
-export const terminalCommandAITool = createTool(
+export const terminalCommandAITool: Tool = createTool(
   'Execute shell commands within the app directory. Use for development tasks like npm install, git operations, building, testing, etc.',
   z.object({
     command: z.string().describe('The shell command to execute (e.g., "npm install", "git status", "ls -la")'),

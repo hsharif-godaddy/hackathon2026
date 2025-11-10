@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { DirectoryListingTool, DirectoryListingOptions } from '../directory-listing.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -11,7 +11,7 @@ const appRepo = new AppRepository()
  * Directory Listing Tool for AI-Lib
  * List directory contents as a tree structure with filtering options
  */
-export const directoryListingAITool = createTool(
+export const directoryListingAITool: Tool = createTool(
   'List directory contents as a tree structure with filtering options. Always limited to the current app\'s directory.',
   z.object({
     path: z.string().default('').describe('Relative path within the app to list (default: root)'),

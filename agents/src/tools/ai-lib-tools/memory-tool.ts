@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { MemoryTool, MemorySetOptions, MemoryReadOptions, MemorySearchOptions } from '../memory-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -11,7 +11,7 @@ const appRepo = new AppRepository()
  * Memory Set Tool for AI-Lib
  * Store values in hierarchical memory using dot-delimited keys
  */
-export const memorySetAITool = createTool(
+export const memorySetAITool: Tool = createTool(
   'Store a value in hierarchical memory using dot-delimited keys. Values can be JSON objects/arrays or plain text strings. Keys are persistent across agent executions within the same app.',
   z.object({
     key: z.string().describe('Dot-delimited hierarchical key (e.g., "user.preferences.theme" or "app.config.database.host")'),
@@ -42,7 +42,7 @@ export const memorySetAITool = createTool(
  * Memory Read Tool for AI-Lib
  * Retrieve values from hierarchical memory using dot-delimited keys
  */
-export const memoryReadAITool = createTool(
+export const memoryReadAITool: Tool = createTool(
   'Retrieve a value from hierarchical memory using dot-delimited keys. Returns the stored value if it exists.',
   z.object({
     key: z.string().describe('Dot-delimited hierarchical key to read')
@@ -85,7 +85,7 @@ export const memoryReadAITool = createTool(
  * Memory Search Tool for AI-Lib
  * Search hierarchical memory using semantic similarity
  */
-export const memorySearchAITool = createTool(
+export const memorySearchAITool: Tool = createTool(
   'Search hierarchical memory using semantic similarity. Find stored values based on text meaning rather than exact key matching.',
   z.object({
     query: z.string().describe('Search query for semantic similarity'),
@@ -137,7 +137,7 @@ export const memorySearchAITool = createTool(
  * Memory List Keys Tool for AI-Lib
  * List all keys in memory with optional prefix filtering
  */
-export const memoryListKeysAITool = createTool(
+export const memoryListKeysAITool: Tool = createTool(
   'List all keys in memory with optional prefix filtering. Useful for discovering what data is stored.',
   z.object({
     prefix: z.string().optional().describe('Optional key prefix to filter results (e.g., "user" to find "user.name", "user.email", etc.)')

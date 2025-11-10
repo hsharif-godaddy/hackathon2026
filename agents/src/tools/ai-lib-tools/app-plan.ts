@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { appPlanTool, AppPlanToolOptions } from '../app-plan-tool.js'
 
@@ -6,7 +6,7 @@ import { appPlanTool, AppPlanToolOptions } from '../app-plan-tool.js'
  * App Plan Tool for AI-Lib
  * Manage app planning data including color schemes and metadata
  */
-export const appPlanAITool = createTool(
+export const appPlanAITool: Tool = createTool(
   'Manage app planning data including color schemes and metadata.',
   z.object({
     operation: z.enum(['create', 'read', 'update', 'delete']).describe('The operation to perform on the app plan'),

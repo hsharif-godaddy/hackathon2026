@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { FileEditTool, FileEditOptions } from '../file-edit.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -14,7 +14,7 @@ const appRepo = new AppRepository()
  * File Edit Tool for AI-Lib
  * Edit, create, or rewrite files with intelligent mode detection
  */
-export const fileEditAITool = createTool(
+export const fileEditAITool: Tool = createTool(
   `Edit, create, or rewrite files with intelligent mode detection. Supports partial edits, full rewrites, and new file creation.
 
 CRITICAL: For 'edit' mode, you MUST provide the EXACT text that you want replace in the file for the 'old' field.

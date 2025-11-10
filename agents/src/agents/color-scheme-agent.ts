@@ -60,7 +60,18 @@ export async function createColorSchemeAgent(): Promise<AgentConfig> {
     
     maxSteps: 15,
     temperature: 0.7, // Higher temperature for creative color work
-    maxOutputTokens: 3000
+    maxOutputTokens: 3000,
+    
+    metadata: {
+      contextPreferences: {
+        includeAppContext: false,
+        includeVisualContext: true,
+        includeAiEditContext: false,
+        includeSelectedImages: false,
+        includeConversationHistory: true,
+        includeTemplateDescription: false
+      }
+    }
   }
 }
 

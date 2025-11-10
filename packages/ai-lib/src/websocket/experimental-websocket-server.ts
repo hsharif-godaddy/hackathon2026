@@ -1031,6 +1031,23 @@ export class WebSocketServer {
       context = data.context || {}
     }
 
+    // Get current agent from state manager (for handoffs)
+    // This is REQUIRED - every context must have an agentId
+    const currentAgent = this.getActiveAgent(socketId, data)
+    if (!currentAgent) {
+      throw new Error('No active agent found - agentId is required in context.metadata')
+    }
+    
+    // Ensure metadata exists and set agentId
+    const metadata = context.metadata || {}
+    context = {
+      ...context,
+      metadata: {
+        ...metadata,
+        agentId: currentAgent
+      }
+    }
+
     // Add socketId so it's available to tools via executionContext
     return {
       ...context,

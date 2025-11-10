@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { validateLucideIcons, IconsValidatorOptions } from '../icons-validator.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -10,7 +10,7 @@ const appRepo = new AppRepository()
  * Icons Validator Tool for AI-Lib
  * Validate icons used in generated content
  */
-export const iconsValidatorAITool = createTool(
+export const iconsValidatorAITool: Tool = createTool(
   'Validate icons used in generated content. Use this tool when the site is nearly complete to ensure all icons exist. This prevents runtime errors from invalid icon names.',
   z.object({
     files: z.array(z.string()).optional().describe('Specific files to validate (relative paths). If empty, validates all .tsx/.ts/.jsx/.js files'),

@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { todoListTool, TodoListToolOptions } from '../todo-list-tool.js'
 
@@ -6,7 +6,7 @@ import { todoListTool, TodoListToolOptions } from '../todo-list-tool.js'
  * Todo List Tool for AI-Lib
  * Comprehensive planning tool with SQLite storage
  */
-export const todoListAITool = createTool(
+export const todoListAITool: Tool = createTool(
   'Create and manage todo lists for planning. CRITICAL: Mark items complete IMMEDIATELY after finishing each task - do not wait until end of workflow or git commit. Use show_list to display completed work. Use select_list to switch between todo lists. Use this to break down complex tasks and track progress in real-time.',
   z.object({
     operation: z.enum([

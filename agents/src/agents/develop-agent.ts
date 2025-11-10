@@ -14,7 +14,6 @@ import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { GitTool } from '../tools/git-tool.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
-import { AILibContextManager } from './ai-lib-agents/context-manager.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 import { logger, log } from '../logging/index.js'
 
@@ -178,7 +177,7 @@ const afterToolExecution: AfterToolExecutionHook = async (
 /**
  * Build the comprehensive system prompt for the Develop Agent
  */
-async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
+async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
   const promptBuilder = createPromptBuilder();
 
   // Get modular prompt paths using helper utility
@@ -190,7 +189,6 @@ async function buildDevelopSystemPrompt(appPath?: string): Promise<string> {
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     .file(paths.getSharedFile('filesystem.md'))
     .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules
-    //.file(paths.getAgentFile('develop', 'tools.md'))
     //.file(paths.getAgentFile('develop', 'database.md'))
     .file(paths.getAgentFile('develop', 'api.md'))
     .file(paths.getAgentFile('develop', 'email.md'))
@@ -270,7 +268,18 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
     maxSteps: 100,
     temperature: 0.3,
-    maxOutputTokens: 16000
+    maxOutputTokens: 16000,
+    
+    metadata: {
+      contextPreferences: {
+        includeAppContext: true,
+        includeVisualContext: true,
+        includeAiEditContext: true,
+        includeSelectedImages: true,
+        includeConversationHistory: true,
+        includeTemplateDescription: true
+      }
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { findImage } from '../image-search-tool.js'
 import { generateImage } from '../image-generation-tool.js'
@@ -8,7 +8,7 @@ import { AppRepository } from '../../database/repositories/AppRepository.js'
  * Image Search Tool for AI-Lib
  * Search for images on the web based on text prompts
  */
-export const imageSearchAITool = createTool(
+export const imageSearchAITool: Tool = createTool(
   'Search for images on the web based on text prompts. Supports single prompts or arrays of prompts for parallel search. Each prompt returns one high-quality image. Use this when you need to find relevant images to illustrate concepts.',
   z.object({
     prompt: z.union([z.string(), z.array(z.string())]).describe('Text prompt(s) describing the image(s) to search for. Can be a single string or array of strings for parallel search. Each prompt returns one image.')
@@ -47,7 +47,7 @@ export const imageSearchAITool = createTool(
  * Image Generate Tool for AI-Lib
  * Generate an image using AI based on a detailed text prompt
  */
-export const imageGenerateAITool = createTool(
+export const imageGenerateAITool: Tool = createTool(
   'Generate an image using AI based on a detailed text prompt and save it to the app\'s public directory. Uses gpt-image-1 model which produces high-quality, vivid images by default.',
   z.object({
     prompt: z.string().describe('Detailed description of the image to generate'),

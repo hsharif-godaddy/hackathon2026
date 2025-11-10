@@ -1,4 +1,4 @@
-import type { ConversationMessage, MessageSegment, ToolCall } from '../database/schema.js';
+import type { ToolCall } from '../database/schema.js';
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
 import { logger } from '../logging/index.js';
 import { countTokens, estimateTokens } from '../utils/token-counter.js';

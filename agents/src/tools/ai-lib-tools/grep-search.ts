@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { GrepTool, GrepOptions } from '../grep-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -10,7 +10,7 @@ const appRepo = new AppRepository()
  * Grep Search Tool for AI-Lib
  * Search for text or patterns across files in the project
  */
-export const grepSearchAITool = createTool(
+export const grepSearchAITool: Tool = createTool(
   'Search for text or patterns across files in the project. Essential for finding code to edit without reading entire files, locating function/class definitions, finding all usages of a symbol, searching for TODOs or specific patterns, and understanding code structure before making changes.',
   z.object({
     query: z.string().describe('Text or regex pattern to search for'),

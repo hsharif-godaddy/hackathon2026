@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { ServerManagementTool, RestartServerOptions } from '../server-management-tool.js'
 
@@ -9,7 +9,7 @@ const serverTool = new ServerManagementTool()
  * Server Restart Tool for AI-Lib
  * Restart the development server for the current app
  */
-export const serverRestartAITool = createTool(
+export const serverRestartAITool: Tool = createTool(
   'Restart the development server for the current app. Use this after database configuration changes, dependency installations, or when the server becomes unresponsive.',
   z.object({
     reason: z.string().optional().describe('Optional reason for the restart (for logging purposes)')
@@ -34,7 +34,7 @@ export const serverRestartAITool = createTool(
  * Server Status Tool for AI-Lib
  * Check the current status of the development server
  */
-export const serverStatusAITool = createTool(
+export const serverStatusAITool: Tool = createTool(
   'Check the current status of the development server for the current app. Returns whether the server is running, stopped, or in an error state.',
   z.object({}),
   async (input, context) => {

@@ -218,8 +218,32 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
           const enhancedContext = contextManager.convertToEnhancedContext(agentsAppContext)
 
+          // Extract agent-specific context preferences from active agent metadata
+          // The agentId MUST be set in context.metadata by processContext() based on state manager
+          const agentId = agentsAppContext.metadata?.agentId as string
+          if (!agentId) {
+            logger.error('websocket.context.provider.missing_agent_id', {
+              message: 'agentId not found in context.metadata - this should never happen',
+              hasMetadata: !!agentsAppContext.metadata,
+              metadataKeys: agentsAppContext.metadata ? Object.keys(agentsAppContext.metadata) : []
+            })
+            throw new Error('agentId must be set in context.metadata')
+          }
+
+          const agent = agentFactory.agents.get(agentId)
+          if (!agent) {
+            logger.error('websocket.context.provider.agent_not_found', {
+              message: 'Agent not found in factory',
+              agentId,
+              availableAgents: Array.from(agentFactory.agents['agents'].keys())
+            })
+            throw new Error(`Agent not found: ${agentId}`)
+          }
+
+          const agentPreferences = agent.getConfig()?.metadata?.contextPreferences as any
+
           // Build context messages including app context and template descriptions
-          const contextResult = await contextManager.buildContextMessages('', enhancedContext)
+          const contextResult = await contextManager.buildContextMessages('', enhancedContext, agentPreferences)
 
           // Build dynamic data section
           const dynamicDataMessage = buildDynamicDataMessage(agentsAppContext)

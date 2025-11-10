@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { ViewLogsTool, DevLogsOptions } from '../view-logs-tool.js'
 
@@ -6,7 +6,7 @@ import { ViewLogsTool, DevLogsOptions } from '../view-logs-tool.js'
  * View Logs Tool for AI-Lib
  * Read development server logs for debugging and monitoring
  */
-export const viewLogsAITool = createTool(
+export const viewLogsAITool: Tool = createTool(
   'Read development server logs for debugging and monitoring. Provides access to stdout, stderr, and formatted log output from the running development server.',
   z.object({
     lines: z.number().min(1).max(1000).default(50).describe('Number of recent log lines to retrieve (default: 50, max: 1000)'),

@@ -3,6 +3,8 @@
  * Central registry that imports all converted tools from individual files
  */
 
+import type { Tool } from '@airo/ai-lib'
+
 // Import all individual tools
 export { fileEditAITool } from './file-edit.js'
 export { directoryListingAITool } from './directory-listing.js'
@@ -45,7 +47,7 @@ import { cssSuggestAITool } from './css-suggest.js'
  * Complete registry of all AI-Lib converted tools
  * Use this for agents that need access to all tools
  */
-export const allAILibTools = {
+export const allAILibTools: Record<string, Tool> = {
   fileEdit: fileEditAITool,
   directoryListing: directoryListingAITool,
   terminalCommand: terminalCommandAITool,
@@ -73,7 +75,7 @@ export const allAILibTools = {
 /**
  * Grouped tool sets for specific use cases
  */
-export const toolGroups = {
+export const toolGroups: Record<string, Record<string, Tool>> = {
   // Core development tools
   core: {
     fileEdit: fileEditAITool,
@@ -125,10 +127,10 @@ export const toolGroups = {
  */
 export const toolStats = {
   totalTools: Object.keys(allAILibTools).length,
-  coreTools: Object.keys(toolGroups.core).length,
-  systemTools: Object.keys(toolGroups.system).length,
-  backendTools: Object.keys(toolGroups.backend).length,
-  mediaTools: Object.keys(toolGroups.media).length,
-  debugTools: Object.keys(toolGroups.debug).length,
-  planningTools: Object.keys(toolGroups.planning).length,
+  coreTools: Object.keys(toolGroups.core!).length,
+  systemTools: Object.keys(toolGroups.system!).length,
+  backendTools: Object.keys(toolGroups.backend!).length,
+  mediaTools: Object.keys(toolGroups.media!).length,
+  debugTools: Object.keys(toolGroups.debug!).length,
+  planningTools: Object.keys(toolGroups.planning!).length,
 }

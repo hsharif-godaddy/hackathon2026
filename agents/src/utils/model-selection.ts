@@ -5,6 +5,7 @@
  * and available providers (Bedrock vs OpenAI)
  */
 
+import type { LanguageModel } from 'ai'
 import { getModel, getModelInfo } from '@airo/ai-lib'
 import { logger } from '../logging/index.js'
 
@@ -81,7 +82,7 @@ function isOpenAIAvailable(): boolean {
  * const fastModel = await getAgentModel('fast')
  * ```
  */
-export async function getAgentModel(tier: ModelTier) {
+export async function getAgentModel(tier: ModelTier): Promise<LanguageModel> {
   const config = MODEL_MAPPINGS[tier]
   
   // Check provider availability

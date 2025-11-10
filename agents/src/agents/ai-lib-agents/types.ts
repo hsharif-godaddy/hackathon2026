@@ -112,6 +112,21 @@ export const DEFAULT_CONTEXT_CONFIG: ContextGenerationConfig = {
   includeAiEditContext: true,
   includeVisualContext: true,
   includeSelectedImages: true,
-  maxHistoryMessages: 10,
+  maxHistoryMessages: 500,
   maxDirectoryDepth: 3
+}
+
+/**
+ * Agent-specific context preferences
+ * Allows per-agent customization of context rendering
+ */
+export interface AgentContextPreferences {
+  includeAppContext?: boolean
+  includeVisualContext?: boolean
+  includeAiEditContext?: boolean
+  includeSelectedImages?: boolean
+  includeConversationHistory?: boolean
+  includeTemplateDescription?: boolean
+  maxHistoryMessages?: number
+  maxDirectoryDepth?: number
 }

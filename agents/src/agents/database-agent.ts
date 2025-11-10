@@ -3,8 +3,7 @@ import {
   type AgentConfig,
   type BeforeToolExecutionHook,
   type AfterToolExecutionHook,
-  createPromptBuilder,
-  pb
+  createPromptBuilder
 } from '@airo/ai-lib'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
@@ -89,7 +88,7 @@ async function buildDatabaseSystemPrompt(): Promise<string> {
 /**
  * Create the Database Agent configuration
  */
-export async function createDatabaseAgent(options?: { appPath?: string }): Promise<AgentConfig> {
+export async function createDatabaseAgent(_options?: { appPath?: string }): Promise<AgentConfig> {
   const systemPrompt = await buildDatabaseSystemPrompt()
   const { model, modelName } = await getAgentModelWithName('full') // Use full model for complex database operations
   
@@ -121,7 +120,18 @@ export async function createDatabaseAgent(options?: { appPath?: string }): Promi
     
     maxSteps: 20,
     temperature: 0.3,
-    maxOutputTokens: 2500
+    maxOutputTokens: 2500,
+    
+    metadata: {
+      contextPreferences: {
+        includeAppContext: true,
+        includeVisualContext: false,
+        includeAiEditContext: false,
+        includeSelectedImages: false,
+        includeConversationHistory: true,
+        includeTemplateDescription: true
+      }
+    }
   }
 }
 

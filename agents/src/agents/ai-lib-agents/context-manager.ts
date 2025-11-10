@@ -6,7 +6,7 @@
 import { ConversationContextManager } from '../../services/ConversationContextManager.js'
 import { AppContextManager } from '../../services/AppContextManager.js'
 import { ConversationRepository } from '../../database/repositories/ConversationRepository.js'
-import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig } from './types.js'
+import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig, AgentContextPreferences } from './types.js'
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
 import { logger, log } from '../../logging/index.js'
 import { getAgentConfig } from '../../services/features.js'
@@ -44,11 +44,13 @@ export class AILibContextManager {
      * Build context messages for conversation history
      * @param baseSystemPrompt - The base system prompt from markdown file (returned unchanged)
      * @param context - Enhanced agent context
+     * @param agentPreferences - Optional agent-specific context preferences to override defaults
      * @returns Object with static system prompt and context messages
      */
     async buildContextMessages(
         baseSystemPrompt: string,
-        context: EnhancedAgentContext
+        context: EnhancedAgentContext,
+        agentPreferences?: AgentContextPreferences
     ): Promise<{
         systemPrompt: string
         contextMessages: Array<{ role: 'user' | 'system'; content: string; insertionOrder?: 'before_history' | 'after_history'; cachePoint?: { type: 'ephemeral' } }>
@@ -78,7 +80,7 @@ export class AILibContextManager {
             })
         }
 
-        const contextMessages = await this.buildRichContextMessages(context)
+        const contextMessages = await this.buildRichContextMessages(context, agentPreferences)
 
         // Convert context messages to conversation format
         const conversationContextMessages: Array<{ role: 'user' | 'system'; content: string; insertionOrder?: 'before_history' | 'after_history'; cachePoint?: { type: 'ephemeral' } }> = []
@@ -97,7 +99,9 @@ export class AILibContextManager {
         }
 
         // Add template description as system message FIRST (most important context)
-        const templateDescription = await this.getTemplateDescription(context)
+        // Check agent preferences for template description inclusion
+        const includeTemplate = agentPreferences?.includeTemplateDescription !== false // Default true if not specified
+        const templateDescription = includeTemplate ? await this.getTemplateDescription(context) : null
         if (templateDescription) {
             // Template content logging if enabled
             if (contextLogging.templateContent) {
@@ -257,14 +261,27 @@ export class AILibContextManager {
     /**
      * Build context messages for various context types
      * @param context - Enhanced agent context
+     * @param agentPreferences - Optional agent-specific context preferences
      * @returns Array of context messages
      */
-    private async buildRichContextMessages(context: EnhancedAgentContext): Promise<ContextMessage[]> {
+    private async buildRichContextMessages(context: EnhancedAgentContext, agentPreferences?: AgentContextPreferences): Promise<ContextMessage[]> {
         const messages: ContextMessage[] = []
+
+        // Merge agent preferences with default config (agent preferences take priority)
+        const effectiveConfig: ContextGenerationConfig = {
+            ...this.config,
+            ...(agentPreferences?.includeAppContext !== undefined && { includeAppContext: agentPreferences.includeAppContext }),
+            ...(agentPreferences?.includeConversationHistory !== undefined && { includeConversationHistory: agentPreferences.includeConversationHistory }),
+            ...(agentPreferences?.includeAiEditContext !== undefined && { includeAiEditContext: agentPreferences.includeAiEditContext }),
+            ...(agentPreferences?.includeVisualContext !== undefined && { includeVisualContext: agentPreferences.includeVisualContext }),
+            ...(agentPreferences?.includeSelectedImages !== undefined && { includeSelectedImages: agentPreferences.includeSelectedImages }),
+            ...(agentPreferences?.maxHistoryMessages !== undefined && { maxHistoryMessages: agentPreferences.maxHistoryMessages }),
+            ...(agentPreferences?.maxDirectoryDepth !== undefined && { maxDirectoryDepth: agentPreferences.maxDirectoryDepth })
+        }
 
         try {
             // Build app context
-            if (this.config.includeAppContext && context.appContext && context.metadata?.appId) {
+            if (effectiveConfig.includeAppContext && context.appContext && context.metadata?.appId) {
                 const appContextMessage = await this.buildAppContextMessage(context)
                 if (appContextMessage) {
                     messages.push(appContextMessage)
@@ -280,7 +297,7 @@ export class AILibContextManager {
             }
 
             // Build AI edit context
-            if (this.config.includeAiEditContext && context.aiEditContext) {
+            if (effectiveConfig.includeAiEditContext && context.aiEditContext) {
                 const formatted = ContextFormatter.formatAiEditContext(context.aiEditContext)
                 if (formatted) {
                     messages.push({
@@ -292,7 +309,7 @@ export class AILibContextManager {
             }
 
             // Build visual context
-            if (this.config.includeVisualContext && context.visualContext) {
+            if (effectiveConfig.includeVisualContext && context.visualContext) {
                 const formatted = ContextFormatter.formatVisualContext(context.visualContext)
                 if (formatted) {
                     messages.push({
@@ -304,7 +321,7 @@ export class AILibContextManager {
             }
 
             // Build selected assets context
-            if (this.config.includeSelectedImages && context.selectedAssets) {
+            if (effectiveConfig.includeSelectedImages && context.selectedAssets) {
                 const formatted = ContextFormatter.formatSelectedAssets(context.selectedAssets)
                 if (formatted) {
                     messages.push({

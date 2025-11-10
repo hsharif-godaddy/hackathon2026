@@ -83,6 +83,8 @@ export interface AgentConfig {
     warn: (event: string, data: unknown) => void
     error: (event: string, data: unknown) => void
   }
+  /** Agent-specific metadata for custom configuration */
+  metadata?: Record<string, unknown>
 }
 
 /**

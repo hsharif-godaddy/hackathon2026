@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { ReadFileTool, ReadFileOptions } from '../read-file.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -11,7 +11,7 @@ const appRepo = new AppRepository()
  * Read File Tool for AI-Lib
  * Read file contents with optional line range support
  */
-export const readFileAITool = createTool(
+export const readFileAITool: Tool = createTool(
   'Read file contents with optional line range support. Can read entire files or specific line ranges.',
   z.object({
     path: z.string().describe('Path to the file to read (relative to app root)'),

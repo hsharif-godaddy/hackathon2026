@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { GitTool, GitToolOptions } from '../git-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -11,7 +11,7 @@ const appRepo = new AppRepository()
  * Git Operation Tool for AI-Lib
  * Perform git operations like status, add, commit, diff, log, branch management, etc.
  */
-export const gitOperationAITool = createTool(
+export const gitOperationAITool: Tool = createTool(
   'Perform git operations like status, add, commit, diff, log, branch management, etc. Provides comprehensive git functionality.',
   z.object({
     operation: z.enum(['status', 'add', 'commit', 'diff', 'log', 'branch', 'checkout', 'merge', 'pull', 'push', 'stash', 'reset', 'revert']).describe('The git operation to perform'),

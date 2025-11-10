@@ -5,7 +5,7 @@
  * against a curated collection of design knowledge.
  */
 
-import { createTool } from '@airo/ai-lib';
+import { createTool, type Tool } from '@airo/ai-lib';
 import { z } from 'zod';
 import { RagTool, type RagSearchOptions } from '../rag-tool.js';
 
@@ -173,7 +173,7 @@ function formatSearchResults(query: string, results: any[]): string {
  * Use this to find design inspiration, color schemes, typography suggestions,
  * and visual style references.
  */
-export const ragSearchAITool = createTool(
+export const ragSearchAITool: Tool = createTool(
   'Search for design inspiration, styles, trends, and Google Fonts using semantic similarity. Use collection="design" for general design inspiration, or collection="fonts" for Google Fonts typography recommendations. Returns relevant results from curated knowledge bases.',
   z.object({
     query: z

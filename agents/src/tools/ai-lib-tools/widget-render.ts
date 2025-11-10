@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 
 /**
@@ -70,7 +70,7 @@ const widgetDataSchema = z.union([
  * Renders interactive widgets in the agent response stream.
  * Supports multiple widget types for rich visual responses.
  */
-export const widgetRenderAITool = createTool(
+export const widgetRenderAITool: Tool = createTool(
 `Render an interactive widget in your response.
 Each widget must be defined in the widgetDataSchema.
 Supports:

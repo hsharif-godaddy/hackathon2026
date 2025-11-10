@@ -1,4 +1,4 @@
-import { createTool } from '@airo/ai-lib'
+import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
 import { updateCssColorPalette, generatePalette, type ColorPalette } from '../css-color-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -30,7 +30,7 @@ function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, nam
  * Programmatically updates CSS color variables with intelligent color generation
  * and contrast checking. Much faster than using fileEdit for CSS updates.
  */
-export const cssColorAITool = createTool(
+export const cssColorAITool: Tool = createTool(
   `Update CSS color palette programmatically with intelligent color generation.
 
 This tool is MUCH FASTER than using fileEdit for CSS color updates. It:
