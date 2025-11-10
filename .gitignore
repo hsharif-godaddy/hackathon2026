@@ -26,6 +26,9 @@ packages/design-extractor/output/
 .env
 .env.local
 
+# Development CA (per-project certificate authority)
+.dev-ca/
+
 # License reports
 licenses-report.txt
 .direnv/CACHEDIR.TAG

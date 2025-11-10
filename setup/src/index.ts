@@ -10,6 +10,7 @@ import { DependencyChecker } from './deps-checker.js';
 import { EnvGenerator } from './env-generator.js';
 import { GettyConfigSetup } from './getty-config.js';
 import { JWTKeysGenerator } from './jwt-keys-generator.js';
+import { CASetup } from './ca-setup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');
@@ -62,6 +63,7 @@ async function selectiveConfiguration(): Promise<void> {
   const envGenerator = new EnvGenerator(projectRoot);
   const gettySetup = new GettyConfigSetup();
   const jwtGenerator = new JWTKeysGenerator(projectRoot);
+  const caSetup = new CASetup(projectRoot);
 
   while (true) {
     printSelectiveHeader();
@@ -71,6 +73,7 @@ async function selectiveConfiguration(): Promise<void> {
 
     const choices = [
       { name: '🔍 Check Docker Dependencies', value: 'docker-deps' },
+      { name: '🔒 Setup Development CA (SSL Certificates)', value: 'ca-setup' },
       { name: '📱 Configure App Environment (.env)', value: 'app-env' },
       { name: '🤖 Configure Agents Environment (.env)', value: 'agents-env' },
       { name: '🔐 Generate JWT Keys', value: 'jwt-keys' },
@@ -104,6 +107,9 @@ async function selectiveConfiguration(): Promise<void> {
         case 'docker-deps':
           await configureDockerDeps(depChecker);
           break;
+        case 'ca-setup':
+          await caSetup.setup();
+          break;
         case 'app-env':
           await envGenerator.generateAppEnv();
           break;
@@ -123,7 +129,7 @@ async function selectiveConfiguration(): Promise<void> {
           await startMySQLContainer();
           break;
         case 'status-check':
-          await checkCurrentStatus(envGenerator, gettySetup, jwtGenerator);
+          await checkCurrentStatus(envGenerator, gettySetup, jwtGenerator, caSetup);
           break;
       }
     } catch (error) {
@@ -180,8 +186,12 @@ async function startMySQLContainer(): Promise<void> {
   }
 }
 
-async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, jwtGenerator: JWTKeysGenerator): Promise<void> {
+async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, jwtGenerator: JWTKeysGenerator, caSetup: CASetup): Promise<void> {
   console.log(chalk.cyan('🔍 Current Configuration Status'));
+  console.log('');
+
+  // Check CA
+  await caSetup.checkStatus();
   console.log('');
 
   // Check .env files
@@ -241,6 +251,7 @@ async function fullSetup(): Promise<void> {
   console.log(chalk.yellow('This full setup will:'));
   console.log('• Check Docker and Docker Compose installation');
   console.log('• Verify Docker daemon is running');
+  console.log('• Generate and trust development CA for SSL certificates');
   console.log('• Configure app/.env file with AI and database settings');
   console.log('• Configure agents/.env file with AI and MySQL settings');
   console.log('• Generate JWT keys for secure agent communication');
@@ -286,7 +297,16 @@ async function fullSetup(): Promise<void> {
 
   printSeparator();
 
-  // Step 2: Environment Configuration
+  // Step 2: Setup Development CA
+  const caSetup = new CASetup(projectRoot);
+  console.log(chalk.cyan('🔒 Development Certificate Authority Setup'));
+  console.log('Setting up CA for trusted HTTPS certificates...\n');
+  
+  await caSetup.setup();
+
+  printSeparator();
+
+  // Step 3: Environment Configuration
   const envGenerator = new EnvGenerator(projectRoot);
   
   console.log(chalk.cyan('🔧 Environment Configuration'));

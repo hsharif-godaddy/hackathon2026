@@ -78,6 +78,21 @@ check_pnpm() {
     fi
 }
 
+# Check mkcert installation
+check_mkcert() {
+    print_info "Checking mkcert installation..."
+
+    if command -v mkcert &> /dev/null; then
+        MKCERT_VERSION=$(mkcert -version 2>&1 | head -n1)
+        print_status "mkcert is installed ($MKCERT_VERSION)"
+        return 0
+    else
+        print_warning "mkcert is not installed (recommended for HTTPS)"
+        show_mkcert_install_instructions
+        return 1
+    fi
+}
+
 # Check direnv installation
 check_direnv() {
     print_info "Checking direnv installation..."
@@ -176,6 +191,41 @@ show_pnpm_install_instructions() {
     echo ""
 }
 
+# Show mkcert installation instructions
+show_mkcert_install_instructions() {
+    echo ""
+    print_warning "mkcert installation recommended for HTTPS development"
+    echo ""
+    print_info "mkcert creates locally-trusted development certificates"
+    print_info "This enables HTTPS without browser warnings during development"
+    echo ""
+    echo "For macOS:"
+    echo ""
+    echo "  # Using Homebrew"
+    echo "  brew install mkcert"
+    echo "  mkcert -install"
+    echo ""
+    echo "For Ubuntu/Debian:"
+    echo ""
+    echo "  # Install certutil (required by mkcert)"
+    echo "  sudo apt update"
+    echo "  sudo apt install -y libnss3-tools"
+    echo ""
+    echo "  # Download and install mkcert"
+    echo "  curl -JLO \"https://dl.filippo.io/mkcert/latest?for=linux/amd64\""
+    echo "  chmod +x mkcert-v*-linux-amd64"
+    echo "  sudo mv mkcert-v*-linux-amd64 /usr/local/bin/mkcert"
+    echo ""
+    echo "  # Install local CA"
+    echo "  mkcert -install"
+    echo ""
+    print_info "Note: Without mkcert, the system will fall back to OpenSSL self-signed certificates"
+    print_info "Self-signed certificates work but will show browser warnings"
+    echo ""
+    print_info "Learn more at: https://github.com/FiloSottile/mkcert"
+    echo ""
+}
+
 # Show direnv installation instructions
 show_direnv_install_instructions() {
     echo ""
@@ -235,8 +285,15 @@ main() {
     
     local nodejs_ok=0
     local pnpm_ok=0
+    local mkcert_ok=0
     local direnv_ok=0
     local direnv_hook_ok=0
+    
+    # Check mkcert (optional but recommended)
+    if check_mkcert; then
+        mkcert_ok=1
+    fi
+    echo ""
     
     # Check direnv first - it can automatically manage Node.js and pnpm
     if check_direnv; then
@@ -281,6 +338,13 @@ main() {
             print_status "All required dependencies are satisfied!"
             echo ""
             print_info "direnv is active and managing your environment!"
+            echo ""
+            if [ $mkcert_ok -eq 0 ]; then
+                print_warning "mkcert is not installed - apps will use self-signed certificates"
+                print_info "Consider installing mkcert for better HTTPS development experience"
+            else
+                print_status "mkcert is installed - apps will use trusted local certificates"
+            fi
             echo ""
             print_info "You can now proceed with the Airo App Builder setup."
             echo ""

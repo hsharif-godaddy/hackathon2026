@@ -95,6 +95,34 @@ export class DependencyChecker {
     }
   }
 
+  async checkMkcert(): Promise<DependencyCheckResult> {
+    console.log(chalk.blue('🔍 Checking mkcert installation...'));
+    
+    try {
+      const { stdout: version } = await execa('mkcert', ['-version']);
+      const result: DependencyCheckResult = {
+        name: 'mkcert',
+        installed: true,
+        version: version.split('\n')[0] || 'installed'
+      };
+      
+      console.log(chalk.green(`✅ mkcert is installed (${result.version})`));
+      this.results.push(result);
+      return result;
+    } catch (error) {
+      const result: DependencyCheckResult = {
+        name: 'mkcert',
+        installed: false,
+        error: 'mkcert is not installed (optional but recommended)'
+      };
+      
+      console.log(chalk.yellow('⚠️  mkcert is not installed'));
+      this.showMkcertInstallInstructions();
+      this.results.push(result);
+      return result;
+    }
+  }
+
   private showDockerInstallInstructions(): void {
     console.log(chalk.yellow('\n📋 Docker Installation Instructions for Ubuntu:'));
     console.log('\n1. Update package index:');
@@ -124,12 +152,34 @@ export class DependencyChecker {
     console.log('   sudo systemctl enable docker  # Start on boot');
   }
 
+  private showMkcertInstallInstructions(): void {
+    console.log(chalk.yellow('\n📋 mkcert Installation Instructions:'));
+    console.log('\nmkcert creates locally-trusted development certificates for HTTPS.');
+    console.log('This enables HTTPS without browser warnings during development.\n');
+    console.log('For macOS:');
+    console.log('   brew install mkcert');
+    console.log('   mkcert -install\n');
+    console.log('For Ubuntu/Debian:');
+    console.log('   # Install certutil (required by mkcert)');
+    console.log('   sudo apt update');
+    console.log('   sudo apt install -y libnss3-tools\n');
+    console.log('   # Download and install mkcert');
+    console.log('   curl -JLO "https://dl.filippo.io/mkcert/latest?for=linux/amd64"');
+    console.log('   chmod +x mkcert-v*-linux-amd64');
+    console.log('   sudo mv mkcert-v*-linux-amd64 /usr/local/bin/mkcert\n');
+    console.log('   # Install local CA');
+    console.log('   mkcert -install\n');
+    console.log(chalk.blue('ℹ️  Without mkcert, apps will use OpenSSL self-signed certificates (with browser warnings)'));
+    console.log(chalk.blue('ℹ️  Learn more: https://github.com/FiloSottile/mkcert'));
+  }
+
   async checkAllDockerDependencies(): Promise<boolean> {
     console.log(chalk.cyan('\n🚀 Checking Docker dependencies...\n'));
     
     const dockerResult = await this.checkDocker();
     const composeResult = await this.checkDockerCompose();
     const daemonResult = await this.checkDockerRunning();
+    const mkcertResult = await this.checkMkcert();
     
     const allGood = dockerResult.installed && composeResult.installed && daemonResult.installed;
     
@@ -137,6 +187,11 @@ export class DependencyChecker {
     console.log(`Docker: ${dockerResult.installed ? chalk.green('✅') : chalk.red('❌')}`);
     console.log(`Docker Compose: ${composeResult.installed ? chalk.green('✅') : chalk.red('❌')}`);
     console.log(`Docker Running: ${daemonResult.installed ? chalk.green('✅') : chalk.red('❌')}`);
+    console.log(`mkcert: ${mkcertResult.installed ? chalk.green('✅ (recommended)') : chalk.yellow('⚠️  (optional)')}`);
+    
+    if (!mkcertResult.installed) {
+      console.log(chalk.yellow('\n⚠️  Note: Apps will use self-signed certificates without mkcert'));
+    }
     
     return allGood;
   }

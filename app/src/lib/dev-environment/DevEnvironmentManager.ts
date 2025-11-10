@@ -2,6 +2,7 @@ import { logger } from '../request-context';
 import { DevDatabase, type DevAppInfo } from './database/DevDatabase';
 import { PortManager } from './utils/port-manager';
 import { GitUtils } from './utils/git';
+import { SSLCertificateGenerator } from './utils/ssl-cert-generator';
 import { TemplateCopyService } from './services/TemplateCopyService';
 import { createAppAdapter, getAdapterType } from './adapters';
 import type { IAppAdapter } from './adapters/interfaces/IAppAdapter';
@@ -138,6 +139,9 @@ export class DevEnvironmentManager {
 
       // Set up the app using the template copy service
       await this.setupAppFromTemplate(siteId, appPath, name, templateVersion);
+
+      // Generate SSL certificates for HTTPS development
+      await this.generateSSLCertificates(siteId, appPath);
 
       // Initialize Git repository (skip for Docker mode - container handles it via script)
       if (this.adapter?.getCapabilities().supportsProcessOperations) {
@@ -369,6 +373,35 @@ export class DevEnvironmentManager {
     } catch (error) {
       logger.warn(`⚠️ Failed to update .gitignore:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Generate SSL certificates for HTTPS development
+   */
+  private async generateSSLCertificates(appId: string, appPath: string): Promise<void> {
+    try {
+      logger.info(`🔒 Generating SSL certificates for ${appId}`);
+
+      const result = await SSLCertificateGenerator.ensureCertificates(appPath);
+
+      if (result.success) {
+        logger.info(`✅ SSL certificates ready for ${appId} at ${result.certPath}`);
+        
+        const { CAManager } = await import('./utils/ca-manager');
+        const caManager = new CAManager();
+        const caPath = caManager.getCAPath();
+        
+        logger.info(`📋 To trust these certificates in your browser, install the CA certificate:`);
+        logger.info(`   CA Location: ${caPath}`);
+        logger.info(`   Run: ./scripts/trust-dev-ca.sh (or manually import into your browser/system)`);
+      } else {
+        logger.warn(`⚠️ SSL certificate generation failed for ${appId}: ${result.error}`);
+        logger.warn(`App will fall back to HTTP mode`);
+      }
+    } catch (error) {
+      logger.warn(`SSL certificate generation failed for ${appId}:`, error);
+      logger.warn(`App will fall back to HTTP mode`);
     }
   }
 

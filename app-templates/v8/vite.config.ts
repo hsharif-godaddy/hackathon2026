@@ -59,21 +59,25 @@ export default defineConfig(({ mode }) => ({
 	server: {
 		host: "0.0.0.0",
 		port: parseInt(process.env.PORT || "5173"),
-		strictPort: !!process.env.PORT, // Prevent auto-port selection when PORT is explicitly set
+		strictPort: !!process.env.PORT,
 		allowedHosts,
 		https: (() => {
-			// Check if SSL certificates exist
 			const certPath = path.resolve(__dirname, ".ssl/cert.pem");
 			const keyPath = path.resolve(__dirname, ".ssl/key.pem");
 
 			if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
-				return {
-					cert: fs.readFileSync(certPath),
-					key: fs.readFileSync(keyPath)
-				};
+				try {
+					return {
+						cert: fs.readFileSync(certPath),
+						key: fs.readFileSync(keyPath)
+					};
+				} catch (error) {
+					console.warn('Failed to read SSL certificates, falling back to HTTP:', error);
+					return undefined;
+				}
 			}
 
-			return undefined; // Fall back to HTTP if certificates don't exist
+			return undefined;
 		})(),
 		cors: {
 			origin: allowedHosts,
