@@ -88,7 +88,7 @@ export default defineConfig(({ mode }) => ({
 
 	build: {
 		rollupOptions: {
-			external: ['dotenv-local', 'express']
+			// No external dependencies - bundle everything
 		}
 	},
 }));
