@@ -260,74 +260,36 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
  * and handles token refresh on authentication errors
  */
 function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
-  // Store reference to original fetch to avoid infinite recursion
-  const originalFetch = fetch
-  
   return async (url: RequestInfo | URL, init?: RequestInit) => {
-    // Convert headers to plain object for easier inspection and manipulation
-    const headersObj: Record<string, string> = {}
-    if (init?.headers) {
-      if (init.headers instanceof Headers) {
-        init.headers.forEach((value, key) => {
-          headersObj[key] = value
-        })
-      } else if (Array.isArray(init.headers)) {
-        for (const [key, value] of init.headers) {
-          headersObj[key] = value
-        }
-      } else {
-        Object.assign(headersObj, init.headers)
-      }
-    }
-    
-    // Check if this is already a retry attempt (case-insensitive)
-    const isRetry = headersObj['x-s2s-token-retry'] === 'true'
-    
-    // Always inject the current valid token before making the request (unless retrying)
-    if (!isRetry && isS2SAuthEnabled()) {
-      const currentToken = await getS2SToken(s2sAuthConfig)
-      headersObj['Authorization'] = `Bearer ${currentToken}`
-    }
-    
-    // Create request with updated headers
-    const requestInit = {
-      ...init,
-      headers: headersObj
-    }
-    
-    // Make request
-    const response = await originalFetch(url, requestInit)
-    
-    // Only attempt token refresh on first failure (not on retry)
-    if (!isRetry && (response.status === 401 || response.status === 403) && isS2SAuthEnabled()) {
+    // Convert to Headers instance for consistent API
+    const headers = new Headers(init?.headers)
+
+    // Always inject the current valid token before making the request
+    const currentToken = await getS2SToken(s2sAuthConfig)
+    headers.set('Authorization', `Bearer ${currentToken}`)
+
+    // Make request with Headers instance
+    const response = await fetch(url, { ...init, headers })
+
+    // Attempt token refresh on authentication failure
+    if (response.status === 401 || response.status === 403) {
       // Consume the failed response to prevent issues
       try {
         await response.arrayBuffer()
       } catch {
         // Ignore errors consuming the response body
       }
-      
+
       // Refresh token
       const newToken = await refreshS2SToken(s2sAuthConfig)
-      
-      // Update headers with new token and retry flag
-      // Use lowercase to match the original header names from the AI SDK
-      const updatedHeaders = {
-        ...headersObj,
-        'Authorization': `Bearer ${newToken}`,
-        'x-s2s-token-retry': 'true'
-      }
-      
-      // Create updated init with new headers
-      const updatedInit = {
-        ...init,
-        headers: updatedHeaders
-      }
-      
-      // Retry the request once with new token and return the retry response
-      return await originalFetch(url, updatedInit)
+
+      // Update headers with new token
+      headers.set('Authorization', `Bearer ${newToken}`)
+
+      // Retry the request once with new token
+      return await fetch(url, { ...init, headers })
     }
-    
+
     return response
   }
 }
