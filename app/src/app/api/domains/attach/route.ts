@@ -44,7 +44,7 @@ export const POST = withCustomerAuth(async (
 
     // Parse request body
     const body = await request.json();
-    const { domainName, ...attachConfig } = body;
+    const { domainName, ip, dryrun = false, force = true } = body;
 
     if (!domainName) {
       return NextResponse.json(
@@ -53,26 +53,42 @@ export const POST = withCustomerAuth(async (
       );
     }
 
+    if (!ip) {
+      return NextResponse.json(
+        { error: 'IP address is required' },
+        { status: 400 }
+      );
+    }
+
     const baseUrl = 'https://domain-attach.api.godaddy.com';
     const client = new DomainsClient({ baseUrl, jwt: authContext.jwt });
+
+    const attachConfig = {
+      dryrun,
+      force,
+      host: '',
+      params: { IP: ip },
+      providerId: 'godaddy',
+      serviceId: 'airo'
+    };
 
     logger.info('domains.attach.start', {
       message: 'Attaching domain to service',
       customerId,
       domainName,
-      dryrun: attachConfig.dryrun,
-      force: attachConfig.force
+      dryrun,
+      force
     });
 
-    // const response = await client.attachDomain(customerId, domainName, attachConfig);
+    const response = await client.attachDomain(customerId, domainName, attachConfig);
 
-    // logger.info('domains.attach.success', {
-    //   message: 'Domain attached successfully',
-    //   customerId,
-    //   domainName
-    // });
+    logger.info('domains.attach.success', {
+      message: 'Domain attached successfully',
+      customerId,
+      domainName
+    });
 
-    return NextResponse.json({});
+    return NextResponse.json(response);
 
   } catch (error) {
     logger.error('domains.attach.error', {

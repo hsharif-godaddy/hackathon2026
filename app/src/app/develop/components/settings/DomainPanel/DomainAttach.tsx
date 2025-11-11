@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useModifyDomains, useAppDetails, hasBeenPublished } from '@/hooks/useDomainOperations';
 import { generateClickEID } from '@/utils/instrumentation';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
+import { useDomainAttach } from '@/hooks/useDomainAttach';
 import { useAppIdFromParams } from "@/app/develop/components/utils";
 import BigCard from "@/components/layout/BigCard";
 import { useAuth } from '@/hooks/useAuth';
@@ -38,9 +39,12 @@ function getErrorMessage(error: unknown): string {
  */
 export default function DomainAttach() {
   const currentAppId = useAppIdFromParams()
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, getUserInfo } = useAuth();
   const [customDomain, setCustomDomain] = useState(null);
   const [pendingDomain, setPendingDomain] = useState<string | null>(null);
+  const [pendingCustomerDomain, setPendingCustomerDomain] = useState<string | null>(null);
+
+  const userInfo = getUserInfo();
 
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
@@ -48,6 +52,7 @@ export default function DomainAttach() {
   });
 
   const modifyDomainsMutation = useModifyDomains();
+  const attachDomainMutation = useDomainAttach();
 
   const {
     data: domains = [],
@@ -61,25 +66,72 @@ export default function DomainAttach() {
     data: appDetails,
   } = useAppDetails(currentAppId, {
     enabled: !!currentAppId,
-    refetchInterval: pendingDomain ? 5000 : false,
+    refetchInterval: (pendingDomain || pendingCustomerDomain) ? 5000 : false,
     includeCdn: true,
   });
 
   useEffect(() => {
     if (appDetails?.domains) {
-      // Find CUSTOM domains (not prefix domains) that are pending
-      // We don't show DNS instructions for prefix/project domains
+      // Find CUSTOM domains (not prefix domains, not customer domains) that are pending
+      // We don't show DNS instructions for prefix/project domains or customer GoDaddy domains
       const pending = appDetails.domains.find(
-        (d) =>
-          d.domainType !== 'prefix' && // Exclude prefix/project domains
-          (d.status === 'pending' ||
+        (d) => {
+          // Exclude prefix/project domains
+          if (d.domainType === 'prefix') return false;
+
+          // Exclude customer domains (from GoDaddy domains list)
+          const isCustomerDomain = domains.some((customerDomain) =>
+            (customerDomain.domain || customerDomain.name) === d.fqdn
+          );
+          if (isCustomerDomain) return false;
+
+          // Check for pending status
+          return (
+            d.status === 'pending' ||
             d.cdnStatus === 'pending' ||
             !d.status || // New custom domain without status yet
-            (d.status && d.status !== 'active' && d.status !== 'deleting' && !d.anycastIp)) // Domain provisioning CDN
+            (d.status && d.status !== 'active' && d.status !== 'deleting' && !d.anycastIp) // Domain provisioning CDN
+          );
+        }
       );
       setPendingDomain(pending ? pending.fqdn : null);
     }
-  }, [appDetails]);
+  }, [appDetails, domains]);
+
+  // Watch for anycastIp on pending customer domain and call attach API
+  useEffect(() => {
+    if (!appDetails?.domains || !pendingCustomerDomain || !userInfo?.customerId) return;
+
+    const appDomain = appDetails.domains.find((d) => d.fqdn === pendingCustomerDomain);
+
+    if (appDomain?.anycastIp) {
+      logger.info('domain-attach.anycast-ip.received', {
+        message: 'Anycast IP received for customer domain, calling attach API',
+        domainName: appDomain.fqdn,
+        anycastIp: appDomain.anycastIp,
+      });
+
+      attachDomainMutation.mutateAsync({
+        domainName: appDomain.fqdn,
+        ip: appDomain.anycastIp,
+      })
+        .then(() => {
+          logger.info('domain-attach.attach.success', {
+            message: 'Successfully attached customer domain',
+            domainName: appDomain.fqdn,
+          });
+          setPendingCustomerDomain(null);
+        })
+        .catch((error) => {
+          logger.error('domain-attach.attach.failure', {
+            message: 'Failed to attach customer domain',
+            domainName: appDomain.fqdn,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // Keep pendingCustomerDomain set to retry on next poll
+        });
+    }
+  }, [appDetails, pendingCustomerDomain, userInfo?.customerId, attachDomainMutation]);
 
   /**
    * Handle connecting a domain to the application
@@ -87,8 +139,24 @@ export default function DomainAttach() {
   async function handleConnectDomain(domainName: string) {
     if (!currentAppId) return;
 
+    // Check if this is a customer domain (from GoDaddy domains list)
+    const isCustomerDomain = domains.some((customerDomain) =>
+      (customerDomain.domain || customerDomain.name) === domainName
+    );
+
     try {
-      setPendingDomain(domainName);
+      if (isCustomerDomain) {
+        // For customer domains, set as pending customer domain to await anycastIp
+        logger.info('domain-attach.connect.customer-domain', {
+          message: 'Connecting customer domain, will await anycastIp',
+          domainName,
+        });
+        setPendingCustomerDomain(domainName);
+      } else {
+        // For non-customer domains, show DNS instructions as usual
+        setPendingDomain(domainName);
+      }
+
       await modifyDomainsMutation.mutateAsync({
         siteId: currentAppId,
         payload: {
@@ -102,7 +170,11 @@ export default function DomainAttach() {
         domainName,
         error: error instanceof Error ? error.message : String(error),
       });
-      setPendingDomain(null);
+      if (isCustomerDomain) {
+        setPendingCustomerDomain(null);
+      } else {
+        setPendingDomain(null);
+      }
     }
   }
 
@@ -121,6 +193,9 @@ export default function DomainAttach() {
       });
       if (pendingDomain === domainName) {
         setPendingDomain(null);
+      }
+      if (pendingCustomerDomain === domainName) {
+        setPendingCustomerDomain(null);
       }
     } catch (error) {
       logger.error('domain-attach.disconnect.failure', {

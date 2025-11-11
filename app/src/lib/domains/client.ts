@@ -66,7 +66,7 @@ export class DomainsClient {
     const apiCallId = `${method} ${path}`;
 
     logger.info('domains.api.start', {
-      message: `🚀 Starting API call: ${apiCallId}`,
+      message: `Starting API call: ${apiCallId}`,
       url,
       method,
       ...(body ? { requestBody: body } : {})
@@ -131,7 +131,7 @@ export class DomainsClient {
 
         // Log successful API call with timing
         logger.info('mgmt-airo.api.success', {
-          message: `✅ ${apiCallId} completed successfully`,
+          message: `${apiCallId} completed successfully`,
           url,
           status: response.status,
           attempt,
@@ -146,7 +146,7 @@ export class DomainsClient {
         const totalDuration = Date.now() - apiCallStart;
 
         logger.error('mgmt-airo.api.attempt-error', {
-          message: `❌ ${apiCallId} attempt ${attempt} failed`,
+          message: `${apiCallId} attempt ${attempt} failed`,
           url,
           attempt,
           attemptDuration,
@@ -224,6 +224,34 @@ export class DomainsClient {
     );
 
     return response || [];
+  }
+
+  /**
+   * Attach a domain to a service
+   *
+   * @param customerId - Customer identifier
+   * @param domainName - Domain name to attach
+   * @param config - Attach configuration
+   * @returns Attach response
+   */
+  async attachDomain(
+    customerId: string,
+    domainName: string,
+    config: {
+      dryrun: boolean;
+      force: boolean;
+      host: string;
+      params: { IP: string };
+      providerId: string;
+      serviceId: string;
+    }
+  ) {
+    return this.request(
+      'POST',
+      `/v1/customers/${customerId}/domains/${domainName}/domainAttach/attach`,
+      config,
+      { logEvent: 'domains.attach-domain' }
+    );
   }
 }
 
