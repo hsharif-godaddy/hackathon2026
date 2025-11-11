@@ -1,44 +1,6 @@
 import { DevSupervisorClient, createDevSupervisorClient, isDevSupervisorAvailable } from '../services/DevSupervisorClient.js';
 import { AppRepository } from '../database/index.js';
 import { Logger } from '../logging/index.js';
-import os from 'os';
-
-/**
- * Determine if TCP mode should be used for dev-supervisor
- */
-function shouldUseTcpMode(): boolean {
-  // Check environment variable first
-  if (process.env.DEV_SUPERVISOR_USE_TCP === 'true') {
-    return true;
-  }
-  
-  // Auto-enable TCP mode on macOS for better compatibility
-  if (os.platform() === 'darwin') {
-    return true;
-  }
-  
-  return false;
-}
-
-/**
- * Get TCP port for dev-supervisor
- */
-function getTcpPort(): string {
-  return process.env.DEV_SUPERVISOR_TCP_PORT || '8877';
-}
-
-/**
- * Generate TCP connection URL for an app
- */
-function generateTcpConnectionUrl(appId: string): string {
-  // Extract numeric suffix for port offset (similar to Docker container manager)
-  const sanitizedId = appId.toLowerCase().replace(/[^a-z0-9.-]/g, "").substring(0, 63);
-  const basePort = parseInt(getTcpPort());
-  const portOffset = parseInt(sanitizedId.slice(-3)) || 0;
-  const supervisorPort = basePort + portOffset;
-  
-  return `tcp://localhost:${supervisorPort}`;
-}
 
 /**
  * Factory for creating DevSupervisorClient instances consistently across tools
@@ -79,26 +41,7 @@ export class DevSupervisorClientFactory {
       throw new Error(`App with ID ${appId} not found`);
     }
 
-    // Try TCP mode first if configured
-    if (shouldUseTcpMode()) {
-      const tcpUrl = generateTcpConnectionUrl(appId);
-      this.logger.debug('dev_supervisor.client.create.tcp_attempt', {
-        appId,
-        tcpUrl
-      });
-      
-      const tcpClient = this.createForSocketPath(tcpUrl, appId);
-      if (tcpClient) {
-        return tcpClient;
-      }
-      
-      this.logger.debug('dev_supervisor.client.create.tcp_fallback', {
-        appId,
-        message: 'TCP connection failed, trying Unix socket'
-      });
-    }
-
-    // Fall back to Unix socket mode
+    // Use stored socketPath (can be TCP URL with tcp:// prefix or Unix socket path)
     if (!app.socketPath) {
       this.logger.info('dev_supervisor.client.create.no_socket', {
         appId,
@@ -106,6 +49,11 @@ export class DevSupervisorClientFactory {
       });
       return null;
     }
+
+    this.logger.debug('dev_supervisor.client.create.attempt', {
+      appId,
+      socketPath: app.socketPath
+    });
 
     return this.createForSocketPath(app.socketPath, appId);
   }
@@ -159,15 +107,6 @@ export class DevSupervisorClientFactory {
    */
   static isAvailableForApp(appId: string): boolean {
     try {
-      // Try TCP mode first if configured
-      if (shouldUseTcpMode()) {
-        const tcpUrl = generateTcpConnectionUrl(appId);
-        if (isDevSupervisorAvailable(tcpUrl)) {
-          return true;
-        }
-      }
-
-      // Fall back to Unix socket mode
       const app = this.getAppRepository().findById(appId);
       if (!app || !app.socketPath) {
         return false;
@@ -210,19 +149,9 @@ export class DevSupervisorClientFactory {
       if (!app) {
         return null;
       }
-      
-      let connectionPath = app.socketPath || '';
-      
-      // If TCP mode is configured and available, use TCP connection
-      if (shouldUseTcpMode()) {
-        const tcpUrl = generateTcpConnectionUrl(appId);
-        if (isDevSupervisorAvailable(tcpUrl)) {
-          connectionPath = tcpUrl;
-        }
-      }
-      
+
       return {
-        socketPath: connectionPath,
+        socketPath: app.socketPath || '',
         port: app.port || 0,
         path: app.path || ''
       };

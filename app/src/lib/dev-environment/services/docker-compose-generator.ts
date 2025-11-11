@@ -1,6 +1,12 @@
 import { randomBytes } from "crypto";
 import { logger } from '../../request-context';
 
+/**
+ * Constant container port for dev-supervisor TCP communication
+ * Host ports are mapped to this container port via Docker port mapping
+ */
+const DEV_SUPERVISOR_CONTAINER_PORT = 8877;
+
 export interface ComposeServiceConfig {
 	appId: string;
 	appPort: number;
@@ -74,7 +80,7 @@ export class DockerComposeGenerator {
 		// Dev-supervisor configuration
 		if (config.useTcp && config.supervisorPort) {
 			env.DEV_SUPERVISOR_USE_TCP = "true";
-			env.DEV_SUPERVISOR_TCP_PORT = config.supervisorPort.toString();
+			env.DEV_SUPERVISOR_TCP_PORT = DEV_SUPERVISOR_CONTAINER_PORT.toString();
 		} else if (config.socketPath) {
 			env.DEV_SUPERVISOR_SOCKET_PATH = "/tmp/supervisor/dev-supervisor.sock";
 		}
@@ -132,7 +138,6 @@ export class DockerComposeGenerator {
 	 */
 	generateComposeFile(config: ComposeServiceConfig, dbConfig?: DatabaseConfig): string {
 		const dockerSafeId = this.sanitizeAppId(config.appId);
-		const networkName = `airo-app-${dockerSafeId}-network`;
 
 		logger.info("compose.generate.begin", {
 			appId: config.appId,
@@ -150,7 +155,8 @@ export class DockerComposeGenerator {
 		// Build port mappings
 		const ports = [this.getAppPortMapping(config)];
 		if (config.useTcp && config.supervisorPort) {
-			ports.push(`${config.supervisorPort}:${config.supervisorPort}`);
+			// Map host port to constant container port
+			ports.push(`${config.supervisorPort}:${DEV_SUPERVISOR_CONTAINER_PORT}`);
 		}
 		const portLines = ports.map(port => `      - "${port}"`).join('\n');
 
@@ -216,8 +222,8 @@ ${volumeLines}
 		composeContent += `
 networks:
   app-network:
-    driver: bridge
-    name: ${networkName}
+    external: true
+    name: airo-apps-shared
 
 volumes:
   mysql-data:

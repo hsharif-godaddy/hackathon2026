@@ -498,6 +498,23 @@ export class DevEnvironmentManager {
   }
 
   /**
+   * Get dev-supervisor connection path (TCP URL or Unix socket path)
+   * Returns null if adapter doesn't support this operation
+   */
+  getConnectionPath(appId: string): string | null {
+    if (!this.adapter) {
+      return null;
+    }
+
+    // Check if adapter has getConnectionPath method (Docker-specific)
+    if ('getConnectionPath' in this.adapter && typeof this.adapter.getConnectionPath === 'function') {
+      return this.adapter.getConnectionPath(appId);
+    }
+
+    return null;
+  }
+
+  /**
    * Clean up all resources
    */
   async cleanup(): Promise<void> {

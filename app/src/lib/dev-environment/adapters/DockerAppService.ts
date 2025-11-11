@@ -284,9 +284,9 @@ export class DockerAppService implements IAppAdapter {
   }
 
   /**
-   * Get host socket path for dev-supervisor communication
+   * Get dev-supervisor connection path (TCP URL or Unix socket path)
    */
-  getHostSocketPath(appId: string): string | null {
-    return this.containerManager.getHostSocketPath(appId);
+  getConnectionPath(appId: string): string | null {
+    return this.containerManager.getConnectionPath(appId);
   }
 }

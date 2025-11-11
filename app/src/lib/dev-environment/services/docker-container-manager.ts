@@ -49,6 +49,23 @@ function getTcpPort(): string {
 	return devSupervisor.getTcpPort();
 }
 
+/**
+ * Calculate supervisor port from app ID using hash-based offset
+ * This ensures unique ports even for UUID-based app IDs
+ */
+function calculateSupervisorPort(appId: string): number {
+	const basePort = parseInt(getTcpPort()) || 8877;
+	// Generate a numeric offset from the app ID using a simple hash
+	let hash = 0;
+	for (let i = 0; i < appId.length; i++) {
+		hash = ((hash << 5) - hash) + appId.charCodeAt(i);
+		hash = hash & hash; // Convert to 32-bit integer
+	}
+	// Use absolute value and modulo to get a port offset between 0-999
+	const portOffset = Math.abs(hash) % 1000;
+	return basePort + portOffset;
+}
+
 export interface ContainerInfo {
 	appId: string;
 	containerId: string;
@@ -243,6 +260,10 @@ export class DockerContainerManager {
 			await execAsync("docker compose version");
 			logger.info('✅ Docker Compose availability verified');
 
+			// Ensure shared network exists
+			await this.composeManager.ensureSharedNetwork();
+			logger.info('✅ Shared network ensured');
+
 			// Build dev-supervisor image if needed
 			await this.ensureDevSupervisorImage();
 
@@ -340,8 +361,8 @@ export class DockerContainerManager {
 			let supervisorPort: number | undefined;
 
 			if (useTcp) {
-				// TCP mode - use port mapping
-				supervisorPort = parseInt(getTcpPort()) + parseInt(dockerSafeId.slice(-3)) || 8877; // Unique port per app
+				// TCP mode - use port mapping with hash-based offset to avoid conflicts
+				supervisorPort = calculateSupervisorPort(dockerSafeId);
 				tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
 				logger.info(`📡 Using TCP mode for dev-supervisor: ${tcpConnectionUrl}`);
 			} else {
@@ -375,7 +396,7 @@ export class DockerContainerManager {
 			const databaseInfo: DatabaseInfo = {
 				appId,
 				containerId: '', // Will be set after compose up
-				networkId: `airo-app-${dockerSafeId}-network`,
+				networkId: 'airo-apps-shared',
 				volumeName: `airo-app-${dockerSafeId}-mysql-data`,
 				credentials: {
 					host: dbConfig.host,
@@ -714,7 +735,7 @@ export class DockerContainerManager {
 			};
 
 			if (useTcp) {
-				const supervisorPort = parseInt(getTcpPort()) + parseInt(sanitizedId.slice(-3)) || 8877;
+				const supervisorPort = calculateSupervisorPort(sanitizedId);
 				containerInfo.tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
 				containerInfo.supervisorPort = supervisorPort;
 			} else {
@@ -778,11 +799,7 @@ export class DockerContainerManager {
 
 					// Set supervisor connection info
 					if (useTcp) {
-						const tcpPortRaw = parseInt(getTcpPort());
-						const appIdSuffix = parseInt(safeAppId.slice(-3));
-						const supervisorPort = (Number.isNaN(tcpPortRaw) || Number.isNaN(appIdSuffix))
-							? 8877
-							: tcpPortRaw + appIdSuffix;
+						const supervisorPort = calculateSupervisorPort(safeAppId);
 						containerInfo.tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
 						containerInfo.supervisorPort = supervisorPort;
 					} else {
@@ -927,7 +944,7 @@ export class DockerContainerManager {
 		};
 
 		if (useTcp) {
-			const supervisorPort = parseInt(getTcpPort()) + parseInt(sanitizedId.slice(-3)) || 8877;
+			const supervisorPort = calculateSupervisorPort(sanitizedId);
 			containerInfo.tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
 			containerInfo.supervisorPort = supervisorPort;
 		} else {
@@ -1216,15 +1233,6 @@ export class DockerContainerManager {
 
 		// Clean database record
 		this.removeContainerFromDb(appId);
-	}
-
-	/**
-	 * Get the host socket path for a specific app (Unix mode only)
-	 * @deprecated Use getConnectionPath() instead for both TCP and Unix socket support
-	 */
-	getHostSocketPath(appId: string): string | null {
-		const containerInfo = this.containers.get(appId) || this.getContainerFromDb(appId);
-		return containerInfo?.hostSocketPath || null;
 	}
 
 	/**

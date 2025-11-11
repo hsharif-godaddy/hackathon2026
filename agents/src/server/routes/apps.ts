@@ -168,7 +168,7 @@ router.post('/create', async (req: Request, res: Response) => {
  */
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { siteId, name, appPath, port, initialPrompt, previewUrl } = req.body;
+    const { siteId, name, appPath, port, initialPrompt, previewUrl, socketPath } = req.body;
 
     if (!siteId || typeof siteId !== 'string' || siteId.trim().length === 0) {
       return res.status(400).json({ error: 'siteId is required and must be a non-empty string' });
@@ -194,13 +194,18 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'previewUrl must be a string if provided' });
     }
 
+    if (socketPath !== undefined && typeof socketPath !== 'string') {
+      return res.status(400).json({ error: 'socketPath must be a string if provided' });
+    }
+
     const result = await appRepo.registerOrUpdateApp({
       siteId,
       name,
       appPath,
       port,
       initialPrompt,
-      previewUrl
+      previewUrl,
+      socketPath
     });
 
     return res.status(result.created ? 201 : 200).json(result);

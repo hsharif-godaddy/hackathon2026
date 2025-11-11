@@ -57,17 +57,18 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
         throw new Error(result.error || 'Failed to create dev app');
       }
 
-      // Step 3: Register app with agents service for AI assistance
-      await this.registerWithAgents(siteId, title || `App ${siteId}`, prompt, result.appPath || appPath);
-
-      // Step 4: Start the app using Docker
+      // Step 3: Start the app using Docker (must be started before getting connection path)
       const started = await this.devEnvironmentManager.startDevServer(siteId);
 
       if (!started) {
         throw new Error('Failed to start Docker container');
       }
 
-      // Step 6: Get app status to get actual URLs
+      // Step 4: Get dev-supervisor connection path and register with agents service
+      const connectionPath = this.devEnvironmentManager.getConnectionPath(siteId);
+      await this.registerWithAgents(siteId, title || `App ${siteId}`, prompt, result.appPath || appPath, undefined, connectionPath);
+
+      // Step 5: Get app status to get actual URLs
       const appStatus = await this.devEnvironmentManager.getDevAppStatus(siteId);
 
       // Generate URLs based on app status and result
@@ -250,9 +251,9 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   /**
    * Register app with agents service for AI assistance
    */
-  private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string, previewUrl?: string): Promise<void> {
+  private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string, previewUrl?: string, socketPath?: string | null): Promise<void> {
     try {
-      this.log('info', 'Registering app with agents service', { siteId, name });
+      this.log('info', 'Registering app with agents service', { siteId, name, socketPath });
 
       const response = await agentFetch(`${this.agentsServiceUrl}/apps/register`, {
         siteId,
@@ -265,7 +266,8 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
           name,
           appPath,
           initialPrompt,
-          previewUrl
+          previewUrl,
+          socketPath: socketPath || undefined // Include connection path if available
         }),
         signal: AbortSignal.timeout(10000) // 10 second timeout
       });

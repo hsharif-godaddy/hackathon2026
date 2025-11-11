@@ -18,6 +18,7 @@ export interface RegisterAppParams {
   port?: number;
   initialPrompt?: string;
   previewUrl?: string;
+  socketPath?: string; // Dev-supervisor connection path (TCP URL or Unix socket path)
 }
 
 /**
@@ -95,7 +96,7 @@ export class AppRepository {
    * ```
    */
   async registerOrUpdateApp(params: RegisterAppParams): Promise<RegisterAppResult> {
-    const { siteId, name, appPath, port, initialPrompt, previewUrl } = params;
+    const { siteId, name, appPath, port, initialPrompt, previewUrl, socketPath } = params;
 
     const sanitizedSiteId = siteId.trim();
     const sanitizedName = name?.trim();
@@ -124,7 +125,7 @@ export class AppRepository {
     if (existingApp) {
       this.logger.info('app.register.exists', {
         appId: sanitizedSiteId,
-        updating: !!(sanitizedName || port || initialPrompt || previewUrl)
+        updating: !!(sanitizedName || port || initialPrompt || previewUrl || socketPath)
       });
 
       const updates: string[] = [];
@@ -148,6 +149,11 @@ export class AppRepository {
       if (previewUrl !== undefined) {
         updates.push('preview_url = ?');
         values.push(previewUrl);
+      }
+
+      if (socketPath !== undefined) {
+        updates.push('socket_path = ?');
+        values.push(socketPath);
       }
 
       if (updates.length > 0) {
@@ -192,13 +198,15 @@ export class AppRepository {
     const now = new Date().toISOString();
     const finalPort = port || 3000;
     const finalName = sanitizedName || `App ${sanitizedSiteId}`;
-    const socketPath = process.env.NOMAD_ALLOC_DIR ? `${process.env.NOMAD_ALLOC_DIR}/tmp/${sanitizedSiteId}-dev-supervisor.sock` : `/tmp/dev-supervisor-${sanitizedSiteId}/dev-supervisor.sock`;
+    // Use provided socketPath if available, otherwise generate default path
+    const finalSocketPath = socketPath || (process.env.NOMAD_ALLOC_DIR ? `${process.env.NOMAD_ALLOC_DIR}/tmp/${sanitizedSiteId}-dev-supervisor.sock` : `/tmp/dev-supervisor-${sanitizedSiteId}/dev-supervisor.sock`);
 
     this.logger.info('app.register.create', {
       appId: sanitizedSiteId,
       name: finalName,
       path: finalAppPath,
-      port: finalPort
+      port: finalPort,
+      socketPath: finalSocketPath
     });
 
     const stmt = this.db.prepare(`
@@ -211,7 +219,7 @@ export class AppRepository {
       finalName,
       finalAppPath,
       finalPort,
-      socketPath,
+      finalSocketPath,
       previewUrl || null,
       initialPrompt || null,
       'created',
