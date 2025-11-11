@@ -446,7 +446,7 @@ export const toolCacheEvents = {
  * Tool File Edit logging helpers
  */
 export const toolFileEditEvents = {
-  begin: (logger: ILogger, data: { toolName: string; filePath: string; mode: 'create' | 'edit' | 'rewrite'; appId?: string; dryRun?: boolean }) => {
+  begin: (logger: ILogger, data: { toolName: string; filePath: string; mode: 'create' | 'edit' | 'rewrite' | 'delete'; appId?: string; dryRun?: boolean }) => {
     logger.info(AppEvents.tool.fileEdit.begin, data);
   },
 
@@ -454,7 +454,7 @@ export const toolFileEditEvents = {
     logger.info(AppEvents.tool.fileEdit.success, data);
   },
 
-  failure: (logger: ILogger, error: Error, data: { toolName: string; filePath: string; mode: 'create' | 'edit' | 'rewrite'; appId?: string }) => {
+  failure: (logger: ILogger, error: Error, data: { toolName: string; filePath: string; mode: 'create' | 'edit' | 'rewrite' | 'delete'; appId?: string }) => {
     log.error(logger, AppEvents.tool.fileEdit.failure, error, data);
   },
 };

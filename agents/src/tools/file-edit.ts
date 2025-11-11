@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, unlink } from 'fs/promises';
 import { dirname, resolve, relative } from 'path';
 import { diffLines, createPatch } from 'diff';
 import { existsSync, realpathSync, lstatSync } from 'fs';
@@ -18,8 +18,8 @@ const DEBUG_TEXT_TRUNCATION_LENGTH = 100;
 export interface FileEditOptions {
   /** Path to the file to edit (relative to app root) */
   path: string;
-  /** Edit mode: edit for partial changes, rewrite for full replacement, create for new files */
-  mode?: 'edit' | 'rewrite' | 'create';
+  /** Edit mode: edit for partial changes, rewrite for full replacement, create for new files, delete to remove files */
+  mode?: 'edit' | 'rewrite' | 'create' | 'delete';
   /** Array of search-and-replace operations for partial edits */
   edits?: Array<{
     old: string;
@@ -46,7 +46,7 @@ export interface FileEditResult {
   /** Path that was edited */
   path: string;
   /** Edit mode that was used */
-  mode: 'create' | 'edit' | 'rewrite';
+  mode: 'create' | 'edit' | 'rewrite' | 'delete';
   /** Diff showing changes made */
   diff?: string;
 
@@ -192,6 +192,9 @@ export class FileEditTool {
         case 'edit':
           result = await this.handleEdit(filePath, options, appPath, context);
           break;
+        case 'delete':
+          result = await this.handleDelete(filePath, options, appPath, context);
+          break;
         default:
           throw new Error(`Unknown edit mode: ${mode}`);
       }
@@ -307,7 +310,7 @@ export class FileEditTool {
   /**
    * Auto-detect the appropriate edit mode
    */
-  private async detectMode(filePath: string, options: FileEditOptions): Promise<'create' | 'edit' | 'rewrite'> {
+  private async detectMode(filePath: string, options: FileEditOptions): Promise<'create' | 'edit' | 'rewrite' | 'delete'> {
     const exists = existsSync(filePath);
     
     if (!exists) {
@@ -581,6 +584,53 @@ export class FileEditTool {
   }
 
   /**
+   * Handle delete mode - remove a file
+   */
+  private async handleDelete(filePath: string, options: FileEditOptions, appPath: string, context?: { appId?: string; conversationId?: string }): Promise<FileEditResult> {
+    if (!existsSync(filePath)) {
+      return {
+        success: false,
+        path: options.path,
+        mode: 'delete',
+        error: 'File does not exist',
+      };
+    }
+
+    if (options.dryRun) {
+      return {
+        success: true,
+        path: options.path,
+        mode: 'delete',
+        diff: `File would be deleted: ${options.path}`,
+      };
+    }
+
+    try {
+      await unlink(filePath);
+    } catch (error) {
+      return {
+        success: false,
+        path: options.path,
+        mode: 'delete',
+        error: `Failed to delete file: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+
+    const result: FileEditResult = {
+      success: true,
+      path: options.path,
+      mode: 'delete',
+      diff: `File deleted: ${options.path}`,
+    };
+
+    if (options.autoCommit) {
+      await this.autoCommitChanges(appPath, filePath, options, result, context);
+    }
+
+    return result;
+  }
+
+  /**
    * Apply a single edit operation
    */
   private applyEdit(content: string, edit: { old: string; new: string }, fuzzyMatch: boolean): { success: boolean; content: string; error?: string } {
@@ -705,13 +755,16 @@ export class FileEditTool {
           case 'edit':
             commitMessage = `Update file: ${relativePath}`;
             break;
+          case 'delete':
+            commitMessage = `Delete file: ${relativePath}`;
+            break;
         }
       }
 
       // Commit the changes
       await gitTool.executeGitOperation(appPath, {
         operation: 'commit',
-        message: commitMessage
+        message: commitMessage || `Update file: ${relativePath}`
       });
     } catch (error) {
       logger.error('Failed to auto-commit changes', {

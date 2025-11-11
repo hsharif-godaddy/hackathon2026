@@ -19,6 +19,7 @@ export { viewLogsAITool } from './view-logs.js'
 export { appPlanAITool } from './app-plan.js'
 export { todoListAITool } from './todo-list.js'
 export { memorySetAITool, memoryReadAITool, memorySearchAITool, memoryListKeysAITool } from './memory-tool.js'
+export { memoryAITool } from './memory.js'
 export { ragSearchAITool } from './rag-search.js'
 export { widgetRenderAITool } from './widget-render.js'
 export { cssColorAITool } from './css-color.js'
@@ -39,6 +40,7 @@ import { viewLogsAITool } from './view-logs.js'
 import { appPlanAITool } from './app-plan.js'
 import { todoListAITool } from './todo-list.js'
 import { memorySetAITool, memoryReadAITool, memorySearchAITool, memoryListKeysAITool } from './memory-tool.js'
+import { memoryAITool } from './memory.js'
 import { ragSearchAITool } from './rag-search.js'
 import { widgetRenderAITool } from './widget-render.js'
 import { cssColorAITool } from './css-color.js'
@@ -68,6 +70,7 @@ export const allAILibTools: Record<string, Tool> = {
   memoryRead: memoryReadAITool,
   memorySearch: memorySearchAITool,
   memoryListKeys: memoryListKeysAITool,
+  memory: memoryAITool,
   ragSearch: ragSearchAITool,
   widgetRender: widgetRenderAITool,
   cssColor: cssColorAITool,
@@ -89,6 +92,7 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     memoryRead: memoryReadAITool,
     memorySearch: memorySearchAITool,
     memoryListKeys: memoryListKeysAITool,
+    memory: memoryAITool,
   },
 
   // System and server tools

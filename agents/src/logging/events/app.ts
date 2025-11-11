@@ -204,7 +204,7 @@ export interface ToolCacheOperationData {
 export interface ToolFileEditData {
   toolName: string;
   filePath: string;
-  mode: 'create' | 'edit' | 'rewrite';
+  mode: 'create' | 'edit' | 'rewrite' | 'delete';
   appId?: string;
   contentLength?: number;
   editsCount?: number;
