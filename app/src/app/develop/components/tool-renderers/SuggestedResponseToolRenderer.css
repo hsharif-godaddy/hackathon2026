@@ -1,0 +1,19 @@
+.suggestion-button {
+  border-color: var(--color-ai) !important;
+  color: var(--color-ai) !important;
+  background-color: transparent !important;
+  transition: all 0.2s ease !important;
+}
+
+.suggestion-button:hover {
+  background-color: var(--color-ai-light) !important;
+  color: white !important;
+  border-color: var(--color-ai-light) !important;
+}
+
+.suggestion-button:active {
+  background-color: var(--color-ai) !important;
+  color: white !important;
+  border-color: var(--color-ai) !important;
+}
+

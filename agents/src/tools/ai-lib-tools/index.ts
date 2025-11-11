@@ -23,6 +23,7 @@ export { ragSearchAITool } from './rag-search.js'
 export { widgetRenderAITool } from './widget-render.js'
 export { cssColorAITool } from './css-color.js'
 export { cssSuggestAITool } from './css-suggest.js'
+export { suggestedResponseAITool } from './suggested-response.js'
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js'
@@ -42,6 +43,7 @@ import { ragSearchAITool } from './rag-search.js'
 import { widgetRenderAITool } from './widget-render.js'
 import { cssColorAITool } from './css-color.js'
 import { cssSuggestAITool } from './css-suggest.js'
+import { suggestedResponseAITool } from './suggested-response.js'
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -70,6 +72,7 @@ export const allAILibTools: Record<string, Tool> = {
   widgetRender: widgetRenderAITool,
   cssColor: cssColorAITool,
   cssSuggest: cssSuggestAITool,
+  suggestedResponse: suggestedResponseAITool,
 }
 
 /**
