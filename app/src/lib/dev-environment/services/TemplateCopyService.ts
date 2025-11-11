@@ -13,7 +13,6 @@ import { logger } from '../../request-context';
 import { cpSync, existsSync, rmSync } from 'fs';
 import path from 'path';
 import { execa } from 'execa';
-import { extractTemplateVersion } from '../utils/template-version';
 import { safeJoinWithOptions, safeResolve, createSafePathBuilder, isSafePath } from '../utils/safe-path';
 
 /** Default template directory when none is specified in environment or parameters */
@@ -75,7 +74,7 @@ export class TemplateCopyService {
         this.copyDevSupervisorBinary(appPath, appId);
 
         // Validate the copied template
-        this.validateCopiedTemplate(appPath, templateVersion);
+        this.validateCopiedTemplate(appPath);
 
         logger.info(`✅ Template copied successfully for app ${appId}`);
 
@@ -136,8 +135,8 @@ export class TemplateCopyService {
       }
     }
 
-    // Extract template version from template directory
-    const templateVersion = extractTemplateVersion(configuredTemplateDir);
+    // Template version is always v8
+    const templateVersion = 'v8';
 
     return { templatePath, templateVersion };
   }
@@ -256,7 +255,7 @@ export class TemplateCopyService {
   /**
    * Validate that the template was copied correctly
    */
-  private validateCopiedTemplate(appPath: string, templateVersion: string): void {
+  private validateCopiedTemplate(appPath: string): void {
     const validationErrors: string[] = [];
 
     // Create a safe path builder for the app directory
@@ -272,20 +271,6 @@ export class TemplateCopyService {
 
     if (!existsSync(templateSrcDir)) {
       validationErrors.push(`Template src directory was not copied to ${templateSrcDir}`);
-    }
-
-    // Additional validation for v3 template structure
-    if (templateVersion === 'v3') {
-      const frontendDir = appPathBuilder.join('src', 'frontend');
-      const backendDir = appPathBuilder.join('src', 'backend');
-
-      if (!existsSync(frontendDir)) {
-        validationErrors.push(`V3 template frontend directory was not copied to ${frontendDir}`);
-      }
-
-      if (!existsSync(backendDir)) {
-        validationErrors.push(`V3 template backend directory was not copied to ${backendDir}`);
-      }
     }
 
     if (validationErrors.length > 0) {

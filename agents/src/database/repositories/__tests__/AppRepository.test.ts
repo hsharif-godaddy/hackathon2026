@@ -27,7 +27,6 @@ vi.mock('net');
 vi.mock('../../connection.js');
 vi.mock('../../../utils/git.js');
 vi.mock('../../../utils/port-manager.js');
-vi.mock('../../../utils/template-version.js');
 vi.mock('../../../adapters/index.js');
 vi.mock('../../../services/name-suggestion.js');
 vi.mock('../../../services/TemplateCopyService.js');
@@ -103,7 +102,7 @@ describe('AppRepository', () => {
     path: '/tmp/apps/test-app-123',
     port: 3000,
     initialPrompt: 'Create a test app',
-    templateVersion: 'v3',
+    templateVersion: 'v8',
     status: 'created',
     createdAt: new Date('2024-01-01T10:00:00Z'),
     updatedAt: new Date('2024-01-01T10:00:00Z'),
@@ -201,13 +200,13 @@ describe('AppRepository', () => {
     const { TemplateCopyService } = await import('../../../services/TemplateCopyService.js');
     const mockTemplateCopyService = {
       copyTemplate: vi.fn().mockResolvedValue({
-        templateVersion: 'v3',
+        templateVersion: 'v8',
         templatePath: '/mock/template/path',
         success: true
       }),
       getTemplateInfo: vi.fn().mockReturnValue({
         templatePath: '/mock/template/path',
-        templateVersion: 'v3',
+        templateVersion: 'v8',
         exists: true
       }),
       validateTemplateStructure: vi.fn().mockReturnValue({

@@ -4,10 +4,10 @@ This directory contains modular template descriptions that can be composed into 
 
 ## Usage
 
-Template descriptions are **automatically selected** based on app metadata stored in the database. When an app is created, its template version is stored and used to determine which template description to include:
+Template descriptions are **automatically selected** based on app metadata stored in the database. All new apps use the v8 template:
 
-- **v8 templates**: Includes `v8.md` (Modern Vite + React full-stack application)
-- **Missing/Unknown**: Includes `default.md` (discovery-based guidance)
+- **v8 template** (default): Includes `v8.md` (Modern Vite + React full-stack application)
+- **Missing/Unknown**: Includes `default.md` (discovery-based guidance, for edge cases only)
 
 Agents can also explicitly configure templates in their `promptComposition` property:
 
@@ -25,12 +25,11 @@ const config: AgentConfig = {
 
 ## Template Selection Priority
 
-The system selects templates using this priority order:
+The system uses v8 as the only supported template. Selection follows this priority order:
 
 1. **Explicit Configuration**: Templates specified in agent `promptComposition.templates`
 2. **App Metadata**: Template version stored in the app's database record (`templateVersion` field)
-3. **Environment Variable**: Extracted from `APP_TEMPLATE_DIR` (e.g., `app-templates/v8` → `v8`)
-4. **Default Fallback**: Uses `default.md` if no template can be determined
+3. **Default**: Uses `v8` (only supported version)
 
 ## Template Insertion
 

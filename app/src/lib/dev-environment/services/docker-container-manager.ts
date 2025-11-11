@@ -95,42 +95,6 @@ export class DockerContainerManager {
 	}
 
 
-	/**
-	 * Detect template version from app path
-	 */
-	private detectTemplateVersion(appPath: string): string {
-		try {
-			if (existsSync(path.join(appPath, ".version"))) {
-				return readFileSync(path.join(appPath, ".version"), "utf8").trim();
-			}
-			// Check for v3 indicators (Vite config, dev-start.js script)
-			if (
-				existsSync(path.join(appPath, "vite.config.ts")) ||
-				existsSync(path.join(appPath, "vite.config.js")) ||
-				existsSync(path.join(appPath, "scripts/dev-start.js"))
-			) {
-				return "v3";
-			}
-
-			// Check for v2 indicators (Next.js with Turbopack)
-			const packageJsonPath = path.join(appPath, "package.json");
-			if (existsSync(packageJsonPath)) {
-				const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-				if (packageJson.scripts?.dev?.includes("--turbopack")) {
-					return "v2";
-				}
-			}
-
-			// Default to v1 (basic Next.js)
-			return "v1";
-		} catch (error) {
-			logger.warn("Could not detect template version, defaulting to v1", {
-				appPath,
-				error: error instanceof Error ? error.message : String(error),
-			});
-			return "v1";
-		}
-	}
 
 	/**
 	 * Get the current host user's UID and GID for proper file permissions in containers
@@ -352,7 +316,7 @@ export class DockerContainerManager {
 		skipCleanup: boolean,
 	): Promise<ContainerInfo> {
 		const startTime = Date.now();
-		const templateVersion = this.detectTemplateVersion(appPath);
+		const templateVersion = 'v8';
 
 		// Sanitize appId for Docker names and file paths
 		const dockerSafeId = this.sanitizeAppId(appId);
@@ -395,43 +359,37 @@ export class DockerContainerManager {
 				logger.info(`🔌 Using Unix socket mode for dev-supervisor: ${hostSocketPath}`);
 			}
 
-			// Generate database configuration if needed (v8 template)
-			const needsDatabase = templateVersion === 'v8';
-			let dbConfig: DatabaseConfig | undefined;
-			let databaseInfo: DatabaseInfo | undefined;
+			// Generate database configuration (always needed for v8 template)
+			// Allocate port for database
+			const dbPort = await this.findAvailablePort();
 
-			if (needsDatabase) {
-				// Allocate port for database
-				const dbPort = await this.findAvailablePort();
+			// Generate database configuration
+			const dbConfig = this.composeGenerator.generateDatabaseConfig(appId, dbPort);
 
-				// Generate database configuration
-				dbConfig = this.composeGenerator.generateDatabaseConfig(appId, dbPort);
+			// Write database credentials to .env file for host machine access
+			this.writeDatabaseEnvFile(appPath, dbConfig);
 
-				// Write database credentials to .env file for host machine access
-				this.writeDatabaseEnvFile(appPath, dbConfig);
+			logger.info(`🗄️ Generated database configuration for app ${appId}`);
 
-				logger.info(`🗄️ Generated database configuration for app ${appId}`);
-
-				// Create DatabaseInfo for compatibility with existing code
-				databaseInfo = {
-					appId,
-					containerId: '', // Will be set after compose up
-					networkId: `airo-app-${dockerSafeId}-network`,
-					volumeName: `airo-app-${dockerSafeId}-mysql-data`,
-					credentials: {
-						host: dbConfig.host,
-						port: dbConfig.port,
-						hostMachineHost: 'localhost',
-						hostMachinePort: dbConfig.hostMachinePort,
-						database: dbConfig.database,
-						user: dbConfig.user,
-						password: dbConfig.password,
-						rootPassword: dbConfig.rootPassword,
-					},
-					status: 'creating',
-					createdAt: new Date(),
-				};
-			}
+			// Create DatabaseInfo for compatibility with existing code
+			const databaseInfo: DatabaseInfo = {
+				appId,
+				containerId: '', // Will be set after compose up
+				networkId: `airo-app-${dockerSafeId}-network`,
+				volumeName: `airo-app-${dockerSafeId}-mysql-data`,
+				credentials: {
+					host: dbConfig.host,
+					port: dbConfig.port,
+					hostMachineHost: 'localhost',
+					hostMachinePort: dbConfig.hostMachinePort,
+					database: dbConfig.database,
+					user: dbConfig.user,
+					password: dbConfig.password,
+					rootPassword: dbConfig.rootPassword,
+				},
+				status: 'creating',
+				createdAt: new Date(),
+			};
 
 			// Generate compose configuration
 			const composeConfig: ComposeServiceConfig = {
@@ -445,7 +403,6 @@ export class DockerContainerManager {
 				useTcp,
 				supervisorPort,
 				socketPath: hostSocketPath,
-				needsDatabase,
 			};
 
 			// Generate docker-compose.yml
@@ -479,8 +436,8 @@ export class DockerContainerManager {
 
 			logger.info(`✅ Docker Compose stack started for app ${appId}`);
 
-			// Wait for database to be ready if needed
-			if (needsDatabase && databaseInfo) {
+			// Wait for database to be ready (v8 always includes database)
+			if (databaseInfo) {
 				logger.info(`⏳ Waiting for database to be ready for app ${appId}`);
 				const dbReady = await this.composeManager.waitForDatabase(appPath);
 

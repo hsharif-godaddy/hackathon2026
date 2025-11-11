@@ -22,7 +22,7 @@ export interface App {
   socketPath?: string; // Path to dev-supervisor socket for this app
   previewUrl?: string; // Full URL for preview (e.g., https://site-id.preview.example.com)
   initialPrompt?: string;
-  templateVersion?: string; // v1, v2, v3, etc.
+  templateVersion?: string; // Template version (v8)
   status: 'creating' | 'created' | 'error';
   initialBuildComplete?: boolean; // True when first git commit has been made
   createdAt: Date;

@@ -172,18 +172,10 @@ export abstract class BaseAgent implements IAgent {
       return appTemplateVersion;
     }
     
-    // Fallback to environment variable (template version detection moved to app service)
-    const templateDir = process.env.APP_TEMPLATE_DIR || 'app-templates/v3';
-    const templateVersion = templateDir.includes('v8') ? 'v8' : 
-                           templateDir.includes('v7') ? 'v7' :
-                           templateDir.includes('v3') ? 'v3' : 
-                           templateDir.includes('v2') ? 'v2' : 'v1';
+    // Fallback to v8 (only supported template version)
+    const templateVersion = 'v8';
     logger.info('base-agent.template-version.env-fallback', { templateVersion })
     return templateVersion;
-    
-    // Final fallback to default
-    logger.info('base-agent.template-version.default-fallback', {})
-    return 'default';
   }
 
   /**

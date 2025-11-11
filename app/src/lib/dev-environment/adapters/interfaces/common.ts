@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 
 export type AdapterType = 'docker';
 
-export type AppTemplateVersion = 'v1' | 'v2' | 'v3';
+export type AppTemplateVersion = 'v8';
 
 export interface AdapterConfig {
   type: AdapterType;

@@ -79,13 +79,9 @@ Key Components:
 **Technology**: Various (Vite + React, Next.js, etc.)
 **Purpose**: Template system for new application generation
 
-Available Templates:
+Available Template:
 
-- **v8** - Latest: Vite + React + Shadcn/ui
-- **v7** - Vite + React + API layer
-- **v3** - Full-stack with frontend/backend separation
-- **v2** - Basic React template
-- **v1** - Legacy template
+- **v8** - Vite + React + Shadcn/ui (only supported version)
 
 ### AI Agent System
 
@@ -247,7 +243,7 @@ sequenceDiagram
 
     Frontend->>DevAdapter: deploy(config)
     DevAdapter->>FileSystem: Create app directory
-    DevAdapter->>Templates: Copy template files (v3/v8)
+    DevAdapter->>Templates: Copy template files (v8)
     DevAdapter->>DevAdapter: Install dependencies
 
     DevAdapter->>AgentsAPI: POST /apps/create
@@ -333,21 +329,17 @@ class AccountAdapterFactory {
 
 ### Template Architecture
 
-Templates are versioned application skeletons that provide different architectural approaches:
+The v8 template is the only supported application skeleton:
 
-#### Template Comparison
+#### Template Details
 
-| Template | Architecture | Frontend     | Backend           | Key Features                  |
-| -------- | ------------ | ------------ | ----------------- | ----------------------------- |
-| **v8**   | Vite         | React + Vite | Vite              | Latest, Shadcn/ui, TypeScript |
-| **v7**   | Vite + API   | React + Vite | API Layer         | Simplified API structure      |
-| **v3**   | Full-stack   | React SSR    | Node.js + Express | Frontend/backend separation   |
-| **v2**   | Basic React  | React SPA    | None              | Simple frontend-only          |
-| **v1**   | Legacy       | React        | Basic             | Minimal features              |
+| Template | Architecture | Frontend     | Backend | Key Features                  |
+| -------- | ------------ | ------------ | ------- | ----------------------------- |
+| **v8**   | Vite         | React + Vite | Vite    | Latest, Shadcn/ui, TypeScript |
 
-#### Template Detection
+#### Template Resolution
 
-The system dynamically detects which template to use:
+The system uses the v8 template for all new applications:
 
 ```typescript
 class BaseAgent {
@@ -360,9 +352,8 @@ class BaseAgent {
     const appTemplateVersion = context?.metadata?.templateVersion;
     if (appTemplateVersion) return appTemplateVersion;
 
-    // 3. Environment variable fallback
-    const templateDir = process.env.APP_TEMPLATE_DIR || "app-templates/v3";
-    return extractVersionFromPath(templateDir);
+    // 3. Default to v8 (only supported version)
+    return "v8";
   }
 }
 ```
@@ -401,7 +392,7 @@ CREATE TABLE apps (
     path TEXT NOT NULL,
     port INTEGER NOT NULL,
     initial_prompt TEXT,
-    template_version TEXT DEFAULT 'v3',
+    template_version TEXT DEFAULT 'v8',
     status TEXT DEFAULT 'creating',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -525,8 +516,8 @@ interface DatabaseAdapter {
 **Flow**:
 
 1. Agent loads base prompt from `prompts/{agent-id}.md`
-2. Detects template version from app context or environment
-3. Composes with template-specific instructions from `prompts/template-descriptions/{version}.md`
+2. Uses v8 template (only supported version)
+3. Composes with template-specific instructions from `prompts/template-descriptions/v8.md`
 
 ### 4. Production Mode Integrations
 

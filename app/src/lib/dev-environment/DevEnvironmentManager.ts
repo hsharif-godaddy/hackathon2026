@@ -92,8 +92,7 @@ export class DevEnvironmentManager {
 
         // Generate URLs for existing app
         const urls = {
-          frontend: `https://localhost:${existingApp.port}`,
-          ...(templateVersion === 'v3' && { backend: `https://localhost:${existingApp.port + 1000}` })
+          frontend: `https://localhost:${existingApp.port}`
         };
 
         return {
@@ -155,8 +154,7 @@ export class DevEnvironmentManager {
 
       // 7. Generate URLs
       const urls = {
-        frontend: `https://localhost:${port}`,
-        ...(templateVersion === 'v3' && { backend: `https://localhost:${port + 1000}` })
+        frontend: `https://localhost:${port}`
       };
 
       logger.info(`✅ Dev app ${siteId} created successfully`);
@@ -310,7 +308,7 @@ export class DevEnvironmentManager {
         appId,
         appPath,
         appName,
-        templateDir: process.env.APP_TEMPLATE_DIR || `app-templates/${templateVersion}`
+        templateDir: process.env.APP_TEMPLATE_DIR || 'app-templates/v8'
       });
 
       if (result.success) {

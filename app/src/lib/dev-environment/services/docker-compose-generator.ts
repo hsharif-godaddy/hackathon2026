@@ -12,7 +12,6 @@ export interface ComposeServiceConfig {
 	useTcp: boolean;
 	supervisorPort?: number;
 	socketPath?: string;
-	needsDatabase: boolean;
 }
 
 export interface DatabaseConfig {
@@ -80,27 +79,10 @@ export class DockerComposeGenerator {
 			env.DEV_SUPERVISOR_SOCKET_PATH = "/tmp/supervisor/dev-supervisor.sock";
 		}
 
-		// Template-specific environment variables
-		switch (config.templateVersion) {
-			case "v2":
-				env.NEXT_TELEMETRY_DISABLED = "1";
-				break;
-			case "v3":
-				env.PREFERRED_FRONTEND_PORT = config.appPort.toString();
-				env.VITE_HOST = "0.0.0.0";
-				env.RUNNING_IN_DOCKER = "true";
-				env.VITE_PARENT_ORIGIN = "http://localhost:3000";
-				break;
-			case "v7":
-				env.PORT = config.appPort.toString();
-				env.VITE_HOST = "0.0.0.0";
-				break;
-			case "v8":
-				env.PORT = config.appPort.toString();
-				env.VITE_HOST = "0.0.0.0";
-				env.ALLOWED_ORIGINS = "http://localhost:3000,https://localhost:3000,https://airo-builder.godaddy.com,https://airo-builder.test-godaddy.com,https://airo-builder.dev-godaddy.com";
-				break;
-		}
+		// Template-specific environment variables (v8)
+		env.PORT = config.appPort.toString();
+		env.VITE_HOST = "0.0.0.0";
+		env.ALLOWED_ORIGINS = "http://localhost:3000,https://localhost:3000,https://airo-builder.godaddy.com,https://airo-builder.test-godaddy.com,https://airo-builder.dev-godaddy.com";
 
 		// Database environment variables
 		if (dbConfig) {
@@ -119,23 +101,14 @@ export class DockerComposeGenerator {
 	}
 
 	/**
-	 * Get port mapping for app service based on template version
+	 * Get port mapping for app service (v8 template)
 	 */
 	private getAppPortMapping(config: ComposeServiceConfig): string {
-		switch (config.templateVersion) {
-			case "v2":
-				return `${config.appPort}:3000`;
-			case "v3":
-			case "v7":
-			case "v8":
-				return `${config.appPort}:${config.appPort}`;
-			default:
-				return `${config.appPort}:3000`;
-		}
+		return `${config.appPort}:${config.appPort}`;
 	}
 
 	/**
-	 * Get anonymous volumes for app service based on template version
+	 * Get anonymous volumes for app service (v8 template)
 	 */
 	private getAppVolumes(config: ComposeServiceConfig): string[] {
 		const volumes = [
@@ -149,16 +122,7 @@ export class DockerComposeGenerator {
 			volumes.push(`${socketDir}:/tmp/supervisor`);
 		}
 
-		// Add template-specific volumes
-		switch (config.templateVersion) {
-			case "v2":
-				volumes.push("/app/.next");
-				break;
-			case "v3":
-			case "v7":
-				volumes.push("/app/dist");
-				break;
-		}
+		// v8 template doesn't require additional volumes
 
 		return volumes;
 	}
@@ -173,7 +137,6 @@ export class DockerComposeGenerator {
 		logger.info("compose.generate.begin", {
 			appId: config.appId,
 			templateVersion: config.templateVersion,
-			needsDatabase: config.needsDatabase,
 		});
 
 		// Build environment variables
@@ -214,16 +177,16 @@ ${volumeLines}
       - app-network
 `;
 
-		// Add database dependency if needed
-		if (config.needsDatabase && dbConfig) {
+		// Add database dependency (always needed for v8)
+		if (dbConfig) {
 			composeContent += `    depends_on:
       db:
         condition: service_healthy
 `;
 		}
 
-		// Add database service if needed
-		if (config.needsDatabase && dbConfig) {
+		// Add database service (always needed for v8)
+		if (dbConfig) {
 			composeContent += `
   db:
     image: mysql:8.0
@@ -255,19 +218,15 @@ networks:
   app-network:
     driver: bridge
     name: ${networkName}
-`;
 
-		if (config.needsDatabase) {
-			composeContent += `
 volumes:
   mysql-data:
     name: airo-app-${dockerSafeId}-mysql-data
 `;
-		}
 
 		logger.info("compose.generate.success", {
 			appId: config.appId,
-			services: config.needsDatabase ? 2 : 1,
+			services: 2, // app + database (v8 always includes database)
 		});
 
 		return composeContent;

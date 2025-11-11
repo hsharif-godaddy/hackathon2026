@@ -111,51 +111,33 @@ describe('AppRepository Integration Tests', () => {
     mkdirSync(testBaseDir, { recursive: true });
     mkdirSync(testTemplateDir, { recursive: true });
     
-    // Create a real v3 template structure that TemplateCopyService expects
-    const templateV3Dir = join(testTemplateDir, 'v3');
-    mkdirSync(templateV3Dir, { recursive: true });
-    
-    // Create src directory with frontend and backend subdirectories (v3 template structure)
-    const srcDir = join(templateV3Dir, 'src');
-    const frontendDir = join(srcDir, 'frontend');
-    const backendDir = join(srcDir, 'backend');
-    
-    mkdirSync(frontendDir, { recursive: true });
-    mkdirSync(backendDir, { recursive: true });
-    
-    // Create frontend files
-    writeFileSync(join(frontendDir, 'main.jsx'), 'console.log("Frontend Hello World");');
-    writeFileSync(join(frontendDir, 'package.json'), JSON.stringify({
-      name: "frontend",
-      version: "1.0.0",
-      dependencies: {
-        "react": "^18.0.0"
-      }
-    }));
-    
-    // Create backend files
-    writeFileSync(join(backendDir, 'server.js'), 'console.log("Backend Hello World");');
-    writeFileSync(join(backendDir, 'package.json'), JSON.stringify({
-      name: "backend", 
-      version: "1.0.0",
-      dependencies: {
-        "express": "^4.18.0"
-      }
-    }));
-    
+    // Create a real v8 template structure that TemplateCopyService expects
+    const templateV8Dir = join(testTemplateDir, 'v8');
+    mkdirSync(templateV8Dir, { recursive: true });
+
+    // Create src directory (v8 template structure)
+    const srcDir = join(templateV8Dir, 'src');
+    mkdirSync(srcDir, { recursive: true });
+
+    // Create source files
+    writeFileSync(join(srcDir, 'main.jsx'), 'console.log("Hello World");');
+    writeFileSync(join(srcDir, 'App.jsx'), 'export default function App() { return <div>Hello</div>; }');
+
     // Create root template files that TemplateCopyService expects
-    writeFileSync(join(templateV3Dir, 'package.json'), JSON.stringify({
-      name: "app-template-v3",
+    writeFileSync(join(templateV8Dir, 'package.json'), JSON.stringify({
+      name: "app-template-v8",
       version: "1.0.0",
       scripts: {
         dev: "echo 'dev server running'"
       },
-      dependencies: {}
+      dependencies: {
+        "react": "^18.0.0"
+      }
     }));
-    
-    writeFileSync(join(templateV3Dir, 'README.md'), '# App Template v3');
-    writeFileSync(join(templateV3Dir, 'index.html'), '<html><body>Hello World</body></html>');
-    writeFileSync(join(templateV3Dir, 'vite.config.ts'), 'export default {}');
+
+    writeFileSync(join(templateV8Dir, 'README.md'), '# App Template v8');
+    writeFileSync(join(templateV8Dir, 'index.html'), '<html><body>Hello World</body></html>');
+    writeFileSync(join(templateV8Dir, 'vite.config.ts'), 'export default {}');
     
     // Create real in-memory SQLite database with complete schema
     testDb = new Database(':memory:');
@@ -163,8 +145,8 @@ describe('AppRepository Integration Tests', () => {
 
     // Set environment variables for test
     process.env.APPS_BASE_DIR = testBaseDir;
-    // Point to the v3 directory we created, not the parent
-    process.env.APP_TEMPLATE_DIR = join(testTemplateDir, 'v3');
+    // Point to the v8 directory we created, not the parent
+    process.env.APP_TEMPLATE_DIR = join(testTemplateDir, 'v8');
     
     // Mock the database connection to return our test database
     const { getDatabase } = await import('../../connection.js');
@@ -204,11 +186,9 @@ describe('AppRepository Integration Tests', () => {
   describe('Primary Create App Flow Integration', () => {
     it('should create app with real database and filesystem operations', async () => {
       // Debug: Check if template structure was created correctly
-      const templateV3Dir = join(testTemplateDir, 'v3');
-      expect(existsSync(join(templateV3Dir, 'package.json'))).toBe(true);
-      expect(existsSync(join(templateV3Dir, 'src'))).toBe(true);
-      expect(existsSync(join(templateV3Dir, 'src', 'frontend'))).toBe(true);
-      expect(existsSync(join(templateV3Dir, 'src', 'backend'))).toBe(true);
+      const templateV8Dir = join(testTemplateDir, 'v8');
+      expect(existsSync(join(templateV8Dir, 'package.json'))).toBe(true);
+      expect(existsSync(join(templateV8Dir, 'src'))).toBe(true);
       
       // Test data
       const createRequest: CreateAppRequest = {
@@ -249,7 +229,7 @@ describe('AppRepository Integration Tests', () => {
       const packageJsonPath = join(app.path, 'package.json');
       const packageJsonContent = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
       expect(packageJsonContent.scripts.dev).toBeDefined();
-      expect(packageJsonContent.name).toBe('app-template-v3');
+      expect(packageJsonContent.name).toBe('app-template-v8');
     });
 
     it('should handle database and filesystem cleanup on delete', async () => {

@@ -18,7 +18,7 @@ src/
 ├── base/                 # Core interfaces and base classes
 │   ├── agent.interface.ts
 │   └── base-agent.ts
-├── agents/               # Individual agent implementations  
+├── agents/               # Individual agent implementations
 │   ├── example-agent.ts
 │   └── mwp-agent.ts
 ├── registry/             # Agent discovery and management
@@ -38,29 +38,34 @@ src/
 This library replaces the traditional approach where agents were entirely defined in markdown files:
 
 **Before (Markdown-based):**
+
 ```markdown
 # Agent Name
+
 My Agent
 
 ## List of tools
+
 - tool1
 - tool2
 
 ## System Prompt
+
 You are a helpful assistant...
 ```
 
 **After (Class-based):**
+
 ```typescript
 export class MyAgent extends BaseAgent {
   constructor() {
     super({
       id: 'my-agent',
-      name: 'My Agent', 
+      name: 'My Agent',
       tools: [
         { name: 'tool1', description: 'First tool' },
-        { name: 'tool2', description: 'Second tool' }
-      ]
+        { name: 'tool2', description: 'Second tool' },
+      ],
     });
   }
 }
@@ -89,11 +94,13 @@ npm run dev
 The server will start on port 4000 by default. If that port is in use, set `PORT=4001` or another available port.
 
 List available agents:
+
 ```bash
 curl http://localhost:4000/agents
 ```
 
 Chat with an agent:
+
 ```bash
 curl -X POST http://localhost:4000/agent/example-agent/chat \\
   -H "Content-Type: application/json" \\
@@ -101,6 +108,7 @@ curl -X POST http://localhost:4000/agent/example-agent/chat \\
 ```
 
 Stream chat with an agent:
+
 ```bash
 curl -X POST http://localhost:4000/agent/example-agent/chat-streaming \\
   -H "Content-Type: application/json" \\
@@ -218,6 +226,7 @@ You are a helpful custom agent that does amazing things.
 ## Capabilities
 
 You have access to custom tools that allow you to:
+
 - Perform amazing tasks
 - Help users efficiently
 - Provide excellent service
@@ -264,7 +273,7 @@ NODE_ENV=development
 
 # Database and App Storage
 APPS_BASE_DIR=/tmp/apps
-APP_TEMPLATE_DIR=app-templates/v3
+APP_TEMPLATE_DIR=app-templates/v8
 
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key_here
@@ -319,6 +328,7 @@ IMAGE_SEARCH_DRIVER=unsplash
 ### Provider-Specific Setup
 
 **Getty Images:**
+
 ```bash
 SSO_JWT=your_sso_jwt_token
 GETTY_API_URL=https://getty-images-proxy.api.test-godaddy.com/v1/search
@@ -326,11 +336,13 @@ GETTY_APP_KEY=airo-app-builder
 ```
 
 **OpenAI:**
+
 ```bash
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 **Unsplash:**
+
 ```bash
 UNSPLASH_ACCESS_KEY=your_unsplash_access_key
 ```
@@ -342,10 +354,10 @@ import { ImageSearchTool, findImage } from './tools/image-search-tool.js';
 
 // Using the class directly
 const tool = new ImageSearchTool();
-const result = await tool.searchImage("professional office meeting");
+const result = await tool.searchImage('professional office meeting');
 
 // Using the function interface
-const result = await findImage({ prompt: "sunset over mountains" });
+const result = await findImage({ prompt: 'sunset over mountains' });
 
 // Using a specific driver
 const gettyTool = new ImageSearchTool(new GettyImageSearchDriver());

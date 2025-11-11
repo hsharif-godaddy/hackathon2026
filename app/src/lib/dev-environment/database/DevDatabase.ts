@@ -61,7 +61,7 @@ export class DevDatabase {
     const now = new Date();
     const fullDevApp: DevAppInfo = {
       ...devApp,
-      templateVersion: devApp.templateVersion || 'v3',
+      templateVersion: devApp.templateVersion || 'v8',
       createdAt: now,
       updatedAt: now,
     };
