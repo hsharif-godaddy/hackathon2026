@@ -16,6 +16,7 @@ import { AppRepository } from '../database/repositories/AppRepository.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
 import { logger, log } from '../logging/index.js'
+import { agents as featureAgents } from '../services/features.js'
 
 /**
  * Develop Agent - AI developer for building web applications
@@ -189,7 +190,14 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     .file(paths.getSharedFile('filesystem.md'))
     .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules
-    //.file(paths.getAgentFile('develop', 'database.md'))
+    //.file(paths.getAgentFile('develop', 'tools.md'))
+
+  // Conditionally load database documentation if database agent is enabled
+  if (featureAgents.isEnabled('database')) {
+    promptBuilder.file(paths.getAgentFile('develop', 'database.md'))
+  }
+
+  promptBuilder
     .file(paths.getAgentFile('develop', 'api.md'))
     .file(paths.getAgentFile('develop', 'email.md'))
     .file(paths.getAgentFile('develop', 'deployment.md'))
@@ -252,24 +260,22 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     beforeToolExecution,
     afterToolExecution,
 
-    // Handoff configuration
+    // Handoff configuration (conditionally include database agent based on feature flag)
     handoffs: [
-      /*
-      {
-        agentName: 'database',
-        description: 'MySQL database operations, schema design, and database integration',
-      },
-      */
       {
         agentName: 'color-scheme',
         description: 'Color palette design and visual branding for applications',
       },
+      ...(featureAgents.isEnabled('database') ? [{
+        agentName: 'database',
+        description: 'MySQL database operations, schema design, and database integration',
+      }] : []),
     ],
 
     maxSteps: 100,
     temperature: 0.3,
     maxOutputTokens: 16000,
-    
+
     metadata: {
       contextPreferences: {
         includeAppContext: true,
@@ -286,7 +292,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 /**
  * Create Develop Agent factory with handoff support
  */
-export async function createDevelopAgentFactory(options?: { 
+export async function createDevelopAgentFactory(options?: {
   appPath?: string
   stateManager?: SessionStateManager
   sessionId?: string
@@ -300,7 +306,7 @@ export async function createDevelopAgentFactory(options?: {
   })
 
   const developConfig = await createDevelopAgent(options)
-  
+
   // Add handoff tool if sessionId is provided
   if (options?.sessionId) {
     const validTargets = (developConfig.handoffs || []).map(h => h.agentName)
@@ -337,7 +343,7 @@ export class DevelopAgent {
   private sessionId?: string
   private stateManager?: SessionStateManager
 
-  constructor(options?: { 
+  constructor(options?: {
     appPath?: string
     sessionId?: string
     stateManager?: SessionStateManager
@@ -357,16 +363,16 @@ export class DevelopAgent {
       hasSessionId: !!this.sessionId,
       hasStateManager: !!this.stateManager
     });
-    
+
     const factoryOptions: {
       appPath: string
       sessionId?: string
       stateManager?: SessionStateManager
     } = { appPath: this.appPath }
-    
+
     if (this.sessionId) factoryOptions.sessionId = this.sessionId
     if (this.stateManager) factoryOptions.stateManager = this.stateManager
-    
+
     this.factory = await createDevelopAgentFactory(factoryOptions)
     logger.info('develop_agent.initialization.complete', {
       appPath: this.appPath

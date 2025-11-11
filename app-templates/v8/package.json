@@ -16,7 +16,9 @@
     "type-check": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx,json,md}\"",
     "clean": "rm -rf dist node_modules/.vite",
-    "reset": "npm run clean && pnpm install"
+    "reset": "npm run clean && pnpm install",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push"
   },
   "dependencies": {
     "@babel/core": "^7.26.4",
@@ -56,11 +58,12 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "dotenv-local": "^1.0.2",
+    "drizzle-orm": "^0.44.7",
     "embla-carousel-react": "^8.6.0",
     "html-to-image": "^1.11.11",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.454.0",
-    "mysql2": "^3.11.3",
+    "mysql2": "^3.15.3",
     "next-themes": "^0.4.6",
     "nodemailer": "^7.0.9",
     "react": "^19.0.0",
@@ -72,7 +75,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.6.0",
     "vaul": "^1.1.2",
-    "vite-plugin-api-routes": "1.2.5-beta",
+    "vite-plugin-api-routes": "^1.2.6",
     "vite-plugin-ssr": "^0.4.85",
     "zod": "^3.25.76",
     "zustand": "^5.0.2"
@@ -97,6 +100,7 @@
     "@vitest/ui": "^3.2.4",
     "autoprefixer": "^10.4.20",
     "esbuild": "^0.25.12",
+    "drizzle-kit": "^0.31.6",
     "eslint": "^9.16.0",
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.0.0",
@@ -107,7 +111,7 @@
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.7.2",
-    "vite": "^6.3.6",
+    "vite": "^6.4.1",
     "vitest": "^3.2.4"
   },
   "engines": {

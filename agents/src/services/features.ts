@@ -22,20 +22,20 @@ export enum AuthType {
 interface AgentFeatureConfig {
   // Price and usage limits
   dailyPriceLimit: number
-  
+
   // Server configuration
   nodeEnv: string
   authType: AuthType
-  
+
   // JWT configuration
   jwksUrl: string | undefined
   siteId: string
-  
+
   // OpenAI configuration
   openaiApiKey: string | undefined
   openaiBaseUrl: string | undefined
   openaiModel: string
-  
+
   // MySQL configuration
   mysqlRootHost: string
   mysqlRootPort: number
@@ -52,6 +52,11 @@ interface AgentFeatureConfig {
     templateContent: boolean
     visualContextDetails: boolean
     rawContextData: boolean
+  }
+
+  // Agent enablement configuration
+  enabledAgents: {
+    database: boolean
   }
 }
 
@@ -127,6 +132,11 @@ function parseEnvironmentFeatures(): AgentFeatureConfig {
       templateContent: process.env.DEBUG_CONTEXT_TEMPLATE_CONTENT === 'true',
       visualContextDetails: process.env.DEBUG_CONTEXT_VISUAL_DETAILS === 'true',
       rawContextData: process.env.DEBUG_CONTEXT_RAW_DATA === 'true'
+    },
+
+    // Agent enablement configuration
+    enabledAgents: {
+      database: process.env.ENABLE_DATABASE_AGENT === 'true'
     }
   }
 }
@@ -211,6 +221,17 @@ export const auth = {
       default:
         return features.siteId || 'unknown-site';
     }
+  }
+} as const
+
+/**
+ * Agent enablement helper functions
+ */
+export const agents = {
+  /** Check if a specific agent is enabled */
+  isEnabled: (agentId: 'database'): boolean => {
+    const features = getAgentFeatures();
+    return features.enabledAgents[agentId] ?? false;
   }
 } as const
 

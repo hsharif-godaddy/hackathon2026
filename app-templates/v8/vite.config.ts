@@ -48,6 +48,7 @@ export default defineConfig(({ mode }) => ({
 			"@/components": path.resolve(__dirname, "./src/components"),
 			"@/lib": path.resolve(__dirname, "./src/lib"),
 			"@/api": path.resolve(__dirname, "./src/server/api"),
+      "@/db": path.resolve(__dirname, "./src/server/db"),
 			"@/layouts": path.resolve(__dirname, "./src/layouts"),
 			"@/patterns": path.resolve(__dirname, "./src/patterns"),
 			"@/pages": path.resolve(__dirname, "./src/pages"),

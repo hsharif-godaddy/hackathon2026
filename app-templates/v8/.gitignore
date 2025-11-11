@@ -68,3 +68,6 @@ public/assets
 # SSL certificates
 .ssl/*.pem
 
+
+# AI Assistant Files
+.claude/

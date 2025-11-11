@@ -4,7 +4,7 @@
  * Enhanced with rich context support and agent handoffs
  */
 
-import { 
+import {
   createAgentFactory,
   type AgentFactory,
   type AgentConfig,
@@ -13,7 +13,7 @@ import {
   createSessionStateManager,
   type SessionStateManager
 } from '@airo/ai-lib'
-import { 
+import {
   createDevelopAgent,
   createDatabaseAgent,
   createColorSchemeAgent,
@@ -24,6 +24,7 @@ import {
   ExampleAgent
 } from '../index.js'
 import type { EnhancedAgentContext } from './types.js'
+import { agents as featureAgents } from '../../services/features.js'
 
 /**
  * Agent metadata for discovery and management
@@ -56,20 +57,17 @@ export async function createUnifiedAgentFactory(options?: {
   })
 
   const developConfig = await createDevelopAgent()
-  const databaseConfig = await createDatabaseAgent()
   const colorSchemeConfig = await createColorSchemeAgent()
+
+  // Conditionally create database agent based on feature flag
+  const isDatabaseAgentEnabled = featureAgents.isEnabled('database')
+  const databaseConfig = isDatabaseAgentEnabled ? await createDatabaseAgent() : null
 
   // Create handoff tools BEFORE defining agents (using only agent IDs)
   // Extract valid targets from handoffs configuration
   const developHandoffTool = createHandoffTool({
     sourceAgentId: 'develop',
     validTargets: (developConfig.handoffs || []).map(h => h.agentName),
-    stateManager
-  })
-
-  const databaseHandoffTool = createHandoffTool({
-    sourceAgentId: 'database',
-    validTargets: (databaseConfig.handoffs || []).map(h => h.agentName),
     stateManager
   })
 
@@ -92,13 +90,6 @@ export async function createUnifiedAgentFactory(options?: {
   // Stop execution after handoff tool is called
   developConfig.stopAfterTools = ['handoff']
 
-  databaseConfig.tools = {
-    ...(databaseConfig.tools || {}),
-    handoff: databaseHandoffTool
-  }
-  // Stop execution after handoff tool is called
-  databaseConfig.stopAfterTools = ['handoff']
-
   colorSchemeConfig.tools = {
     ...(colorSchemeConfig.tools || {}),
     handoff: colorSchemeHandoffTool,
@@ -107,12 +98,34 @@ export async function createUnifiedAgentFactory(options?: {
   // Stop execution after handoff or end_conversation tool is called
   colorSchemeConfig.stopAfterTools = ['handoff', 'end_conversation']
 
-  // Now define agents with handoff tools already included
-  const agents = factory.defineAgents({
+  // Conditionally configure database agent if enabled
+  if (databaseConfig) {
+    const databaseHandoffTool = createHandoffTool({
+      sourceAgentId: 'database',
+      validTargets: (databaseConfig.handoffs || []).map(h => h.agentName),
+      stateManager
+    })
+
+    databaseConfig.tools = {
+      ...(databaseConfig.tools || {}),
+      handoff: databaseHandoffTool
+    }
+    // Stop execution after handoff tool is called
+    databaseConfig.stopAfterTools = ['handoff']
+  }
+
+  // Build agent definitions conditionally
+  const agentDefinitions: Record<string, AgentConfig> = {
     develop: developConfig,
-    database: databaseConfig,
     'color-scheme': colorSchemeConfig,
-  })
+  }
+
+  if (databaseConfig) {
+    agentDefinitions.database = databaseConfig
+  }
+
+  // Now define agents with handoff tools already included
+  const agents = factory.defineAgents(agentDefinitions)
   
   return { factory, agents, stateManager }
 }
@@ -195,10 +208,17 @@ export async function createAgent(agentId: string, context?: EnhancedAgentContex
 }
 
 /**
- * Get all available agent IDs
+ * Get all available agent IDs (filtered by feature flags)
  */
 export function getAvailableAgentIds(): string[] {
-  return Object.keys(aiLibAgentFactories)
+  const allAgentIds = Object.keys(aiLibAgentFactories)
+  return allAgentIds.filter(agentId => {
+    // Filter out database agent if not enabled
+    if (agentId === 'database') {
+      return featureAgents.isEnabled('database')
+    }
+    return true
+  })
 }
 
 /**
@@ -209,10 +229,13 @@ export function getAgentMetadata(agentId: string): AILibAgentMetadata | undefine
 }
 
 /**
- * Get all agent metadata
+ * Get all agent metadata (filtered by feature flags)
  */
 export function getAllAgentMetadata(): AILibAgentMetadata[] {
-  return Object.values(aiLibAgentMetadata)
+  const availableIds = getAvailableAgentIds()
+  return Object.values(aiLibAgentMetadata).filter(metadata =>
+    availableIds.includes(metadata.id)
+  )
 }
 
 /**

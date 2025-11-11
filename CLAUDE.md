@@ -157,8 +157,29 @@ This is a **pnpm workspace monorepo** with multiple interconnected services. All
 
 - Base class: `agents/src/base/base-agent.ts`
 - Agent registry: `agents/src/registry/agent-registry.ts`
-- Available agents: ExampleAgent, DevelopAgent, FakeEventsAgent
+- Agent factory: `agents/src/agents/ai-lib-agents/index.ts`
+- Available agents: DevelopAgent, DatabaseAgent (conditional), ColorSchemeAgent, ExampleAgent
 - Prompts stored in: `agents/src/prompts/`
+
+**Conditional Agent Enablement:**
+
+The system supports environment-based agent enablement through feature flags in `agents/src/services/features.ts`:
+
+- **DatabaseAgent**: Disabled by default, requires explicit opt-in
+  - Enable with `ENABLE_DATABASE_AGENT=true` in `agents/.env`
+  - Use in local development environments only
+  - Specializes in MySQL database operations and backend coordination
+  - When disabled, the agent will not be registered or available through the WebSocket server
+
+**Checking Agent Availability:**
+
+```typescript
+import { agents } from "./services/features.js";
+
+if (agents.isEnabled("database")) {
+  // Database agent is available
+}
+```
 
 ### Database Architecture
 

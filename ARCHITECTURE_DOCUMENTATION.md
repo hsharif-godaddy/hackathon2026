@@ -115,7 +115,7 @@ class AgentRegistry {
 1. **DevelopAgent** - Main AI developer for building applications
 2. **ExampleAgent** - Demonstration agent
 3. **ColorSchemeAgent** - UI color theme specialist
-4. **DatabaseAgent** - Database setup and integration
+4. **DatabaseAgent** - Database setup and integration (conditionally available via `ENABLE_DATABASE_AGENT=true`)
 
 ### Tool System
 
