@@ -1,10 +1,14 @@
 import { logger } from '@/lib/request-context';
 import { extractCustomerId as extractCustomerIdFromJWT } from '@/lib/utils/jwt-utils';
 import {
+  type AiroModifyDomainsResponse,
   type AiroDeploymentsResponse,
+  type AiroModifyDomainsPayload,
   type AiroBulkAppsResponse,
   type AiroDeleteAppResponse,
   type AiroUpdateAppPayload,
+  type AiroUpdateProjectDomainPayload,
+  type AiroUpdateProjectDomainResponse,
   type AiroCreateAppResponse,
   type AiroCreateAppPayload,
   type AiroSignupResponse,
@@ -314,19 +318,28 @@ export class AiroMgmtClient {
 
   /**
    * Get full app details (including variables from mgmt-hosting)
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @param includeCdn - Whether to include CDN status and anycast IP information for domains
+   * @returns Promise resolving to app details with optional domain information
    */
   async getApp(
     subscriptionId: string,
     systemId: string,
-    appId: string
+    appId: string,
+    includeCdn = false
   ): Promise<AiroAppDetails> {
+    const queryParams = includeCdn ? '?includeCdn=true' : '';
     return this.request<AiroAppDetails>(
       'GET',
-      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}`,
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}${queryParams}`,
       undefined,
       {
         logEvent: 'mgmt-airo.get-app',
-        retryOn404: true // App might not be synced yet
+        retryOn404: true, // App might not be synced yet
+        noCache: true // Disable caching to get fresh data during polling
       }
     );
   }
@@ -389,6 +402,31 @@ export class AiroMgmtClient {
   }
 
   /**
+   * Update app project domain
+   * 
+   * Updates the project domain (subdomain) for an app
+   * 
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @param payload - Project domain update payload
+   * @returns Project domain update response
+   */
+  async updateProjectDomain(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    payload: AiroUpdateProjectDomainPayload
+  ): Promise<AiroUpdateProjectDomainResponse> {
+    return this.request<AiroUpdateProjectDomainResponse>(
+      'PUT',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/project-domain`,
+      payload,
+      { logEvent: 'mgmt-airo.update-project-domain' }
+    );
+  }
+
+  /**
    * Deploy app
    */
   async deployApp(
@@ -426,6 +464,31 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/publish`,
       { gitHash },
       { logEvent: 'mgmt-airo.publish-app' }
+    );
+  }
+
+  /**
+   * Modify app domains - create or delete domains for an app
+   *
+   * PUT /api/airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/domains
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @param payload - Domain modification data including domains to create/delete and CDN options
+   * @returns Promise resolving to domain modification job information with status tracking ID
+   */
+  async modifyDomains(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    payload: AiroModifyDomainsPayload
+  ): Promise<AiroModifyDomainsResponse> {
+    return this.request<AiroModifyDomainsResponse>(
+      'PUT',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domains`,
+      payload,
+      { logEvent: 'mgmt-airo.modify-domains' }
     );
   }
 

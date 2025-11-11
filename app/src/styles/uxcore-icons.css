@@ -7,6 +7,9 @@
 @import "@ux/icon/chevron-down/index.css";
 @import "@ux/icon/chevron-left/index.css";
 @import "@ux/icon/chevron-right/index.css";
+@import "@ux/icon/circle/index.css";
+@import "@ux/icon/circle-filled/index.css";
+@import "@ux/icon/circle-half/index.css";
 @import "@ux/icon/clipboard/index.css";
 @import "@ux/icon/clock/index.css";
 @import "@ux/icon/code/index.css";
@@ -22,7 +25,9 @@
 @import "@ux/icon/image/index.css";
 @import "@ux/icon/link/index.css";
 @import "@ux/icon/locked/index.css";
+@import "@ux/icon/menu/index.css";
 @import "@ux/icon/mobile-phone/index.css";
+@import "@ux/icon/ok/index.css";
 @import "@ux/icon/page/index.css";
 @import "@ux/icon/paint-bucket/index.css";
 @import "@ux/icon/plus/index.css";

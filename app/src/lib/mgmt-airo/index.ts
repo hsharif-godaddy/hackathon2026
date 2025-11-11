@@ -12,6 +12,8 @@ export type {
   AiroMgmtClientConfig,
   AiroDeleteAppResponse,
   AiroUpdateAppPayload,
+  AiroUpdateProjectDomainPayload,
+  AiroUpdateProjectDomainResponse,
   AiroCreateAppResponse,
   AiroCreateAppPayload,
   AiroSignupResponse,

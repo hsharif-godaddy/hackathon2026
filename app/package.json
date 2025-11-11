@@ -93,6 +93,8 @@
     "@ux/modal": "^2500.3.4",
     "@ux/pagination": "^2500.3.2",
     "@ux/radio": "^2500.3.4",
+    "@ux/sibling-set": "^2500.3.2",
+    "@ux/skeleton": "^2500.3.2",
     "@ux/spinner": "^2500.3.2",
     "@ux/table": "^2500.3.2",
     "@ux/tag": "^2500.3.2",

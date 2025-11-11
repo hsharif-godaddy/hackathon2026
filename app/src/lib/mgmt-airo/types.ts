@@ -44,6 +44,22 @@ export interface AiroApp {
     publish?: string;
   };
   variables?: Record<string, any>;
+  variants?: string[];
+}
+
+/**
+ * Domain information in app details response
+ */
+export interface AiroDomain {
+  fqdn: string;
+  isPrimary: boolean;
+  status: string;
+  cdnStatus?: string;
+  anycastIp?: string;
+  domainType: string;
+  prefix: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -51,6 +67,7 @@ export interface AiroApp {
  */
 export interface AiroAppDetails extends AiroApp {
   variables: Record<string, any>;
+  fqdns?: AiroDomain[];
 }
 
 /**
@@ -118,6 +135,24 @@ export interface AiroUpdateAppPayload {
 }
 
 /**
+ * Update project domain request payload
+ */
+export interface AiroUpdateProjectDomainPayload {
+  projectPrefix: string | null;
+}
+
+/**
+ * Update project domain response
+ */
+export interface AiroUpdateProjectDomainResponse {
+  statusJobId: string;
+  status: string;
+  message: string;
+  projectPrefix: string | null;
+  domain?: string | null;
+}
+
+/**
  * Deploy app response
  */
 export interface AiroDeployAppResponse {
@@ -150,6 +185,39 @@ export interface AiroPublishAppResponse {
  */
 export interface AiroDeleteAppResponse {
   success: boolean;
+  message: string;
+}
+
+/**
+ * Domain to create for an app
+ */
+export interface DomainToCreate {
+  fqdn: string;
+  primary?: boolean;
+}
+
+/**
+ * Domain to delete from an app
+ */
+export interface DomainToDelete {
+  fqdn: string;
+}
+
+/**
+ * Modify domains request payload
+ */
+export interface AiroModifyDomainsPayload {
+  domainsToCreate?: DomainToCreate[];
+  domainsToDelete?: DomainToDelete[];
+  createCdn?: boolean;
+}
+
+/**
+ * Modify domains response
+ */
+export interface AiroModifyDomainsResponse {
+  statusJobId: string;
+  status: string;
   message: string;
 }
 

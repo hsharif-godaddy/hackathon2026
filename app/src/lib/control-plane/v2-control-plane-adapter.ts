@@ -229,13 +229,14 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     const startTime = Date.now();
 
     try {
-      // SINGLE API CALL - Direct app fetch
-      const app = await client.getApp(subscriptionId, systemId, appId);
+      // SINGLE API CALL - Direct app fetch with CDN info for domains
+      const app = await client.getApp(subscriptionId, systemId, appId, true);
 
       logger.info('v2-control-plane.direct-app-lookup.success', {
         appId,
         subscriptionId,
         systemId,
+        includeCdn: true,
         duration: Date.now() - startTime
       });
 
@@ -580,9 +581,9 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
               });
 
               // getAppsForSystem returns summary data without variables
-              // Fetch full app details to get variables (including initialPrompt)
+              // Fetch full app details to get variables (including initialPrompt) and CDN info
               try {
-                const fullApp = await client.getApp(sub.id, system.id, matchingApp.id);
+                const fullApp = await client.getApp(sub.id, system.id, matchingApp.id, true);
 
                 logger.info('v2-control-plane.get-site.full-app-fetched', {
                   siteId,
@@ -966,7 +967,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         return null;
       }
 
-      const currentApp = await client.getApp(site.subscription_id, site.system_id, siteId);
+      const currentApp = await client.getApp(site.subscription_id, site.system_id, siteId, true);
       const currentVariables = currentApp.variables || {};
       logger.info('v2-control-plane.update-site.current-variables', {
         siteId,
@@ -1043,7 +1044,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         message: 'PATCH completed, fetching updated app with variables'
       });
 
-      const updatedApp = await client.getApp(site.subscription_id, site.system_id, siteId);
+      const updatedApp = await client.getApp(site.subscription_id, site.system_id, siteId, true);
 
       logger.info('v2-control-plane.update-site.response-received', {
         siteId,
@@ -1088,7 +1089,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         return null;
       }
 
-      const currentApp = await client.getApp(site.subscription_id, site.system_id, siteId);
+      const currentApp = await client.getApp(site.subscription_id, site.system_id, siteId, true);
       const currentVariables = currentApp.variables || {};
       const updatedVariables = { ...currentVariables, ...variableUpdates };
 
@@ -1106,7 +1107,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         variables: updatedVariables
       });
 
-      const updatedApp = await client.getApp(site.subscription_id, site.system_id, siteId);
+      const updatedApp = await client.getApp(site.subscription_id, site.system_id, siteId, true);
       return this.mapAppToSiteInfo(updatedApp);
     } catch (error: any) {
       // Re-throw 401 for auth redirect
@@ -1136,13 +1137,40 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       // V2 provides URLs in the response - use them directly
       agent_url = app.urls.agent;
       preview_url = app.urls.preview;
-      published_url = app.urls.publish;
-    } else {
-      // Fallback: construct URLs if not provided (shouldn't happen in V2)
-      const urls = this.constructUrls(app.id, app.status, app.cellId);
-      agent_url = urls.agent;
-      preview_url = urls.preview;
+      // Only use publish URL if app has been published
+      if (app.variants?.includes('publish')) {
+        published_url = app.urls.publish;
+      }
+    }
+
+    // Construct missing URLs as fallback
+    const urls = this.constructUrls(app.id, app.status, app.cellId);
+    agent_url = agent_url || urls.agent;
+    preview_url = preview_url || urls.preview;
+
+    // Only construct published_url if app has been published (has "publish" variant)
+    if (!published_url && app.variants?.includes('publish')) {
       published_url = urls.publish;
+    }
+
+    // Override published_url if custom domains are active (only for published sites)
+    if (app.variants?.includes('publish') && app.domains && Array.isArray(app.domains)) {
+      // Find active custom domain
+      const customDomain = app.domains.find(
+        (d: any) => d.domainType !== 'prefix' && d.status === 'active'
+      );
+
+      // Find active prefix domain (project domain)
+      const prefixDomain = app.domains.find(
+        (d: any) => d.domainType === 'prefix' && d.status === 'active'
+      );
+
+      // Priority: custom domain > prefix domain > default
+      if (customDomain) {
+        published_url = `https://${customDomain.fqdn}`;
+      } else if (prefixDomain) {
+        published_url = `https://${prefixDomain.fqdn}`;
+      }
     }
 
     return {
@@ -1160,7 +1188,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       updated_at: new Date(app.updatedAt),
       system_id: app.systemId, // Store systemId for delete/update/deploy operations
       subscription_id: app.subscriptionId, // Store subscriptionId for hierarchical URLs
-      domains: app.domains // Custom domains from mgmt-hosting
+      domains: app.domains, // Custom domains from mgmt-hosting
+      variants: app.variants // Available variants (e.g., ["preview", "publish"])
     };
   }
 

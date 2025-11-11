@@ -348,7 +348,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     resetForNewApp: (appId: string) => {
       logger.debug('develop-store.reset', { message: 'Resetting develop page store for new app', appId })
       set((state) => {
-        state.activeChatTab = ChatTab.CHAT
         state.currentAppId = appId
         state.loadingPhase = 'idle'
         state.app = null

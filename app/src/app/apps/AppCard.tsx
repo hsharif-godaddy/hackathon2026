@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CodeBracketIcon,
   PlayIcon,
   EyeIcon,
   TrashIcon,
-  ClockIcon
+  ClockIcon,
+  GlobeAltIcon
 } from '@heroicons/react/24/outline'
 import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { generateClickEID } from '@/utils/instrumentation'
 import { useSites } from '@/stores/useSitesStore'
+import { appFetch } from '@/lib/gasket-config'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Tag from '@ux/tag'
@@ -28,8 +30,27 @@ export default function AppCard({site}) {
 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [alertState, setAlertState] = useState<AlertState>({ siteId: null, type: null, message: '' })
+  const [publishedUrl, setPublishedUrl] = useState<string | null>(null)
 
   const { deleteSite } = useSites()
+
+  useEffect(() => {
+    const fetchSiteDetails = async () => {
+      try {
+        const response = await appFetch(`/api/sites/${site.id}`)
+        if (response.ok) {
+          const siteDetails = await response.json()
+          if (siteDetails.published_url) {
+            setPublishedUrl(siteDetails.published_url)
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching site details:', error)
+      }
+    }
+
+    fetchSiteDetails()
+  }, [site.id])
 
   const getStatusLabel = (status: SiteInfo['status']) => {
     switch (status) {
@@ -151,6 +172,18 @@ export default function AppCard({site}) {
 
       <div className="flex items-center justify-between pt-4 mt-4 border-t">
         <div className="flex space-x-2">
+          {publishedUrl && site.status === 'running' && (
+            <Button
+              href={publishedUrl}
+              data-eid={generateClickEID('apps.app.visit_published')}
+              icon={<GlobeAltIcon className="w-3 h-3" />}
+              size="sm"
+              design="tertiary"
+              text="Visit"
+              external
+            />
+          )}
+
           {site.preview_url && site.status === 'running' && (
             <Button
               href={site.preview_url}
@@ -158,7 +191,7 @@ export default function AppCard({site}) {
               icon={<EyeIcon className="w-3 h-3" />}
               size="sm"
               design="tertiary"
-              text="View App"
+              text="Preview"
               external
             />
           )}
@@ -171,7 +204,7 @@ export default function AppCard({site}) {
               icon={<PlayIcon className="w-3 h-3" />}
               size="sm"
               design="tertiary"
-              text="Edit App"
+              text="Edit"
             />
           )}
         </div>

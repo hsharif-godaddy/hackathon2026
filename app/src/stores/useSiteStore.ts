@@ -3,33 +3,10 @@ import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
+import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 
-export interface SiteDomain {
-  fqdn: string
-  isPrimary: boolean
-  domainType?: string
-  status: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface Site {
-  id: string
-  name: string
-  status: 'init' | 'creating' | 'created' | 'running' | 'stopped' | 'error' | 'failed'
-  agent_url?: string
-  backend_url?: string
-  preview_url?: string
-  published_url?: string
-  account_id: string
-  created_at: string
-  updated_at: string
-  initial_prompt?: string
-  system_id?: string // V2 only: systemId from mgmt-hosting
-  subscription_id?: string // V2 only: subscriptionId from mgmt-hosting
-  controlPlane?: 'v2' | 'legacy' // Control plane type (v2 or legacy)
-  domains?: SiteDomain[] // Custom domains from mgmt-hosting
-}
+// Use SiteInfo from the existing interface for consistency
+export type Site = SiteInfo
 
 interface SiteStore {
   // State

@@ -125,9 +125,9 @@ export default function PublishStatusAlert() {
     const publishedFqdn = site?.published_url;
     
     const fqdn = customDomain?.fqdn || prefixDomain?.fqdn || publishedFqdn;
-    
+
     return (
-      <div className='px-4 pt-4'>
+      <div className='px-4 py-4'>
         <Alert
           emphasis='success'
           onClose={() => currentAppId && dismissPublishSuccess(currentAppId)}
@@ -138,7 +138,7 @@ export default function PublishStatusAlert() {
               text='View Now'
               data-eid={generateClickEID(`publish-alert.success.view-now`)}
               className="!hover:bg-transparent"
-              href={fqdn}
+              href={fqdn.includes('https://') ? fqdn : `https://${fqdn}`}
               external
             />
           }
@@ -154,7 +154,7 @@ export default function PublishStatusAlert() {
 
   if (isPublishing) {
     return (
-      <div className='px-4 pt-4'>
+      <div className='px-4 py-4'>
         <Alert
           emphasis='info'
         >
@@ -170,7 +170,7 @@ export default function PublishStatusAlert() {
   // Show error state only when not publishing
   if (publishError) {
     return (
-      <div className='px-4 pt-4'>
+      <div className='px-4 py-4'>
         <Alert
           emphasis='critical'
           onClose={handleDismiss}

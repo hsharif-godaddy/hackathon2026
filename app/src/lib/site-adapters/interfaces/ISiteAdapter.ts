@@ -1,3 +1,5 @@
+import type { SiteDomain } from '@/lib/control-plane/types';
+
 /**
  * Site Adapter Interface
  *
@@ -12,10 +14,15 @@ export interface SiteInfo {
   agent_url?: string;
   backend_url?: string;
   preview_url?: string;
-  account_id?: string;
+  published_url?: string;
+  account_id: string;
   initial_prompt?: string;
   created_at: string;
   updated_at: string;
+  system_id?: string; // V2 only: systemId from mgmt-hosting
+  subscription_id?: string; // V2 only: subscriptionId from mgmt-hosting
+  controlPlane?: 'v2' | 'legacy'; // Control plane type (v2 or legacy)
+  domains?: SiteDomain[]; // Custom domains from mgmt-hosting
 }
 
 export interface CreateSiteRequest {

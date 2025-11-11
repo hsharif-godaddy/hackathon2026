@@ -9,13 +9,32 @@
 export type SiteStatus = 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
 
 /**
+ * Domain type enum
+ */
+export enum DomainType {
+  PREFIX = 'prefix',
+  CUSTOM = 'custom',
+}
+
+/**
+ * Domain status enum
+ */
+export enum DomainStatus {
+  ACTIVE = 'active',
+  PENDING = 'pending',
+  INACTIVE = 'inactive',
+  FAILED = 'failed',
+}
+
+/**
  * Domain information for a site
  */
 export interface SiteDomain {
   fqdn: string;
   isPrimary: boolean;
-  domainType?: string;
-  status: string;
+  domainType: DomainType;
+  prefix: string;
+  status: DomainStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -40,6 +59,7 @@ export interface SiteInfo {
   system_id?: string; // V2 only: systemId from mgmt-hosting (needed for deploy/delete/update)
   subscription_id?: string; // V2 only: subscriptionId from mgmt-hosting (needed for hierarchical URLs)
   domains?: SiteDomain[]; // V2 only: Custom domains from mgmt-hosting
+  variants?: string[]; // V2 only: Available variants (e.g., ["preview", "publish"])
 }
 
 /**

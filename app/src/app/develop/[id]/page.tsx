@@ -338,14 +338,12 @@ function DevelopPageContent() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [hasUnsavedChanges])
 
-  // Handle URL parameters for deep linking
+  // Handle URL parameters for deep linking - runs immediately on mount
   useEffect(() => {
-    if (loadingPhase !== 'ready') return
-
     const tabParam = searchParams.get('tab')
     const settingsParam = searchParams.get('settings')
 
-    // Handle tab parameter
+    // Handle tab parameter - if no tab param, default to CHAT
     if (tabParam) {
       switch (tabParam) {
         case 'settings':
@@ -370,8 +368,11 @@ function DevelopPageContent() {
         default:
           break
       }
+    } else {
+      // No tab param, default to CHAT
+      setActiveChatTab(ChatTab.CHAT)
     }
-  }, [loadingPhase, searchParams, setActiveSettingsSection, setActiveChatTab])
+  }, [searchParams, setActiveSettingsSection, setActiveChatTab])
 
   // Handle URL message parameter - simplified logic
   useEffect(() => {

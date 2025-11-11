@@ -85,4 +85,26 @@ export enum SettingsSection {
   FEEDBACK = 'feedback'
 }
 
+/**
+ * Status configuration with label and type for UI display
+ */
+export const Status = {
+  READY: { label: 'Ready', type: 'success' },
+  PENDING: { label: 'Pending', type: 'warning' },
+  ERROR: { label: 'Error', type: 'error' },
+  AVAILABLE: { label: 'Available', type: 'success' },
+  UNAVAILABLE: { label: 'Unavailable', type: 'error' },
+  INACTIVE: { label: 'Inactive', type: 'default' }
+} as const;
+
+/**
+ * Type for status values
+ */
+export type StatusValue = typeof Status[keyof typeof Status];
+
+/**
+ * Type for status keys
+ */
+export type StatusKey = keyof typeof Status;
+
 export type { VisualContext } from './visualContextCapture'

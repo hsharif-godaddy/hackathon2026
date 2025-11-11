@@ -26,7 +26,14 @@ async function handleGetSite(request: NextRequest, siteId: string, authContext: 
     controlPlane: isV2ControlPlaneEnabled() ? 'v2' : 'legacy'
   };
 
-  return NextResponse.json(siteWithMetadata);
+  // Add no-cache headers to prevent caching during polling
+  return NextResponse.json(siteWithMetadata, {
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    },
+  });
 }
 
 // GET /api/sites/[id] - Get specific site (authenticated)

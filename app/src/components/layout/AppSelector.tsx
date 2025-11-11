@@ -46,7 +46,7 @@ export default function AppSelector({ location }: { location?: string }) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         className="hover:cursor-pointer"
-        onClick={() => (sites.length < 1 || isLoading) ? router.push('/sites') : null}
+        onClick={() => (sites.length < 1 || isLoading) ? router.push('/apps') : null}
       >
         <Box orientation="horizontal" gap="sm">
           <text.p className="truncate max-w-[150px]">{displayTitle}</text.p>
