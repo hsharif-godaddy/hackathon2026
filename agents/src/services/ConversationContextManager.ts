@@ -202,28 +202,19 @@ export class ConversationContextManager {
   /**
    * Load conversation history with compression and token limiting
    * @param conversationId - ID of the conversation
-   * @param executionContext - Execution context containing appId and agentId in metadata
+   * @param executionContext - Execution context containing appId for app path lookup
    * @returns Array of LLMMessage messages from conversation history
    */
   private async loadConversationHistoryCompressed(
     conversationId: string,
     executionContext?: AgentExecutionContext
   ): Promise<LLMMessage[]> {
-    const allMessages = await this.conversationRepo.getMessages(conversationId);
-    if (allMessages.length === 0) {
-      logger.debug('conversation.history.no_messages', { conversationId });
-      return [];
-    }
-
     const appId = executionContext?.metadata?.appId as string | undefined;
-    const agentId = executionContext?.metadata?.agentId as string | undefined;
     
-    if (!appId || !agentId) {
-      logger.warn('conversation.history.missing_ids', { 
+    if (!appId) {
+      logger.warn('conversation.history.missing_app_id', { 
         conversationId, 
-        hasAppId: !!appId, 
-        hasAgentId: !!agentId,
-        message: 'Cannot load compressed history without appId and agentId'
+        message: 'Cannot load compressed history without appId for app path lookup'
       });
       return [];
     }
@@ -235,9 +226,8 @@ export class ConversationContextManager {
     const maxTokens = 40000;
     
     try {
-      const llmMessages = await this.historyLoader.loadMessagesWithTokenLimit(
-        appId,
-        agentId,
+      const llmMessages = await this.historyLoader.loadMessagesWithTokenLimitByConversationId(
+        conversationId,
         maxTokens,
         undefined,
         true,
@@ -247,7 +237,6 @@ export class ConversationContextManager {
       logger.debug('conversation.history.compressed.loaded', {
         conversationId,
         appId,
-        agentId,
         messageCount: llmMessages.length,
       });
       
@@ -256,7 +245,6 @@ export class ConversationContextManager {
       logger.error('conversation.history.compressed.load_failure', {
         conversationId,
         appId,
-        agentId,
         error: error instanceof Error ? error.message : String(error),
       });
       return [];

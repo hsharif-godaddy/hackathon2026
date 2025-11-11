@@ -124,6 +124,33 @@ export class ConversationHistoryLoader {
   }
 
   /**
+   * Load messages for a specific conversation from database
+   * Uses getMessagesForHistory for consistent normalized format
+   * @param conversationId - ID of the conversation
+   * @returns Array of raw database messages sorted by timestamp (oldest first)
+   */
+  async loadDatabaseMessagesByConversationId(conversationId: string): Promise<DatabaseMessage[]> {
+    logger.debug('conversation.history.loader.load_by_conversation_begin', {
+      conversationId,
+    });
+
+    const messages = await this.conversationRepo.getMessagesForHistory(conversationId);
+    const dbMessages = messages.map((msg) => ({
+      ...msg,
+      conversationId,
+    }));
+
+    dbMessages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+    logger.debug('conversation.history.loader.load_by_conversation_complete', {
+      conversationId,
+      totalMessages: dbMessages.length,
+    });
+
+    return dbMessages;
+  }
+
+  /**
    * Convert database messages to LLM format using segments
    * @param dbMessages - Array of database messages
    * @returns Array of LLM messages
@@ -465,6 +492,96 @@ export class ConversationHistoryLoader {
       logger.info('conversation.history.compression.applied', {
         appId,
         agentId,
+        originalMessages: compressionResult.stats.totalMessages,
+        compressedMessages: compressionResult.stats.compressedMessages,
+        originalLength: compressionResult.stats.originalTotalLength,
+        compressedLength: compressionResult.stats.compressedTotalLength,
+        compressionRatio: compressionResult.stats.compressionRatio,
+        savedBytes: compressionResult.stats.originalTotalLength - compressionResult.stats.compressedTotalLength,
+        strategiesUsed: compressionResult.stats.strategiesUsed,
+      });
+    }
+    
+    return this.applyTokenLimit(llmMessages, maxTokens, modelName);
+  }
+
+  /**
+   * Load messages with compression and token limit applied for a specific conversation
+   * This should be used when you have a conversationId (e.g., during agent handoffs)
+   * @param conversationId - ID of the conversation
+   * @param maxTokens - Maximum tokens to include (default: 40000)
+   * @param modelName - Model name for accurate token counting
+   * @param enableCompression - Whether to apply compression (default: true)
+   * @param appPath - Path to the app for hot file loading
+   * @returns Token-limited array of LLM messages
+   */
+  async loadMessagesWithTokenLimitByConversationId(
+    conversationId: string,
+    maxTokens: number = 40000,
+    modelName?: string,
+    enableCompression: boolean = true,
+    appPath?: string
+  ): Promise<LLMMessage[]> {
+    const dbMessages = await this.loadDatabaseMessagesByConversationId(conversationId);
+    let llmMessages = this.convertToLLMMessages(dbMessages);
+    
+    if (enableCompression) {
+      const hotFileStrategy = this.getStrategy('hot-file-inclusion');
+      
+      logger.debug('conversation.history.hot_files.strategy_check', {
+        conversationId,
+        hasStrategy: !!hotFileStrategy,
+        hasAppPath: !!appPath,
+        appPath,
+      });
+      
+      if (hotFileStrategy && appPath) {
+        (hotFileStrategy as any).setAppPath(appPath);
+      }
+
+      const compressionResult = this.compressor.compressMessages(llmMessages);
+      llmMessages = compressionResult.messages;
+      
+      if (hotFileStrategy && appPath) {
+        await (hotFileStrategy as any).loadHotFilesContent();
+        const hotFilesList = (hotFileStrategy as any).getHotFilesList();
+        const hotFilesMessage = (hotFileStrategy as any).getHotFilesMessage();
+        
+        logger.debug('conversation.history.hot_files.load_result', {
+          conversationId,
+          totalHotFiles: hotFilesList.length,
+          hasMessage: !!hotFilesMessage,
+          messageLength: hotFilesMessage?.length || 0,
+        });
+        
+        if (hotFilesMessage) {
+          llmMessages.unshift({
+            role: 'user',
+            content: hotFilesMessage,
+          });
+          
+          logger.info('conversation.history.hot_files.injected', {
+            conversationId,
+            hotFiles: hotFilesList.length,
+            messageLength: hotFilesMessage.length,
+          });
+        } else if (hotFilesList.length > 0) {
+          logger.warn('conversation.history.hot_files.no_message', {
+            conversationId,
+            hotFilesCount: hotFilesList.length,
+            reason: 'Hot files identified but no message generated',
+          });
+        }
+      } else {
+        logger.warn('conversation.history.hot_files.skipped', {
+          conversationId,
+          hasStrategy: !!hotFileStrategy,
+          hasAppPath: !!appPath,
+        });
+      }
+      
+      logger.info('conversation.history.compression.applied', {
+        conversationId,
         originalMessages: compressionResult.stats.totalMessages,
         compressedMessages: compressionResult.stats.compressedMessages,
         originalLength: compressionResult.stats.originalTotalLength,

@@ -936,7 +936,19 @@ export class WebSocketServer {
         // This ensures todo list context and other dynamic state is current
         if (iterationCount > 1) {
           processedContext = this.processContext(data, socketId)
-          console.log(`🔄 Refreshed context for handoff iteration ${iterationCount}`)
+          
+          // Reload conversation history for the new agent
+          // This is critical - the new agent needs the full conversation history
+          const { conversationHistory, ...dataWithoutHistory } = data
+          const iterationData: ChatMessage = {
+            ...dataWithoutHistory,
+            message: currentMessage
+          }
+          
+          await this.loadConversationHistory(socketId, iterationData, processedContext)
+          
+          // Use the iteration data with fresh history
+          data = iterationData
         }
 
         // Create message data for this iteration
@@ -1079,8 +1091,8 @@ export class WebSocketServer {
     // Check if we already have an active conversation for this socket
     const existingConversation = this.activeConversations.get(socketId)
 
-    if (existingConversation && existingConversation.agentName === agentName) {
-      // Reuse existing conversation for the same agent
+    if (existingConversation) {
+      // Reuse existing conversation, even if agent changed (handoff scenario)
       if (this.config.messagePersistence.continueConversation) {
         await this.config.messagePersistence.continueConversation(
           existingConversation.conversationId,
@@ -1089,12 +1101,13 @@ export class WebSocketServer {
         )
       }
 
-      // Update context but keep the same conversation ID
+      // Update agent name and context for handoff
+      existingConversation.agentName = agentName
       existingConversation.context = persistenceContext
       existingConversation.streamingEvents = []
       this.initializeConversationBuffers(existingConversation)
     } else {
-      // Create new conversation (first message or agent switch)
+      // Create new conversation (first message only)
       const conversationId = await this.config.messagePersistence.startConversation(
         data.message,
         persistenceContext
@@ -1203,8 +1216,8 @@ export class WebSocketServer {
         conversation.context
       )
 
-      // Clean up conversation tracking
-      this.activeConversations.delete(socketId)
+      // Don't delete conversation - keep it active for next user message
+      // Only cleanup happens on disconnect or error
     }
 
     // Call completion handler
@@ -1321,11 +1334,19 @@ export class WebSocketServer {
   ): Promise<void> {
     let currentStep = 1
 
-    // Assemble messages using clean interface-based approach
-    const { messages, contextMessages } = await this.assembleMessages(data, context)
-
     // Keep the original user prompt intact - no modification!
     const originalPrompt = data.message
+
+    // if the last message in messages == originalPrompt, remove it
+    if (data.conversationHistory && data.conversationHistory.length > 0) {
+      const lastMessage = data.conversationHistory[data.conversationHistory.length - 1]
+      if (lastMessage && lastMessage.content === originalPrompt) {
+        data.conversationHistory.pop()
+      }
+    }
+
+    // Assemble messages using clean interface-based approach
+    const { messages, contextMessages } = await this.assembleMessages(data, context)
 
     const activeConversation = this.activeConversations.get(socket.id)
     if (activeConversation && this.config.messagePersistence?.startAgentTurn) {

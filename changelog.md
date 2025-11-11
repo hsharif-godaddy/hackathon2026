@@ -22,6 +22,13 @@
     - `TodoCreateResultSummarizer`: Compresses verbose `create_list` results by ~70%, removing duplicate data already in tool call arguments
     - `TodoMarkDoneAggregator`: Aggregates multiple `mark_done` operations into single progress summary
   - **Tool Result Summarization**: Concise summaries for common tools (readFile, directoryListing, git) with tool-specific compression rules
+  - **Agent Handoff History Fix**: Fixed conversation history loss during agent handoffs (e.g., develop → color-scheme)
+    - Added `loadDatabaseMessagesByConversationId()`: Loads messages by conversationId only, not filtered by agent
+    - Added `loadMessagesWithTokenLimitByConversationId()`: Full history loading pipeline using conversationId
+    - Updated `MessageProvider` in WebSocket server to use conversationId instead of appId+agentName filtering
+    - Fixed history reloading during handoff iterations: strips old history and reloads fresh from database
+    - Fixed conversation persistence: handoffs now reuse existing conversationId instead of creating new conversations
+    - Agents now receive complete conversation history during handoffs, maintaining full context across all interactions
   - Fixed database field name mismatches: Added `getMessagesForHistory()` method to normalize `toolCall`/`tool_call` and `result`/`output` variations
   - All changes use `message.segments` as source of truth, not legacy `message.content` field
   - Comprehensive test suite: 40+ tests covering all strategies and edge cases

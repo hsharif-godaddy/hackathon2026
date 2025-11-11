@@ -329,27 +329,28 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       async loadMessages(conversationId: string, context: Record<string, unknown>): Promise<ConversationMessage[]> {
         if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
           logger.debug('websocket.message.provider.loading', {
-            message: 'Loading conversation messages'
+            message: 'Loading conversation messages',
+            conversationId
           })
         }
 
-        // Extract appId and agentName from context
+        // Extract appId and agentName from context for logging
         const metadata = (context?.metadata as any) || {}
         const appId = metadata.appId
-        const agentName = metadata.agentId || 'develop' // Default to develop agent
+        const agentName = metadata.agentId || 'develop'
 
-        if (!appId) {
-          logger.warn('websocket.message.provider.no_app_id', {
-            message: 'No appId found in context, cannot load conversation history'
+        if (!conversationId) {
+          logger.warn('websocket.message.provider.no_conversation_id', {
+            message: 'No conversationId provided, cannot load conversation history'
           })
           return []
         }
 
-        const contextLogger = log.withContext({ appId, agentId: agentName })
+        const contextLogger = log.withContext({ conversationId, appId, agentId: agentName })
 
         if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
           contextLogger.debug('websocket.message.provider.loading_messages', {
-            message: 'Loading ALL messages'
+            message: 'Loading messages by conversationId'
           })
         }
 
@@ -361,9 +362,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const modelName = metadata.modelName || 'sonnet';
           const historyLoader = conversationContextManager.getHistoryLoader();
           
-          const llmMessages = await historyLoader.loadMessagesWithTokenLimit(
-            appId,
-            agentName,
+          const llmMessages = await historyLoader.loadMessagesWithTokenLimitByConversationId(
+            conversationId,
             40000,
             modelName,
             true,
@@ -375,6 +375,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
             logger.debug('websocket.message.provider.success', {
               message: 'Loaded and formatted messages',
+              conversationId,
               messageCount: formattedMessages.length
             })
           }
@@ -383,6 +384,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         } catch (error) {
           logger.error('websocket.message.provider.failure', {
             message: 'Error in MessageProvider',
+            conversationId,
             error: error instanceof Error ? error.message : String(error)
           })
           return []
