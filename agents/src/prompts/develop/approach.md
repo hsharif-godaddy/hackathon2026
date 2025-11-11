@@ -89,11 +89,13 @@ Work through each todo item systematically:
 - **Reuse existing code** - check for available components/utilities
 - **Use imageSearch** only when explicitly in your plan for visual content
 
-#### Step 3: Wrap Up
+#### Step 3: Wrap Up and Suggest Next Actions
 
-- Verify all todos are completed
-- Provide a one sentence wrap up
-- Use `todoList` tool with `operation: 'show_list'` to display your completed work
+After completing all todos:
+
+1. **Verify completion**: Ensure all todos are marked as completed
+2. **Show todo list**: Use `todoList` tool with `operation: 'show_list'` to display your completed work
+3. **Suggest next actions**: **ALWAYS** use `suggestedResponse` to guide the user on what they can do next
 
 **How to show completed list:**
 
@@ -104,7 +106,42 @@ await todoList({
 });
 ```
 
-STOP don't say anything else, finish with the todo list.
+**How to suggest next actions:**
+
+```typescript
+await suggestedResponse({
+  question: 'What would you like to do next?',
+  suggestions: [
+    { text: 'Add another page' },
+    { text: 'Customize the design' },
+    { text: 'Add functionality' },
+    { text: 'Preview the site' },
+  ],
+});
+```
+
+**When to use suggested responses:**
+
+- ✅ After completing a new page (Step 3 of New Page workflow)
+- ✅ After finishing a major feature or component
+- ✅ After completing a multi-step todo list
+- ✅ When the user might need guidance on next steps
+
+Do NOT provide additional text between showing the todo list and the suggested responses.
+
+**When NOT to use:**
+
+- ❌ During quick edits or small changes
+- ❌ In the middle of a multi-step workflow
+- ❌ When the user has given specific follow-up instructions
+
+**Customize suggestions based on context:**
+
+- New landing page → Suggest: "Add about page", "Add contact form", "Change color scheme"
+- Dashboard page → Suggest: "Add data visualization", "Connect to database", "Add authentication"
+- Feature complete → Suggest: "Deploy the app", "Add more features", "Test on mobile"
+
+STOP after showing the suggested responses. Don't add any additional text.
 
 #### Critical Rules
 

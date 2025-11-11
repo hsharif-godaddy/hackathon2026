@@ -253,6 +253,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Widget rendering
       //widgetRender: allAILibTools.widgetRender,
 
+      // User interaction
+      suggestedResponse: allAILibTools.suggestedResponse,
+
       // Handoff tools will be added by the factory when needed
     },
 
