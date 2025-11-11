@@ -226,8 +226,8 @@ export class ConversationContextManager {
     const maxTokens = 40000;
     
     try {
-      const llmMessages = await this.historyLoader.loadMessagesWithTokenLimitByConversationId(
-        conversationId,
+      const llmMessages = await this.historyLoader.loadMessagesWithTokenLimitByAppId(
+        appId,
         maxTokens,
         undefined,
         true,
@@ -235,7 +235,6 @@ export class ConversationContextManager {
       );
       
       logger.debug('conversation.history.compressed.loaded', {
-        conversationId,
         appId,
         messageCount: llmMessages.length,
       });
@@ -243,7 +242,6 @@ export class ConversationContextManager {
       return llmMessages;
     } catch (error) {
       logger.error('conversation.history.compressed.load_failure', {
-        conversationId,
         appId,
         error: error instanceof Error ? error.message : String(error),
       });

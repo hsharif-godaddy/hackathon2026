@@ -362,8 +362,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const modelName = metadata.modelName || 'sonnet';
           const historyLoader = conversationContextManager.getHistoryLoader();
           
-          const llmMessages = await historyLoader.loadMessagesWithTokenLimitByConversationId(
-            conversationId,
+          const llmMessages = await historyLoader.loadMessagesWithTokenLimitByAppId(
+            appId,
             40000,
             modelName,
             true,
@@ -375,7 +375,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
             logger.debug('websocket.message.provider.success', {
               message: 'Loaded and formatted messages',
-              conversationId,
+              appId,
               messageCount: formattedMessages.length
             })
           }
