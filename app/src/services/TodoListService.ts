@@ -57,6 +57,15 @@ export class TodoListService {
       
       const response = await agentFetch(url, { siteId: appId })
       
+      // Handle 404 gracefully - older agent versions don't have todo list endpoints
+      if (response.status === 404) {
+        logger.debug('todo-list-service.get-current.not-found', {
+          appId,
+          message: 'Todo list endpoint not available (older agent version)'
+        })
+        return null
+      }
+      
       if (!response.ok) {
         throw new Error(`Failed to fetch current todo list: ${response.status}`)
       }
