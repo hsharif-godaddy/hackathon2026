@@ -323,12 +323,14 @@ export class GrepTool {
         allFiles.add(searchPath);
       } else if (stat.isDirectory()) {
         // Find all matching files in directory
+        // Use glob patterns directly with cwd set to searchPath
+        // This is more reliable than path.join which can break glob patterns
         for (const includePattern of options.includePatterns) {
-          const pattern = path.join(searchPath, includePattern);
-          const files = await glob(pattern, {
+          const files = await glob(includePattern, {
             ignore: options.excludePatterns,
             nodir: true,
-            absolute: true
+            absolute: true,
+            cwd: searchPath  // Set cwd so patterns resolve relative to searchPath
           });
 
           // Validate each file from glob results

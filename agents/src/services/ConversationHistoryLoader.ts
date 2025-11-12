@@ -254,20 +254,8 @@ export class ConversationHistoryLoader {
       } else if (segment.type === 'tool_call' && segment.tool_call) {
         // Deduplicate tool calls by ID
         if (processedToolCallIds.has(segment.tool_call.id)) {
-          logger.debug('conversation.history.loader.tool_call_duplicate_skipped', {
-            conversationId,
-            toolCallId: segment.tool_call.id,
-            toolName: segment.tool_call.tool_name,
-          });
           continue;
         }
-
-        logger.debug('conversation.history.loader.tool_call_found', {
-          conversationId,
-          toolCallId: segment.tool_call.id,
-          toolName: segment.tool_call.tool_name,
-          hasResult: !!segment.tool_call.tool_result,
-        });
 
         if (!segment.tool_call.tool_result) {
           logger.warn('conversation.history.loader.tool_call_skipped', {
@@ -762,13 +750,6 @@ export class ConversationHistoryLoader {
       
       if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
         result.tool_calls = msg.tool_calls;
-        
-        logger.debug('conversation.history.loader.tool_calls_preserved', {
-          appId,
-          agentId,
-          toolCallsCount: msg.tool_calls.length,
-          toolNames: msg.tool_calls.map((tc: any) => tc.function.name)
-        });
       }
       
       formattedMessages.push(result);
