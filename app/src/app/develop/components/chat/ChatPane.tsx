@@ -351,7 +351,7 @@ export default function ChatPane({
         onToggleExpandedPlan={toggleExpandedPlan}
       />
       
-      <PersistentTodoList />
+      {activeChatTab === ChatTab.CHAT && <PersistentTodoList />}
 
       {activeChatTab === ChatTab.APPS && (
         <Apps />
