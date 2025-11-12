@@ -166,8 +166,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         <Box gap="lg">
           <div className="relative transition-all duration-300 ease-out glowing-input">
             <Box
-              className={clsx('relative !rounded-xxl transition-all duration-300 ease-out !bg-transparent', {
-                'rounded-xl!': isExpanded,
+              className={clsx('relative transition-all duration-300 ease-out !bg-transparent outline-4 outline-solid outline-[rgba(0,0,0,0.15)]', {
+                'rounded-2xl!': isExpanded,
+                'rounded-[3rem]!': !isExpanded
               })}
               elevation="float"
             >
@@ -189,9 +190,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 rows={5}
                 disabled={isLoading}
                 maxLength={MAX_PROMPT_LENGTH + 1}
-                className={clsx('!bg-intents-ux-box-backgroundColor relative rounded-xxl p-5 pr-20 z-10 w-full text-md font-medium resize-none rounded outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
-                  'h-48': isExpanded,
-                  'h-16': !isExpanded
+                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-8 pr-24 z-10 w-full text-3xl font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
+                  'h-60 py-4 rounded-2xl': isExpanded,
+                  'h-24 py-7 rounded-[3rem]': !isExpanded
                 })}
                 placeholder={isTyping ? "" : "Describe your app idea..."}
               />
@@ -201,11 +202,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 data-eid={generateClickEID('homepage.prompt.submit')}
                 disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
                 design='primary'
-                className={clsx('group !bg-ai cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed z-10 !rounded-full aspect-square !p-3', {
-                  'right-4 bottom-4 mb-0.5': isExpanded,
-                  'right-2 bottom-1.5': !isExpanded
-                })}
-                icon={isLoading ? <Spinner size='sm' /> : <WandFilledIcon className="w-4 h-4" />}
+                className="group !bg-ai cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed z-10 !rounded-full aspect-square !p-5 !border-none right-4 bottom-4"
+                icon={isLoading ? <Spinner size='sm' /> : <WandFilledIcon />}
                 aria-label={isLoading ? "Building your app..." : "Start building"}
               />
 
@@ -224,7 +222,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
           </div>
 
           <text.p size={-1} className='max-w-lg mx-auto opacity-40 mb-8'>
-            AI can make mistakes, so double check its responses. By using Airo App Builder, you agree to our <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/ai-terms-of-use" className="!text-intents-ux-boxHighContrast-foregroundColor" text="Terms" /> and <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/privacy-policy" className="!text-intents-ux-boxHighContrast-foregroundColor" text="Privacy Policy" />
+            AI can make mistakes, so double check its responses. By using Airo App Builder, you agree to our <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/ai-terms-of-use" className="!text-intents-ux-boxHighContrast-foregroundColor" text="Terms" /> and <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/privacy-policy" className="!text-intents-ux-boxHighContrast-foregroundColor" text="Privacy Policy" />.
           </text.p>
 
           <ExamplesSection

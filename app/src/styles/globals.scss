@@ -226,6 +226,10 @@
     pointer-events: none;
   }
 
+  .glowing-input textarea::placeholder {
+    color: var(--color-ai);
+  }
+
   .glowing-input .ux-box {
     position: relative;
     z-index: 1;
