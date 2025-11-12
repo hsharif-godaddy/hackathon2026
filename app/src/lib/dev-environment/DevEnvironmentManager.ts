@@ -107,15 +107,26 @@ export class DevEnvironmentManager {
 
       // 2. App doesn't exist or is in error state - create/recreate it
       let port: number;
+      let supervisorPort: number | undefined;
 
       if (existingApp) {
-        // Reuse existing port for error recovery
+        // Reuse existing ports for error recovery
         port = existingApp.port;
+        supervisorPort = existingApp.supervisorPort;
         logger.info(`📡 Reusing port ${port} for app ${siteId} (status: ${existingApp.status})`);
+        if (supervisorPort) {
+          logger.info(`📡 Reusing supervisor port ${supervisorPort} for app ${siteId}`);
+        }
       } else {
-        // Allocate new port for new app
+        // Allocate new ports for new app
         port = await this.portManager.getNextAvailablePort();
         logger.info(`📡 Allocated new port ${port} for app ${siteId}`);
+
+        // Allocate supervisor port if using Docker mode
+        if (!this.adapter?.getCapabilities().supportsProcessOperations) {
+          supervisorPort = await this.portManager.getNextAvailableSupervisorPort();
+          logger.info(`📡 Allocated supervisor port ${supervisorPort} for app ${siteId}`);
+        }
       }
 
       // 3. Determine app path
@@ -126,6 +137,7 @@ export class DevEnvironmentManager {
       const devApp = this.devDb.createDevApp({ // eslint-disable-line @typescript-eslint/no-unused-vars
         appId: siteId,
         port,
+        supervisorPort,
         appPath,
         templateVersion,
         status: 'creating'

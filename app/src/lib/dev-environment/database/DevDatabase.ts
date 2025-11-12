@@ -3,6 +3,7 @@ import { logger } from '../../request-context';
 export interface DevAppInfo {
   appId: string;
   port: number;
+  supervisorPort?: number;
   appPath: string;
   templateVersion: string;
   status: 'creating' | 'created' | 'error' | 'running' | 'stopped';
@@ -57,7 +58,7 @@ export class DevDatabase {
       logger.info(`⚠️ Dev app ${devApp.appId} already exists, returning existing record`);
       return existing;
     }
-    
+
     const now = new Date();
     const fullDevApp: DevAppInfo = {
       ...devApp,
@@ -65,10 +66,15 @@ export class DevDatabase {
       createdAt: now,
       updatedAt: now,
     };
-    
+
     this.devApps.set(devApp.appId, fullDevApp);
     this.portAllocations.add(devApp.port);
-    
+
+    // Track supervisor port allocation if provided
+    if (devApp.supervisorPort) {
+      this.portAllocations.add(devApp.supervisorPort);
+    }
+
     return fullDevApp;
   }
 
@@ -92,17 +98,22 @@ export class DevDatabase {
   deleteDevApp(appId: string): boolean {
     const app = this.devApps.get(appId);
     if (!app) return false;
-    
+
     this.devApps.delete(appId);
     this.portAllocations.delete(app.port);
-    
+
+    // Remove supervisor port allocation if it exists
+    if (app.supervisorPort) {
+      this.portAllocations.delete(app.supervisorPort);
+    }
+
     // Remove related running processes
     for (const [processId, process] of this.runningProcesses.entries()) {
       if (process.appId === appId) {
         this.runningProcesses.delete(processId);
       }
     }
-    
+
     return true;
   }
 

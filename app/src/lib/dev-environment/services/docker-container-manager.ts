@@ -8,31 +8,10 @@ import { devSupervisor } from '../../features';
 import { userInfo } from "node:os";
 import { DockerComposeGenerator, type ComposeServiceConfig, type DatabaseConfig } from './docker-compose-generator';
 import { DockerComposeManager } from './docker-compose-manager';
+import { SharedMySQLService } from './shared-mysql-service';
 import * as net from "net";
 
 const execAsync = promisify(exec);
-
-/**
- * Database information for apps with database containers
- */
-export interface DatabaseInfo {
-	appId: string;
-	containerId: string;
-	networkId: string;
-	volumeName: string;
-	credentials: {
-		host: string;               // Container hostname for Docker network
-		port: number;               // Container port (3306)
-		hostMachineHost: string;    // Host for external access (localhost/host.docker.internal)
-		hostMachinePort: number;    // Mapped port on host machine
-		database: string;
-		user: string;
-		password: string;
-		rootPassword: string;
-	};
-	status: "creating" | "running" | "stopped" | "error";
-	createdAt: Date;
-}
 
 /**
  * Determine if TCP mode should be used for dev-supervisor
@@ -49,22 +28,6 @@ function getTcpPort(): string {
 	return devSupervisor.getTcpPort();
 }
 
-/**
- * Calculate supervisor port from app ID using hash-based offset
- * This ensures unique ports even for UUID-based app IDs
- */
-function calculateSupervisorPort(appId: string): number {
-	const basePort = parseInt(getTcpPort()) || 8877;
-	// Generate a numeric offset from the app ID using a simple hash
-	let hash = 0;
-	for (let i = 0; i < appId.length; i++) {
-		hash = ((hash << 5) - hash) + appId.charCodeAt(i);
-		hash = hash & hash; // Convert to 32-bit integer
-	}
-	// Use absolute value and modulo to get a port offset between 0-999
-	const portOffset = Math.abs(hash) % 1000;
-	return basePort + portOffset;
-}
 
 export interface ContainerInfo {
 	appId: string;
@@ -74,10 +37,7 @@ export interface ContainerInfo {
 	status: "building" | "running" | "stopped" | "error";
 	imageName: string;
 	createdAt: Date;
-	hostSocketPath?: string; // Path to dev-supervisor socket on host filesystem (Unix mode)
-	tcpConnectionUrl?: string; // TCP connection URL (TCP mode)
-	supervisorPort?: number; // TCP port for dev-supervisor (TCP mode)
-	databaseInfo?: DatabaseInfo; // Database container information
+	socketPath: string; // Unified: Either Unix socket path or tcp://localhost:PORT
 }
 
 /**
@@ -88,15 +48,16 @@ export class DockerContainerManager {
 	private devDb: DevDatabase;
 	private composeGenerator: DockerComposeGenerator;
 	private composeManager: DockerComposeManager;
+	private sharedMySQLService: SharedMySQLService;
 	private containers = new Map<string, ContainerInfo>();
 	private initialized = false;
 	private activeRebuilds = new Set<string>(); // Track ongoing rebuilds
-	private allocatedPorts = new Set<number>(); // Track allocated database ports
 
 	constructor(devDb: DevDatabase) {
 		this.devDb = devDb;
 		this.composeGenerator = new DockerComposeGenerator();
 		this.composeManager = new DockerComposeManager();
+		this.sharedMySQLService = new SharedMySQLService();
 	}
 
 	/**
@@ -141,68 +102,6 @@ export class DockerContainerManager {
 		return `/tmp/apps/${appId}`;
 	}
 
-	/**
-	 * Check if a port is available on the host machine
-	 */
-	private async isPortAvailable(port: number): Promise<boolean> {
-		return new Promise((resolve) => {
-			const server = net.createServer();
-
-			server.once('error', (_err: NodeJS.ErrnoException) => {
-				resolve(false);
-			});
-
-			server.once('listening', () => {
-				server.close();
-				resolve(true);
-			});
-
-			server.listen(port, '127.0.0.1');
-		});
-	}
-
-	/**
-	 * Find an available port for MySQL host mapping
-	 * Starts from 33060 and increments until an available port is found
-	 */
-	private async findAvailablePort(startPort: number = 33060): Promise<number> {
-		let port = startPort;
-		const maxAttempts = 1000;
-		let attempts = 0;
-
-		while (attempts < maxAttempts) {
-			// Skip if already allocated in this session
-			if (this.allocatedPorts.has(port)) {
-				port++;
-				attempts++;
-				continue;
-			}
-
-			// Check if port is actually available
-			if (await this.isPortAvailable(port)) {
-				this.allocatedPorts.add(port);
-				logger.info("database.port.allocated", {
-					port,
-					startPort,
-					attempts: attempts + 1,
-				});
-				return port;
-			}
-
-			port++;
-			attempts++;
-		}
-
-		throw new Error(`Unable to find available port after ${maxAttempts} attempts starting from ${startPort}`);
-	}
-
-	/**
-	 * Release a port from the allocation set
-	 */
-	private releasePort(port: number): void {
-		this.allocatedPorts.delete(port);
-		logger.info("database.port.released", { port });
-	}
 
 	/**
 	 * Write database credentials to .env file for host machine access
@@ -260,9 +159,9 @@ export class DockerContainerManager {
 			await execAsync("docker compose version");
 			logger.info('✅ Docker Compose availability verified');
 
-			// Ensure shared network exists
-			await this.composeManager.ensureSharedNetwork();
-			logger.info('✅ Shared network ensured');
+			// Initialize shared MySQL service (also ensures network exists and connects MySQL container)
+			await this.sharedMySQLService.initialize();
+			logger.info('✅ Shared MySQL service initialized');
 
 			// Build dev-supervisor image if needed
 			await this.ensureDevSupervisorImage();
@@ -356,19 +255,20 @@ export class DockerContainerManager {
 
 			// Determine connection mode for dev-supervisor
 			const useTcp = shouldUseTcpMode();
-			let hostSocketPath: string | undefined;
-			let tcpConnectionUrl: string | undefined;
-			let supervisorPort: number | undefined;
+			let socketPath: string;
 
 			if (useTcp) {
-				// TCP mode - use port mapping with hash-based offset to avoid conflicts
-				supervisorPort = calculateSupervisorPort(dockerSafeId);
-				tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
-				logger.info(`📡 Using TCP mode for dev-supervisor: ${tcpConnectionUrl}`);
+				// TCP mode - get pre-allocated supervisor port from DevDatabase
+				const devApp = this.devDb.findDevAppById(appId);
+				if (!devApp?.supervisorPort) {
+					throw new Error(`Supervisor port not allocated for app ${appId}. Port should be allocated at app creation time.`);
+				}
+				socketPath = `tcp://localhost:${devApp.supervisorPort}`;
+				logger.info(`📡 Using TCP mode for dev-supervisor: ${socketPath}`);
 			} else {
 				// Unix socket mode
 				const hostSocketDir = `/tmp/dev-supervisor-${dockerSafeId}`;
-				hostSocketPath = `${hostSocketDir}/dev-supervisor.sock`;
+				socketPath = `${hostSocketDir}/dev-supervisor.sock`;
 
 				// Ensure socket directory exists and has correct permissions using safe fs operations
 				// Use 777 permissions to allow container processes to write socket files
@@ -377,40 +277,17 @@ export class DockerContainerManager {
 				} catch (error) {
 					logger.warn(`⚠️ Failed to create socket directory ${hostSocketDir}:`, error);
 				}
-				logger.info(`🔌 Using Unix socket mode for dev-supervisor: ${hostSocketPath}`);
+				logger.info(`🔌 Using Unix socket mode for dev-supervisor: ${socketPath}`);
 			}
 
-			// Generate database configuration (always needed for v8 template)
-			// Allocate port for database
-			const dbPort = await this.findAvailablePort();
-
-			// Generate database configuration
-			const dbConfig = this.composeGenerator.generateDatabaseConfig(appId, dbPort);
+			// Provision database in shared MySQL instance
+			logger.info(`🗄️ Provisioning database for app ${appId} in shared MySQL`);
+			const dbConfig = await this.sharedMySQLService.provisionDatabase(appId);
 
 			// Write database credentials to .env file for host machine access
 			this.writeDatabaseEnvFile(appPath, dbConfig);
 
-			logger.info(`🗄️ Generated database configuration for app ${appId}`);
-
-			// Create DatabaseInfo for compatibility with existing code
-			const databaseInfo: DatabaseInfo = {
-				appId,
-				containerId: '', // Will be set after compose up
-				networkId: 'airo-apps-shared',
-				volumeName: `airo-app-${dockerSafeId}-mysql-data`,
-				credentials: {
-					host: dbConfig.host,
-					port: dbConfig.port,
-					hostMachineHost: 'localhost',
-					hostMachinePort: dbConfig.hostMachinePort,
-					database: dbConfig.database,
-					user: dbConfig.user,
-					password: dbConfig.password,
-					rootPassword: dbConfig.rootPassword,
-				},
-				status: 'creating',
-				createdAt: new Date(),
-			};
+			logger.info(`✅ Database provisioned for app ${appId}`);
 
 			// Generate compose configuration
 			const composeConfig: ComposeServiceConfig = {
@@ -422,8 +299,7 @@ export class DockerContainerManager {
 				uid,
 				gid,
 				useTcp,
-				supervisorPort,
-				socketPath: hostSocketPath,
+				socketPath,
 			};
 
 			// Generate docker-compose.yml
@@ -457,25 +333,6 @@ export class DockerContainerManager {
 
 			logger.info(`✅ Docker Compose stack started for app ${appId}`);
 
-			// Wait for database to be ready (v8 always includes database)
-			if (databaseInfo) {
-				logger.info(`⏳ Waiting for database to be ready for app ${appId}`);
-				const dbReady = await this.composeManager.waitForDatabase(appPath);
-
-				if (!dbReady) {
-					throw new Error('Database failed to become ready');
-				}
-
-				logger.info(`✅ Database ready for app ${appId}`);
-
-				// Get database container ID
-				const dbContainerId = await this.composeManager.getContainerId(appPath, 'db');
-				if (dbContainerId) {
-					databaseInfo.containerId = dbContainerId;
-					databaseInfo.status = 'running';
-				}
-			}
-
 			// Get app container ID
 			const containerId = await this.composeManager.getContainerId(appPath, 'app');
 
@@ -493,10 +350,7 @@ export class DockerContainerManager {
 				status: "running",
 				imageName,
 				createdAt: new Date(),
-				hostSocketPath,
-				tcpConnectionUrl,
-				supervisorPort,
-				databaseInfo,
+				socketPath,
 			};
 
 			// Store in memory and database
@@ -510,6 +364,14 @@ export class DockerContainerManager {
 			return containerInfo;
 		} catch (error: any) {
 			logger.error(`❌ Container creation failed for app ${appId}:`, error);
+
+			// Clean up provisioned database if container creation failed
+			try {
+				await this.sharedMySQLService.dropDatabase(appId);
+				logger.info(`🧹 Cleaned up database for failed app ${appId}`);
+			} catch (dbCleanupError) {
+				logger.warn(`⚠️ Failed to cleanup database for app ${appId}:`, dbCleanupError);
+			}
 
 			throw new Error(`Container creation failed: ${error.message}`);
 		}
@@ -574,17 +436,21 @@ export class DockerContainerManager {
 
 			logger.info(`✅ Docker Compose stack removed for app ${appId}`);
 
+			// Drop database and user from shared MySQL
+			try {
+				await this.sharedMySQLService.dropDatabase(appId);
+				logger.info(`✅ Database dropped for app ${appId}`);
+			} catch (dbError) {
+				logger.warn(`⚠️ Failed to drop database for app ${appId}:`, dbError);
+				// Continue with cleanup even if database drop fails
+			}
+
 			// Remove image
 			try {
 				await execAsync(`docker rmi ${containerInfo.imageName}`);
 				logger.info(`🗑️ Docker image removed: ${containerInfo.imageName}`);
 			} catch (imageError) {
 				logger.info(`ℹ️ Docker image may be in use, skipping removal: ${containerInfo.imageName}`);
-			}
-
-			// Release database port if allocated
-			if (containerInfo.databaseInfo) {
-				this.releasePort(containerInfo.databaseInfo.credentials.hostMachinePort);
 			}
 
 			// Remove from memory and database
@@ -724,6 +590,20 @@ export class DockerContainerManager {
 
 		return runningRecords.map((record) => {
 			const sanitizedId = this.sanitizeAppId(record.appId);
+			let socketPath: string;
+
+			if (useTcp) {
+				const devApp = this.devDb.findDevAppById(record.appId);
+				if (!devApp?.supervisorPort) {
+					logger.warn(`⚠️ Supervisor port not found for app ${record.appId} during container listing`);
+					socketPath = `tcp://localhost:8877`; // Use default port as fallback
+				} else {
+					socketPath = `tcp://localhost:${devApp.supervisorPort}`;
+				}
+			} else {
+				socketPath = `/tmp/dev-supervisor-${sanitizedId}/dev-supervisor.sock`;
+			}
+
 			const containerInfo: ContainerInfo = {
 				appId: record.appId,
 				containerId: `container-${record.appId}`, // Docker containers would have real IDs
@@ -732,15 +612,8 @@ export class DockerContainerManager {
 				status: "running" as const,
 				imageName: `airo-app-${sanitizedId}:dev`,
 				createdAt: new Date(record.startedAt),
+				socketPath,
 			};
-
-			if (useTcp) {
-				const supervisorPort = calculateSupervisorPort(sanitizedId);
-				containerInfo.tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
-				containerInfo.supervisorPort = supervisorPort;
-			} else {
-				containerInfo.hostSocketPath = `/tmp/dev-supervisor-${sanitizedId}/dev-supervisor.sock`;
-			}
 
 			return containerInfo;
 		});
@@ -755,7 +628,7 @@ export class DockerContainerManager {
 			return null;
 		}
 
-		return containerInfo.tcpConnectionUrl || containerInfo.hostSocketPath || null;
+		return containerInfo.socketPath;
 	}
 
 	/**
@@ -786,6 +659,20 @@ export class DockerContainerManager {
 						// Stack is running - recover it
 						const safeAppId = this.sanitizeAppId(record.appId);
 						const useTcp = shouldUseTcpMode();
+						let socketPath: string;
+
+						// Set supervisor connection info
+						if (useTcp) {
+							const devApp = this.devDb.findDevAppById(record.appId);
+							if (!devApp?.supervisorPort) {
+								logger.warn(`⚠️ Supervisor port not found for app ${record.appId} during recovery`);
+								socketPath = `tcp://localhost:8877`; // Use default port as fallback
+							} else {
+								socketPath = `tcp://localhost:${devApp.supervisorPort}`;
+							}
+						} else {
+							socketPath = `/tmp/dev-supervisor-${safeAppId}/dev-supervisor.sock`;
+						}
 
 						const containerInfo: ContainerInfo = {
 							appId: record.appId,
@@ -795,16 +682,10 @@ export class DockerContainerManager {
 							status: "running",
 							imageName: record.imageName,
 							createdAt: record.createdAt,
+							socketPath,
 						};
 
-					// Set supervisor connection info
-					if (useTcp) {
-						const supervisorPort = calculateSupervisorPort(safeAppId);
-						containerInfo.tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
-						containerInfo.supervisorPort = supervisorPort;
-					} else {
-						containerInfo.hostSocketPath = `/tmp/dev-supervisor-${safeAppId}/dev-supervisor.sock`;
-					}						// Add to in-memory tracking
+						// Add to in-memory tracking
 						this.containers.set(record.appId, containerInfo);
 
 						recoveredCount++;
@@ -932,6 +813,19 @@ export class DockerContainerManager {
 
 		const sanitizedId = this.sanitizeAppId(record.appId);
 		const useTcp = shouldUseTcpMode();
+		let socketPath: string;
+
+		if (useTcp) {
+			const devApp = this.devDb.findDevAppById(record.appId);
+			if (!devApp?.supervisorPort) {
+				logger.warn(`⚠️ Supervisor port not found for app ${record.appId} in database`);
+				socketPath = `tcp://localhost:8877`; // Use default port as fallback
+			} else {
+				socketPath = `tcp://localhost:${devApp.supervisorPort}`;
+			}
+		} else {
+			socketPath = `/tmp/dev-supervisor-${sanitizedId}/dev-supervisor.sock`;
+		}
 
 		const containerInfo: ContainerInfo = {
 			appId: record.appId,
@@ -941,15 +835,8 @@ export class DockerContainerManager {
 			status: "running",
 			imageName: `airo-app-${sanitizedId}:dev`,
 			createdAt: new Date(record.startedAt),
+			socketPath,
 		};
-
-		if (useTcp) {
-			const supervisorPort = calculateSupervisorPort(sanitizedId);
-			containerInfo.tcpConnectionUrl = `tcp://localhost:${supervisorPort}`;
-			containerInfo.supervisorPort = supervisorPort;
-		} else {
-			containerInfo.hostSocketPath = `/tmp/dev-supervisor-${sanitizedId}/dev-supervisor.sock`;
-		}
 
 		return containerInfo;
 	}

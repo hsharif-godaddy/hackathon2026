@@ -1,4 +1,3 @@
-import { randomBytes } from "crypto";
 import { logger } from '../../request-context';
 
 /**
@@ -16,8 +15,7 @@ export interface ComposeServiceConfig {
 	uid: number;
 	gid: number;
 	useTcp: boolean;
-	supervisorPort?: number;
-	socketPath?: string;
+	socketPath: string;
 }
 
 export interface DatabaseConfig {
@@ -36,39 +34,6 @@ export interface DatabaseConfig {
  */
 export class DockerComposeGenerator {
 	/**
-	 * Sanitize app ID for safe use in Docker names
-	 */
-	private sanitizeAppId(appId: string): string {
-		return appId
-			.toLowerCase()
-			.replace(/[^a-z0-9.-]/g, "")
-			.replace(/^[.-]+|[.-]+$/g, "")
-			.substring(0, 63);
-	}
-
-	/**
-	 * Generate secure random password
-	 */
-	generatePassword(): string {
-		return randomBytes(16).toString('hex');
-	}
-
-	/**
-	 * Generate database configuration
-	 */
-	generateDatabaseConfig(appId: string, hostMachinePort: number): DatabaseConfig {
-		return {
-			host: 'db', // Simple service name within compose stack
-			port: 3306,
-			hostMachinePort,
-			database: "appdb",
-			user: "appuser",
-			password: this.generatePassword(),
-			rootPassword: this.generatePassword(),
-		};
-	}
-
-	/**
 	 * Generate environment variables for app service
 	 */
 	private generateAppEnvironment(config: ComposeServiceConfig, dbConfig?: DatabaseConfig): Record<string, string> {
@@ -78,10 +43,12 @@ export class DockerComposeGenerator {
 		};
 
 		// Dev-supervisor configuration
-		if (config.useTcp && config.supervisorPort) {
+		if (config.useTcp && config.socketPath?.startsWith('tcp://')) {
+			// TCP mode - container always listens on constant port 8877
 			env.DEV_SUPERVISOR_USE_TCP = "true";
 			env.DEV_SUPERVISOR_TCP_PORT = DEV_SUPERVISOR_CONTAINER_PORT.toString();
 		} else if (config.socketPath) {
+			// Unix socket mode
 			env.DEV_SUPERVISOR_SOCKET_PATH = "/tmp/supervisor/dev-supervisor.sock";
 		}
 
@@ -135,10 +102,9 @@ export class DockerComposeGenerator {
 
 	/**
 	 * Generate docker-compose.yml content
+	 * Note: Database service removed - apps now use shared MySQL instance
 	 */
 	generateComposeFile(config: ComposeServiceConfig, dbConfig?: DatabaseConfig): string {
-		const dockerSafeId = this.sanitizeAppId(config.appId);
-
 		logger.info("compose.generate.begin", {
 			appId: config.appId,
 			templateVersion: config.templateVersion,
@@ -154,14 +120,28 @@ export class DockerComposeGenerator {
 
 		// Build port mappings
 		const ports = [this.getAppPortMapping(config)];
-		if (config.useTcp && config.supervisorPort) {
-			// Map host port to constant container port
-			ports.push(`${config.supervisorPort}:${DEV_SUPERVISOR_CONTAINER_PORT}`);
+
+		// Extract supervisor port from socketPath if in TCP mode
+		if (config.useTcp && config.socketPath?.startsWith('tcp://')) {
+			try {
+				const url = new URL(config.socketPath);
+				const supervisorPort = parseInt(url.port);
+				if (supervisorPort && !isNaN(supervisorPort)) {
+					// Map host port to constant container port
+					ports.push(`${supervisorPort}:${DEV_SUPERVISOR_CONTAINER_PORT}`);
+				}
+			} catch (error) {
+				logger.warn("compose.generate.port_parse_failed", {
+					socketPath: config.socketPath,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
 		}
+
 		const portLines = ports.map(port => `      - "${port}"`).join('\n');
 
-		// Build the compose file
-		let composeContent = `---
+		// Build the compose file (app service only - no per-app database)
+		const composeContent = `---
 
 services:
   app:
@@ -181,58 +161,16 @@ ${envLines}
 ${volumeLines}
     networks:
       - app-network
-`;
 
-		// Add database dependency (always needed for v8)
-		if (dbConfig) {
-			composeContent += `    depends_on:
-      db:
-        condition: service_healthy
-`;
-		}
-
-		// Add database service (always needed for v8)
-		if (dbConfig) {
-			composeContent += `
-  db:
-    image: mysql:8.0
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:${dbConfig.hostMachinePort}:3306"
-    environment:
-      MYSQL_ROOT_PASSWORD: "${dbConfig.rootPassword}"
-      MYSQL_DATABASE: "${dbConfig.database}"
-      MYSQL_USER: "${dbConfig.user}"
-      MYSQL_PASSWORD: "${dbConfig.password}"
-    volumes:
-      - mysql-data:/var/lib/mysql
-    networks:
-      - app-network
-    command: --default-authentication-plugin=mysql_native_password
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--silent"]
-      interval: 2s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
-`;
-		}
-
-		// Add networks and volumes
-		composeContent += `
 networks:
   app-network:
     external: true
-    name: airo-apps-shared
-
-volumes:
-  mysql-data:
-    name: airo-app-${dockerSafeId}-mysql-data
+    name: airo-network
 `;
 
 		logger.info("compose.generate.success", {
 			appId: config.appId,
-			services: 2, // app + database (v8 always includes database)
+			services: 1, // app only (database is shared)
 		});
 
 		return composeContent;
@@ -240,6 +178,7 @@ volumes:
 
 	/**
 	 * Generate .env file content for host machine access
+	 * Note: Simplified for shared MySQL - no per-app port mapping needed
 	 */
 	generateEnvFile(dbConfig: DatabaseConfig, existingEnvContent?: string): string {
 		logger.info("compose.env.generate.begin", {
@@ -267,7 +206,7 @@ volumes:
 		const envLines: string[] = [
 			...preservedLines,
 			'',
-			'# Database credentials (auto-generated)',
+			'# Database credentials (shared MySQL instance)',
 			`DATABASE_URL=mysql://${dbConfig.user}:${dbConfig.password}@${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`,
 			'',
 			'# Internal Docker network endpoint (for app container)',
@@ -282,7 +221,6 @@ volumes:
 			`MYSQL_DATABASE=${dbConfig.database}`,
 			`MYSQL_USER=${dbConfig.user}`,
 			`MYSQL_PASSWORD=${dbConfig.password}`,
-			`MYSQL_ROOT_PASSWORD=${dbConfig.rootPassword}`,
 			''
 		];
 

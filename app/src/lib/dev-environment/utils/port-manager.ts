@@ -5,10 +5,12 @@ import { DevDatabase } from '../database/DevDatabase';
 /**
  * Port Manager
  * Manages port allocation for dev apps starting from 5000
+ * Manages supervisor port allocation starting from 8877
  */
 export class PortManager {
   private devDb: DevDatabase;
   private readonly START_PORT = 5000;
+  private readonly START_SUPERVISOR_PORT = 8877;
   private readonly MAX_PORT = 65535;
 
   constructor(devDb: DevDatabase) {
@@ -106,6 +108,42 @@ export class PortManager {
         });
       });
     }
+  }
+
+  /**
+   * Find the next available supervisor port starting from 8877
+   * Uses the same allocation strategy as getNextAvailablePort() but in a different range
+   */
+  async getNextAvailableSupervisorPort(): Promise<number> {
+    const maxRetries = 10;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      // Get all currently used ports from the dev database (fresh query each time)
+      const usedPorts = this.devDb.getAllocatedPorts();
+
+      // Find the first available port starting from START_SUPERVISOR_PORT
+      for (let port = this.START_SUPERVISOR_PORT; port <= this.MAX_PORT; port++) {
+        if (!usedPorts.includes(port) && await this.isPortAvailable(port)) {
+          // Double-check the database again right before returning
+          // This helps catch race conditions where another process allocated this port
+          const freshUsedPorts = this.devDb.getAllocatedPorts();
+          if (!freshUsedPorts.includes(port)) {
+            logger.info(`✅ Supervisor port ${port} allocated successfully (attempt ${attempt + 1})`);
+            return port;
+          } else {
+            logger.info(`⚠️ Supervisor port ${port} was allocated by another process, retrying...`);
+            break; // Break inner loop to retry with fresh port list
+          }
+        }
+      }
+
+      if (attempt < maxRetries - 1) {
+        // Small delay before retry to avoid tight polling
+        await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 50));
+      }
+    }
+
+    throw new Error('No available supervisor ports found after multiple attempts');
   }
 
   /**

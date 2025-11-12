@@ -72,6 +72,7 @@ services:
       - airo-network
 
   # MySQL database for app local development
+  # Shared by main app and generated apps via airo-network
   app-mysql:
     image: mysql:8.0
     container_name: airo-app-mysql
@@ -115,6 +116,7 @@ services:
 networks:
   airo-network:
     driver: bridge
+    name: airo-network
 
 # SQLite databases are stored in mounted volumes, both MySQL and Qdrant data persisted in volumes
 volumes:

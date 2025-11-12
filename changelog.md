@@ -11,6 +11,38 @@
 
 ### Internal Changes
 
+- **Shared MySQL Database Architecture**: Consolidated per-app MySQL containers to a single shared MySQL instance for better resource utilization and production parity
+  - Added `SharedMySQLService`: Manages database and user provisioning in the shared MySQL instance
+    - Each app gets unique database (airo*{appId}) and user (user_airo*{appId}) with isolated permissions
+    - Automatic database/user creation on app start, cleanup on app deletion
+    - Health check with exponential backoff retry logic
+    - Parameterized SQL queries to prevent SQL injection vulnerabilities
+    - Proper connection management with finally blocks to prevent connection leaks
+  - Added shared utilities: `password-generator.ts` and `sanitizers.ts` (context-specific for MySQL vs Docker naming)
+  - Updated `DockerComposeGenerator`: Removed per-app database service generation, simplified to app-only compose files
+  - Updated `DockerContainerManager`: Integrated SharedMySQLService for database lifecycle management
+  - Updated `docker-compose.yml`: Shared MySQL (airo-app-mysql) on airo-network, shared by all services and generated apps
+  - **Breaking Change**: No backward compatibility - existing apps must be deleted and recreated to use shared MySQL
+  - Better models production architecture where apps share database infrastructure with isolated schemas
+  - Eliminates per-app MySQL containers, reducing Docker resource overhead
+  - Comprehensive error handling: Database cleanup on container creation failure, idempotent drop operations
+  - Removed redundant network management code:
+    - Deleted unused `ensureSharedNetwork()` method from DockerComposeManager
+    - Deleted `ensureNetworkConnectivity()` method from SharedMySQLService
+    - Network creation and MySQL container connection now handled entirely by root docker-compose.yml
+    - Simplified initialization to only health check MySQL, no network management needed
+  - Removed legacy `DatabaseInfo` interface and related code:
+    - Deleted unused `DatabaseInfo` interface with per-app container/volume/network fields
+    - Removed `databaseInfo` field from `ContainerInfo` (never read, only written)
+    - Cleaned up ~35 lines of dead code creating/updating DatabaseInfo objects
+    - Database credentials now only stored in .env files and SharedMySQLService, not in memory
+  - Consolidated Docker networks for simplicity:
+    - Removed separate `airo-apps-shared` network
+    - All services and generated apps now use single `airo-network`
+    - Added explicit `name: airo-network` to prevent Docker Compose project name prefix
+    - Simpler architecture for local development with no security trade-off
+    - Updated docker-compose-generator.ts and documentation
+
 - **Conversation History Management System**: Intelligent context loading with compression strategies for massive token savings and improved agent performance
   - Added `ConversationHistoryLoader`: Clean Unix pipe-like architecture for loading conversation history with verification at each step
   - Methods: `loadDatabaseMessages()` → `convertToLLMMessages()` → `compressMessages()` → `applyTokenLimit()`
