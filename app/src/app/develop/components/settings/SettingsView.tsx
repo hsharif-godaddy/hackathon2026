@@ -12,24 +12,29 @@ import { useSwitchboard } from '@/hooks/useSwitchboard';
 
 export default function SettingsView() {
   const { activeSettingsSection } = useDevelopPageStore()
-  const { featureFlags } = useSwitchboard();
   const appId = useAppIdFromParams()
+
+  const { data: isProjectEnabled } = useSwitchboard('appbuilder-settings-project');
+  const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain');
+  const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups');
+  const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
+  const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
 
   const renderSection = () => {
     switch (activeSettingsSection) {
       case SettingsSection.PROJECT:
-        return featureFlags['appbuilder-settings-project'] ? <ProjectPanel /> : null;
+        return isProjectEnabled ? <ProjectPanel /> : null;
       case SettingsSection.DOMAIN:
-        return featureFlags['appbuilder-settings-domain'] ? <DomainPanel /> : null;
+        return isDomainEnabled ? <DomainPanel /> : null;
       case SettingsSection.BACKUPS:
-        return featureFlags['appbuilder-settings-backups'] ? <BackupsPanel /> : null;
+        return isBackupsEnabled ? <BackupsPanel /> : null;
       case SettingsSection.SECURITY:
-        return featureFlags['appbuilder-settings-security'] ? <SecurityPanel /> : null;
+        return isSecurityEnabled ? <SecurityPanel /> : null;
       case SettingsSection.DATABASE:
-        return featureFlags['appbuilder-settings-database'] ? <DatabasePanel appId={appId} /> : null;
+        return isDatabaseEnabled ? <DatabasePanel appId={appId} /> : null;
       case SettingsSection.FEEDBACK:
       default:
-        return featureFlags['appbuilder-settings-project'] ? <ProjectPanel /> : null;
+        return isProjectEnabled ? <ProjectPanel /> : null;
     }
   }
 

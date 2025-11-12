@@ -23,7 +23,7 @@ export default function AppPublish({ location }: { location?: string }) {
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
   const setDeploymentsRefetch = useDevelopPageStore((state) => state.setDeploymentsRefetch);
-  const { featureFlags } = useSwitchboard();
+  const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
   
   // Track restore operations and get commits from the git history store
   const isRestoring = useGitHistoryStore((state) => state.isRestoring(currentAppId || ''));
@@ -41,8 +41,6 @@ export default function AppPublish({ location }: { location?: string }) {
   const { isPublishing } = publishState;
 
   const publishMutation = usePublishApp();
-
-  const isPublishButtonEnabled = featureFlags['appbuilder-publish-button'] ?? false;
   const isDevelopPage = pathname?.includes('/develop');
   
   const site = useSiteStore((state) => currentAppId ? state.getSite(currentAppId) : null);

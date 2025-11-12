@@ -1,13 +1,21 @@
 import ProjectDomain from "@/app/develop/components/settings/DomainPanel/ProjectDomain";
 import DomainAttach from "@/app/develop/components/settings/DomainPanel/DomainAttach";
 import Box from "@ux/box";
-import { useSwitchboard } from "@/hooks/useSwitchboard";
 import { text } from "@ux/text";
+import Spinner from "@ux/spinner";
+import { useSwitchboard } from "@/hooks/useSwitchboard";
 
 export default function DomainPanel() {
-  const { featureFlags } = useSwitchboard();
-  const isDomainAttachEnabled = featureFlags['appbuilder-domain-attach'] ?? false;
-  const isProjectDomainEnabled = featureFlags['appbuilder-project-domain'] ?? false;
+  const { data: isDomainAttachEnabled, isLoading: isDomainAttachLoading } = useSwitchboard('appbuilder-domain-attach');
+  const { data: isProjectDomainEnabled, isLoading: isProjectDomainLoading } = useSwitchboard('appbuilder-project-domain');
+
+  if (isDomainAttachLoading || isProjectDomainLoading) {
+    return (
+      <div className='flex justify-center items-center h-[calc(100vh-40rem)]'>
+        <Spinner size='lg'/>
+      </div>
+    );
+  }
 
   return (
     <Box gap="xl">

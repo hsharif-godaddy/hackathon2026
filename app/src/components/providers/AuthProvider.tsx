@@ -22,18 +22,12 @@ function AuthProviderComponent(props: any) {
 export default function AuthProvider({ children }: { children: ReactNode }) {
   const [authProvider, setAuthProvider] = useState<any>(null);
   const [isAuthProviderLoading, setIsAuthProviderLoading] = useState(true);
-  const [featureFlags, setFeatureFlags] = useState<any>({});
   const [serverAuthConfig, setServerAuthConfig] = useState<any>(null);
 
   const authData = useAuth()
   const {isAuthenticated, isAuthDisabled, isLoading} = authData
 
-  const {
-    featureFlags: switchboardFeatureFlags,
-    isLoading: isSwitchboardFeatureFlagsLoading
-  } = useSwitchboard();
-
-  const stableSwitchboardFlags = useMemo(() => switchboardFeatureFlags, [switchboardFeatureFlags]);
+  const { data: isAppbuilderAccessEnabled, isLoading: isSwitchboardFeatureFlagsLoading } = useSwitchboard('appbuilder-access');
 
   // Load server-side auth configuration
   useEffect(() => {
@@ -60,23 +54,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   // Use server config if available, fallback to client-side detection
   const isJWTMode = serverAuthConfig?.isJWT || auth.isJWT();
-
-  // Conditionally load Switchboard data
-  useEffect(() => {
-    if (!isSwitchboardFeatureFlagsLoading) {
-      try {
-        setFeatureFlags(stableSwitchboardFlags || {});
-      } catch (error) {
-        logger.warn('auth.provider.switchboard.error', {
-          message: 'Failed to load Switchboard data',
-          error: error as Error
-        });
-        setFeatureFlags({});
-      }
-    }
-  }, [stableSwitchboardFlags, isSwitchboardFeatureFlagsLoading]);
-
-  const isAppbuilderAccessEnabled = featureFlags['appbuilder-access'] ?? false;
 
   // Load auth provider conditionally (wait for server config)
   useEffect(() => {

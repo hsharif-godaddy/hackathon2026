@@ -21,8 +21,7 @@ import { ViewMode, PreviewViewMode, ChatTab, SettingsSection } from '../types'
 export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   const router = useRouter()
   const appId = useAppIdFromParams()
-  const { featureFlags } = useSwitchboard()
-  const showDatabaseSettings = featureFlags['appbuilder-settings-database'] ?? false
+  const { data: showDatabaseSettings } = useSwitchboard('appbuilder-settings-database');
 
   const {
     viewMode,

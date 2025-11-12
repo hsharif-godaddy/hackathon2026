@@ -38,8 +38,7 @@ function DevelopPageContent() {
   const router = useRouter()
   const appId = useAppIdFromParams()
 
-  const { featureFlags } = useSwitchboard();
-  const isPublishButtonEnabled = featureFlags['appbuilder-publish-button'] ?? false;
+  const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
 
   // Server polling store - unified server status management
   const { startPollingForServer, stopPollingForServer, cleanup: cleanupServerPolling } = useServerPollingStore()

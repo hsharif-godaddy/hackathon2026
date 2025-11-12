@@ -20,7 +20,12 @@ export default function SettingsPane() {
 
   const { openFeedbackModal, activeSettingsSection, setActiveSettingsSection } = useDevelopPageStore()
 
-  const { featureFlags } = useSwitchboard();
+  const { data: isProjectEnabled } = useSwitchboard('appbuilder-settings-project');
+  const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain');
+  const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups');
+  const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
+  const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
+  const { data: isFeedbackEnabled } = useSwitchboard('appbuilder-settings-feedback');
 
   const handleNavigate = (id: SettingsSection) => {
     setActiveSettingsSection(id)
@@ -32,39 +37,39 @@ export default function SettingsPane() {
       id: SettingsSection.PROJECT,
       label: 'Project Settings',
       icon: <SettingsIcon />,
-      disabled: !(featureFlags['appbuilder-settings-project'] ?? false),
+      disabled: isProjectEnabled !== true,
     },
     {
       id: SettingsSection.DOMAIN,
       label: 'Domain',
       icon: <LinkIcon />,
-      disabled: !(featureFlags['appbuilder-settings-domain'] ?? false),
+      disabled: isDomainEnabled !== true,
     },
     {
       id: SettingsSection.BACKUPS,
       label: 'Backups',
       icon: <RevertIcon />,
-      disabled: !(featureFlags['appbuilder-settings-backups'] ?? false),
+      disabled: isBackupsEnabled !== true,
     },
     {
       id: SettingsSection.SECURITY,
       label: 'Security',
       icon: <LockedIcon />,
-      disabled: !(featureFlags['appbuilder-settings-security'] ?? false),
+      disabled: isSecurityEnabled !== true,
     },
     {
       id: SettingsSection.DATABASE,
       label: 'Database',
       icon: <DatabaseIcon />,
-      disabled: !(featureFlags['appbuilder-settings-database'] ?? false),
+      disabled: isDatabaseEnabled !== true,
     },
     {
       id: SettingsSection.FEEDBACK,
       label: 'Give Feedback',
       icon: <ClipboardIcon />,
-      disabled: !(featureFlags['appbuilder-settings-feedback'] ?? false),
+      disabled: isFeedbackEnabled !== true,
       onClick: () => {
-        if (featureFlags['appbuilder-settings-feedback'] ?? false) {
+        if (isFeedbackEnabled) {
           localStorage.removeItem('airo-feedback-shown:airo#app-builder')
           openFeedbackModal('airo#app-builder')
         }

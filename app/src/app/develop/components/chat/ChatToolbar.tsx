@@ -32,9 +32,8 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect }: Cha
     activeSettingsSection
   } = useDevelopPageStore()
 
-  const { featureFlags } = useSwitchboard()
-  const isAssetManagerEnabled = featureFlags['appbuilder-image-manager'] ?? false
-  const isSettingsEnabled = featureFlags['appbuilder-settings'] ?? false
+  const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager');
+  const { data: isSettingsEnabled } = useSwitchboard('appbuilder-settings');
 
   const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false)
 
