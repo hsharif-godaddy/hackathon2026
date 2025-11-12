@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useModifyDomains, useAppDetails, hasBeenPublished } from '@/hooks/useDomainOperations';
+import { useModifyDomains, useAppDetails } from '@/hooks/useDomainOperations';
+import { hasBeenPublished } from '@/utils/site';
 import { generateClickEID } from '@/utils/instrumentation';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainAttach } from '@/hooks/useDomainAttach';
@@ -49,6 +50,11 @@ export default function DomainAttach() {
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
     return state.getSite(currentAppId);
+  });
+
+  const isSiteLoading = useSiteStore((state) => {
+    if (!currentAppId) return false;
+    return state.loading[currentAppId] ?? false;
   });
 
   const modifyDomainsMutation = useModifyDomains();
@@ -235,7 +241,7 @@ export default function DomainAttach() {
     (d) => d.cdnStatus === 2
   );
 
-  const isPublished = hasBeenPublished(site || appDetails);
+  const isPublished = hasBeenPublished(site);
 
   const getCustomDomainStatus = () => {
     const connectedDomains = appDetails?.domains?.filter(d => d.domainType !== 'prefix') || [];
@@ -270,7 +276,7 @@ export default function DomainAttach() {
         />
       )}
     >
-      {!isPublished && (
+      {!isSiteLoading && !isPublished && (
         <Alert emphasis="warning">
           Custom domains are only available after you publish your site for the first time.
         </Alert>

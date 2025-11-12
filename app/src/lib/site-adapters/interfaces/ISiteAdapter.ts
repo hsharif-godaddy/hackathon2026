@@ -23,6 +23,7 @@ export interface SiteInfo {
   subscription_id?: string; // V2 only: subscriptionId from mgmt-hosting
   controlPlane?: 'v2' | 'legacy'; // Control plane type (v2 or legacy)
   domains?: SiteDomain[]; // Custom domains from mgmt-hosting
+  variants?: string[]; // V2 only: Available variants (e.g., ["preview", "publish"])
 }
 
 export interface CreateSiteRequest {

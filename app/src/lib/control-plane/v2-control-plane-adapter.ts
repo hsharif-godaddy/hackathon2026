@@ -1,5 +1,6 @@
 import { IControlPlaneAdapter, CreateSiteParams, CreateSiteResult, SiteInfo, SiteStatus } from './types';
 import { extractCustomerId, decodeJWT } from '@/lib/utils/jwt-utils';
+import { hasBeenPublished } from '@/utils/site';
 import { logger } from '@/lib/request-context';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
@@ -1137,10 +1138,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       // V2 provides URLs in the response - use them directly
       agent_url = app.urls.agent;
       preview_url = app.urls.preview;
-      // Only use publish URL if app has been published
-      if (app.variants?.includes('publish')) {
-        published_url = app.urls.publish;
-      }
+      published_url = app.urls.publish;
     }
 
     // Construct missing URLs as fallback
@@ -1149,12 +1147,12 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     preview_url = preview_url || urls.preview;
 
     // Only construct published_url if app has been published (has "publish" variant)
-    if (!published_url && app.variants?.includes('publish')) {
+    if (!published_url && hasBeenPublished(app)) {
       published_url = urls.publish;
     }
 
     // Override published_url if custom domains are active (only for published sites)
-    if (app.variants?.includes('publish') && app.domains && Array.isArray(app.domains)) {
+    if (hasBeenPublished(app) && app.domains && Array.isArray(app.domains)) {
       // Find active custom domain
       const customDomain = app.domains.find(
         (d: any) => d.domainType !== 'prefix' && d.status === 'active'

@@ -9,6 +9,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { logger } from '@/lib/request-context';
 import { generateClickEID } from '@/utils/instrumentation';
+import { hasBeenPublished } from '@/utils/site';
 
 /**
  * PublishStatusAlert Component
@@ -115,7 +116,7 @@ export default function PublishStatusAlert() {
   }
 
   // Show success alert when deployment completes
-  if (showSuccessAlert && currentAppId) {
+  if (showSuccessAlert && currentAppId && hasBeenPublished(site)) {
     // Get the FQDN with fallback priority:
     // 1. Custom domain where domainType != 'prefix'
     // 2. Prefix domain where domainType = 'prefix'
@@ -123,7 +124,7 @@ export default function PublishStatusAlert() {
     const customDomain = site?.domains?.find(d => d.domainType && d.domainType !== 'prefix');
     const prefixDomain = site?.domains?.find(d => d.domainType === 'prefix');
     const publishedFqdn = site?.published_url;
-    
+
     const fqdn = customDomain?.fqdn || prefixDomain?.fqdn || publishedFqdn;
 
     return (
@@ -136,9 +137,9 @@ export default function PublishStatusAlert() {
               design="primary"
               as='external'
               text='View Now'
-              data-eid={generateClickEID(`publish-alert.success.view-now`)}
+              data-eid={generateClickEID(`publish-alert.success.view_now`)}
               className="!hover:bg-transparent"
-              href={fqdn.includes('https://') ? fqdn : `https://${fqdn}`}
+              href={fqdn ? (fqdn.includes('https://') ? fqdn : `https://${fqdn}`) : '#'}
               external
             />
           }

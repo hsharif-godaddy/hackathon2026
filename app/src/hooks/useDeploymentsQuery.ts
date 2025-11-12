@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useSiteStore } from '@/stores/useSiteStore';
+import { hasBeenPublished } from '@/utils/site';
+import { logImpressionEvent, logAiroHQEvent } from '@/utils/instrumentation';
 import type { AiroDeployment } from '@/lib/mgmt-airo';
 
 const INITIAL_POLL_DELAY_MS = 5000;  // Wait 5 seconds before first poll
@@ -77,8 +80,10 @@ export function useDeploymentsQuery({
   const getPublishState = useDevelopPageStore((state) => state.getPublishState);
   const setDeploymentInProgressId = useDevelopPageStore((state) => state.setDeploymentInProgressId);
   const setPublishSuccess = useDevelopPageStore((state) => state.setPublishSuccess);
+  const fetchSite = useSiteStore((state) => state.fetchSite);
+  const getSite = useSiteStore((state) => state.getSite);
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ['deployments', appId, limit, includeJobData],
     queryFn: async (): Promise<AiroDeployment[]> => {
       if (!appId) {
@@ -136,50 +141,16 @@ export function useDeploymentsQuery({
             return false;
           }
           
-          logger.info('deployments-query.polling.check', {
-            appId,
-            deploymentInProgressId,
-            hasData: !!data,
-            deploymentsCount: data?.length || 0,
-            deploymentIds: data?.map(d => d.id) || [],
-          });
-          
           // Find the deployment in progress if it exists in current data
           const deploymentInProgress = data?.find(d => d.id === deploymentInProgressId);
           
-          logger.info('deployments-query.polling.deployment-check', {
-            appId,
-            deploymentInProgressId,
-            found: !!deploymentInProgress,
-            status: deploymentInProgress?.status,
-            allStatuses: data?.map(d => ({ id: d.id, status: d.status })) || [],
-          });
-          
-          // If deployment is in final state, clear it and stop polling
+          // If deployment is in final state, stop polling
           if (deploymentInProgress && ['deployed', 'failed'].includes(deploymentInProgress.status)) {
-            // If successfully deployed, show success alert
-            if (deploymentInProgress.status === 'deployed') {
-              logger.info('deployments-query.polling.complete', {
-                appId,
-                deploymentId: deploymentInProgressId,
-                status: 'deployed',
-              });
-              setPublishSuccess(appId, true);
-            } else {
-              logger.info('deployments-query.polling.complete', {
-                appId,
-                deploymentId: deploymentInProgressId,
-                status: 'failed',
-              });
-            }
-            
-            setDeploymentInProgressId(appId, null);
             pollingStartTimeRef.current = null;
             return false;
           }
           
           // Start polling immediately if we have a deploymentInProgressId
-          // (even if deployment hasn't appeared in list yet)
           if (!pollingStartTimeRef.current) {
             pollingStartTimeRef.current = Date.now();
             logger.info('deployments-query.polling.started', {
@@ -220,5 +191,85 @@ export function useDeploymentsQuery({
         },
     staleTime: 0,
   });
+
+  // Handle deployment completion side effects
+  useEffect(function handleDeploymentCompletion() {
+    const deployments = query.data;
+    const publishState = getPublishState(appId);
+    const deploymentInProgressId = publishState.deploymentInProgressId;
+
+    if (!deploymentInProgressId || !deployments) {
+      return;
+    }
+
+    const deploymentInProgress = deployments.find(d => d.id === deploymentInProgressId);
+
+    if (deploymentInProgress && ['deployed', 'failed'].includes(deploymentInProgress.status)) {
+      if (deploymentInProgress.status === 'deployed') {
+        logger.info('deployments-query.deployment-complete', {
+          appId,
+          deploymentId: deploymentInProgressId,
+          status: 'deployed',
+        });
+
+        // Check if site was already published before this deployment
+        const currentSiteData = getSite(appId);
+        const wasAlreadyPublished = hasBeenPublished(currentSiteData);
+
+        // Determine event IDs based on whether this is first publish or re-publish
+        const impressionEid = wasAlreadyPublished
+          ? 'develop.publish.publish_success'
+          : 'develop.publish.first_publish_success';
+
+        const airoHQTask = wasAlreadyPublished
+          ? 'builder_project_published'
+          : 'builder_project_first_published';
+
+        // Log events BEFORE refetch (deployment already updated backend with publish variant)
+        logImpressionEvent(impressionEid)();
+
+        logAiroHQEvent({
+          category: 'click',
+          recommendation_task: airoHQTask,
+          recommendation_type: 'publish',
+          recommendation_id: appId,
+          completedTask: true,
+        })();
+
+        logger.info('deployments-query.publish-events-logged', {
+          appId,
+          wasAlreadyPublished,
+          impressionEid,
+          airoHQTask,
+        });
+
+        // Refetch site data to get updated domains/URLs/variants, then show success
+        fetchSite(appId, true)
+          .then(function handleRefetchSuccess() {
+            logger.info('deployments-query.site-refetch.success', { appId });
+            setPublishSuccess(appId, true);
+          })
+          .catch(function handleFetchError(error) {
+            logger.error('deployments-query.site-refetch.error', {
+              appId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            // Still show success alert even if refetch fails
+            setPublishSuccess(appId, true);
+          });
+      } else {
+        logger.info('deployments-query.deployment-complete', {
+          appId,
+          deploymentId: deploymentInProgressId,
+          status: 'failed',
+        });
+      }
+
+      // Clear deployment tracking
+      setDeploymentInProgressId(appId, null);
+    }
+  }, [query.data, appId, getPublishState, setDeploymentInProgressId, setPublishSuccess, fetchSite, getSite]);
+
+  return query;
 }
 

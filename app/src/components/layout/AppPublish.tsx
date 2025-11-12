@@ -10,9 +10,10 @@ import { usePublishApp } from '@/hooks/usePublishApp';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
-import { generateClickEID } from '@/utils/instrumentation';
+import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { logger } from '@/lib/request-context';
+import { hasBeenPublished } from '@/utils/site';
 
 export default function AppPublish({ location }: { location?: string }) {
   const pathname = usePathname();
@@ -175,6 +176,9 @@ export default function AppPublish({ location }: { location?: string }) {
     }
   }, [mostRecentDeployment, isDeploymentInProgress, currentAppId, queryEnabled, setIsPublishing, setPublishError]);
 
+  // Check if this is first-time publishing
+  const isFirstTimePublishing = !hasBeenPublished(site);
+
   const handleDeploy = useCallback(async () => {
     if (!currentAppId || !site?.agent_url) {
       logger.error('app-publish.deploy.error', {
@@ -186,6 +190,18 @@ export default function AppPublish({ location }: { location?: string }) {
       }
       return;
     }
+
+    // Log publish button click event
+    const airoHQTask = isFirstTimePublishing
+      ? 'builder_project_first_published'
+      : 'builder_project_published';
+
+    logAiroHQEvent({
+      category: 'click',
+      recommendation_task: airoHQTask,
+      recommendation_type: 'publish',
+      recommendation_id: currentAppId,
+    })();
 
     clearPublishStatus(currentAppId);
     setIsPublishing(currentAppId, true);
@@ -212,7 +228,7 @@ export default function AppPublish({ location }: { location?: string }) {
       setPublishError(currentAppId, true);
       setIsPublishing(currentAppId, false);
     }
-  }, [currentAppId, site?.agent_url, setPublishError, setIsPublishing, clearPublishStatus, publishMutation]);
+  }, [currentAppId, site, isFirstTimePublishing, setPublishError, setIsPublishing, clearPublishStatus, publishMutation]);
 
   // Register deployments refetch function in store for retry functionality
   useEffect(() => {
@@ -238,12 +254,14 @@ export default function AppPublish({ location }: { location?: string }) {
   //   Note: Button remains enabled if deployment failed, allowing retry
   const isButtonDisabled = isLoading || isPublishing || isDeploymentInProgress || isConversationInProgress || isCurrentCommitDeployed;
 
+  const publishWidget = isFirstTimePublishing ? 'app_first_publish' : 'app_publish';
+
   return (
     <Button
       className="!bg-ai"
       design="primary"
       data-partial="gradientAiro"
-      data-eid={generateClickEID(`${location}.header.app_publish`)}
+      data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
       disabled={isButtonDisabled}
       onClick={handleDeploy}
     >

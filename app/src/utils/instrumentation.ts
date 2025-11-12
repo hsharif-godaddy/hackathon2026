@@ -197,7 +197,8 @@ export const logAiroHQEvent = ({
   recommendation_task,
   recommendation_type,
   recommendation_id,
-  ventureID
+  ventureID,
+  completedTask = false,
 }: {
   ai_agent_id?: string,
   category: 'click' | 'impression',
@@ -206,6 +207,7 @@ export const logAiroHQEvent = ({
   recommendation_type?: string,
   ventureID?: string,
   agent_conversation_id?: string
+  completedTask?: boolean,
 }): () => void => () => {
   try {
     const eventSchema = {
@@ -217,7 +219,7 @@ export const logAiroHQEvent = ({
       targets: ['fullstory'],
       version: 'v2',
       data: {
-        eid: `airohq.agent.page.component.${category}`,
+        eid: `airohq.agent.${completedTask ? 'page_completed' : 'page'}.component.${category}`,
         type: category,
         custom_properties: {
           ai_agent_id,

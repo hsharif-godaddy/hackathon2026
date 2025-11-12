@@ -9,6 +9,7 @@ import {
   GlobeAltIcon
 } from '@heroicons/react/24/outline'
 import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
+import { hasBeenPublished } from '@/utils/site'
 import { generateClickEID } from '@/utils/instrumentation'
 import { useSites } from '@/stores/useSitesStore'
 import { appFetch } from '@/lib/gasket-config'
@@ -40,7 +41,7 @@ export default function AppCard({site}) {
         const response = await appFetch(`/api/sites/${site.id}`)
         if (response.ok) {
           const siteDetails = await response.json()
-          if (siteDetails.published_url) {
+          if (siteDetails.published_url && hasBeenPublished(siteDetails)) {
             setPublishedUrl(siteDetails.published_url)
           }
         }

@@ -240,10 +240,3 @@ export function usePendingDomains(siteId: string | null) {
     allDomains: appDetails?.fqdns || [],
   };
 }
-
-/**
- * Check if site has been published (has "publish" variant)
- */
-export function hasBeenPublished(appDetails: AppDetailsResponse | null | undefined): boolean {
-  return appDetails?.variants?.includes('publish') ?? false;
-}
