@@ -50,6 +50,10 @@ The application supports two deployment modes:
 - **Legacy Mode**: Uses local database + Nomad/SQS (default)
 - **V2 Mode**: Uses mgmt-airo + mgmt-hosting APIs (test environment)
 
+#### For Chrome
+
+If you encounter CORS issues over VPN, make sure you disable the `local-network-access-check` flag at `chrome://flags` and restart Chrome.
+
 #### Setting Up V2 Mode for Testing
 
 1. **Create/Edit `.env`:**
