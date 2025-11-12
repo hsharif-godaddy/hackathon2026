@@ -57,19 +57,6 @@ export class DockerComposeGenerator {
 		env.VITE_HOST = "0.0.0.0";
 		env.ALLOWED_ORIGINS = "http://localhost:3000,https://localhost:3000,https://airo-builder.godaddy.com,https://airo-builder.test-godaddy.com,https://airo-builder.dev-godaddy.com";
 
-		// Database environment variables
-		if (dbConfig) {
-			env.DATABASE_URL = `mysql://${dbConfig.user}:${dbConfig.password}@${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`;
-			env.MYSQL_HOST = dbConfig.host;
-			env.MYSQL_PORT = dbConfig.port.toString();
-			env.MYSQL_HOST_EXTERNAL = "localhost";
-			env.MYSQL_PORT_EXTERNAL = dbConfig.hostMachinePort.toString();
-			env.MYSQL_DATABASE = dbConfig.database;
-			env.MYSQL_USER = dbConfig.user;
-			env.MYSQL_PASSWORD = dbConfig.password;
-			env.MYSQL_ROOT_PASSWORD = dbConfig.rootPassword;
-		}
-
 		return env;
 	}
 
@@ -87,6 +74,7 @@ export class DockerComposeGenerator {
 		const volumes = [
 			`${config.appPath}:/app`,
 			"/app/node_modules",
+			`${config.appPath}/config.json:/alloc/config.json:ro`, // Database credentials
 		];
 
 		// Add dev-supervisor socket directory if using Unix socket mode
@@ -176,58 +164,4 @@ networks:
 		return composeContent;
 	}
 
-	/**
-	 * Generate .env file content for host machine access
-	 * Note: Simplified for shared MySQL - no per-app port mapping needed
-	 */
-	generateEnvFile(dbConfig: DatabaseConfig, existingEnvContent?: string): string {
-		logger.info("compose.env.generate.begin", {
-			database: dbConfig.database,
-		});
-
-		// Parse existing content to preserve non-database variables
-		const preservedLines: string[] = [];
-		if (existingEnvContent) {
-			const existingLines = existingEnvContent.split('\n');
-			for (const line of existingLines) {
-				const trimmed = line.trim();
-				// Skip empty lines, comments, and database-related variables
-				if (!trimmed || trimmed.startsWith('#')) {
-					preservedLines.push(line);
-				} else if (!trimmed.startsWith('MYSQL_') &&
-				           !trimmed.startsWith('DATABASE_URL') &&
-				           !trimmed.startsWith('DB_')) {
-					preservedLines.push(line);
-				}
-			}
-		}
-
-		// Build the new .env content
-		const envLines: string[] = [
-			...preservedLines,
-			'',
-			'# Database credentials (shared MySQL instance)',
-			`DATABASE_URL=mysql://${dbConfig.user}:${dbConfig.password}@${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`,
-			'',
-			'# Internal Docker network endpoint (for app container)',
-			`MYSQL_HOST=${dbConfig.host}`,
-			`MYSQL_PORT=${dbConfig.port}`,
-			'',
-			'# External host machine endpoint (for agents service)',
-			`MYSQL_HOST_EXTERNAL=localhost`,
-			`MYSQL_PORT_EXTERNAL=${dbConfig.hostMachinePort}`,
-			'',
-			'# Database credentials',
-			`MYSQL_DATABASE=${dbConfig.database}`,
-			`MYSQL_USER=${dbConfig.user}`,
-			`MYSQL_PASSWORD=${dbConfig.password}`,
-			''
-		];
-
-		logger.info("compose.env.generate.success", {
-			varCount: 8,
-		});
-
-		return envLines.join('\n');
-	}
 }

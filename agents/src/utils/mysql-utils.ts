@@ -1,6 +1,7 @@
-import mysql from 'mysql2/promise';
-import { randomBytes } from 'crypto';
+import { readFileSync, existsSync } from 'fs';
 import { logger } from '../logging/index.js';
+import mysql from 'mysql2/promise';
+import { join } from 'path';
 
 /**
  * Database credentials interface
@@ -60,57 +61,77 @@ export interface QueryResult {
  */
 export class MySQLUtils {
   /**
-   * Load MySQL credentials from an app's .env file
+   * Load MySQL credentials from an app's config.json file
    *
-   * @param app - The app object containing the path to .env
-   * @returns Database credentials extracted from .env file
-   * @throws Error if .env file not found or credentials are incomplete
+   * @param app - The app object containing the path to config.json
+   * @returns Database credentials extracted from config.json
+   * @throws Error if config.json file not found or credentials are incomplete
    */
   async loadCredentialsFromApp(app: App): Promise<DatabaseCredentials> {
-    const { EnvManager } = await import('../tools/env-manager.js');
-    const { join } = await import('path');
+    const configPath = join(app.path, 'config.json');
 
-    const envManager = new EnvManager({
-      envFilePath: join(app.path, '.env'),
-    });
-
-    // Check if .env file exists
-    const envExists = await envManager.exists();
-    if (!envExists) {
-      throw new Error(`No .env file found for application at ${app.path}`);
+    // Check if config.json file exists
+    if (!existsSync(configPath)) {
+      throw new Error(`No config.json file found for application at ${app.path}`);
     }
 
-    // Read environment variables
-    const envVars = await envManager.readEnvFile();
-
-    // Extract MySQL credentials
-    // Prefer *_EXTERNAL vars for host machine access (agents service runs on host)
-    // Fall back to regular vars for backwards compatibility
-    const credentials: DatabaseCredentials = {
-      host: envVars.MYSQL_HOST_EXTERNAL || envVars.MYSQL_HOST || 'localhost',
-      port: parseInt(envVars.MYSQL_PORT_EXTERNAL || envVars.MYSQL_PORT || '3306', 10),
-      database: envVars.MYSQL_DATABASE || '',
-      user: envVars.MYSQL_USER || '',
-      password: envVars.MYSQL_PASSWORD || '',
-    };
-
-    // Validate credentials
-    if (!this.validateCredentials(credentials)) {
-      throw new Error(
-        'MySQL credentials incomplete in .env file (MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD required)'
-      );
-    }
-
-    logger.debug('MySQL: Loaded credentials from app', {
+    logger.debug('MySQL: Reading credentials from config.json', {
       component: 'MySQLUtils',
       appId: app.id,
-      host: credentials.host,
-      port: credentials.port,
-      database: credentials.database,
-      hasExternalVars: !!(envVars.MYSQL_HOST_EXTERNAL && envVars.MYSQL_PORT_EXTERNAL),
+      configPath,
     });
 
-    return credentials;
+    try {
+      // Read and parse JSON config
+      const configContent = readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(configContent);
+
+      // Extract database credentials from nested structure
+      const dbValue = config.DATABASE?.VALUE;
+      if (!dbValue) {
+        throw new Error('Invalid config.json structure: DATABASE.VALUE not found');
+      }
+
+      // Validate required fields exist
+      if (!dbValue.NAME || !dbValue.USERNAME || !dbValue.PASSWORD) {
+        throw new Error('Invalid config.json: NAME, USERNAME, and PASSWORD are required');
+      }
+
+      // Use localhost for local variant, otherwise use HOST from config
+      const isLocal = dbValue.VARIANT === 'local';
+      const credentials: DatabaseCredentials = {
+        host: isLocal ? 'localhost' : (dbValue.HOST ?? 'localhost'),
+        port: dbValue.PORT ?? 3306,
+        database: dbValue.NAME,
+        user: dbValue.USERNAME,
+        password: dbValue.PASSWORD,
+      };
+
+      logger.debug('MySQL: Loaded credentials from config.json', {
+        component: 'MySQLUtils',
+        appId: app.id,
+        host: credentials.host,
+        port: credentials.port,
+        database: credentials.database,
+        variant: dbValue.VARIANT,
+        isLocal,
+      });
+
+      return credentials;
+    } catch (error) {
+      logger.error('MySQL: Failed to read config.json', {
+        component: 'MySQLUtils',
+        appId: app.id,
+        configPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      if (error instanceof SyntaxError) {
+        throw new Error(`Failed to parse ${configPath}: Invalid JSON format`);
+      }
+
+      throw error;
+    }
   }
 
   /**
@@ -518,120 +539,6 @@ export class MySQLUtils {
    */
   escapeIdentifier(identifier: string): string {
     return `\`${identifier.replace(/`/g, '``')}\``;
-  }
-
-  /**
-   * Sanitize appId for use in database names
-   * Replaces hyphens with underscores to comply with MySQL identifier rules
-   *
-   * @param appId - Application ID (typically a UUID)
-   * @returns Sanitized appId safe for database names
-   */
-  sanitizeAppId(appId: string): string {
-    return appId.toLowerCase().replace(/-/g, '_');
-  }
-
-  /**
-   * Create app-scoped database name: airo_{sanitizedAppId}
-   *
-   * @param appId - Application ID
-   * @returns Database name in format airo_{appId}
-   */
-  createAppDatabaseName(appId: string): string {
-    const sanitizedAppId = this.sanitizeAppId(appId);
-    return `airo_${sanitizedAppId}`;
-  }
-
-  /**
-   * Generate a username based on appId
-   * Format: user_airo_{sanitizedAppId} (truncated to 32 chars if needed)
-   *
-   * @param appId - Application ID
-   * @returns MySQL username
-   */
-  generateAppUsername(appId: string): string {
-    const sanitizedAppId = this.sanitizeAppId(appId);
-    const username = `user_airo_${sanitizedAppId}`;
-
-    // MySQL username limit is 32 chars
-    if (username.length > 32) {
-      return username.substring(0, 32);
-    }
-
-    return username;
-  }
-
-  /**
-   * Generate a secure random password
-   *
-   * @param length - Password length (default: 16)
-   * @returns Randomly generated password
-   */
-  generateSecurePassword(length: number = 16): string {
-    const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let password = '';
-
-    for (let i = 0; i < length; i++) {
-      const randomByte = randomBytes(1)[0];
-      if (randomByte === undefined) throw new Error('Failed to generate random byte');
-      const randomIndex = randomByte % charset.length;
-      password += charset[randomIndex];
-    }
-
-    return password;
-  }
-
-  /**
-   * Validate database name
-   *
-   * @param databaseName - Database name to validate
-   * @returns True if valid
-   */
-  validateDatabaseName(databaseName: string): boolean {
-    const nameRegex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-    return nameRegex.test(databaseName) && databaseName.length <= 64;
-  }
-
-  /**
-   * Validate username
-   *
-   * @param username - Username to validate
-   * @returns True if valid
-   */
-  validateUsername(username: string): boolean {
-    const usernameRegex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-    return usernameRegex.test(username) && username.length <= 32;
-  }
-
-  /**
-   * Check if a MySQL database exists
-   *
-   * @param connection - MySQL connection
-   * @param databaseName - Database name to check
-   * @returns True if database exists
-   */
-  async databaseExists(connection: mysql.Connection, databaseName: string): Promise<boolean> {
-    const [rows] = await connection.execute(
-      'SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?',
-      [databaseName]
-    );
-    return Array.isArray(rows) && rows.length > 0;
-  }
-
-  /**
-   * Check if a MySQL user exists
-   *
-   * @param connection - MySQL connection
-   * @param username - Username to check
-   * @param host - Host pattern (default: '%')
-   * @returns True if user exists
-   */
-  async userExists(connection: mysql.Connection, username: string, host: string = '%'): Promise<boolean> {
-    const [rows] = await connection.execute(
-      'SELECT User FROM mysql.user WHERE User = ? AND Host = ?',
-      [username, host]
-    );
-    return Array.isArray(rows) && rows.length > 0;
   }
 
   /**

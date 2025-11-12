@@ -2,14 +2,14 @@ import { logger } from '../../request-context';
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as path from "node:path";
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { DevDatabase } from '../database/DevDatabase';
 import { devSupervisor } from '../../features';
 import { userInfo } from "node:os";
-import { DockerComposeGenerator, type ComposeServiceConfig, type DatabaseConfig } from './docker-compose-generator';
+import { DockerComposeGenerator, type ComposeServiceConfig } from './docker-compose-generator';
 import { DockerComposeManager } from './docker-compose-manager';
 import { SharedMySQLService } from './shared-mysql-service';
-import * as net from "net";
+import { ConfigJsonManager } from '../utils/config-json';
 
 const execAsync = promisify(exec);
 
@@ -103,42 +103,6 @@ export class DockerContainerManager {
 	}
 
 
-	/**
-	 * Write database credentials to .env file for host machine access
-	 * This allows the agents service (running on host) to read DB credentials
-	 */
-	private writeDatabaseEnvFile(appPath: string, dbConfig: DatabaseConfig): void {
-		try {
-			const envPath = path.join(appPath, '.env');
-			const envExamplePath = path.join(appPath, 'env.example');
-
-			logger.info("database.env.write.begin", {
-				envPath,
-			});
-
-			// Read existing env.example if it exists to preserve other variables
-			let existingEnvContent = '';
-			if (existsSync(envExamplePath)) {
-				existingEnvContent = readFileSync(envExamplePath, 'utf-8');
-			}
-
-			// Generate env file content
-			const envContent = this.composeGenerator.generateEnvFile(dbConfig, existingEnvContent);
-
-			// Write the .env file
-			writeFileSync(envPath, envContent, 'utf-8');
-
-			logger.info("database.env.write.success", {
-				envPath,
-			});
-		} catch (error) {
-			logger.error("database.env.write.failure", {
-				error: error instanceof Error ? error.message : String(error),
-			});
-			// Don't throw - this is not critical for container operation
-			// The container gets env vars via compose file, .env is only for host access
-		}
-	}
 
 	/**
 	 * Initialize the container manager
@@ -284,8 +248,9 @@ export class DockerContainerManager {
 			logger.info(`🗄️ Provisioning database for app ${appId} in shared MySQL`);
 			const dbConfig = await this.sharedMySQLService.provisionDatabase(appId);
 
-			// Write database credentials to .env file for host machine access
-			this.writeDatabaseEnvFile(appPath, dbConfig);
+			// Write config.json with database credentials for container and host access
+			const configPath = path.join(appPath, 'config.json');
+			ConfigJsonManager.writeConfigFile(configPath, dbConfig);
 
 			logger.info(`✅ Database provisioned for app ${appId}`);
 
