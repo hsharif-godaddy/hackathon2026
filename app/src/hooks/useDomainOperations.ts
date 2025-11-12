@@ -206,8 +206,8 @@ export function useAppDetails(
       logger.info('domain-operations.app-details.fetch.success', {
         message: 'App details fetched',
         siteId,
-        hasDomains: !!data.fqdns?.length,
-        domainCount: data.fqdns?.length || 0,
+        hasDomains: !!data.domains?.length,
+        domainCount: data.domains?.length || 0,
       });
 
       return data;

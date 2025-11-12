@@ -110,7 +110,8 @@ export default function DomainAttach() {
 
     const appDomain = appDetails.domains.find((d) => d.fqdn === pendingCustomerDomain);
 
-    if (appDomain?.anycastIp) {
+    // Only call attach if anycastIp exists AND mutation is not already pending
+    if (appDomain?.anycastIp && !attachDomainMutation.isPending) {
       logger.info('domain-attach.anycast-ip.received', {
         message: 'Anycast IP received for customer domain, calling attach API',
         domainName: appDomain.fqdn,
@@ -137,7 +138,7 @@ export default function DomainAttach() {
           // Keep pendingCustomerDomain set to retry on next poll
         });
     }
-  }, [appDetails, pendingCustomerDomain, userInfo?.customerId, attachDomainMutation]);
+  }, [appDetails, pendingCustomerDomain, userInfo?.customerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Handle connecting a domain to the application
