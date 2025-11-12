@@ -1,0 +1,137 @@
+import { Router, type IRouter } from 'express'
+import { TodoListRepository } from '../../database/repositories/TodoListRepository.js'
+import { logger } from '../../logging/index.js'
+
+const router: IRouter = Router()
+const todoListRepo = new TodoListRepository()
+
+/**
+ * Extract error message from unknown error type
+ */
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/**
+ * GET /agent/todo-lists/:appId - Get all todo lists for an app
+ */
+router.get('/todo-lists/:appId', async (req, res) => {
+  const { appId } = req.params
+
+  try {
+    const lists = todoListRepo.getAllLists(appId)
+    
+    logger.info('todo-lists.get-all.success', {
+      appId,
+      listsFound: lists.length
+    })
+    
+    return res.json({ lists })
+  } catch (error) {
+    logger.error('todo-lists.get-all.failure', {
+      appId,
+      error: getErrorMessage(error)
+    })
+    return res.status(500).json({ error: 'Failed to fetch todo lists' })
+  }
+})
+
+/**
+ * GET /agent/todo-lists/:appId/current - Get the currently selected/active list
+ * 
+ * Returns the most recently updated list for the app, or null if no lists exist.
+ */
+router.get('/todo-lists/:appId/current', async (req, res) => {
+  const { appId } = req.params
+
+  try {
+    const lists = todoListRepo.getAllLists(appId)
+    
+    if (lists.length === 0) {
+      logger.info('todo-lists.get-current.empty', { appId })
+      return res.json({ list: null })
+    }
+
+    // Return the most recently updated list
+    const currentList = lists[0]
+    
+    if (!currentList) {
+      logger.warn('todo-lists.get-current.unexpected-empty', { appId })
+      return res.json({ list: null })
+    }
+    
+    logger.info('todo-lists.get-current.success', {
+      appId,
+      listId: currentList.id,
+      listName: currentList.name
+    })
+    
+    return res.json({ list: currentList })
+  } catch (error) {
+    logger.error('todo-lists.get-current.failure', {
+      appId,
+      error: getErrorMessage(error)
+    })
+    return res.status(500).json({ error: 'Failed to fetch current todo list' })
+  }
+})
+
+/**
+ * POST /agent/todo-lists/:appId/current - Set the current active list
+ * 
+ * Body: { listId: string }
+ * 
+ * This endpoint validates that the list exists and belongs to the app.
+ * The "current" list is determined by the most recently updated list,
+ * so we update the list's timestamp to make it current.
+ */
+router.post('/todo-lists/:appId/current', async (req, res) => {
+  const { appId } = req.params
+  const { listId } = req.body
+
+  if (!listId) {
+    return res.status(400).json({ error: 'listId is required' })
+  }
+
+  try {
+    const list = todoListRepo.getListById(listId)
+    
+    if (!list) {
+      logger.warn('todo-lists.set-current.not-found', { appId, listId })
+      return res.status(404).json({ error: 'Todo list not found' })
+    }
+
+    if (list.appId !== appId) {
+      logger.warn('todo-lists.set-current.wrong-app', {
+        appId,
+        listId,
+        listAppId: list.appId
+      })
+      return res.status(403).json({ error: 'Todo list does not belong to this app' })
+    }
+
+    // Update the list timestamp to make it "current"
+    todoListRepo.updateListTimestamp(listId)
+    
+    // Fetch the updated list
+    const updatedList = todoListRepo.getListById(listId)
+    
+    logger.info('todo-lists.set-current.success', {
+      appId,
+      listId,
+      listName: list.name
+    })
+    
+    return res.json({ list: updatedList })
+  } catch (error) {
+    logger.error('todo-lists.set-current.failure', {
+      appId,
+      listId,
+      error: getErrorMessage(error)
+    })
+    return res.status(500).json({ error: 'Failed to set current todo list' })
+  }
+})
+
+export default router
+

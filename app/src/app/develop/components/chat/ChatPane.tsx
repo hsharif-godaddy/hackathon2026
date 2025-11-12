@@ -4,6 +4,7 @@ import { useRef, useMemo, useEffect, useCallback, useState } from 'react'
 import { motion } from 'framer-motion'
 import Apps from '@/app/develop/components/Apps'
 import PlanTracker from '@/app/develop/components/PlanTracker'
+import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
 import { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
@@ -349,6 +350,8 @@ export default function ChatPane({
         expandedPlan={expandedPlan}
         onToggleExpandedPlan={toggleExpandedPlan}
       />
+      
+      <PersistentTodoList />
 
       {activeChatTab === ChatTab.APPS && (
         <Apps />

@@ -42,83 +42,91 @@ function getOperationMessage(operation: string, result: any): string {
 }
 
 /**
+ * Circular Checkbox Component
+ */
+function CircularCheckbox({ checked }: { checked: boolean }) {
+  return (
+    <div className="relative w-5 h-5">
+      <div className={`
+        w-5 h-5 rounded-full border-2 transition-all duration-200
+        ${checked ? 'border-intents-success-borderColor bg-intents-success-backgroundColor' : 'border-border bg-intents-ux-box-backgroundColor'}
+      `}>
+        {checked && (
+          <svg
+            className="w-full h-full text-intents-success-color"
+            viewBox="0 0 20 20"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M6 10L9 13L14 7"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
  * Render todo list as HTML
  */
 function renderTodoListHTML(list: any): React.JSX.Element {
   if (!list) return <div>No list data</div>
 
-  const pending = list.items?.filter((item: any) => !item.completed) || []
-  const completed = list.items?.filter((item: any) => item.completed) || []
-  const total = list.items?.length || 0
-  const completedCount = completed.length
-  const progress = total > 0 ? Math.round((completedCount / total) * 100) : 0
+  const items = list.items || []
+  const total = items.length
+  const completedCount = items.filter((item: any) => item.completed).length
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{list.name}</h1>
-        {list.description && (
-          <p className="text-sm text-muted-foreground italic mt-1">{list.description}</p>
-        )}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <h1 className="text-lg font-semibold text-foreground">{list.name}</h1>
+          {list.description && (
+            <p className="text-sm text-muted-foreground mt-1">{list.description}</p>
+          )}
+        </div>
+        <span className="text-sm text-muted-foreground whitespace-nowrap">
+          {completedCount}/{total}
+        </span>
       </div>
 
-      {/* Progress */}
-      {total > 0 && (
-        <div className="text-sm text-foreground/80">
-          <strong>Progress:</strong> {completedCount}/{total} complete ({progress}%)
-        </div>
-      )}
-
-      {/* Pending Items */}
-      {pending.length > 0 && (
-        <div>
-          <h2 className="text-lg font-semibold text-foreground/90 mb-2">Pending ({pending.length})</h2>
-          <div className="space-y-1">
-            {pending.map((item: any, index: number) => (
-              <div key={item.id || index} className="flex gap-2 text-sm">
-                <span className="text-muted-foreground/70 font-mono text-xs flex-shrink-0 w-6 text-right">
-                  {index + 1}.
-                </span>
-                <span className="flex-shrink-0">⬜</span>
-                <div className="flex-1">
-                  <div className="text-foreground">{item.title}</div>
+      {/* Items */}
+      {items.length > 0 ? (
+        <div className="space-y-3">
+          {items.map((item: any) => (
+            <div
+              key={item.id}
+              className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <CircularCheckbox checked={item.completed} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className={`text-sm font-medium ${item.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                    {item.title}
+                  </div>
                   {item.description && (
-                    <div className="text-muted-foreground italic text-xs mt-0.5">{item.description}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {item.description}
+                    </div>
                   )}
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
-      )}
-
-      {/* Completed Items */}
-      {completed.length > 0 && (
-        <div>
-          <h2 className="text-lg font-semibold text-foreground/90 mb-2">Completed ({completed.length})</h2>
-          <div className="space-y-1">
-            {completed.map((item: any, index: number) => (
-              <div key={item.id || index} className="flex gap-2 text-sm">
-                <span className="text-muted-foreground/70 font-mono text-xs flex-shrink-0 w-6 text-right">
-                  {index + 1}.
-                </span>
-                <span className="flex-shrink-0">✅</span>
-                <div className="flex-1">
-                  <div className="text-foreground">{item.title}</div>
-                  {item.description && (
-                    <div className="text-muted-foreground italic text-xs mt-0.5">{item.description}</div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+      ) : (
+        <div className="text-center text-muted-foreground py-8">
+          No items yet
         </div>
-      )}
-
-      {/* No items */}
-      {total === 0 && (
-        <div className="text-sm text-muted-foreground/70 italic">No items yet</div>
       )}
     </div>
   )
@@ -129,30 +137,30 @@ function renderTodoListHTML(list: any): React.JSX.Element {
  */
 function renderMultipleListsHTML(lists: any[]): React.JSX.Element {
   if (!lists || lists.length === 0) {
-    return <div className="text-sm text-muted-foreground/70">No todo lists found.</div>
+    return <div className="text-sm text-muted-foreground">No todo lists found.</div>
   }
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-foreground">All Todo Lists ({lists.length})</h1>
+      <h1 className="text-lg font-semibold text-foreground">All Todo Lists ({lists.length})</h1>
       
-      <div className="space-y-4">
-        {lists.map((list, index) => {
+      <div className="space-y-3">
+        {lists.map((list) => {
           const totalItems = list.items?.length || 0
           const completedItems = list.items?.filter((item: any) => item.completed).length || 0
-          const progress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
 
           return (
-            <div key={list.id || index} className="border-l-2 border-border pl-4">
-              <h2 className="text-lg font-semibold text-foreground/90">
-                <span className="text-muted-foreground/70 font-mono text-sm mr-2">{index + 1}.</span>
-                {list.name}
-              </h2>
-              {list.description && (
-                <p className="text-sm text-muted-foreground italic mt-1">{list.description}</p>
-              )}
-              <div className="text-sm text-foreground/80 mt-1">
-                <strong>Progress:</strong> {completedItems}/{totalItems} complete ({progress}%)
+            <div key={list.id} className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <h2 className="text-sm font-medium text-foreground">{list.name}</h2>
+                  {list.description && (
+                    <p className="text-xs text-muted-foreground mt-1">{list.description}</p>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {completedItems}/{totalItems}
+                </span>
               </div>
             </div>
           )
@@ -167,34 +175,39 @@ function renderMultipleListsHTML(lists: any[]): React.JSX.Element {
  */
 function renderItemsHTML(items: any[], title: string, listName?: string): React.JSX.Element {
   if (!items || items.length === 0) {
-    return <div className="text-sm text-muted-foreground/70">No items</div>
+    return <div className="text-sm text-muted-foreground">No items</div>
   }
 
   return (
     <div className="space-y-4">
       {listName && (
-        <h1 className="text-2xl font-bold text-foreground">{listName}</h1>
+        <h1 className="text-lg font-semibold text-foreground">{listName}</h1>
       )}
-      <h2 className="text-lg font-semibold text-foreground/90">{title}</h2>
+      <h2 className="text-sm font-medium text-foreground">{title}</h2>
       
-      <div className="space-y-1">
-        {items.map((item, index) => {
-          const checkbox = item.completed ? '✅' : '⬜'
-          return (
-            <div key={item.id || index} className="flex gap-2 text-sm">
-              <span className="text-muted-foreground/70 font-mono text-xs flex-shrink-0 w-6 text-right">
-                {index + 1}.
-              </span>
-              <span className="flex-shrink-0">{checkbox}</span>
-              <div className="flex-1">
-                <div className="text-foreground">{item.title}</div>
+      <div className="space-y-3">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                <CircularCheckbox checked={item.completed} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className={`text-sm font-medium ${item.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                  {item.title}
+                </div>
                 {item.description && (
-                  <div className="text-muted-foreground italic text-xs mt-0.5">{item.description}</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {item.description}
+                  </div>
                 )}
               </div>
             </div>
-          )
-        })}
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -253,6 +266,12 @@ export default function TodoListToolRenderer({
     operation = inputObj.operation || ''
   }
 
+  // Don't render anything for mark_done/mark_undone/show_list operations
+  // The persistent todo list UI handles these updates
+  if (operation === 'mark_done' || operation === 'mark_undone' || operation === 'show_list') {
+    return null
+  }
+
   // Generate display message
   if (toolStatus === 'completed' && parsedResult) {
     displayMessage = getOperationMessage(operation, parsedResult)
@@ -291,10 +310,6 @@ export default function TodoListToolRenderer({
     }
   }
   
-  // For show_list operation, render inline
-  const isShowList = operation === 'show_list'
-  const shouldRenderInline = isShowList && toolStatus === 'completed' && parsedResult?.list
-
   const modalContent = (
     <ToolModal
       isOpen={isModalOpen}
@@ -317,44 +332,6 @@ export default function TodoListToolRenderer({
         hasDetails={hasDetails}
         onOpenModal={() => setIsModalOpen(true)}
       />
-
-      {/* Inline list display for show_list operation */}
-      {shouldRenderInline && parsedResult?.list && (
-        <div className="mt-3 mb-3 p-4 bg-intents-ux-boxLowContrast-backgroundColor rounded-lg border border-border">
-          <div className="mb-3">
-            <h3 className="text-base font-semibold text-foreground/90">{parsedResult.list.name}</h3>
-            {parsedResult.list.description && (
-              <p className="text-sm text-muted-foreground mt-1">{parsedResult.list.description}</p>
-            )}
-          </div>
-
-          {parsedResult.list.items && parsedResult.list.items.length > 0 && (
-            <div className="text-foreground/90">
-              {parsedResult.list.items.map((item: any, index: number) => (
-                <div
-                  key={item.id || index}
-                  className="flex items-start gap-1 text-sm"
-                >
-                  <span className="text-base">
-                    {item.completed ? '✅' : '⬜'}
-                  </span>
-                  <div className="flex-1">
-                      {item.title}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Progress summary */}
-          {parsedResult.list.items && parsedResult.list.items.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-border text-xs text-muted-foreground">
-              {parsedResult.list.items.filter((item: any) => item.completed).length} of{' '}
-              {parsedResult.list.items.length} completed
-            </div>
-          )}
-        </div>
-      )}
 
       {modalContent}
     </div>

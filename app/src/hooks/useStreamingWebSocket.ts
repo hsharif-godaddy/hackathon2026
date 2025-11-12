@@ -24,6 +24,7 @@ import {
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
+import { useTodoListStore } from '@/stores/useTodoListStore'
 import type { AgentsAppContext, AgentsAppChatMessage } from '../types/websocket-context'
 import { captureVisualContext } from '../app/develop/components/visualContextCapture'
 import { logImpressionEvent } from '@/utils/instrumentation'
@@ -221,6 +222,17 @@ export function useStreamingWebSocket() {
             }
             sendToolImpression(data.data.tool.name)
             addToolResultSegment(toolCall)
+            // Update persistent todo list if this is a todoList tool
+            if (data.data.tool.name === 'todoList' && !hasError) {
+              try {
+                const { updateFromToolCall } = useTodoListStore.getState()
+                updateFromToolCall(toolCall.result)
+              } catch (error) {
+                logger.error('websocket.todo-list.update.failure', {
+                  error: error instanceof Error ? error.message : String(error)
+                })
+              }
+            }
           }
           break
         case 'step_complete':
