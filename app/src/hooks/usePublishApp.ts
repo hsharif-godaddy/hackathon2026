@@ -69,6 +69,7 @@ export function usePublishApp() {
   const queryClient = useQueryClient();
   const setLastPublishedCommitHash = useDevelopPageStore((state) => state.setLastPublishedCommitHash);
   const setDeploymentInProgressId = useDevelopPageStore((state) => state.setDeploymentInProgressId);
+  const setBuildErrorDetails = useDevelopPageStore((state) => state.setBuildErrorDetails);
 
   return useMutation<PublishResult, Error, PublishParams>({
     mutationFn: async ({ appId, commitHash }) => {
@@ -107,6 +108,16 @@ export function usePublishApp() {
 
       if (!response.ok) {
         const errorData = await response.json();
+        
+        // If this is a build error (400 status with details), store it for the UI to handle
+        if (response.status === 400 && errorData.details) {
+          setBuildErrorDetails(appId, {
+            error: errorData.error || 'Build failed',
+            details: errorData.details,
+            exitCode: errorData.exitCode
+          });
+        }
+        
         throw new Error(errorData.error || `Publish failed: ${response.status}`);
       }
 

@@ -118,6 +118,7 @@ export interface StreamingConversationState {
 
   // Additional context
   aiEditContext: AiEditContext | null
+  buildErrorContext: { error: string; details: string; exitCode?: number } | null
   developmentPlan: PlanItem[]
   conversations: Conversation[]
 
@@ -161,6 +162,7 @@ export interface StreamingConversationState {
   setInputValue: (value: string) => void
   setIsLoading: (loading: boolean) => void
   setAiEditContext: (context: AiEditContext | null) => void
+  setBuildErrorContext: (context: { error: string; details: string; exitCode?: number } | null) => void
   setDevelopmentPlan: (plan: PlanItem[]) => void
   setConversations: (conversations: Conversation[]) => void
 
@@ -198,6 +200,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   inputValue: '',
   isLoading: false,
   aiEditContext: null,
+  buildErrorContext: null,
   developmentPlan: [],
   conversations: [],
   conversationPagination: {
@@ -583,6 +586,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         inputValue: '',
         // Don't reset isLoading - let loadConversationHistory manage it
         aiEditContext: null,
+        buildErrorContext: null,
         conversations: [],
         conversationPagination: {
           total: 0,
@@ -601,6 +605,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   setInputValue: (value) => set({ inputValue: value }),
   setIsLoading: (loading) => set({ isLoading: loading }),
   setAiEditContext: (context) => set({ aiEditContext: context }),
+  setBuildErrorContext: (context) => set({ buildErrorContext: context }),
   setDevelopmentPlan: (plan) => set({ developmentPlan: plan }),
   setConversations: (conversations) => set({ conversations }),
 
@@ -1030,6 +1035,7 @@ export const useSetCurrentAppId = () => useStreamingConversationStore(state => s
 export const useSetInputValue = () => useStreamingConversationStore(state => state.setInputValue)
 export const useSetIsLoading = () => useStreamingConversationStore(state => state.setIsLoading)
 export const useSetAiEditContext = () => useStreamingConversationStore(state => state.setAiEditContext)
+export const useSetBuildErrorContext = () => useStreamingConversationStore(state => state.setBuildErrorContext)
 export const useSetDevelopmentPlan = () => useStreamingConversationStore(state => state.setDevelopmentPlan)
 export const useSetConversations = () => useStreamingConversationStore(state => state.setConversations)
 
@@ -1038,4 +1044,5 @@ export const useSetStreamingState = () => useStreamingConversationStore(state =>
 
 export const useDevelopmentPlan = () => useStreamingConversationStore(state => state.developmentPlan)
 export const useAiEditContext = () => useStreamingConversationStore(state => state.aiEditContext)
+export const useBuildErrorContext = () => useStreamingConversationStore(state => state.buildErrorContext)
 export const useConversations = () => useStreamingConversationStore(state => state.conversations)

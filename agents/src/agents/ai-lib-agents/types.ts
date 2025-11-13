@@ -77,6 +77,13 @@ export interface EnhancedAgentContext {
     width?: number
     height?: number
   }>
+
+  // Build error context - from publish failures
+  buildError?: {
+    error: string
+    details: string
+    exitCode?: number
+  }
 }
 
 /**
@@ -85,7 +92,7 @@ export interface EnhancedAgentContext {
 export interface ContextMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
-  type?: 'app_context' | 'ai_edit_context' | 'visual_context' | 'conversation_history' | 'hot_files_context' | 'selected_assets_context'
+  type?: 'app_context' | 'ai_edit_context' | 'visual_context' | 'conversation_history' | 'hot_files_context' | 'selected_assets_context' | 'build_error_context'
   insertionOrder?: 'before_history' | 'after_history'
   cachePoint?: { type: 'ephemeral' }
 }

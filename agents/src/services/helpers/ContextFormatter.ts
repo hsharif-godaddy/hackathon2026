@@ -4,7 +4,7 @@ export interface FormattedContext {
   /** The formatted content string ready for LLM */
   content: string
   /** The type of context for categorization */
-  type: 'ai_edit_context' | 'visual_context' | 'selected_assets_context'
+  type: 'ai_edit_context' | 'visual_context' | 'selected_assets_context' | 'build_error_context'
   /** Optional screenshot data URL for vision processing */
   screenshot?: string
   /** Optional asset images as base64 data URLs for vision processing */
@@ -355,6 +355,65 @@ When the user mentions "this asset", "this image", "this video", or "this PDF", 
       }
     } catch (error) {
       logger.warn('context.formatter.selected_assets.failure', {
+        error: (error as Error).message
+      })
+      return null
+    }
+  }
+
+  /**
+   * Format build error context into a safe message
+   * @param buildError - The build error context from publish failures
+   * @returns Formatted context or null if formatting fails
+   */
+  static formatBuildError(buildError: any): FormattedContext | null {
+    try {
+      if (!buildError || typeof buildError !== 'object') {
+        return null
+      }
+
+      // Sanitize and validate the error data
+      const sanitizedError = {
+        error: String(buildError.error || 'Unknown build error').substring(0, 500),
+        details: String(buildError.details || 'No details available').substring(0, 10000),
+        exitCode: Number.isInteger(buildError.exitCode) ? buildError.exitCode : undefined
+      }
+
+      const formattedMessage = `
+## Build Error Context
+
+The build process failed when trying to publish the application. Please analyze the error and fix the underlying issue.
+
+**Error Message:**
+${sanitizedError.error}
+
+${sanitizedError.exitCode !== undefined ? `**Exit Code:** ${sanitizedError.exitCode}\n` : ''}
+**Build Output:**
+\`\`\`
+${sanitizedError.details}
+\`\`\`
+
+Please review the error output above, identify the root cause, and make the necessary changes to fix the build.
+
+With the terminal tool, you should be able to run "pnpm run build" without any errors.
+
+After fixing the issue and confirming the build is successful, inform the user to try the Publish button again.
+`.trim()
+
+      logger.info('context.formatter.build_error.success', {
+        hasError: !!buildError.error,
+        hasDetails: !!buildError.details,
+        hasExitCode: buildError.exitCode !== undefined,
+        errorLength: buildError.error?.length || 0,
+        detailsLength: buildError.details?.length || 0
+      })
+
+      return {
+        type: 'build_error_context',
+        content: formattedMessage
+      }
+    } catch (error) {
+      logger.error('context.formatter.build_error.error', {
         error: (error as Error).message
       })
       return null

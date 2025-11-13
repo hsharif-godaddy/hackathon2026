@@ -23,8 +23,10 @@ import {
   useIsActivelyStreaming,
   useDevelopmentPlan,
   useAiEditContext,
+  useBuildErrorContext,
   useSetInputValue,
   useSetAiEditContext,
+  useSetBuildErrorContext,
   useSetCurrentAppId,
 } from '@/stores/useStreamingConversationStore'
 import { logger } from '@/lib/request-context'
@@ -52,8 +54,10 @@ export default function ChatPane({
   const isStreaming = useIsActivelyStreaming()
   const developmentPlan = useDevelopmentPlan()
   const aiEditContext = useAiEditContext()
+  const buildErrorContext = useBuildErrorContext()
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
+  const setBuildErrorContext = useSetBuildErrorContext()
   const setCurrentAppId = useSetCurrentAppId()
 
 
@@ -116,6 +120,7 @@ export default function ChatPane({
   const visibleMessages = (currentAppId === appId) ? allMessages : []
   const safeInputValue = (currentAppId === appId) ? (inputValue || '') : ''
   const safeAiEditContext = (currentAppId === appId) ? aiEditContext : null
+  const safeBuildErrorContext = (currentAppId === appId) ? buildErrorContext : null
 
   // Debug current state (only log when there's a significant change)
   const prevDebugRef = useRef<string>('')
@@ -169,6 +174,11 @@ export default function ChatPane({
       if (selectedAsset) {
         handleClearSelectedAsset()
       }
+
+      // Clear the build error context after sending
+      if (safeBuildErrorContext) {
+        handleClearBuildErrorContext()
+      }
     }
   }
 
@@ -197,6 +207,11 @@ export default function ChatPane({
     setSelectedAsset(null)
   }, [])
 
+  // Handle clearing build error context
+  const handleClearBuildErrorContext = useCallback(() => {
+    setBuildErrorContext(null)
+  }, [setBuildErrorContext])
+
   // Listen for error fix requests from PreviewPaneSimple
   useEffect(() => {
     const handleErrorFixEvent = (event: CustomEvent) => {
@@ -213,6 +228,11 @@ export default function ChatPane({
         if (selectedAsset) {
           handleClearSelectedAsset()
         }
+
+        // Clear the build error context after sending
+        if (safeBuildErrorContext) {
+          handleClearBuildErrorContext()
+        }
       }
     }
 
@@ -221,7 +241,7 @@ export default function ChatPane({
     return () => {
       window.removeEventListener('airo-error-fix', handleErrorFixEvent as EventListener)
     }
-  }, [appId, inputValue, sendMessage, safeAiEditContext, selectedAsset, handleClearAiEditContext, handleClearSelectedAsset])
+  }, [appId, inputValue, sendMessage, safeAiEditContext, selectedAsset, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext])
 
 
   // Get tab index for animation - matches mobile toolbar order
@@ -448,6 +468,38 @@ export default function ChatPane({
                     className="absolute -top-2 -right-2 w-6 h-6 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
                     style={{ backgroundColor: '#ffffff' }}
                     title="Clear asset"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {safeBuildErrorContext && (
+            <div className="mx-4 rounded-md overflow-hidden bg-red-50 border border-red-200">
+              <div className="p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="font-semibold text-sm text-red-900">Build Error Context</span>
+                    </div>
+                    <div className="text-xs text-red-800 break-words">
+                      {safeBuildErrorContext.error}
+                    </div>
+                    {safeBuildErrorContext.exitCode && (
+                      <div className="text-xs text-red-700 mt-1">
+                        Exit code: {safeBuildErrorContext.exitCode}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleClearBuildErrorContext}
+                    className="flex-shrink-0 w-6 h-6 flex items-center justify-center bg-white rounded-full shadow-sm hover:shadow-md font-bold text-lg text-red-600"
+                    title="Clear build error"
                   >
                     ×
                   </button>

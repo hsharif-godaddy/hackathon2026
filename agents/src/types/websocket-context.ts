@@ -93,6 +93,13 @@ export interface AgentsAppContext {
     height?: number
   }>
 
+  // Build error context - from publish failures
+  buildError?: {
+    error: string
+    details: string
+    exitCode?: number
+  }
+
   // Extensibility for future context types
   [key: string]: unknown
 }

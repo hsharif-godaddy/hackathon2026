@@ -21,6 +21,7 @@ import {
   useConversations,
   useSetInputValue,
   useSetAiEditContext,
+  useSetBuildErrorContext,
   useSetCurrentAppId,
   useIsLoading,
   useAutoSendInitialMessage,
@@ -48,6 +49,7 @@ function DevelopPageContent() {
   const conversations = useConversations()
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
+  const setBuildErrorContext = useSetBuildErrorContext()
   const setCurrentAppId = useSetCurrentAppId()
   const autoSendInitialMessage = useAutoSendInitialMessage()
   const loadConversationHistory = useLoadConversationHistory()
@@ -345,12 +347,31 @@ function DevelopPageContent() {
             }, 500)
           }
           break
+        case 'build-error-fix-request':
+          // Handle build error fix requests from the publish alert
+          if (event.data.errorMessage && event.data.errorDetails) {
+            // Set build error context to be attached to the message
+            setBuildErrorContext({
+              error: event.data.errorMessage,
+              details: event.data.errorDetails,
+              exitCode: event.data.exitCode
+            });
+            // Set a helpful message in the input
+            setInputValue('Please analyze and fix this build error.');
+            // Auto-send the message and clear context (matches ChatPane pattern)
+            setTimeout(() => {
+              sendMessage('Please analyze and fix this build error.', null)
+              // Clear immediately after sending, same as ChatPane does
+              setBuildErrorContext(null)
+            }, 500)
+          }
+          break
       }
     }
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setIsSelectMode, sendMessage, setInputValue])
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setBuildErrorContext, setIsSelectMode, sendMessage, setInputValue])
 
   // Warn user before leaving page with unsaved changes
   useEffect(() => {

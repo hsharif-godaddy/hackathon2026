@@ -118,13 +118,18 @@ export const POST = withCustomerAuth(
       });
 
       if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
         logger.error('site.publish.agent-failed', {
           status: response.status,
           statusText: response.statusText,
+          error: errorData.error,
+          details: errorData.details,
         });
         return NextResponse.json(
           {
-            error: 'Failed to publish archive',
+            error: errorData.error || 'Failed to publish archive',
+            details: errorData.details,
+            exitCode: errorData.exitCode,
             status: response.status,
           },
           { status: response.status }

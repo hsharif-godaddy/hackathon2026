@@ -521,7 +521,7 @@ export function useStreamingWebSocket() {
 
       // Get current state for rich context
       const state = useStreamingConversationStore.getState()
-      const { conversations } = state
+      const { conversations, buildErrorContext } = state
 
       // Find current conversation ID
       const currentConversation = conversations.find((conv: any) => conv.appId === currentAppId)
@@ -574,6 +574,15 @@ export function useStreamingWebSocket() {
 
         // AI Edit context if available
         ...(aiEditContext && { aiEditContext }),
+
+        // Build error context if available (from publish failures)
+        ...(buildErrorContext && { 
+          buildError: {
+            error: buildErrorContext.error,
+            details: buildErrorContext.details,
+            exitCode: buildErrorContext.exitCode
+          }
+        }),
 
         // Visual context from iframe
         ...(visualContext && { visualContext }),

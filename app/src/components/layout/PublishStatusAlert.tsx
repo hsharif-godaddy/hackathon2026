@@ -39,12 +39,13 @@ export default function PublishStatusAlert() {
   const publishState = currentAppId ? getPublishState(currentAppId) : {
     isPublishing: false,
     publishError: false,
+    buildErrorDetails: null,
     lastPublishedCommitHash: null,
     deploymentsRefetch: null,
     deploymentInProgressId: null,
     showSuccessAlert: false,
   };
-  const { isPublishing, publishError, showSuccessAlert, lastPublishedCommitHash, deploymentsRefetch } = publishState;
+  const { isPublishing, publishError, buildErrorDetails, showSuccessAlert, lastPublishedCommitHash, deploymentsRefetch } = publishState;
 
   // Get site to extract FQDN for success alert
   const site = useSiteStore((state) => currentAppId ? state.getSite(currentAppId) : null);
@@ -52,22 +53,17 @@ export default function PublishStatusAlert() {
   const publishMutation = usePublishApp();
 
   const handleTryAgain = useCallback(async () => {
-    if (!currentAppId || !lastPublishedCommitHash) {
+    if (!currentAppId) {
       logger.error('publish-alert.try-again.no-app-id', {
-        message: 'Cannot retry: no app ID or commit hash available',
+        message: 'Cannot retry: no app ID available',
         appId: currentAppId,
-        commitHash: lastPublishedCommitHash
       });
-      if (currentAppId) {
-        setPublishError(currentAppId, true);
-      }
       return;
     }
 
     logger.info('publish-alert.try-again', {
       message: 'User clicked try again on failed publish',
       appId: currentAppId,
-      commitHash: lastPublishedCommitHash.substring(0, 7)
     });
 
     clearPublishStatus(currentAppId);
@@ -76,7 +72,6 @@ export default function PublishStatusAlert() {
     try {
       const { result, commitHash } = await publishMutation.mutateAsync({
         appId: currentAppId,
-        commitHash: lastPublishedCommitHash
       });
 
       logger.info('publish-alert.try-again.success', {
@@ -98,7 +93,7 @@ export default function PublishStatusAlert() {
       setPublishError(currentAppId, true);
       setIsPublishing(currentAppId, false);
     }
-  }, [currentAppId, lastPublishedCommitHash, deploymentsRefetch, publishMutation, clearPublishStatus, setIsPublishing, setPublishError]);
+  }, [currentAppId, deploymentsRefetch, publishMutation, clearPublishStatus, setIsPublishing, setPublishError]);
 
   const handleDismiss = useCallback(() => {
     if (!currentAppId) return;
@@ -110,6 +105,24 @@ export default function PublishStatusAlert() {
     
     clearPublishStatus(currentAppId);
   }, [currentAppId, clearPublishStatus]);
+
+  const handleFixBuildError = useCallback(() => {
+    if (!currentAppId || !buildErrorDetails) return;
+
+    logger.info('publish-alert.fix-build-error', {
+      message: 'User clicked fix build error',
+      appId: currentAppId,
+    });
+
+    // Dispatch event to trigger the fix flow - similar to 404 error fix pattern
+    window.postMessage({
+      type: 'build-error-fix-request',
+      appId: currentAppId,
+      errorMessage: buildErrorDetails.error,
+      errorDetails: buildErrorDetails.details,
+      exitCode: buildErrorDetails.exitCode,
+    }, window.location.origin);
+  }, [currentAppId, buildErrorDetails]);
 
   if (!isPublishing && !publishError && !showSuccessAlert) {
     return null;
@@ -168,7 +181,35 @@ export default function PublishStatusAlert() {
     );
   }
 
-  // Show error state only when not publishing
+  // Show build error state with detailed error and fix button
+  if (publishError && buildErrorDetails) {
+    return (
+      <div className='px-4 py-4'>
+        <Alert
+          emphasis='critical'
+          onClose={handleDismiss}
+          actions={
+            <div className='flex gap-2'>
+              <Button design='secondary' onClick={handleTryAgain}>Try Again</Button>
+              <Button design='primary' onClick={handleFixBuildError}>Fix this error</Button>
+            </div>
+          }
+        >
+          <div className='font-semibold'>Build Failed</div>
+          <div className='text-sm mt-1'>
+            {buildErrorDetails.error}
+          </div>
+          {buildErrorDetails.exitCode && (
+            <text.p size={0} emphasis='passive' className='mt-1'>
+              Exit code: {buildErrorDetails.exitCode}
+            </text.p>
+          )}
+        </Alert>
+      </div>
+    );
+  }
+
+  // Show generic error state only when not publishing
   if (publishError) {
     return (
       <div className='px-4 py-4'>

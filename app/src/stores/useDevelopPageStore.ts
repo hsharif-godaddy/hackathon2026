@@ -60,6 +60,7 @@ interface DevelopPageStore {
   publishStates: Record<string, {
     isPublishing: boolean
     publishError: boolean
+    buildErrorDetails: { error: string; details: string; exitCode?: number } | null
     lastPublishedCommitHash: string | null
     deploymentsRefetch: (() => Promise<any>) | null
     deploymentInProgressId: string | null
@@ -98,6 +99,7 @@ interface DevelopPageStore {
   // Publish status actions (per-app)
   setIsPublishing: (appId: string, isPublishing: boolean) => void
   setPublishError: (appId: string, hasError: boolean) => void
+  setBuildErrorDetails: (appId: string, errorDetails: { error: string; details: string; exitCode?: number } | null) => void
   setLastPublishedCommitHash: (appId: string, commitHash: string | null) => void
   setDeploymentsRefetch: (appId: string, refetch: (() => Promise<any>) | null) => void
   setDeploymentInProgressId: (appId: string, deploymentId: string | null) => void
@@ -107,6 +109,7 @@ interface DevelopPageStore {
   getPublishState: (appId: string) => {
     isPublishing: boolean
     publishError: boolean
+    buildErrorDetails: { error: string; details: string; exitCode?: number } | null
     lastPublishedCommitHash: string | null
     deploymentsRefetch: (() => Promise<any>) | null
     deploymentInProgressId: string | null
@@ -244,6 +247,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       return state || {
         isPublishing: false,
         publishError: false,
+        buildErrorDetails: null,
         lastPublishedCommitHash: null,
         deploymentsRefetch: null,
         deploymentInProgressId: null,
@@ -255,6 +259,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = {
           isPublishing: false,
           publishError: false,
+          buildErrorDetails: null,
           lastPublishedCommitHash: null,
           deploymentsRefetch: null,
           deploymentInProgressId: null,
@@ -268,6 +273,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = {
           isPublishing: false,
           publishError: false,
+          buildErrorDetails: null,
           lastPublishedCommitHash: null,
           deploymentsRefetch: null,
           deploymentInProgressId: null,
@@ -276,11 +282,26 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
       state.publishStates[appId].publishError = hasError;
     }),
+    setBuildErrorDetails: (appId: string, errorDetails: { error: string; details: string; exitCode?: number } | null) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = {
+          isPublishing: false,
+          publishError: false,
+          buildErrorDetails: null,
+          lastPublishedCommitHash: null,
+          deploymentsRefetch: null,
+          deploymentInProgressId: null,
+          showSuccessAlert: false,
+        };
+      }
+      state.publishStates[appId].buildErrorDetails = errorDetails;
+    }),
     setLastPublishedCommitHash: (appId: string, commitHash: string | null) => set((state) => {
       if (!state.publishStates[appId]) {
         state.publishStates[appId] = {
           isPublishing: false,
           publishError: false,
+          buildErrorDetails: null,
           lastPublishedCommitHash: null,
           deploymentsRefetch: null,
           deploymentInProgressId: null,
@@ -294,6 +315,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = {
           isPublishing: false,
           publishError: false,
+          buildErrorDetails: null,
           lastPublishedCommitHash: null,
           deploymentsRefetch: null,
           deploymentInProgressId: null,
@@ -307,6 +329,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = {
           isPublishing: false,
           publishError: false,
+          buildErrorDetails: null,
           lastPublishedCommitHash: null,
           deploymentsRefetch: null,
           deploymentInProgressId: null,
@@ -320,6 +343,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = {
           isPublishing: false,
           publishError: false,
+          buildErrorDetails: null,
           lastPublishedCommitHash: null,
           deploymentsRefetch: null,
           deploymentInProgressId: null,
@@ -329,6 +353,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       state.publishStates[appId].showSuccessAlert = showSuccess;
       state.publishStates[appId].isPublishing = false;
       state.publishStates[appId].publishError = false;
+      state.publishStates[appId].buildErrorDetails = null;
     }),
     dismissPublishSuccess: (appId: string) => set((state) => {
       if (state.publishStates[appId]) {
@@ -339,6 +364,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       if (state.publishStates[appId]) {
         state.publishStates[appId].isPublishing = false;
         state.publishStates[appId].publishError = false;
+        state.publishStates[appId].buildErrorDetails = null;
         state.publishStates[appId].showSuccessAlert = false;
         // Keep lastPublishedCommitHash and deploymentsRefetch for retry functionality
       }

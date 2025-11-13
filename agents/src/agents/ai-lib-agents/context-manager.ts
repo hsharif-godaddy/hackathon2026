@@ -160,6 +160,20 @@ export class AILibContextManager {
             })
         }
 
+        // Add build error context as user message (CRITICAL - must be included for fixing build failures)
+        const buildErrorMessages = contextMessages.filter(msg => msg.type === 'build_error_context')
+        if (buildErrorMessages.length > 0) {
+            conversationContextMessages.push({
+                role: 'user',
+                content: buildErrorMessages.map(msg => msg.content).join('\n\n'),
+                insertionOrder: 'after_history'
+            })
+            logger.info('context.build_error.included', {
+                message: 'Build error context included in conversation',
+                messageCount: buildErrorMessages.length
+            })
+        }
+
         // Determine message types based on order and context
         const messageTypes: string[] = []
         let typeIndex = 0
@@ -177,6 +191,9 @@ export class AILibContextManager {
         }
         if (selectedAssetsMessages.length > 0) {
             messageTypes[typeIndex++] = 'assets'
+        }
+        if (buildErrorMessages.length > 0) {
+            messageTypes[typeIndex++] = 'build_error'
         }
 
         logger.info('context.build.success', {
@@ -331,6 +348,19 @@ export class AILibContextManager {
             // Build selected assets context
             if (effectiveConfig.includeSelectedImages && context.selectedAssets) {
                 const formatted = await ContextFormatter.formatSelectedAssets(context.selectedAssets)
+                if (formatted) {
+                    messages.push({
+                        role: 'user',
+                        content: formatted.content,
+                        type: formatted.type
+                    })
+                    formattedContexts.push(formatted)
+                }
+            }
+
+            // Build error context (always include if present - critical for fixing build failures)
+            if (context.buildError) {
+                const formatted = ContextFormatter.formatBuildError(context.buildError)
                 if (formatted) {
                     messages.push({
                         role: 'user',
@@ -502,7 +532,8 @@ export class AILibContextManager {
                 hasAppContext: !!rawContext.appContext,
                 hasAiEditContext: !!rawContext.aiEditContext,
                 hasVisualContext: !!rawContext.visualContext,
-                hasSelectedAssets: !!rawContext.selectedAssets
+                hasSelectedAssets: !!rawContext.selectedAssets,
+                hasBuildError: !!rawContext.buildError
             })
         }
 
@@ -513,7 +544,8 @@ export class AILibContextManager {
             ...(rawContext.appContext && { appContext: rawContext.appContext }),
             ...(rawContext.aiEditContext && { aiEditContext: rawContext.aiEditContext }),
             ...(rawContext.visualContext && { visualContext: rawContext.visualContext }),
-            ...(rawContext.selectedAssets && { selectedAssets: rawContext.selectedAssets })
+            ...(rawContext.selectedAssets && { selectedAssets: rawContext.selectedAssets }),
+            ...(rawContext.buildError && { buildError: rawContext.buildError })
         }
 
         return enhancedContext
