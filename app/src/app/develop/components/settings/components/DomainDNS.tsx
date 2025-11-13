@@ -1,5 +1,6 @@
 import { generateClickEID } from '@/utils/instrumentation';
 import type { AppDomain } from '@/hooks/useDomainOperations';
+import { getDnsRecords } from '@/utils/domain';
 import Spinner from '@ux/spinner';
 import Button from "@ux/button";
 import text from "@ux/text";
@@ -36,6 +37,9 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
     );
   }
 
+  // Get DNS records based on domain type (root domain vs subdomain)
+  const dnsRecords = getDnsRecords(fqdn, anycastIp);
+
   return (
     <Box
       orientation="vertical"
@@ -65,32 +69,16 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
         <Box
           orientation="horizontal"
           gap="md"
-          className="text-sm py-2 border-b border-intents-ux-border-subtle"
+          className={dnsRecords.cnameRecord ? "text-sm py-2 border-b border-intents-ux-border-subtle" : "text-sm py-2"}
         >
-          <div className="w-20">A</div>
-          <div className="w-24">@</div>
+          <div className="w-20">{dnsRecords.aRecord.type}</div>
+          <div className="w-24">{dnsRecords.aRecord.name}</div>
           <div className="flex-1">
             <code className="bg-intents-ux-box-subtle rounded px-2 py-1 text-xs font-mono">
-              {anycastIp}
+              {dnsRecords.aRecord.value}
             </code>
           </div>
-          <div className="w-20">3600</div>
-        </Box>
-
-        {/* CNAME Record for www */}
-        <Box
-          orientation="horizontal"
-          gap="md"
-          className="text-sm py-2"
-        >
-          <div className="w-20">CNAME</div>
-          <div className="w-24">www</div>
-          <div className="flex-1">
-            <code className="bg-intents-ux-box-subtle rounded px-2 py-1 text-xs font-mono">
-              {fqdn}
-            </code>
-          </div>
-          <div className="w-20">3600</div>
+          <div className="w-20">{dnsRecords.aRecord.ttl}</div>
         </Box>
       </Box>
     </Box>
