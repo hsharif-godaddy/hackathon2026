@@ -8,6 +8,7 @@ import { DeploymentConfig, DeploymentResult } from './types';
 import { DevEnvironmentManager } from '../dev-environment/DevEnvironmentManager';
 import { agentFetch } from '@/lib/agent-fetch';
 import path from 'path';
+import { getAppPath } from '../dev-environment/utils/app-paths';
 
 export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   private devEnvironmentManager: DevEnvironmentManager;
@@ -22,7 +23,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
     });
 
     this.agentsServiceUrl = this.environment.agentsServiceUrl!;
-    this.baseAppsDir = process.env.LOCAL_APPS_DIR || '/tmp/apps';
+    this.baseAppsDir = process.env.APPS_BASE_DIR || '/tmp/apps';
     this.templateDir = process.env.APP_TEMPLATE_DIR || path.join(process.cwd(), '..', 'app-templates', 'v8');
 
     // Initialize dev environment manager (now uses DatabaseManager)
@@ -45,7 +46,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       await this.devEnvironmentManager.initialize();
 
       // Step 2: Create app directory and copy template
-      const appPath = path.join(this.baseAppsDir, siteId);
+      const appPath = getAppPath(siteId); // Use centralized utility
       const result = await this.devEnvironmentManager.createDevApp({
         siteId,
         name: title || siteId,

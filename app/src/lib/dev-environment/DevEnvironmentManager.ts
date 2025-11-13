@@ -6,6 +6,9 @@ import { SSLCertificateGenerator } from './utils/ssl-cert-generator';
 import { TemplateCopyService } from './services/TemplateCopyService';
 import { createAppAdapter, getAdapterType } from './adapters';
 import type { IAppAdapter } from './adapters/interfaces/IAppAdapter';
+import { existsSync, promises as fsPromises, writeFileSync, readFileSync, appendFileSync } from 'fs';
+import path from 'path';
+import { getBasePath, getAppPath, getAllocPath } from './utils/app-paths';
 
 export interface CreateDevAppRequest {
   siteId: string;
@@ -129,9 +132,18 @@ export class DevEnvironmentManager {
         }
       }
 
-      // 3. Determine app path
-      const baseAppsDir = process.env.LOCAL_APPS_DIR || '/tmp/apps';
-      const appPath = `${baseAppsDir}/${siteId}`;
+      // 3. Determine app paths using centralized utility
+      const basePath = getBasePath(siteId);
+      const appPath = getAppPath(siteId);
+      const allocPath = getAllocPath(siteId);
+
+      // Ensure base and subdirectories exist
+      if (!existsSync(basePath)) {
+        await fsPromises.mkdir(basePath, { recursive: true });
+      }
+      if (!existsSync(allocPath)) {
+        await fsPromises.mkdir(allocPath, { recursive: true });
+      }
 
       // 4. Create or update dev app record
       const devApp = this.devDb.createDevApp({ // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -328,10 +340,8 @@ export class DevEnvironmentManager {
 
         // Create .is_ready file for Docker mode to signal template is ready
         if (!this.adapter?.getCapabilities().supportsProcessOperations) {
-          const fs = await import('fs');
-          const path = await import('path');
           const readyFilePath = path.join(appPath, '.is_ready');
-          fs.writeFileSync(readyFilePath, '');
+          writeFileSync(readyFilePath, '');
           logger.info(`📄 Created .is_ready file for Docker container: ${readyFilePath}`);
         }
       } else {
@@ -347,9 +357,6 @@ export class DevEnvironmentManager {
    * Update .gitignore to exclude dev-supervisor binary and build artifacts
    */
   private async updateGitignoreForDevSupervisor(appPath: string): Promise<void> {
-    const fs = await import('fs');
-    const path = await import('path');
-
     const gitignorePath = path.join(appPath, '.gitignore');
 
     // Entries to add to .gitignore for dev-supervisor
@@ -366,18 +373,18 @@ export class DevEnvironmentManager {
 
     try {
       // Check if .gitignore exists
-      if (fs.existsSync(gitignorePath)) {
+      if (existsSync(gitignorePath)) {
         // Read existing content
-        const existingContent = fs.readFileSync(gitignorePath, 'utf-8');
+        const existingContent = readFileSync(gitignorePath, 'utf-8');
 
         // Only add if not already present
         if (!existingContent.includes('dev-supervisor/')) {
-          fs.appendFileSync(gitignorePath, devSupervisorIgnores);
+          appendFileSync(gitignorePath, devSupervisorIgnores);
           logger.info(`📝 Updated .gitignore to exclude dev-supervisor for app at ${appPath}`);
         }
       } else {
         // Create .gitignore with dev-supervisor rules
-        fs.writeFileSync(gitignorePath, devSupervisorIgnores);
+        writeFileSync(gitignorePath, devSupervisorIgnores);
         logger.info(`📝 Created .gitignore with dev-supervisor exclusions for app at ${appPath}`);
       }
     } catch (error) {

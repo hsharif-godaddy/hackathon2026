@@ -45,16 +45,6 @@ export interface AppSecretsConfig {
 }
 
 /**
- * Configuration file paths
- */
-export const CONFIG_PATHS = {
-	/** Host path for config file: /tmp/apps/{appId}/config.json */
-	host: (appId: string) => `/tmp/apps/${appId}/config.json`,
-	/** Container path for config file: /alloc/config.json */
-	container: '/alloc/config.json',
-} as const;
-
-/**
  * Utility class for managing JSON configuration files
  * Handles reading and writing database credentials in production-ready format
  */

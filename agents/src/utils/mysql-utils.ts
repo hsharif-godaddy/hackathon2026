@@ -68,11 +68,20 @@ export class MySQLUtils {
    * @throws Error if config.json file not found or credentials are incomplete
    */
   async loadCredentialsFromApp(app: App): Promise<DatabaseCredentials> {
-    const configPath = join(app.path, 'config.json');
+    // Determine config path based on environment
+    let configPath: string;
+
+    if (process.env.NOMAD_ALLOC_DIR) {
+      // Production: config is in the NOMAD_ALLOC_DIR
+      configPath = join(process.env.NOMAD_ALLOC_DIR, 'config.json');
+    } else {
+      // Local development: construct path from APPS_BASE_DIR + appId
+      configPath = join(process.env.APPS_BASE_DIR || '/tmp/apps', app.id, 'alloc', 'config.json');
+    }
 
     // Check if config.json file exists
     if (!existsSync(configPath)) {
-      throw new Error(`No config.json file found for application at ${app.path}`);
+      throw new Error(`No config.json file found for application at ${configPath}`);
     }
 
     logger.debug('MySQL: Reading credentials from config.json', {

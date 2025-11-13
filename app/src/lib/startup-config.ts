@@ -66,7 +66,7 @@ export function logStartupConfiguration() {
     mode: deploymentMode,
     ...(["development", "docker"].includes(deploymentMode) ? {
       agentsServiceUrl: process.env.AGENTS_SERVICE_URL || 'http://localhost:4000',
-      appsDirectory: process.env.LOCAL_APPS_DIR || '/tmp/apps',
+      appsDirectory: process.env.APPS_BASE_DIR || '/tmp/apps',
       templateDirectory: process.env.APP_TEMPLATE_DIR || 'app-templates/v8'
     } : {})
   });

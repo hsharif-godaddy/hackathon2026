@@ -106,7 +106,7 @@ export class AppRepository {
       throw new Error('Site ID mismatch: This agent is locked to a specific site and cannot register other sites');
     }
 
-    const finalAppPath = sanitizedAppPath || (process.env.APPS_BASE_DIR ? `${process.env.APPS_BASE_DIR}/${sanitizedSiteId}` : `/tmp/apps/${sanitizedSiteId}`);
+    const finalAppPath = sanitizedAppPath || (process.env.APPS_BASE_DIR ? `${process.env.APPS_BASE_DIR}/${sanitizedSiteId}/app` : `/tmp/apps/${sanitizedSiteId}/app`);
 
     if (process.env.CUSTOMER_APP_DIR && finalAppPath !== process.env.CUSTOMER_APP_DIR) {
       throw new Error('App path mismatch: This agent is locked to a specific app directory');

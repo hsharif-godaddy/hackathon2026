@@ -14,7 +14,7 @@ Airo App Builder is an AI-powered application development platform that combines
 - You can challenge me if you think you have a better solution.
 - Never make assumptions about props, imports or path. Validate that thing exist before using them.
 - If you are unsure about something, at the start or anywhere in your execution process, stop and ask questions.
-- NEVER EDIT FILES UNDER `/tmp/apps/**`, these are **OUTPUT** of our system, not source code. **Always fix the generation logic instead**
+- NEVER EDIT FILES UNDER `/tmp/apps/{appId}/app/**`, these are **OUTPUT** of our system, not source code. **Always fix the generation logic instead**
 - We want QUALITY code. Take the time you need to think, explore multiple solutions if you need to.
 - When working under `/app` folder, and **ONLY** when under this folder, use components within our design system, UXCore @ux/, as much as possible, and use `/app/uxcore-llm.txt` for context on component documentation and refer to `/app/design-guidance.md` for design guidance.
 - Under `/app` we don't have access to default Tailwind colors, you can't use `bg-white` or `text-blue-600`.
@@ -146,6 +146,29 @@ This is a **pnpm workspace monorepo** with multiple interconnected services. All
   - Manages app + database stacks as single units
   - Automatic recovery and orphan cleanup
   - Generated compose files in `/tmp/apps/{appId}/docker-compose.yml`
+
+**App Directory Structure:**
+
+Apps are created with the following directory structure:
+
+```
+/tmp/apps/{appId}/
+  ├── app/                    # Application code (template files, source code)
+  │   ├── package.json
+  │   ├── src/
+  │   ├── Dockerfile.dev
+  │   └── ...
+  ├── alloc/                  # Configuration and secrets directory
+  │   └── config.json         # Database credentials and configuration
+  └── docker-compose.yml      # Docker Compose configuration (at root level)
+```
+
+Key points:
+
+- Application code lives in the `/app` subdirectory
+- Configuration and secrets live in the `/alloc` subdirectory
+- Docker Compose configuration stays at the root level for easy compose operations
+- Docker bind mounts: `{basePath}/app:/app` and `{basePath}/alloc:/alloc`
 
 **Workspace Dependencies:**
 
@@ -279,7 +302,7 @@ Apps go through states: `creating` → `created` → `running`/`stopped`/`error`
 - Asynchronous setup after database insertion
 - Automatic process recovery on restart
 - Graceful cleanup and orphan detection
-- Generated apps stored in `/tmp/apps/` (DO NOT edit directly)
+- Generated apps stored in `/tmp/apps/{appId}/app/` (DO NOT edit directly)
 
 ### WebSocket Communication
 

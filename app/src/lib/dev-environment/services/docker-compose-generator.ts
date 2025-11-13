@@ -1,4 +1,5 @@
 import { logger } from '../../request-context';
+import { getAllocPath } from '../utils/app-paths';
 
 /**
  * Constant container port for dev-supervisor TCP communication
@@ -71,10 +72,13 @@ export class DockerComposeGenerator {
 	 * Get anonymous volumes for app service (v8 template)
 	 */
 	private getAppVolumes(config: ComposeServiceConfig): string[] {
+		// Get alloc path using centralized utility
+		const allocPath = getAllocPath(config.appId);
+
 		const volumes = [
-			`${config.appPath}:/app`,
-			"/app/node_modules",
-			`${config.appPath}/config.json:/alloc/config.json:ro`, // Database credentials
+			`${config.appPath}:/app`, // Mount app code directory
+			"/app/node_modules", // Anonymous volume for node_modules
+			`${allocPath}:/alloc:ro`, // Mount alloc directory for config and secrets
 		];
 
 		// Add dev-supervisor socket directory if using Unix socket mode

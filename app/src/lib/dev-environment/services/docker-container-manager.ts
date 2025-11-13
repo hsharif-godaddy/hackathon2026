@@ -10,6 +10,7 @@ import { DockerComposeGenerator, type ComposeServiceConfig } from './docker-comp
 import { DockerComposeManager } from './docker-compose-manager';
 import { SharedMySQLService } from './shared-mysql-service';
 import { ConfigJsonManager } from '../utils/config-json';
+import { getBasePath, getAppPath, getAllocPath } from '../utils/app-paths';
 
 const execAsync = promisify(exec);
 
@@ -32,7 +33,7 @@ function getTcpPort(): string {
 export interface ContainerInfo {
 	appId: string;
 	containerId: string;
-	appPath: string; // Path to app directory (needed for compose operations)
+	appPath: string; // Base path /tmp/apps/{appId} (needed for compose operations)
 	port: number;
 	status: "building" | "running" | "stopped" | "error";
 	imageName: string;
@@ -94,13 +95,6 @@ export class DockerContainerManager {
 		}
 	}
 
-	/**
-	 * Get the app path for a given appId
-	 * Centralizes the logic for constructing app paths
-	 */
-	private getAppPath(appId: string): string {
-		return `/tmp/apps/${appId}`;
-	}
 
 
 
@@ -152,13 +146,13 @@ export class DockerContainerManager {
 	 * Ensure a compose stack is completely removed with proper cleanup
 	 * Replaces the old ensureContainerRemoved method
 	 */
-	private async ensureComposeStackRemoved(appPath: string): Promise<void> {
+	private async ensureComposeStackRemoved(basePath: string): Promise<void> {
 		try {
-			logger.info(`🗑️ Ensuring compose stack is removed: ${appPath}`);
+			logger.info(`🗑️ Ensuring compose stack is removed: ${basePath}`);
 
-			await this.composeManager.down(appPath, true);
+			await this.composeManager.down(basePath, true);
 
-			logger.info(`✅ Compose stack removed: ${appPath}`);
+			logger.info(`✅ Compose stack removed: ${basePath}`);
 		} catch (error: any) {
 			if (!error.message?.includes("No such file") && !error.message?.includes("not found")) {
 				// Only log if it's not a "file not found" error (which is expected)
@@ -248,8 +242,9 @@ export class DockerContainerManager {
 			logger.info(`🗄️ Provisioning database for app ${appId} in shared MySQL`);
 			const dbConfig = await this.sharedMySQLService.provisionDatabase(appId);
 
-			// Write config.json with database credentials for container and host access
-			const configPath = path.join(appPath, 'config.json');
+			// Write config.json with database credentials to alloc directory
+			const allocPath = getAllocPath(appId);
+			const configPath = path.join(allocPath, 'config.json');
 			ConfigJsonManager.writeConfigFile(configPath, dbConfig);
 
 			logger.info(`✅ Database provisioned for app ${appId}`);
@@ -270,8 +265,9 @@ export class DockerContainerManager {
 			// Generate docker-compose.yml
 			const composeContent = this.composeGenerator.generateComposeFile(composeConfig, dbConfig);
 
-			// Write docker-compose.yml to app directory
-			const composeFilePath = path.join(appPath, 'docker-compose.yml');
+			// Write docker-compose.yml to base directory (not in app or alloc subdirectories)
+			const basePath = getBasePath(appId);
+			const composeFilePath = path.join(basePath, 'docker-compose.yml');
 			writeFileSync(composeFilePath, composeContent, 'utf-8');
 
 			logger.info(`✅ Generated docker-compose.yml for app ${appId}`);
@@ -279,7 +275,7 @@ export class DockerContainerManager {
 			// Ensure any existing compose stack is removed (unless skipping cleanup)
 			if (!skipCleanup) {
 				try {
-					await this.composeManager.down(appPath, true);
+					await this.composeManager.down(basePath, true);
 					logger.info(`🧹 Cleaned up existing compose stack for app ${appId}`);
 				} catch (error) {
 					// Stack doesn't exist, that's fine
@@ -289,17 +285,17 @@ export class DockerContainerManager {
 
 			// Build the Docker image using Docker Compose
 			logger.info(`📦 Building Docker image: ${imageName}`);
-			await this.composeManager.build(appPath, false);
+			await this.composeManager.build(basePath, false);
 			logger.info(`✅ Docker image built successfully: ${imageName}`);
 
 			// Start the compose stack
 			logger.info(`🚀 Starting Docker Compose stack for app ${appId}`);
-			await this.composeManager.up(appPath, true);
+			await this.composeManager.up(basePath, true);
 
 			logger.info(`✅ Docker Compose stack started for app ${appId}`);
 
 			// Get app container ID
-			const containerId = await this.composeManager.getContainerId(appPath, 'app');
+			const containerId = await this.composeManager.getContainerId(basePath, 'app');
 
 			if (!containerId) {
 				throw new Error('Failed to get container ID from compose stack');
@@ -310,7 +306,7 @@ export class DockerContainerManager {
 			const containerInfo: ContainerInfo = {
 				appId,
 				containerId,
-				appPath,
+				appPath: basePath, // Store base path for compose operations
 				port,
 				status: "running",
 				imageName,
@@ -360,8 +356,8 @@ export class DockerContainerManager {
 		logger.info(`🛑 Stopping Docker Compose stack for app ${appId}`);
 
 		try {
-			const appPath = this.getAppPath(appId);
-			await this.composeManager.stop(appPath);
+			const basePath = getBasePath(appId);
+			await this.composeManager.stop(basePath);
 
 			containerInfo.status = "stopped";
 			this.saveContainerToDb(containerInfo);
@@ -394,10 +390,10 @@ export class DockerContainerManager {
 		logger.info(`🗑️ Removing Docker Compose stack for app ${appId}`);
 
 		try {
-			const appPath = this.getAppPath(appId);
+			const basePath = getBasePath(appId);
 
 			// Remove compose stack (includes all services, networks, and volumes)
-			await this.composeManager.down(appPath, true);
+			await this.composeManager.down(basePath, true);
 
 			logger.info(`✅ Docker Compose stack removed for app ${appId}`);
 
@@ -446,8 +442,8 @@ export class DockerContainerManager {
 		}
 
 		try {
-			const appPath = this.getAppPath(appId);
-			const composeStatus = await this.composeManager.ps(appPath);
+			const basePath = getBasePath(appId);
+			const composeStatus = await this.composeManager.ps(basePath);
 
 			// Find app service status
 			const appService = composeStatus.services.find(s => s.name === 'app' || s.name.includes('app'));
@@ -500,8 +496,8 @@ export class DockerContainerManager {
 		}
 
 		try {
-			const appPath = this.getAppPath(appId);
-			const logs = await this.composeManager.logs(appPath, {
+			const basePath = getBasePath(appId);
+			const logs = await this.composeManager.logs(basePath, {
 				tail: tailLines,
 				service: 'app',
 			});
@@ -527,8 +523,8 @@ export class DockerContainerManager {
 		logger.info(`🔄 Restarting Docker Compose stack for app ${appId}`);
 
 		try {
-			const appPath = this.getAppPath(appId);
-			await this.composeManager.restart(appPath);
+			const basePath = getBasePath(appId);
+			await this.composeManager.restart(basePath);
 
 			containerInfo.status = "running";
 			this.saveContainerToDb(containerInfo);
@@ -572,7 +568,7 @@ export class DockerContainerManager {
 			const containerInfo: ContainerInfo = {
 				appId: record.appId,
 				containerId: `container-${record.appId}`, // Docker containers would have real IDs
-				appPath: this.getAppPath(record.appId),
+				appPath: getBasePath(record.appId), // Base path for compose operations
 				port: record.port,
 				status: "running" as const,
 				imageName: `airo-app-${sanitizedId}:dev`,
@@ -615,10 +611,10 @@ export class DockerContainerManager {
 
 			for (const record of containerRecords) {
 				try {
-					const appPath = this.getAppPath(record.appId);
+					const basePath = getBasePath(record.appId);
 
 					// Check if compose stack exists and is running
-					const composeStatus = await this.composeManager.ps(appPath);
+					const composeStatus = await this.composeManager.ps(basePath);
 
 					if (composeStatus.anyRunning) {
 						// Stack is running - recover it
@@ -642,7 +638,7 @@ export class DockerContainerManager {
 						const containerInfo: ContainerInfo = {
 							appId: record.appId,
 							containerId: record.containerId,
-							appPath,
+							appPath: getBasePath(record.appId), // Base path for compose operations
 							port: record.port,
 							status: "running",
 							imageName: record.imageName,
@@ -658,7 +654,7 @@ export class DockerContainerManager {
 					} else {
 						// Stack exists but stopped - clean it up
 						try {
-							await this.composeManager.down(appPath, false);
+							await this.composeManager.down(basePath, false);
 							this.removeContainerFromDb(record.appId);
 							cleanedCount++;
 							logger.info(`🧹 Cleaned up stopped compose stack for app ${record.appId}`);
@@ -751,7 +747,7 @@ export class DockerContainerManager {
 				this.devDb.createDevApp({
 					appId: containerInfo.appId,
 					port: containerInfo.port,
-					appPath: this.getAppPath(containerInfo.appId), // Standard app path
+					appPath: getAppPath(containerInfo.appId), // App code path for database
 					templateVersion: 'v8', // Default to latest template version
 					status: 'running'
 				});
@@ -795,7 +791,7 @@ export class DockerContainerManager {
 		const containerInfo: ContainerInfo = {
 			appId: record.appId,
 			containerId: `container-${record.appId}`,
-			appPath: this.getAppPath(record.appId),
+			appPath: getBasePath(record.appId), // Base path for compose operations
 			port: record.port,
 			status: "running",
 			imageName: `airo-app-${sanitizedId}:dev`,
@@ -893,8 +889,8 @@ export class DockerContainerManager {
 		}
 
 		try {
-			const appPath = this.getAppPath(appId);
-			const composeStatus = await this.composeManager.ps(appPath);
+			const basePath = getBasePath(appId);
+			const composeStatus = await this.composeManager.ps(basePath);
 
 			// Find app service
 			const appService = composeStatus.services.find(s => s.name === 'app' || s.name.includes('app'));
@@ -1067,12 +1063,12 @@ export class DockerContainerManager {
 	 */
 	private async cleanupContainerAndImage(appId: string): Promise<void> {
 		const dockerSafeId = this.sanitizeAppId(appId);
-		const appPath = this.getAppPath(appId);
+		const basePath = getBasePath(appId);
 
 		const imageName = `airo-app-${dockerSafeId}:dev`;
 
 		// Remove any existing compose stack
-		await this.ensureComposeStackRemoved(appPath);
+		await this.ensureComposeStackRemoved(basePath);
 
 		try {
 			// Remove image if it exists to force rebuild
@@ -1104,12 +1100,12 @@ export class DockerContainerManager {
 
 			for (const containerRecord of allContainers) {
 				try {
-					const appPath = this.getAppPath(containerRecord.appId);
-					const composeStatus = await this.composeManager.ps(appPath);
+					const basePath = getBasePath(containerRecord.appId);
+					const composeStatus = await this.composeManager.ps(basePath);
 
 					if (!composeStatus.anyRunning) {
 						// Stack exists but is stopped, remove it
-						await this.composeManager.down(appPath, true);
+						await this.composeManager.down(basePath, true);
 						this.removeContainerFromDb(containerRecord.appId);
 						cleanedCount++;
 						logger.info(`🧹 Cleaned up stopped compose stack for app ${containerRecord.appId}`);
