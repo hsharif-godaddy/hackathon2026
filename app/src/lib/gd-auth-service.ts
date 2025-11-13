@@ -134,7 +134,7 @@ export class GdAuthService {
 
       logger.info('gd-auth.authenticate.success', {
         message: 'Authentication successful',
-        customerId: isImpersonation ? jwt.e2s.cid : jwt.auth.cid,
+        customerId: isImpersonation ? jwt.e2s.cid : jwt.cid,
         exp: jwt.exp,
         iat: jwt.iat
       });
@@ -142,8 +142,8 @@ export class GdAuthService {
       return {
         valid: true,
         payload: {
-          shopperId: isImpersonation ? jwt.e2s.shopperId : jwt.auth.shopperId,
-          cid: isImpersonation ? jwt.e2s.cid : jwt.auth.cid, // Use cid for customerId
+          shopperId: isImpersonation ? jwt.e2s.shopperId : jwt.shopperId,
+          cid: isImpersonation ? jwt.e2s.cid : jwt.cid, // Use cid for customerId
           exp: jwt.exp,
           iat: jwt.iat,
           // Include all other JWT payload properties
