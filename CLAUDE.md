@@ -274,7 +274,7 @@ IMAGE_SEARCH_DRIVER=getty
 ```bash
 NODE_ENV=development
 PORT=3000
-DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app
+DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app?sslaccept=accept_invalid_certs
 
 # AI Provider (match agents config)
 AI_PROVIDER=openai

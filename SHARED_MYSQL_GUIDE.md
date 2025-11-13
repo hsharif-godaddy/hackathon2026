@@ -87,7 +87,7 @@ Same as host machine (agents service runs on host, reads `.env` file)
 Each app's `.env` file contains:
 
 ```bash
-DATABASE_URL=mysql://user_airo_{appId}:password@airo-app-mysql:3306/airo_{appId}
+DATABASE_URL=mysql://user_airo_{appId}:password@airo-app-mysql:3306/airo_{appId}?sslaccept=accept_invalid_certs
 MYSQL_HOST=airo-app-mysql
 MYSQL_PORT=3306
 MYSQL_DATABASE=airo_{appId}

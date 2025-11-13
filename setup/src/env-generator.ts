@@ -49,7 +49,7 @@ export interface AgentsEnvConfig {
 export class EnvGenerator {
 	private projectRoot: string;
 	private static readonly DEFAULT_DATABASE_URL =
-		"mysql://airo:airopassword@localhost:3306/airo_app";
+		"mysql://airo:airopassword@localhost:3306/airo_app?sslaccept=accept_invalid_certs";
 	private awsSSO: AWSSSoSetup;
 
 	constructor(projectRoot: string) {
