@@ -8,6 +8,8 @@ export interface DeploymentConfig {
   accountId: string;
   prompt: string;
   title?: string;
+  subscriptionId?: string;
+  customerId?: string;
 }
 
 export interface DeploymentResult {

@@ -186,6 +186,82 @@ describe('POST /apps/register - Validation Tests', () => {
     });
   });
 
+  describe('SubscriptionId validation', () => {
+    it('should return 400 when subscriptionId is not a string', async () => {
+      const response = await request(app)
+        .post('/apps/register')
+        .send({ siteId: 'test-site-123', subscriptionId: 123 })
+        .expect(400);
+
+      expect(response.body.error).toBe('subscriptionId must be a non-empty string if provided');
+    });
+
+    it('should return 400 when subscriptionId is empty string', async () => {
+      const response = await request(app)
+        .post('/apps/register')
+        .send({ siteId: 'test-site-123', subscriptionId: '' })
+        .expect(400);
+
+      expect(response.body.error).toBe('subscriptionId must be a non-empty string if provided');
+    });
+
+    it('should return 400 when subscriptionId is only whitespace', async () => {
+      const response = await request(app)
+        .post('/apps/register')
+        .send({ siteId: 'test-site-123', subscriptionId: '   ' })
+        .expect(400);
+
+      expect(response.body.error).toBe('subscriptionId must be a non-empty string if provided');
+    });
+
+    it('should accept valid subscriptionId', async () => {
+      const response = await request(app)
+        .post('/apps/register')
+        .send({ siteId: 'test-site-123', subscriptionId: 'sub-12345' });
+
+      expect(response.status).not.toBe(400);
+      expect(response.body.error).not.toBe('subscriptionId must be a non-empty string if provided');
+    });
+  });
+
+  describe('CustomerId validation', () => {
+    it('should return 400 when customerId is not a string', async () => {
+      const response = await request(app)
+        .post('/apps/register')
+        .send({ siteId: 'test-site-123', customerId: 123 })
+        .expect(400);
+
+      expect(response.body.error).toBe('customerId must be a non-empty string if provided');
+    });
+
+    it('should return 400 when customerId is empty string', async () => {
+      const response = await request(app)
+        .post('/apps/register')
+        .send({ siteId: 'test-site-123', customerId: '' })
+        .expect(400);
+
+      expect(response.body.error).toBe('customerId must be a non-empty string if provided');
+    });
+
+    it('should return 400 when customerId is only whitespace', async () => {
+      const response = await request(app)
+        .post('/apps/register')
+        .send({ siteId: 'test-site-123', customerId: '   ' })
+        .expect(400);
+
+      expect(response.body.error).toBe('customerId must be a non-empty string if provided');
+    });
+
+    it('should accept valid customerId', async () => {
+      const response = await request(app)
+        .post('/apps/register')
+        .send({ siteId: 'test-site-123', customerId: 'cust-12345' });
+
+      expect(response.status).not.toBe(400);
+      expect(response.body.error).not.toBe('customerId must be a non-empty string if provided');
+    });
+  });
+
   describe('SITE_ID environment variable enforcement', () => {
     it('should return 403 when SITE_ID is set and does not match', async () => {
       process.env.SITE_ID = 'locked-site-id';

@@ -168,7 +168,16 @@ router.post('/create', async (req: Request, res: Response) => {
  */
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { siteId, name, appPath, port, initialPrompt, previewUrl, socketPath } = req.body;
+    const { siteId, name, appPath, port, initialPrompt, previewUrl, socketPath, subscriptionId, customerId } = req.body;
+
+    logger.info('route.apps.register.request', {
+      siteId,
+      name,
+      hasAppPath: !!appPath,
+      hasPort: !!port,
+      customerId: customerId || 'not-provided',
+      subscriptionId: subscriptionId || 'not-provided'
+    });
 
     if (!siteId || typeof siteId !== 'string' || siteId.trim().length === 0) {
       return res.status(400).json({ error: 'siteId is required and must be a non-empty string' });
@@ -198,6 +207,14 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'socketPath must be a string if provided' });
     }
 
+    if (subscriptionId !== undefined && (typeof subscriptionId !== 'string' || subscriptionId.trim().length === 0)) {
+      return res.status(400).json({ error: 'subscriptionId must be a non-empty string if provided' });
+    }
+
+    if (customerId !== undefined && (typeof customerId !== 'string' || customerId.trim().length === 0)) {
+      return res.status(400).json({ error: 'customerId must be a non-empty string if provided' });
+    }
+
     const result = await appRepo.registerOrUpdateApp({
       siteId,
       name,
@@ -205,7 +222,9 @@ router.post('/register', async (req: Request, res: Response) => {
       port,
       initialPrompt,
       previewUrl,
-      socketPath
+      socketPath,
+      subscriptionId,
+      customerId
     });
 
     return res.status(result.created ? 201 : 200).json(result);
@@ -214,7 +233,11 @@ router.post('/register', async (req: Request, res: Response) => {
     log.error(logger, 'route.apps.register.error', error as Error, {});
 
     if (error instanceof Error && error.message.includes('mismatch')) {
-      return res.status(403).json({ error: error.message });
+      const [errorType, ...messageParts] = error.message.split(': ');
+      return res.status(403).json({ 
+        error: errorType,
+        message: messageParts.join(': ')
+      });
     }
 
     return res.status(500).json({ error: 'Internal server error' });

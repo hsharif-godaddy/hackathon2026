@@ -410,15 +410,21 @@ export class SitePollingService {
 
       // Register app with agent service
       try {
+        const prefixedSubscriptionId = site.subscription_id ? `airo-build:sid:${site.subscription_id}` : undefined;
         const registerPayload = {
           siteId: site.id,
           name: site.name || `App ${site.id}`,
           initialPrompt: site.initial_prompt,
-          previewUrl: site.preview_url
+          previewUrl: site.preview_url,
+          subscriptionId: prefixedSubscriptionId,
+          customerId: site.account_id
         };
         
         logger.info('📝 Registration payload:', {
-          payload: registerPayload,
+          siteId: site.id,
+          customerId: site.account_id || 'not-provided',
+          subscriptionId_original: site.subscription_id || 'not-provided',
+          subscriptionId_prefixed: prefixedSubscriptionId || 'not-provided',
           initialPromptType: typeof registerPayload.initialPrompt,
           initialPromptLength: registerPayload.initialPrompt?.length
         });

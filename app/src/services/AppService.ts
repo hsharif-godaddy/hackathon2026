@@ -670,8 +670,14 @@ export class AppService {
       })
 
       // Call register endpoint with updated name (in all modes)
+      const prefixedSubscriptionId = freshSite.subscription_id ? `airo-build:sid:${freshSite.subscription_id}` : undefined;
+      
       logger.info('develop-page.name-update.registering', {
-        message: 'Registering app with updated name'
+        message: 'Registering app with updated name',
+        siteId: appId,
+        customerId: freshSite.account_id || 'not-provided',
+        subscriptionId_original: freshSite.subscription_id || 'not-provided',
+        subscriptionId_prefixed: prefixedSubscriptionId || 'not-provided'
       })
 
       const registerResponse = await agentFetch(`${freshSite.agent_url}/apps/register`, {
@@ -682,7 +688,9 @@ export class AppService {
           siteId: appId,
           name: suggestedName,
           initialPrompt: freshSite.initial_prompt,
-          previewUrl: freshSite.preview_url
+          previewUrl: freshSite.preview_url,
+          subscriptionId: prefixedSubscriptionId,
+          customerId: freshSite.account_id
         })
       })
 

@@ -37,7 +37,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   }
 
   async deploy(config: DeploymentConfig): Promise<DeploymentResult> {
-    const { siteId, accountId, prompt, title } = config;
+    const { siteId, accountId, prompt, title, subscriptionId, customerId } = config;
 
     try {
       this.log('info', 'Starting Docker deployment', { siteId, accountId });
@@ -67,7 +67,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
 
       // Step 4: Get dev-supervisor connection path and register with agents service
       const connectionPath = this.devEnvironmentManager.getConnectionPath(siteId);
-      await this.registerWithAgents(siteId, title || `App ${siteId}`, prompt, result.appPath || appPath, undefined, connectionPath);
+      await this.registerWithAgents(siteId, title || `App ${siteId}`, prompt, result.appPath || appPath, undefined, connectionPath, subscriptionId, customerId || accountId);
 
       // Step 5: Get app status to get actual URLs
       const appStatus = await this.devEnvironmentManager.getDevAppStatus(siteId);
@@ -252,9 +252,17 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   /**
    * Register app with agents service for AI assistance
    */
-  private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string, previewUrl?: string, socketPath?: string | null): Promise<void> {
+  private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string, previewUrl?: string, socketPath?: string | null, subscriptionId?: string, customerId?: string): Promise<void> {
     try {
-      this.log('info', 'Registering app with agents service', { siteId, name, socketPath });
+      const prefixedSubscriptionId = subscriptionId ? `airo-build:sid:${subscriptionId}` : undefined;
+      this.log('info', 'Registering app with agents service', { 
+        siteId, 
+        name, 
+        socketPath,
+        customerId: customerId || 'not-provided',
+        subscriptionId_original: subscriptionId || 'not-provided',
+        subscriptionId_prefixed: prefixedSubscriptionId || 'not-provided'
+      });
 
       const response = await agentFetch(`${this.agentsServiceUrl}/apps/register`, {
         siteId,
@@ -268,7 +276,9 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
           appPath,
           initialPrompt,
           previewUrl,
-          socketPath: socketPath || undefined // Include connection path if available
+          socketPath: socketPath || undefined, // Include connection path if available
+          subscriptionId: prefixedSubscriptionId,
+          customerId
         }),
         signal: AbortSignal.timeout(10000) // 10 second timeout
       });

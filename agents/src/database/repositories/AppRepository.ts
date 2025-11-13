@@ -19,6 +19,8 @@ export interface RegisterAppParams {
   initialPrompt?: string;
   previewUrl?: string;
   socketPath?: string; // Dev-supervisor connection path (TCP URL or Unix socket path)
+  subscriptionId?: string; // Subscription ID from main app
+  customerId?: string; // Customer ID from main app
 }
 
 /**
@@ -96,11 +98,13 @@ export class AppRepository {
    * ```
    */
   async registerOrUpdateApp(params: RegisterAppParams): Promise<RegisterAppResult> {
-    const { siteId, name, appPath, port, initialPrompt, previewUrl, socketPath } = params;
+    const { siteId, name, appPath, port, initialPrompt, previewUrl, socketPath, subscriptionId, customerId } = params;
 
     const sanitizedSiteId = siteId.trim();
     const sanitizedName = name?.trim();
     const sanitizedAppPath = appPath?.trim();
+    const sanitizedSubscriptionId = subscriptionId?.trim();
+    const sanitizedCustomerId = customerId?.trim();
 
     if (process.env.SITE_ID && process.env.SITE_ID !== sanitizedSiteId) {
       throw new Error('Site ID mismatch: This agent is locked to a specific site and cannot register other sites');
@@ -123,7 +127,9 @@ export class AppRepository {
       hasName: !!sanitizedName,
       hasPath: !!sanitizedAppPath,
       hasPort: !!port,
-      hasPreviewUrl: !!previewUrl
+      hasPreviewUrl: !!previewUrl,
+      customerId: sanitizedCustomerId || 'not-provided',
+      subscriptionId: sanitizedSubscriptionId || 'not-provided'
     });
 
     const existingApp = this.findById(sanitizedSiteId);
@@ -131,7 +137,7 @@ export class AppRepository {
     if (existingApp) {
       this.logger.info('app.register.exists', {
         appId: sanitizedSiteId,
-        updating: !!(sanitizedName || port || initialPrompt || previewUrl || socketPath)
+        updating: !!(sanitizedName || port || initialPrompt || previewUrl || socketPath || sanitizedSubscriptionId || sanitizedCustomerId)
       });
 
       const updates: string[] = [];
@@ -160,6 +166,16 @@ export class AppRepository {
       if (socketPath !== undefined) {
         updates.push('socket_path = ?');
         values.push(socketPath);
+      }
+
+      if (sanitizedSubscriptionId !== undefined) {
+        updates.push('subscription_id = ?');
+        values.push(sanitizedSubscriptionId);
+      }
+
+      if (sanitizedCustomerId !== undefined) {
+        updates.push('customer_id = ?');
+        values.push(sanitizedCustomerId);
       }
 
       if (updates.length > 0) {
@@ -212,12 +228,14 @@ export class AppRepository {
       name: finalName,
       path: finalAppPath,
       port: finalPort,
-      socketPath: finalSocketPath
+      socketPath: finalSocketPath,
+      customerId: sanitizedCustomerId || 'not-set',
+      subscriptionId: sanitizedSubscriptionId || 'not-set'
     });
 
     const stmt = this.db.prepare(`
-      INSERT INTO apps (id, name, path, port, socket_path, preview_url, initial_prompt, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO apps (id, name, path, port, socket_path, preview_url, initial_prompt, subscription_id, customer_id, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -228,6 +246,8 @@ export class AppRepository {
       finalSocketPath,
       previewUrl || null,
       initialPrompt || null,
+      sanitizedSubscriptionId || null,
+      sanitizedCustomerId || null,
       'created',
       now,
       now
@@ -328,7 +348,7 @@ export class AppRepository {
    */
   findById(id: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, preview_url, initial_prompt, template_version, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE id = ?
     `);
@@ -345,6 +365,8 @@ export class AppRepository {
       previewUrl: row.preview_url,
       initialPrompt: row.initial_prompt,
       templateVersion: row.template_version,
+      subscriptionId: row.subscription_id,
+      customerId: row.customer_id,
       status: row.status,
       initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
@@ -357,7 +379,7 @@ export class AppRepository {
    */
   findByPath(path: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, initial_prompt, template_version, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE path = ?
     `);
@@ -371,8 +393,11 @@ export class AppRepository {
       path: row.path,
       port: row.port,
       socketPath: row.socket_path,
+      previewUrl: row.preview_url,
       initialPrompt: row.initial_prompt,
       templateVersion: row.template_version,
+      subscriptionId: row.subscription_id,
+      customerId: row.customer_id,
       status: row.status,
       initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
@@ -385,7 +410,7 @@ export class AppRepository {
    */
   findAll(limit = 50, offset = 0): App[] {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, preview_url, initial_prompt, template_version, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, preview_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -402,6 +427,8 @@ export class AppRepository {
       previewUrl: row.preview_url,
       initialPrompt: row.initial_prompt,
       templateVersion: row.template_version,
+      subscriptionId: row.subscription_id,
+      customerId: row.customer_id,
       status: row.status,
       initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),

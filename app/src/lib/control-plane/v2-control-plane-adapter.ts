@@ -241,7 +241,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         duration: Date.now() - startTime
       });
 
-      return this.mapAppToSiteInfo(app);
+      const cache = useSubscriptionCacheStore.getState();
+      return this.mapAppToSiteInfo(app, cache.customerId || undefined);
     } catch (error: any) {
       if (error.status === 404) {
         // App moved or deleted - invalidate cache
@@ -289,11 +290,12 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const jobStatus = await client.getAiroJobApps(siteId);
 
       if (jobStatus.apps && jobStatus.apps.length === 0) {
+        const cache = useSubscriptionCacheStore.getState();
         return {
           id: siteId,
           name: 'Provisioning...',
           status: 'creating',
-          account_id: 'unknown',
+          account_id: cache.customerId || 'unknown',
           created_at: new Date(),
           updated_at: new Date()
         };
@@ -312,13 +314,14 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         // Only return job data if it's complete (has systemId and subscriptionId)
         // If systemId/subscriptionId is missing, try to look it up in cache first
         if (jobApp.systemId && jobApp.subscriptionId) {
-          logger.info('v2-control-plane.job-id-lookup.complete', {
-            siteId,
-            appId: jobApp.id,
-            systemId: jobApp.systemId,
-            subscriptionId: jobApp.subscriptionId
-          });
-          return this.mapAppToSiteInfo(jobApp);
+        logger.info('v2-control-plane.job-id-lookup.complete', {
+          siteId,
+          appId: jobApp.id,
+          systemId: jobApp.systemId,
+          subscriptionId: jobApp.subscriptionId
+        });
+        const cache = useSubscriptionCacheStore.getState();
+        return this.mapAppToSiteInfo(jobApp, cache.customerId || undefined);
         } else if (jobApp.id) {
           // We have an app ID but missing metadata - try to look it up in cache
           logger.info('v2-control-plane.job-id-lookup.trying-cache', {
@@ -594,7 +597,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
                   initialPromptValue: fullApp.variables?.initialPrompt,
                 });
 
-                return this.mapAppToSiteInfo(fullApp);
+                return this.mapAppToSiteInfo(fullApp, subscriptionCache.customerId || undefined);
               } catch (fetchError) {
                 logger.warn('v2-control-plane.get-site.full-app-fetch-failed', {
                   siteId,
@@ -602,7 +605,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
                   errorMessage: fetchError instanceof Error ? fetchError.message : 'Unknown error',
                   reason: 'Using summary data as fallback'
                 });
-                return this.mapAppToSiteInfo(matchingApp);
+                return this.mapAppToSiteInfo(matchingApp, subscriptionCache.customerId || undefined);
               }
             }
           } catch (error) {
@@ -641,7 +644,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
       const client = this.createClient(jwt);
       const apps = await client.getAllAppsForCustomer();
-      return apps.map(app => this.mapAppToSiteInfo(app));
+      return apps.map(app => this.mapAppToSiteInfo(app, customerId));
     } catch (error: any) {
       // Re-throw 401 for auth redirect
       if (error.status === 401) {
@@ -1059,7 +1062,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         updatedTitle: updatedApp.variables?.title
       });
 
-      return this.mapAppToSiteInfo(updatedApp);
+      // Get customerId from site's account_id (was fetched in getSite earlier)
+      return this.mapAppToSiteInfo(updatedApp, site.account_id);
     } catch (error: any) {
       // Re-throw 401 for auth redirect
       if (error.status === 401) {
@@ -1109,7 +1113,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       });
 
       const updatedApp = await client.getApp(site.subscription_id, site.system_id, siteId, true);
-      return this.mapAppToSiteInfo(updatedApp);
+      // Get customerId from site's account_id (was fetched in getSite earlier)
+      return this.mapAppToSiteInfo(updatedApp, site.account_id);
     } catch (error: any) {
       // Re-throw 401 for auth redirect
       if (error.status === 401) {
@@ -1127,8 +1132,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
    * NOT the jobId - that's just a temporary handle during creation
    * 
    * Includes custom domains from mgmt-hosting if available (app.domains)
+   * 
+   * @param app - App data from mgmt-hosting
+   * @param customerId - Customer ID from subscription cache (defaults to 'customer' if not provided)
    */
-  private mapAppToSiteInfo(app: any): SiteInfo {
+  private mapAppToSiteInfo(app: any, customerId?: string): SiteInfo {
     // Use URLs from V2 response if available, otherwise construct them as fallback
     let agent_url: string | undefined;
     let preview_url: string | undefined;
@@ -1175,7 +1183,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       id: app.id,
       name: app.variables?.title || app.id,
       status: this.mapAppStatus(app.status),
-      account_id: 'customer',
+      account_id: customerId || 'customer', // Use provided customerId or fallback to 'customer'
       initial_prompt: app.variables?.initialPrompt,
       agent_url,
       preview_url,

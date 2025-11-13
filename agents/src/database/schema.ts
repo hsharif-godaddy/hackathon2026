@@ -23,6 +23,8 @@ export interface App {
   previewUrl?: string; // Full URL for preview (e.g., https://site-id.preview.example.com)
   initialPrompt?: string;
   templateVersion?: string; // Template version (v8)
+  subscriptionId?: string; // Subscription ID from main app
+  customerId?: string; // Customer ID from main app
   status: 'creating' | 'created' | 'error';
   initialBuildComplete?: boolean; // True when first git commit has been made
   createdAt: Date;
@@ -194,6 +196,8 @@ function createAppsTable(db: Database): void {
       preview_url TEXT,
       initial_prompt TEXT,
       template_version TEXT,
+      subscription_id TEXT,
+      customer_id TEXT,
       status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'created', 'error')),
       initial_build_complete BOOLEAN DEFAULT FALSE,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -581,6 +585,20 @@ function applyMigrations(db: Database): void {
   // Add preview_url column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN preview_url TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+
+  // Add subscription_id column if it doesn't exist (for existing databases)
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN subscription_id TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+
+  // Add customer_id column if it doesn't exist (for existing databases)
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN customer_id TEXT`);
   } catch (err) {
     // Column might already exist, that's fine
   }
