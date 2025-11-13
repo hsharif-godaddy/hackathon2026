@@ -106,7 +106,13 @@ export class AppRepository {
       throw new Error('Site ID mismatch: This agent is locked to a specific site and cannot register other sites');
     }
 
-    const finalAppPath = sanitizedAppPath || (process.env.APPS_BASE_DIR ? `${process.env.APPS_BASE_DIR}/${sanitizedSiteId}/app` : `/tmp/apps/${sanitizedSiteId}/app`);
+    // In production, CUSTOMER_APP_DIR points directly to app root (no /app subdir)
+    // In local/dev, we use /app subdirectory structure
+    const finalAppPath = sanitizedAppPath ||
+      process.env.CUSTOMER_APP_DIR ||  // Production: use as-is
+      (process.env.APPS_BASE_DIR
+        ? `${process.env.APPS_BASE_DIR}/${sanitizedSiteId}/app`  // Local with custom APPS_BASE_DIR
+        : `/tmp/apps/${sanitizedSiteId}/app`);  // Local default
 
     if (process.env.CUSTOMER_APP_DIR && finalAppPath !== process.env.CUSTOMER_APP_DIR) {
       throw new Error('App path mismatch: This agent is locked to a specific app directory');
@@ -633,7 +639,7 @@ export class AppRepository {
     if (devSupervisor) {
       try {
         const appInfo = DevSupervisorClientFactory.getAppInfo(appId);
-        
+
         this.logger.info('app.server.restart.devsupervisor.begin', {
           appId,
           connectionPath: appInfo?.socketPath
