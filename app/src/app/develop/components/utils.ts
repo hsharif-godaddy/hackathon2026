@@ -1,6 +1,7 @@
 import { RefObject } from "react"
 import { useParams } from "next/navigation"
 import { postMessageToIframe } from '@/utils/postMessage'
+import type { ChatMessage, StreamingMessage, ToolCall } from '@/stores/useStreamingConversationStore'
 
 /**
  * Serializes tool arguments to a string format for consistent display in components.
@@ -73,4 +74,34 @@ export function handlePreviewRefresh({ lastIframeState }: { lastIframeState: Ref
     // No iframe available, just refresh
     window.postMessage({ type: 'preview-refresh' }, window.location.origin)
   }
+}
+
+/**
+ * Checks if a message is a StreamingMessage (active, incomplete message)
+ *
+ * @param message - Message to check
+ * @returns True if message has isComplete property (StreamingMessage), false otherwise (ChatMessage)
+ */
+export function isStreamingMessage(message: ChatMessage | StreamingMessage): message is StreamingMessage {
+  return 'isComplete' in message
+}
+
+/**
+ * Checks if a message has valid segments for rendering
+ *
+ * @param message - Message to check
+ * @returns True if message has non-empty segments array, false otherwise
+ */
+export function hasValidSegments(message: ChatMessage | StreamingMessage): boolean {
+  return Boolean(message.segments && message.segments.length > 0)
+}
+
+/**
+ * Extracts tool calls from a message
+ *
+ * @param message - Message to extract tool calls from
+ * @returns Array of tool calls, or empty array if none exist
+ */
+export function getToolCallsFromMessage(message: ChatMessage | StreamingMessage): ToolCall[] {
+  return message.toolCalls || []
 }

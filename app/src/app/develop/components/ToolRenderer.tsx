@@ -1,3 +1,5 @@
+'use client'
+
 import { getToolRenderer } from './tool-renderers'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 
@@ -19,7 +21,8 @@ interface ToolRendererProps {
  * @param className - Optional CSS classes to apply to the container
  * @returns The rendered tool component
  */
-export default function ToolRenderer({ toolCall, className = '' }: ToolRendererProps) {
+function ToolRenderer({ toolCall, className = '' }: ToolRendererProps) {
+
   const ToolRendererComponent = getToolRenderer(toolCall.name)
 
   return (
@@ -37,4 +40,6 @@ export default function ToolRenderer({ toolCall, className = '' }: ToolRendererP
     </div>
   )
 }
+
+export default ToolRenderer
 

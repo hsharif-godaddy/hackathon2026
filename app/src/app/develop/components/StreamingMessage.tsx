@@ -33,7 +33,9 @@ function getMessageClasses(message: ChatMessage | StreamingMessageType, isActive
   const baseClasses = 'rounded-md'
 
   // Active streaming messages that are incomplete - but don't hide if there's an error or warning
-  if (isActiveStream && 'isComplete' in message && !message.isComplete && message.content === '' && !message.upstreamError && !message.maxStepsReached) {
+  // Also don't hide if there are segments or tool calls (even if content is empty)
+  const hasNoContent = message.content === '' && !message.segments?.length && !message.toolCalls?.length
+  if (isActiveStream && 'isComplete' in message && !message.isComplete && hasNoContent && !message.upstreamError && !message.maxStepsReached) {
     return 'hidden'
   }
 

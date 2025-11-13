@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import clsx from 'clsx'
-import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
 import ResponseMetadata from '@/app/develop/components/ResponseMetadata'
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
-import ToolRenderer from '@/app/develop/components/ToolRenderer'
-import WidgetRenderer from '@/app/develop/components/WidgetRenderer'
+import MessageContentRenderer, { type ContentBlock } from '@/app/develop/components/MessageContentRenderer'
+import MessageToolCallsRenderer from '@/app/develop/components/MessageToolCallsRenderer'
+import ThinkingIndicator from '@/app/develop/components/ThinkingIndicator'
+import { isStreamingMessage, hasValidSegments } from '@/app/develop/components/utils'
+import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 
 interface StreamingIntegratedResponseProps {
@@ -20,21 +22,37 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   const lastUpdateTimeRef = useRef<number>(Date.now())
   const thinkingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  const hasSegments = message.segments && message.segments.length > 0
-  const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
-  const hasContent = Boolean(message.content)
-  const isComplete = 'isComplete' in message ? message.isComplete : true
+  const hasSegments = hasValidSegments(message)
+  const isComplete = isStreamingMessage(message) ? message.isComplete : true
+
+  /**
+   * Extract tool calls directly from segments as a fallback when chronologicalContent is empty
+   * This should only be needed if chronologicalContent processing fails for some reason
+   */
+  const extractToolCallsFromSegments = (segments: typeof message.segments): ToolCall[] => {
+    if (!segments) return []
+    
+    const toolCalls: ToolCall[] = []
+    const seenIds = new Set<string>()
+    
+    segments.forEach((segment) => {
+      if ((segment.type === 'tool_start' || segment.type === 'tool_result' || segment.type === 'tool_call') && segment.toolCall) {
+        const toolId = segment.toolCall.id
+        if (!seenIds.has(toolId)) {
+          seenIds.add(toolId)
+          toolCalls.push(segment.toolCall)
+        }
+      }
+    })
+    
+    return toolCalls
+  }
 
   // Create chronological content blocks from segments
   const chronologicalContent = useMemo(() => {
     if (!hasSegments) return []
 
-    const blocks: Array<{
-      type: 'text' | 'tool'
-      content?: string
-      toolCall?: any
-      order: number
-    }> = []
+    const blocks: ContentBlock[] = []
 
     let currentTextBlock = ''
     let order = 0
@@ -62,45 +80,43 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
 
           if (segment.type === 'tool_call') {
             // For persisted tool_call segments, we have complete tool information
-            const toolCall = {
+            const toolCall: ContentBlock['toolCall'] = {
               id: segment.toolCall.id,
               name: segment.toolCall.name,
-              status: segment.toolCall.status || 'completed', // tool_call segments are complete
+              status: (segment.toolCall.status || 'completed') as 'running' | 'completed' | 'error',
               input: segment.toolCall.input,
               result: segment.toolCall.result,
               error: segment.toolCall.error,
               startTime: segment.toolCall.startTime,
               endTime: segment.toolCall.endTime,
-              duration: segment.toolCall.duration,
-              order: order++
+              duration: segment.toolCall.duration
             }
 
             blocks.push({
               type: 'tool',
               toolCall,
-              order: toolCall.order
+              order: order++
             })
           } else {
             // For streaming tool_start/tool_result segments, combine them
             if (!toolCallsMap.has(toolId)) {
               // First time seeing this tool - create entry
-              const toolCall = {
+              const toolCall: ContentBlock['toolCall'] = {
                 id: toolId,
                 name: segment.toolCall.name,
-                status: segment.type === 'tool_result' ? 'completed' : 'running',
+                status: (segment.type === 'tool_result' ? 'completed' : 'running') as 'running' | 'completed' | 'error',
                 input: segment.toolCall.input,
                 result: segment.toolCall.result,
                 error: segment.toolCall.error,
                 startTime: segment.toolCall.startTime,
-                endTime: segment.toolCall.endTime,
-                order: order++
+                endTime: segment.toolCall.endTime
               }
               toolCallsMap.set(toolId, toolCall)
 
               blocks.push({
                 type: 'tool',
                 toolCall,
-                order: toolCall.order
+                order: order++
               })
             } else {
               // Update existing tool call
@@ -179,103 +195,25 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
   }, [chronologicalContent, isComplete, isActiveStream, message.upstreamError, message.maxStepsReached])
 
   const getFullResponseText = () => {
-    if (hasSegments) {
-      return chronologicalContent
-        .filter(block => block.type === 'text')
-        .map(block => block.content)
-        .join('\n\n')
-    }
-    return message.content
+    return chronologicalContent
+      .filter(block => block.type === 'text')
+      .map(block => block.content)
+      .join('\n\n')
   }
-
-  const thinkingIndicator = () => (
-    <div className="flex items-center gap-4 text-sm mt-4">
-      <div className="bg-ai-light/40 rounded-sm px-2 py-1">Airo Developer is thinking</div>
-      <div className="flex space-x-1">
-        <div className="w-2 h-2 bg-ai-light rounded-full animate-bounce"></div>
-        <div className="w-2 h-2 bg-ai rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-        <div className="w-2 h-2 bg-ai-dark rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-      </div>
-    </div>
-  )
 
   return (
     <div>
       <div className="p-2">
-        {/* Initial thinking indicator - show when actively streaming but no content yet, and no errors */}
-        {isActiveStream && !isComplete && chronologicalContent.length === 0 && !hasSegments && !message.upstreamError && !message.maxStepsReached && thinkingIndicator()}
 
         <div className="space-y-2">
-          {/* Streaming approach - accumulate text and render tools in order */}
+          {/* Always use segments - extract tool calls directly if chronologicalContent is empty */}
           {hasSegments ? (
-            <div className="space-y-2">
-              {/* Render content blocks in chronological order */}
-              {chronologicalContent.map((block, index) => (
-                <div key={`block-${index}`}>
-                  {block.type === 'text' && block.content && (
-                    <MarkdownRenderer
-                      content={block.content}
-                      className="text-sm leading-relaxed break-words"
-                    />
-                  )}
-
-                  {block.type === 'tool' && block.toolCall && (
-                    <>
-                      {/* Check if this is a widgetRender tool - render widget instead of tool call */}
-                      {block.toolCall.name === 'widgetRender' && 
-                       block.toolCall.result && 
-                       typeof block.toolCall.result === 'object' &&
-                       (block.toolCall.result as any).widgetData ? (
-                        <WidgetRenderer
-                          widgetData={(block.toolCall.result as any).widgetData}
-                          className="my-4"
-                        />
-                      ) : (
-                        <ToolRenderer
-                          toolCall={block.toolCall}
-                        />
-                      )}
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            /* Fallback for messages without segments */
-            <>
-              {/* Main content */}
-              {hasContent && (
-                <MarkdownRenderer
-                  content={message.content}
-                  className="text-sm leading-relaxed break-words"
-                />
-              )}
-
-              {/* Tool calls for completed messages */}
-              {hasToolCalls && (
-                <div className="space-y-2">
-                  {message.toolCalls?.map((toolCall, index) => (
-                    <div key={toolCall.id || `tool-${index}`}>
-                      {/* Check if this is a widgetRender tool - render widget instead */}
-                      {toolCall.name === 'widgetRender' && 
-                       toolCall.result && 
-                       typeof toolCall.result === 'object' &&
-                       (toolCall.result as any).widgetData ? (
-                        <WidgetRenderer
-                          widgetData={(toolCall.result as any).widgetData}
-                          className="my-4"
-                        />
-                      ) : (
-                        <ToolRenderer
-                          toolCall={toolCall}
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
+            chronologicalContent.length > 0 ? (
+              <MessageContentRenderer blocks={chronologicalContent} />
+            ) : (
+              <MessageToolCallsRenderer toolCalls={extractToolCallsFromSegments(message.segments)} />
+            )
+          ) : null}
         </div>
 
         {/* Max steps reached notification */}
@@ -301,7 +239,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
           "h-8 opacity-100": isActiveStream && !isComplete && showThinkingIndicator && !message.upstreamError && !message.maxStepsReached,
           "h-0 opacity-0 overflow-hidden": !(isActiveStream && !isComplete && showThinkingIndicator && !message.upstreamError && !message.maxStepsReached)
         })}>
-          {isActiveStream && !isComplete && showThinkingIndicator && !message.upstreamError && !message.maxStepsReached && thinkingIndicator()}
+          {isActiveStream && !isComplete && showThinkingIndicator && !message.upstreamError && !message.maxStepsReached && <ThinkingIndicator />}
         </div>
 
         {/* Response metadata - timing and copy */}
