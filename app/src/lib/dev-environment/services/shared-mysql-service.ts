@@ -101,7 +101,12 @@ export class SharedMySQLService {
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 			let connection: Connection | null = null;
 			try {
-				connection = await createConnection(this.rootCredentials);
+				connection = await createConnection({
+					...this.rootCredentials,
+					ssl: {
+						rejectUnauthorized: false,
+					},
+				});
 				await connection.ping();
 
 				logger.info('shared_mysql.health.success', {
@@ -169,7 +174,12 @@ export class SharedMySQLService {
 		let connection: Connection | null = null;
 
 		try {
-			connection = await createConnection(this.rootCredentials);
+			connection = await createConnection({
+				...this.rootCredentials,
+				ssl: {
+					rejectUnauthorized: false,
+				},
+			});
 
 			// Create database using identifier escaping
 			await connection.query('CREATE DATABASE IF NOT EXISTS ??', [dbName]);
@@ -276,7 +286,12 @@ export class SharedMySQLService {
 		let connection: Connection | null = null;
 
 		try {
-			connection = await createConnection(this.rootCredentials);
+			connection = await createConnection({
+				...this.rootCredentials,
+				ssl: {
+					rejectUnauthorized: false,
+				},
+			});
 
 			// Drop database (IF EXISTS makes this idempotent) using identifier escaping
 			await connection.query('DROP DATABASE IF EXISTS ??', [dbName]);

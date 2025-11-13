@@ -35,9 +35,10 @@ function setupDatabaseUrl() {
     process.exit(1)
   }
 
-  // Construct DATABASE_URL
+  // Construct DATABASE_URL with SSL parameters
   const { MYSQL_DB_PATH, MYSQL_DB_PORT, MYSQL_DB_NAME, MYSQL_DB_USERNAME, MYSQL_DB_PASSWORD } = requiredVars
-  const databaseUrl = `mysql://${MYSQL_DB_USERNAME}:${MYSQL_DB_PASSWORD}@${MYSQL_DB_PATH}:${MYSQL_DB_PORT}/${MYSQL_DB_NAME}`
+  // Add SSL configuration using Prisma's sslaccept parameter
+  const databaseUrl = `mysql://${MYSQL_DB_USERNAME}:${MYSQL_DB_PASSWORD}@${MYSQL_DB_PATH}:${MYSQL_DB_PORT}/${MYSQL_DB_NAME}?sslaccept=accept_invalid_certs`
 
   // Set the environment variable
   process.env.DATABASE_URL = databaseUrl

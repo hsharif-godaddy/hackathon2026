@@ -58,13 +58,16 @@ function getDatabaseConfig() {
 // Get database configuration
 const dbConfig = getDatabaseConfig();
 
-// Create MySQL connection pool
+// Create MySQL connection pool with SSL enabled
 const poolConnection = mysql.createPool({
   host: dbConfig.host,
   port: dbConfig.port,
   user: dbConfig.user,
   password: dbConfig.password,
   database: dbConfig.database,
+  ssl: {
+    rejectUnauthorized: false,
+  },
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

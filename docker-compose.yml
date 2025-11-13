@@ -42,7 +42,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HTTPS_PORT=3443
-      - DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app
+      - DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app?sslaccept=accept_invalid_certs
       - SSO_LOGIN_URL=https://sso.dev-godaddy.com/login
       - SSO_LOGOUT_URL=https://sso.dev-godaddy.com/logout
       - LOGIN_REDIRECT_URL=https://local.gasket.dev-godaddy.com:8443/
@@ -76,6 +76,7 @@ services:
   app-mysql:
     image: mysql:8.0
     container_name: airo-app-mysql
+    command: --require_secure_transport=ON
     ports:
       - "3306:3306"
     environment:

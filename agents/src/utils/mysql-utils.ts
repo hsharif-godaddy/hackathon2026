@@ -172,6 +172,9 @@ export class MySQLUtils {
         user: credentials.user,
         password: credentials.password,
         database: credentials.database,
+        ssl: {
+          rejectUnauthorized: false,
+        },
       });
 
       await connection.ping();

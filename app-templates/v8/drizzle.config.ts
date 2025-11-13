@@ -35,7 +35,8 @@ function getDatabaseUrl(): string {
       throw new Error('Invalid config.json: Missing required database credentials');
     }
 
-    return `mysql://${db.USERNAME}:${db.PASSWORD}@${db.HOST}:${db.PORT}/${db.NAME}`;
+    // Add SSL configuration for secure transport without certificate validation
+    return `mysql://${db.USERNAME}:${db.PASSWORD}@${db.HOST}:${db.PORT}/${db.NAME}?sslaccept=accept_invalid_certs`;
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(`Failed to parse ${configPath}: Invalid JSON format`);
