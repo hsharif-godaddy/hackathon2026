@@ -67,6 +67,44 @@ export default function ChatPane({
   // State for selected asset from AssetManager
   const [selectedAsset, setSelectedAsset] = useState<AssetManagerItem | null>(null)
 
+  // Pre-fetch ventureId for AssetManager to avoid loading delay
+  const [ventureId, setVentureId] = useState<string | null>(null)
+
+  // Fetch ventureId on component mount
+  useEffect(function fetchVentureId() {
+    async function load() {
+      try {
+        const response = await fetch('/api/venture', {
+          credentials: 'include',
+        })
+
+        if (!response.ok) {
+          logger.error('chat-pane.venture-fetch-error', {
+            message: 'Failed to fetch venture ID',
+            status: response.status
+          })
+          return
+        }
+
+        const data = await response.json()
+
+        if (data.success && data.ventureId) {
+          setVentureId(data.ventureId)
+          logger.debug('chat-pane.venture-fetched', {
+            message: 'Venture ID fetched successfully'
+          })
+        }
+      } catch (err) {
+        logger.error('chat-pane.venture-fetch-exception', {
+          message: 'Exception fetching venture ID',
+          error: err instanceof Error ? err.message : 'Unknown error'
+        })
+      }
+    }
+
+    load()
+  }, [])
+
   // Combine messages and activeStream with useMemo to prevent infinite loops
   const allMessages = useMemo(() => {
     return activeStream ? [...messages, activeStream] : messages
@@ -335,13 +373,14 @@ export default function ChatPane({
           </motion.div>
         </div>
 
-        <ChatToolbar
-          isProcessing={isProcessing}
-          onAssetSelect={handleAssetSelect}
-        />
-      </div>
-    )
-  }
+      <ChatToolbar
+        isProcessing={isProcessing}
+        onAssetSelect={handleAssetSelect}
+        ventureId={ventureId}
+      />
+    </div>
+  )
+}
 
   return (
     <div className="flex-1 flex flex-col h-full md:pt-4 gap-2 md:gap-4">
@@ -433,6 +472,7 @@ export default function ChatPane({
       <ChatToolbar
         isProcessing={isProcessing}
         onAssetSelect={handleAssetSelect}
+        ventureId={ventureId}
       />
     </div>
   )

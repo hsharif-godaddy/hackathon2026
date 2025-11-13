@@ -20,9 +20,10 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 interface ChatToolbarProps {
   isProcessing?: boolean
   onAssetSelect?: (items: AssetManagerItem[]) => void
+  ventureId: string | null
 }
 
-export default function ChatToolbar({ isProcessing = false, onAssetSelect }: ChatToolbarProps) {
+export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventureId }: ChatToolbarProps) {
   const router = useRouter()
   const appId = useAppIdFromParams()
   const {
@@ -137,11 +138,14 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect }: Cha
         label="Settings"
         active={activeChatTab === ChatTab.SETTINGS}
       />
-      <AssetManagerModal
-        isOpen={isAssetManagerOpen}
-        onClose={() => { setIsAssetManagerOpen(false) }}
-        onItemsSelected={handleAssetSelect}
-      />
+      {isAssetManagerEnabled && (
+        <AssetManagerModal
+          isOpen={isAssetManagerOpen}
+          onClose={() => { setIsAssetManagerOpen(false) }}
+          onItemsSelected={handleAssetSelect}
+          ventureId={ventureId}
+        />
+      )}
     </Box>
   )
 }
