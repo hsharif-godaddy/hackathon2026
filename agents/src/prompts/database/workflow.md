@@ -15,7 +15,7 @@
 
 - **Schema definitions**: `src/server/db/schema.ts` - Define all tables here (single source of truth)
 - **Database connection**: `src/server/db/index.ts` - Exports ready-to-use `db` instance (DO NOT modify)
-  - Import with: `import { db } from '@/server/db'`
+  - Import with: `import { db } from '@/db'`
   - Connection details are automatically loaded from environment
   - No need to handle credentials or configuration
 
