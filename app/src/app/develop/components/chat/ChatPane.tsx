@@ -12,6 +12,8 @@ import StreamingMessageList from '@/app/develop/components/StreamingMessageList'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import SettingsPane from '@/app/develop/components/settings/SettingsPane'
+import SettingsView from '@/app/develop/components/settings/SettingsView'
+import SettingsMenu from '@/app/develop/components/settings/SettingsMenu'
 import {
   useInputValue,
   useIsLoading,
@@ -369,7 +371,7 @@ export default function ChatPane({
               animate={{ opacity: activeChatTab === ChatTab.SETTINGS ? 1 : 0.3 }}
               transition={{ duration: 0.2 }}
             >
-              <SettingsPane />
+              <SettingsView />
             </motion.div>
           </motion.div>
         </div>
@@ -390,7 +392,7 @@ export default function ChatPane({
         expandedPlan={expandedPlan}
         onToggleExpandedPlan={toggleExpandedPlan}
       />
-      
+
       {activeChatTab === ChatTab.CHAT && <PersistentTodoList />}
 
       {activeChatTab === ChatTab.APPS && (

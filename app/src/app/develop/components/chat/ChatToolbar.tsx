@@ -3,12 +3,12 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AssetManagerModal, { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
+import SettingsMenu from '@/app/develop/components/settings/SettingsMenu'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { generateClickEID } from '@/utils/instrumentation'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import Box from '@ux/box'
 import IconButton from '@/app/develop/components/IconButton'
-import CheckboxListIcon from '@ux/icon/checkbox-list'
 import CommentsIcon from '@ux/icon/comments'
 import HistoryIcon from '@ux/icon/history'
 import ImageIcon from '@ux/icon/image'
@@ -114,13 +114,13 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
         tooltip={!isAssetManagerEnabled ? 'Available soon!' : undefined}
         disabled={isProcessing}
       />
-      <IconButton
+      {/* disabled for now<IconButton
         icon={<CheckboxListIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.todo')}
         label="To-do"
         active={activeChatTab === ChatTab.TODO}
         tooltip="Available soon!"
-      />
+      /> */}
       <IconButton
         icon={<HistoryIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.history')}
@@ -129,15 +129,19 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
         active={activeChatTab === ChatTab.HISTORY}
         disabled={isProcessing}
       />
-      <IconButton
-        icon={<SettingsIcon />}
-        dataEid={generateClickEID('develop.chat_toolbar.settings')}
-        onClick={isSettingsEnabled ? () => handleTabClick(ChatTab.SETTINGS) : undefined}
-        tooltip={isSettingsEnabled ? undefined : "Available soon!"}
-        className="ml-auto"
-        label="Settings"
-        active={activeChatTab === ChatTab.SETTINGS}
-      />
+      {isMobile ? (
+        isSettingsEnabled && <SettingsMenu />
+      ) : (
+        <IconButton
+          icon={<SettingsIcon />}
+          dataEid={generateClickEID('develop.chat_toolbar.settings')}
+          onClick={isSettingsEnabled ? () => handleTabClick(ChatTab.SETTINGS) : undefined}
+          tooltip={isSettingsEnabled ? undefined : "Available soon!"}
+          className="ml-auto"
+          label="Settings"
+          active={activeChatTab === ChatTab.SETTINGS}
+        />
+      )}
       {isAssetManagerEnabled && (
         <AssetManagerModal
           isOpen={isAssetManagerOpen}

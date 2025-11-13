@@ -15,13 +15,9 @@ export default function BigCard({ children, title, description, status, button }
   return (
     <Box
       gap="lg"
-      className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-12"
+      className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-6 @md:p-8 @lg:p-12"
     >
-      <Box
-        orientation="horizontal"
-        blockAlignChildren="spaceBetween"
-        inlineAlignChildren="start"
-      >
+      <div className="flex flex-col-reverse @md:flex-row justify-between items-start gap-2 @md:gap-6">
         <Box gap="sm">
           { title && (
             <text.h2 as="heading" size={-2}>{title}</text.h2>
@@ -32,11 +28,11 @@ export default function BigCard({ children, title, description, status, button }
         </Box>
         { (status || button) && (
           <Box gap="md" inlineAlignChildren="end">
-            { status ? <BigCardStatus status={status} /> : <div className="h-6" /> }
+            { status ? <BigCardStatus status={status} /> : <div className="hidden @md:block h-6" /> }
             { button && button }
           </Box>
         )}
-      </Box>
+      </div>
       { children }
     </Box>
   )

@@ -183,9 +183,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setIsChatPaneCollapsed: (collapsed) => set((state) => { state.isChatPaneCollapsed = collapsed }),
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
     setIsMobile: (isMobile) => set((state) => {
+      // Only reset tab if we're actually transitioning between mobile/desktop
+      const wasTransition = state.isMobile !== isMobile
       state.isMobile = isMobile
       // Reset activeTab when switching between mobile/desktop to ensure proper layout
-      if (state.activeChatTab !== ChatTab.CHAT) {
+      if (wasTransition && state.activeChatTab !== ChatTab.CHAT) {
         state.activeChatTab = ChatTab.CHAT
       }
     }),
@@ -341,8 +343,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         // Keep lastPublishedCommitHash and deploymentsRefetch for retry functionality
       }
     }),
-
-
 
     // Page loading orchestration
     resetForNewApp: (appId: string) => {
