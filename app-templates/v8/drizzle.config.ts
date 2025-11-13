@@ -2,23 +2,29 @@ import { existsSync, readFileSync } from 'node:fs';
 import { defineConfig } from 'drizzle-kit';
 
 /**
+ * Database credentials interface
+ */
+interface DatabaseCredentials {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+}
+
+/**
  * Load database configuration from JSON config file
- * Reads from /alloc/config.json (container) or ./config.json (host)
+ * Reads from /alloc/config.json
  *
- * @returns MySQL connection URL
+ * @returns MySQL connection credentials
  * @throws Error if config file not found or invalid
  */
-function getDatabaseUrl(): string {
-  // Try container path first (when running in Docker)
-  const containerConfigPath = '/alloc/config.json';
-  // Fall back to host path (when running drizzle-kit from host)
-  const hostConfigPath = './config.json';
-
-  const configPath = existsSync(containerConfigPath) ? containerConfigPath : hostConfigPath;
+function getDatabaseCredentials(): DatabaseCredentials {
+  const configPath = '/alloc/config.json';
 
   if (!existsSync(configPath)) {
     throw new Error(
-      `Database configuration file not found. Expected ${containerConfigPath} or ${hostConfigPath}`
+      `Database configuration file not found at ${configPath}`
     );
   }
 
@@ -35,8 +41,13 @@ function getDatabaseUrl(): string {
       throw new Error('Invalid config.json: Missing required database credentials');
     }
 
-    // Add SSL configuration for secure transport without certificate validation
-    return `mysql://${db.USERNAME}:${db.PASSWORD}@${db.HOST}:${db.PORT}/${db.NAME}?sslaccept=accept_invalid_certs`;
+    return {
+      host: db.HOST,
+      port: parseInt(String(db.PORT), 10),
+      user: db.USERNAME,
+      password: db.PASSWORD,
+      database: db.NAME,
+    };
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(`Failed to parse ${configPath}: Invalid JSON format`);
@@ -51,17 +62,25 @@ function getDatabaseUrl(): string {
  * Usage:
  * - Generate migrations: npx drizzle-kit generate
  * - Push schema to database: npx drizzle-kit push
- * - Open Drizzle Studio: npx drizzle-kit studio
  *
  * Configuration source:
- * - Reads from /alloc/config.json (in container) or ./config.json (on host)
+ * - Reads from /alloc/config.json
  * - Throws error if config file not found or invalid
  */
+const credentials = getDatabaseCredentials();
+
 export default defineConfig({
   schema: './src/server/db/schema.ts',
   out: './drizzle',
   dialect: 'mysql',
   dbCredentials: {
-    url: getDatabaseUrl(),
+    host: credentials.host,
+    port: credentials.port,
+    user: credentials.user,
+    password: credentials.password,
+    database: credentials.database,
+    ssl: {
+      rejectUnauthorized: false,
+    }
   },
 });
