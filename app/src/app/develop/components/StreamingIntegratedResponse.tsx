@@ -89,7 +89,8 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
               error: segment.toolCall.error,
               startTime: segment.toolCall.startTime,
               endTime: segment.toolCall.endTime,
-              duration: segment.toolCall.duration
+              duration: segment.toolCall.duration,
+              partialInput: segment.toolCall.partialInput
             }
 
             blocks.push({
@@ -109,7 +110,8 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                 result: segment.toolCall.result,
                 error: segment.toolCall.error,
                 startTime: segment.toolCall.startTime,
-                endTime: segment.toolCall.endTime
+                endTime: segment.toolCall.endTime,
+                partialInput: segment.toolCall.partialInput
               }
               toolCallsMap.set(toolId, toolCall)
 
@@ -130,6 +132,10 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                 if (!existingTool.input && segment.toolCall.input) {
                   existingTool.input = segment.toolCall.input
                 }
+                // Preserve partialInput if present
+                if (segment.toolCall.partialInput !== undefined) {
+                  existingTool.partialInput = segment.toolCall.partialInput
+                }
               } else if (segment.type === 'tool_start') {
                 // Update with tool_start data (input, startTime)
                 if (segment.toolCall.input) {
@@ -138,10 +144,18 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
                 if (segment.toolCall.startTime) {
                   existingTool.startTime = segment.toolCall.startTime
                 }
+                // Update partialInput if present
+                if (segment.toolCall.partialInput !== undefined) {
+                  existingTool.partialInput = segment.toolCall.partialInput
+                }
               } else if (segment.type === 'tool_call') {
                 // Update with tool_call data (full input)
                 if (segment.toolCall.input) {
                   existingTool.input = segment.toolCall.input
+                }
+                // Update partialInput if present
+                if (segment.toolCall.partialInput !== undefined) {
+                  existingTool.partialInput = segment.toolCall.partialInput
                 }
               }
             }

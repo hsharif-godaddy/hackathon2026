@@ -36,6 +36,7 @@ function ToolRenderer({ toolCall, className = '' }: ToolRendererProps) {
         error={toolCall.error}
         startTime={toolCall.startTime}
         endTime={toolCall.endTime}
+        partialInput={toolCall.partialInput}
       />
     </div>
   )

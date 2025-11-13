@@ -48,6 +48,7 @@ export interface ToolCall {
   startTime?: number
   endTime?: number
   duration?: number
+  partialInput?: string  // Accumulated partial input from deltas
 }
 
 // Streaming message (actively being built)
@@ -141,6 +142,7 @@ export interface StreamingConversationState {
   appendToStream: (content: string) => void
   addToolToStream: (toolCall: ToolCall) => void
   updateToolInStream: (toolId: string, updates: Partial<ToolCall>) => void
+  updateToolDelta: (toolId: string, toolName: string, delta: string) => void
   finalizeStream: (metadata?: any) => void
   clearActiveStream: () => void
 
@@ -430,6 +432,87 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       toolCalls: activeStream.toolCalls.map(tc =>
         tc.id === toolId ? { ...tc, ...updates } : tc
       )
+    }
+
+    set({ activeStream: updatedStream })
+  },
+
+  updateToolDelta: (toolId: string, toolName: string, delta: string) => {
+    const { activeStream } = get()
+    if (!activeStream) return
+
+    // Check if tool exists in toolCalls array
+    const existingTool = activeStream.toolCalls.find(tc => tc.id === toolId)
+
+    // If toolName is missing/unknown, try to find it from existing tool or segments
+    let resolvedToolName = toolName
+    if (!existingTool && (toolName === 'unknown-tool' || !toolName)) {
+      // Try to find tool name from segments
+      const segmentWithTool = activeStream.segments.find(
+        s => (s.type === 'tool_start' || s.type === 'tool_call') && s.toolCall?.id === toolId
+      )
+      if (segmentWithTool?.toolCall?.name) {
+        resolvedToolName = segmentWithTool.toolCall.name
+      }
+    } else if (existingTool && existingTool.name) {
+      resolvedToolName = existingTool.name
+    }
+
+    if (!existingTool) {
+      // Tool doesn't exist yet - create it (handles race condition where delta arrives before tool_start)
+      const newToolCall: ToolCall = {
+        id: toolId,
+        name: resolvedToolName,
+        input: {},
+        status: 'running',
+        startTime: Date.now(),
+        partialInput: delta
+      }
+
+      const segment: StreamSegment = {
+        id: generateId(),
+        type: 'tool_start',
+        content: `Starting ${resolvedToolName}...`,
+        timestamp: new Date(),
+        toolCall: newToolCall
+      }
+
+      const updatedStream = {
+        ...activeStream,
+        toolCalls: [...activeStream.toolCalls, newToolCall],
+        segments: [...activeStream.segments, segment]
+      }
+
+      set({ activeStream: updatedStream })
+      return
+    }
+
+    // Tool exists - update it
+    const updatedStream = {
+      ...activeStream,
+      toolCalls: activeStream.toolCalls.map(tc => {
+        if (tc.id === toolId) {
+          const currentPartial = tc.partialInput || ''
+          return {
+            ...tc,
+            partialInput: currentPartial + delta
+          }
+        }
+        return tc
+      }),
+      segments: activeStream.segments.map(segment => {
+        if ((segment.type === 'tool_start' || segment.type === 'tool_call') && segment.toolCall?.id === toolId) {
+          const currentPartial = segment.toolCall.partialInput || ''
+          return {
+            ...segment,
+            toolCall: {
+              ...segment.toolCall,
+              partialInput: currentPartial + delta
+            }
+          }
+        }
+        return segment
+      })
     }
 
     set({ activeStream: updatedStream })

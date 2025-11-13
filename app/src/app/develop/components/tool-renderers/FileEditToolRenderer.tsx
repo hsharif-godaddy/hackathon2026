@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import KeyValueTable from './KeyValueTable'
 import MarkdownRenderer from '../MarkdownRenderer'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import { completePartialJson } from './json-completion-utils'
 
 /**
  * Extract filename from path
@@ -28,23 +29,151 @@ function getModeVerb(mode: string): string {
 }
 
 /**
+ * Count line changes from parsed JSON object
+ * 
+ * Extracts additions and deletions from either edits array or content field.
+ * 
+ * @param parsed - Parsed JSON object with edits array or content field
+ * @returns Object with additions and deletions counts
+ */
+function countLinesFromParsed(parsed: any): { additions: number; deletions: number } {
+  let additions = 0
+  let deletions = 0
+
+  if (parsed.edits && Array.isArray(parsed.edits)) {
+    // Edit mode: count lines in edits array
+    for (const edit of parsed.edits) {
+      if (edit.old && typeof edit.old === 'string') {
+        deletions += (edit.old.match(/\n/g) || []).length
+      }
+      if (edit.new && typeof edit.new === 'string') {
+        additions += (edit.new.match(/\n/g) || []).length
+      }
+    }
+  } else if (parsed.content && typeof parsed.content === 'string') {
+    // Rewrite/create mode: count lines in content
+    additions = (parsed.content.match(/\n/g) || []).length
+  }
+
+  return { additions, deletions }
+}
+
+/**
+ * Estimate line counts from partial input streaming
+ * 
+ * Attempts to complete partial JSON by adding closing characters, then parses normally.
+ * This allows us to extract values from incomplete JSON strings as they stream in.
+ */
+export function estimateLineCountsFromPartial(partialInput: string): { additions: number; deletions: number } | null {
+  if (!partialInput || partialInput.length < 20) {
+    return null
+  }
+
+  // First, try to parse as complete JSON (fastest path)
+  try {
+    const parsed = JSON.parse(partialInput)
+    return countLinesFromParsed(parsed)
+  } catch {
+    // JSON is incomplete, try to complete it
+  }
+
+  // Try to complete the partial JSON
+  const completedJsonResult = completePartialJson(partialInput)
+  if (!completedJsonResult) {
+    return null
+  }
+  const completedJson = completedJsonResult
+
+  // Try to parse the completed JSON
+  try {
+    const parsed = JSON.parse(completedJson)
+    return countLinesFromParsed(parsed)
+  } catch {
+    // Parsing failed, return null to use last successful estimate
+    return null
+  }
+}
+
+/**
  * Custom renderer for fileEdit tool
  * 
  * Shows mode-aware message: "Created {filename}", "Edit {filename} (+5 -3)", etc.
+ * Shows streaming line counts as deltas arrive.
  * Clickable to show modal with full diff and metadata.
  */
 export default function FileEditToolRenderer({
   toolName: _toolName,
   toolStatus,
   input,
-  result
+  result,
+  partialInput
 }: DefaultToolRendererProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const loggedComparisonRef = useRef<string | null>(null)
+  const lastSuccessfulEstimateRef = useRef<{ additions: number; deletions: number } | null>(null)
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Log estimate vs actual comparison once when result arrives
+  useEffect(() => {
+    if (!result || !partialInput) return
+
+    // Create a unique key for this result to prevent duplicate logging
+    const resultKey = typeof result === 'string' ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100)
+    if (loggedComparisonRef.current === resultKey) return
+
+    try {
+      let parsedResult: any = null
+      if (typeof result === 'string') {
+        try {
+          parsedResult = JSON.parse(result)
+        } catch {
+          return // Not JSON format, skip
+        }
+      } else if (typeof result === 'object') {
+        parsedResult = result
+      }
+
+      if (parsedResult?.changes) {
+        const changes = parsedResult.changes
+        const finalEstimate = estimateLineCountsFromPartial(partialInput)
+        
+        if (finalEstimate) {
+          const estimatedAdditions = finalEstimate.additions
+          const estimatedDeletions = finalEstimate.deletions
+          const actualAdditions = changes.additions
+          const actualDeletions = changes.deletions
+
+          const additionsDiff = Math.abs(estimatedAdditions - actualAdditions)
+          const deletionsDiff = Math.abs(estimatedDeletions - actualDeletions)
+          const additionsAccuracy = actualAdditions > 0 
+            ? ((1 - additionsDiff / actualAdditions) * 100).toFixed(1)
+            : estimatedAdditions === 0 ? '100.0' : '0.0'
+          const deletionsAccuracy = actualDeletions > 0
+            ? ((1 - deletionsDiff / actualDeletions) * 100).toFixed(1)
+            : estimatedDeletions === 0 ? '100.0' : '0.0'
+
+          console.log('[ESTIMATE vs ACTUAL]', {
+            file: getFilename(parsedResult.path || ''),
+            mode: parsedResult.mode || 'edit',
+            estimated: { additions: estimatedAdditions, deletions: estimatedDeletions },
+            actual: { additions: actualAdditions, deletions: actualDeletions },
+            difference: { additions: additionsDiff, deletions: deletionsDiff },
+            accuracy: { additions: `${additionsAccuracy}%`, deletions: `${deletionsAccuracy}%` },
+            partialInputLength: partialInput.length,
+            partialInput: partialInput
+          })
+
+          loggedComparisonRef.current = resultKey
+        }
+      }
+    } catch (e) {
+      // Silently ignore errors in logging
+    }
+  }, [result, partialInput])
 
   // Parse result - can be JSON (new format) or Markdown (old format)
   let parsedResult: any = null
@@ -57,6 +186,42 @@ export default function FileEditToolRenderer({
   let warning = ''
   let isMarkdownFormat = false
   let markdownContent = ''
+  
+  // For streaming: estimate line counts from partial input if tool is running
+  let streamingChanges: { additions: number; deletions: number } | null = null
+  let streamingPath: string | null = null
+  let streamingMode: string | null = null
+  if (toolStatus === 'running' && partialInput) {
+    const currentEstimate = estimateLineCountsFromPartial(partialInput)
+    
+    // If parsing succeeded, update the last successful estimate
+    if (currentEstimate) {
+      lastSuccessfulEstimateRef.current = currentEstimate
+      streamingChanges = currentEstimate
+    } else {
+      // If parsing failed, use the last successful estimate (if available)
+      streamingChanges = lastSuccessfulEstimateRef.current
+    }
+    
+    // Try to extract path using regex (works on incomplete JSON)
+    const pathMatch = partialInput.match(/"path"\s*:\s*"([^"]+)"/)
+    if (pathMatch) {
+      streamingPath = pathMatch[1]
+    }
+    
+    // Try to extract mode using regex (works on incomplete JSON)
+    const modeMatch = partialInput.match(/"mode"\s*:\s*"(edit|create|rewrite|delete)"/)
+    if (modeMatch) {
+      streamingMode = modeMatch[1]
+    }
+  }
+  
+  // Reset last successful estimate when tool completes
+  useEffect(() => {
+    if (toolStatus !== 'running') {
+      lastSuccessfulEstimateRef.current = null
+    }
+  }, [toolStatus])
 
   if (result) {
     try {
@@ -95,13 +260,28 @@ export default function FileEditToolRenderer({
     filename = getFilename(filePath)
     mode = inputObj.mode || 'edit'
   }
+  
+  // Use streaming path/mode if available and no final values yet
+  if (!filePath && streamingPath) {
+    filePath = streamingPath
+    filename = getFilename(filePath)
+  }
+  if (!mode && streamingMode) {
+    mode = streamingMode
+  }
 
   const verb = getModeVerb(mode)
 
   // Build compact display message - format: "Edit: filename +5 -5"
   let displayMessage = `${verb}: ${filename}`
-  if (changes && mode !== 'create') {
-    displayMessage += ` +${changes.additions} -${changes.deletions}`
+  
+  // Use streaming changes if available (tool is running), otherwise use final changes
+  const displayChanges = streamingChanges || changes
+  if (displayChanges && mode !== 'create') {
+    displayMessage += ` +${displayChanges.additions} -${displayChanges.deletions}`
+  } else if (streamingChanges && mode === 'create') {
+    // For create mode, show line count as it streams
+    displayMessage += ` +${streamingChanges.additions}`
   }
 
   // Has details if we have parsed result data (diff, metadata, etc.) OR markdown content

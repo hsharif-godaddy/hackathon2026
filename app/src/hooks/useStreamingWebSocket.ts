@@ -195,6 +195,19 @@ export function useStreamingWebSocket() {
             addToolStartSegment(toolCall)
           }
           break
+        case 'tool_input_delta':
+          // Tool input streaming delta - update partial input accumulation
+          // Only require toolId and delta - toolName can be looked up from existing tool calls
+          // Skip empty deltas (they don't add any information)
+          if (data.data?.toolId && data.data?.delta !== undefined && data.data.delta.length > 0) {
+            const updateToolDelta = useStreamingConversationStore.getState().updateToolDelta
+            if (updateToolDelta) {
+              // toolName might be undefined, but updateToolDelta can handle it
+              const toolName = data.data.toolName || 'unknown-tool'
+              updateToolDelta(data.data.toolId, toolName, data.data.delta)
+            }
+          }
+          break
         case 'tool_call':
           // Tool call with complete input - update existing tool start segment
           if (data.data?.tool) {
@@ -371,12 +384,14 @@ export function useStreamingWebSocket() {
     appendTextSegment,
     addToolStartSegment,
     addToolResultSegment,
+    addToolCallSegment,
     markMaxStepsReached,
     markUpstreamError,
     finalizeStream,
     setWebSocketState,
     setStreamingState,
     setIsLoading,
+    currentAppId,
   ])
 
   useEffect(() => {

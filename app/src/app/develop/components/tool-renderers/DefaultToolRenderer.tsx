@@ -18,6 +18,7 @@ export interface DefaultToolRendererProps {
   error?: string
   startTime?: number
   endTime?: number
+  partialInput?: string
 }
 
 /**
