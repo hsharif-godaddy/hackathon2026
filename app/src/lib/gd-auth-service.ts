@@ -130,10 +130,11 @@ export class GdAuthService {
 
       // Use gd-auth for authentication - it handles heartbeat automatically
       const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 0);
+      const isImpersonation = jwt.auth === 'e2s';
 
       logger.info('gd-auth.authenticate.success', {
         message: 'Authentication successful',
-        customerId: jwt.cid,
+        customerId: isImpersonation ? jwt.e2s.cid : jwt.auth.cid,
         exp: jwt.exp,
         iat: jwt.iat
       });
@@ -141,8 +142,8 @@ export class GdAuthService {
       return {
         valid: true,
         payload: {
-          shopperId: jwt.shopperId,
-          cid: jwt.cid, // Use cid for customerId
+          shopperId: isImpersonation ? jwt.e2s.shopperId : jwt.auth.shopperId,
+          cid: isImpersonation ? jwt.e2s.cid : jwt.auth.cid, // Use cid for customerId
           exp: jwt.exp,
           iat: jwt.iat,
           // Include all other JWT payload properties
