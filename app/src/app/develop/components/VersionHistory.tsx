@@ -44,6 +44,10 @@ export default function VersionHistory() {
     enabled: !!appId
   })
 
+  // NOTE: commits array is ordered from NEWEST to OLDEST (chronologically descending)
+  // Index 0 = most recent commit, higher indices = older commits
+  // This ordering is assumed throughout this component for published tag logic
+
   const error = queryError?.message || null
 
   const { data: deployments = [] } = useDeploymentsQuery({
@@ -53,13 +57,14 @@ export default function VersionHistory() {
     limit: commits.length > 150 ? 150 : commits.length,
   })
 
-  const publishedCommitHashes = useMemo(() => {
-    return new Set(
-      deployments
-        .filter(d => d.status === DeploymentStatus.DEPLOYED)
-        .map(d => d.gitHash)
-    )
-  }, [deployments])
+  // Find the most recent deployed commit index
+  // All commits from that index and before (including it) should be marked as published
+  const mostRecentDeployedCommitIndex = useMemo(() => {
+    const mostRecentDeployment = deployments.find(d => d.status === DeploymentStatus.DEPLOYED);
+    if (!mostRecentDeployment) return -1;
+    
+    return commits.findIndex(c => c.hash === mostRecentDeployment.gitHash);
+  }, [deployments, commits])
 
   // Auto-select the latest commit when commits load and no commit is selected
   useEffect(() => {
@@ -153,8 +158,12 @@ export default function VersionHistory() {
         )}
 
         <ul ref={commitsListRef} className="space-y-2 max-h-full">
-          { commits.map((commit) => {
-            const isPublished = publishedCommitHashes.has(commit.hash);
+          { commits.map((commit, index) => {
+            // A commit is published if it's at or older than the most recent deployed commit:
+            // 1. There is a deployed commit (mostRecentDeployedCommitIndex >= 0), AND
+            // 2. This commit's index >= deployed index (meaning it's the same age or older)
+            const isPublished = mostRecentDeployedCommitIndex >= 0 && index >= mostRecentDeployedCommitIndex;
+            
             return renderCommitItem({
               key: commit.hash,
               onClick: () => handleSelectCommit(commit),
