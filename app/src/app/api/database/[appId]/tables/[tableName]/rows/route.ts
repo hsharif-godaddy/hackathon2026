@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/request-context';
 import { withCustomerAuth, customerHasAccount, createCustomerAuthError, type CustomerAuthContext } from '@/lib/customer-auth';
 import { agentFetch } from '@/lib/agent-fetch';
-import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
+import { getControlPlaneAdapter } from '@/lib/control-plane';
 
 /**
  * POST /api/database/:appId/tables/:tableName/rows - Insert a new row
@@ -30,6 +30,11 @@ export const POST = withCustomerAuth(async (
 			return NextResponse.json({ error: 'Table name is required' }, { status: 400 });
 		}
 
+		// JWT required
+		if (!authContext.jwt) {
+			return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
+		}
+
 		const body = await request.json();
 		const { data } = body;
 
@@ -37,17 +42,12 @@ export const POST = withCustomerAuth(async (
 			return NextResponse.json({ error: 'Row data is required' }, { status: 400 });
 		}
 
-		// Get site
-		const siteAdapter = SiteAdapterFactory.getInstance();
-		const site = await siteAdapter.getSiteById(appId);
+		// Get site using control plane adapter
+		const adapter = getControlPlaneAdapter();
+		const site = await adapter.getSite(appId, authContext.jwt);
 
 		if (!site) {
 			return NextResponse.json({ error: 'Site not found' }, { status: 404 });
-		}
-
-		// Ownership check
-		if (siteAdapter.requiresAuth() && site.account_id !== user.accountId) {
-			return createCustomerAuthError('You can only access your own sites', 403);
 		}
 
 		// Ensure site has agent URL
@@ -113,6 +113,11 @@ export const PUT = withCustomerAuth(async (
 			return NextResponse.json({ error: 'Table name is required' }, { status: 400 });
 		}
 
+		// JWT required
+		if (!authContext.jwt) {
+			return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
+		}
+
 		const body = await request.json();
 		const { primaryKey, data } = body;
 
@@ -124,17 +129,12 @@ export const PUT = withCustomerAuth(async (
 			return NextResponse.json({ error: 'Row data is required' }, { status: 400 });
 		}
 
-		// Get site
-		const siteAdapter = SiteAdapterFactory.getInstance();
-		const site = await siteAdapter.getSiteById(appId);
+		// Get site using control plane adapter
+		const adapter = getControlPlaneAdapter();
+		const site = await adapter.getSite(appId, authContext.jwt);
 
 		if (!site) {
 			return NextResponse.json({ error: 'Site not found' }, { status: 404 });
-		}
-
-		// Ownership check
-		if (siteAdapter.requiresAuth() && site.account_id !== user.accountId) {
-			return createCustomerAuthError('You can only access your own sites', 403);
 		}
 
 		// Ensure site has agent URL
@@ -200,6 +200,11 @@ export const DELETE = withCustomerAuth(async (
 			return NextResponse.json({ error: 'Table name is required' }, { status: 400 });
 		}
 
+		// JWT required
+		if (!authContext.jwt) {
+			return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
+		}
+
 		const body = await request.json();
 		const { primaryKey } = body;
 
@@ -207,17 +212,12 @@ export const DELETE = withCustomerAuth(async (
 			return NextResponse.json({ error: 'Primary key is required' }, { status: 400 });
 		}
 
-		// Get site
-		const siteAdapter = SiteAdapterFactory.getInstance();
-		const site = await siteAdapter.getSiteById(appId);
+		// Get site using control plane adapter
+		const adapter = getControlPlaneAdapter();
+		const site = await adapter.getSite(appId, authContext.jwt);
 
 		if (!site) {
 			return NextResponse.json({ error: 'Site not found' }, { status: 404 });
-		}
-
-		// Ownership check
-		if (siteAdapter.requiresAuth() && site.account_id !== user.accountId) {
-			return createCustomerAuthError('You can only access your own sites', 403);
 		}
 
 		// Ensure site has agent URL
