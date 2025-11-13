@@ -154,7 +154,7 @@ export class ConversationContextManager {
 
     // Add selected assets context as a separate user message if available
     if (executionContext?.metadata?.selectedAssets) {
-      const formatted = ContextFormatter.formatSelectedAssets(executionContext.metadata.selectedAssets);
+      const formatted = await ContextFormatter.formatSelectedAssets(executionContext.metadata.selectedAssets);
       if (formatted) {
         messages.push({ role: 'user', content: formatted.content });
       }

@@ -5,6 +5,72 @@ export interface FormattedContext {
   content: string
   /** The type of context for categorization */
   type: 'ai_edit_context' | 'visual_context' | 'selected_assets_context'
+  /** Optional screenshot data URL for vision processing */
+  screenshot?: string
+  /** Optional asset images as base64 data URLs for vision processing */
+  assetImages?: string[]
+  /** Optional uploaded files metadata for vision processing */
+  uploadedFiles?: {
+    uploadId: string
+    files: Array<{
+      id: string
+      originalName: string
+      filename: string
+      size: number
+      mimeType: string | null
+    }>
+  }
+}
+
+/**
+ * Fetch image from URL and convert to base64 data URL
+ * @param imageUrl - URL of the image to fetch
+ * @returns Promise resolving to data URL or null if fetch fails
+ */
+async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
+  try {
+    const response = await fetch(imageUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'image/*'
+      }
+    })
+
+    if (!response.ok) {
+      logger.warn('context.formatter.image_fetch.failed', {
+        url: imageUrl,
+        status: response.status,
+        statusText: response.statusText
+      })
+      return null
+    }
+
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    const base64 = buffer.toString('base64')
+    
+    // Get content type from response headers
+    const contentType = response.headers.get('content-type') || 'image/jpeg'
+    const dataUrl = `data:${contentType};base64,${base64}`
+
+    const sizeKB = Math.round(buffer.length / 1024)
+    const sizeMB = (buffer.length / (1024 * 1024)).toFixed(2)
+
+    logger.info('context.formatter.image_fetch.success', {
+      url: imageUrl,
+      contentType,
+      sizeKB,
+      sizeMB: `${sizeMB}MB`
+    })
+
+    return dataUrl
+  } catch (error) {
+    logger.error('context.formatter.image_fetch.error', {
+      url: imageUrl,
+      error: error instanceof Error ? error.message : String(error)
+    })
+    return null
+  }
 }
 
 export class ContextFormatter {
@@ -17,6 +83,7 @@ export class ContextFormatter {
     try {
       const elementInfo = aiEditContext.elementInfo || {}
       const devContext = aiEditContext.devContext || {}
+    //   const screenshot = aiEditContext.screenshot
 
       // Sanitize and validate the context data
       const sanitizedContext = {
@@ -34,6 +101,37 @@ export class ContextFormatter {
         }
       }
 
+      // Validate screenshot format if present
+      let validatedScreenshot: string | undefined
+    //   if (screenshot && typeof screenshot === 'string') {
+    //     // Check if it's a valid data URL format
+    //     if (screenshot.startsWith('data:image/')) {
+    //       const screenshotSizeKB = Math.round(screenshot.length / 1024)
+    //       const screenshotSizeMB = (screenshot.length / (1024 * 1024)).toFixed(2)
+          
+    //       validatedScreenshot = screenshot
+    //       logger.info('context.formatter.ai_edit.screenshot_detected', {
+    //         screenshotSize: screenshot.length,
+    //         screenshotSizeKB,
+    //         screenshotSizeMB: `${screenshotSizeMB}MB`,
+    //         mimeType: screenshot.substring(5, screenshot.indexOf(';'))
+    //       })
+
+    //       // Warn if screenshot is very large (>10MB)
+    //       if (screenshot.length > 10 * 1024 * 1024) {
+    //         logger.warn('context.formatter.ai_edit.large_screenshot', {
+    //           message: 'Screenshot is very large, may cause performance issues',
+    //           size: `${screenshotSizeMB}MB`,
+    //           recommendation: 'Consider reducing screenshot quality or size'
+    //         })
+    //       }
+    //     } else {
+    //       logger.warn('context.formatter.ai_edit.invalid_screenshot', {
+    //         message: 'Screenshot does not start with data:image/'
+    //       })
+    //     }
+    //   }
+
       const content = `[AI Edit Context - Selected Element]
 
 Element Details:
@@ -48,11 +146,13 @@ Source Code Location:
 - Component: ${sanitizedContext.source.componentName}
 - Line: ${sanitizedContext.source.lineNumber}
 
-Instructions: The following user message refers to changes for this specific selected element. Focus your edits on the code at the specified file and location.`
+${validatedScreenshot ? 'Visual Context: A screenshot of the selected element is attached for visual reference.\n' : ''}
+Instructions: The following user message refers to changes for this specific selected element. Focus your edits on the code at the specified file and location.${validatedScreenshot ? ' Use the screenshot to understand the current visual appearance.' : ''}`
 
       return {
         content,
-        type: 'ai_edit_context'
+        type: 'ai_edit_context',
+        // ...(validatedScreenshot && { screenshot: validatedScreenshot })
       }
     } catch (error) {
       logger.warn('context.formatter.ai_edit.failure', {
@@ -135,12 +235,48 @@ Context Notes: ${contextNotes}`
   /**
    * Format selected assets context into a safe message
    * @param selectedAssets - The selected assets data from Asset Manager (IMAGE, VIDEO, PDF)
-   * @returns Formatted context or null if formatting fails
+   * @returns Promise resolving to formatted context or null if formatting fails
    */
-  static formatSelectedAssets(selectedAssets: any): FormattedContext | null {
+  static async formatSelectedAssets(selectedAssets: any): Promise<FormattedContext | null> {
     try {
       if (!Array.isArray(selectedAssets) || selectedAssets.length === 0) {
         return null
+      }
+
+      // Collect image URLs for base64 conversion
+      const imageUrls: string[] = []
+      const imageIndices: Map<number, number> = new Map() // Maps asset index to image array index
+
+      for (let i = 0; i < selectedAssets.length; i++) {
+        const asset = selectedAssets[i]
+        if (asset.mediaType === 'IMAGE' && asset.imageUrl && typeof asset.imageUrl === 'string') {
+          imageIndices.set(i, imageUrls.length)
+          imageUrls.push(asset.imageUrl)
+        }
+      }
+
+      // Fetch all images in parallel
+      const assetImages: string[] = []
+      if (imageUrls.length > 0) {
+        logger.info('context.formatter.selected_assets.fetching_images', {
+          count: imageUrls.length,
+          urls: imageUrls
+        })
+
+        const imagePromises = imageUrls.map((url) => fetchImageAsBase64(url))
+        const results = await Promise.all(imagePromises)
+        
+        for (const result of results) {
+          if (result) {
+            assetImages.push(result)
+          }
+        }
+
+        logger.info('context.formatter.selected_assets.images_fetched', {
+          requested: imageUrls.length,
+          successful: assetImages.length,
+          failed: imageUrls.length - assetImages.length
+        })
       }
 
       // Build context for each selected asset
@@ -200,18 +336,22 @@ Context Notes: ${contextNotes}`
       }).join('\n\n')
 
       const assetTypes = selectedAssets.map((a: any) => a.mediaType).join(', ')
+      const hasVisualAssets = assetImages.length > 0
+      
       const content = `[Selected Assets from Asset Manager]
 
 The user has selected ${selectedAssets.length} asset${selectedAssets.length > 1 ? 's' : ''} from the Asset Manager (${assetTypes}):
 
 ${assetDescriptions}
 
+${hasVisualAssets ? `Visual Context: ${assetImages.length} image${assetImages.length > 1 ? 's are' : ' is'} attached for visual reference.\n` : ''}
 These assets are available for use in the project. You can reference them by their URLs in your code.
-When the user mentions "this asset", "this image", "this video", or "this PDF", they are likely referring to the selected asset above.`
+When the user mentions "this asset", "this image", "this video", or "this PDF", they are likely referring to the selected asset${selectedAssets.length > 1 ? 's' : ''} above.${hasVisualAssets ? ' Analyze the attached images to understand their visual appearance, content, and style.' : ''}`
 
       return {
         content,
-        type: 'selected_assets_context'
+        type: 'selected_assets_context',
+        ...(assetImages.length > 0 && { assetImages })
       }
     } catch (error) {
       logger.warn('context.formatter.selected_assets.failure', {

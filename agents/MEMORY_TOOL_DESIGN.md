@@ -11,6 +11,7 @@ A simple, extensible memory system for agents to store and retrieve key-value in
 ## Storage Format
 
 ### File Structure
+
 - Location: `{appDir}/.memory/`
 - Format: Individual Markdown files with YAML front matter
 - Naming: `{namespace}.{key}.md` (e.g., `app.title.md`, `user.preferences.md`)
@@ -22,10 +23,10 @@ A simple, extensible memory system for agents to store and retrieve key-value in
 ---
 namespace: app
 key: title
-value: "My Amazing App"
+value: 'My Amazing App'
 type: string
-updatedAt: "2025-11-11T10:30:00.000Z"
-createdAt: "2025-11-11T10:00:00.000Z"
+updatedAt: '2025-11-11T10:30:00.000Z'
+createdAt: '2025-11-11T10:00:00.000Z'
 ---
 
 # app.title
@@ -33,6 +34,7 @@ createdAt: "2025-11-11T10:00:00.000Z"
 Current value: My Amazing App
 
 ## History
+
 - 2025-11-11T10:30:00.000Z: Updated to "My Amazing App"
 - 2025-11-11T10:00:00.000Z: Created with value "Untitled App"
 ```
@@ -44,22 +46,22 @@ Current value: My Amazing App
 ```typescript
 interface MemoryToolOperations {
   // Create or update a memory entry
-  set(key: string, value: any, metadata?: Record<string, any>): Promise<void>
-  
+  set(key: string, value: any, metadata?: Record<string, any>): Promise<void>;
+
   // Read a memory entry
-  get(key: string): Promise<MemoryEntry | null>
-  
+  get(key: string): Promise<MemoryEntry | null>;
+
   // Delete a memory entry
-  delete(key: string): Promise<void>
-  
+  delete(key: string): Promise<void>;
+
   // List entries by prefix
-  list(prefix?: string): Promise<MemoryEntry[]>
-  
+  list(prefix?: string): Promise<MemoryEntry[]>;
+
   // Batch read for context loading
-  batchGet(keys: string[]): Promise<Record<string, MemoryEntry>>
-  
+  batchGet(keys: string[]): Promise<Record<string, MemoryEntry>>;
+
   // Get all context-enabled entries
-  getContextEntries(): Promise<Record<string, any>>
+  getContextEntries(): Promise<Record<string, any>>;
 }
 ```
 
@@ -67,14 +69,14 @@ interface MemoryToolOperations {
 
 ```typescript
 interface MemoryEntry {
-  namespace: string      // e.g., "app", "user", "database"
-  key: string           // e.g., "title", "preferences", "schema"
-  fullKey: string       // e.g., "app.title"
-  value: any            // The actual stored value
-  type: string          // "string", "number", "object", "array", etc.
-  metadata?: Record<string, any>  // Additional custom metadata
-  createdAt: string
-  updatedAt: string
+  namespace: string; // e.g., "app", "user", "database"
+  key: string; // e.g., "title", "preferences", "schema"
+  fullKey: string; // e.g., "app.title"
+  value: any; // The actual stored value
+  type: string; // "string", "number", "object", "array", etc.
+  metadata?: Record<string, any>; // Additional custom metadata
+  createdAt: string;
+  updatedAt: string;
 }
 ```
 
@@ -84,26 +86,26 @@ interface MemoryEntry {
 
 ```typescript
 interface MemorySchema {
-  key: string                    // Full key path (e.g., "app.title")
-  description?: string           // Human-readable description
-  type: "string" | "number" | "boolean" | "object" | "array"
-  defaultValue?: any
-  includeInContext?: boolean     // Load into agent context automatically
-  validator?: (value: any) => boolean | string  // Custom validation
+  key: string; // Full key path (e.g., "app.title")
+  description?: string; // Human-readable description
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array';
+  defaultValue?: any;
+  includeInContext?: boolean; // Load into agent context automatically
+  validator?: (value: any) => boolean | string; // Custom validation
   hooks?: {
-    beforeSet?: (value: any, oldValue?: any) => Promise<any>
-    afterSet?: (value: any, oldValue?: any) => Promise<void>
-    beforeDelete?: (value: any) => Promise<boolean>  // return false to prevent
-    afterDelete?: (value: any) => Promise<void>
-  }
+    beforeSet?: (value: any, oldValue?: any) => Promise<any>;
+    afterSet?: (value: any, oldValue?: any) => Promise<void>;
+    beforeDelete?: (value: any) => Promise<boolean>; // return false to prevent
+    afterDelete?: (value: any) => Promise<void>;
+  };
 }
 
 interface SchemaRegistry {
-  register(schema: MemorySchema): void
-  unregister(key: string): void
-  get(key: string): MemorySchema | undefined
-  list(prefix?: string): MemorySchema[]
-  validateValue(key: string, value: any): boolean | string
+  register(schema: MemorySchema): void;
+  unregister(key: string): void;
+  get(key: string): MemorySchema | undefined;
+  list(prefix?: string): MemorySchema[];
+  validateValue(key: string, value: any): boolean | string;
 }
 ```
 
@@ -112,48 +114,48 @@ interface SchemaRegistry {
 ```typescript
 const PREDEFINED_SCHEMAS: MemorySchema[] = [
   {
-    key: "app.title",
-    description: "Application name/title",
-    type: "string",
+    key: 'app.title',
+    description: 'Application name/title',
+    type: 'string',
     includeInContext: true,
     hooks: {
       afterSet: async (value, oldValue) => {
         // Call control-plane API to update app name
-        await updateControlPlaneAppName(value)
-      }
-    }
+        await updateControlPlaneAppName(value);
+      },
+    },
   },
   {
-    key: "app.description",
-    description: "Application description",
-    type: "string",
-    includeInContext: true
+    key: 'app.description',
+    description: 'Application description',
+    type: 'string',
+    includeInContext: true,
   },
   {
-    key: "app.version",
-    description: "Application version",
-    type: "string",
-    includeInContext: false
+    key: 'app.version',
+    description: 'Application version',
+    type: 'string',
+    includeInContext: false,
   },
   {
-    key: "user.preferences",
-    description: "User preferences object",
-    type: "object",
-    includeInContext: false
+    key: 'user.preferences',
+    description: 'User preferences object',
+    type: 'object',
+    includeInContext: false,
   },
   {
-    key: "database.schema",
-    description: "Current database schema",
-    type: "object",
-    includeInContext: true
+    key: 'database.schema',
+    description: 'Current database schema',
+    type: 'object',
+    includeInContext: true,
   },
   {
-    key: "features.flags",
-    description: "Feature flags configuration",
-    type: "object",
-    includeInContext: false
-  }
-]
+    key: 'features.flags',
+    description: 'Feature flags configuration',
+    type: 'object',
+    includeInContext: false,
+  },
+];
 ```
 
 ## Hook/Observer Pattern
@@ -191,10 +193,10 @@ The memory tool provides entries marked with `includeInContext: true` to be load
 ```typescript
 interface ContextProvider {
   // Get formatted context string for agent
-  getContextString(): Promise<string>
-  
+  getContextString(): Promise<string>;
+
   // Get raw context data
-  getContextData(): Promise<Record<string, any>>
+  getContextData(): Promise<Record<string, any>>;
 }
 
 // Example output:
@@ -207,7 +209,7 @@ interface ContextProvider {
 
 ## Database
 - **Schema**: {...}
-`
+`;
 ```
 
 ### Batch Loading Strategy
@@ -225,19 +227,19 @@ For efficiency, context loading uses `batchGet()` to retrieve multiple entries i
 
 ```typescript
 const memoryTool = createTool({
-  name: "memory",
-  description: "Store and retrieve persistent memory across conversations",
+  name: 'memory',
+  description: 'Store and retrieve persistent memory across conversations',
   parameters: z.object({
-    operation: z.enum(["set", "get", "delete", "list", "batch-get"]),
+    operation: z.enum(['set', 'get', 'delete', 'list', 'batch-get']),
     key: z.string().optional(),
     keys: z.array(z.string()).optional(),
     value: z.any().optional(),
-    prefix: z.string().optional()
+    prefix: z.string().optional(),
   }),
   execute: async ({ operation, key, keys, value, prefix }) => {
     // Implementation
-  }
-})
+  },
+});
 ```
 
 ### Usage Examples
@@ -245,34 +247,34 @@ const memoryTool = createTool({
 ```typescript
 // Set a value
 await memory.execute({
-  operation: "set",
-  key: "app.title",
-  value: "My Amazing App"
-})
+  operation: 'set',
+  key: 'app.title',
+  value: 'My Amazing App',
+});
 
 // Get a value
 await memory.execute({
-  operation: "get",
-  key: "app.title"
-})
+  operation: 'get',
+  key: 'app.title',
+});
 
 // List by prefix
 await memory.execute({
-  operation: "list",
-  prefix: "app"
-})
+  operation: 'list',
+  prefix: 'app',
+});
 
 // Batch get for context
 await memory.execute({
-  operation: "batch-get",
-  keys: ["app.title", "app.description", "database.schema"]
-})
+  operation: 'batch-get',
+  keys: ['app.title', 'app.description', 'database.schema'],
+});
 
 // Delete
 await memory.execute({
-  operation: "delete",
-  key: "app.title"
-})
+  operation: 'delete',
+  key: 'app.title',
+});
 ```
 
 ## Implementation Architecture
@@ -294,6 +296,7 @@ agents/src/
 ### Class Responsibilities
 
 **MemoryService**
+
 - File system operations (via file-edit tool)
 - CRUD operations
 - File naming and path management
@@ -301,18 +304,21 @@ agents/src/
 - Git auto-commit coordination
 
 **SchemaRegistry**
+
 - Schema registration and storage
 - Validation execution
 - Hook management and execution
 - Schema querying by prefix
 
 **ContextProvider**
+
 - Identify context-enabled entries
 - Batch loading optimization
 - Context formatting
 - Caching strategy
 
 **MemoryTool**
+
 - Agent-facing API
 - Parameter validation
 - Operation routing

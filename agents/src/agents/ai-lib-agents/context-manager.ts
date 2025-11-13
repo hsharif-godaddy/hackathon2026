@@ -10,7 +10,7 @@ import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig, Age
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
 import { logger, log } from '../../logging/index.js'
 import { getAgentConfig } from '../../services/features.js'
-import { ContextFormatter } from '../../services/helpers/ContextFormatter.js'
+import { ContextFormatter, type FormattedContext } from '../../services/helpers/ContextFormatter.js'
 
 import type { AgentExecutionContext } from '../../base/agent.interface.js'
 import type { AgentsAppContext } from '../../types/websocket-context.js'
@@ -54,6 +54,7 @@ export class AILibContextManager {
     ): Promise<{
         systemPrompt: string
         contextMessages: Array<{ role: 'user' | 'system'; content: string; insertionOrder?: 'before_history' | 'after_history'; cachePoint?: { type: 'ephemeral' } }>
+        formattedContexts?: FormattedContext[]
     }> {
         // Always show concise summary
         const contextSummary = {
@@ -80,7 +81,7 @@ export class AILibContextManager {
             })
         }
 
-        const contextMessages = await this.buildRichContextMessages(context, agentPreferences)
+        const { contextMessages, formattedContexts } = await this.buildRichContextMessages(context, agentPreferences)
 
         // Convert context messages to conversation format
         const conversationContextMessages: Array<{ role: 'user' | 'system'; content: string; insertionOrder?: 'before_history' | 'after_history'; cachePoint?: { type: 'ephemeral' } }> = []
@@ -199,7 +200,8 @@ export class AILibContextManager {
 
         return {
             systemPrompt: baseSystemPrompt,
-            contextMessages: conversationContextMessages
+            contextMessages: conversationContextMessages,
+            formattedContexts
         }
     }
 
@@ -264,8 +266,12 @@ export class AILibContextManager {
      * @param agentPreferences - Optional agent-specific context preferences
      * @returns Array of context messages
      */
-    private async buildRichContextMessages(context: EnhancedAgentContext, agentPreferences?: AgentContextPreferences): Promise<ContextMessage[]> {
+    private async buildRichContextMessages(context: EnhancedAgentContext, agentPreferences?: AgentContextPreferences): Promise<{
+        contextMessages: ContextMessage[]
+        formattedContexts: FormattedContext[]
+    }> {
         const messages: ContextMessage[] = []
+        const formattedContexts: FormattedContext[] = []
 
         // Merge agent preferences with default config (agent preferences take priority)
         const effectiveConfig: ContextGenerationConfig = {
@@ -305,6 +311,7 @@ export class AILibContextManager {
                         content: formatted.content,
                         type: formatted.type
                     })
+                    formattedContexts.push(formatted)
                 }
             }
 
@@ -317,18 +324,20 @@ export class AILibContextManager {
                         content: formatted.content,
                         type: formatted.type
                     })
+                    formattedContexts.push(formatted)
                 }
             }
 
             // Build selected assets context
             if (effectiveConfig.includeSelectedImages && context.selectedAssets) {
-                const formatted = ContextFormatter.formatSelectedAssets(context.selectedAssets)
+                const formatted = await ContextFormatter.formatSelectedAssets(context.selectedAssets)
                 if (formatted) {
                     messages.push({
                         role: 'user',
                         content: formatted.content,
                         type: formatted.type
                     })
+                    formattedContexts.push(formatted)
                 }
             }
         } catch (error) {
@@ -337,7 +346,10 @@ export class AILibContextManager {
             })
         }
 
-        return messages
+        return {
+            contextMessages: messages,
+            formattedContexts
+        }
     }
 
     /**

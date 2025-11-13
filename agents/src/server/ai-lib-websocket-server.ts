@@ -12,7 +12,8 @@ import {
   type ConversationPersistence,
   type ConversationMessage,
   type PersistenceStreamingEvent,
-  type ConversationContext
+  type ConversationContext,
+  type ProcessedFile
 } from '@airo/ai-lib'
 import { auth, AuthType } from '../services/features.js'
 import apm from 'elastic-apm-node'
@@ -93,6 +94,8 @@ function buildDynamicDataMessage(context: AgentsAppContext): {
     insertionOrder: 'before_history'
   }
 }
+
+
 
 /**
  * Create and setup the AI-Lib WebSocket server
@@ -244,6 +247,46 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
           // Build context messages including app context and template descriptions
           const contextResult = await contextManager.buildContextMessages('', enhancedContext, agentPreferences)
+
+          // Collect screenshots and asset images from formatted contexts for vision processing
+          const screenshots: string[] = []
+          const assetImages: string[] = []
+          
+          if (contextResult.formattedContexts) {
+            for (const formatted of contextResult.formattedContexts) {
+              // Collect screenshots
+              if (formatted.screenshot) {
+                screenshots.push(formatted.screenshot)
+                logger.debug('websocket.context.provider.screenshot_collected', {
+                  type: formatted.type,
+                  screenshotSize: formatted.screenshot.length
+                })
+              }
+              
+              // Collect asset images
+              if (formatted.assetImages && Array.isArray(formatted.assetImages)) {
+                assetImages.push(...formatted.assetImages)
+                logger.debug('websocket.context.provider.asset_images_collected', {
+                  type: formatted.type,
+                  count: formatted.assetImages.length
+                })
+              }
+            }
+          }
+
+          // Store all images in context metadata for later use in streamGenerate
+          const allImages = [...screenshots, ...assetImages]
+          if (allImages.length > 0) {
+            if (!agentsAppContext.metadata) {
+              agentsAppContext.metadata = {}
+            }
+            agentsAppContext.metadata._screenshots = allImages
+            logger.info('websocket.context.provider.images_attached', {
+              screenshots: screenshots.length,
+              assetImages: assetImages.length,
+              total: allImages.length
+            })
+          }
 
           // Build dynamic data section
           const dynamicDataMessage = buildDynamicDataMessage(agentsAppContext)
@@ -419,6 +462,16 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       // File path resolver for uploaded files
       filePathResolver: (appId: string, uploadId: string, filename: string) => {
         return fileUploadService.getFilePath(appId, uploadId, filename)
+      },
+
+      // Socket.IO options for handling large payloads (screenshots, etc.)
+      socketOptions: {
+        maxHttpBufferSize: 10 * 1024 * 1024,
+        cors: {
+          origin: "*",
+          methods: ["GET", "POST"],
+          credentials: true
+        }
       },
 
       // Token usage tracking (independent of persistence)

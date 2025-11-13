@@ -150,12 +150,15 @@ export class WebSocketServer {
       throw new Error('WebSocketServer requires an agents object in config')
     }
 
-    // Initialize Socket.IO server
+    // Initialize Socket.IO server with merged configuration
+    // Note: config.socketOptions will override any conflicting keys
     this.io = new SocketIOServer(httpServer, {
       cors: config.cors || {
         origin: "*",
         methods: ["GET", "POST"]
       },
+      // Default buffer size for large payloads (e.g., screenshots)
+      maxHttpBufferSize: 50 * 1024 * 1024, // 50MB default
       ...config.socketOptions
     })
 
@@ -1362,6 +1365,49 @@ export class WebSocketServer {
     }
 
     // Start streaming using streamGenerate with clean message assembly
+    // Extract screenshots from context metadata if present
+    let processedFiles: any[] | undefined
+    if (context?.metadata && Array.isArray((context.metadata as any)._screenshots)) {
+      const screenshots = (context.metadata as any)._screenshots as string[]
+      processedFiles = []
+      for (let i = 0; i < screenshots.length; i++) {
+        try {
+          // Convert data URL to ProcessedFile
+          const dataUrl = screenshots[i]
+          if (!dataUrl) continue
+
+          const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+          if (matches && matches[1] && matches[2]) {
+            const mimeType: string = matches[1]
+            const base64Content: string = matches[2]
+            const size = Math.ceil((base64Content.length * 3) / 4)
+            const fileExtension = mimeType.split('/')[1] || 'png'
+
+            processedFiles.push({
+              input: {
+                source: dataUrl,
+                mimeType,
+                filename: `screenshot-${i + 1}.${fileExtension}`
+              },
+              base64Content,
+              metadata: {
+                size,
+                mimeType,
+                filename: `screenshot-${i + 1}.${fileExtension}`,
+                extractedAt: new Date(),
+                processingTime: 0
+              }
+            })
+          }
+        } catch (error) {
+          console.error('Failed to process screenshot:', error)
+        }
+      }
+      if (processedFiles.length > 0) {
+        console.log(`📸 Attached ${processedFiles.length} image(s) for vision processing (screenshots + asset images)`)
+      }
+    }
+
     let streamResult
     try {
       streamResult = await agent.streamGenerate(originalPrompt, {
@@ -1370,7 +1416,9 @@ export class WebSocketServer {
         // Add conversation history messages
         ...(messages.length > 0 && { messages }),
         // Pass execution context for tools
-        ...(context && { executionContext: context })
+        ...(context && { executionContext: context }),
+        // Pass screenshots as files for vision processing
+        ...(processedFiles && processedFiles.length > 0 && { files: processedFiles })
       })
     } catch (error: any) {
       // Handle API call errors (like tool input validation failures)
@@ -1459,7 +1507,9 @@ Please try again with corrected formatting.`
           streamResult = await agent.streamGenerate(retryPrompt, {
             ...(contextMessages.length > 0 && { context: contextMessages }),
             messages: retryMessages,
-            ...(context && { executionContext: context })
+            ...(context && { executionContext: context }),
+            // Include screenshots in retry as well
+            ...(processedFiles && processedFiles.length > 0 && { files: processedFiles })
           })
         } catch (retryError: any) {
           // If retry also fails, fall back to error handling

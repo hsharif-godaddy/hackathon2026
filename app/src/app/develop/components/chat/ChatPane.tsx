@@ -155,7 +155,8 @@ export default function ChatPane({
       }
 
       // Send the message using the streaming WebSocket
-      sendMessage(inputValue, safeAiEditContext, selectedAsset)
+      // Screenshot is null to avoid agent to analyze
+      sendMessage(inputValue, { ...safeAiEditContext, screenshot: null }, selectedAsset)
 
       // Clear the AI edit context after sending
       if (safeAiEditContext) {
@@ -199,7 +200,7 @@ export default function ChatPane({
     const handleErrorFixEvent = (event: CustomEvent) => {
       if (event.detail.appId === appId && inputValue?.trim()) {
         // Use the actual sendMessage function from WebSocket hook
-        sendMessage(inputValue, safeAiEditContext, selectedAsset)
+        sendMessage(inputValue, { ...safeAiEditContext, screenshot: null }, selectedAsset)
 
         // Clear the AI edit context after sending
         if (safeAiEditContext) {
