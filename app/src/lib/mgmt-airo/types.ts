@@ -162,9 +162,20 @@ export interface AiroDeployAppResponse {
 }
 
 /**
- * Deployment status enum for publish operations
+ * Deployment status constants
+ * Represents the actual statuses from mgmt-hosting deployment records
  */
-export type AiroDeploymentStatus = 'pending' | 'deploying' | 'deployed' | 'failed';
+export enum DeploymentStatus {
+  DEPLOYED = 'deployed',
+  FAILED = 'failed',
+  PENDING = 'pending',
+  DEPLOYING = 'deploying'
+}
+
+/**
+ * Deployment status type for publish operations (derived from enum)
+ */
+export type AiroDeploymentStatus = keyof typeof DeploymentStatus;
 
 /**
  * Publish app response - notifies mgmt-airo of new git archive

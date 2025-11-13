@@ -2,7 +2,8 @@
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/lib/shadcn/sheet'
 import { OptionsSheetTab, useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
+import { useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
+import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import VersionHistory from './VersionHistory'
 import Button from '@ux/button'
 
@@ -20,22 +21,20 @@ export default function OptionsSheet({
   appId = ''
 }: OptionsSheetProps) {
   const { selectedCommit } = useDevelopPageStore()
-  const { isRestoring, restoreCommit, refreshGitHistory, getCommits } = useGitHistoryStore()
+  const restoreMutation = useRestoreCommitMutation()
 
-  const restoring = isRestoring(appId)
-  const commits = getCommits(appId)
+  const { data: commits = [] } = useGitHistoryQuery({
+    appId: appId || '',
+    enabled: !!appId
+  })
+
   const latestCommit = commits.length > 0 ? commits[0] : null
   const isViewingHistoricalCommit = selectedCommit && latestCommit && selectedCommit.hash !== latestCommit.hash
 
-  const handleRestoreConfirm = async () => {
+  function handleRestoreConfirm() {
     if (!selectedCommit) return
 
-    // Execute restore operation
-    const success = await restoreCommit(appId, selectedCommit.hash)
-
-    if (success) {
-      refreshGitHistory(appId)
-    }
+    restoreMutation.mutate({ appId, commitHash: selectedCommit.hash })
   }
   const renderTitle = () => {
     switch (isOpenTab) {
@@ -75,11 +74,11 @@ export default function OptionsSheet({
               design="primary"
               size="sm"
               onClick={handleRestoreConfirm}
-              disabled={restoring}
+              disabled={restoreMutation.isPending}
               title="Restore files from this commit"
               className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-200 hover:border-purple-300 rounded-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {restoring ? 'Restoring...' : `Restore to ${selectedCommit.hash.substring(0, 7)}`}
+              {restoreMutation.isPending ? 'Restoring...' : `Restore to ${selectedCommit.hash.substring(0, 7)}`}
             </Button>
           </div>
         )}

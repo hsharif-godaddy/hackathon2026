@@ -5,7 +5,8 @@ import clsx from 'clsx'
 import { ClockIcon } from '@heroicons/react/24/outline'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
-import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
+import { useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
+import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { postMessageToIframe } from '@/utils/postMessage'
 import PreviewError from './PreviewError'
@@ -32,12 +33,7 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
     isPollingServer
   } = useServerPollingStore()
 
-  const {
-    isRestoring,
-    restoreCommit,
-    refreshGitHistory,
-    getCommits
-  } = useGitHistoryStore()
+  const restoreMutation = useRestoreCommitMutation();
 
   const {
     previewViewMode,
@@ -46,8 +42,13 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
     selectedCommit
   } = useDevelopPageStore()
 
-  const appId = useAppIdFromParams()
-  const restoring = isRestoring(appId)
+  const appId = useAppIdFromParams();
+
+  // Get commits to determine if selected commit is the latest
+  const { data: commits = [] } = useGitHistoryQuery({
+    appId: appId || '',
+    enabled: !!appId
+  });
 
   useEffect(() => {
     if (isMobile) {
@@ -58,8 +59,6 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
   const serverState = getServerState(appId)
   const previewUrl = serverState?.isReady ? serverState.url : null
 
-  // Get commits to determine if selected commit is the latest
-  const commits = getCommits(appId)
   const latestCommit = commits.length > 0 ? commits[0] : null
   const isViewingHistoricalCommit = selectedCommit && latestCommit && selectedCommit.hash !== latestCommit.hash
 
@@ -237,14 +236,10 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
     setIframeKey(prev => prev + 1)
   }
 
-  const handleRestoreConfirm = async () => {
+  function handleRestoreConfirm() {
     if (!selectedCommit) return
 
-    const success = await restoreCommit(appId, selectedCommit.hash)
-
-    if (success) {
-      refreshGitHistory(appId)
-    }
+    restoreMutation.mutate({ appId, commitHash: selectedCommit.hash })
   }
 
   const handleIframeError = () => {
@@ -317,10 +312,10 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
                 design="control"
                 size="sm"
                 onClick={handleRestoreConfirm}
-                disabled={restoring}
+                disabled={restoreMutation.isPending}
                 title="Restore files from this commit"
               >
-                {restoring ? 'Restoring...' : `Restore to ${selectedCommit ? selectedCommit.hash.substring(0, 7) : 'this commit'}`}
+                {restoreMutation.isPending ? 'Restoring...' : `Restore to ${selectedCommit ? selectedCommit.hash.substring(0, 7) : 'this commit'}`}
               </Button>
             </div>
           </div>

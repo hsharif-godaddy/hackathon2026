@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useEffect } from 'react';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
@@ -7,6 +7,7 @@ import { useSiteStore } from '@/stores/useSiteStore';
 import { hasBeenPublished } from '@/utils/site';
 import { logImpressionEvent, logAiroHQEvent } from '@/utils/instrumentation';
 import type { AiroDeployment } from '@/lib/mgmt-airo';
+import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 
 const INITIAL_POLL_DELAY_MS = 5000;  // Wait 5 seconds before first poll
 const FAST_POLLING_INTERVAL_MS = 2000;  // Poll every 2 seconds initially
@@ -75,6 +76,7 @@ export function useDeploymentsQuery({
 }: UseDeploymentsQueryOptions) {
   // Track when polling started for progressive intervals
   const pollingStartTimeRef = useRef<number | null>(null);
+  const queryClient = useQueryClient();
   
   // Get store methods to check and clear deployment in progress
   const getPublishState = useDevelopPageStore((state) => state.getPublishState);
@@ -204,12 +206,12 @@ export function useDeploymentsQuery({
 
     const deploymentInProgress = deployments.find(d => d.id === deploymentInProgressId);
 
-    if (deploymentInProgress && ['deployed', 'failed'].includes(deploymentInProgress.status)) {
-      if (deploymentInProgress.status === 'deployed') {
+    if (deploymentInProgress && [DeploymentStatus.DEPLOYED, DeploymentStatus.FAILED].includes(deploymentInProgress.status as DeploymentStatus)) {
+      if (deploymentInProgress.status === DeploymentStatus.DEPLOYED) {
         logger.info('deployments-query.deployment-complete', {
           appId,
           deploymentId: deploymentInProgressId,
-          status: 'deployed',
+          status: DeploymentStatus.DEPLOYED,
         });
 
         // Check if site was already published before this deployment
@@ -243,6 +245,9 @@ export function useDeploymentsQuery({
           airoHQTask,
         });
 
+        // Invalidate git history cache to refresh commit list with deployment tag
+        queryClient.invalidateQueries({ queryKey: ['git-history', appId] });
+
         // Refetch site data to get updated domains/URLs/variants, then show success
         fetchSite(appId, true)
           .then(function handleRefetchSuccess() {
@@ -261,14 +266,14 @@ export function useDeploymentsQuery({
         logger.info('deployments-query.deployment-complete', {
           appId,
           deploymentId: deploymentInProgressId,
-          status: 'failed',
+          status: DeploymentStatus.FAILED,
         });
       }
 
       // Clear deployment tracking
       setDeploymentInProgressId(appId, null);
     }
-  }, [query.data, appId, getPublishState, setDeploymentInProgressId, setPublishSuccess, fetchSite, getSite]);
+  }, [query.data, appId, getPublishState, setDeploymentInProgressId, setPublishSuccess, fetchSite, getSite, queryClient]);
 
   return query;
 }

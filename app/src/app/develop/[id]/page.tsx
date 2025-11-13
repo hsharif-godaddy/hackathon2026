@@ -11,10 +11,12 @@ import SettingsView from '@/app/develop/components/settings/SettingsView'
 import { ChatTab, SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { ProtectedRoute } from '@/components/auth'
+import { useQueryClient } from '@tanstack/react-query'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { usePageTiming } from '@/hooks/usePageTiming'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
-import { appService } from '@/services/AppService'
+import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { appService, GitCommit } from '@/services/AppService'
 import {
   useConversations,
   useSetInputValue,
@@ -26,7 +28,6 @@ import {
   useStreamingConversationStore
 } from '@/stores/useStreamingConversationStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useGitHistoryStore, cleanupGitHistoryStore } from '@/stores/useGitHistoryStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { handlePreviewRefresh } from '@/app/develop/components/utils'
@@ -61,6 +62,7 @@ function DevelopPageContent() {
     activeChatTab,
     setChatPaneWidth,
     setIsSelectMode,
+    setSelectedCommit,
     loadingPhase,
     site,
     initializePage,
@@ -71,10 +73,12 @@ function DevelopPageContent() {
     setActiveChatTab
   } = useDevelopPageStore()
 
-  // Git history store - handles loading with smart retry logic
-  const {
-    loadGitHistory,
-  } = useGitHistoryStore()
+  const queryClient = useQueryClient()
+
+  useGitHistoryQuery({
+    appId: appId || '',
+    enabled: loadingPhase === 'ready' && !!appId && !!site?.agent_url
+  })
 
   // Track page timing with RUM
   usePageTiming('develop-page', appId)
@@ -90,6 +94,7 @@ function DevelopPageContent() {
 
   // Streaming store state
   const isLoading = useIsLoading()
+  const prevIsLoadingRef = useRef(isLoading)
 
   useEffect(() => {
     logImpressionEvent('develop.page.view')();
@@ -121,12 +126,11 @@ function DevelopPageContent() {
     return () => {
       // Legacy cleanupMessageService removed - streaming architecture handles its own cleanup
       cleanupServerPolling()
-      cleanupGitHistoryStore(appId)
       if (batchTimeoutRef.current) {
         clearTimeout(batchTimeoutRef.current)
       }
     }
-  }, [appId, cleanupServerPolling])
+  }, [cleanupServerPolling])
 
   // Initialize streaming conversation store for this app
   useEffect(() => {
@@ -158,6 +162,31 @@ function DevelopPageContent() {
       setIsLoading(false)
     })
   }, [loadingPhase, appId, loadConversationHistory])
+
+  // Git history management - centralized for page-level coordination
+  
+  // Refresh git history when AI conversation completes (new commit created)
+  useEffect(() => {
+    const wasLoading = prevIsLoadingRef.current
+    const isNowIdle = !isLoading
+    
+    // When conversation completes (was loading, now idle), refresh git history
+    if (appId && wasLoading && isNowIdle && conversations.length > 0) {
+      // Invalidate and refetch git history to get the new commit
+      queryClient.invalidateQueries({ 
+        queryKey: ['git-history', appId],
+        refetchType: 'active'
+      }).then(() => {
+        // After refetch completes, select the newly created commit (at index 0)
+        const gitHistory = queryClient.getQueryData<GitCommit[]>(['git-history', appId]);
+        if (gitHistory && gitHistory.length > 0) {
+          setSelectedCommit(gitHistory[0])
+        }
+      })
+    }
+    
+    prevIsLoadingRef.current = isLoading
+  }, [appId, isLoading, conversations.length, queryClient, setSelectedCommit])
 
   // Server polling - unified approach with adaptive backoff
   useEffect(() => {
@@ -433,14 +462,6 @@ function DevelopPageContent() {
 
     return () => clearTimeout(timer)
   }, [loadingPhase, appId, site, searchParams, autoSendInitialMessage, isLoading, sendMessage, isWebSocketConnected])
-
-  // Load git history when page is ready
-  useEffect(() => {
-    if (loadingPhase === 'ready' && appId) {
-      console.log('🔄 Page ready, loading git history for app:', appId)
-      loadGitHistory(appId)
-    }
-  }, [loadingPhase, appId, loadGitHistory])
 
   // Handle async name suggestion and registration after redirect from setup
   useEffect(() => {

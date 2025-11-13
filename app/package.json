@@ -82,6 +82,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@ux/alert": "^2500.3.2",
     "@ux/box": "^2500.3.2",
+    "@ux/collapsible": "^2500.3.2",
     "@ux/button": "^2500.3.2",
     "@ux/card": "^2500.3.2",
     "@ux/checkbox": "^2500.4.0",

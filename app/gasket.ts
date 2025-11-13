@@ -123,9 +123,5 @@ export default makeGasket({
       privateLabel: 1,
     }
   },
-  switchboard: {
-    app: 'airo-app-builder',
-    enableGasketData: true
-  },
   data: gasketData,
 } as GasketConfigDefinition);

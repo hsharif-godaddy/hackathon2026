@@ -1,8 +1,12 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { useGitHistoryStore } from '@/stores/useGitHistoryStore'
+import { useEffect, useRef, useMemo } from 'react'
+import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery'
+import { useSiteStore } from '@/stores/useSiteStore'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { DeploymentStatus } from '@/lib/mgmt-airo/types'
 import Tag from '@ux/tag'
 import Spinner from '@ux/spinner'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
@@ -21,13 +25,6 @@ export default function VersionHistory() {
   const commitsListRef = useRef<HTMLUListElement>(null)
 
   const {
-    getCommits,
-    isLoading,
-    getError,
-    loadGitHistory
-  } = useGitHistoryStore()
-
-  const {
     selectedCommit,
     selectCommit,
     isSelectingCommit
@@ -35,16 +32,34 @@ export default function VersionHistory() {
 
   const appId = useAppIdFromParams()
 
-  const commits = getCommits(appId)
-  const loading = isLoading(appId)
-  const error = getError(appId)
+  const site = useSiteStore((state) => appId ? state.getSite(appId) : null)
+  const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button')
 
-  // Load commits when component opens or appId changes
-  useEffect(() => {
-    if (appId) {
-      loadGitHistory(appId)
-    }
-  }, [appId, loadGitHistory])
+  const {
+    data: commits = [],
+    isLoading: loading,
+    error: queryError
+  } = useGitHistoryQuery({
+    appId: appId || '',
+    enabled: !!appId
+  })
+
+  const error = queryError?.message || null
+
+  const { data: deployments = [] } = useDeploymentsQuery({
+    appId: appId || '',
+    enabled: isPublishButtonEnabled && !!appId && !!site?.agent_url && commits.length > 0,
+    includeJobData: true,
+    limit: commits.length > 150 ? 150 : commits.length,
+  })
+
+  const publishedCommitHashes = useMemo(() => {
+    return new Set(
+      deployments
+        .filter(d => d.status === DeploymentStatus.DEPLOYED)
+        .map(d => d.gitHash)
+    )
+  }, [deployments])
 
   // Auto-select the latest commit when commits load and no commit is selected
   useEffect(() => {
@@ -105,9 +120,9 @@ export default function VersionHistory() {
             {message}
           </p>
           { description && (
-            <p className="text-xs">
+            <div className="text-xs">
               {description}
-            </p>
+            </div>
           )}
           { isSelected && <CheckboxFilledIcon className="w-5 h-5 top-1 right-1 absolute text-intents-ux-feedbackHighContrastSuccess-feedbackColor" /> }
         </button>
@@ -139,6 +154,7 @@ export default function VersionHistory() {
 
         <ul ref={commitsListRef} className="space-y-2 max-h-full">
           { commits.map((commit) => {
+            const isPublished = publishedCommitHashes.has(commit.hash);
             return renderCommitItem({
               key: commit.hash,
               onClick: () => handleSelectCommit(commit),
@@ -146,6 +162,9 @@ export default function VersionHistory() {
               description: (
                 <div className="flex items-center gap-2">
                   <Tag type="info">{commit.hash.substring(0, 7)}</Tag>
+                  {isPublished && (
+                    <Tag emphasis="success">PUBLISHED</Tag>
+                  )}
                   <span className="text-xs">
                     {formatDate(commit.date, true)}
                   </span>
