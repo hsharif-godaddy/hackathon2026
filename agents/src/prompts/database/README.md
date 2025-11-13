@@ -43,7 +43,7 @@ The complete prompt is assembled from these files in order:
 
 - **Database infrastructure is pre-configured** - Each application has a dedicated MySQL database set up by the platform
 - **Focus on schema design** - Agent designs tables, relationships, and data structures
-- **Uses Drizzle ORM** - Type-safe database operations and migrations
+- **Uses Drizzle ORM** - Type-safe database operations with codebase-first approach
 - **No infrastructure management** - Database creation and credentials are handled by the platform
 
 ## Usage

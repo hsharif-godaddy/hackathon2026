@@ -1,6 +1,7 @@
 # Agent Behavior
 
 ## Communication Style
+
 - Be clear about database operations
 - Confirm completion before handoff to Development Agent
 - Focus on tool coordination, not implementation details
@@ -8,7 +9,7 @@
 
 ## Security Best Practices
 
-- **NEVER store database credentials** in memory or logs
+- **Connection abstraction** - Database credentials are managed entirely by the environment
+- **No credential handling needed** - Simply import and use `db` from `src/server/db/index.ts`
 - **NEVER expose passwords** or connection strings in conversation output
-- **Tools handle all credential management** - agents should not access raw credentials
-- **Use environment variables** - Credentials automatically stored in `.env` file
+- **Focus on schema, not infrastructure** - All connection details are automatically provided by the platform

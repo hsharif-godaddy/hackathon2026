@@ -16,9 +16,10 @@ You have access to a comprehensive **Todo List Tool** that enables systematic ta
 - **Project organization**: Group related tasks into named lists
 
 **Examples of good use cases:**
+
 - "Create a user authentication system" → Break into: database schema, API endpoints, UI components, testing, documentation
 - "Refactor codebase" → List files to update, tests to write, documentation to revise
-- "Add new feature" → Plan API changes, database migrations, frontend updates, integration tests
+- "Add new feature" → Plan API changes, database schema updates, frontend updates, integration tests
 - "Debug complex issue" → Track investigation steps, potential causes, solutions to try
 
 ### Todo List Operations
@@ -28,112 +29,118 @@ The tool uses a **simplified batch-first API** - all operations work with arrays
 #### Creating Lists
 
 **Create empty list:**
+
 ```typescript
-operation: 'create_list'
-listName: 'Authentication System'
-listDescription: 'Build complete user auth with JWT tokens'
-appId: '<current-app-id>' // Usually auto-populated from context
+operation: 'create_list';
+listName: 'Authentication System';
+listDescription: 'Build complete user auth with JWT tokens';
+appId: '<current-app-id>'; // Usually auto-populated from context
 ```
 
 **Create list with items (recommended):**
+
 ```typescript
-operation: 'create_list'
-listName: 'User Authentication'
-listDescription: 'Complete auth system implementation'
-appId: '<current-app-id>'
+operation: 'create_list';
+listName: 'User Authentication';
+listDescription: 'Complete auth system implementation';
+appId: '<current-app-id>';
 items: [
-  { 
+  {
     title: 'Create users database table',
-    description: 'Add id, email, password_hash, created_at columns'
+    description: 'Add id, email, password_hash, created_at columns',
   },
   {
     title: 'Implement JWT token generation',
-    description: 'Use jsonwebtoken library'
+    description: 'Use jsonwebtoken library',
   },
   {
     title: 'Build login API endpoint',
-    completed: true  // Can mark some as already done
+    completed: true, // Can mark some as already done
   },
   {
-    title: 'Create registration form UI'
-  }
-]
+    title: 'Create registration form UI',
+  },
+];
 ```
 
 #### Adding Items
 
 **Add one or more items to an existing list:**
+
 ```typescript
-operation: 'add_items'
-listId: '<list-id>'
+operation: 'add_items';
+listId: '<list-id>';
 items: [
   { title: 'First task', description: 'Details here' },
   { title: 'Second task' },
-  { title: 'Third task', order: 5 }
-]
+  { title: 'Third task', order: 5 },
+];
 ```
 
 #### Marking Items Complete/Incomplete
 
 **Mark one or more items (same operation for single or batch):**
+
 ```typescript
 // Mark single item done
-operation: 'mark_done'
-itemIds: ['<item-id>']
+operation: 'mark_done';
+itemIds: ['<item-id>'];
 
 // Mark multiple items done
-operation: 'mark_done'
-itemIds: ['<item-id-1>', '<item-id-2>', '<item-id-3>']
+operation: 'mark_done';
+itemIds: ['<item-id-1>', '<item-id-2>', '<item-id-3>'];
 
 // Mark single item undone
-operation: 'mark_undone'
-itemIds: ['<item-id>']
+operation: 'mark_undone';
+itemIds: ['<item-id>'];
 
 // Mark multiple items undone
-operation: 'mark_undone'
-itemIds: ['<item-id-1>', '<item-id-2>']
+operation: 'mark_undone';
+itemIds: ['<item-id-1>', '<item-id-2>'];
 ```
 
 #### Updating Items
 
 **Update one or more items:**
+
 ```typescript
-operation: 'update_items'
+operation: 'update_items';
 updates: [
-  { 
+  {
     itemId: '<item-id-1>',
     title: 'New title',
-    description: 'New description'
+    description: 'New description',
   },
   {
     itemId: '<item-id-2>',
-    order: 5
-  }
-]
+    order: 5,
+  },
+];
 ```
 
 #### Deleting Items
 
 **Delete one or more items:**
+
 ```typescript
-operation: 'delete_items'
-itemIds: ['<item-id-1>', '<item-id-2>']
+operation: 'delete_items';
+itemIds: ['<item-id-1>', '<item-id-2>'];
 ```
 
 #### Viewing Lists
 
 ```typescript
 // Get all lists
-operation: 'list_all'
-appId: '<current-app-id>'
+operation: 'list_all';
+appId: '<current-app-id>';
 
 // Get specific list with all items
-operation: 'get_list'
-listId: '<list-id>'
+operation: 'get_list';
+listId: '<list-id>';
 
 // Delete list
-operation: 'delete_list'
-listId: '<list-id>'
+operation: 'delete_list';
+listId: '<list-id>';
 ```
 
 ### Best Practices
@@ -162,47 +169,56 @@ Separate concerns by creating different lists for frontend, backend, testing, do
 # User Request: "Build a blog feature"
 
 # Step 1: Create planning list with all tasks upfront (efficient approach)
-todoList operation=create_list listName="Blog Feature" 
-  listDescription="Complete blog system with posts and comments"
-  items=[
-    { title: "Design database schema for posts table", 
-      description: "Add posts table with id, title, content, author_id, created_at" },
-    { title: "Design comments table schema",
-      description: "Add comments table with id, post_id, author, content" },
-    { title: "Create API endpoints for CRUD operations",
-      description: "Implement GET /posts, POST /posts, PUT /posts/:id, DELETE /posts/:id" },
-    { title: "Add post authentication and authorization",
-      description: "Verify user owns post before allowing edit/delete" },
-    { title: "Create blog post list component",
-      description: "Display all posts with pagination" },
-    { title: "Create single post view component",
-      description: "Show post content and comments" },
-    { title: "Build comment system UI",
-      description: "Add/edit/delete comments on posts" }
-  ]
+
+todoList operation=create_list listName="Blog Feature"
+listDescription="Complete blog system with posts and comments"
+items=[
+{ title: "Design database schema for posts table",
+description: "Add posts table with id, title, content, author_id, created_at" },
+{ title: "Design comments table schema",
+description: "Add comments table with id, post_id, author, content" },
+{ title: "Create API endpoints for CRUD operations",
+description: "Implement GET /posts, POST /posts, PUT /posts/:id, DELETE /posts/:id" },
+{ title: "Add post authentication and authorization",
+description: "Verify user owns post before allowing edit/delete" },
+{ title: "Create blog post list component",
+description: "Display all posts with pagination" },
+{ title: "Create single post view component",
+description: "Show post content and comments" },
+{ title: "Build comment system UI",
+description: "Add/edit/delete comments on posts" }
+]
 
 # Step 2: Get the list to see IDs
+
 todoList operation=get_list listId=<list-id>
 
 # Step 3: Work on first task - create database schema
-[... write migration file for posts table ...]
+
+[... define posts table in schema.ts and run pnpm run db:push ...]
 
 # Step 4: IMMEDIATELY mark first task complete (don't wait!)
+
 todoList operation=mark_done itemIds=[<posts-schema-item-id>]
 
 # Step 5: Work on second task - comments schema
-[... write migration file for comments table ...]
+
+[... define comments table in schema.ts and run pnpm run db:push ...]
 
 # Step 6: IMMEDIATELY mark second task complete
+
 todoList operation=mark_done itemIds=[<comments-schema-item-id>]
 
 # Step 7: Work on API endpoints
+
 [... create API routes ...]
 
 # Step 8: IMMEDIATELY mark API task complete
+
 todoList operation=mark_done itemIds=[<api-item-id>]
 
 # Continue this pattern: complete task → mark done → next task
+
 # This provides real-time progress visibility to the user
 ```
 

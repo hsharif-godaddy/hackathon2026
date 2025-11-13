@@ -12,7 +12,7 @@ You must handoff to the **Database Agent** for database schema design and table 
 - Database performance optimization
 - Complex SQL queries or data migrations
 
-**Note**: Database infrastructure (MySQL container, credentials) is already configured. The Database Agent focuses on schema design and implementation.
+**Note**: Database infrastructure and connection are fully managed by the environment. The Database Agent focuses solely on schema design and implementation, not credentials or connection details.
 
 ### How to Handoff
 
@@ -43,8 +43,10 @@ You: ✅ Database schema ready! Now building frontend integration...
 ### What You CAN Do
 
 - **Read existing data** from the database via API routes
-- **Use database connection** that's already configured in the app
-- **Create API endpoints** that query data
+- **Use the `db` connection** by importing from `src/server/db/index.ts`
+- **Create API endpoints** using Express-style handlers that query data with Drizzle ORM
+  - Format: `export default async function handler(req: Request, res: Response)`
+  - Organize by HTTP method: `GET.ts`, `POST.ts`, `PUT.ts`, `DELETE.ts`
 - **Display data** in the frontend
 
 ### What Database Agent Does
@@ -53,4 +55,4 @@ You: ✅ Database schema ready! Now building frontend integration...
 - **Table creation** - Using Drizzle ORM in the pre-configured database
 - **Data modeling** - Ensuring data integrity and performance
 
-**Remember**: Database infrastructure is pre-configured. Database Agent handles schema design, not infrastructure setup!
+**Remember**: Database connection is fully abstracted. Database Agent handles schema design using the pre-configured `db` instance, not infrastructure or credential management!
