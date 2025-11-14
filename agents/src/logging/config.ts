@@ -12,6 +12,7 @@ export interface LoggingEnvironmentConfig {
   format: 'json' | 'pretty' | 'dev';
   domains?: string[];
   disabledDomains?: string[];
+  optInDomains?: string[];
 
   // Development options
   expandThreshold?: number;
@@ -58,6 +59,20 @@ export function createConfigFromEnvironment(): LoggerConfig {
     config.disabledDomains = process.env.LOG_DISABLED_DOMAINS.split(',').map(d => d.trim());
   }
 
+  if (process.env.LOG_OPT_IN_DOMAINS) {
+    config.optInDomains = process.env.LOG_OPT_IN_DOMAINS.split(',').map(d => d.trim());
+  } else {
+    // Default opt-in domains (noisy debug logging)
+    config.optInDomains = [
+      'compression.hot_files.load',
+      'compression.file_edit',
+      'compression.file_edit_input',
+      'compression.message',
+      'file-cleanup.run',
+      'memory.hook',
+    ];
+  }
+
   const loggerConfig: LoggerConfig = {
     level: config.level,
     handlers: createHandlers(config),
@@ -75,6 +90,10 @@ export function createConfigFromEnvironment(): LoggerConfig {
 
   if (config.disabledDomains) {
     loggerConfig.disabledDomains = config.disabledDomains;
+  }
+
+  if (config.optInDomains) {
+    loggerConfig.optInDomains = config.optInDomains;
   }
 
   return loggerConfig;
@@ -288,11 +307,14 @@ export function getConfigSummary(config: LoggerConfig): string {
   const disabled = config.disabledDomains?.length
     ? ` disabled: [${config.disabledDomains.join(', ')}]`
     : '';
+  const optIn = config.optInDomains?.length
+    ? ` opt-in: [${config.optInDomains.join(', ')}]`
+    : '';
 
   return [
     `Level: ${config.level}`,
     `Handlers: ${handlerTypes}`,
-    `Domains: ${domains}${disabled}`,
+    `Domains: ${domains}${disabled}${optIn}`,
     `Context: ${Object.keys(config.context || {}).join(', ')}`,
   ].join(' | ');
 }

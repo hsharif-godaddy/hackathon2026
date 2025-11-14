@@ -66,6 +66,7 @@ export interface LoggerConfig {
   context?: LogContext;
   enabledDomains?: string[];
   disabledDomains?: string[];
+  optInDomains?: string[];
 }
 
 export interface ILogger {

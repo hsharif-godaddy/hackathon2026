@@ -113,7 +113,7 @@ export class FileEditInputCompressionStrategy implements CompressionStrategy {
     });
 
     if (totalSavings > 0) {
-      logger.debug('file_edit_input.compressed', {
+      logger.debug('compression.file_edit_input.compressed', {
         messageIndex: context.messageIndex,
         originalToolCalls: message.tool_calls.length,
         compressedToolCalls: compressedToolCalls.length,

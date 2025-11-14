@@ -27,11 +27,6 @@ export class DevSupervisorClientFactory {
    * @throws Error if app not found
    */
   static createForApp(appId: string): DevSupervisorClient | null {
-    this.logger.debug('dev_supervisor.client.create.begin', {
-      appId,
-      source: 'app_lookup'
-    });
-
     const app = this.getAppRepository().findById(appId);
     if (!app) {
       this.logger.error('dev_supervisor.client.create.app_not_found', {
@@ -43,17 +38,8 @@ export class DevSupervisorClientFactory {
 
     // Use stored socketPath (can be TCP URL with tcp:// prefix or Unix socket path)
     if (!app.socketPath) {
-      this.logger.info('dev_supervisor.client.create.no_socket', {
-        appId,
-        socketPath: app.socketPath
-      });
       return null;
     }
-
-    this.logger.debug('dev_supervisor.client.create.attempt', {
-      appId,
-      socketPath: app.socketPath
-    });
 
     return this.createForSocketPath(app.socketPath, appId);
   }
@@ -65,34 +51,18 @@ export class DevSupervisorClientFactory {
    * @returns DevSupervisorClient instance or null if not available
    */
   static createForSocketPath(socketPath: string, appId?: string): DevSupervisorClient | null {
-    this.logger.debug('dev_supervisor.client.create.begin', {
-      socketPath,
-      appId,
-      source: 'socket_path'
-    });
-
     try {
       const client = createDevSupervisorClient(socketPath);
       
       if (client) {
-        this.logger.debug('dev_supervisor.client.create.success', {
-          socketPath,
-          appId,
-          available: true
-        });
-      } else {
-        this.logger.info('dev_supervisor.client.create.unavailable', {
-          socketPath,
-          appId,
-          available: false,
-          socketExists: isDevSupervisorAvailable(socketPath)
+        this.logger.info('dev_supervisor.client.create.success', {
+          appId
         });
       }
 
       return client;
     } catch (error) {
       this.logger.error('dev_supervisor.client.create.failure', {
-        socketPath,
         appId,
         error: error instanceof Error ? error.message : 'Unknown error'
       });

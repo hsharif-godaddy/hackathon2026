@@ -23,6 +23,7 @@ export class Logger implements ILogger {
   private level: LogLevel;
   private enabledDomains: Set<string> | null;
   private disabledDomains: Set<string>;
+  private optInDomains: Set<string>;
 
   constructor(config: LoggerConfig, context: LogContext = {}) {
     this.context = { ...context };
@@ -30,6 +31,7 @@ export class Logger implements ILogger {
     this.level = config.level;
     this.enabledDomains = config.enabledDomains ? new Set(config.enabledDomains) : null;
     this.disabledDomains = new Set(config.disabledDomains || []);
+    this.optInDomains = new Set(config.optInDomains || []);
   }
 
   /**
@@ -75,6 +77,10 @@ export class Logger implements ILogger {
     if (this.disabledDomains.size > 0) {
       config.disabledDomains = Array.from(this.disabledDomains);
     }
+    
+    if (this.optInDomains.size > 0) {
+      config.optInDomains = Array.from(this.optInDomains);
+    }
 
     const childLogger = new Logger(config, { ...this.context, ...context });
     return childLogger;
@@ -98,27 +104,47 @@ export class Logger implements ILogger {
   }
 
   /**
-   * Check if a domain is enabled for logging
+   * Check if a domain/subdomain is enabled for logging
+   * Supports hierarchical filtering with prefix matching
+   * 
+   * Priority (highest to lowest):
+   * 1. Prefix match in enabledDomains (if set) - allowlist mode
+   * 2. Prefix match in disabledDomains - blocklist mode
+   * 3. Prefix match in optInDomains - requires explicit enablement
+   * 4. Default to enabled
    */
   isDomainEnabled(event: string): boolean {
-    const domain = event.split('.')[0];
-    
-    // If no domain found, allow the event
-    if (!domain) {
+    if (!event) {
       return true;
     }
     
-    // Check disabled domains first
-    if (this.disabledDomains.has(domain)) {
+    // If enabledDomains is set (allowlist mode), check if event starts with any enabled domain
+    if (this.enabledDomains) {
+      for (const enabledDomain of this.enabledDomains) {
+        if (event === enabledDomain || event.startsWith(enabledDomain + '.')) {
+          return true;
+        }
+      }
       return false;
     }
     
-    // If enabled domains is set, check if domain is included
-    if (this.enabledDomains) {
-      return this.enabledDomains.has(domain);
+    // Check disabled domains (blocklist) - prefix match
+    for (const disabledDomain of this.disabledDomains) {
+      if (event === disabledDomain || event.startsWith(disabledDomain + '.')) {
+        return false;
+      }
     }
     
-    // Default to enabled if no specific filtering
+    // Check opt-in domains (require explicit enablement) - prefix match
+    if (this.optInDomains.size > 0) {
+      for (const optInDomain of this.optInDomains) {
+        if (event === optInDomain || event.startsWith(optInDomain + '.')) {
+          return false; // Requires opt-in but not explicitly enabled
+        }
+      }
+    }
+    
+    // Default to enabled
     return true;
   }
 

@@ -125,7 +125,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
 
     const sortedFiles = Array.from(this.fileMetrics.values()).sort((a, b) => b.score - a.score);
 
-    logger.debug('hot_files.analysis.complete', {
+    logger.debug('compression.hot_files.analysis.complete', {
       totalFiles: fileAccess.size,
       qualifiedFiles: sortedFiles.length,
       topFiles: sortedFiles.slice(0, 5).map((f) => ({
@@ -149,7 +149,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
 
   async loadHotFilesContent(): Promise<void> {
     if (!this.appPath) {
-      logger.warn('hot_files.load.no_app_path', {
+      logger.warn('compression.hot_files.load.no_app_path', {
         message: 'Cannot load hot files without app path',
       });
       return;
@@ -171,7 +171,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
     const recentFilesLoaded: string[] = [];
     for (const fileMetrics of recentFiles) {
       if (recentTokens >= this.config.recentFilesTokenBudget) {
-        logger.debug('hot_files.load.recent_budget_exceeded', {
+        logger.debug('compression.hot_files.load.recent_budget_exceeded', {
           currentTokens: recentTokens,
           recentBudget: this.config.recentFilesTokenBudget,
           remainingFiles: recentFiles.length - recentFilesLoaded.length,
@@ -183,7 +183,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
       if (result.loaded) {
         recentTokens += result.tokenCount;
         recentFilesLoaded.push(fileMetrics.path);
-        logger.debug('hot_files.load.recent_included', {
+        logger.debug('compression.hot_files.load.recent_included', {
           filePath: fileMetrics.path,
           tokenCount: result.tokenCount,
           recentTokens,
@@ -196,7 +196,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
     const scoredFilesLoaded: string[] = [];
     for (const fileMetrics of scoredFiles) {
       if (scoredTokens >= scoredBudget) {
-        logger.debug('hot_files.load.scored_budget_exceeded', {
+        logger.debug('compression.hot_files.load.scored_budget_exceeded', {
           currentTokens: scoredTokens,
           scoredBudget,
           remainingFiles: scoredFiles.length - scoredFilesLoaded.length,
@@ -208,7 +208,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
       if (result.loaded) {
         scoredTokens += result.tokenCount;
         scoredFilesLoaded.push(fileMetrics.path);
-        logger.debug('hot_files.load.scored_included', {
+        logger.debug('compression.hot_files.load.scored_included', {
           filePath: fileMetrics.path,
           tokenCount: result.tokenCount,
           score: fileMetrics.score,
@@ -219,7 +219,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
     }
 
     const totalTokens = recentTokens + scoredTokens;
-    logger.info('hot_files.load.complete', {
+    logger.info('compression.hot_files.load.complete', {
       totalFiles: this.hotFiles.length,
       recentFilesLoaded: recentFilesLoaded.length,
       scoredFilesLoaded: scoredFilesLoaded.length,
@@ -244,14 +244,14 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
       const fullPath = safePathBuilder.resolve(fileMetrics.path);
 
       if (!existsSync(fullPath)) {
-        logger.debug('hot_files.load.file_not_found', { filePath: fileMetrics.path });
+        logger.debug('compression.hot_files.load.file_not_found', { filePath: fileMetrics.path });
         return { loaded: false, tokenCount: 0 };
       }
 
       const stats = await stat(fullPath);
 
       if (stats.size > this.config.maxFileSize) {
-        logger.debug('hot_files.load.file_too_large', {
+        logger.debug('compression.hot_files.load.file_too_large', {
           filePath: fileMetrics.path,
           size: stats.size,
           maxSize: this.config.maxFileSize,
@@ -260,7 +260,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
       }
 
       if (this.isBinaryFile(fileMetrics.path)) {
-        logger.debug('hot_files.load.binary_file', { filePath: fileMetrics.path });
+        logger.debug('compression.hot_files.load.binary_file', { filePath: fileMetrics.path });
         return { loaded: false, tokenCount: 0 };
       }
 
@@ -268,7 +268,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
       const tokenCount = estimateTokens(content);
 
       if (currentTokens + tokenCount > maxTokens) {
-        logger.debug('hot_files.load.would_exceed_budget', {
+        logger.debug('compression.hot_files.load.would_exceed_budget', {
           filePath: fileMetrics.path,
           tokenCount,
           currentTotal: currentTokens,
@@ -283,7 +283,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
 
       return { loaded: true, tokenCount };
     } catch (error) {
-      logger.warn('hot_files.load.error', {
+      logger.warn('compression.hot_files.load.error', {
         filePath: fileMetrics.path,
         error: error instanceof Error ? error.message : String(error),
       });

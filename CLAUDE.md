@@ -267,6 +267,13 @@ MYSQL_ROOT_PASS=
 GETTY_API_URL=<proxy-url>
 GETTY_TOKEN=<token>
 IMAGE_SEARCH_DRIVER=getty
+
+# Logging Configuration (optional)
+LOG_LEVEL=debug                          # debug, info, warn, error, fatal
+LOG_FORMAT=dev                           # dev, json, pretty
+LOG_DOMAINS=app,agent,websocket          # Allowlist mode (only these domains)
+LOG_DISABLED_DOMAINS=compression,memory  # Blocklist mode (disable specific domains)
+LOG_OPT_IN_DOMAINS=compression.hot_files # Override defaults for opt-in domains
 ```
 
 **app/.env:**
@@ -468,6 +475,86 @@ logger.info("Initial build marked as complete after first commit", {
 - Always rich, structured context objects
 - **NO EMOJIS** - Professional production-grade logging only
 - More consistent with enterprise logging standards
+
+### Logging Control System
+
+The logging system supports fine-grained control over log output via environment variables:
+
+**Log Levels:**
+
+- `LOG_LEVEL=debug|info|warn|error|fatal` - Controls minimum log level (default: `debug` in dev, `info` in prod)
+
+**Domain Filtering:**
+
+Three filtering modes are supported:
+
+1. **Allowlist Mode** (most restrictive):
+
+   ```bash
+   LOG_DOMAINS=app,agent,websocket
+   # Only logs from these domains will be shown
+   ```
+
+2. **Blocklist Mode** (disable specific domains):
+
+   ```bash
+   LOG_DISABLED_DOMAINS=compression,memory
+   # All domains except these will be shown
+   ```
+
+3. **Opt-In Mode** (default for noisy domains):
+   ```bash
+   LOG_OPT_IN_DOMAINS=compression.hot_files.load,compression.message
+   # These domains are hidden by default, must be explicitly enabled
+   ```
+
+**Default Opt-In Domains** (hidden unless explicitly enabled):
+
+- `compression.hot_files.load` - Hot file loading details
+- `compression.file_edit` - File edit compression
+- `compression.file_edit_input` - File edit input compression
+- `compression.message` - Message compression details
+- `file-cleanup.run` - File cleanup operations
+- `memory.hook` - Memory schema hooks
+
+**Subdomain Filtering:**
+
+The system supports hierarchical filtering with subdomain specificity:
+
+```bash
+# Enable all compression logs
+LOG_DOMAINS=compression
+
+# Enable only hot file loading within compression
+LOG_DOMAINS=compression.hot_files
+
+# Disable only hot file loading within compression
+LOG_DISABLED_DOMAINS=compression.hot_files.load
+```
+
+**Common Use Cases:**
+
+```bash
+# Show only app and websocket logs
+LOG_DOMAINS=app,websocket
+
+# Show all logs except noisy compression details
+LOG_DISABLED_DOMAINS=compression.message,compression.hot_files.load
+
+# Enable specific opt-in domain for debugging
+LOG_DOMAINS=compression.hot_files.load
+
+# Override opt-in list to hide different domains
+LOG_OPT_IN_DOMAINS=custom.domain,another.domain
+```
+
+**Event Naming Convention:**
+
+All log events follow the pattern: `domain.subdomain.action`
+
+- `compression.hot_files.load.complete` - Compression domain, hot files subdomain
+- `file-cleanup.run.success` - File cleanup domain, run subdomain
+- `memory.schema.registered` - Memory domain, schema subdomain
 
 ### ⚠️ Console Usage Issues (MUST BE FIXED)
 

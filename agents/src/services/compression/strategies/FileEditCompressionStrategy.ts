@@ -93,7 +93,7 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
       `[Full file content available in hot files context]\n` +
       `[Edit details compressed - file is included in hot files]`;
 
-    logger.debug('file_edit.compressed', {
+    logger.debug('compression.file_edit.compressed', {
       filePath,
       mode,
       linesChanged,
