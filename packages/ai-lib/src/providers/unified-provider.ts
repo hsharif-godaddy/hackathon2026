@@ -256,8 +256,41 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
 }
 
 /**
+ * Cached litellm metadata (subscriptionId, customerId) for this agent instance
+ * Since each agent serves a single site, these values are constant and set once
+ */
+let cachedLitellmMetadata: { user?: string; tags?: string[] } | null = null
+
+/**
+ * Set litellm metadata for cost tracking
+ * In production, each agent is locked to a single site, so this is called once
+ * and the values remain constant for the lifetime of the agent process
+ * 
+ * @param metadata - Object containing user (subscriptionId) and tags (customerId)
+ * 
+ * @example
+ * ```typescript
+ * // Called once when agent initializes
+ * setLitellmMetadata({
+ *   user: 'airo-build:sid:sub123',
+ *   tags: ['cust456']
+ * })
+ * ```
+ */
+export function setLitellmMetadata(metadata: { user?: string; tags?: string[] } | null): void {
+  cachedLitellmMetadata = metadata
+  if (metadata) {
+    console.log('✅ litellm_metadata configured:', {
+      subscriptionId: metadata.user || 'not-set',
+      customerId: metadata.tags?.[0] || 'not-set'
+    })
+  }
+}
+
+/**
  * Create a fetch wrapper that injects current S2S token on every request
  * and handles token refresh on authentication errors
+ * Also injects litellm_metadata for cost tracking when available
  */
 function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
   return async (url: RequestInfo | URL, init?: RequestInit) => {
@@ -268,8 +301,28 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
     const currentToken = await getS2SToken(s2sAuthConfig)
     headers.set('Authorization', `Bearer ${currentToken}`)
 
-    // Make request with Headers instance
-    const response = await fetch(url, { ...init, headers })
+    // Inject litellm_metadata into request body if available
+    const modifiedInit = { ...init, headers }
+    if (cachedLitellmMetadata && init?.body) {
+      try {
+        const body = JSON.parse(init.body as string)
+        body.litellm_metadata = cachedLitellmMetadata
+        modifiedInit.body = JSON.stringify(body)
+        
+        // Log successful injection
+        console.log('🏷️  litellm_metadata injected into API request:', {
+          user: cachedLitellmMetadata.user,
+          tags: cachedLitellmMetadata.tags,
+          url: typeof url === 'string' ? url : url.toString()
+        })
+      } catch (error) {
+        // If body parsing fails, proceed without litellm_metadata
+        console.warn('⚠️  Failed to inject litellm_metadata:', error instanceof Error ? error.message : String(error))
+      }
+    }
+
+    // Make request with Headers instance and modified body
+    const response = await fetch(url, modifiedInit)
 
     // Attempt token refresh on authentication failure
     if (response.status === 401 || response.status === 403) {
@@ -287,7 +340,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
       headers.set('Authorization', `Bearer ${newToken}`)
 
       // Retry the request once with new token
-      return await fetch(url, { ...init, headers })
+      return await fetch(url, modifiedInit)
     }
 
     return response
