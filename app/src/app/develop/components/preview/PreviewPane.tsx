@@ -327,15 +327,16 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
           }
         )}>
           <div className={clsx(
-            "flex flex-col items-center justify-center h-full  bg-intents-ux-boxLowContrast-backgroundColor ", {
-              "rounded-lg shadow-lg": !isMobile
+            "flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor ", {
+              "rounded-lg border": !isMobile
             }
           )}>
             <div className={clsx(
               "flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300 ease-in-out", {
                 "w-[430px] mx-auto my-4 max-h-[980px]": previewViewMode === PreviewViewMode.MOBILE && viewMode === ViewMode.PREVIEW && !isMobile,
                 "w-full": previewViewMode === PreviewViewMode.DESKTOP || viewMode === ViewMode.CODE || isMobile,
-                "rounded-lg shadow-lg p-3 border": !isMobile,
+                "shadow-lg": previewViewMode === PreviewViewMode.MOBILE && viewMode === ViewMode.PREVIEW && !isMobile,
+                "rounded-lg border p-3": !isMobile,
                 "p-0": isMobile
               }
             )}>
