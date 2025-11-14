@@ -89,35 +89,36 @@ export default function PersistentTodoList() {
         className="px-4 py-2 cursor-pointer hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors border-b border-border"
         onClick={toggleViewState}
       >
-        <div className="flex items-center justify-between text-sm">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-foreground">{currentList.name}</span>
+        <div className="flex items-center justify-between text-sm min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="font-medium text-foreground truncate">{currentList.name}</span>
             {viewState === 'update' && (
-              <span className="text-xs text-intents-info-color font-medium">Updated</span>
+              <span className="text-xs text-intents-info-color font-medium flex-shrink-0">Updated</span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {viewState === 'open' && (
-              <>
-                <button
-                  className="text-xs text-intents-info-color hover:text-foreground"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setIsModalOpen(true)
-                  }}
+              <button
+                className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setViewState('closed')
+                }}
+                title="Collapse"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
-                  View Details
-                </button>
-                <button
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setViewState('closed')
-                  }}
-                >
-                  Collapse
-                </button>
-              </>
+                  <title>Collapse</title>
+                  <path d="M5 15l7-7 7 7" />
+                </svg>
+              </button>
             )}
             <span className="text-muted-foreground text-xs">
               {completedCount}/{totalItems}
@@ -216,8 +217,19 @@ export default function PersistentTodoList() {
         {renderHeader()}
         
         <div className="px-4 py-2">
-          <div className="text-xs text-muted-foreground mb-2">
-            {completedCount} of {totalItems} completed
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs text-muted-foreground">
+              {completedCount} of {totalItems} completed
+            </div>
+            <button
+              className="text-xs text-intents-info-color hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsModalOpen(true)
+              }}
+            >
+              View Details
+            </button>
           </div>
         </div>
         
