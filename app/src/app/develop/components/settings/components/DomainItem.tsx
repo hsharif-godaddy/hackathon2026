@@ -3,6 +3,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
 import { generateClickEID } from '@/utils/instrumentation';
 import type { AppDomain } from '@/hooks/useDomainOperations';
 import type { Domain } from '@/hooks/useDomainsQuery';
+import DomainConnectConfirmation from './DomainConnectConfirmation';
 import CircleIcon from '@ux/icon/circle';
 import CircleHalfIcon from '@ux/icon/circle-half';
 import MenuIcon from '@ux/icon/menu';
@@ -64,19 +65,36 @@ export default function DomainItem({
   isCustomDomain?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const domainName = domain.domain || domain.name || '';
   const isConnected = !!appDomain;
   const statusInfo = getDomainStatusInfo(appDomain);
   const StatusIcon = statusInfo.icon;
 
-  const handleConnect = () => {
+  const handleConnectClick = () => {
+    setShowConfirmation(true);
+  };
+
+  const handleConfirmConnect = () => {
     setOpen(false);
+    setShowConfirmation(false);
     onConnect(domainName);
+  };
+
+  const handleCancelConnect = () => {
+    setShowConfirmation(false);
   };
 
   const handleDisconnect = () => {
     setOpen(false);
     onDisconnect(domainName);
+  };
+
+  const handlePopoverOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (!isOpen) {
+      setShowConfirmation(false);
+    }
   };
 
   return (
@@ -97,51 +115,59 @@ export default function DomainItem({
           )}
         </Box>
       </Box>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={handlePopoverOpenChange}>
         <PopoverTrigger className="hover:cursor-pointer">
           <MenuIcon className="size-6" />
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-[250px] p-2">
-          <div className="flex flex-col gap-1 items-stretch">
-            {!isConnected ? (
+        <PopoverContent align="end" className="w-[280px] p-2">
+          {showConfirmation ? (
+            <DomainConnectConfirmation
+              onConfirm={handleConfirmConnect}
+              onCancel={handleCancelConnect}
+              isInternalOnly
+            />
+          ) : (
+            <div className="flex flex-col gap-1 items-stretch">
+              {!isConnected ? (
+                <Button
+                  icon={<OkIcon />}
+                  design="tertiary"
+                  onClick={handleConnectClick}
+                  disabled={isLoading || disableConnect}
+                  data-eid={generateClickEID(`settings/domains.custom_domain.connect`)}
+                  text="Connect Domain"
+                />
+              ) : (
+                <Button
+                  icon={<CircleIcon />}
+                  design="tertiary"
+                  onClick={handleDisconnect}
+                  disabled={isLoading}
+                  data-eid={generateClickEID(`settings/domains.custom_domain.disconnect`)}
+                  text="Disconnect Domain"
+                />
+              )}
+              {!isCustomDomain && (
+                <Button
+                  icon={<EditIcon />}
+                  design="tertiary"
+                  onClick={() => setOpen(false)}
+                  data-eid={generateClickEID(`settings/domains.custom_domain.manage`)}
+                  text="Manage Domain"
+                  href={`https://dcc.godaddy.com/control/dnsmanagement?domainName=${domainName}`}
+                  external
+                />
+              )}
               <Button
-                icon={<OkIcon />}
+                icon={<LinkIcon />}
                 design="tertiary"
-                onClick={handleConnect}
-                disabled={isLoading || disableConnect}
-                data-eid={generateClickEID(`settings/domains.custom_domain.connect`)}
-                text="Connect Domain"
-              />
-            ) : (
-              <Button
-                icon={<CircleIcon />}
-                design="tertiary"
-                onClick={handleDisconnect}
-                disabled={isLoading}
-                data-eid={generateClickEID(`settings/domains.custom_domain.disconnect`)}
-                text="Disconnect Domain"
-              />
-            )}
-            {!isCustomDomain && (
-              <Button
-                icon={<EditIcon />}
-                design="tertiary"
-                onClick={() => setOpen(false)}
-                data-eid={generateClickEID(`settings/domains.custom_domain.manage`)}
-                text="Manage Domain"
-                href={`https://dcc.godaddy.com/control/dnsmanagement?domainName=${domainName}`}
+                data-eid={generateClickEID(`settings/domains.custom_domain.visit`)}
+                text="Visit Site"
+                href={`https://${domainName}`}
                 external
               />
-            )}
-            <Button
-              icon={<LinkIcon />}
-              design="tertiary"
-              data-eid={generateClickEID(`settings/domains.custom_domain.visit`)}
-              text="Visit Site"
-              href={`https://${domainName}`}
-              external
-            />
-          </div>
+            </div>
+          )}
         </PopoverContent>
       </Popover>
     </Box>

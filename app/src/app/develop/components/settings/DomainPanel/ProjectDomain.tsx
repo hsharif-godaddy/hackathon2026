@@ -147,13 +147,6 @@ export default function ProjectDomain() {
   const is409Error = updateAppNameMutation.error &&
     (updateAppNameMutation.error as any)?.status === 409;
 
-  // Reset mutation error when user changes the project name
-  useEffect(() => {
-    if (updateAppNameMutation.error && currentProjectName !== projectDomainValue) {
-      updateAppNameMutation.reset();
-    }
-  }, [currentProjectName]);
-
   /**
    * Determine BigCard status based on validation and mutation state
    *
@@ -240,8 +233,14 @@ export default function ProjectDomain() {
   };
 
   const handleInputChange = (value: string) => {
-    setCurrentProjectName(value);
+    // force all prefix input to only allow lowercase.
+    setCurrentProjectName(value.toLowerCase());
     setShowButtons(true);
+
+    // Clear mutation error when user starts typing
+    if (updateAppNameMutation.error) {
+      updateAppNameMutation.reset();
+    }
 
     // Clear any existing timeout
     if (validationTimeoutRef.current) {
@@ -265,7 +264,7 @@ export default function ProjectDomain() {
     >
       {!isSiteLoading && !isPublished && (
         <Alert emphasis="warning">
-          Project domain customization is only available after you publish your site for the first time.
+          You may customize your project domain after you publish your site for the first time.
         </Alert>
       )}
       <Box orientation="vertical" gap="md" className="w-full" blockAlignChildren="start">
@@ -284,6 +283,7 @@ export default function ProjectDomain() {
               label="Name"
               value={currentProjectName}
               onChange={handleInputChange}
+              helpMessage="Must be 5 or more characters. Letters, numbers, and hyphens only. Must start and end with a letter or number."
               errorMessage={getErrorMessage()}
               disabled={isDomainPending || shouldPoll || updateAppNameMutation.isPending || disableProjectDomain}
             />

@@ -15,13 +15,15 @@ import { logger } from '@/lib/request-context';
 import { Status } from "@/app/develop/components/types";
 import { useSiteStore } from "@/stores/useSiteStore";
 import TextInput from "@ux/text-input";
-import Spinner from "@ux/spinner";
+import Skeleton from "@ux/skeleton";
 import Button from "@ux/button";
+import Modal from "@ux/modal";
 import text from "@ux/text";
 import Box from "@ux/box";
 import Alert from "@ux/alert";
 import DomainItem from "@/app/develop/components/settings/components/DomainItem";
 import DomainDNS from "@/app/develop/components/settings/components/DomainDNS";
+import SiblingSet from "@ux/sibling-set";
 
 /**
  * Get error message from unknown error type
@@ -50,6 +52,7 @@ export default function DomainAttach() {
   const [pendingDomain, setPendingDomain] = useState<string | null>(null);
   const [pendingCustomerDomain, setPendingCustomerDomain] = useState<string | null>(null);
   const [debouncedDomain, setDebouncedDomain] = useState('');
+  const [showAddConfirmation, setShowAddConfirmation] = useState(false);
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const userInfo = getUserInfo();
@@ -310,6 +313,11 @@ export default function DomainAttach() {
     setDebouncedDomain('');
   }
 
+  async function handleConfirmAdd() {
+    setShowAddConfirmation(false);
+    await handleAddCustomDomain();
+  }
+
   const pendingDomainDetails = pendingDomain
     ? appDetails?.domains?.find((d) => d.fqdn === pendingDomain)
     : null;
@@ -391,12 +399,24 @@ export default function DomainAttach() {
     >
       {!isSiteLoading && !isPublished && (
         <Alert emphasis="warning">
-          Custom domains are only available after you publish your site for the first time.
+          You may add custom domains after you publish your site for the first time.
         </Alert>
       )}
       {/* GoDaddy Domains Section */}
       <Box gap="sm">
-        {isLoading && <Spinner size="sm" />}
+        {isLoading && (
+          <>
+            {[1, 2, 3].map((i) => (
+              <div
+                key={`skeleton-${i}`}
+                className="bg-intents-ux-box-backgroundColor rounded-lg px-4 py-2 flex gap-2"
+              >
+                <Skeleton rounding="full" size="sm"/>
+                <Skeleton size="md" width="30%" />
+              </div>
+            ))}
+          </>
+        )}
         {error && (
           <text.p className="text-intents-ux-text-destructive">
             {getErrorMessage(error)}
@@ -471,7 +491,7 @@ export default function DomainAttach() {
           <Button
             text={isValidatingDomain || (customDomain !== debouncedDomain) ? "Checking domain…" : "Add Custom Domain"}
             design="primary"
-            onClick={handleAddCustomDomain}
+            onClick={() => setShowAddConfirmation(true)}
             disabled={shouldDisableAddingDomain ||
               customDomain.length === 0 ||
               isValidatingDomain ||
@@ -484,6 +504,30 @@ export default function DomainAttach() {
           />
         </div>
       ) }
+
+        {showAddConfirmation && (
+          <Modal onClose={() => setShowAddConfirmation(false)} title='Are you sure you want to add this domain?' centered>
+            <Box className='text-center max-w-2xl mx-auto' gap='md' inlineAlignChildren='center'>
+               <text.span as="paragraph">
+                If your domain is hosted at GoDaddy, we&rsquo;ll update the DNS automatically. If it&rsquo;s hosted elsewhere, you&rsquo;ll need to update the DNS manually. Connecting this domain to this site will disconnect it from any site it&rsquo;s currently attached to.
+               </text.span>
+             <SiblingSet gap="md" className="justify-center">
+               <Button
+                 design="primary"
+                 onClick={handleConfirmAdd}
+                 text="Yes, Continue"
+                 data-eid={generateClickEID(`settings/domains.connect_confirm.continue`)}
+               />
+               <Button
+                 design="secondary"
+                 onClick={() => setShowAddConfirmation(false)}
+                 text="Cancel"
+                 data-eid={generateClickEID(`settings/domains.connect_confirm.cancel`)}
+               />
+             </SiblingSet>
+           </Box>
+          </Modal>
+        )}
 
       {/* Custom Domains Added Section */}
       {customDomains.length > 0 && (
