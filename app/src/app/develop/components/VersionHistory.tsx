@@ -136,9 +136,9 @@ export default function VersionHistory() {
   )
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div className="flex-1 flex flex-col h-full overflow-y-auto">
       {/* Scrollable content area */}
-      <div className="flex-1 flex flex-col overflow-y-auto gap-4" style={{ overflowY: 'auto', height: 'calc(100% - 50px)' }}>
+      <div className="flex-1 flex flex-col gap-4 p-4">
         {error && (
           <div className="bg-intents-ux-feedbackCritical-feedbackColor p-3 text-sm">
             Error: {error}
