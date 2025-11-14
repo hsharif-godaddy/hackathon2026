@@ -172,8 +172,15 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
     fetchData(pagination.page);
   };
 
-  const handlePageChange = (newPage: number) => {
-    fetchData(newPage);
+  const handlePageChange = (newOffset: number) => {
+    // Convert offset to page number (Pagination component passes offset, not page)
+    const newPage = Math.floor(newOffset / pagination.limit) + 1;
+
+    // Validate page bounds
+    const maxPage = pagination.limit > 0 ? Math.ceil(pagination.total / pagination.limit) : 1;
+    const validPage = Math.max(1, Math.min(newPage, maxPage));
+
+    fetchData(validPage);
   };
 
   // Build columns dynamically from schema
@@ -288,7 +295,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
               </div>
 
               <div className="border rounded-lg overflow-x-auto">
-                <Table>
+                <Table stretch>
                   <Thead>
                     {table.getHeaderGroups().map((headerGroup) => (
                       <Tr key={headerGroup.id}>
@@ -321,14 +328,16 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
 
               {/* Pagination */}
               {pagination.total > pagination.limit && (
-                <Pagination
-                  limit={pagination.limit}
-                  offset={(pagination.page - 1) * pagination.limit}
-                  total={pagination.total}
-                  onChange={handlePageChange}
-                  atStart={pagination.page === 1}
-                  atEnd={!pagination.hasMore}
-                />
+                <div className="flex justify-center">
+                  <Pagination
+                    limit={pagination.limit}
+                    offset={(pagination.page - 1) * pagination.limit}
+                    total={pagination.total}
+                    onChange={handlePageChange}
+                    atStart={pagination.page === 1}
+                    atEnd={!pagination.hasMore}
+                  />
+                </div>
               )}
             </div>
           )}
