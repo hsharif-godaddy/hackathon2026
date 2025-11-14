@@ -17,6 +17,8 @@ function getOperationMessage(operation: string, result: any): string {
       return `Retrieved list: ${result?.list?.name || 'Unknown'}`
     case 'show_list':
       return `Todo list: ${result?.list?.name || 'Todo List'}`
+    case 'select_list':
+      return `Working on ${result?.list?.name || 'Unknown'}`
     case 'list_all':
       const count = result?.lists?.length || 0
       return `Found ${count} ${count === 1 ? 'list' : 'lists'}`
@@ -227,6 +229,7 @@ export default function TodoListToolRenderer({
 }: DefaultToolRendererProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [isVisible, setIsVisible] = useState(true)
 
   useEffect(() => {
     setMounted(true)
@@ -266,9 +269,36 @@ export default function TodoListToolRenderer({
     operation = inputObj.operation || ''
   }
 
+  // Reset visibility when operation changes
+  useEffect(() => {
+    if (operation === 'select_list') {
+      setIsVisible(true)
+    } else {
+      setIsVisible(true)
+    }
+  }, [operation])
+
+  // Handle select_list with auto-removal after 4 seconds
+  useEffect(() => {
+    if (operation === 'select_list' && toolStatus === 'completed' && isVisible) {
+      const timer = setTimeout(() => {
+        setIsVisible(false)
+      }, 4000)
+
+      return () => {
+        clearTimeout(timer)
+      }
+    }
+  }, [operation, toolStatus])
+
   // Don't render anything for mark_done/mark_undone/show_list operations
   // The persistent todo list UI handles these updates
   if (operation === 'mark_done' || operation === 'mark_undone' || operation === 'show_list') {
+    return null
+  }
+
+  // Don't render select_list if it's been hidden
+  if (operation === 'select_list' && !isVisible) {
     return null
   }
 
