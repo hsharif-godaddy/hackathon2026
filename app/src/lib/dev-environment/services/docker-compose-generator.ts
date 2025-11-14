@@ -1,11 +1,19 @@
+import { getAllocPath, getBasePath } from '../utils/app-paths';
 import { logger } from '../../request-context';
-import { getAllocPath } from '../utils/app-paths';
+import { writeFileSync } from 'node:fs';
+import * as path from 'node:path';
 
 /**
  * Constant container port for dev-supervisor TCP communication
  * Host ports are mapped to this container port via Docker port mapping
  */
 const DEV_SUPERVISOR_CONTAINER_PORT = 8877;
+
+/**
+ * Fixed internal port for app container (not exposed externally)
+ * Nginx proxy forwards to this port internally
+ */
+const APP_INTERNAL_PORT = 8080;
 
 export interface ComposeServiceConfig {
 	appId: string;
@@ -36,6 +44,16 @@ export interface DatabaseConfig {
 export class DockerComposeGenerator {
 	/**
 	 * Generate environment variables for app service
+	 *
+	 * Builds environment configuration including:
+	 * - Basic runtime settings (HOST, NODE_ENV)
+	 * - Dev-supervisor communication mode (TCP or Unix socket)
+	 * - App port configuration (internal port for nginx proxy)
+	 * - Vite-specific settings (VITE_HOST, ALLOWED_ORIGINS)
+	 *
+	 * @param config - Service configuration containing app details and connection settings
+	 * @param dbConfig - Optional database configuration (reserved for future use)
+	 * @returns Record of environment variable key-value pairs for Docker Compose
 	 */
 	private generateAppEnvironment(config: ComposeServiceConfig, dbConfig?: DatabaseConfig): Record<string, string> {
 		const env: Record<string, string> = {
@@ -54,7 +72,7 @@ export class DockerComposeGenerator {
 		}
 
 		// Template-specific environment variables (v8)
-		env.PORT = config.appPort.toString();
+		env.PORT = APP_INTERNAL_PORT.toString();
 		env.VITE_HOST = "0.0.0.0";
 		env.ALLOWED_ORIGINS = "http://localhost:3000,https://localhost:3000,https://airo-builder.godaddy.com,https://airo-builder.test-godaddy.com,https://airo-builder.dev-godaddy.com";
 
@@ -62,14 +80,76 @@ export class DockerComposeGenerator {
 	}
 
 	/**
-	 * Get port mapping for app service (v8 template)
+	 * Generate nginx configuration for HTTPS termination
+	 *
+	 * Creates a production-ready nginx configuration that:
+	 * - Terminates SSL/TLS using certificates from app template
+	 * - Proxies all requests to the internal app container on HTTP
+	 * - Supports WebSocket connections for Vite HMR
+	 * - Sets appropriate proxy headers for request forwarding
+	 * - Uses fully-qualified container name to avoid DNS collisions on shared network
+	 *
+	 * @param appId - Application ID for unique container naming
+	 * @param nginxPort - External HTTPS port for nginx to listen on (allocated by PortManager)
+	 * @returns nginx.conf file content as a string
 	 */
-	private getAppPortMapping(config: ComposeServiceConfig): string {
-		return `${config.appPort}:${config.appPort}`;
+	private generateNginxConfig(appId: string, nginxPort: number): string {
+		const nginxConfig = `events {
+    worker_connections 1024;
+}
+
+http {
+    # WebSocket upgrade support - map Connection header based on Upgrade header
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
+
+    upstream app_backend {
+        # Use fully-qualified container name to avoid DNS collisions on shared network
+        server airo-app-${appId}-app-1:${APP_INTERNAL_PORT};
+    }
+
+    server {
+        listen ${nginxPort} ssl http2;
+        server_name localhost;
+
+        ssl_certificate /etc/nginx/ssl/cert.pem;
+        ssl_certificate_key /etc/nginx/ssl/key.pem;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+
+        client_max_body_size 50M;
+
+        # Proxy all requests to app backend with WebSocket support
+        location / {
+            proxy_pass http://app_backend;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 86400;
+        }
+    }
+}`;
+
+		return nginxConfig;
 	}
 
 	/**
-	 * Get anonymous volumes for app service (v8 template)
+	 * Get volume mount configurations for app service (v8 template)
+	 *
+	 * Configures Docker volume mounts including:
+	 * - App code directory with hot reload support
+	 * - Anonymous volume for node_modules (performance optimization)
+	 * - Alloc directory for configuration and secrets (read-only)
+	 * - Dev-supervisor socket directory (Unix socket mode only)
+	 *
+	 * @param config - Service configuration containing paths and connection settings
+	 * @returns Array of volume mount strings in Docker Compose format
 	 */
 	private getAppVolumes(config: ComposeServiceConfig): string[] {
 		// Get alloc path using centralized utility
@@ -95,11 +175,23 @@ export class DockerComposeGenerator {
 	/**
 	 * Generate docker-compose.yml content
 	 * Note: Database service removed - apps now use shared MySQL instance
+	 * Includes nginx proxy for HTTPS termination
 	 */
 	generateComposeFile(config: ComposeServiceConfig, dbConfig?: DatabaseConfig): string {
 		logger.info("compose.generate.begin", {
 			appId: config.appId,
 			templateVersion: config.templateVersion,
+		});
+
+		// Generate and write nginx.conf to disk
+		const basePath = getBasePath(config.appId);
+		const nginxConfigPath = path.join(basePath, 'nginx.conf');
+		const nginxConfigContent = this.generateNginxConfig(config.appId, config.appPort);
+		writeFileSync(nginxConfigPath, nginxConfigContent, 'utf-8');
+
+		logger.info("compose.nginx_config.created", {
+			appId: config.appId,
+			path: nginxConfigPath,
 		});
 
 		// Build environment variables
@@ -110,17 +202,15 @@ export class DockerComposeGenerator {
 		const appVolumes = this.getAppVolumes(config);
 		const volumeLines = appVolumes.map(vol => `      - ${vol}`).join('\n');
 
-		// Build port mappings
-		const ports = [this.getAppPortMapping(config)];
-
-		// Extract supervisor port from socketPath if in TCP mode
+		// Build port mappings for dev-supervisor only (if TCP mode)
+		const supervisorPorts: string[] = [];
 		if (config.useTcp && config.socketPath?.startsWith('tcp://')) {
 			try {
 				const url = new URL(config.socketPath);
 				const supervisorPort = parseInt(url.port);
 				if (supervisorPort && !isNaN(supervisorPort)) {
 					// Map host port to constant container port
-					ports.push(`${supervisorPort}:${DEV_SUPERVISOR_CONTAINER_PORT}`);
+					supervisorPorts.push(`${supervisorPort}:${DEV_SUPERVISOR_CONTAINER_PORT}`);
 				}
 			} catch (error) {
 				logger.warn("compose.generate.port_parse_failed", {
@@ -130,12 +220,27 @@ export class DockerComposeGenerator {
 			}
 		}
 
-		const portLines = ports.map(port => `      - "${port}"`).join('\n');
+		const supervisorPortLines = supervisorPorts.length > 0
+			? '    ports:\n' + supervisorPorts.map(port => `      - "${port}"`).join('\n') + '\n'
+			: '';
 
-		// Build the compose file (app service only - no per-app database)
+		// Build the compose file with nginx proxy + app service
 		const composeContent = `---
 
 services:
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "${config.appPort}:${config.appPort}"
+    volumes:
+      - ${basePath}/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${config.appPath}/.ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    networks:
+      - app-network
+
   app:
     build:
       context: ${config.appPath}
@@ -145,14 +250,14 @@ services:
         HOST_GID: ${config.gid}
     image: ${config.imageName}
     restart: unless-stopped
-    ports:
-${portLines}
-    environment:
+${supervisorPortLines}    environment:
 ${envLines}
     volumes:
 ${volumeLines}
     networks:
       - app-network
+    expose:
+      - "${APP_INTERNAL_PORT}"
 
 networks:
   app-network:
@@ -162,7 +267,7 @@ networks:
 
 		logger.info("compose.generate.success", {
 			appId: config.appId,
-			services: 1, // app only (database is shared)
+			services: 2, // nginx + app
 		});
 
 		return composeContent;

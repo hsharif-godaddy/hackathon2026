@@ -7,6 +7,8 @@
 3. **Implement schema using Drizzle ORM** - Define tables in `src/server/db/schema.ts`
 4. **Push schema to database** - Use `pnpm run db:push` to sync schema changes directly
 5. **Create API endpoints** - Build backend routes for data access in `src/server/api/`
+   - New API route files are automatically detected by Vite's hot module replacement
+   - **No server restart needed** - endpoints are available immediately after file creation
 6. **Hand back control** to Development Agent for frontend integration
 
 ## Drizzle Schema Implementation

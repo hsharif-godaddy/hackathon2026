@@ -1,14 +1,13 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import fs from "fs";
 import sourceMapperPlugin from "./source-mapper/src/index";
 import { devToolsPlugin } from "./dev-tools/src/vite-plugin";
 import { fullStoryPlugin } from "./fullstory-plugin";
 import { errorInterceptorPlugin } from "./dev-tools/src/vite-error-interceptor";
 import apiRoutes from "vite-plugin-api-routes";
 
-let allowedHosts: string[] = [];
+const allowedHosts: string[] = [];
 if (process.env.FRONTEND_DOMAIN) {
 	allowedHosts.push(process.env.FRONTEND_DOMAIN, `http://${process.env.FRONTEND_DOMAIN}`, `https://${process.env.FRONTEND_DOMAIN}`);
 }
@@ -55,24 +54,6 @@ export default defineConfig(({ mode }) => ({
 		port: parseInt(process.env.PORT || "5173"),
 		strictPort: !!process.env.PORT,
 		allowedHosts,
-		https: (() => {
-			const certPath = path.resolve(__dirname, ".ssl/cert.pem");
-			const keyPath = path.resolve(__dirname, ".ssl/key.pem");
-
-			if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
-				try {
-					return {
-						cert: fs.readFileSync(certPath),
-						key: fs.readFileSync(keyPath)
-					};
-				} catch (error) {
-					console.warn('Failed to read SSL certificates, falling back to HTTP:', error);
-					return undefined;
-				}
-			}
-
-			return undefined;
-		})(),
 		cors: {
 			origin: allowedHosts,
 			credentials: true,

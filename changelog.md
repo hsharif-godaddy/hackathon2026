@@ -11,6 +11,16 @@
 
 ### Internal Changes
 
+- **Nginx Proxy for HTTPS Termination**: Added nginx reverse proxy to generated app Docker Compose stacks for production-aligned SSL/TLS handling
+  - Added nginx service to `DockerComposeGenerator`: Auto-generated nginx.conf with HTTPS termination, WebSocket support for Vite HMR
+  - App containers now run on internal port 8080 (HTTP only), nginx handles SSL on allocated external port (5001+)
+  - Removed HTTPS configuration from vite.config.ts in v8 template: Simplified to HTTP-only internally
+  - Nginx configuration includes: TLS 1.2/1.3 support, WebSocket upgrade headers with proper Connection mapping, proxy headers for request forwarding
+  - SSL certificates mounted from app template `.ssl/` directory (cert.pem and key.pem)
+  - Uses fully-qualified container names (airo-app-{appId}-app-1) to prevent DNS collisions on shared Docker network
+  - Better separation of concerns: nginx for SSL termination and reverse proxy, app for business logic
+  - Maintains production parity with standard reverse proxy architecture pattern
+
 - **Shared MySQL Database Architecture**: Consolidated per-app MySQL containers to a single shared MySQL instance for better resource utilization and production parity
   - Added `SharedMySQLService`: Manages database and user provisioning in the shared MySQL instance
     - Each app gets unique database (airo*{appId}) and user (user_airo*{appId}) with isolated permissions
