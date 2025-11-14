@@ -169,6 +169,11 @@ export class DependencyChecker {
     console.log('   sudo mv mkcert-v*-linux-amd64 /usr/local/bin/mkcert\n');
     console.log('   # Install local CA');
     console.log('   mkcert -install\n');
+    console.log(chalk.yellow('⚠️  If Chrome still shows certificate warnings after installation:'));
+    console.log('   1. Go to chrome://certificate-manager/localcerts/usercerts');
+    console.log('   2. Click on "Import on Trust Certificates"');
+    console.log('   3. Select airo-app-builder/.dev-ca/ca-cert.pem');
+    console.log('      (You might need to press Command + Shift + . to show the .dev-ca directory)\n');
     console.log(chalk.blue('ℹ️  Without mkcert, apps will use OpenSSL self-signed certificates (with browser warnings)'));
     console.log(chalk.blue('ℹ️  Learn more: https://github.com/FiloSottile/mkcert'));
   }
