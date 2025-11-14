@@ -3,9 +3,9 @@ import clsx from 'clsx'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import SendIcon from '@ux/icon/send'
 import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
-import WandFilledIcon from '@ux/icon/wand-filled'
 import { HeroSectionProps, HeroSectionRef } from './types'
 import { generateClickEID } from '@/utils/instrumentation'
 import { MAX_PROMPT_LENGTH } from '@/lib/features'
@@ -203,7 +203,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
                 design='primary'
                 className="group !bg-ai cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed z-10 !rounded-full aspect-square !p-5 !border-none right-4 bottom-4"
-                icon={isLoading ? <Spinner size='sm' /> : <WandFilledIcon />}
+                icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
                 aria-label={isLoading ? "Building your app..." : "Start building"}
               />
 

@@ -3,7 +3,7 @@
 import { generateClickEID } from '@/utils/instrumentation'
 import Box from '@ux/box'
 import Button from '@ux/button'
-import WandIcon from '@ux/icon/wand'
+import SendIcon from '@ux/icon/send'
 
 interface ChatInputProps {
   inputValue?: string
@@ -52,7 +52,7 @@ export default function ChatInput({
               disabled={!inputValue?.trim() || isDisabled}
               aria-label="Send message"
               design="primary"
-              icon={<WandIcon className="w-4 h-4" />}
+              icon={<SendIcon className="w-4 h-4" />}
               size="sm"
               data-partial="componentAiro"
             />
