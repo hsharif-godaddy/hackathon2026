@@ -218,11 +218,14 @@ export default function FileEditToolRenderer({
   
   // Use streaming changes if available (tool is running), otherwise use final changes
   const displayChanges = streamingChanges || changes
-  if (displayChanges && mode !== 'create') {
-    displayMessage += ` +${displayChanges.additions} -${displayChanges.deletions}`
-  } else if (streamingChanges && mode === 'create') {
-    // For create mode, show line count as it streams
-    displayMessage += ` +${streamingChanges.additions}`
+  if (displayChanges) {
+    if (mode === 'create') {
+      // For create mode, show only additions (new file)
+      displayMessage += ` +${displayChanges.additions}`
+    } else {
+      // For edit/rewrite modes, show additions and deletions
+      displayMessage += ` +${displayChanges.additions} -${displayChanges.deletions}`
+    }
   }
 
   // Has details if we have parsed result data (diff, metadata, etc.) OR markdown content
