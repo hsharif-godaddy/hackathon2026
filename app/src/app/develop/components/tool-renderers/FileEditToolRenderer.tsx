@@ -110,70 +110,11 @@ export default function FileEditToolRenderer({
 }: DefaultToolRendererProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const loggedComparisonRef = useRef<string | null>(null)
   const lastSuccessfulEstimateRef = useRef<{ additions: number; deletions: number } | null>(null)
 
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  // Log estimate vs actual comparison once when result arrives
-  useEffect(() => {
-    if (!result || !partialInput) return
-
-    // Create a unique key for this result to prevent duplicate logging
-    const resultKey = typeof result === 'string' ? result.substring(0, 100) : JSON.stringify(result).substring(0, 100)
-    if (loggedComparisonRef.current === resultKey) return
-
-    try {
-      let parsedResult: any = null
-      if (typeof result === 'string') {
-        try {
-          parsedResult = JSON.parse(result)
-        } catch {
-          return // Not JSON format, skip
-        }
-      } else if (typeof result === 'object') {
-        parsedResult = result
-      }
-
-      if (parsedResult?.changes) {
-        const changes = parsedResult.changes
-        const finalEstimate = estimateLineCountsFromPartial(partialInput)
-        
-        if (finalEstimate) {
-          const estimatedAdditions = finalEstimate.additions
-          const estimatedDeletions = finalEstimate.deletions
-          const actualAdditions = changes.additions
-          const actualDeletions = changes.deletions
-
-          const additionsDiff = Math.abs(estimatedAdditions - actualAdditions)
-          const deletionsDiff = Math.abs(estimatedDeletions - actualDeletions)
-          const additionsAccuracy = actualAdditions > 0 
-            ? ((1 - additionsDiff / actualAdditions) * 100).toFixed(1)
-            : estimatedAdditions === 0 ? '100.0' : '0.0'
-          const deletionsAccuracy = actualDeletions > 0
-            ? ((1 - deletionsDiff / actualDeletions) * 100).toFixed(1)
-            : estimatedDeletions === 0 ? '100.0' : '0.0'
-
-          console.log('[ESTIMATE vs ACTUAL]', {
-            file: getFilename(parsedResult.path || ''),
-            mode: parsedResult.mode || 'edit',
-            estimated: { additions: estimatedAdditions, deletions: estimatedDeletions },
-            actual: { additions: actualAdditions, deletions: actualDeletions },
-            difference: { additions: additionsDiff, deletions: deletionsDiff },
-            accuracy: { additions: `${additionsAccuracy}%`, deletions: `${deletionsAccuracy}%` },
-            partialInputLength: partialInput.length,
-            partialInput: partialInput
-          })
-
-          loggedComparisonRef.current = resultKey
-        }
-      }
-    } catch (e) {
-      // Silently ignore errors in logging
-    }
-  }, [result, partialInput])
 
   // Parse result - can be JSON (new format) or Markdown (old format)
   let parsedResult: any = null
