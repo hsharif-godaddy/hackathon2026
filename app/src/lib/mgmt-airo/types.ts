@@ -153,6 +153,76 @@ export interface AiroUpdateProjectDomainResponse {
 }
 
 /**
+ * Domain mode types for validation
+ * 
+ * Determines which type of domain is being validated
+ */
+export enum DomainMode {
+  /** Project domain (subdomain prefix) */
+  PROJECT = 'project',
+  /** Custom domain (fully qualified domain name) */
+  CUSTOM = 'custom',
+}
+
+/**
+ * Domain validation error codes from mgmt-airo API
+ * 
+ * Error codes returned when domain availability check fails
+ */
+export enum DomainValidationError {
+  /** Project prefix format validation failure */
+  DOMAIN_FORMAT_INVALID = 'DOMAIN_FORMAT_INVALID',
+  /** Project prefix RFC 1123 validation failure */
+  DOMAIN_LABEL_INVALID = 'DOMAIN_LABEL_INVALID',
+  /** Project prefix is too short (5-character minimum) */
+  DOMAIN_TOO_SHORT = 'DOMAIN_TOO_SHORT',
+  /** Domain is on the deny list (reserved) */
+  DOMAIN_RESERVED = 'DOMAIN_RESERVED',
+  /** Domain contains profanity */
+  DOMAIN_PROFANITY = 'DOMAIN_PROFANITY',
+  /** Full FQDN format validation failure (custom domains) */
+  DOMAIN_FQDN_INVALID = 'DOMAIN_FQDN_INVALID',
+  /** Subdomain label validation failure (custom domains) */
+  DOMAIN_SUBDOMAIN_INVALID = 'DOMAIN_SUBDOMAIN_INVALID',
+  /** Domain label exceeds 63-character limit (custom domains) */
+  DOMAIN_LABEL_TOO_LONG = 'DOMAIN_LABEL_TOO_LONG',
+  /** Domain is not unique (already in use) */
+  DOMAIN_NOT_UNIQUE = 'DOMAIN_NOT_UNIQUE',
+  /** Domain is already owned by this account */
+  DOMAIN_ALREADY_OWNED = 'DOMAIN_ALREADY_OWNED',
+}
+
+/**
+ * Domain validation error object from mgmt-airo API
+ * 
+ * Detailed error information when domain validation fails
+ */
+export interface DomainValidationErrorObject {
+  /** Error code (e.g., DOMAIN_NOT_UNIQUE, DOMAIN_RESERVED) */
+  code: DomainValidationError;
+  /** Human-readable error message from the API */
+  message: string;
+  /** Field that caused the error (e.g., projectPrefix, fqdn) */
+  field: string;
+  /** Value that was rejected */
+  value: string;
+}
+
+/**
+ * Domain check response
+ * 
+ * Response from domain availability validation endpoint
+ */
+export interface AiroDomainCheckResponse {
+  available: boolean;
+  mode: DomainMode;
+  projectPrefix?: string;
+  fqdn?: string;
+  domain?: string;
+  errors?: DomainValidationErrorObject[];
+}
+
+/**
  * Deploy app response
  */
 export interface AiroDeployAppResponse {

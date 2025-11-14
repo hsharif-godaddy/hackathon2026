@@ -1,20 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from '@tanstack/react-query';
 import { DomainType, DomainStatus } from "@/lib/control-plane/types";
+import { DomainMode } from "@/lib/mgmt-airo/types";
+import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
+import { getDomainErrorMessage } from '@/utils/domain-validation';
 import SiblingSet from "@ux/sibling-set";
 import Skeleton from "@ux/skeleton";
 import WindowNewIcon from '@ux/icon/window-new';
-import { useAppNameUpdate, useAppNameValidation } from '@/hooks/useAppName';
+import { useAppNameUpdate } from '@/hooks/useAppName';
 import { generateClickEID } from '@/utils/instrumentation';
 import { useSiteStore } from "@/stores/useSiteStore";
 import { useAppIdFromParams } from "@/app/develop/components/utils";
+import { logger } from "@/lib/request-context";
 import BigCard from "@/components/layout/BigCard";
 import TextInput from "@ux/text-input";
 import Button from "@ux/button";
 import text from "@ux/text";
 import Box from "@ux/box";
 import { Status } from "@/app/develop/components/types";
-import { logger } from "@/lib/request-context";
 import { hasBeenPublished } from '@/utils/site';
 import Alert from "@ux/alert";
 
@@ -47,7 +50,21 @@ export default function ProjectDomain() {
     prefixDomain?.fqdn || site?.published_url || ''
   );
   const [pollSessionId, setPollSessionId] = useState(0);
+  const [debouncedDomain, setDebouncedDomain] = useState('');
+  const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fetchSite = useSiteStore((state) => state.fetchSite);
+
+  const shouldValidate = debouncedDomain !== projectDomainValue && debouncedDomain.length > 0;
+  const { data: validationData, isLoading: isValidatingDomain, isError: hasValidationError } = useDomainValidationQuery(
+    currentAppId,
+    debouncedDomain,
+    {
+      mode: DomainMode.PROJECT,
+      enabled: shouldValidate,
+      subscriptionId: site?.subscription_id,
+      systemId: site?.system_id
+    }
+  );
 
   /**
    * Get the full URL for the project domain, ensuring protocol is included
@@ -73,11 +90,19 @@ export default function ProjectDomain() {
   }, [projectDomainValue]);
 
   useEffect(() => {
+    return () => {
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const newDisplay = prefixDomain?.fqdn || site?.published_url || '';
     if (newDisplay && newDisplay !== projectDomainDisplay) {
       setProjectDomainDisplay(newDisplay);
     }
-  }, [prefixDomain?.fqdn, site?.published_url]);
+  }, [prefixDomain?.fqdn, projectDomainDisplay, site?.published_url]);
 
   const updateAppNameMutation = useAppNameUpdate();
 
@@ -118,11 +143,6 @@ export default function ProjectDomain() {
     }
   }, [polledSite, currentAppId, shouldPoll]);
 
-  const { data: validation, isLoading: isValidating } = useAppNameValidation(
-    currentProjectName,
-    { enabled: currentProjectName !== projectDomainValue }
-  );
-
   // Check if the mutation error is a 409 conflict
   const is409Error = updateAppNameMutation.error &&
     (updateAppNameMutation.error as any)?.status === 409;
@@ -158,14 +178,21 @@ export default function ProjectDomain() {
    * @returns Error message string or undefined if no error
    */
   const getErrorMessage = () => {
+    if (validationData && !validationData.available) {
+      return getDomainErrorMessage(validationData.errors);
+    }
     if (is409Error) {
       return "This subdomain is unavailable. Please pick a different subdomain";
     }
     if (updateAppNameMutation.error) {
-      return "Failed to update subdomain. Please try again";
+      const errorData = (updateAppNameMutation.error as any)?.response || (updateAppNameMutation.error as any);
+      if (errorData.validationErrors && Array.isArray(errorData.validationErrors)) {
+        return getDomainErrorMessage(errorData.validationErrors);
+      }
+      return errorData.error || "Failed to update subdomain. Please try again";
     }
-    if (validation && !validation.isValid) {
-      return validation.reason;
+    if (hasValidationError) {
+      return "Unable to validate domain. Please try again or pick a different subdomain.";
     }
     return undefined;
   };
@@ -177,15 +204,6 @@ export default function ProjectDomain() {
    */
   const handleUpdateAppName = async () => {
     if (!currentAppId || currentProjectName === id) {
-      return;
-    }
-
-    if (validation && !validation.isValid) {
-      logger.error('app-name.update.error', {
-        appId: currentAppId,
-        newName: currentProjectName,
-        error: validation.reason,
-      });
       return;
     }
 
@@ -218,11 +236,22 @@ export default function ProjectDomain() {
     setCurrentProjectName(projectDomainValue);
     updateAppNameMutation.reset();
     setShowButtons(false);
+    setDebouncedDomain('');
   };
 
   const handleInputChange = (value: string) => {
     setCurrentProjectName(value);
     setShowButtons(true);
+
+    // Clear any existing timeout
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current);
+    }
+
+    // Debounce validation check (500ms delay for responsive UX)
+    validationTimeoutRef.current = setTimeout(() => {
+      setDebouncedDomain(value);
+    }, 500);
   };
 
   const isPublished = hasBeenPublished(site);
@@ -290,17 +319,20 @@ export default function ProjectDomain() {
           <SiblingSet gap="sm" className="mt-4">
             <Button
               disabled={
+                currentProjectName.length === 0 ||
                 currentProjectName === id ||
                 updateAppNameMutation.isPending ||
-                isValidating ||
-                !!updateAppNameMutation.error ||
-                (validation && !validation.isValid)
+                isValidatingDomain ||
+                hasValidationError || // Validation check failed
+                (currentProjectName !== debouncedDomain) || // Validation hasn't completed yet (debounce pending)
+                (validationData && !validationData.available) || // Validation failed
+                !!updateAppNameMutation.error
               }
               design="primary"
               onClick={handleUpdateAppName}
               data-eid={generateClickEID(`settings/domains.project_domain.update`)}
               className="!hover:bg-transparent"
-              text="Save Changes"
+              text={isValidatingDomain || (currentProjectName !== debouncedDomain) ? "Checking domain…" : "Save Changes"}
             />
             <Button
               disabled={updateAppNameMutation.isPending }

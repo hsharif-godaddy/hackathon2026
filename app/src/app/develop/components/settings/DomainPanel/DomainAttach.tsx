@@ -1,11 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useModifyDomains, useAppDetails } from '@/hooks/useDomainOperations';
+import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
+import { getDomainErrorMessage } from '@/utils/domain-validation';
 import { hasBeenPublished } from '@/utils/site';
 import { generateClickEID } from '@/utils/instrumentation';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainAttach } from '@/hooks/useDomainAttach';
 import { useAppIdFromParams } from "@/app/develop/components/utils";
 import { validateDomain, sanitizeDomainInput, isCustomerDomain } from '@/utils/domain';
+import { DomainMode } from '@/lib/mgmt-airo/types';
 import BigCard from "@/components/layout/BigCard";
 import { useAuth } from '@/hooks/useAuth';
 import { logger } from '@/lib/request-context';
@@ -46,6 +49,8 @@ export default function DomainAttach() {
   const [customDomainError, setCustomDomainError] = useState<string | null>(null);
   const [pendingDomain, setPendingDomain] = useState<string | null>(null);
   const [pendingCustomerDomain, setPendingCustomerDomain] = useState<string | null>(null);
+  const [debouncedDomain, setDebouncedDomain] = useState('');
+  const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const userInfo = getUserInfo();
 
@@ -53,6 +58,19 @@ export default function DomainAttach() {
     if (!currentAppId) return null;
     return state.getSite(currentAppId);
   });
+
+  // Validate domain when user has entered a value
+  const shouldValidate = debouncedDomain.length > 0;
+  const { data: validationData, isLoading: isValidatingDomain, isError: hasValidationError } = useDomainValidationQuery(
+    currentAppId,
+    debouncedDomain,
+    {
+      mode: DomainMode.CUSTOM,
+      enabled: shouldValidate,
+      subscriptionId: site?.subscription_id,
+      systemId: site?.system_id
+    }
+  );
 
   const isSiteLoading = useSiteStore((state) => {
     if (!currentAppId) return false;
@@ -138,6 +156,62 @@ export default function DomainAttach() {
         });
     }
   }, [appDetails, pendingCustomerDomain, userInfo?.customerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  /**
+   * Handle custom domain input change with debouncing
+   * 
+   * Debounces the domain validation to avoid excessive API calls
+   * while the user is typing.
+   */
+  function handleCustomDomainChange(value: string) {
+    setCustomDomain(value);
+
+    // Clear error when user starts typing
+    if (customDomainError) {
+      setCustomDomainError(null);
+    }
+
+    // Clear any existing timeout
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current);
+    }
+
+    // Debounce validation by 500ms for responsive UX
+    validationTimeoutRef.current = setTimeout(() => {
+      setDebouncedDomain(value || '');
+    }, 500);
+  }
+
+  /**
+   * Get validation error message for custom domain
+   * 
+   * Returns error message from domain validation or undefined if valid
+   */
+  function getValidationErrorMessage(): string | undefined {
+    if (validationData && !validationData.available) {
+      return getDomainErrorMessage(validationData.errors);
+    }
+    if (modifyDomainsMutation.error) {
+      const errorData = (modifyDomainsMutation.error as any)?.response || (modifyDomainsMutation.error as any);
+      if (errorData.validationErrors && Array.isArray(errorData.validationErrors)) {
+        return getDomainErrorMessage(errorData.validationErrors);
+      }
+      return errorData.error || "Failed to add custom domain. Please try again";
+    }
+    if (hasValidationError) {
+      return "Unable to validate domain. Please try again or pick a different domain.";
+    }
+    return undefined;
+  }
 
   /**
    * Handle connecting a domain to the application
@@ -233,6 +307,7 @@ export default function DomainAttach() {
     const sanitizedDomain = sanitizeDomainInput(customDomain);
     await handleConnectDomain(sanitizedDomain);
     setCustomDomain(null);
+    setDebouncedDomain('');
   }
 
   const pendingDomainDetails = pendingDomain
@@ -269,13 +344,17 @@ export default function DomainAttach() {
     (d) => d.status === 'pending' || d.status === 'active'
   );
 
-  const hasActiveOrPendingDomain = appDetails?.domains?.some(
-    (d) => d.cdnStatus === 2 || d.status === 'active'
-  );
+  const hasActiveOrPendingDomain = appDetails?.domains
+    ?.filter((d) => d.domainType !== 'prefix')
+    ?.some((d) => d.cdnStatus === 2 || d.status === 'active');
 
   const isPublished = hasBeenPublished(site);
 
-  const shouldDisableAddingDomain = hasActiveOrPendingCustomDomain || hasActiveOrPendingDomain || !isPublished || modifyDomainsMutation.isPending;
+  const shouldDisableAddingDomain =
+              hasActiveOrPendingCustomDomain ||
+              hasActiveOrPendingDomain ||
+              !isPublished || 
+              modifyDomainsMutation.isPending;
 
   const getCustomDomainStatus = () => {
     const connectedDomains = appDetails?.domains?.filter(d => d.domainType !== 'prefix') || [];
@@ -380,26 +459,26 @@ export default function DomainAttach() {
           className="flex-1"
           id="custom-domain-slug"
           label="Or tell us the domain you would like to use for your website and we'll help you connect it."
-          onChange={(value) => {
-            setCustomDomain(value);
-            // Clear error when user starts typing
-            if (customDomainError) {
-              setCustomDomainError(null);
-            }
-          }}
+          onChange={handleCustomDomainChange}
           helpMessage="e.g. mydomain.com"
           value={customDomain}
-          errorMessage={customDomainError}
           disabled={shouldDisableAddingDomain}
+          errorMessage={getValidationErrorMessage()}
         />
       </Box>
       { customDomain && (
         <div>
           <Button
-            text="Add Custom Domain"
+            text={isValidatingDomain || (customDomain !== debouncedDomain) ? "Checking domain…" : "Add Custom Domain"}
             design="primary"
             onClick={handleAddCustomDomain}
-            disabled={shouldDisableAddingDomain}
+            disabled={shouldDisableAddingDomain ||
+              customDomain.length === 0 ||
+              isValidatingDomain ||
+              hasValidationError || // Validation check failed
+              (customDomain !== debouncedDomain) || // Validation hasn't completed yet (debounce pending)
+              (validationData && !validationData.available) // Validation failed
+            }
             data-eid={generateClickEID(`settings/domains.custom_domain.add`)}
             className="!hover:bg-transparent"
           />

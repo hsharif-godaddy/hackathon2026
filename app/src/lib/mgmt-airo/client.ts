@@ -9,6 +9,7 @@ import {
   type AiroUpdateAppPayload,
   type AiroUpdateProjectDomainPayload,
   type AiroUpdateProjectDomainResponse,
+  type AiroDomainCheckResponse,
   type AiroCreateAppResponse,
   type AiroCreateAppPayload,
   type AiroSignupResponse,
@@ -27,6 +28,7 @@ import {
   type AiroApiError,
   type AiroSystem,
   AiroHttpError,
+  DomainMode,
   type AiroApp
 } from './types';
 
@@ -423,6 +425,42 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/project-domain`,
       payload,
       { logEvent: 'mgmt-airo.update-project-domain' }
+    );
+  }
+
+  /**
+   * Check domain availability
+   * 
+   * Validates if a domain (project prefix or custom domain) is available
+   * 
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @param options - Domain check options
+   * @param options.mode - Domain mode (DomainMode.PROJECT or DomainMode.CUSTOM)
+   * @param options.projectPrefix - Project prefix (required if mode is DomainMode.PROJECT)
+   * @param options.fqdn - Fully qualified domain name (required if mode is DomainMode.CUSTOM)
+   * @returns Domain validation response with availability status and error details
+   */
+  async checkDomainAvailability(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    options: { mode: DomainMode.PROJECT; projectPrefix: string } | { mode: DomainMode.CUSTOM; fqdn: string }
+  ): Promise<AiroDomainCheckResponse> {
+    const queryParams = new URLSearchParams({ mode: options.mode });
+    
+    if (options.mode === DomainMode.PROJECT) {
+      queryParams.append('projectPrefix', options.projectPrefix);
+    } else {
+      queryParams.append('fqdn', options.fqdn);
+    }
+
+    return this.request<AiroDomainCheckResponse>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domain/check?${queryParams.toString()}`,
+      undefined,
+      { logEvent: 'mgmt-airo.check-domain-availability' }
     );
   }
 

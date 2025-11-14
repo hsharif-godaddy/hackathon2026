@@ -223,7 +223,7 @@ export function useAppNameValidation(
       if (!validPattern.test(name)) {
         return {
           isValid: false,
-          reason: 'Name can only contain lowercase letters, numbers, and hyphens',
+          reason: 'Subdomain must use only letters, numbers, and hyphens. Must start and end with a letter or number (minimum 5 characters).',
         };
       }
 

@@ -5,7 +5,7 @@
  */
 
 export { AiroMgmtClient } from './client';
-export { AiroHttpError } from './types';
+export { AiroHttpError, DomainValidationError, DomainMode } from './types';
 export type {
   AiroDeploymentsResponse,
   AiroDeploymentMetadata,
@@ -14,6 +14,8 @@ export type {
   AiroUpdateAppPayload,
   AiroUpdateProjectDomainPayload,
   AiroUpdateProjectDomainResponse,
+  AiroDomainCheckResponse,
+  DomainValidationErrorObject,
   AiroCreateAppResponse,
   AiroCreateAppPayload,
   AiroSignupResponse,
