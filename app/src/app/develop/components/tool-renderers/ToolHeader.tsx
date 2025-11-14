@@ -32,25 +32,27 @@ export default function ToolHeader({
   onOpenModal
 }: ToolHeaderProps) {
   return (
-    <span className="text-foreground/80  text-xs">
-      <span>{icon}</span>
-      {' '}
-      {toolStatus === 'completed' && hasDetails && onOpenModal ? (
-        <button
-          onClick={onOpenModal}
-          className="hover:text-foreground hover:underline cursor-pointer"
-        >
-          {displayName}
-        </button>
-      ) : (
-        <span>
-          {displayName}
+    <span className="text-foreground/80 text-xs flex items-center min-w-0">
+      <span className="flex-shrink-0">{icon}</span>
+      <span className="ml-1 min-w-0 flex items-center gap-1.5">
+        <span className="min-w-0 flex-1 truncate">
+          {toolStatus === 'completed' && hasDetails && onOpenModal ? (
+            <button
+              onClick={onOpenModal}
+              className="hover:text-foreground hover:underline cursor-pointer truncate block w-full text-left"
+            >
+              {displayName}
+            </button>
+          ) : (
+            <span className="truncate block">
+              {displayName}
+            </span>
+          )}
         </span>
-      )}
-      {toolStatus !== 'completed' && (
-        <StatusIndicator status={toolStatus} className="ml-1.5" />
-      )}
+        {toolStatus !== 'completed' && (
+          <StatusIndicator status={toolStatus} className="flex-shrink-0" />
+        )}
+      </span>
     </span>
   )
 }
-

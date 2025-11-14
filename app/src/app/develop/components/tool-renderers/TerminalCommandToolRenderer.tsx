@@ -8,14 +8,6 @@ import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 
 /**
- * Truncate command for display
- */
-function truncateCommand(cmd: string, maxLength: number = 60): string {
-  if (cmd.length <= maxLength) return cmd
-  return cmd.substring(0, maxLength) + '...'
-}
-
-/**
  * Custom renderer for terminalCommand tool
  * 
  * Shows compact command on one line with terminal icon.
@@ -94,8 +86,6 @@ export default function TerminalCommandToolRenderer({
     isMarkdownFormat
   )
 
-  const displayCommand = truncateCommand(command)
-
   const modalContent = (
     <ToolModal
       isOpen={isModalOpen}
@@ -117,19 +107,19 @@ export default function TerminalCommandToolRenderer({
           {originalCommand ? (
             <div>
               <div className="text-sm font-bold mb-2">Original Command</div>
-              <div className="border border-border rounded-md p-3 bg-muted">
-                <pre className="text-xs font-mono text-foreground/80 break-all whitespace-pre-wrap">{originalCommand}</pre>
+              <div className="border border-border rounded-md p-3 bg-muted overflow-x-auto">
+                <pre className="text-xs font-mono text-foreground/80 whitespace-pre">{originalCommand}</pre>
               </div>
               <div className="text-sm font-bold mb-2 mt-3">Transformed Command</div>
-              <div className="border border-border rounded-md p-3 bg-muted">
-                <pre className="text-xs font-mono text-foreground/80 break-all whitespace-pre-wrap">{command}</pre>
+              <div className="border border-border rounded-md p-3 bg-muted overflow-x-auto">
+                <pre className="text-xs font-mono text-foreground/80 whitespace-pre">{command}</pre>
               </div>
             </div>
           ) : (
             <div>
               <div className="text-sm font-bold mb-2">Command</div>
-              <div className="border border-border rounded-md p-3 bg-muted">
-                <pre className="text-xs font-mono text-foreground/80 break-all whitespace-pre-wrap">{command}</pre>
+              <div className="border border-border rounded-md p-3 bg-muted overflow-x-auto">
+                <pre className="text-xs font-mono text-foreground/80 whitespace-pre">{command}</pre>
               </div>
             </div>
           )}
@@ -180,7 +170,7 @@ export default function TerminalCommandToolRenderer({
     </ToolModal>
   )
 
-  const displayName = `Terminal: ${displayCommand}`
+  const displayName = `Terminal: ${command}`
 
   return (
     <div className="-my-2">
