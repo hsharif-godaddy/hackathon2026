@@ -10,6 +10,6 @@
 ## Security Best Practices
 
 - **Connection abstraction** - Database credentials are managed entirely by the environment
-- **No credential handling needed** - Simply import and use `db` from `src/server/db/index.ts`
+- **No credential handling needed** - Simply import and use `db` from `src/server/db/client.ts`
 - **NEVER expose passwords** or connection strings in conversation output
 - **Focus on schema, not infrastructure** - All connection details are automatically provided by the platform

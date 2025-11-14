@@ -43,7 +43,7 @@ You: ✅ Database schema ready! Now building frontend integration...
 ### What You CAN Do
 
 - **Read existing data** from the database via API routes
-- **Use the `db` connection** by importing from `src/server/db/index.ts`
+- **Use the `db` connection** by importing from `src/server/db/client.ts`
 - **Create API endpoints** using Express-style handlers that query data with Drizzle ORM
   - Format: `export default async function handler(req: Request, res: Response)`
   - Organize by HTTP method: `GET.ts`, `POST.ts`, `PUT.ts`, `DELETE.ts`

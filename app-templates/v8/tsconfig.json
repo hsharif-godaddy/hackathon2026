@@ -18,16 +18,9 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
-      "@/*": ["./src/*"],
-      "@/components/*": ["./src/components/*"],
-      "@/lib/*": ["./src/lib/*"],
       "@/api/*": ["./src/server/api/*"],
       "@/db/*": ["./src/server/db/*"],
-      "@/layouts/*": ["./src/layouts/*"],
-      "@/patterns/*": ["./src/patterns/*"],
-      "@/pages/*": ["./src/pages/*"],
-      "@/hooks/*": ["./src/hooks/*"],
-      "@/styles/*": ["./src/styles/*"]
+      "@/*": ["./src/*"]
     },
     "baseUrl": "."
   },

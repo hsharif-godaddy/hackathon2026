@@ -14,8 +14,8 @@
 ### File Structure
 
 - **Schema definitions**: `src/server/db/schema.ts` - Define all tables here (single source of truth)
-- **Database connection**: `src/server/db/index.ts` - Exports ready-to-use `db` instance (DO NOT modify)
-  - Import with: `import { db } from '@/db'`
+- **Database connection**: `src/server/db/client.ts` - Exports ready-to-use `db` instance (DO NOT modify)
+  - Import with: `import { db } from '@/db/client'`
   - Connection details are automatically loaded from environment
   - No need to handle credentials or configuration
 
@@ -114,7 +114,7 @@ The database connection is ready to use in your API routes. The project uses **E
 ```typescript
 // In src/server/api/users/GET.ts - Get all users
 import type { Request, Response } from 'express';
-import { db } from '@/db';
+import { db } from '@/db/client';
 import { users } from '@/db/schema';
 
 export default async function handler(_req: Request, res: Response) {
@@ -126,7 +126,7 @@ export default async function handler(_req: Request, res: Response) {
 ```typescript
 // In src/server/api/users/POST.ts - Create a new user
 import type { Request, Response } from 'express';
-import { db } from '@/db';
+import { db } from '@/db/client';
 import { users } from '@/db/schema';
 
 export default async function handler(req: Request, res: Response) {
@@ -139,7 +139,7 @@ export default async function handler(req: Request, res: Response) {
 ```typescript
 // In src/server/api/users/[id]/GET.ts - Get user by ID
 import type { Request, Response } from 'express';
-import { db } from '@/db';
+import { db } from '@/db/client';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -159,7 +159,7 @@ export default async function handler(req: Request, res: Response) {
 
 - Use Express-style handlers: `export default async function handler(req, res)`
 - Import types from `express`: `import type { Request, Response } from 'express'`
-- Import `db` from `@/db` (alias for `src/server/db`)
+- Import `db` from `@/db/client` (alias for `src/server/db/client.ts`)
 - Use `res.json()` to send responses
 - Use `req.body` for POST/PUT data
 - Use `req.params` for URL parameters (e.g., `[id]` in folder structure)
@@ -192,7 +192,7 @@ export default async function handler(req: Request, res: Response) {
 - **Database infrastructure is pre-configured** - Focus on schema design
 - **Use Drizzle ORM for type-safe database operations**
 - **Schema file**: `src/server/db/schema.ts` (single source of truth)
-- **Connection file**: `src/server/db/index.ts` (pre-configured, DO NOT modify)
+- **Connection file**: `src/server/db/client.ts` (pre-configured, DO NOT modify)
 - **Codebase-first approach**: Use `pnpm run db:push` to sync schema changes directly
 - **No migration files needed** for rapid prototyping
 - **Hand back control to Development Agent after schema is ready**
