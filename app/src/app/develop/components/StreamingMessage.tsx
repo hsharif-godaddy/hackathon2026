@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import clsx from 'clsx'
 import StreamingIntegratedResponse from './StreamingIntegratedResponse'
+import ThinkingIndicator from './ThinkingIndicator'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 
 interface StreamingMessageProps {
@@ -32,12 +33,8 @@ function shouldRenderMessage(message: ChatMessage | StreamingMessageType): boole
 function getMessageClasses(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean): string {
   const baseClasses = 'rounded-md'
 
-  // Active streaming messages that are incomplete - but don't hide if there's an error or warning
-  // Also don't hide if there are segments or tool calls (even if content is empty)
-  const hasNoContent = message.content === '' && !message.segments?.length && !message.toolCalls?.length
-  if (isActiveStream && 'isComplete' in message && !message.isComplete && hasNoContent && !message.upstreamError && !message.maxStepsReached) {
-    return 'hidden'
-  }
+  // Don't hide messages - we'll show ThinkingIndicator when there's no content
+  // (Previously hid messages with no content, but now we show indicator instead)
 
   switch (message.role) {
     case 'user':
@@ -87,6 +84,15 @@ function UserMessage({ content }: { content: string }) {
 function renderMessageContent(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean, startTime?: Date) {
   // Assistant messages - use streaming integrated response for proper content flow
   if (message.role === 'assistant') {
+    // Check if we should show thinking indicator (no content yet, stream is active)
+    const hasNoContent = !message.content && !message.segments?.length && !message.toolCalls?.length
+    const isIncomplete = 'isComplete' in message && !message.isComplete
+    const showThinking = isActiveStream && isIncomplete && hasNoContent && !message.upstreamError && !message.maxStepsReached
+
+    if (showThinking) {
+      return <ThinkingIndicator />
+    }
+
     return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} startTime={startTime} />
   }
 
