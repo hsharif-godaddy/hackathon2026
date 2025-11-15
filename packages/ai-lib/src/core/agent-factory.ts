@@ -5,9 +5,16 @@
  */
 
 import { Experimental_Agent, stepCountIs, hasToolCall } from 'ai'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from './types.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
 import { retryWithBackoff, DEFAULT_RETRY_CONFIG } from '../utils/retry-with-backoff.js'
+
+/**
+ * AsyncLocalStorage for maintaining per-request execution context
+ * This ensures concurrent requests don't interfere with each other's context
+ */
+const executionContextStorage = new AsyncLocalStorage<Record<string, unknown>>()
 
 /**
  * Tool execution hook function types
@@ -99,7 +106,6 @@ export class AgentWrapper {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private agent: Experimental_Agent<any, any, any>
   private config: AgentConfig
-  private executionContext?: Record<string, unknown>
 
   constructor(config: AgentConfig) {
     this.config = config
@@ -169,7 +175,8 @@ export class AgentWrapper {
           let processedArgs = args
 
           // Pass execution context to tools that support it
-          const context = this.executionContext || {}
+          // Use AsyncLocalStorage to get the current request's context
+          const context = executionContextStorage.getStore() || {}
 
           // Call beforeToolExecution hook
           if (this.config.beforeToolExecution) {
@@ -351,8 +358,35 @@ export class AgentWrapper {
   toolCalls: any
     }>
   }> {
-    // Set execution context for tool calls
-    this.executionContext = options?.executionContext || {}
+    // Store execution context for this request using AsyncLocalStorage
+    const executionContext = options?.executionContext || {}
+
+    // Wrap the entire stream execution in AsyncLocalStorage to maintain context isolation
+    return executionContextStorage.run(executionContext, async () => {
+      return this._executeStreamGenerate(prompt, options)
+    })
+  }
+
+  /**
+   * Internal implementation of streamGenerate
+   * Runs within AsyncLocalStorage context set by streamGenerate
+   */
+  private async _executeStreamGenerate(prompt: string, options?: {
+    messages?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
+    context?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
+    files?: ProcessedFile[]
+  }): Promise<{
+    textStream: AsyncIterable<string>
+    baseStream?: unknown
+    getFinalResult: () => Promise<{
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      usage: any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      finishReason: any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      toolCalls: any
+    }>
+  }> {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messages: Array<{ role: 'user' | 'assistant' | 'system', content: string | any, providerOptions?: any, cachePoint?: any }> = []
