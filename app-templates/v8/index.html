@@ -8,6 +8,11 @@
   </head>
   <body class="fs-unmask-airo-app-builder">
     <div id="app" class="fs-unmask-airo-app-builder"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module">
+      if (import.meta.env.DEV) {
+        import('/dev-tools/src/error-client.ts')
+      }
+      import('/src/main.tsx')
+    </script>
   </body>
 </html>

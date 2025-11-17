@@ -1,6 +1,6 @@
 import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
 import { Suspense } from 'react';
-import CompileErrorCatcher from '../dev-tools/src/CompileErrorCatcher';
+import AiroErrorBoundary from '../dev-tools/src/AiroErrorBoundary';
 import RootLayout, { RootLayoutConfig } from './layouts/RootLayout';
 import { routes } from './routes';
 import Spinner from './components/Spinner';
@@ -50,13 +50,13 @@ const router = createBrowserRouter([
   {
     path: '/',
     element: import.meta.env.DEV ? (
-      <CompileErrorCatcher>
+      <AiroErrorBoundary>
         <Suspense fallback={<SpinnerFallback />}>
           <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
             <Outlet />
           </RootLayout>
         </Suspense>
-      </CompileErrorCatcher>
+      </AiroErrorBoundary>
     ) : (
       <Suspense fallback={<SpinnerFallback />}>
         <RootLayout config={{ header: headerConfig, footer: footerConfig }}>

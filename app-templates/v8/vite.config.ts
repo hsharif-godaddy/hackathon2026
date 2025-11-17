@@ -4,7 +4,6 @@ import path from "path";
 import sourceMapperPlugin from "./source-mapper/src/index";
 import { devToolsPlugin } from "./dev-tools/src/vite-plugin";
 import { fullStoryPlugin } from "./fullstory-plugin";
-import { errorInterceptorPlugin } from "./dev-tools/src/vite-error-interceptor";
 import apiRoutes from "vite-plugin-api-routes";
 
 const allowedHosts: string[] = [];
@@ -34,11 +33,9 @@ export default defineConfig(({ mode }) => ({
 			dirs: [{ dir: './src/server/api', route: '' }],
       forceRestart: mode === "development",
 		}),
-		...(mode === "development" ? [
-			devToolsPlugin() as Plugin,
-			fullStoryPlugin(),
-			errorInterceptorPlugin()
-		] : []),
+		...(mode === "development"
+			? [devToolsPlugin() as Plugin, fullStoryPlugin()]
+			: []),
 	],
 
 	resolve: {
