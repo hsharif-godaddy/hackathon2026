@@ -5,7 +5,7 @@ import { GitUtils } from './utils/git';
 import { SSLCertificateGenerator } from './utils/ssl-cert-generator';
 import { TemplateCopyService } from './services/TemplateCopyService';
 import { createAppAdapter, getAdapterType } from './adapters';
-import type { IAppAdapter } from './adapters/interfaces/IAppAdapter';
+import type { IAppAdapter, ServerStatus } from './adapters/interfaces/IAppAdapter';
 import { existsSync, promises as fsPromises, writeFileSync, readFileSync, appendFileSync } from 'fs';
 import path from 'path';
 import { getBasePath, getAppPath, getAllocPath } from './utils/app-paths';
@@ -259,7 +259,7 @@ export class DevEnvironmentManager {
   /**
    * Get the status of a dev app
    */
-  async getDevAppStatus(appId: string) {
+  async getDevAppStatus(appId: string): Promise<ServerStatus> {
     await this.initialize();
 
     const devApp = this.devDb.findDevAppById(appId);
@@ -275,7 +275,12 @@ export class DevEnvironmentManager {
       }
     }
 
-    return { status: devApp.status, message: 'No adapter available' };
+    // Map database status to ServerStatus (when no adapter available)
+    // 'creating' and 'created' map to 'stopped' since adapter isn't running
+    const status: ServerStatus['status'] =
+      devApp.status === 'creating' || devApp.status === 'created' ? 'stopped' : devApp.status;
+
+    return { status, message: 'No adapter available' };
   }
 
   /**
@@ -404,11 +409,11 @@ export class DevEnvironmentManager {
 
       if (result.success) {
         logger.info(`✅ SSL certificates ready for ${appId} at ${result.certPath}`);
-        
+
         const { CAManager } = await import('./utils/ca-manager');
         const caManager = new CAManager();
         const caPath = caManager.getCAPath();
-        
+
         logger.info(`📋 To trust these certificates in your browser, install the CA certificate:`);
         logger.info(`   CA Location: ${caPath}`);
         logger.info(`   Run: ./scripts/trust-dev-ca.sh (or manually import into your browser/system)`);

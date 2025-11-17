@@ -1,4 +1,5 @@
 import express from "express";
+import { closeConnection } from "./db/client.ts";
 
 export const viteServerBefore = (server, viteServer) => {
   console.log("VITEJS SERVER");
@@ -21,7 +22,16 @@ export const viteServerAfter = (server, viteServer) => {
 // ServerHook
 export const serverBefore = (server) => {
   const shutdown = async (signal) => {
-    console.log(`Got ${signal}, exiting...`);
+    console.log(`Got ${signal}, shutting down gracefully...`);
+
+    try {
+      // Close database connection pool before exiting
+      await closeConnection();
+      console.log("Database connections closed");
+    } catch (error) {
+      console.error("Error closing database connections:", error);
+    }
+
     process.exit(0);
   };
 

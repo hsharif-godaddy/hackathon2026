@@ -32,6 +32,7 @@ export default defineConfig(({ mode }) => ({
 			mode: 'isolated',
       configure: 'src/server/configure.js',
 			dirs: [{ dir: './src/server/api', route: '' }],
+      forceRestart: mode === "development",
 		}),
 		...(mode === "development" ? [
 			devToolsPlugin() as Plugin,

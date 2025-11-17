@@ -65,15 +65,15 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
         throw new Error('Failed to start Docker container');
       }
 
-      // Step 4: Get dev-supervisor connection path and register with agents service
-      const connectionPath = this.devEnvironmentManager.getConnectionPath(siteId);
-      await this.registerWithAgents(siteId, title || `App ${siteId}`, prompt, result.appPath || appPath, undefined, connectionPath, subscriptionId, customerId || accountId);
-
-      // Step 5: Get app status to get actual URLs
+      // Step 4: Get app status to get actual URLs
       const appStatus = await this.devEnvironmentManager.getDevAppStatus(siteId);
 
       // Generate URLs based on app status and result
-      const backendUrl = (appStatus && 'metadata' in appStatus && appStatus.metadata?.url) || `http://localhost:${result.port}`;
+      const backendUrl = appStatus.metadata?.url || `https://localhost:${result.port}`;
+
+      // Step 5: Get dev-supervisor connection path and register with agents service
+      const connectionPath = this.devEnvironmentManager.getConnectionPath(siteId);
+      await this.registerWithAgents(siteId, title || `App ${siteId}`, prompt, result.appPath || appPath, backendUrl, connectionPath, subscriptionId, customerId || accountId);
       const urls = {
         agent: `${this.agentsServiceUrl}`, // For AI interactions
         backend: backendUrl,
@@ -185,17 +185,21 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       await this.devEnvironmentManager.initialize();
       const appStatus = await this.devEnvironmentManager.getDevAppStatus(siteId);
 
+      // Map ServerStatus to deployment status
       let status: 'init' | 'creating' | 'created' | 'running' | 'failed' | 'stopped' | 'error';
       switch (appStatus.status) {
         case 'running':
           status = 'running';
           break;
-        case 'creating':
-          status = 'creating';
-          break;
         case 'error':
           status = 'error';
           break;
+        case 'not_found':
+          status = 'failed';
+          break;
+        case 'exited':
+        case 'dead':
+        case 'container_missing':
         case 'stopped':
         default:
           status = 'stopped';
@@ -222,8 +226,8 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       const appStatus = await this.devEnvironmentManager.getDevAppStatus(siteId);
 
       return {
-        appPath: (appStatus && 'metadata' in appStatus && appStatus.metadata?.appPath) || 'unknown',
-        port: (appStatus && 'metadata' in appStatus && appStatus.metadata?.port) || 3000,
+        appPath: appStatus.metadata?.appPath || 'unknown',
+        port: appStatus.metadata?.port || 3000,
         mode: 'docker',
         containerMode: true
       };
@@ -255,9 +259,9 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string, previewUrl?: string, socketPath?: string | null, subscriptionId?: string, customerId?: string): Promise<void> {
     try {
       const prefixedSubscriptionId = subscriptionId ? `airo-build:sid:${subscriptionId}` : undefined;
-      this.log('info', 'Registering app with agents service', { 
-        siteId, 
-        name, 
+      this.log('info', 'Registering app with agents service', {
+        siteId,
+        name,
         socketPath,
         customerId: customerId || 'not-provided',
         subscriptionId_original: subscriptionId || 'not-provided',
