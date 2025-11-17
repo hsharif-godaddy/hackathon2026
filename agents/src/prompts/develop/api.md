@@ -131,3 +131,13 @@ export default async function handler(req: Request, res: Response) {
   res.json({ user });
 }
 ```
+
+### Testing API Endpoints
+
+When testing API endpoints, always use the **Preview URL** provided in the dynamic context:
+
+```bash
+curl <PREVIEW_URL>/api/health
+```
+
+**IMPORTANT**: Replace `<PREVIEW_URL>` with the actual Preview URL from your dynamic context. Never use `localhost` or assume a port number.
