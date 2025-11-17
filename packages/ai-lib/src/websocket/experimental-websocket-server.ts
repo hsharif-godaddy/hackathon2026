@@ -669,6 +669,7 @@ export class WebSocketServer {
               const toolId = part.id || part.toolCallId || part.toolId
 
               const errorMessage = part.error?.message || (typeof part.error === 'string' ? part.error : String(part.error)) || 'Tool execution error'
+              
               const toolErrorData = {
                 step: currentStep,
                 tool: {

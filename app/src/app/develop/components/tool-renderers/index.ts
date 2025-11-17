@@ -20,6 +20,7 @@ import ImageSearchToolRenderer from './ImageSearchToolRenderer'
 import MediaSearchToolRenderer from './MediaSearchToolRenderer'
 import TodoListToolRenderer from './TodoListToolRenderer'
 import SuggestedResponseToolRenderer from './SuggestedResponseToolRenderer'
+import OAuthToolRenderer from './OAuthToolRenderer'
 import DefaultToolRenderer, { type DefaultToolRendererProps } from './DefaultToolRenderer'
 
 /**
@@ -49,6 +50,7 @@ export const toolRendererRegistry = {
   imageSearch: ImageSearchToolRenderer,
   todoList: TodoListToolRenderer,
   suggestedResponse: SuggestedResponseToolRenderer,
+  oauthAccessToken: OAuthToolRenderer,
 } as const
 
 /**
@@ -82,6 +84,6 @@ export function getToolRenderer(toolName: string) {
 /**
  * Export tool renderer components
  */
-export { CssColorToolRenderer, CssSuggestToolRenderer, EndConversationToolRenderer, GrepSearchToolRenderer, HandoffToolRenderer, ReadFileToolRenderer, FileEditToolRenderer, TerminalCommandToolRenderer, GitOperationToolRenderer, MediaSearchToolRenderer, ImageSearchToolRenderer, TodoListToolRenderer, SuggestedResponseToolRenderer, DefaultToolRenderer }
+export { CssColorToolRenderer, CssSuggestToolRenderer, EndConversationToolRenderer, GrepSearchToolRenderer, HandoffToolRenderer, ReadFileToolRenderer, FileEditToolRenderer, TerminalCommandToolRenderer, GitOperationToolRenderer, MediaSearchToolRenderer, ImageSearchToolRenderer, TodoListToolRenderer, SuggestedResponseToolRenderer, OAuthToolRenderer, DefaultToolRenderer }
 export type { DefaultToolRendererProps }
 

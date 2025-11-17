@@ -190,7 +190,6 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     .file(paths.getSharedFile('filesystem.md'))
     .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules
-  //.file(paths.getAgentFile('develop', 'tools.md'))
 
   // Conditionally load database documentation if database agent is enabled
   if (featureAgents.isEnabled('database')) {
@@ -198,6 +197,7 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
   }
 
   promptBuilder
+    // OAuth instructions early for high salience - must call tools, not just promise actions
     .file(paths.getAgentFile('develop', 'api.md'))
     .file(paths.getAgentFile('develop', 'email.md'))
     .file(paths.getAgentFile('develop', 'deployment.md'))

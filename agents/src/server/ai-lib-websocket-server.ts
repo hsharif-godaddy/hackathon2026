@@ -58,6 +58,12 @@ const appRepo = new AppRepository()
 const activeWebSocketTransactions = new Map<string, any>()
 
 /**
+ * Socket.IO server instance for emitting events
+ * Exported for use in other services (e.g., OAuth result notifications)
+ */
+let ioInstance: any = null
+
+/**
  * Build dynamic data message for system prompt enrichment
  * Note: Must be a user message to avoid Anthropic's restriction on multiple system messages
  */
@@ -902,6 +908,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       }
     })
 
+    // Store io instance for use in other services
+    ioInstance = wsServer.getIO()
+
     // Add Socket.IO authentication middleware
     wsServer.getIO().use(async (socket, next) => {
       try {
@@ -1135,4 +1144,21 @@ export function getWebSocketServerInfo() {
       'multi-agent-coordination'
     ]
   }
+}
+
+/**
+ * Get the Socket.IO instance for emitting events from other services
+ * 
+ * @returns Socket.IO server instance or null if not initialized
+ * 
+ * @example
+ * ```typescript
+ * const io = getSocketIO();
+ * if (io) {
+ *   io.emit('oauth:result', { success: true, appId, state });
+ * }
+ * ```
+ */
+export function getSocketIO() {
+  return ioInstance
 }

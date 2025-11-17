@@ -138,6 +138,26 @@ export interface Memory {
   updatedAt: Date;
 }
 
+/**
+ * OAuth token storage with AES-256-GCM encryption
+ * Stores encrypted access and refresh tokens for OAuth2 flows
+ */
+export interface OAuthToken {
+  id: string;
+  appId: string;
+  provider: string;
+  scopes: string;
+  accessTokenEncrypted: string;
+  accessTokenIv: string;
+  accessTokenTag: string;
+  refreshTokenEncrypted?: string;
+  refreshTokenIv?: string;
+  refreshTokenTag?: string;
+  expiresAt: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ==================================================================================
 // Database Schema Management Functions
 // ==================================================================================
@@ -150,6 +170,9 @@ export function initializeSchema(db: Database): void {
   configureDatabaseSettings(db);
   
   // Create all tables
+  // Note: Table creation happens before migrations for new installations
+  // All table creation uses IF NOT EXISTS, ensuring idempotency
+  // Migrations handle schema evolution for existing databases
   createAppsTable(db);
   createRunningProcessesTable(db);
   createConversationsTable(db);
@@ -158,14 +181,15 @@ export function initializeSchema(db: Database): void {
   createFileContextTable(db);
   createMemoryTable(db);
   
-  // Create all indexes
+  // Apply migrations BEFORE creating indexes (migrations may alter schema)
+  // Note: oauth_tokens table creation moved to migrations (added in PR #646)
+  applyMigrations(db);
+  
+  // Create all indexes (after migrations complete)
   createIndexes(db);
   
   // Create all triggers
   createTriggers(db);
-  
-  // Apply migrations for existing databases
-  applyMigrations(db);
   
   // Create file context indexes after migrations (in case table was created during migration)
   createFileContextIndexes(db);
@@ -399,6 +423,15 @@ function createIndexes(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_memory_updated_at ON memory(updated_at)
   `);
 
+  // OAuth tokens table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_oauth_tokens_app ON oauth_tokens(app_id, provider)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_oauth_tokens_expiry ON oauth_tokens(expires_at)
+  `);
+
 }
 
 /**
@@ -587,6 +620,30 @@ function applyMigrations(db: Database): void {
     db.exec(`ALTER TABLE apps ADD COLUMN preview_url TEXT`);
   } catch (err) {
     // Column might already exist, that's fine
+  }
+
+  // Create oauth_tokens table if it doesn't exist (added in PR #646)
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS oauth_tokens (
+        id TEXT PRIMARY KEY,
+        app_id TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'godaddy',
+        scopes TEXT NOT NULL,
+        access_token_encrypted TEXT NOT NULL,
+        access_token_iv TEXT NOT NULL,
+        access_token_tag TEXT NOT NULL,
+        refresh_token_encrypted TEXT,
+        refresh_token_iv TEXT,
+        refresh_token_tag TEXT,
+        expires_at INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(app_id, provider)
+      )
+    `);
+  } catch (err) {
+    // Table might already exist, that's fine
   }
 
   // Add subscription_id column if it doesn't exist (for existing databases)

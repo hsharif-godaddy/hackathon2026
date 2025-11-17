@@ -104,6 +104,7 @@ export async function createDatabaseAgent(_options?: { appPath?: string }): Prom
       readFile: allAILibTools.readFile,
       terminalCommand: allAILibTools.terminalCommand,
       directoryListing: allAILibTools.directoryListing,
+      // Global tools (like oauthAccessToken) are added by the factory
     },
     
     // Tool execution hooks

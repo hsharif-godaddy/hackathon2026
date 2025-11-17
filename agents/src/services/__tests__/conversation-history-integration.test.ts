@@ -50,7 +50,7 @@ describe('Conversation History Integration', () => {
         appId: testAppId,
         agentId: 'develop',
         userId: 'test-user',
-        sessionId: 'test-session'
+        appId: 'test-app'
       }
     }
 
@@ -150,7 +150,7 @@ describe('Conversation History Integration', () => {
         appId: testAppId,
         agentId: 'develop',
         userId: 'test-user',
-        sessionId: 'test-session'
+        appId: 'test-app'
       }
     }
 
@@ -175,7 +175,7 @@ describe('Conversation History Integration', () => {
         appId: testAppId,
         agentId: 'develop',
         userId: 'test-user',
-        sessionId: 'test-session'
+        appId: 'test-app'
       }
     }
 

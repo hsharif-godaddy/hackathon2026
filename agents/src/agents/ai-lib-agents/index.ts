@@ -48,7 +48,9 @@ export async function createUnifiedAgentFactory(options?: {
   agents: ReturnType<AgentFactory['defineAgents']>
   stateManager: SessionStateManager
 }> {
-  const factory = createAgentFactory()
+  const factory = createAgentFactory({
+    globalTools: []
+  })
   
   // Create or use provided state manager
   const stateManager = options?.stateManager || createSessionStateManager({

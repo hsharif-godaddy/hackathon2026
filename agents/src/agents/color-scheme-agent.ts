@@ -48,6 +48,7 @@ export async function createColorSchemeAgent(): Promise<AgentConfig> {
       cssColor: allAILibTools.cssColor,
       cssSuggest: allAILibTools.cssSuggest,
       todoList: allAILibTools.todoList,
+      // Global tools (like oauthAccessToken) are added by the factory
     },
     
     // Handoff configuration

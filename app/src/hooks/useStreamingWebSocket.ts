@@ -29,6 +29,7 @@ import type { AgentsAppContext, AgentsAppChatMessage } from '../types/websocket-
 import { captureVisualContext } from '../app/develop/components/visualContextCapture'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { logger } from '@/lib/request-context'
+import { setSharedSocket, getSharedSocket } from '@/lib/socketRegistry'
 
 /**
  * Get short-lived JWT token for WebSocket authentication (12 hours)
@@ -79,6 +80,7 @@ const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
 
 export function useStreamingWebSocket() {
   const socketRef = useRef<Socket | null>(null)
+  const createdHereRef = useRef<boolean>(false) // Track if this instance created the socket
 
   // Track retry state for APP_NOT_FOUND errors (race condition during app registration)
   const retryStateRef = useRef<{
@@ -223,6 +225,7 @@ export function useStreamingWebSocket() {
         case 'tool_result':
           if (data.data?.tool) {
             const hasError = data.data.tool.error || data.data.tool.is_error
+            
             const toolCall: ToolCall = {
               id: data.data.tool.id,
               name: data.data.tool.name,
@@ -423,6 +426,10 @@ export function useStreamingWebSocket() {
         }
 
         socketRef.current = socket
+        createdHereRef.current = true // Mark that this instance created the socket
+        
+        // Register socket globally for OAuth popup access
+        setSharedSocket(socket)
 
         // Set up event handlers once for the lifetime of this connection
         setupEventHandlers(socket)
@@ -441,6 +448,19 @@ export function useStreamingWebSocket() {
       } finally {
         initializingRef.current = false
       }
+    }
+
+    // Reuse existing shared socket if available (prevents duplicate connections)
+    const existingSocket = getSharedSocket()
+    if (existingSocket && !socketRef.current) {
+      logger.info('websocket.connection.reuse', {
+        message: 'Reusing existing shared socket',
+        socketId: existingSocket.id,
+        appId: currentAppId
+      })
+      socketRef.current = existingSocket
+      createdHereRef.current = false // We didn't create this socket
+      return
     }
 
     // Only create connection if we don't have one and not already initializing
@@ -463,14 +483,28 @@ export function useStreamingWebSocket() {
       }
 
       if (socketRef.current) {
-        logger.info('websocket.cleanup', {
-          message: 'Cleaning up Socket.IO connection',
-          reason: 'app change or unmount',
-          appId: currentAppId
-        })
-        socketRef.current.removeAllListeners()
-        socketRef.current.disconnect()
+        // Only disconnect and clear shared socket if this instance created it
+        if (createdHereRef.current && getSharedSocket() === socketRef.current) {
+          logger.info('websocket.cleanup', {
+            message: 'Cleaning up Socket.IO connection (created by this instance)',
+            reason: 'app change or unmount',
+            appId: currentAppId
+          })
+          
+          // Clear shared socket reference
+          setSharedSocket(null)
+          
+          socketRef.current.removeAllListeners()
+          socketRef.current.disconnect()
+        } else {
+          logger.info('websocket.cleanup.skip', {
+            message: 'Not cleaning up socket (reused from shared registry)',
+            appId: currentAppId
+          })
+        }
+        
         socketRef.current = null
+        createdHereRef.current = false
       }
       // Reset initialization flag to allow re-initialization with new appId
       initializingRef.current = false

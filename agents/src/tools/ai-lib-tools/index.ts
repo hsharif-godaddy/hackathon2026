@@ -26,6 +26,8 @@ export { widgetRenderAITool } from './widget-render.js'
 export { cssColorAITool } from './css-color.js'
 export { cssSuggestAITool } from './css-suggest.js'
 export { suggestedResponseAITool } from './suggested-response.js'
+export { oauthConnect } from './oauth-tool.js'
+export { createGoDaddyProductTool } from './godaddy-product-tool.js'
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js'
@@ -48,6 +50,7 @@ import { widgetRenderAITool } from './widget-render.js'
 import { cssColorAITool } from './css-color.js'
 import { cssSuggestAITool } from './css-suggest.js'
 import { suggestedResponseAITool } from './suggested-response.js'
+import { oauthConnect } from './oauth-tool.js'
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -78,6 +81,7 @@ export const allAILibTools: Record<string, Tool> = {
   cssColor: cssColorAITool,
   cssSuggest: cssSuggestAITool,
   suggestedResponse: suggestedResponseAITool,
+  oauthConnect: oauthConnect,
 }
 
 /**
