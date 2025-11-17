@@ -17,6 +17,18 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     # Restore dependencies
     CI=true pnpm install --registry=https://registry.npmjs.org/
 
+    # dotenv-local needs to be installed so that publishing works
+    # this can be removed once all apps are reloaded in dev and prod
+    DOTENV_VERSION=$(jq -r '.dependencies["dotenv-local"]' "$BASE_APP_DIR/package.json")
+    pnpm add "dotenv-local@$DOTENV_VERSION"
+
+    # sync upstream dev-tools from base app template
+    # we need to eventually create a public repo for dev-tools and sync them from there
+    cp -r "$BASE_APP_DIR/dev-tools" "$CUSTOMER_APP_DIR/dev-tools"
+
+    # if changes then commit them
+    git add . && git commit -m "Sync upstream dev tools $(date +%s)" || true
+
     echo "Completed: Existing application detected, restored all tracked files and dependencies"
 fi
 
