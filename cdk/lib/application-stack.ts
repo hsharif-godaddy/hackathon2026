@@ -26,9 +26,9 @@ export class AiroBuilderStack extends GDStack {
               actions: [
                 "execute-api:Invoke"
               ],
-              resources: [
-                `arn:aws:execute-api:*:${config.awsIamJwtAccount}:*`
-              ]
+              resources: config.awsIamJwtAccount.map(account =>
+                `arn:aws:execute-api:*:${account}:*`
+              )
             })
           ]
         })

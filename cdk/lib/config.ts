@@ -45,7 +45,7 @@ interface Config {
   mysqlReadersCount: number;
   gocodeAssumeRoleArns: string[];
   katanaEcsTaskRoleArn: string[];  // Katana ECS Task Role for JWT access
-  awsIamJwtAccount: string;
+  awsIamJwtAccount: string[];
   monitoring: MonitoringConfig;
   jwt: {
     rotationIntervalDays: number;
@@ -83,7 +83,7 @@ const devConfig: Config = {
     "132.148.54.234/32": "Prisma NAT",
     "132.148.54.244/30": "Prisma NAT"
   },
-  awsIamJwtAccount: '847636408845',
+  awsIamJwtAccount: ['847636408845', '333184933228'],
   monitoring: {
     ecsClusterName: 'katanaRuntime',
     rdsClusterIdentifier: 'dev-mysql-v2-cluster',
@@ -122,7 +122,7 @@ const testConfig: Config = {
   ],
   katanaEcsTaskRoleArn: ['arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment5808GlobalEcsTaskRoleF525C3A7'],
   vpnIps: {},
-  awsIamJwtAccount: '333184933228',
+  awsIamJwtAccount: ['333184933228'],
   monitoring: {
     ecsClusterName: 'katanaRuntime',
     rdsClusterIdentifier: 'test-mysql-v2-cluster',
@@ -159,7 +159,7 @@ const prodConfig: Config = {
   ],
   katanaEcsTaskRoleArn: ['arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment6030GlobalEcsTaskRole99409837'],
   vpnIps: {},
-  awsIamJwtAccount: '377100941779',
+  awsIamJwtAccount: ['377100941779'],
   monitoring: {
     ecsClusterName: 'katanaRuntime',
     rdsClusterIdentifier: 'prod-mysql-v2-cluster',
