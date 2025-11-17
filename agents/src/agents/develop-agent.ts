@@ -190,7 +190,7 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     .file(paths.getSharedFile('filesystem.md'))
     .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules
-    //.file(paths.getAgentFile('develop', 'tools.md'))
+  //.file(paths.getAgentFile('develop', 'tools.md'))
 
   // Conditionally load database documentation if database agent is enabled
   if (featureAgents.isEnabled('database')) {
@@ -246,9 +246,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       //serverStatus: allAILibTools.serverStatus,
       viewLogs: allAILibTools.viewLogs,
 
-    // Specialized development tools
-    imageSearch: allAILibTools.imageSearch,
-    imageGenerate: allAILibTools.imageGenerate,
+      // Specialized development tools
+      mediaSearch: allAILibTools.mediaSearch,
+      imageGenerate: allAILibTools.imageGenerate,
 
       // Widget rendering
       //widgetRender: allAILibTools.widgetRender,

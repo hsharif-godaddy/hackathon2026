@@ -5,9 +5,9 @@ export { GitTool } from './git-tool.js';
 export { ReadFileTool } from './read-file.js';
 export { GrepTool } from './grep-tool.js';
 export { MySQLTool } from './mysql-tool.js';
-export { ImageSearchTool, findImage } from './image-search-tool.js';
 export { ImageGenerationTool, generateImage } from './image-generation-tool.js';
-export { GettyImageTool, findGettyImage } from './image-search-driver/index.js';
+export { MediaSearchTool, findMedia } from './media-search-tool.js';
+export { GettyMediaDriver } from './ai-lib-tools/drivers/getty-media-driver.js';
 export { ASTEditorBase } from './ast-editor-base.js';
 export { ASTTextEditor } from './ast-text-editor.js';
 export { ServerManagementTool } from './server-management-tool.js';
@@ -46,22 +46,21 @@ export type {
 } from './grep-tool.js';
 
 export type {
-  ImageSearchOptions,
-  ImageSearchResult
-} from './image-search-tool.js';
-
-export type {
   ImageGenerationOptions,
   ImageGenerationResult
 } from './image-generation-tool.js';
 
 export type {
-  GettyImageOptions,
-  GettyImageResult,
-  GettyImageResponse,
-  GettyImage,
-  DisplaySize
-} from './image-search-driver/index.js';
+  MediaSearchOptions,
+  MediaSearchResult,
+  MediaType
+} from './media-search-tool.js';
+
+export type {
+  GettyMediaOptions,
+  GettyMediaResult,
+  GettyMediaItem
+} from './ai-lib-tools/drivers/getty-media-driver.js';
 export type {
   BaseEditContext,
   BaseEditResult

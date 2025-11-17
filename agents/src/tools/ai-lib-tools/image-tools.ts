@@ -1,47 +1,7 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
-import { findImage } from '../image-search-tool.js'
 import { generateImage } from '../image-generation-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
-
-/**
- * Image Search Tool for AI-Lib
- * Search for images on the web based on text prompts
- */
-export const imageSearchAITool: Tool = createTool(
-  'Search for images on the web based on text prompts. Supports single prompts or arrays of prompts for parallel search. Each prompt returns one high-quality image. Use this when you need to find relevant images to illustrate concepts.',
-  z.object({
-    prompt: z.union([z.string(), z.array(z.string())]).describe('Text prompt(s) describing the image(s) to search for. Can be a single string or array of strings for parallel search. Each prompt returns one image.')
-  }),
-  async (input, context) => {
-    const { prompt } = input
-    
-    // Validate prompt
-    if (Array.isArray(prompt)) {
-      if (prompt.length === 0 || prompt.some(p => !p || typeof p !== 'string' || p.trim().length === 0)) {
-        throw new Error('A valid array of image search prompts is required')
-      }
-    } else if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
-      throw new Error('A valid image search prompt is required')
-    }
-    
-    const result = await findImage({ prompt })
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to find image(s)')
-    }
-    
-    // Return JSON for easier parsing in custom renderers
-    return JSON.stringify({
-      success: result.success,
-      prompt,
-      url: result.url,
-      urls: result.urls,
-      results: result.results,
-      error: result.error
-    }, null, 2)
-  }
-)
 
 /**
  * Image Generate Tool for AI-Lib

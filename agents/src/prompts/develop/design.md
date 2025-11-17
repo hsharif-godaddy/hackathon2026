@@ -58,7 +58,18 @@ border-gray-300 text-slate-900
   - `context`: include current appId, any existing colors, user preferences, and screenshots if available
 - After handoff, immediately update `src/styles/globals.css` variables for `:root` via a single `fileEdit` rewrite, then proceed with component styling.
 
-### Getting Images
+### Getting Images and Videos
 
-- Use the `image_search` tool for finding images. Supports single prompts for one image, or arrays of prompts for parallel search (each prompt returns one high-quality image).
+- Use the `mediaSearch` tool for finding both images and videos (defaults to images unless video is explicitly requested)
+- **For images** (default): Supports single prompts for one image, or arrays of prompts for parallel search. Each prompt can return multiple results using the `count` parameter
+- **For videos**: Set `mediaType` to "video". Only supports single prompts (no arrays), returns one high-quality video per search
 - Only use the `image_generate` tool if asked to generate or create an image specifically
+
+**Examples:**
+
+```typescript
+await mediaSearch({ prompt: 'modern office workspace' });
+await mediaSearch({ prompt: 'sunset over ocean', count: 3 });
+await mediaSearch({ prompt: ['cats', 'dogs', 'birds'], count: 2 });
+await mediaSearch({ prompt: 'ocean waves', mediaType: 'video' });
+```

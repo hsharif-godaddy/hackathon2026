@@ -27,6 +27,7 @@ export {
   appProcessManagementEvents,
   appCleanupEvents,
   toolImageSearchEvents,
+  toolVideoSearchEvents,
   toolCacheEvents,
   toolFileEditEvents,
   toolBuildEvents,

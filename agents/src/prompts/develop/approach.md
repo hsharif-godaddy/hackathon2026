@@ -40,7 +40,7 @@ When **creating a new page**, you **MUST** follow this workflow:
    - Break down page into logical components
    - Identify reusable components from `src/components/ui/`
    - List custom components needed
-   - **Image requirements**: Add imageSearch tasks for hero backgrounds, feature images, galleries, or visual content
+   - **Media requirements**: Add mediaSearch tasks for hero backgrounds, feature images, galleries, videos, or visual content (defaults to images, set mediaType:"video" for videos)
    - **Interactive features**: Plan forms, buttons, navigation, animations
    - **Data needs**: API calls, state management, dynamic content
 
@@ -87,7 +87,7 @@ Work through each todo item systematically:
 - **Follow your plan** - don't skip steps
 - **Keep changes minimal** - only what's needed for the task
 - **Reuse existing code** - check for available components/utilities
-- **Use imageSearch** only when explicitly in your plan for visual content
+- **Use mediaSearch** only when explicitly in your plan for visual/media content (defaults to images unless mediaType:"video" specified)
 
 #### Step 3: Wrap Up and Suggest Next Actions
 

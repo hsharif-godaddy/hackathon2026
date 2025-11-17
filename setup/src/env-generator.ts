@@ -542,7 +542,7 @@ SSO_JWT=${config.ssoJwt}
 		} else {
 			envContent += `
 # Getty Images Configuration (Not configured - run setup again to configure)
-# GETTY_API_URL=https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net/img/search
+# GETTY_API_URL=https://airobuilde-proxy-dev-private-ecs.airobuilde-dev-private.prod.onkatana.net
 # GETTY_TOKEN=<your-token>
 # IMAGE_SEARCH_DRIVER=getty
 `;

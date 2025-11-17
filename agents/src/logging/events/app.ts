@@ -799,6 +799,11 @@ export const AppEvents = {
       success: 'tool.image.search.success' as const,
       failure: 'tool.image.search.failure' as const,
     },
+    videoSearch: {
+      begin: 'tool.video.search.begin' as const,
+      success: 'tool.video.search.success' as const,
+      failure: 'tool.video.search.failure' as const,
+    },
     cache: {
       get: {
         begin: 'tool.cache.get.begin' as const,

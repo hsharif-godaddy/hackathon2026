@@ -13,7 +13,7 @@
 #### Tool Selection Validation
 
 - ✅ Chosen tools match the task scope
-- ✅ No unnecessary tool usage (color-scheme for text edits, imageSearch for forms)
+- ✅ No unnecessary tool usage (color-scheme for text edits, mediaSearch for forms)
 - ✅ Context hierarchy properly applied (AI Edit Context > Visual Context > General)
 - ✅ Decision matrix guidelines followed
 

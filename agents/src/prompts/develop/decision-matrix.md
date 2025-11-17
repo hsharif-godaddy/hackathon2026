@@ -20,21 +20,24 @@
 - ❌ Fixing bugs or functionality issues
 - ❌ User selected specific element for minor changes
 
-### Image Search Usage
+### Media Search Usage
 
-**Use imageSearch when:**
+**Use mediaSearch when:**
 
-- ✅ User explicitly asks for images
-- ✅ Creating hero sections that need backgrounds
+- ✅ User explicitly asks for images or videos
+- ✅ Creating hero sections that need backgrounds (images)
 - ✅ Building galleries or image-heavy content
-- ✅ User mentions specific image needs
+- ✅ User mentions specific visual content needs
+- ✅ For videos: Set `mediaType: "video"` when motion/video content is explicitly requested
+- ✅ For images (default): Use for photos, illustrations, graphics
 
-**DO NOT use imageSearch when:**
+**DO NOT use mediaSearch when:**
 
 - ❌ Making text-only changes
 - ❌ Adjusting existing layouts
-- ❌ User didn't mention images or visual content
+- ❌ User didn't mention images, videos, or visual content
 - ❌ Working on forms, navigation, or data display
+- ❌ User wants generated/created images (use imageGenerate instead)
 
 ### File Creation vs Editing
 

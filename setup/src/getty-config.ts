@@ -145,7 +145,7 @@ export class GettyConfigSetup {
   async generateGettyEnvConfig(token: string): Promise<string> {
     const envConfig = `
 # Getty Images Configuration
-GETTY_API_URL=${this.config.proxyUrl}/img/search
+GETTY_API_URL=${this.config.proxyUrl}
 GETTY_TOKEN=${token}
 IMAGE_SEARCH_DRIVER=getty`;
 
@@ -192,7 +192,7 @@ IMAGE_SEARCH_DRIVER=getty`;
         console.log('3. Fetch the Getty token manually:');
         console.log(chalk.gray(`   aws secretsmanager get-secret-value --secret-id "${this.config.secretPath}" --region ${this.config.region} --query "SecretString" --output text`));
         console.log('4. Add to your agents/.env:');
-        console.log(chalk.gray(`   GETTY_API_URL=${this.config.proxyUrl}/img/search`));
+        console.log(chalk.gray(`   GETTY_API_URL=${this.config.proxyUrl}`));
         console.log(chalk.gray('   GETTY_TOKEN=<your-token>'));
         console.log(chalk.gray('   IMAGE_SEARCH_DRIVER=getty'));
         return { success: false };

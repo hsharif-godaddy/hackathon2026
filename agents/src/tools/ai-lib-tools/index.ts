@@ -13,7 +13,8 @@ export { gitOperationAITool } from './git-operation.js'
 export { readFileAITool } from './read-file.js'
 export { grepSearchAITool } from './grep-search.js'
 export { serverRestartAITool, serverStatusAITool } from './server-management.js'
-export { imageSearchAITool, imageGenerateAITool } from './image-tools.js'
+export { imageGenerateAITool } from './image-tools.js'
+export { mediaSearchAITool } from './media-tools.js'
 export { iconsValidatorAITool } from './icons-validator.js'
 export { viewLogsAITool } from './view-logs.js'
 export { appPlanAITool } from './app-plan.js'
@@ -34,7 +35,8 @@ import { gitOperationAITool } from './git-operation.js'
 import { readFileAITool } from './read-file.js'
 import { grepSearchAITool } from './grep-search.js'
 import { serverRestartAITool, serverStatusAITool } from './server-management.js'
-import { imageSearchAITool, imageGenerateAITool } from './image-tools.js'
+import { imageGenerateAITool } from './image-tools.js'
+import { mediaSearchAITool } from './media-tools.js'
 import { iconsValidatorAITool } from './icons-validator.js'
 import { viewLogsAITool } from './view-logs.js'
 import { appPlanAITool } from './app-plan.js'
@@ -60,7 +62,7 @@ export const allAILibTools: Record<string, Tool> = {
   grepSearch: grepSearchAITool,
   serverRestart: serverRestartAITool,
   serverStatus: serverStatusAITool,
-  imageSearch: imageSearchAITool,
+  mediaSearch: mediaSearchAITool,
   imageGenerate: imageGenerateAITool,
   iconsValidator: iconsValidatorAITool,
   viewLogs: viewLogsAITool,
@@ -108,7 +110,7 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
 
   // Media and content tools
   media: {
-    imageSearch: imageSearchAITool,
+    mediaSearch: mediaSearchAITool,
     imageGenerate: imageGenerateAITool,
     iconsValidator: iconsValidatorAITool,
     ragSearch: ragSearchAITool,

@@ -392,6 +392,23 @@ export const toolImageSearchEvents = {
 };
 
 /**
+ * Tool Video Search logging helpers
+ */
+export const toolVideoSearchEvents = {
+  begin: (logger: ILogger, data: { toolName: string; prompt: string; provider: 'getty' }) => {
+    logger.info(AppEvents.tool.videoSearch.begin, data);
+  },
+
+  success: (logger: ILogger, data: { toolName: string; prompt: string; provider: 'getty'; resultUrl: string }) => {
+    logger.info(AppEvents.tool.videoSearch.success, data);
+  },
+
+  failure: (logger: ILogger, error: Error, data: { toolName: string; prompt: string; provider: 'getty' }) => {
+    log.error(logger, AppEvents.tool.videoSearch.failure, error, data);
+  },
+};
+
+/**
  * Tool Cache logging helpers
  */
 export const toolCacheEvents = {
