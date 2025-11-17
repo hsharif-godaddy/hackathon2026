@@ -3,11 +3,11 @@
 # Setup certificates from environment variables
 # This script supports two ways to provide Getty API certificates:
 #   1. GETTY_CERT and GETTY_KEY - Individual certificate content (preferred)
-#   2. Pre-mounted certificate files in /app/proxy/certs/
+#   2. Pre-mounted certificate files in /workspace/proxy/certs/
 
 set -e
 
-CERTS_DIR="/app/proxy/certs"
+CERTS_DIR="/workspace/proxy/certs"
 
 echo "[SETUP] Setting up Getty certificates..."
 

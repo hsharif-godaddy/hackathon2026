@@ -53,7 +53,11 @@ jobs:
         env:
           OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
         run: |
-          docker build --platform linux/amd64 -f proxy/Dockerfile --build-arg ARTIFACTORY_NPM_TOKEN="$OIDC_TOKEN" -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} .
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "$OIDC_TOKEN" > /tmp/npm_token
+          chmod 600 /tmp/npm_token
+          docker build --platform linux/amd64 -f proxy/Dockerfile --secret id=npm_token,src=/tmp/npm_token -t ${{ steps.katana-app.outputs.app }}:${{ github.sha }} .
+          rm -f /tmp/npm_token
 
       # Publish the built container image to Katana with the katana-publish-artifact GitHub Action
       - id: katana-publish
