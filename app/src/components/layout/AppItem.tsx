@@ -7,6 +7,7 @@ import { generateClickEID } from '@/utils/instrumentation';
 import { Site } from '@/stores/useSitesStore';
 import PlusIcon from '@ux/icon/plus';
 import text from '@ux/text';
+import AppThumbnail from '@/app/apps/AppThumbnail';
 
 export default function AppItem({site, dataEid}: {site: Site, dataEid?: string}) {
   const router = useRouter();
@@ -31,7 +32,7 @@ export default function AppItem({site, dataEid}: {site: Site, dataEid?: string})
         inlineAlignChildren="center"
         className="p-2 rounded-md leading-tight group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
       >
-        <div className="size-12 shrink-0 rounded-md bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300" />
+        <AppThumbnail siteId={site.id} siteName={site.name} size="xs" />
         <div className="flex flex-wrap">{site.name}</div>
       </Box>
     </button>

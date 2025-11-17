@@ -19,6 +19,7 @@ import Tag from '@ux/tag'
 import { formatDate } from '@/utils/common'
 import PlusIcon from '@ux/icon/plus'
 import text from '@ux/text'
+import AppThumbnail from './AppThumbnail'
 
 interface AlertState {
   siteId: string | null
@@ -154,19 +155,25 @@ export default function AppCard({site}) {
         </div>
       </div>
 
-      <div className="flex-1">
-        <h3 className="font-semibold mb-1">
-          {site.name || 'Untitled App'}
-        </h3>
-        {site.initial_prompt && (
-          <p className="text-sm mb-2 line-clamp-2">
-            {site.initial_prompt}
-          </p>
-        )}
-        <div className="flex items-center text-xs space-x-4">
-          <div className="flex items-center space-x-1">
-            <ClockIcon className="w-3 h-3" />
-            <span>Created {formatDate(site.created_at)}</span>
+      <div className="flex gap-4 flex-1">
+        {/* Thumbnail */}
+        <AppThumbnail siteId={site.id} siteName={site.name || 'Untitled App'} size="lg" />
+        
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold mb-1">
+            {site.name || 'Untitled App'}
+          </h3>
+          {site.initial_prompt && (
+            <p className="text-sm mb-2 line-clamp-2">
+              {site.initial_prompt}
+            </p>
+          )}
+          <div className="flex items-center text-xs space-x-4">
+            <div className="flex items-center space-x-1">
+              <ClockIcon className="w-3 h-3" />
+              <span>Created {formatDate(site.created_at)}</span>
+            </div>
           </div>
         </div>
       </div>

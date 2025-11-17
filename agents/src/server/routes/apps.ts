@@ -1,4 +1,7 @@
 import { Router, Request, Response, IRouter } from 'express';
+import { existsSync, writeFileSync } from 'fs';
+import { join as pathJoin } from 'path';
+import multer from 'multer';
 import { AppRepository } from '../../database/index.js';
 import type { CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
 import { DirectoryListingTool } from '../../tools/directory-listing.js';
@@ -985,6 +988,90 @@ router.post('/suggest-name', async (req: Request, res: Response) => {
       error: 'Failed to generate name suggestion',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
+  }
+});
+
+/**
+ * GET /apps/:id/screenshot - Get app screenshot
+ * Serves the screenshot.png file from the app directory or a 404 if not found
+ */
+router.get('/:id/screenshot', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const screenshotDir = process.env.SCREENSHOT_DIR || app.path;
+    const screenshotPath = pathJoin(screenshotDir, `${app.id}-screenshot.png`);
+    
+    if (existsSync(screenshotPath)) {
+      return res.sendFile(screenshotPath);
+    } else {
+      return res.status(404).json({ error: 'Screenshot not found' });
+    }
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.screenshot.get.error', error as Error, {});
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/:id/screenshot - Upload app screenshot
+ * Accepts a PNG file and saves it with appId prefix
+ * Uses SCREENSHOT_DIR environment variable if set, otherwise saves to app directory
+ */
+const upload = multer({
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'image/png') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PNG images are allowed'));
+    }
+  }
+});
+
+router.post('/:id/screenshot', upload.single('screenshot'), (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Screenshot file is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const screenshotDir = process.env.SCREENSHOT_DIR || app.path;
+    const screenshotPath = pathJoin(screenshotDir, `${app.id}-screenshot.png`);
+    
+    // Write the file buffer to disk
+    writeFileSync(screenshotPath, req.file.buffer);
+    
+    logger.info('route.apps.screenshot.upload.success', {
+      appId: id,
+      size: req.file.size,
+      path: screenshotPath,
+      screenshotDir
+    });
+
+    return res.json({ success: true, path: screenshotPath });
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.screenshot.upload.error', error as Error, {});
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

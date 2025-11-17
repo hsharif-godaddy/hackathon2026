@@ -64,14 +64,18 @@ export async function agentFetch(url: string, options: AgentFetchOptions): Promi
   // Get JWT token
   const token = await getAgentToken(siteId);
   
+  // Don't set Content-Type for FormData (browser will set it with boundary)
+  const isFormData = fetchOptions.body instanceof FormData;
+  const headers: HeadersInit = {
+    'Authorization': `Bearer ${token}`,
+    ...(!isFormData && { 'Content-Type': 'application/json' }),
+    ...(fetchOptions.headers || {})
+  };
+  
   // Make request to agent
   const response = await fetch(url, {
     ...fetchOptions,
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...fetchOptions.headers
-    }
+    headers
   });
   
   // Handle token expiration by retrying once
@@ -79,13 +83,15 @@ export async function agentFetch(url: string, options: AgentFetchOptions): Promi
     tokenCache.delete(siteId);
     const freshToken = await getAgentToken(siteId);
     
+    const retryHeaders: HeadersInit = {
+      'Authorization': `Bearer ${freshToken}`,
+      ...(!isFormData && { 'Content-Type': 'application/json' }),
+      ...(fetchOptions.headers || {})
+    };
+    
     return fetch(url, {
       ...fetchOptions,
-      headers: {
-        'Authorization': `Bearer ${freshToken}`,
-        'Content-Type': 'application/json',
-        ...fetchOptions.headers
-      }
+      headers: retryHeaders
     });
   }
   

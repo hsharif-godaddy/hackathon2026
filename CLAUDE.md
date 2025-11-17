@@ -241,6 +241,30 @@ Comprehensive file system tools in `agents/src/tools/`:
 - `image-search-tool.ts` - Web image search
 - `getty-image-tool.ts` - Professional stock photos
 
+### Automatic Screenshot Capture
+
+The system automatically captures and stores screenshots of apps after each conversation completion:
+
+**Flow:**
+
+1. Conversation completes → triggers preview refresh
+2. Before reload, requests screenshot from iframe (dev-tools)
+3. Dev-tools captures full page, resizes to 512px wide using `html-to-image`
+4. Screenshot sent via postMessage to app frontend
+5. App uploads screenshot to agents API
+6. Screenshot saved as `{appId}-screenshot.png` in SCREENSHOT_DIR (or app.path)
+
+**Endpoints:**
+
+- `GET /api/apps/:id/screenshot` - Serves screenshot or 404
+- `POST /api/apps/:id/screenshot` - Uploads screenshot (multipart/form-data)
+
+**Configuration:**
+
+- Set `SCREENSHOT_DIR` in `agents/.env` to customize storage location
+- Defaults to individual app directories (`/tmp/apps/{appId}/`)
+- Screenshots are 512px wide PNG files
+
 ## Environment Configuration
 
 ### Required Environment Files
@@ -274,6 +298,9 @@ LOG_FORMAT=dev                           # dev, json, pretty
 LOG_DOMAINS=app,agent,websocket          # Allowlist mode (only these domains)
 LOG_DISABLED_DOMAINS=compression,memory  # Blocklist mode (disable specific domains)
 LOG_OPT_IN_DOMAINS=compression.hot_files # Override defaults for opt-in domains
+
+# Screenshot Storage (optional)
+SCREENSHOT_DIR=/tmp/screenshots          # Directory to store app screenshots (defaults to app.path)
 ```
 
 **app/.env:**

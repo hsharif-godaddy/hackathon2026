@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import { useAuthContext } from '@/components/providers/AuthProvider';
@@ -29,7 +29,15 @@ export default function AppSelector({ location }: { location?: string }) {
     isLoading: isLoadingSites,
   } = useSites({ enabled: isAuthenticated })
 
+  // Auto-expand dropdown on homepage if user has apps
   const [open, setOpen] = useState(false);
+
+  // Open dropdown on homepage once sites are loaded
+  useEffect(() => {
+    if (location === 'homepage' && !isLoadingSites && sites.length > 0) {
+      setOpen(true);
+    }
+  }, [location, isLoadingSites, sites.length]);
 
   const isLoading = isLoadingAuth || isLoadingSites;
 
@@ -62,7 +70,11 @@ export default function AppSelector({ location }: { location?: string }) {
         </Box>
       </PopoverTrigger>
       {sites.length > 0 && (
-        <PopoverContent align="end" className="w-[300px] p-2">
+        <PopoverContent 
+          align="end" 
+          className="w-[300px] p-2"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <div className="flex flex-col gap-2">
             {sites.map((site) => (
               <AppItem

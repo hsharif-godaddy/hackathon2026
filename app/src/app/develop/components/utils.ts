@@ -59,6 +59,8 @@ export function handlePreviewRefresh({ lastIframeState }: { lastIframeState: Ref
   if (iframe && iframe.contentWindow) {
     try {
       postMessageToIframe(iframe, { type: 'REQUEST_VISUAL_CONTEXT' })
+      // Also request screenshot for thumbnail update
+      postMessageToIframe(iframe, { type: 'REQUEST_SCREENSHOT' })
     } catch (error) {
       console.error('Cannot request visual context:', error)
     }

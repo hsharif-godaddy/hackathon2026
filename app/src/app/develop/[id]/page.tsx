@@ -34,6 +34,8 @@ import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { handlePreviewRefresh } from '@/app/develop/components/utils'
 import { logger } from '@/lib/request-context'
 import { Feedback } from '@/components/feedback/Feedback'
+import { agentFetch } from '@/lib/agent-fetch'
+import { buildDynamicApiUrl } from '@/config/dynamic-api'
 
 function DevelopPageContent() {
   const searchParams = useSearchParams()
@@ -222,6 +224,43 @@ function DevelopPageContent() {
     }
   }, [appId, selectedElement])
 
+  const handleScreenshotUpload = useCallback(async (screenshotDataUrl: string) => {
+    if (!appId) return
+
+    logger.info('develop-page.screenshot.upload.start', { appId })
+
+    try {
+      // Convert data URL to Blob
+      const response = await fetch(screenshotDataUrl)
+      const blob = await response.blob()
+
+      // Create FormData and append the blob
+      const formData = new FormData()
+      formData.append('screenshot', blob, 'screenshot.png')
+
+      // Build correct API URL with site context
+      const apiUrl = await buildDynamicApiUrl('screenshot', appId)
+      
+      // Upload to agents API using agentFetch with authentication
+      const uploadResponse = await agentFetch(apiUrl, {
+        method: 'POST',
+        body: formData,
+        siteId: appId
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed: ${uploadResponse.statusText}`)
+      }
+
+      logger.info('develop-page.screenshot.upload.success', { appId })
+    } catch (error) {
+      logger.error('develop-page.screenshot.upload.error', { 
+        appId, 
+        error: error instanceof Error ? error.message : String(error) 
+      })
+    }
+  }, [appId])
+
   const sendTextUpdate = useCallback(async (textData: { selector: string; oldText: string; newText: string; devContext: Record<string, unknown> }) => {
     if (!appId) return
 
@@ -364,6 +403,12 @@ function DevelopPageContent() {
               // Clear immediately after sending, same as ChatPane does
               setBuildErrorContext(null)
             }, 500)
+          }
+          break
+        case 'SCREENSHOT_RESPONSE':
+          // Handle screenshot response from iframe
+          if (event.data.screenshot) {
+            handleScreenshotUpload(event.data.screenshot)
           }
           break
       }

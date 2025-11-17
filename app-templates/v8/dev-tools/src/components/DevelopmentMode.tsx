@@ -2,6 +2,7 @@ import { useDevelopmentMode } from '../hooks/useDevelopmentMode'
 import { useState, useEffect } from 'react'
 import ElementEditor from './ElementEditor'
 import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
+import { captureAndResizeScreenshot } from '../utils/screenshot'
 
 export default function DevelopmentMode() {
   const {
@@ -175,6 +176,23 @@ export default function DevelopmentMode() {
               context: context
             })
           }
+        } else if (event.data && event.data.type === 'REQUEST_SCREENSHOT') {
+          console.log('Screenshot: Request received')
+
+          // Capture and resize screenshot
+          captureAndResizeScreenshot().then(screenshot => {
+            if (screenshot && window.parent !== window) {
+              safePostMessage(window.parent, {
+                type: 'SCREENSHOT_RESPONSE',
+                screenshot: screenshot
+              })
+              console.log('Screenshot: Sent to parent')
+            } else {
+              console.error('Screenshot: Failed to capture')
+            }
+          }).catch(error => {
+            console.error('Screenshot: Error capturing:', error)
+          })
         }
       } catch (error) {
         console.error('Visual context: Error handling request:', error)
