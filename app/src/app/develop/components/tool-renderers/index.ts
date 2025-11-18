@@ -1,9 +1,9 @@
 /**
  * Tool Renderer Registry
- * 
+ *
  * Central registry for all available tool renderer components.
  * Maps tool names to their custom React components.
- * 
+ *
  * Tools not in the registry will use the DefaultToolRenderer.
  */
 
@@ -30,7 +30,7 @@ export type ToolRendererProps = DefaultToolRendererProps
 
 /**
  * Tool renderer registry mapping tool names to components
- * 
+ *
  * Add custom renderers here for specific tools that need special visualization.
  * Example:
  *   'file_edit': FileEditToolRenderer,
@@ -67,10 +67,10 @@ export function hasCustomRenderer(toolName: string): toolName is RegisteredToolT
 
 /**
  * Get tool renderer component by tool name
- * 
+ *
  * Returns a custom renderer if one is registered for the tool,
  * otherwise returns the DefaultToolRenderer.
- * 
+ *
  * @param toolName - Name of the tool to get renderer for
  * @returns Tool renderer component
  */
@@ -86,4 +86,3 @@ export function getToolRenderer(toolName: string) {
  */
 export { CssColorToolRenderer, CssSuggestToolRenderer, EndConversationToolRenderer, GrepSearchToolRenderer, HandoffToolRenderer, ReadFileToolRenderer, FileEditToolRenderer, TerminalCommandToolRenderer, GitOperationToolRenderer, MediaSearchToolRenderer, ImageSearchToolRenderer, TodoListToolRenderer, SuggestedResponseToolRenderer, OAuthToolRenderer, DefaultToolRenderer }
 export type { DefaultToolRendererProps }
-

@@ -1,10 +1,10 @@
 /**
  * Simple key-value table component for displaying JSON objects
- * 
+ *
  * Displays a two-column table with keys on the left and values on the right.
  * Handles nested objects by stringifying them.
  * Alternating row colors for better readability.
- * 
+ *
  * @param data - Object to display as key-value pairs
  * @param title - Optional title to display above the table
  */
@@ -38,4 +38,3 @@ export default function KeyValueTable({ data, title }: { data: Record<string, an
     </div>
   )
 }
-

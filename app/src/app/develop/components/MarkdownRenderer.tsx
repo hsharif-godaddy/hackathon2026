@@ -55,8 +55,8 @@ const processMarkdown = (content: string): string => {
   return processedContent
 }
 
-export default function MarkdownRenderer({ 
-  content, 
+export default function MarkdownRenderer({
+  content,
   className = '',
   fullscreen = false
 }: MarkdownRendererProps) {
@@ -92,7 +92,7 @@ export default function MarkdownRenderer({
                 {String(children).replace(/\n$/, '')}
               </SyntaxHighlighter>
             ) : (
-              <code className="bg-gray-100 text-gray-800 px-1 py-0.5 rounded text-sm font-mono" {...props}>
+              <code className="bg-intents-ux-boxLowContrast-backgroundColor text-xs px-0.5 py-0.5 font-mono" {...props}>
                 {children}
               </code>
             )

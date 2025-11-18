@@ -8,6 +8,7 @@ import XThickIcon from '@ux/icon/x-thick'
 import MarkdownRenderer from '../MarkdownRenderer'
 import ToolHeader from './ToolHeader'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import { Image } from 'lucide-react'
 
 interface ImageResult {
   prompt: string
@@ -16,7 +17,7 @@ interface ImageResult {
 
 /**
  * Custom renderer for imageSearch tool
- * 
+ *
  * Shows "Found X images" on one line.
  * Displays horizontal scrolling gallery of images (200px height).
  * Click to open modal with larger view.
@@ -61,7 +62,7 @@ export default function ImageSearchToolRenderer({
       } else if (typeof result === 'object') {
         parsedResult = result
       }
-      
+
       if (parsedResult) {
         // Handle single image result
         if (parsedResult.url) {
@@ -205,9 +206,9 @@ export default function ImageSearchToolRenderer({
     : 'Image Search'
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
-        icon="🖼️"
+        icon={<Image className="w-4 h-4" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasDetails}
@@ -241,4 +242,3 @@ export default function ImageSearchToolRenderer({
     </div>
   )
 }
-

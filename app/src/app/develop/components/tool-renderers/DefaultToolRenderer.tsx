@@ -5,6 +5,7 @@ import MarkdownRenderer from '../MarkdownRenderer'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
 import { getToolDisplayName } from '../../../../utils/toolNameMapping'
+import { Wrench } from 'lucide-react'
 
 /**
  * Props for the default tool renderer
@@ -23,11 +24,11 @@ export interface DefaultToolRendererProps {
 
 /**
  * Default tool renderer with subtle, compact design
- * 
+ *
  * Renders tool calls with minimal visual footprint - light gray text with
  * tool name and a small status indicator (spinner/X for errors).
  * Click to open modal with full details.
- * 
+ *
  * @param props - Tool call information
  * @returns Rendered tool call component
  */
@@ -57,9 +58,9 @@ export default function DefaultToolRenderer({
   }
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
-        icon="🔧"
+        icon={<Wrench className="w-4 h-4" />}
         displayName={getToolDisplayName(toolName)}
         toolStatus={toolStatus}
         hasDetails={hasDetails}
@@ -120,4 +121,3 @@ export default function DefaultToolRenderer({
     </div>
   )
 }
-

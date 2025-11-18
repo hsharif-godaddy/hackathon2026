@@ -9,10 +9,11 @@ import ColorPaletteGridWidget, { type PaletteData } from '../widgets/ColorPalett
 import ToolHeader from './ToolHeader'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import { getContrastColor } from '@/utils/color'
+import { Palette } from 'lucide-react'
 
 /**
  * Custom renderer for cssSuggest tool
- * 
+ *
  * Displays a grid of color palette suggestions that were generated.
  * Shows the palettes inline without needing to expand details.
  * Clickable to open modal with tabs for each palette option.
@@ -52,7 +53,7 @@ export default function CssSuggestToolRenderer({
   let palettes: PaletteData[] = []
   if (toolStatus === 'completed' && result && typeof result === 'object') {
     const resultObj = result as any
-    
+
     // Check for widget.widgetData.palettes structure
     if (resultObj.widget?.widgetData?.palettes && Array.isArray(resultObj.widget.widgetData.palettes)) {
       palettes = resultObj.widget.widgetData.palettes
@@ -180,9 +181,9 @@ export default function CssSuggestToolRenderer({
     : 'Color Scheme Suggestions'
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
-        icon="🎨"
+        icon={<Palette className="w-4 h-4" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasPalettes}
@@ -200,4 +201,3 @@ export default function CssSuggestToolRenderer({
     </div>
   )
 }
-

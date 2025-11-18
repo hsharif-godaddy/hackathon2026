@@ -11,12 +11,12 @@ interface StatusIndicatorProps {
 
 /**
  * Status indicator component for tool renderers
- * 
+ *
  * Displays appropriate icon based on tool execution status:
  * - running: animated spinner
  * - error: alert icon
  * - completed: no indicator
- * 
+ *
  * @param status - Current tool execution status
  * @param className - Optional CSS classes for the container
  * @returns Status indicator element or null
@@ -39,4 +39,3 @@ export default function StatusIndicator({ status, className = '' }: StatusIndica
       return null
   }
 }
-

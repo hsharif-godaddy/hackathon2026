@@ -19,10 +19,10 @@ interface ToolModalProps {
 
 /**
  * Shared modal component for tool renderers
- * 
+ *
  * Provides consistent modal UI with backdrop, animations, and close button.
  * Used across multiple tool renderers for displaying detailed information.
- * 
+ *
  * @param isOpen - Whether the modal is currently open
  * @param onClose - Callback to close the modal
  * @param title - Modal title text
@@ -102,4 +102,3 @@ export default function ToolModal({
     document.body
   )
 }
-

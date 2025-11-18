@@ -6,10 +6,11 @@ import MarkdownRenderer from '../MarkdownRenderer'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import { SquareTerminal } from 'lucide-react'
 
 /**
  * Custom renderer for terminalCommand tool
- * 
+ *
  * Shows compact command on one line with terminal icon.
  * Clickable to show modal with full details (command, output, errors, etc.)
  */
@@ -56,7 +57,7 @@ export default function TerminalCommandToolRenderer({
       } else if (typeof result === 'object') {
         parsedResult = result
       }
-      
+
       if (parsedResult) {
         command = parsedResult.command || ''
         originalCommand = parsedResult.originalCommand || ''
@@ -82,7 +83,7 @@ export default function TerminalCommandToolRenderer({
 
   // Has details if we have parsed result data OR markdown content
   const hasDetails = Boolean(
-    (parsedResult && (stdout || stderr || error || workingDir)) || 
+    (parsedResult && (stdout || stderr || error || workingDir)) ||
     isMarkdownFormat
   )
 
@@ -173,9 +174,9 @@ export default function TerminalCommandToolRenderer({
   const displayName = `Terminal: ${command}`
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
-        icon="💻"
+        icon={<SquareTerminal className="w-4 h-4" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasDetails}
@@ -185,4 +186,3 @@ export default function TerminalCommandToolRenderer({
     </div>
   )
 }
-

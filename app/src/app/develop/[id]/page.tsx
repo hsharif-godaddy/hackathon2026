@@ -125,6 +125,13 @@ function DevelopPageContent() {
     }
   }, [appId, initializePage])
 
+  // Update document title with site name
+  useEffect(() => {
+    if (site?.name) {
+      document.title = `${site.name} - Develop - Airo App Builder`
+    }
+  }, [site?.name])
+
   // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
     return () => {

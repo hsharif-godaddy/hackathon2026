@@ -138,29 +138,17 @@ export default function AppCard({site}) {
           onCancel={clearAlert}
         />
       )}
-
-      <div className="flex items-start justify-between mb-4">
-        <Box
-          className="w-12 h-12 p-1 flex items-center justify-center"
-          rounding="reduced"
-          data-partial="gradientAiro"
-          style={{
-            background: "var(--ux-cao06b)",
-          }}
-        >
-          <CodeBracketIcon className="w-7 h-7 text-ai" />
-        </Box>
-        <div className="flex items-center space-x-2">
-          {getStatusLabel(site.status)}
-        </div>
-      </div>
-
       <div className="flex gap-4 flex-1">
         {/* Thumbnail */}
         <AppThumbnail siteId={site.id} siteName={site.name || 'Untitled App'} size="lg" />
-        
+
         {/* Content */}
         <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between mb-2 mt-1">
+            <div className="flex items-center space-x-2">
+              {getStatusLabel(site.status)}
+            </div>
+          </div>
           <h3 className="font-semibold mb-1">
             {site.name || 'Untitled App'}
           </h3>

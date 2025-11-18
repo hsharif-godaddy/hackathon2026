@@ -6,6 +6,7 @@ import KeyValueTable from './KeyValueTable'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import { File } from 'lucide-react'
 
 /**
  * Extract filename from path
@@ -36,7 +37,7 @@ function stripLineNumbers(content: string): string {
 
 /**
  * Custom renderer for readFile tool
- * 
+ *
  * Shows "Read File: {filename}" with a document icon.
  * Clickable to show modal with file contents.
  * Markdown files are rendered, others shown as code.
@@ -64,7 +65,7 @@ export default function ReadFileToolRenderer({
     const inputObj = input as any
     filePath = inputObj.path || ''
     filename = getFilename(filePath)
-    
+
     if (inputObj.startLine) {
       metadata['Start Line'] = inputObj.startLine
     }
@@ -77,7 +78,7 @@ export default function ReadFileToolRenderer({
     // Parse the result string to extract metadata and content
     const lines = result.split('\n')
     let contentStartIndex = 0
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
       if (line.startsWith('File: ')) {
@@ -97,7 +98,7 @@ export default function ReadFileToolRenderer({
         break
       }
     }
-    
+
     fileContent = lines.slice(contentStartIndex).join('\n')
   }
 
@@ -143,9 +144,9 @@ export default function ReadFileToolRenderer({
   const displayName = filename ? `Read File: ${filename}` : 'Read File'
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
-        icon="📄"
+        icon={<File className="w-4 h-4" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasContent}
@@ -155,4 +156,3 @@ export default function ReadFileToolRenderer({
     </div>
   )
 }
-

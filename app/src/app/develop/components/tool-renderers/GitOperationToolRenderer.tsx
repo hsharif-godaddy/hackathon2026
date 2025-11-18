@@ -4,10 +4,11 @@ import React, { useState } from 'react'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import { GitPullRequest } from 'lucide-react'
 
 /**
  * Git Operation Tool Renderer
- * 
+ *
  * Displays git operation results with operation-specific formatting.
  * Shows a one-line summary with expandable details in a modal.
  */
@@ -42,7 +43,7 @@ export default function GitOperationToolRenderer({
 
   // Build display message
   let displayMessage = `Git: ${operation}`
-  
+
   if (parsedResult) {
     if (parsedResult.success === false && parsedResult.error) {
       displayMessage = `Git ${operation}: Error`
@@ -201,9 +202,9 @@ export default function GitOperationToolRenderer({
   )
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
-        icon="🔀"
+        icon={<GitPullRequest className="w-4 h-4" />}
         displayName={displayMessage}
         toolStatus={toolStatus}
         hasDetails={hasDetails}

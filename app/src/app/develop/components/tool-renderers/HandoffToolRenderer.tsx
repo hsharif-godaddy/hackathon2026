@@ -5,6 +5,7 @@ import KeyValueTable from './KeyValueTable'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import { Bot } from 'lucide-react'
 
 /**
  * Get agent display name from agent ID
@@ -21,7 +22,7 @@ function getAgentDisplayName(agentId: string): string {
 
 /**
  * Custom renderer for handoff tool
- * 
+ *
  * Shows "Now talking with {Agent Name}" with a robot icon.
  * Clickable to show modal with handoff details (arguments and results).
  */
@@ -77,9 +78,9 @@ export default function HandoffToolRenderer({
   const displayName = `Now talking with ${targetAgent}`
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
-        icon="🤖"
+        icon={<Bot className="w-4 h-4" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasDetails}
@@ -89,4 +90,3 @@ export default function HandoffToolRenderer({
     </div>
   )
 }
-

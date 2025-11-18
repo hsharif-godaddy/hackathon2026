@@ -38,7 +38,7 @@ function getMessageClasses(message: ChatMessage | StreamingMessageType, isActive
 
   switch (message.role) {
     case 'user':
-      return clsx(baseClasses, 'bg-intents-ux-boxLowContrast-backgroundColor px-4 py-3 border rounded-br-none ml-8')
+      return clsx(baseClasses, 'bg-intents-ux-boxLowContrast-backgroundColor px-4 py-3 border rounded-br-none ml-8 my-1')
 
     case 'assistant':
       return clsx(baseClasses, 'max-w-full p-0')

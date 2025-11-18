@@ -5,6 +5,7 @@ import MarkdownRenderer from '../MarkdownRenderer'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import { ListTodo } from 'lucide-react'
 
 /**
  * Get operation display message
@@ -145,7 +146,7 @@ function renderMultipleListsHTML(lists: any[]): React.JSX.Element {
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-semibold text-foreground">All Todo Lists ({lists.length})</h1>
-      
+
       <div className="space-y-3">
         {lists.map((list) => {
           const totalItems = list.items?.length || 0
@@ -186,7 +187,7 @@ function renderItemsHTML(items: any[], title: string, listName?: string): React.
         <h1 className="text-lg font-semibold text-foreground">{listName}</h1>
       )}
       <h2 className="text-sm font-medium text-foreground">{title}</h2>
-      
+
       <div className="space-y-3">
         {items.map((item) => (
           <div
@@ -217,7 +218,7 @@ function renderItemsHTML(items: any[], title: string, listName?: string): React.
 
 /**
  * Custom renderer for todoList tool
- * 
+ *
  * Shows mode-aware one-line messages.
  * Clickable to show modal with formatted todo list details.
  */
@@ -319,7 +320,7 @@ export default function TodoListToolRenderer({
   // Generate modal content (HTML or markdown)
   let modalContentElement: React.JSX.Element | null = null
   let hasDetails = false
-  
+
   if (isMarkdownFormat) {
     // Legacy markdown format - still use MarkdownRenderer
     hasDetails = Boolean(markdownContent)
@@ -339,7 +340,7 @@ export default function TodoListToolRenderer({
       modalContentElement = <div className="text-sm text-foreground/80">{parsedResult.message}</div>
     }
   }
-  
+
   const modalContent = (
     <ToolModal
       isOpen={isModalOpen}
@@ -354,17 +355,15 @@ export default function TodoListToolRenderer({
   )
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
-        icon="📋"
+        icon={<ListTodo className="w-4 h-4" />}
         displayName={displayMessage}
         toolStatus={toolStatus}
         hasDetails={hasDetails}
         onOpenModal={() => setIsModalOpen(true)}
       />
-
       {modalContent}
     </div>
   )
 }
-

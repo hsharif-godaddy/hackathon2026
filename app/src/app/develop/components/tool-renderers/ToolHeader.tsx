@@ -4,7 +4,7 @@ import StatusIndicator from './StatusIndicator'
  * Props for ToolHeader component
  */
 interface ToolHeaderProps {
-  icon: string
+  icon: React.ReactNode
   displayName: string
   toolStatus: 'running' | 'completed' | 'error'
   hasDetails: boolean
@@ -13,10 +13,10 @@ interface ToolHeaderProps {
 
 /**
  * Shared compact header component for tool renderers
- * 
+ *
  * Displays a one-line tool indicator with icon, name, and status.
  * Clickable to open modal when completed and has details.
- * 
+ *
  * @param icon - Emoji icon for the tool
  * @param displayName - Display name of the tool
  * @param toolStatus - Current execution status
@@ -32,9 +32,9 @@ export default function ToolHeader({
   onOpenModal
 }: ToolHeaderProps) {
   return (
-    <span className="text-foreground/80 text-xs flex items-center min-w-0">
+    <span className="text-foreground/60 text-xs flex items-center min-w-0 gap-1.5">
       <span className="flex-shrink-0">{icon}</span>
-      <span className="ml-1 min-w-0 flex items-center gap-1.5">
+      <span className="min-w-0 flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate">
           {toolStatus === 'completed' && hasDetails && onOpenModal ? (
             <button

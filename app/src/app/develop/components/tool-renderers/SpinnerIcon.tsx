@@ -1,6 +1,6 @@
 /**
  * Spinner icon component
- * 
+ *
  * Reusable animated spinner SVG for loading states.
  * Used across tool renderers for consistent loading indicators.
  */
@@ -24,4 +24,3 @@ export default function SpinnerIcon({ className = 'w-2.5 h-2.5' }: { className?:
     </svg>
   )
 }
-

@@ -102,7 +102,7 @@ describe('json-completion-utils', function packageTests() {
       const input = '{"path": "src/pages/index.tsx", "mode": "edit", "edits": [{"old":"      {/* Menu Section */}\\n      <section id=\\"menu\\" className=\\"py-20 bg-muted/30\\">\\n        <div className=\\"container mx-auto px-4\\">\\n          <h2 className=\\"text-4xl font-bold text-center mb-12\\">Our Menu</h2>\\n          <di'
       const result = completePartialJson(input)
       expect(result).not.toBeNull()
-      
+
       // Should be parseable JSON
       let parseError: Error | null = null
       try {
@@ -110,7 +110,7 @@ describe('json-completion-utils', function packageTests() {
       } catch (error) {
         parseError = error as Error
       }
-      
+
       expect(parseError).toBeNull()
       if (parseError) {
         console.log('Parse error:', parseError.message)
@@ -122,7 +122,7 @@ describe('json-completion-utils', function packageTests() {
       const input = '{"edits": [{"old": "line1\\nline2\\nline3", "new": "line1\\nline2'
       const result = completePartialJson(input)
       expect(result).not.toBeNull()
-      
+
       // Should be parseable
       expect(() => JSON.parse(result!)).not.toThrow()
     })
@@ -133,7 +133,7 @@ describe('json-completion-utils', function packageTests() {
       const input = '{"edits": [{"old": "complete string value"'
       const result = completePartialJson(input)
       expect(result).not.toBeNull()
-      
+
       // Should be parseable - we should close the object properly
       expect(() => JSON.parse(result!)).not.toThrow()
     })
@@ -143,7 +143,7 @@ describe('json-completion-utils', function packageTests() {
       const input = '{"path": "src/pages/index.tsx", "mode": "edit", "edits": [{"old":"    {\\n      name: \'Loaded Nachos\',\\n      description: \'Crispy tortilla chips topped with cheese, guacamole, salsa, and sour cream\',\\n      price: \'$10.99\',\\n      image: \'https://media.gettyimages.com/id/1322160122/photo/mexican-dip-sauces-guacamole-cheedar-dip-tomato-salsa-and-pico-de-gallo-with-nacho-chips.jpg?b=1&s=2048x2048&w=0&k=20&c=BWGDa_s4UkRKVcmYue48S0fHWVL6i86CKfPiTLEmSSg=\',\\n    },\\n  ];\",\"new\":\"    {\\n      name: \'Lo'
       const result = completePartialJson(input)
       expect(result).not.toBeNull()
-      
+
       // Should be parseable
       let parseError: Error | null = null
       try {
@@ -151,7 +151,7 @@ describe('json-completion-utils', function packageTests() {
       } catch (error) {
         parseError = error as Error
       }
-      
+
       expect(parseError).toBeNull()
       if (parseError) {
         console.log('Parse error:', parseError.message)
@@ -164,10 +164,9 @@ describe('json-completion-utils', function packageTests() {
       const input = '{"old": "text ending with backslash\\\\'
       const result = completePartialJson(input)
       expect(result).not.toBeNull()
-      
+
       // Should be parseable
       expect(() => JSON.parse(result!)).not.toThrow()
     })
   })
 })
-

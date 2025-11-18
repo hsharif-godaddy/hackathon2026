@@ -9,6 +9,7 @@ import ColorPaletteWidget from '../widgets/ColorPaletteWidget'
 import ToolHeader from './ToolHeader'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import { getContrastColor } from '@/utils/color'
+import { Palette } from 'lucide-react'
 
 /**
  * Color info structure from cssColor tool result
@@ -22,11 +23,11 @@ interface ColorInfo {
 
 /**
  * Custom renderer for cssColor tool
- * 
+ *
  * Shows "Color Scheme: {name} {mode}" on completion.
  * Auto-disappears 2 seconds after completion in generate-only mode.
  * Clickable to show larger format with labels and hex codes.
- * 
+ *
  * @param props - Tool call information
  * @returns Rendered cssColor tool component
  */
@@ -59,7 +60,7 @@ export default function CssColorToolRenderer({
 
   // Extract palette name and mode from result or input
   const isGenerateOnly = input?.generateOnly === true
-  
+
   // Get palette name from result (now always included) or fallback to input
   let paletteName = 'Color Scheme'
   if (result && typeof result === 'object') {
@@ -79,7 +80,7 @@ export default function CssColorToolRenderer({
   } else if (input?.paletteName) {
     paletteName = input.paletteName as string
   }
-  
+
   const mode = isGenerateOnly ? 'generated' : 'applied'
 
   // Auto-disappear effect for generate-only mode
@@ -102,7 +103,7 @@ export default function CssColorToolRenderer({
   const colors: ColorInfo[] = []
   if (toolStatus === 'completed' && result && typeof result === 'object') {
     const resultObj = result as any
-    
+
     // Check for displayColors (applied mode)
     if (resultObj.displayColors && Array.isArray(resultObj.displayColors)) {
       colors.push(...resultObj.displayColors)
@@ -263,9 +264,9 @@ export default function CssColorToolRenderer({
     : 'Color Scheme'
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
-        icon="🎨"
+        icon={<Palette className="w-4 h-4" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasColors}
@@ -286,4 +287,3 @@ export default function CssColorToolRenderer({
     </div>
   )
 }
-

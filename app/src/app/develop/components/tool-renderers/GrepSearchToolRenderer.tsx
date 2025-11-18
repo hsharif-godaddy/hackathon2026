@@ -1,6 +1,6 @@
 /**
  * Grep Search Tool Renderer
- * 
+ *
  * Displays grep/text search results with a summary and expandable details.
  */
 
@@ -8,17 +8,18 @@ import { useState, useEffect } from 'react'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import { TextSearch } from 'lucide-react'
 
 /**
  * Grep Search Tool Renderer Component
- * 
+ *
  * Shows a one-line summary of search results with a clickable link to view
  * the full search output in a modal.
  */
-export default function GrepSearchToolRenderer({ 
+export default function GrepSearchToolRenderer({
   input,
-  result, 
-  toolStatus 
+  result,
+  toolStatus
 }: DefaultToolRendererProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -80,9 +81,9 @@ export default function GrepSearchToolRenderer({
   )
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
-        icon="🔍"
+        icon={<TextSearch className="w-4 h-4" />}
         displayName={displayMessage}
         toolStatus={toolStatus}
         hasDetails={hasDetails}
@@ -92,4 +93,3 @@ export default function GrepSearchToolRenderer({
     </div>
   )
 }
-

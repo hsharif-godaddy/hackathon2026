@@ -133,4 +133,3 @@ describe('FileEditToolRenderer', function packageTests() {
     })
   })
 })
-

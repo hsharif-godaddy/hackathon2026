@@ -8,6 +8,7 @@ import XThickIcon from '@ux/icon/x-thick'
 import MarkdownRenderer from '../MarkdownRenderer'
 import ToolHeader from './ToolHeader'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import { Image, SquarePlay } from 'lucide-react'
 
 interface ImageResult {
   prompt: string
@@ -21,7 +22,7 @@ interface VideoResult {
 
 /**
  * Custom renderer for mediaSearch tool
- * 
+ *
  * Handles both image and video search results in a unified interface.
  * For images: Shows gallery with horizontal scrolling (200px height).
  * For videos: Shows single video player (paused by default).
@@ -76,7 +77,7 @@ export default function MediaSearchToolRenderer({
         parsedResult = result
         mediaType = parsedResult.mediaType || 'image'
       }
-      
+
       if (parsedResult && mediaType === 'image') {
         // Handle single image result
         if (parsedResult.url) {
@@ -277,20 +278,20 @@ export default function MediaSearchToolRenderer({
   )
 
   let displayName = 'Media Search'
-  let icon = '🖼️'
+  let icon = <Image className="w-4 h-4" />
 
   if (toolStatus === 'completed') {
     if (mediaType === 'video' && hasVideo) {
       displayName = 'Found video'
-      icon = '🎬'
+      icon = <SquarePlay className="w-4 h-4" />
     } else if (mediaType === 'image' && hasImages && !isMarkdownFormat) {
       displayName = `Found ${imageCount} ${imageCount === 1 ? 'image' : 'images'}`
-      icon = '🖼️'
+      icon = <Image className="w-4 h-4" />
     }
   }
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
         icon={icon}
         displayName={displayName}
@@ -345,4 +346,3 @@ export default function MediaSearchToolRenderer({
     </div>
   )
 }
-

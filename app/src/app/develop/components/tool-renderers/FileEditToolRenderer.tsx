@@ -7,6 +7,7 @@ import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import { completePartialJson } from './json-completion-utils'
+import { FilePen } from 'lucide-react'
 
 /**
  * Extract filename from path
@@ -30,9 +31,9 @@ function getModeVerb(mode: string): string {
 
 /**
  * Count line changes from parsed JSON object
- * 
+ *
  * Extracts additions and deletions from either edits array or content field.
- * 
+ *
  * @param parsed - Parsed JSON object with edits array or content field
  * @returns Object with additions and deletions counts
  */
@@ -60,7 +61,7 @@ function countLinesFromParsed(parsed: any): { additions: number; deletions: numb
 
 /**
  * Estimate line counts from partial input streaming
- * 
+ *
  * Attempts to complete partial JSON by adding closing characters, then parses normally.
  * This allows us to extract values from incomplete JSON strings as they stream in.
  */
@@ -96,7 +97,7 @@ export function estimateLineCountsFromPartial(partialInput: string): { additions
 
 /**
  * Custom renderer for fileEdit tool
- * 
+ *
  * Shows mode-aware message: "Created {filename}", "Edit {filename} (+5 -3)", etc.
  * Shows streaming line counts as deltas arrive.
  * Clickable to show modal with full diff and metadata.
@@ -127,14 +128,14 @@ export default function FileEditToolRenderer({
   let warning = ''
   let isMarkdownFormat = false
   let markdownContent = ''
-  
+
   // For streaming: estimate line counts from partial input if tool is running
   let streamingChanges: { additions: number; deletions: number } | null = null
   let streamingPath: string | null = null
   let streamingMode: string | null = null
   if (toolStatus === 'running' && partialInput) {
     const currentEstimate = estimateLineCountsFromPartial(partialInput)
-    
+
     // If parsing succeeded, update the last successful estimate
     if (currentEstimate) {
       lastSuccessfulEstimateRef.current = currentEstimate
@@ -143,20 +144,20 @@ export default function FileEditToolRenderer({
       // If parsing failed, use the last successful estimate (if available)
       streamingChanges = lastSuccessfulEstimateRef.current
     }
-    
+
     // Try to extract path using regex (works on incomplete JSON)
     const pathMatch = partialInput.match(/"path"\s*:\s*"([^"]+)"/)
     if (pathMatch) {
       streamingPath = pathMatch[1]
     }
-    
+
     // Try to extract mode using regex (works on incomplete JSON)
     const modeMatch = partialInput.match(/"mode"\s*:\s*"(edit|create|rewrite|delete)"/)
     if (modeMatch) {
       streamingMode = modeMatch[1]
     }
   }
-  
+
   // Reset last successful estimate when tool completes
   useEffect(() => {
     if (toolStatus !== 'running') {
@@ -179,7 +180,7 @@ export default function FileEditToolRenderer({
       } else if (typeof result === 'object') {
         parsedResult = result
       }
-      
+
       if (parsedResult) {
         filePath = parsedResult.path || ''
         filename = getFilename(filePath)
@@ -201,7 +202,7 @@ export default function FileEditToolRenderer({
     filename = getFilename(filePath)
     mode = inputObj.mode || 'edit'
   }
-  
+
   // Use streaming path/mode if available and no final values yet
   if (!filePath && streamingPath) {
     filePath = streamingPath
@@ -215,7 +216,7 @@ export default function FileEditToolRenderer({
 
   // Build compact display message - format: "Edit: filename +5 -5"
   let displayMessage = `${verb}: ${filename}`
-  
+
   // Use streaming changes if available (tool is running), otherwise use final changes
   const displayChanges = streamingChanges || changes
   if (displayChanges) {
@@ -230,7 +231,7 @@ export default function FileEditToolRenderer({
 
   // Has details if we have parsed result data (diff, metadata, etc.) OR markdown content
   const hasDetails = Boolean(
-    (parsedResult && (diff || changes || error || warning || filePath)) || 
+    (parsedResult && (diff || changes || error || warning || filePath)) ||
     isMarkdownFormat
   )
 
@@ -282,9 +283,9 @@ export default function FileEditToolRenderer({
 
           {/* Warning */}
           {warning && (
-            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-              <div className="text-sm font-bold text-yellow-800 mb-1">Warning</div>
-              <div className="text-sm text-yellow-700 whitespace-pre-wrap">{warning}</div>
+            <div className="mb-4 p-3 border rounded-md">
+              <div className="text-sm font-bold mb-1">Warning</div>
+              <div className="text-sm whitespace-pre-wrap">{warning}</div>
             </div>
           )}
 
@@ -305,9 +306,9 @@ export default function FileEditToolRenderer({
   )
 
   return (
-    <div className="-my-2">
+    <div>
       <ToolHeader
-        icon="📝"
+        icon={<FilePen className="w-4 h-4" />}
         displayName={displayMessage}
         toolStatus={toolStatus}
         hasDetails={hasDetails}
@@ -317,4 +318,3 @@ export default function FileEditToolRenderer({
     </div>
   )
 }
-
