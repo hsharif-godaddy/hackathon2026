@@ -237,6 +237,9 @@ importers:
 
   app:
     dependencies:
+      "@airo-ux/loader":
+        specifier: ^2.1.0
+        version: 2.1.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.2)
       "@aws-sdk/client-secrets-manager":
         specifier: 3.679.0
         version: 3.679.0
@@ -473,7 +476,7 @@ importers:
         version: 1.13.0(@opentelemetry/api-logs@0.57.2)(@opentelemetry/api@1.9.0)(@opentelemetry/instrumentation@0.57.2(@opentelemetry/api@1.9.0))(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.57.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))
       "@wsb/image-manager-loader":
         specifier: ^1.3.0
-        version: 1.3.0(@ux/button@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/modal@2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/search@2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/spinner@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@5.25.1(react@19.1.0)(typescript@5.9.2))(react@19.1.0)
+        version: 1.3.0(@ux/button@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/modal@2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/search@2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/spinner@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.2))(react@19.1.0)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -957,6 +960,16 @@ packages:
         integrity: sha512-6o7Y2SeO9vFKB8lArHXehNuusnpddKPk7xqL7T2/b+OvXMRIXUO1rR4wcv1hAFUAT9avGZshty3Wlua/XA7TvA==,
       }
     engines: { node: ">=18" }
+
+  "@airo-ux/loader@2.1.0":
+    resolution:
+      {
+        integrity: sha512-K8XBXL9/UgyvXsNC+5phXTdCZeL7uelNVxhAA5vIk3pAAXJFVV6ioSPdgrJCKKTs1yaxwJP91U5LbLn6/EKW8Q==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo-ux/loader/-/@airo-ux/loader-2.1.0.tgz,
+      }
+    peerDependencies:
+      react: 19.1.0
+      react-dom: 19.1.0
 
   "@alloc/quick-lru@5.2.0":
     resolution:
@@ -2328,55 +2341,44 @@ packages:
         tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@floating-ui/utils/-/floating-ui-utils-0.2.10.tgz,
       }
 
-  "@formatjs/ecma402-abstract@1.11.4":
+  "@formatjs/ecma402-abstract@2.3.6":
     resolution:
       {
-        integrity: sha512-EBikYFp2JCdIfGEb5G9dyCkTGDmC57KSHhRQOC3aYxoPWVZvfWCDjZwkGYHN7Lis/fmuWl906bnNTJifDQ3sXw==,
+        integrity: sha512-HJnTFeRM2kVFVr5gr5kH1XP6K0JcJtE7Lzvtr3FS/so5f1kpsqqqxy5JF+FRaO6H2qmcMfAUIox7AJteieRtVw==,
       }
 
-  "@formatjs/fast-memoize@1.2.1":
+  "@formatjs/fast-memoize@2.2.7":
     resolution:
       {
-        integrity: sha512-Rg0e76nomkz3vF9IPlKeV+Qynok0r7YZjL6syLz4/urSg0IbjPZCB/iYUMNsYA643gh4mgrX3T7KEIFIxJBQeg==,
+        integrity: sha512-Yabmi9nSvyOMrlSeGGWDiH7rf3a7sIwplbvo/dlz9WCIjzIQAfy1RMf4S0X3yG724n5Ghu2GmEl5NJIV6O9sZQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@formatjs/fast-memoize/-/formatjs-fast-memoize-2.2.7.tgz,
       }
 
-  "@formatjs/icu-messageformat-parser@2.1.0":
+  "@formatjs/icu-messageformat-parser@2.11.4":
     resolution:
       {
-        integrity: sha512-Qxv/lmCN6hKpBSss2uQ8IROVnta2r9jd3ymUEIjm2UyIkUCHVcbUVRGL/KS/wv7876edvsPe+hjHVJ4z8YuVaw==,
+        integrity: sha512-7kR78cRrPNB4fjGFZg3Rmj5aah8rQj9KPzuLsmcSn4ipLXQvC04keycTI1F7kJYDwIXtT2+7IDEto842CfZBtw==,
       }
 
-  "@formatjs/icu-skeleton-parser@1.3.6":
+  "@formatjs/icu-skeleton-parser@1.8.16":
     resolution:
       {
-        integrity: sha512-I96mOxvml/YLrwU2Txnd4klA7V8fRhb6JG/4hm3VMNmeJo1F03IpV2L3wWt7EweqNLES59SZ4d6hVOPCSf80Bg==,
+        integrity: sha512-H13E9Xl+PxBd8D5/6TVUluSpxGNvFSlN/b3coUp0e0JpuWXXnQDiavIpY3NnvSp4xhEMoXyyBvVfdFX8jglOHQ==,
       }
 
-  "@formatjs/intl-displaynames@5.4.3":
+  "@formatjs/intl-localematcher@0.6.2":
     resolution:
       {
-        integrity: sha512-4r12A3mS5dp5hnSaQCWBuBNfi9Amgx2dzhU4lTFfhSxgb5DOAiAbMpg6+7gpWZgl4ahsj3l2r/iHIjdmdXOE2Q==,
+        integrity: sha512-XOMO2Hupl0wdd172Y06h6kLpBz6Dv+J4okPLl4LPtzbr8f66WbIoy4ev98EBuZ6ZK4h5ydTN6XneT4QVpD7cdA==,
       }
 
-  "@formatjs/intl-listformat@6.5.3":
+  "@formatjs/intl@3.1.8":
     resolution:
       {
-        integrity: sha512-ozpz515F/+3CU+HnLi5DYPsLa6JoCfBggBSSg/8nOB5LYSFW9+ZgNQJxJ8tdhKYeODT+4qVHX27EeJLoxLGLNg==,
-      }
-
-  "@formatjs/intl-localematcher@0.2.25":
-    resolution:
-      {
-        integrity: sha512-YmLcX70BxoSopLFdLr1Ds99NdlTI2oWoLbaUW2M406lxOIPzE1KQhRz2fPUkq34xVZQaihCoU29h0KK7An3bhA==,
-      }
-
-  "@formatjs/intl@2.2.1":
-    resolution:
-      {
-        integrity: sha512-vgvyUOOrzqVaOFYzTf2d3+ToSkH2JpR7x/4U1RyoHQLmvEaTQvXJ7A2qm1Iy3brGNXC/+/7bUlc3lpH+h/LOJA==,
+        integrity: sha512-LWXgwI5zTMatvR8w8kCNh/priDTOF/ZssokMBHJ7ZWXFoYLVOYo0EJERD9Eajv+xsfQO1QkuAt77KWQ1OI4mOQ==,
       }
     peerDependencies:
-      typescript: ^4.5
+      typescript: ^5.6.0
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -6225,13 +6227,6 @@ packages:
         integrity: sha512-1Kc4oAGzAl7uqUStZCDvaLFqZrW9qWSjXOmBfdgyBP5La7Us6Mg4GBvRlSoaZMhQF/zSj1C8CtKMBkoiT8eL8w==,
       }
 
-  "@types/prop-types@15.7.15":
-    resolution:
-      {
-        integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==,
-        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@types/prop-types/-/types-prop-types-15.7.15.tgz,
-      }
-
   "@types/qs@6.14.0":
     resolution:
       {
@@ -6264,12 +6259,6 @@ packages:
     resolution:
       {
         integrity: sha512-uLGJ87j6Sz8UaBAooU0T6lWJ0dBmjZgN1PZTrj05TNql2/XpC6+4HhMT5syIdFUUt+FASfCeLLv4kBygNU+8qA==,
-      }
-
-  "@types/react@18.3.26":
-    resolution:
-      {
-        integrity: sha512-RFA/bURkcKzx/X9oumPG9Vp3D3JUgus/d0b67KB0t5S/raciymilkOa66olh78MUI92QLbEJevO7rvqU/kjwKA==,
       }
 
   "@types/react@19.1.13":
@@ -6704,6 +6693,18 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  "@ux/button@2400.18.1":
+    resolution:
+      {
+        integrity: sha512-BI0vMzjLFvN61MUuOiKvBxYn3QyAaG5acqozsa2zJt7vIhp+nykd8pHGjAzLOPmMcG/v372DS1JdofroR6Fg8A==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/button/-/@ux/button-2400.18.1.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
   "@ux/button@2500.3.4":
     resolution:
       {
@@ -6904,6 +6905,18 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  "@ux/icon@2400.18.1":
+    resolution:
+      {
+        integrity: sha512-kpWGctYvS3/1wr7qKHlIuGh9TpUJ7kk1h5qwuucTZPsU6m6gQs1nRdW1cXDZ5LA05cvIVR0pg2wm2G06bmFExA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/icon/-/@ux/icon-2400.18.1.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
   "@ux/icon@2500.3.4":
     resolution:
       {
@@ -6951,6 +6964,14 @@ packages:
       prop-types: ^15.7.2
       react: 19.1.0
       react-dom: 19.1.0
+
+  "@ux/intents@2400.11.0":
+    resolution:
+      {
+        integrity: sha512-Z7h1vxJD5irqFXTT6yV5AY0sHJ5vhk9OYWaX3X3kd6h5WRlrdRfkq7P4UQ/UDAhG0SN7FOaGXNTUzqCvQED/UA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/intents/-/@ux/intents-2400.11.0.tgz,
+      }
+    engines: { node: ">= 18" }
 
   "@ux/intents@2500.3.2":
     resolution:
@@ -7130,6 +7151,14 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  "@ux/short-css-vars@2400.11.0":
+    resolution:
+      {
+        integrity: sha512-1Noe4wa4Ex2ssZuyaMyt6FXsdsColJ1RDszFekXhrgykgiOIa8yGDL0svsxU2zxNiccG5YjSGkrTZk2r6BcKBg==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/short-css-vars/-/@ux/short-css-vars-2400.11.0.tgz,
+      }
+    engines: { node: ">= 18" }
+
   "@ux/short-css-vars@2500.3.2":
     resolution:
       {
@@ -7300,6 +7329,18 @@ packages:
       {
         integrity: sha512-ej2ODh1LKVUyetBI2coN+NG9pElv5K8YzivuLZdcq8VFdkON9qJkYZXfKSJIsp31wgdgShWaGdW4FA10OAt0Gw==,
         tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text-lockup/-/@ux/text-lockup-2500.5.1.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
+  "@ux/text@2400.18.1":
+    resolution:
+      {
+        integrity: sha512-OZpc5uo898ApshKD3CuCA4fGif3zwJwrL7tCkXBXFQu/CMk0eqgEFuWLJm2gjnGuxC7RygCjArV5SdOf3xQlrA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/text/-/@ux/text-2400.18.1.tgz,
       }
     engines: { node: ">= 18" }
     peerDependencies:
@@ -11254,10 +11295,10 @@ packages:
       }
     engines: { node: ">= 0.4" }
 
-  intl-messageformat@9.13.0:
+  intl-messageformat@10.7.18:
     resolution:
       {
-        integrity: sha512-7sGC7QnSQGa5LZP7bXLDhVDtQOeKGeBFGHF2Y8LVBwYZoQZCgWeKoPGTa5GMG8g/TzDgeXuYJQis7Ggiw2xTOw==,
+        integrity: sha512-m3Ofv/X/tV8Y3tHXLohcuVuhWKo7BBq62cqY15etqmLxg2DZ34AGGgQDeR+SCta2+zICb1NX83af0GJmbQ1++g==,
       }
 
   intl@1.2.5:
@@ -14492,14 +14533,14 @@ packages:
     peerDependencies:
       react: 19.1.0
 
-  react-intl@5.25.1:
+  react-intl@7.1.14:
     resolution:
       {
-        integrity: sha512-pkjdQDvpJROoXLMltkP/5mZb0/XqrqLoPGKUCfbdkP8m6U9xbK40K51Wu+a4aQqTEvEK5lHBk0fWzUV72SJ3Hg==,
+        integrity: sha512-VE/0Wi/lHJlBC7APQpCzLUdIt3GB5B0GZrRW8Q+ACbkHI4j+Wwgg9J1TniN6zmLHmPH5gxXcMy+fkSPfw5p1WQ==,
       }
     peerDependencies:
       react: 19.1.0
-      typescript: ^4.5
+      typescript: ^5.6.0
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -17143,6 +17184,19 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
+  "@airo-ux/loader@2.1.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.2)":
+    dependencies:
+      "@ux/box": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/button": 2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/intents": 2400.11.0
+      "@ux/text-lockup": 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+      react-intl: 7.1.14(react@19.1.0)(typescript@5.9.2)
+    transitivePeerDependencies:
+      - prop-types
+      - typescript
+
   "@alloc/quick-lru@5.2.0": {}
 
   "@ampproject/remapping@2.3.0":
@@ -18685,50 +18739,38 @@ snapshots:
 
   "@floating-ui/utils@0.2.10": {}
 
-  "@formatjs/ecma402-abstract@1.11.4":
+  "@formatjs/ecma402-abstract@2.3.6":
     dependencies:
-      "@formatjs/intl-localematcher": 0.2.25
+      "@formatjs/fast-memoize": 2.2.7
+      "@formatjs/intl-localematcher": 0.6.2
+      decimal.js: 10.6.0
       tslib: 2.8.1
 
-  "@formatjs/fast-memoize@1.2.1":
-    dependencies:
-      tslib: 2.8.1
-
-  "@formatjs/icu-messageformat-parser@2.1.0":
-    dependencies:
-      "@formatjs/ecma402-abstract": 1.11.4
-      "@formatjs/icu-skeleton-parser": 1.3.6
-      tslib: 2.8.1
-
-  "@formatjs/icu-skeleton-parser@1.3.6":
-    dependencies:
-      "@formatjs/ecma402-abstract": 1.11.4
-      tslib: 2.8.1
-
-  "@formatjs/intl-displaynames@5.4.3":
-    dependencies:
-      "@formatjs/ecma402-abstract": 1.11.4
-      "@formatjs/intl-localematcher": 0.2.25
-      tslib: 2.8.1
-
-  "@formatjs/intl-listformat@6.5.3":
-    dependencies:
-      "@formatjs/ecma402-abstract": 1.11.4
-      "@formatjs/intl-localematcher": 0.2.25
-      tslib: 2.8.1
-
-  "@formatjs/intl-localematcher@0.2.25":
+  "@formatjs/fast-memoize@2.2.7":
     dependencies:
       tslib: 2.8.1
 
-  "@formatjs/intl@2.2.1(typescript@5.9.2)":
+  "@formatjs/icu-messageformat-parser@2.11.4":
     dependencies:
-      "@formatjs/ecma402-abstract": 1.11.4
-      "@formatjs/fast-memoize": 1.2.1
-      "@formatjs/icu-messageformat-parser": 2.1.0
-      "@formatjs/intl-displaynames": 5.4.3
-      "@formatjs/intl-listformat": 6.5.3
-      intl-messageformat: 9.13.0
+      "@formatjs/ecma402-abstract": 2.3.6
+      "@formatjs/icu-skeleton-parser": 1.8.16
+      tslib: 2.8.1
+
+  "@formatjs/icu-skeleton-parser@1.8.16":
+    dependencies:
+      "@formatjs/ecma402-abstract": 2.3.6
+      tslib: 2.8.1
+
+  "@formatjs/intl-localematcher@0.6.2":
+    dependencies:
+      tslib: 2.8.1
+
+  "@formatjs/intl@3.1.8(typescript@5.9.2)":
+    dependencies:
+      "@formatjs/ecma402-abstract": 2.3.6
+      "@formatjs/fast-memoize": 2.2.7
+      "@formatjs/icu-messageformat-parser": 2.11.4
+      intl-messageformat: 10.7.18
       tslib: 2.8.1
     optionalDependencies:
       typescript: 5.9.2
@@ -21643,11 +21685,6 @@ snapshots:
     dependencies:
       "@types/unist": 3.0.3
 
-  "@types/hoist-non-react-statics@3.3.7(@types/react@18.3.26)":
-    dependencies:
-      "@types/react": 18.3.26
-      hoist-non-react-statics: 3.3.2
-
   "@types/hoist-non-react-statics@3.3.7(@types/react@19.1.13)":
     dependencies:
       "@types/react": 19.1.13
@@ -21740,8 +21777,6 @@ snapshots:
       pg-protocol: 1.10.3
       pg-types: 2.2.0
 
-  "@types/prop-types@15.7.15": {}
-
   "@types/qs@6.14.0": {}
 
   "@types/range-parser@1.2.7": {}
@@ -21760,11 +21795,6 @@ snapshots:
   "@types/react-syntax-highlighter@15.5.13":
     dependencies:
       "@types/react": 19.1.13
-
-  "@types/react@18.3.26":
-    dependencies:
-      "@types/prop-types": 15.7.15
-      csstype: 3.1.3
 
   "@types/react@19.1.13":
     dependencies:
@@ -22009,6 +22039,16 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
+  "@ux/button@2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/icon": 2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@ux/intents": 2400.11.0
+      "@ux/text": 2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
   "@ux/button@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
       "@ux/icon": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -22184,6 +22224,12 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
+  "@ux/icon@2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
   "@ux/icon@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
       prop-types: 15.8.1
@@ -22207,6 +22253,13 @@ snapshots:
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
+
+  "@ux/intents@2400.11.0":
+    dependencies:
+      "@ux/short-css-vars": 2400.11.0
+      camelcase: 6.3.0
+      obj-dot-props: 1.1.0
+      string-hash: 1.1.3
 
   "@ux/intents@2500.3.2":
     dependencies:
@@ -22386,6 +22439,10 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
+  "@ux/short-css-vars@2400.11.0":
+    dependencies:
+      string-hash: 1.1.3
+
   "@ux/short-css-vars@2500.3.2":
     dependencies:
       string-hash: 1.1.3
@@ -22521,6 +22578,14 @@ snapshots:
       "@ux/icon": 2500.5.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       "@ux/intents": 2500.3.2
       "@ux/text": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
+  "@ux/text@2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/intents": 2400.11.0
       classnames: 2.5.1
       prop-types: 15.8.1
       react: 19.1.0
@@ -22736,7 +22801,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  "@wsb/image-manager-loader@1.3.0(@ux/button@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/modal@2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/search@2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/spinner@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@5.25.1(react@19.1.0)(typescript@5.9.2))(react@19.1.0)":
+  "@wsb/image-manager-loader@1.3.0(@ux/button@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/modal@2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/search@2500.5.1(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/spinner@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.2))(react@19.1.0)":
     dependencies:
       "@ux/button": 2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       "@ux/modal": 2500.3.5(@types/react@19.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -22758,7 +22823,7 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
       react-dropzone: 5.1.1(react@19.1.0)
       react-img-carousel: 2.4.1(react@19.1.0)
-      react-intl: 5.25.1(react@19.1.0)(typescript@5.9.2)
+      react-intl: 7.1.14(react@19.1.0)(typescript@5.9.2)
       react-redux: 7.2.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react-transition-group: 4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       redux: 4.2.1
@@ -25303,11 +25368,11 @@ snapshots:
       hasown: 2.0.2
       side-channel: 1.1.0
 
-  intl-messageformat@9.13.0:
+  intl-messageformat@10.7.18:
     dependencies:
-      "@formatjs/ecma402-abstract": 1.11.4
-      "@formatjs/fast-memoize": 1.2.1
-      "@formatjs/icu-messageformat-parser": 2.1.0
+      "@formatjs/ecma402-abstract": 2.3.6
+      "@formatjs/fast-memoize": 2.2.7
+      "@formatjs/icu-messageformat-parser": 2.11.4
       tslib: 2.8.1
 
   intl@1.2.5: {}
@@ -27587,17 +27652,15 @@ snapshots:
       prop-types: 15.8.1
       react: 19.1.0
 
-  react-intl@5.25.1(react@19.1.0)(typescript@5.9.2):
+  react-intl@7.1.14(react@19.1.0)(typescript@5.9.2):
     dependencies:
-      "@formatjs/ecma402-abstract": 1.11.4
-      "@formatjs/icu-messageformat-parser": 2.1.0
-      "@formatjs/intl": 2.2.1(typescript@5.9.2)
-      "@formatjs/intl-displaynames": 5.4.3
-      "@formatjs/intl-listformat": 6.5.3
-      "@types/hoist-non-react-statics": 3.3.7(@types/react@18.3.26)
-      "@types/react": 18.3.26
+      "@formatjs/ecma402-abstract": 2.3.6
+      "@formatjs/icu-messageformat-parser": 2.11.4
+      "@formatjs/intl": 3.1.8(typescript@5.9.2)
+      "@types/hoist-non-react-statics": 3.3.7(@types/react@19.1.13)
+      "@types/react": 19.1.13
       hoist-non-react-statics: 3.3.2
-      intl-messageformat: 9.13.0
+      intl-messageformat: 10.7.18
       react: 19.1.0
       tslib: 2.8.1
     optionalDependencies:

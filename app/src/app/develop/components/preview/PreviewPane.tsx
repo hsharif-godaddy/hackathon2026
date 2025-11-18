@@ -2,19 +2,21 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import clsx from 'clsx'
-import { ClockIcon } from '@heroicons/react/24/outline'
+import Box from '@ux/box'
+import Button from '@ux/button'
+import text from '@ux/text'
+import { Loader } from '@airo-ux/loader'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { postMessageToIframe } from '@/utils/postMessage'
-import PreviewError from './PreviewError'
-import Button from '@ux/button'
 import { logger } from '@/lib/request-context'
+import { ViewMode, PreviewViewMode } from '../types'
+import PreviewError from './PreviewError'
 import PreviewHeader from './PreviewHeader'
 import PreviewCode from './PreviewCode'
-import { ViewMode, PreviewViewMode } from '../types'
 
 // Timing constants for iframe lifecycle management
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
@@ -250,28 +252,32 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
   // Loading state while polling
   if (!serverState || (isPollingServer(appId) && !serverState.isReady)) {
     return (
-      <div className="h-full flex flex-col items-center justify-center">
-        <ClockIcon className="w-8 h-8 animate-spin mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Starting Server</h3>
-        <p className="text-sm mb-2">
-          {serverState?.status === 'pending'
-            ? 'Waiting for server to start...'
-            : serverState?.status === 'running'
-            ? serverState.url && !serverState.healthCheckPassed
-              ? 'Server is starting, waiting for it to accept connections...'
-              : 'Server is running, verifying readiness...'
-            : 'Checking server status...'}
-        </p>
-        <p className="text-xs text-center max-w-md">
-          This usually takes 30-60 seconds for the first load.
-        </p>
-        {serverState?.url && !serverState.healthCheckPassed && (
-          <p className="text-xs text-center max-w-md mt-2 text-gray-500">
-            Preview URL: {serverState.url}
-          </p>
-        )}
-      </div>
-    )
+      <Box
+        className="h-full"
+        blockAlignChildren="center"
+        inlineAlignChildren="center"
+        gap="md"
+      >
+        <Loader
+          title="Starting Server"
+          description={
+            serverState?.status === "pending"
+              ? "Waiting for server to start..."
+              : serverState?.status === "running"
+                ? serverState.url && !serverState.healthCheckPassed
+                  ? "Server is starting, waiting for it to accept connections..."
+                  : "Server is running, verifying readiness..."
+                : "Checking server status..."
+          }
+        />
+        <Box inlineAlignChildren="center" gap="sm">
+          <text.p size={-1} emphasis="passive">This usually takes 30-60 seconds for the first load.</text.p>
+          {serverState?.url && !serverState.healthCheckPassed && (
+            <text.p size={-1} emphasis="passive">Preview URL: {serverState.url}</text.p>
+          )}
+        </Box>
+      </Box>
+    );
   }
 
   // Error state when server failed
@@ -367,9 +373,10 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
   // Fallback loading state
   return (
     <div className="h-full flex flex-col items-center justify-center">
-      <ClockIcon className="w-8 h-8 animate-spin mb-4" />
-      <h3 className="text-lg font-semibold mb-2">Loading Preview</h3>
-      <p className="text-sm">Preparing your application preview...</p>
+      <Loader
+        title="Loading Preview"
+        description="Preparing your application preview..."
+      />
     </div>
   )
 }

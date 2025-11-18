@@ -13,16 +13,16 @@ fi
 # Define allowed licenses globally
 ALLOWED_LICENSES="MIT;Apache-2.0;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0;Unlicense"
 
-# Dynamically detect and exclude internal packages (@godaddy/*, @ux/*, gd-*)
+# Dynamically detect and exclude internal packages (@airo-ux/*, @godaddy/*, @ux/*, gd-*)
 echo "🔍 Detecting internal packages to exclude..."
 
 # Get the list of dependencies as JSON using pnpm
 DEP_JSON=$(pnpm list --depth=0 --json 2>/dev/null)
 
-# Extract internal packages (@godaddy/*, @ux/*, gd-*) and their versions using jq
+# Extract internal packages (@airo-ux/*, @godaddy/*, @ux/*, gd-*) and their versions using jq
 # Include both dependencies and devDependencies
-INTERNAL_DEPS=$(echo "$DEP_JSON" | jq -r '.[0].dependencies // {} | to_entries[] | select(.key | test("^@godaddy|^@ux|^gd-")) | "\(.key)@\(.value.version)"')
-INTERNAL_DEV_DEPS=$(echo "$DEP_JSON" | jq -r '.[0].devDependencies // {} | to_entries[] | select(.key | test("^@godaddy|^@ux|^gd-")) | "\(.key)@\(.value.version)"')
+INTERNAL_DEPS=$(echo "$DEP_JSON" | jq -r '.[0].dependencies // {} | to_entries[] | select(.key | test("^@airo-ux|^@godaddy|^@ux|^gd-")) | "\(.key)@\(.value.version)"')
+INTERNAL_DEV_DEPS=$(echo "$DEP_JSON" | jq -r '.[0].devDependencies // {} | to_entries[] | select(.key | test("^@airo-ux|^@godaddy|^@ux|^gd-")) | "\(.key)@\(.value.version)"')
 
 # Combine dependencies and devDependencies
 INTERNAL_LIST=$(echo -e "$INTERNAL_DEPS\n$INTERNAL_DEV_DEPS" | grep -v '^$' || true)
