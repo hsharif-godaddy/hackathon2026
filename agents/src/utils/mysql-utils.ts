@@ -61,6 +61,58 @@ export interface QueryResult {
  */
 export class MySQLUtils {
   /**
+   * Cache of connection pools by credential key
+   */
+  private pools: Map<string, mysql.Pool> = new Map();
+
+  /**
+   * Generate a unique key for caching connection pools
+   *
+   * @param credentials - Database credentials
+   * @returns Unique key string
+   */
+  private getPoolKey(credentials: DatabaseCredentials): string {
+    return `${credentials.host}:${credentials.port}:${credentials.database}:${credentials.user}`;
+  }
+
+  /**
+   * Get or create a connection pool for the given credentials
+   *
+   * @param credentials - Database credentials
+   * @returns MySQL connection pool
+   */
+  private getPool(credentials: DatabaseCredentials): mysql.Pool {
+    const key = this.getPoolKey(credentials);
+
+    if (!this.pools.has(key)) {
+      logger.info('MySQL: Creating new connection pool', {
+        component: 'MySQLUtils',
+        database: credentials.database,
+        host: credentials.host,
+        port: credentials.port,
+      });
+
+      const pool = mysql.createPool({
+        host: credentials.host,
+        port: credentials.port,
+        user: credentials.user,
+        password: credentials.password,
+        database: credentials.database,
+        ssl: {
+          rejectUnauthorized: false,
+        },
+        connectionLimit: 10,
+        waitForConnections: true,
+        queueLimit: 0,
+      });
+
+      this.pools.set(key, pool);
+    }
+
+    return this.pools.get(key)!;
+  }
+
+  /**
    * Load MySQL credentials from an app's config.json file
    *
    * @param app - The app object containing the path to config.json
@@ -158,28 +210,18 @@ export class MySQLUtils {
   }
 
   /**
-   * Create a MySQL connection with provided credentials
+   * Get a MySQL connection from the pool
    *
    * @param credentials - Database credentials
-   * @returns MySQL connection
+   * @returns MySQL connection from pool
    * @throws Error if connection fails
    */
-  async createConnection(credentials: DatabaseCredentials): Promise<mysql.Connection> {
+  async createConnection(credentials: DatabaseCredentials): Promise<mysql.PoolConnection> {
     try {
-      const connection = await mysql.createConnection({
-        host: credentials.host,
-        port: credentials.port,
-        user: credentials.user,
-        password: credentials.password,
-        database: credentials.database,
-        ssl: {
-          rejectUnauthorized: false,
-        },
-      });
+      const pool = this.getPool(credentials);
+      const connection = await pool.getConnection();
 
-      await connection.ping();
-
-      logger.debug('MySQL: Connection established', {
+      logger.debug('MySQL: Connection obtained from pool', {
         component: 'MySQLUtils',
         database: credentials.database,
         host: credentials.host,
@@ -211,7 +253,7 @@ export class MySQLUtils {
    */
   async withConnection<T>(
     credentials: DatabaseCredentials,
-    operation: (connection: mysql.Connection) => Promise<T>,
+    operation: (connection: mysql.PoolConnection) => Promise<T>,
     operationName: string
   ): Promise<T> {
     let connection;
@@ -229,15 +271,15 @@ export class MySQLUtils {
     } finally {
       if (connection) {
         try {
-          await connection.end();
-          logger.debug('MySQL: Connection closed', {
+          connection.release();
+          logger.debug('MySQL: Connection released to pool', {
             component: 'MySQLUtils',
             database: credentials.database,
           });
-        } catch (closeError) {
-          logger.warn('MySQL: Failed to close connection', {
+        } catch (releaseError) {
+          logger.warn('MySQL: Failed to release connection', {
             component: 'MySQLUtils',
-            error: closeError instanceof Error ? closeError.message : String(closeError),
+            error: releaseError instanceof Error ? releaseError.message : String(releaseError),
           });
         }
       }

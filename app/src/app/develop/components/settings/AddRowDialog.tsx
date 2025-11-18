@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Modal from '@ux/modal';
 import Button from '@ux/button';
 import TextInput from '@ux/text-input';
+import SelectInput from '@ux/select-input';
 
 interface AddRowDialogProps {
   isOpen: boolean;
@@ -62,13 +63,19 @@ export function AddRowDialog({
           } else if (col.default !== null) {
             // Let database use default
             return;
+          } else {
+            // Required field with no value - this shouldn't happen if form validation works
+            // but we'll skip it and let the backend validation catch it
+            return;
           }
-          return;
         }
 
         // Type conversion based on MySQL type
         const type = col.type.toLowerCase();
-        if (type.includes('int') || type.includes('decimal') || type.includes('float') || type.includes('double')) {
+        // Check for enum/set first before checking for 'int' (to avoid matching 'intermediate' in enum values)
+        if (type.startsWith('enum(') || type.startsWith('set(')) {
+          data[col.name] = value;
+        } else if (type.includes('int') || type.includes('decimal') || type.includes('float') || type.includes('double')) {
           data[col.name] = Number(value);
         } else if (type.includes('bool') || type.includes('tinyint(1)')) {
           data[col.name] = value === 'true' || value === '1';
@@ -131,6 +138,63 @@ export function AddRowDialog({
     return isTimestampType && hasAutoTimestamp;
   };
 
+  /**
+   * Parse enum values from MySQL enum type definition
+   * Example: "enum('easy','medium','hard')" returns ['easy', 'medium', 'hard']
+   *
+   * @param type - MySQL column type string
+   * @returns Array of enum values or null if not an enum type
+   */
+  const parseEnumValues = (type: string): string[] | null => {
+    const match = type.match(/^enum\((.*)\)$/i);
+    if (!match) return null;
+
+    // Parse the enum values, handling escaped quotes
+    const valuesString = match[1];
+    const values: string[] = [];
+    let currentValue = '';
+    let inQuote = false;
+    let escapeNext = false;
+
+    for (let i = 0; i < valuesString.length; i++) {
+      const char = valuesString[i];
+
+      if (escapeNext) {
+        currentValue += char;
+        escapeNext = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escapeNext = true;
+        continue;
+      }
+
+      if (char === "'" && !escapeNext) {
+        inQuote = !inQuote;
+        continue;
+      }
+
+      if (char === ',' && !inQuote) {
+        if (currentValue) {
+          values.push(currentValue);
+          currentValue = '';
+        }
+        continue;
+      }
+
+      if (inQuote) {
+        currentValue += char;
+      }
+    }
+
+    if (currentValue) {
+      values.push(currentValue);
+    }
+
+    return values;
+  };
+
   const renderInput = (col: {
     name: string;
     type: string;
@@ -149,6 +213,36 @@ export function AddRowDialog({
     }
 
     const type = col.type.toLowerCase();
+    const enumValues = parseEnumValues(col.type);
+    const isRequired = !col.nullable && col.default === null && col.extra !== 'auto_increment';
+    const labelText = `${col.name}${col.key === 'PRI' ? ' (PK)' : ''}`;
+    const helpText = `${col.type}${col.nullable ? ' (nullable)' : ''}${col.default ? ` (default: ${col.default})` : ''}`;
+
+    // Render SelectInput dropdown for enum fields
+    if (enumValues) {
+      return (
+        <SelectInput
+          key={col.name}
+          id={`add-row-${col.name}`}
+          name={col.name}
+          label={labelText}
+          value={formData[col.name] || ''}
+          onChange={(value) => handleChange(col.name, value)}
+          required={isRequired}
+          helpMessage={helpText}
+          stretch
+        >
+          <option value=""></option>
+          {col.nullable && <option value="null">NULL</option>}
+          {enumValues.map((enumValue) => (
+            <option key={enumValue} value={enumValue}>
+              {enumValue}
+            </option>
+          ))}
+        </SelectInput>
+      );
+    }
+
     let inputType = 'text';
     let isMultiline = false;
 
@@ -165,25 +259,19 @@ export function AddRowDialog({
       isMultiline = true;
     }
 
-    const isRequired = !col.nullable && col.default === null && col.extra !== 'auto_increment';
-
-    const labelText = `${col.name}${col.key === 'PRI' ? ' (PK)' : ''}`;
-    const helpText = `${col.type}${col.nullable ? ' (nullable)' : ''}${col.default ? ` (default: ${col.default})` : ''}`;
-
     return (
-      <div key={col.name}>
-        <TextInput
-          id={`add-row-${col.name}`}
-          label={labelText}
-          placeholder={col.nullable ? 'NULL' : ''}
-          value={formData[col.name] || ''}
-          onChange={(value) => handleChange(col.name, value)}
-          required={isRequired}
-          helpMessage={helpText}
-          stretch
-          multiline={isMultiline}
-        />
-      </div>
+      <TextInput
+        key={col.name}
+        id={`add-row-${col.name}`}
+        label={labelText}
+        placeholder={col.nullable ? 'NULL' : ''}
+        value={formData[col.name] || ''}
+        onChange={(value) => handleChange(col.name, value)}
+        required={isRequired}
+        helpMessage={helpText}
+        stretch
+        multiline={isMultiline}
+      />
     );
   };
 
@@ -193,7 +281,7 @@ export function AddRowDialog({
     <Modal
       title={`Add Row to ${tableName}`}
       onClose={onClose}
-      className="max-w-2xl"
+      className="max-w-5xl"
       actions={
         <>
           <Button
@@ -216,11 +304,7 @@ export function AddRowDialog({
         <div className="space-y-4">
           {schema
             .filter(col => !isAutoManagedTimestamp(col))
-            .map(col => (
-              <div key={col.name}>
-                {renderInput(col)}
-              </div>
-            ))}
+            .map(col => renderInput(col))}
         </div>
 
         {error && (

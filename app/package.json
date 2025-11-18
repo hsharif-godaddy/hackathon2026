@@ -94,6 +94,7 @@
     "@ux/modal": "^2500.3.4",
     "@ux/pagination": "^2500.3.2",
     "@ux/radio": "^2500.3.4",
+    "@ux/select-input": "^2500.3.2",
     "@ux/sibling-set": "^2500.3.2",
     "@ux/skeleton": "^2500.3.2",
     "@ux/spinner": "^2500.3.2",

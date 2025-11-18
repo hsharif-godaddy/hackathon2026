@@ -5,16 +5,7 @@
 
 import { PrismaClient, SiteStatus } from '@/generated/prisma';
 import { v4 as uuidv4 } from 'uuid';
-
-// Singleton Prisma client
-let prisma: PrismaClient;
-
-function getPrismaClient(): PrismaClient {
-  if (!prisma) {
-    prisma = new PrismaClient();
-  }
-  return prisma;
-}
+import { getPrismaClient } from '@/lib/prisma';
 
 export interface CreateSiteRequest {
   account_id: string;

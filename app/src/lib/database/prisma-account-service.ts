@@ -6,16 +6,7 @@
 import { PrismaClient, AccountStatus } from '@/generated/prisma';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../request-context';
-
-// Singleton Prisma client
-let prisma: PrismaClient;
-
-function getPrismaClient(): PrismaClient {
-  if (!prisma) {
-    prisma = new PrismaClient();
-  }
-  return prisma;
-}
+import { getPrismaClient } from '@/lib/prisma';
 
 export interface Account {
   id: string;

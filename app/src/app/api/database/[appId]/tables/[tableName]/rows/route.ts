@@ -66,9 +66,10 @@ export const POST = withCustomerAuth(async (
 
 		if (!response.ok) {
 			logger.error(`Agent database/tables/rows POST failed: ${response.status} ${response.statusText}`);
+			const errorData = await response.json().catch(() => ({}));
 			return NextResponse.json(
 				{
-					error: 'Failed to insert row',
+					error: errorData.message || errorData.error || 'Failed to insert row',
 					status: response.status
 				},
 				{ status: response.status }
@@ -153,9 +154,10 @@ export const PUT = withCustomerAuth(async (
 
 		if (!response.ok) {
 			logger.error(`Agent database/tables/rows PUT failed: ${response.status} ${response.statusText}`);
+			const errorData = await response.json().catch(() => ({}));
 			return NextResponse.json(
 				{
-					error: 'Failed to update row',
+					error: errorData.message || errorData.error || 'Failed to update row',
 					status: response.status
 				},
 				{ status: response.status }
@@ -236,9 +238,10 @@ export const DELETE = withCustomerAuth(async (
 
 		if (!response.ok) {
 			logger.error(`Agent database/tables/rows DELETE failed: ${response.status} ${response.statusText}`);
+			const errorData = await response.json().catch(() => ({}));
 			return NextResponse.json(
 				{
-					error: 'Failed to delete row',
+					error: errorData.message || errorData.error || 'Failed to delete row',
 					status: response.status
 				},
 				{ status: response.status }
