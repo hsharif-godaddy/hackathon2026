@@ -1,8 +1,9 @@
 import { createTool, type Tool } from '@airo/ai-lib'
-import { z } from 'zod'
 import { updateCssColorPalette, generatePalette, type ColorPalette } from '../css-color-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { appPlanTool } from '../app-plan-tool.js'
+import { logger } from '../../logging/index.js'
+import { z } from 'zod'
 
 const appRepo = new AppRepository()
 
@@ -26,7 +27,7 @@ function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, nam
 
 /**
  * CSS Color Tool for AI-Lib
- * 
+ *
  * Programmatically updates CSS color variables with intelligent color generation
  * and contrast checking. Much faster than using fileEdit for CSS updates.
  */
@@ -70,33 +71,35 @@ Use this tool instead of fileEdit when updating color schemes!`,
     const paletteName = input.paletteName
     let paletteInput = input as ColorPalette
 
-    // Try to retrieve palette from session state if no primary color provided
-    if (!input.primary) {
-      const sessionId = context?.metadata?.sessionId as string | undefined
-      const stateManager = context?.metadata?.stateManager as any
+    // Try to retrieve palette from session state first (optional)
+    const sessionId = context?.metadata?.sessionId as string | undefined
+    const stateManager = context?.metadata?.stateManager as any
 
-      if (sessionId && stateManager?.getSuggestedPalette) {
-        const suggestedPalette = stateManager.getSuggestedPalette(sessionId, paletteName)
-        
-        if (suggestedPalette) {
-          // Merge suggested palette with any provided overrides
-          paletteInput = {
-            ...suggestedPalette,
-            ...input
-          } as ColorPalette
-          console.log(`[cssColor] Retrieved suggested palette "${paletteName}" from session`)
-        } else {
-          throw new Error(`Palette "${paletteName}" not found in suggested palettes. Please provide primary color or use cssSuggest first.`)
-        }
-      } else {
-        throw new Error('Primary color is required when not using a suggested palette name')
+    if (sessionId && stateManager?.getSuggestedPalette) {
+      const suggestedPalette = stateManager.getSuggestedPalette(sessionId, paletteName)
+      if (suggestedPalette) {
+        logger.info('cssColor.palette.restored', {
+          sessionId,
+          paletteName,
+          primary: suggestedPalette.primary
+        })
+        // Merge suggested palette with any provided overrides
+        paletteInput = {
+          ...suggestedPalette,
+          ...input
+        } as ColorPalette
       }
     }
-    
+
+    // If no suggested palette found, check if we have a primary color to work with
+    if (!paletteInput.primary) {
+      throw new Error('Primary color is required. Please provide primary color or use cssSuggest first to generate palettes.')
+    }
+
     // Generate-only mode: just create the palette without updating CSS
     if (input.generateOnly) {
       const palette = generatePalette(paletteInput)
-      
+
       return {
         success: true,
         message: `Generated palette: ${paletteName}`,
@@ -149,20 +152,28 @@ Use this tool instead of fileEdit when updating color schemes!`,
           scheme: 'light'
         }
       })
+      logger.info('cssColor.palette.saved', {
+        appId,
+        paletteName,
+        primary: result.palette.primary
+      })
     } catch (error) {
       // Log but don't fail if app plan update fails
-      console.warn('Failed to update app plan with color scheme:', error)
+      logger.warn('cssColor.appPlan.update.failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      })
     }
 
     // Format response for agent
     let response = `✅ CSS color palette updated successfully!\n\n`
-    
+
     // Show the 6 most important colors
     response += `**Display Colors:**\n`
     result.palette.displayColors.forEach(function formatColor(color) {
       response += `- ${color.name}: ${color.hex} (${color.role})\n`
     })
-    
+
     response += `\n**All CSS variables updated:**\n`
     response += `- Core colors: Primary, Secondary, Accent, Background, Foreground, Muted, Border\n`
     response += `- Extended colors: Card, Popover, Input, Ring, Destructive\n`
@@ -186,4 +197,3 @@ Use this tool instead of fileEdit when updating color schemes!`,
     }
   }
 )
-
