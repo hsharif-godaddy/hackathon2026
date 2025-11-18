@@ -11,6 +11,9 @@ export * from './delegate-tool.js'
 export * from './handoff-helpers.js'
 export * from './handoff-state-manager.js'
 
+// Export background delegate tool
+export * from './background-delegate-tool.js'
+
 // Convenience object for easy tool access
 import { createWebSearchTool, createFileOperationTools } from './built-in/index.js'
 

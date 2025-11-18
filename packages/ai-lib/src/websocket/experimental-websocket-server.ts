@@ -66,6 +66,9 @@ export interface WebSocketConfig {
   /** Optional function to get active websocket transaction by socket ID */
   getActiveTransaction?: (socketId: string) => APMAgent | undefined
 
+  /** Agent routing hook - determines which agent should handle a message */
+  agentRouter?: (socketId: string, data: ChatMessage) => string | undefined
+
   /** Event handlers */
   onConnection?: (socketId: string) => void
   onDisconnection?: (socketId: string) => void
@@ -480,11 +483,11 @@ export class WebSocketServer {
   /**
    * Process stream with real-time tool events from baseStream
    */
-  private async processStreamWithToolEvents(socket: any, streamResult: any, currentStep: number): Promise<void> {
+  private async processStreamWithToolEvents(socket: any, streamResult: any, currentStep: number, agentName: string): Promise<void> {
     const baseStream = streamResult.baseStream
     if (!baseStream) {
       // Fallback to text-only streaming if baseStream is not available
-      await this.processTextOnlyStream(socket, streamResult, currentStep)
+      await this.processTextOnlyStream(socket, streamResult, currentStep, agentName)
       return
     }
 
@@ -540,7 +543,8 @@ export class WebSocketServer {
               // Handle text chunks
               const textData = {
                 step: currentStep,
-                source: 'ai_response'
+                source: 'ai_response',
+                agentId: agentName
               }
 
               socket.emit('message', {
@@ -563,7 +567,8 @@ export class WebSocketServer {
                   id: part.id,
                   name: part.toolName,
                   input: {} // Will be populated as deltas arrive
-                }
+                },
+                agentId: agentName
               }
 
               // Start APM span for tool execution
@@ -591,7 +596,8 @@ export class WebSocketServer {
                 data: {
                   toolId: part.id,
                   toolName: part.toolName,
-                  delta: part.delta
+                  delta: part.delta,
+                  agentId: agentName
                 }
               } as WebSocketMessage)
               break
@@ -615,7 +621,8 @@ export class WebSocketServer {
                   id: toolId,
                   name: part.toolName,
                   input: parsedInput
-                }
+                },
+                agentId: agentName
               }
 
               socket.emit('message', {
@@ -648,7 +655,8 @@ export class WebSocketServer {
                   name: part.toolName,
                   input: part.input,
                   output: part.output
-                }
+                },
+                agentId: agentName
               }
 
               // End APM span for successful tool execution
@@ -679,7 +687,8 @@ export class WebSocketServer {
                   output: {},
                   error: errorMessage,
                   is_error: true
-                }
+                },
+                agentId: agentName
               }
 
               // End APM span for failed tool execution
@@ -721,7 +730,7 @@ export class WebSocketServer {
 
       // Fallback to text-only streaming with better error handling
       try {
-        await this.processTextOnlyStream(socket, streamResult, currentStep)
+        await this.processTextOnlyStream(socket, streamResult, currentStep, agentName)
       } catch (fallbackError: unknown) {
         console.error('❌ Fallback to text-only streaming also failed:', fallbackError)
         // Emit error to client as last resort
@@ -731,7 +740,8 @@ export class WebSocketServer {
           data: {
             timestamp: new Date().toISOString(),
             errorType: errorInfo.type,
-            step: currentStep
+            step: currentStep,
+            agentId: agentName
           }
         } as WebSocketMessage)
       }
@@ -744,7 +754,7 @@ export class WebSocketServer {
   /**
    * Helper method to safely process text-only streaming
    */
-  private async processTextOnlyStream(socket: any, streamResult: any, currentStep: number): Promise<void> {
+  private async processTextOnlyStream(socket: any, streamResult: any, currentStep: number, agentName: string): Promise<void> {
     const socketId = socket.id
     const abortController = this.activeStreams.get(socketId)
 
@@ -758,7 +768,8 @@ export class WebSocketServer {
 
         const chunkData = {
           step: currentStep,
-          source: 'ai_response'
+          source: 'ai_response',
+          agentId: agentName
         }
 
         socket.emit('message', {
@@ -907,7 +918,7 @@ export class WebSocketServer {
       }
 
       // 2. Process context (add socketId for tools)
-      processedContext = this.processContext(data, socketId)
+      processedContext = await this.processContext(data, socketId)
 
       // 3. Setup persistence (conversation ID, tracking)
       await this.setupPersistence(socketId, agentName, data, processedContext)
@@ -939,7 +950,7 @@ export class WebSocketServer {
         // Refresh context before each iteration (important for handoffs)
         // This ensures todo list context and other dynamic state is current
         if (iterationCount > 1) {
-          processedContext = this.processContext(data, socketId)
+          processedContext = await this.processContext(data, socketId)
           
           // Reload conversation history for the new agent
           // This is critical - the new agent needs the full conversation history
@@ -1023,7 +1034,7 @@ export class WebSocketServer {
    * Get the active agent for this session
    */
   private getActiveAgent(socketId: string, data: ChatMessage): string | undefined {
-    // Priority: 1) State manager (for handoffs), 2) Message agentId, 3) Default agent
+    // Priority: 1) State manager (for handoffs), 2) Agent router hook (for new projects), 3) Message agentId, 4) Default agent
     if (this.config.stateManager && this.config.stateManager.getCurrentAgent) {
       const currentAgent = this.config.stateManager.getCurrentAgent(socketId)
       if (currentAgent) {
@@ -1031,18 +1042,33 @@ export class WebSocketServer {
       }
     }
     
-    // Fall back to message agentId or default
-    return data.agentId || data.agentName || this.config.defaultAgent
+    // Use agent router hook if provided (check BEFORE explicit agentId to allow override for new projects)
+    // This allows routing to architect even when client sends default agentId
+    if (this.config.agentRouter) {
+      const routedAgent = this.config.agentRouter(socketId, data)
+      if (routedAgent) {
+        return routedAgent
+      }
+    }
+    
+    // Check for explicit agent selection in message (after router hook)
+    if (data.agentId || data.agentName) {
+      return data.agentId || data.agentName
+    }
+    
+    // Fall back to default agent
+    return this.config.defaultAgent
   }
 
   /**
    * Process context and add socketId
    */
-  private processContext(data: ChatMessage, socketId: string): Record<string, unknown> {
+  private async processContext(data: ChatMessage, socketId: string): Promise<Record<string, unknown>> {
     let context: Record<string, unknown>
     
     if (data.context && this.config.contextExtractor) {
-      context = this.config.contextExtractor(data.context)
+      // contextExtractor may be async, so await it
+      context = await Promise.resolve(this.config.contextExtractor(data.context))
     } else {
       context = data.context || {}
     }
@@ -1083,6 +1109,7 @@ export class WebSocketServer {
     if (!this.config.messagePersistence) return
 
     const metadata = (processedContext?.metadata as any) || {}
+    
     const persistenceContext: ConversationContext = {
       socketId,
       agentName,
@@ -1437,7 +1464,8 @@ export class WebSocketServer {
         // Emit step start for the failed tool call
         const stepStartData = {
           step: currentStep,
-          stepType: 'reasoning'
+          stepType: 'reasoning',
+          agentId: agentName
         }
         socket.emit('message', {
           type: 'step_start',
@@ -1454,7 +1482,8 @@ export class WebSocketServer {
             name: 'tool_validation_failed',
             input: {},
             output: `Tool call failed due to invalid JSON format: ${error.message}. Please check your JSON syntax and try again.`
-          }
+          },
+          agentId: agentName
         }
 
         socket.emit('message', {
@@ -1478,7 +1507,8 @@ export class WebSocketServer {
               input: {},
               output: `Invalid JSON in tool call: ${error.message}`
             }],
-            usage: undefined
+            usage: undefined,
+            agentId: agentName
           }
         } as WebSocketMessage)
 
@@ -1528,7 +1558,8 @@ Please try again with corrected formatting.`
     // Emit step start (currentStep was already incremented in error handler if needed)
     const stepStartData = {
       step: currentStep,
-      stepType: 'reasoning'
+      stepType: 'reasoning',
+      agentId: agentName
     }
     socket.emit('message', {
       type: 'step_start',
@@ -1540,7 +1571,7 @@ Please try again with corrected formatting.`
     await this.captureStreamingEvent(socket.id, 'step_start', '', stepStartData)
 
     // Process both text chunks and tool events from baseStream
-    await this.processStreamWithToolEvents(socket, streamResult, currentStep)
+    await this.processStreamWithToolEvents(socket, streamResult, currentStep, agentName)
 
     // Get final result with usage and tool calls
     const finalResult = await streamResult.getFinalResult()
@@ -1607,7 +1638,8 @@ Please try again with corrected formatting.`
         step: currentStep,
         isFinal: true,
         toolCalls: finalResult.toolCalls || [],
-        usage: this.config.includeUsageData ? finalResult.usage : undefined
+        usage: this.config.includeUsageData ? finalResult.usage : undefined,
+        agentId: agentName
       }
     } as WebSocketMessage)
 

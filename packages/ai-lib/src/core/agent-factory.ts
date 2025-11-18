@@ -161,6 +161,12 @@ export class AgentWrapper {
   const wrappedTools: Record<string, any> = {}
 
     for (const [toolName, tool] of Object.entries(tools)) {
+      // Skip undefined/null tools to prevent errors when accessing properties
+      if (!tool) {
+        console.warn(`Skipping undefined/null tool: ${toolName}`)
+        continue
+      }
+
       // Clone the tool to avoid modifying the original
       const wrappedTool = { ...tool }
 
@@ -678,7 +684,8 @@ export class AgentFactory {
   async executeHandoff(
     sourceAgentId: string,
     targetAgentId: string,
-    handoffContext: HandoffContext
+    handoffContext: HandoffContext,
+    executionContext?: Record<string, unknown>
   ): Promise<HandoffResult> {
     // Ensure source agent exists
     let sourceAgent = this.agents.get(sourceAgentId)
@@ -747,7 +754,12 @@ export class AgentFactory {
         ]
       }
 
-      const result = await targetAgent.streamGenerate(handoffContext.task, streamOptions)
+      const streamOptionsWithContext = {
+        ...streamOptions,
+        ...(executionContext && { executionContext })
+      }
+
+      const result = await targetAgent.streamGenerate(handoffContext.task, streamOptionsWithContext)
 
       // Collect the response
       let response = ''
@@ -876,9 +888,16 @@ export class AgentFactory {
       }
 
       // Merge with agent-specific tools (agent tools take precedence)
+      // Filter out undefined/null tools to prevent errors
+      const filteredGlobalTools = Object.fromEntries(
+        Object.entries(globalToolsObj).filter(([_, tool]) => tool != null)
+      )
+      const filteredConfigTools = Object.fromEntries(
+        Object.entries(configTools).filter(([_, tool]) => tool != null)
+      )
       merged.tools = {
-        ...globalToolsObj,
-        ...configTools
+        ...filteredGlobalTools,
+        ...filteredConfigTools
       }
     }
 
