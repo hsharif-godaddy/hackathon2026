@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import ColorPaletteWidget, { type ColorInfo } from './ColorPaletteWidget'
 import { postMessageToIframe } from '@/utils/postMessage'
+import Button from '@ux/button'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 
 /**
  * Palette data for grid display
@@ -28,6 +30,7 @@ export interface ColorPaletteGridWidgetProps {
  */
 export default function ColorPaletteGridWidget({ palettes, className = '' }: ColorPaletteGridWidgetProps) {
   const [previewedPalette, setPreviewedPalette] = useState<any>(null)
+  const setInputValue = useStreamingConversationStore((state) => state.setInputValue)
 
   // Listen for palette preview events from child widgets
   useEffect(() => {
@@ -105,6 +108,17 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
     console.log('💾 Theme save requested:', previewedPalette.name)
   }
 
+  /**
+   * Handle "More options" button click
+   */
+  function handleMoreOptions() {
+    setInputValue('Show me more color scheme options')
+    const inputElement = document.getElementById('chat-input-textarea')
+    if (inputElement) {
+      inputElement.focus()
+    }
+  }
+
   if (!palettes || palettes.length === 0) {
     return (
       <div className={`rounded-lg border bg-white p-4 shadow-sm ${className}`}>
@@ -127,23 +141,34 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
         ))}
       </div>
 
-      {/* Preview Controls Footer */}
-      {previewedPalette && (
-        <div className="mt-6 flex items-center justify-end gap-2">
-          <button
-            onClick={handleRevert}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            Revert
-          </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            Save
-          </button>
-        </div>
-      )}
+      {/* Button Controls - Always visible */}
+      <div className="mt-6 flex items-center gap-2 flex-wrap justify-center">
+
+        <Button
+          text="More options"
+          design="secondary"
+          size="sm"
+          onClick={handleMoreOptions}
+          className="rounded-md py-2 font-normal"
+          style={{
+            borderStyle: 'dashed'
+          }}
+        />
+
+        <Button
+          text="Revert"
+          design="secondary"
+          size="sm"
+          onClick={handleRevert}
+        />
+        <Button
+          text="Save"
+          design="primary"
+          size="sm"
+          onClick={handleSave}
+        />
+      </div>
+
     </div>
   )
 }
