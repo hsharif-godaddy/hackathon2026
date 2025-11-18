@@ -99,13 +99,13 @@ export class GettyMediaDriver {
     // Extract base URL without any path components
     const baseUrl = process.env.GETTY_API_URL || 'https://getty-images-proxy.api.test-godaddy.com';
     
-    // Remove any path components from the URL (e.g., /img/search/v1/search -> base domain)
+    // Strip any path components to get clean base URL (backward compatibility)
     try {
       const urlObj = new URL(baseUrl);
       this.apiBaseUrl = `${urlObj.protocol}//${urlObj.host}`;
-    } catch {
-      // If URL parsing fails, try string manipulation
-      this.apiBaseUrl = baseUrl.replace(/\/(img\/search\/)?v1\/.*$/, '');
+    } catch (error) {
+      // If URL parsing fails, strip common path patterns
+      this.apiBaseUrl = baseUrl.replace(/\/(img\/search|v1\/search|v1\/videos).*$/, '');
     }
     
     this.appKey = process.env.GETTY_APP_KEY || 'airo-app-builder';
@@ -123,6 +123,13 @@ export class GettyMediaDriver {
         message: 'Neither GETTY_TOKEN nor SSO_JWT is set',
       });
     }
+    
+    // Log the configured base URL for debugging
+    logger.info('getty-media.config.initialized', {
+      configuredUrl: baseUrl,
+      cleanedBaseUrl: this.apiBaseUrl,
+      hasToken: !!this.ssoJwt
+    });
   }
 
   /**
@@ -163,6 +170,14 @@ export class GettyMediaDriver {
 
       const endpoint = mediaType === 'image' ? '/v1/search' : '/v1/videos/search';
       const url = `${this.apiBaseUrl}${endpoint}?${queryParams.toString()}`;
+
+      // Log the full URL being requested for debugging
+      logger.info('getty-media.request.url', {
+        mediaType,
+        baseUrl: this.apiBaseUrl,
+        endpoint,
+        fullUrl: url
+      });
 
       const eventLogger = mediaType === 'video' ? toolVideoSearchEvents : toolImageSearchEvents;
       eventLogger.begin(logger, {

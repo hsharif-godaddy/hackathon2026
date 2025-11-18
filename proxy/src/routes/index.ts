@@ -26,7 +26,96 @@ router.get('/health', (req: Request, res: Response) => {
 });
 
 
-// Getty Images search endpoint
+// Backward compatibility route for legacy /img/search endpoint
+// This redirects old agent code to the new /v1/search endpoint
+router.get('/img/search',
+  validateGdToken,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const requestId = String(req.id ?? 'unknown');
+    const startTime = req.startTime ?? Date.now();
+    
+    logger.info('[INFO] Legacy /img/search route accessed, processing as /v1/search', {
+      requestId,
+      originalPath: req.path,
+      query: req.query
+    });
+    
+    try {
+      // Validate required parameters
+      if (!req.query.phrase && !req.query.q) {
+        res.status(400).json({
+          error: {
+            message: 'Missing required parameter: phrase or q',
+            type: 'invalid_request_error'
+          }
+        });
+        return;
+      }
+
+      // Sanitize and validate query parameters
+      const params: GettySearchParams = {
+        phrase: req.query.phrase as string || req.query.q as string,
+        page: Math.max(1, parseInt(req.query.page as string) || 1),
+        pageSize: Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 25)),
+        ...req.query
+      };
+
+      // Remove potentially dangerous parameters
+      delete params.callback;
+      delete params.jsonp;
+
+      const response = await gettyClient.search(params, requestId);
+
+      res.set('Content-Type', response.headers['content-type'] as string || 'application/json');
+      res.set('Cache-Control', 'public, max-age=300');
+      res.status(response.statusCode);
+      res.send(response.data);
+
+    } catch (error) {
+      const err = error as { message: string; statusCode?: number; duration?: number };
+      const totalDuration = Date.now() - startTime;
+      
+      logger.error('[ERROR] Legacy Getty API search failed', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        query: req.query,
+        userToken: req.userToken ? req.userToken.substring(0, 10) + '...' : 'unknown',
+        error: err.message,
+        statusCode: err.statusCode,
+        gettyDuration: err.duration ? `${err.duration}ms` : 'unknown',
+        totalDuration: `${totalDuration}ms`,
+        userAgent: req.get('User-Agent'),
+        ip: req.ip
+      });
+
+      const statusCode = err.statusCode ?? 503;
+      let errorMessage: string;
+      let errorType: string;
+
+      if (statusCode === 400) {
+        errorMessage = 'Bad Request';
+        errorType = 'bad_request_error';
+      } else if (statusCode >= 500) {
+        errorMessage = 'Internal Server Error';
+        errorType = 'internal_error';
+      } else {
+        errorMessage = 'Getty Images API request failed';
+        errorType = 'upstream_error';
+      }
+
+      res.status(statusCode).json({
+        error: {
+          message: errorMessage,
+          type: errorType,
+          requestId
+        }
+      });
+    }
+  }
+);
+
+// Getty Images search endpoint (new format)
 router.get('/v1/search',
   validateGdToken,
   async (req: AuthenticatedRequest, res: Response) => {
