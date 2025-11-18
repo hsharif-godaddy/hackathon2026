@@ -9,6 +9,7 @@ import DatabaseIcon from '@ux/icon/database';
 import ClipboardIcon from '@ux/icon/clipboard';
 import LinkIcon from '@ux/icon/link';
 import RevertIcon from '@ux/icon/revert';
+import ContentIcon from '@ux/icon/content';
 import { ReactNode } from 'react';
 
 /**
@@ -38,6 +39,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups');
   const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
+  const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
   const { data: isFeedbackEnabled } = useSwitchboard('appbuilder-settings-feedback');
 
   const handleFeedbackClick = () => {
@@ -76,6 +78,12 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <DatabaseIcon />,
       disabled: isDatabaseEnabled !== true,
     },
+    ...(isVisualScanEnabled ? [{
+        id: SettingsSection.VISUAL_SCAN,
+      label: 'Visual Scan',
+      icon: <ContentIcon />,
+      disabled: isVisualScanEnabled !== true,
+    }] : []),
     ...(!isMobile ? [{
       id: SettingsSection.FEEDBACK,
       label: 'Give Feedback',

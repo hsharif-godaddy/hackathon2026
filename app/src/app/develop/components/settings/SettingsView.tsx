@@ -6,6 +6,7 @@ import ProjectPanel from '@/app/develop/components/settings/ProjectPanel'
 import DomainPanel from '@/app/develop/components/settings/DomainPanel'
 import BackupsPanel from '@/app/develop/components/settings/BackupsPanel'
 import SecurityPanel from '@/app/develop/components/settings/SecurityPanel'
+import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
 import { DatabasePanel } from '@/app/develop/components/settings/DatabasePanel'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -19,6 +20,7 @@ export default function SettingsView() {
   const { data: isBackupsEnabled } = useSwitchboard('appbuilder-settings-backups');
   const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
+  const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
 
   const renderSection = () => {
     switch (activeSettingsSection) {
@@ -32,6 +34,8 @@ export default function SettingsView() {
         return isSecurityEnabled ? <SecurityPanel /> : null;
       case SettingsSection.DATABASE:
         return isDatabaseEnabled ? <DatabasePanel appId={appId} /> : null;
+      case SettingsSection.VISUAL_SCAN:
+        return isVisualScanEnabled ? <VisualScanPanel /> : null;
       case SettingsSection.FEEDBACK:
       default:
         return isProjectEnabled ? <ProjectPanel /> : null;
