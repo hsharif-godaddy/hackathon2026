@@ -163,7 +163,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     openFeedbackId: null,
 
     // Settings section state
-    activeSettingsSection: SettingsSection.DATABASE,
+    activeSettingsSection: SettingsSection.DOMAIN,
 
     // Publish status state (per-app, keyed by appId)
     publishStates: {},

@@ -19,7 +19,6 @@ import text from "@ux/text";
 import Box from "@ux/box";
 import { Status } from "@/app/develop/components/types";
 import { hasBeenPublished } from '@/utils/site';
-import Alert from "@ux/alert";
 
 export default function ProjectDomain() {
   const currentAppId = useAppIdFromParams();
@@ -27,11 +26,6 @@ export default function ProjectDomain() {
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
     return state.getSite(currentAppId);
-  });
-
-  const isSiteLoading = useSiteStore((state) => {
-    if (!currentAppId) return false;
-    return state.loading[currentAppId] ?? false;
   });
 
   const { id } = site || {};
@@ -262,11 +256,6 @@ export default function ProjectDomain() {
       description="Your project is currently accessible via the airoapp.ai subdomain below."
       status={getProjectDomainStatus()}
     >
-      {!isSiteLoading && !isPublished && (
-        <Alert emphasis="warning">
-          You may customize your project domain after you publish your site for the first time.
-        </Alert>
-      )}
       <Box orientation="vertical" gap="md" className="w-full" blockAlignChildren="start">
         <Box
           orientation="horizontal"

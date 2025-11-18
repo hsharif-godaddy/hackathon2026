@@ -20,7 +20,6 @@ import Button from "@ux/button";
 import Modal from "@ux/modal";
 import text from "@ux/text";
 import Box from "@ux/box";
-import Alert from "@ux/alert";
 import DomainItem from "@/app/develop/components/settings/components/DomainItem";
 import DomainDNS from "@/app/develop/components/settings/components/DomainDNS";
 import SiblingSet from "@ux/sibling-set";
@@ -74,11 +73,6 @@ export default function DomainAttach() {
       systemId: site?.system_id
     }
   );
-
-  const isSiteLoading = useSiteStore((state) => {
-    if (!currentAppId) return false;
-    return state.loading[currentAppId] ?? false;
-  });
 
   const modifyDomainsMutation = useModifyDomains();
   const attachDomainMutation = useDomainAttach();
@@ -397,11 +391,6 @@ export default function DomainAttach() {
         />
       )}
     >
-      {!isSiteLoading && !isPublished && (
-        <Alert emphasis="warning">
-          You may add custom domains after you publish your site for the first time.
-        </Alert>
-      )}
       {/* GoDaddy Domains Section */}
       <Box gap="sm">
         {isLoading && (
