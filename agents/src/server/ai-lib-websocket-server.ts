@@ -10,11 +10,7 @@ import {
   setLitellmMetadata,
   type MessageProvider,
   type ContextProvider,
-  type ConversationPersistence,
-  type ConversationMessage,
-  type PersistenceStreamingEvent,
-  type ConversationContext,
-  type ProcessedFile
+  type ConversationMessage
 } from '@airo/ai-lib'
 import { auth, AuthType } from '../services/features.js'
 import apm from 'elastic-apm-node'
@@ -496,6 +492,40 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         return fileUploadService.getFilePath(appId, uploadId, filename)
       },
 
+      // Agent routing hook - select initial agent for new apps
+      agentRouter: (socketId: string, data: any) => {
+        const metadata = data.context?.metadata as any
+        const appId = metadata?.appId
+        
+        if (!appId) {
+          logger.debug('websocket.agent_router.no_app_id', {
+            socketId,
+            message: 'No appId in context, using default agent'
+          })
+          return 'develop'
+        }
+
+        const conversations = conversationRepo.getByAppIdSync(appId)
+        const isNewApp = conversations.length === 0
+        
+        if (isNewApp) {
+          logger.info('websocket.agent_router.initial_selected', {
+            socketId,
+            appId,
+            message: 'New app detected, routing to initial agent'
+          })
+          return 'initial'
+        }
+        
+        logger.debug('websocket.agent_router.develop_selected', {
+          socketId,
+          appId,
+          conversationCount: conversations.length,
+          message: 'Existing app, using develop agent'
+        })
+        return 'develop'
+      },
+
       // Socket.IO options for handling large payloads (screenshots, etc.)
       socketOptions: {
         maxHttpBufferSize: 10 * 1024 * 1024,
@@ -585,7 +615,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       },
 
       // Context extractor to validate appId
-      contextExtractor: (rawContext: Record<string, unknown>, socketContext?: any) => {
+      contextExtractor: (rawContext: Record<string, unknown>, _socketContext?: any) => {
         // Extract appId from context metadata
         const metadata = rawContext.metadata as any
         const appId = metadata?.appId

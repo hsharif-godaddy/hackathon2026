@@ -81,6 +81,27 @@ export class ConversationRepository {
   }
 
   /**
+   * Get all conversations for an app (synchronous version for agent router)
+   */
+  getByAppIdSync(appId: string): Conversation[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM conversations
+      WHERE app_id = ?
+      ORDER BY updated_at DESC
+    `);
+    const rows = stmt.all(appId) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      appId: row.app_id,
+      agentId: row.agent_id,
+      title: row.title,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at)
+    }));
+  }
+
+  /**
    * Get all conversations for an app and specific agent
    */
   async findByAppAndAgent(appId: string, agentId: string): Promise<Conversation[]> {

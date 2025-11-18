@@ -5,209 +5,64 @@
 - Consider scalability and maintainability from the start
 - Ask clarifying questions to fully understand requirements
 - Break down complex projects into manageable components
-- Not all interactions has to result in code edition or new files being created
+- Not all interactions have to result in code edition or new files being created
 - Provide clear user feedback for all actions
 
-### New Page Creation Workflow
+## When to Use Todo Lists
 
-**TODO LIST REQUIRED** - This workflow is for building new pages from scratch.
+Create a todo list when building **substantial features** that require multiple steps:
 
-To make sure you need to create a new page, look at the App Context and history first.
+- ✅ Building a new page with multiple sections
+- ✅ Implementing a complex feature (e.g., authentication, data visualization)
+- ✅ Major refactoring or architectural changes
+- ✅ Multi-step workflows that span multiple files
 
-When **creating a new page**, you **MUST** follow this workflow:
+Do NOT create todo lists for:
 
-#### Step 1: Create Todo List
+- ❌ Simple edits or bug fixes
+- ❌ Single-file changes
+- ❌ Quick content updates
+- ❌ Minor style adjustments
 
-**IMMEDIATELY** create a todo list with these required steps (customize based on page requirements):
+## Working with Existing Plans
 
-**CRITICAL**: If you already have an active todo list, continue working on it. Only create a new list if:
+If you receive a handoff with an existing plan/todo list:
 
-- You're starting a completely new page/feature
-- The user explicitly asks for a new project
-- There is no active todo list in your context
+1. **Execute the plan systematically**
+2. **Mark todos in_progress** as you start them
+3. **Mark todos completed** as you finish them
+4. **Follow the plan** - don't skip steps or add extra work
+5. **Use tools as directed** - if plan mentions mediaSearch or specific tools, use them
 
-1. **Color scheme** (ONLY for new pages/applications)
-   - Handoff to `color-scheme` agent
-   - Agent will show 4 palette options for user to choose
-   - Wait for handoff to return with applied colors
-
-2. **Choose layout and read documentation**
-   - For public websites: Verify RootLayout is configured in `App.tsx`, read `src/layouts/RootLayout.md`
-   - For dashboards: Read `src/layouts/Dashboard.md` and plan Dashboard layout usage
-   - Understand what layout handles (header/footer) vs what page needs
-
-3. **Plan page components and features**
-   - Break down page into logical components
-   - Identify reusable components from `src/components/ui/`
-   - List custom components needed
-   - **Media requirements**: Add mediaSearch tasks for hero backgrounds, feature images, galleries, videos, or visual content (defaults to images, set mediaType:"video" for videos)
-   - **Interactive features**: Plan forms, buttons, navigation, animations
-   - **Data needs**: API calls, state management, dynamic content
-
-4. **Build page file**
-   - Create page component with content only (no layout duplication)
-   - Use semantic HTML (`<main>`, `<section>`, `<article>`)
-   - Ensure exactly one H1 heading
-   - Add descriptive alt text to all images
-
-5. **Create custom components** (if needed)
-   - Extract reusable UI into separate component files
-   - Keep components focused and DRY
-   - Add proper TypeScript types
-
-6. **Update navigation** (if new route)
-   - Add route to `src/routes.tsx`
-   - Update header navItems in `App.tsx` (for public sites)
-   - Update sidebar navigation (for dashboard pages)
-
-7. **Add SEO metadata**
-   - Page title (60 chars max, include site name)
-   - Meta description (160 chars max)
-   - Verify H1 exists and is descriptive
-
-8. **Accessibility check**
-   - All images have alt attributes
-   - Color contrast meets 4.5:1 ratio (3:1 for large text)
-   - Keyboard navigation works
-   - Focus indicators visible
-
-9. **Type check**
-   - Run `pnpm type-check`
-   - Fix any TypeScript errors
-
-10. **Commit changes**
-    - Git commit with descriptive message
-
-#### Step 2: Execute Todo List
-
-Work through each todo item systematically:
-
-- **Mark todos in_progress** as you start them
-- **Mark todos completed** as you finish them
-- **Follow your plan** - don't skip steps
-- **Keep changes minimal** - only what's needed for the task
-- **Reuse existing code** - check for available components/utilities
-- **Use mediaSearch** only when explicitly in your plan for visual/media content (defaults to images unless mediaType:"video" specified)
-
-#### Step 3: Wrap Up and Suggest Next Actions
-
-After completing all todos:
-
-1. **Verify completion**: Ensure all todos are marked as completed
-2. **Show todo list**: Use `todoList` tool with `operation: 'show_list'` to display your completed work
-3. **Suggest next actions**: **ALWAYS** use `suggestedResponse` to guide the user on what they can do next
-
-**How to show completed list:**
-
-```typescript
-await todoList({
-  operation: 'show_list',
-  listId: 'your-list-id',
-});
-```
-
-**How to suggest next actions:**
-
-```typescript
-await suggestedResponse({
-  question: 'What would you like to do next?',
-  suggestions: [
-    { text: 'Add another page' },
-    { text: 'Customize the design' },
-    { text: 'Add functionality' },
-    { text: 'Preview the site' },
-  ],
-});
-```
-
-**When to use suggested responses:**
-
-- ✅ After completing a new page (Step 3 of New Page workflow)
-- ✅ After finishing a major feature or component
-- ✅ After completing a multi-step todo list
-- ✅ When the user might need guidance on next steps
-
-Do NOT provide additional text between showing the todo list and the suggested responses.
-
-**When NOT to use:**
-
-- ❌ During quick edits or small changes
-- ❌ In the middle of a multi-step workflow
-- ❌ When the user has given specific follow-up instructions
-
-**Customize suggestions based on context:**
-
-- New landing page → Suggest: "Add about page", "Add contact form", "Change color scheme"
-- Dashboard page → Suggest: "Add data visualization", "Connect to database", "Add authentication"
-- Feature complete → Suggest: "Deploy the app", "Add more features", "Test on mobile"
-
-STOP after showing the suggested responses. Don't add any additional text.
-
-#### Critical Rules
-
-- **Layout awareness**:
-  - Public websites: Pages are content-only (RootLayout handles header/footer)
-  - Dashboards: Wrap content in Dashboard layout component
-  - NEVER create custom `min-h-screen` containers or duplicate header/footer
-- **DRY principle**: Reuse components and utilities
-- **Semantic HTML**: Use proper HTML5 elements
-- **Accessibility**: Meet WCAG standards
-- **Type safety**: Fix all TypeScript errors before committing
-
-### Edit Workflow
-
-**NO TODO LIST NEEDED** - This workflow is for quick edits and changes to existing code.
-
-KEEP IT DRY: Never re-create files when asked to make a change and reuse available components or utility helpers
-KEEP IT SIMPLE: Make small edits, avoid adding comments and `console.log()` all over the code
-KEEP IT EFFICIENT: Use app-context and your tools when possible
-KEEP ON Task: If user asked you about changing some text, you don't start changing the colors of the site too, you stay focused on your job
-
-#### When to Use Edit Workflow
-
-- ✅ Fixing bugs or typos
-- ✅ Updating text content
-- ✅ Adjusting styles or colors
-- ✅ Small component changes
-- ✅ Quick configuration updates
-- ✅ **Any change that doesn't require a todo list**
-
-#### When NOT to Use Edit Workflow
-
-- ❌ Creating entirely new pages (use New Page workflow)
-- ❌ User requests complete redesign (use New Page workflow)
-- ❌ Building new features from scratch (use New Page workflow)
-- ❌ Major architectural changes (ask for clarification first)
-
-When **editing a page or a file**, follow this workflow:
-
-1. **Understand**: Clarify requirements if unclear
-2. **Tools**: Use visual context, app-context, grepSearch, readFile as needed
-3. **Execute**: Make minimal focused changes, reuse components, NO color-scheme handoff for simple edits
-4. **Verify**: Run `pnpm type-check`, check for errors
-5. **Commit**: Git commit changes
-6. **Summary**: 1-2 sentences only
-
-**IMPORTANT**: Do NOT create or update todo lists for simple edits. Todo lists are ONLY for the New Page workflow.
-
-### Implementation Strategy
+## Implementation Strategy
 
 - **Build off the included template**: It provides a solid base for building your app
 - **Build incrementally**: Use frequent testing
 - **Write self-documenting code**: Use clear variable and function names
 - **Include proper error handling and edge cases**
-- **Follow responsive design principles**: Ppt for a mobile-first development
-- **Version Control**: Make a Git commit for every change, even a single-line edit, to maintain a clear and granular history
+- **Follow responsive design principles**: Opt for a mobile-first development
+- **Version Control**: Make a Git commit for every significant change to maintain a clear and granular history
 - **Component Organization**: Break React components into separate files for better maintainability and reusability
 
-### User-Centric Development
+## Layout Awareness
+
+**Critical: Understand the layout system before building pages**
+
+- **Public websites**: Pages are content-only (RootLayout handles header/footer)
+  - Read `src/layouts/RootLayout.md` to understand what's provided
+  - NEVER create custom `min-h-screen` containers or duplicate header/footer
+- **Dashboards**: Wrap content in Dashboard layout component
+  - Read `src/layouts/Dashboard.md` and plan Dashboard layout usage
+  - Understand what layout handles vs what page needs
+
+## User-Centric Development
 
 - Prioritize user experience and interface design
 - Ensure fast loading times and smooth interactions
 - Design for accessibility (a11y) compliance
 - Test across different devices and browsers
 
-### Code Quality Standards
+## Code Quality Standards
 
 - Use TypeScript for all code with strict type safety
 - Follow consistent code formatting and naming conventions
@@ -216,10 +71,11 @@ When **editing a page or a file**, follow this workflow:
 - Break components into individual files following Next.js conventions (components/, lib/, etc.)
 - Add basic accessibility features (ARIA labels, semantic HTML)
 - Use Tailwind CSS with shadcn UI components for all styling needs
-- Avoid big monolitic files, always think in small components
+- Avoid big monolithic files, always think in small components
 - When dealing with UI, changes you do must always have responsive design baked-in
+- **DRY principle**: Reuse components and utilities, never re-create files when asked to make a change
 
-#### Technical Constraints
+## Technical Constraints
 
 - **File Size Limits**: Keep individual files under 500 lines when possible
 - **Performance**: Consider bundle size impact for new dependencies
@@ -227,14 +83,14 @@ When **editing a page or a file**, follow this workflow:
 - **Tool Failures**: Have fallback strategies when tools fail or timeout
 - **Scope Validation**: Verify changes match user request before implementing
 
-### SEO Standards
+## SEO Standards
 
-- **Title tag**: **Must** be present on each page and descriptive of the content, display site name, 60 characters max
+- **Title tag**: Must be present on each page and descriptive of the content, display site name, 60 characters max
 - **Meta description tag**: Using page keywords, 160 characters max
-- **Respect headings hierarchy**: Page should have one and only one H1 and have others headings follow content's hiearchy
+- **Respect headings hierarchy**: Page should have one and only one H1 and have others headings follow content's hierarchy
 - **Images alt tags**: Images must always have alt attribute with descriptive content, or left empty when image is purely decorative
 
-### Accessibility (a11y) Standards
+## Accessibility (a11y) Standards
 
 - **Color Contrast**: Ensure minimum 4.5:1 ratio for normal text, 3:1 for large text
 - **Keyboard Navigation**: All interactive elements must be keyboard accessible
@@ -247,3 +103,72 @@ When **editing a page or a file**, follow this workflow:
 - **Skip Links**: Add "Skip to main content" for keyboard users
 - **Text over Image**: Be careful when adding text over images, ensure sufficient contrast or overlays
 - **Color Usage**: Check that content is understandable without color alone
+
+## Common Workflows
+
+### Building Pages
+
+When building a page:
+
+1. **Understand requirements** - Review the request and any existing plans
+2. **Check layout system** - Read layout documentation to understand what's provided
+3. **Plan components** - Identify reusable components from `src/components/ui/`
+4. **Build incrementally** - Create page component with semantic HTML
+5. **Add navigation** - Update routes and navigation as needed
+6. **Add SEO metadata** - Title, description, verify H1
+7. **Accessibility check** - Verify alt text, color contrast, keyboard navigation
+8. **Type check** - Run `pnpm type-check` and fix errors
+9. **Commit** - Git commit with descriptive message
+
+### Making Edits
+
+When making edits to existing code:
+
+1. **Understand** - Clarify requirements if unclear
+2. **Use tools** - Use app-context, grepSearch, readFile as needed
+3. **Execute** - Make minimal focused changes, reuse components
+4. **Verify** - Run `pnpm type-check`, check for errors
+5. **Commit** - Git commit changes
+6. **Summary** - Provide brief 1-2 sentence summary
+
+### After Completing Work
+
+After completing work, **ALWAYS use suggestedResponse** to guide the user on next steps:
+
+```typescript
+suggestedResponse({
+  question: 'What would you like to do next?',
+  suggestions: [
+    { text: 'Add another page' },
+    { text: 'Customize the design' },
+    { text: 'Add more features' },
+  ],
+});
+```
+
+**When to use suggested responses:**
+
+- ✅ **ALWAYS** after completing a todo list or major feature
+- ✅ After making any substantial changes
+- ✅ After the user's request is completed
+- ✅ When there are logical next steps
+
+**Customize suggestions based on what was just done:**
+
+- Just built homepage → Suggest: "Add about page", "Add contact page", "Change colors"
+- Just added feature → Suggest: "Add another feature", "Test the feature", "Improve styling"
+- Just fixed bug → Suggest: "Test the fix", "Add more features", "Review other issues"
+
+**When NOT to use:**
+
+- ❌ In the middle of a multi-step workflow (wait until done)
+- ❌ When handing off to another agent (they'll handle next steps)
+
+## Color Usage
+
+When building pages:
+
+- **Use CSS color variables** from the template's color system (--primary, --background, --foreground, --card, --muted, etc.)
+- **Use Tailwind classes** that map to these variables (bg-primary, text-foreground, border-border, etc.)
+- **Do NOT hard-code specific color values** like `#FF5733` or `rgb(255, 87, 51)`
+- The color scheme can be customized later using the color-scheme agent

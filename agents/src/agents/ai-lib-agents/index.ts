@@ -17,11 +17,10 @@ import {
   createDevelopAgent,
   createDatabaseAgent,
   createColorSchemeAgent,
-  createExampleAgent,
+  createInitialAgent,
   DevelopAgent,
   DatabaseAgent,
-  ColorSchemeAgent,
-  ExampleAgent
+  ColorSchemeAgent
 } from '../index.js'
 import type { EnhancedAgentContext } from './types.js'
 import { agents as featureAgents } from '../../services/features.js'
@@ -60,6 +59,7 @@ export async function createUnifiedAgentFactory(options?: {
 
   const developConfig = await createDevelopAgent()
   const colorSchemeConfig = await createColorSchemeAgent()
+  const initialConfig = await createInitialAgent(stateManager)
 
   // Conditionally create database agent based on feature flag
   const isDatabaseAgentEnabled = featureAgents.isEnabled('database')
@@ -118,6 +118,7 @@ export async function createUnifiedAgentFactory(options?: {
 
   // Build agent definitions conditionally
   const agentDefinitions: Record<string, AgentConfig> = {
+    initial: initialConfig,
     develop: developConfig,
     'color-scheme': colorSchemeConfig,
   }
@@ -136,23 +137,18 @@ export async function createUnifiedAgentFactory(options?: {
  * Agent factory functions for backward compatibility
  */
 export const aiLibAgentFactories = {
-  develop: async (context?: EnhancedAgentContext) => {
+  develop: async (_context?: EnhancedAgentContext) => {
     const agent = new DevelopAgent()
     await agent.initialize()
     return agent.getAgent()
   },
-  database: async (context?: EnhancedAgentContext) => {
+  database: async (_context?: EnhancedAgentContext) => {
     const agent = new DatabaseAgent()
     await agent.initialize()
     return agent.getAgent()
   },
-  'color-scheme': async (context?: EnhancedAgentContext) => {
+  'color-scheme': async (_context?: EnhancedAgentContext) => {
     const agent = new ColorSchemeAgent()
-    await agent.initialize()
-    return agent.getAgent()
-  },
-  example: async (context?: EnhancedAgentContext) => {
-    const agent = new ExampleAgent()
     await agent.initialize()
     return agent.getAgent()
   }
@@ -162,6 +158,14 @@ export const aiLibAgentFactories = {
  * Agent metadata registry
  */
 export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
+  initial: {
+    id: 'initial',
+    name: 'Initial Preview Builder',
+    description: 'Creates a simple preview page for new apps to help users review and refine the style before building all features.',
+    version: '1.0.0',
+    tags: ['preview', 'initial', 'onboarding', 'planning'],
+    toolGroups: ['core', 'planning'],
+  },
   develop: {
     id: 'develop',
     name: 'AI Developer',
