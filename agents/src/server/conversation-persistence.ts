@@ -1,14 +1,14 @@
 /**
  * MessagePersistence implementation for the agents server
- * 
+ *
  * This class implements the ai-lib ConversationPersistence interface to handle
  * conversation and streaming event persistence directly with the ConversationRepository.
  */
 
-import type { 
-  ConversationPersistence, 
-  ConversationPersistenceWithCleanup, 
-  PersistenceStreamingEvent, 
+import type {
+  ConversationPersistence,
+  ConversationPersistenceWithCleanup,
+  PersistenceStreamingEvent,
   ConversationContext
 } from '@airo/ai-lib'
 import { calculateCostEstimate } from '@airo/ai-lib'
@@ -30,7 +30,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   private conversationRepo: ConversationRepository
   private appRepository: AppRepository
   private tokenUsageRepo: TokenUsageRepository
-  
+
   // Track conversations for cleanup
   private activeConversations = new Map<string, {
     conversationId: string
@@ -39,7 +39,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     context: ConversationContext
     message?: string
   }>()
-  
+
   // Map of appIds to their most recent user message
   private appUserMessages = new Map<string, string>()
 
@@ -51,10 +51,10 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
   /**
    * Track token usage in APM for monitoring and analytics using custom transactions
-   * 
+   *
    * Creates a dedicated APM transaction with token metrics and accurate total cost.
    * The cost calculation properly accounts for cached token pricing (10x cheaper for reads).
-   * 
+   *
    * @param type - Type of usage: 'main_agent' or 'handoff'
    * @param usage - Token usage metrics from LLM response
    * @param metadata - Context metadata for tracking
@@ -88,14 +88,14 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         },
         metadata.modelName
       )
-      
+
       // Create a custom transaction specifically for token tracking
-      const transactionName = type === 'handoff' 
+      const transactionName = type === 'handoff'
         ? `Token Usage: Handoff (${metadata.agentName} → ${metadata.targetAgent})`
         : `Token Usage: ${metadata.agentName}`
-      
+
       const transaction = apm.startTransaction(transactionName, 'token-tracking')
-      
+
       if (transaction) {
         // Add metadata as labels (strings for filtering)
         transaction.setLabel('token_usage_type', type)
@@ -103,11 +103,11 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         transaction.setLabel('model_name', metadata.modelName)
         transaction.setLabel('app_id', metadata.appId)
         transaction.setLabel('conversation_id', metadata.conversationId)
-        
+
         if (metadata.targetAgent) {
           transaction.setLabel('target_agent', metadata.targetAgent)
         }
-        
+
         // Store numeric token values as labels (for aggregations and filtering)
         transaction.addLabels({
           tokens_input: usage.inputTokens,
@@ -118,12 +118,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           // Add total cost metric (includes cache pricing)
           cost_total_usd: parseFloat(costEstimate.totalCost.toFixed(6))
         })
-        
+
         // Mark transaction as successful and end it
         transaction.result = 'success'
         transaction.setOutcome('success')
         transaction.end()
-        
+
         logger.info('apm.token_tracking.sent', {
           type,
           conversationId: metadata.conversationId,
@@ -134,7 +134,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           transactionName
         })
       }
-      
+
     } catch (error) {
       // Don't let APM tracking errors break the flow
       logger.warn('apm.token_tracking.failed', {
@@ -217,12 +217,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     message: string,
     context: ConversationContext
   ): Promise<void> {
-    const contextLogger = context.appId 
-      ? log.withContext({ 
-          appId: context.appId, 
-          agentId: context.agentName,
-          conversationId 
-        })
+    const contextLogger = context.appId
+      ? log.withContext({
+        appId: context.appId,
+        agentId: context.agentName,
+        conversationId
+      })
       : logger
 
     contextLogger.info('conversation.continue', {
@@ -245,7 +245,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       context,
       message
     })
-    
+
     if (context.appId) {
       this.appUserMessages.set(context.appId, message)
     }
@@ -257,12 +257,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     conversationId: string,
     context: ConversationContext
   ): Promise<string> {
-    const contextLogger = context.appId 
-      ? log.withContext({ 
-          appId: context.appId, 
-          agentId: context.agentName,
-          conversationId 
-        })
+    const contextLogger = context.appId
+      ? log.withContext({
+        appId: context.appId,
+        agentId: context.agentName,
+        conversationId
+      })
       : logger
 
     contextLogger.info('conversation.agent_turn.start', {
@@ -300,12 +300,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     },
     context: ConversationContext
   ): Promise<void> {
-    const contextLogger = context.appId 
-      ? log.withContext({ 
-          appId: context.appId, 
-          agentId: context.agentName,
-          conversationId 
-        })
+    const contextLogger = context.appId
+      ? log.withContext({
+        appId: context.appId,
+        agentId: context.agentName,
+        conversationId
+      })
       : logger
 
     try {
@@ -333,15 +333,15 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       throw new Error('appId is required in context')
     }
 
-    const contextLogger = log.withContext({ 
-      appId: context.appId, 
-      agentId: context.agentName 
+    const contextLogger = log.withContext({
+      appId: context.appId,
+      agentId: context.agentName
     })
 
     contextLogger.info('conversation.start', {
       socketId: context.socketId
     })
-    
+
     if (message && message.length > MAX_PROMPT_LENGTH) {
       throw new Error(`Message exceeds maximum length of ${MAX_PROMPT_LENGTH} characters`)
     }
@@ -353,23 +353,31 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
     let conversationId: string
 
-    if (context.conversation?.conversationId) {
-      const existing = await this.conversationRepo.getById(context.conversation.conversationId)
+    // Check if conversationId is provided in context
+    const providedConversationId = context.conversation?.conversationId
+
+    if (providedConversationId) {
+      // Check if conversation exists
+      const existing = await this.conversationRepo.getById(providedConversationId)
       if (existing) {
-        conversationId = context.conversation.conversationId
+        conversationId = providedConversationId
         contextLogger.info('conversation.existing.found', { conversationId })
       } else {
-        contextLogger.warn('conversation.existing.not_found', { 
-          conversationId: context.conversation.conversationId 
+        // Conversation doesn't exist, create it with the provided ID
+        contextLogger.info('conversation.create_with_provided_id', {
+          conversationId: providedConversationId
         })
         const conversation = await this.conversationRepo.create(
           context.appId,
           context.agentName,
-          `Chat with ${context.agentName} - ${new Date().toLocaleString()}`
+          `Chat with ${context.agentName} - ${new Date().toLocaleString()}`,
+          providedConversationId
         )
         conversationId = conversation.id
+        contextLogger.info('conversation.created_with_id', { conversationId })
       }
     } else {
+      // No conversationId provided, create new one with generated ID
       const conversation = await this.conversationRepo.create(
         context.appId,
         context.agentName,
@@ -395,7 +403,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       context,
       message
     })
-    
+
     if (context.appId) {
       this.appUserMessages.set(context.appId, message)
     }
@@ -418,30 +426,30 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     result: any,
     context: ConversationContext
   ): Promise<void> {
-    const contextLogger = context.appId 
-      ? log.withContext({ 
-          appId: context.appId, 
-          agentId: context.agentName,
-          conversationId 
-        })
+    const contextLogger = context.appId
+      ? log.withContext({
+        appId: context.appId,
+        agentId: context.agentName,
+        conversationId
+      })
       : logger
 
     const optimizedEvents = this.optimizeStreamingEvents(streamingEvents)
-    
+
     contextLogger.info('conversation.agent_response.optimizing', {
       originalEvents: streamingEvents.length,
       optimizedEvents: optimizedEvents.length,
       reduction: `${Math.round((1 - optimizedEvents.length / streamingEvents.length) * 100)}%`
     })
-    
+
     const segments: any[] = []
     const toolCalls: any[] = []
     const toolsMap = new Map()
     let accumulatedContent = ''
-    
+
     for (const event of optimizedEvents) {
       const timestamp = event.timestamp || new Date()
-      
+
       switch (event.type) {
         case 'chunk':
         case 'text_chunk':
@@ -455,12 +463,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
               timestamp,
               metadata: event.type === 'collapsed_chunks' ? {
                 originalChunkCount: event.originalChunkCount,
-                isCollapsed: true 
+                isCollapsed: true
               } : undefined
             })
           }
           break
-          
+
         case 'tool_start':
           if (event.data?.tool) {
             const toolId = event.data.tool.id || nanoid(8)
@@ -471,14 +479,14 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
               status: 'running',
               startTime: timestamp
             }
-            
+
             toolsMap.set(toolId, toolData)
-            
+
             // Only add segment if one doesn't already exist for this tool
-            const existingSegmentIndex = segments.findIndex(s => 
+            const existingSegmentIndex = segments.findIndex(s =>
               s.type === 'tool_call' && s.toolCall?.id === toolId
             )
-            
+
             if (existingSegmentIndex === -1) {
               segments.push({
                 id: nanoid(8),
@@ -489,12 +497,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             }
           }
           break
-          
+
         case 'tool_result':
           if (event.data?.tool) {
             const toolId = event.data.tool.id
             const existingTool = toolsMap.get(toolId)
-            
+
             if (existingTool) {
               existingTool.input = event.data.tool.input || existingTool.input
               existingTool.result = event.data.tool.output || event.content || event.data.tool.result
@@ -502,7 +510,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
               existingTool.error = event.data.tool.error
               existingTool.status = hasError ? 'error' : 'completed'
               existingTool.endTime = timestamp
-              
+
               if (existingTool.startTime && timestamp) {
                 const startTime = new Date(existingTool.startTime).getTime()
                 const endTime = new Date(timestamp).getTime()
@@ -510,8 +518,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
               } else {
                 existingTool.duration = event.data.tool.duration || undefined
               }
-              
-              const segmentIndex = segments.findIndex(s => 
+
+              const segmentIndex = segments.findIndex(s =>
                 s.type === 'tool_call' && s.toolCall?.id === toolId
               )
               if (segmentIndex >= 0) {
@@ -520,13 +528,13 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             }
           }
           break
-          
+
         case 'step_start':
         case 'step_complete':
           break
       }
     }
-    
+
     toolCalls.push(...Array.from(toolsMap.values()))
 
     contextLogger.info('conversation.agent_response.saving', {
@@ -537,7 +545,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     })
 
     const activeConversation = this.activeConversations.get(context.socketId)
-    
+
     if (activeConversation?.agentMessageId) {
       await this.conversationRepo.updateMessage(activeConversation.agentMessageId, {
         content: accumulatedContent,
@@ -565,11 +573,11 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       })
       contextLogger.info('conversation.agent_response.saved', {})
     }
-    
+
     // Note: Token tracking is now handled exclusively by the onTokenUsage callback
     // in experimental-websocket-server.ts. This ensures 100% capture regardless of
     // conversation state and eliminates any risk of double counting.
-    
+
     // Track handoff token usage from tool results
     if (toolCalls.length > 0 && context.appId) {
       await Promise.all(
@@ -589,7 +597,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
               } else {
                 handoffResult = toolCall.result;
               }
-              
+
               // Extract usage from handoff result
               if (handoffResult?.result?.usage) {
                 const handoffUsage = handoffResult.result.usage;
@@ -598,7 +606,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
                 // Get model name from target agent metadata
                 const targetMetadata = aiLibAgentMetadata[targetAgent] as AILibAgentMetadata & { modelName?: string };
                 const modelName = targetMetadata?.modelName || 'claude-sonnet-4-20250514';
-                
+
                 // Calculate accurate cost for handoff
                 const handoffCostEstimate = calculateCostEstimate(
                   {
@@ -610,7 +618,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
                   },
                   modelName
                 )
-                
+
                 await this.tokenUsageRepo.recordUsage(
                   context.appId!,
                   'llm_request',
@@ -625,7 +633,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
                     cost: handoffCostEstimate.totalCost
                   }
                 );
-                
+
                 // Track handoff in APM for monitoring
                 this.trackTokenUsageInAPM(
                   'handoff',
@@ -644,7 +652,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
                     targetAgent,
                   }
                 );
-                
+
                 logger.info('conversation.handoff_usage.recorded', {
                   conversationId,
                   appId: context.appId,
@@ -670,7 +678,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           })
       );
     }
-    
+
     // Track tool invocations for analytics (tools don't use tokens, but tracking usage is valuable)
     if (toolCalls.length > 0 && context.appId) {
       await Promise.all(
@@ -696,7 +704,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           }
         })
       );
-      
+
       logger.info('conversation.tool_usage.recorded', {
         conversationId,
         appId: context.appId,
@@ -704,7 +712,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         tools: toolCalls.map(tc => tc.name),
       });
     }
-    
+
     if (context.appId) {
       await this.checkAndCommitChanges(context.appId, 'conversation_complete');
     }
@@ -718,12 +726,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     message?: string,
     context?: ConversationContext
   ): Promise<void> {
-    const contextLogger = context?.appId 
-      ? log.withContext({ 
-          appId: context.appId, 
-          agentId: context.agentName,
-          conversationId 
-        })
+    const contextLogger = context?.appId
+      ? log.withContext({
+        appId: context.appId,
+        agentId: context.agentName,
+        conversationId
+      })
       : logger
 
     contextLogger.error('websocket.conversation.error', {
@@ -733,7 +741,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
 
     if (context) {
       const activeConversation = this.activeConversations.get(context.socketId)
-      
+
       if (activeConversation?.agentMessageId && conversationId) {
         try {
           await this.conversationRepo.updateMessageMetadata(activeConversation.agentMessageId, {
@@ -774,18 +782,18 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     if (activeConversation && activeConversation.context.appId) {
       await this.checkAndCommitChanges(activeConversation.context.appId, 'websocket_disconnection');
     }
-    
+
     // Clean up any tracked conversations for this socket
     this.activeConversations.delete(socketId)
   }
-  
+
   /**
    * Helper method to retrieve the user message for a given appId
    */
   private getUserMessageForAppId(appId: string): string | undefined {
     return this.appUserMessages.get(appId);
   }
-  
+
   /**
    * Check for uncommitted changes in the app repository and commit them
    * This is used as a safety net to prevent lost work when websocket disconnects or errors occur
@@ -793,12 +801,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   private async checkAndCommitChanges(appId: string, reason: string): Promise<void> {
     const contextLogger = log.forApp(appId)
     const startTime = Date.now();
-    
+
     try {
       contextLogger.info('git.auto_commit.check', {
         reason
       })
-      
+
       const app = await this.appRepository.findById(appId);
       if (!app) {
         contextLogger.warn('git.auto_commit.app_not_found', {
@@ -806,14 +814,14 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         })
         return;
       }
-      
+
       // Create git tools with dev-supervisor for this specific app
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
       const gitTool = new GitTool(devSupervisor || undefined);
       const gitUtils = new GitUtils(devSupervisor || undefined);
-      
+
       const status = await gitTool.executeGitOperation(app.path, { operation: 'status' });
-      
+
       if (status.success && status.status && !status.status.isClean) {
         toolGitEvents.begin(contextLogger, {
           toolName: 'git',
@@ -824,22 +832,22 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           }
         });
 
-        await gitTool.executeGitOperation(app.path, { 
-          operation: 'add', 
-          options: { all: true } 
+        await gitTool.executeGitOperation(app.path, {
+          operation: 'add',
+          options: { all: true }
         });
 
         let commitMessage = `Changes from conversation`;
-        
+
         const userMessage = this.getUserMessageForAppId(appId);
         if (userMessage) {
-          const truncatedMessage = userMessage.length > 50 ? 
+          const truncatedMessage = userMessage.length > 50 ?
             `${userMessage.substring(0, 47)}...` : userMessage;
           commitMessage = `${truncatedMessage} (${reason.replace('_', ' ')})`;
         } else {
           commitMessage = `Saving changes after ${reason.replace('_', ' ')}`;
         }
-        
+
         const result = await gitTool.executeGitOperation(app.path, {
           operation: 'commit',
           message: commitMessage
@@ -853,9 +861,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           try {
             if (!status.status?.isClean) {
               const detailedStatus = await gitUtils.getStatus(app.path);
-              filesAffected = (detailedStatus.stagedFiles || 0) + 
-                             (detailedStatus.modifiedFiles || 0) + 
-                             (detailedStatus.untrackedFiles || 0);
+              filesAffected = (detailedStatus.stagedFiles || 0) +
+                (detailedStatus.modifiedFiles || 0) +
+                (detailedStatus.untrackedFiles || 0);
             }
           } catch (error) {
             // Fallback to simple calculation if detailed status fails
@@ -875,7 +883,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
               executionTime
             }
           });
-          
+
           contextLogger.info('git.auto_commit.success', {
             commitMessage,
             reason,
@@ -888,7 +896,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             operation: 'commit',
             appPath: app.path
           });
-          
+
           contextLogger.error('git.auto_commit.failure', {
             error: result.error,
             reason,

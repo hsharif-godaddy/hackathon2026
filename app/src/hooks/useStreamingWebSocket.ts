@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
+import { validate as validateUUID } from 'uuid'
 import {
   useWebSocketState,
   useCurrentAppId,
@@ -77,6 +78,36 @@ const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
     return null;
   }
 };
+
+/**
+ * Get conversationId from browser cookies
+ * @returns Conversation ID string or null if not found or invalid
+ */
+function getConversationIdFromCookie(): string | null {
+  if (typeof document === 'undefined') return null
+
+  const cookies = document.cookie.split(';')
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=')
+    if (name === 'conversationId' && value) {
+      const decodedValue = decodeURIComponent(value)
+      if (validateUUID(decodedValue)) {
+        return decodedValue
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Delete conversationId cookie from browser
+ */
+function deleteConversationIdCookie(): void {
+  if (typeof document === 'undefined') return
+
+  // Delete cookie by setting it with past expiration date
+  document.cookie = 'conversationId=; path=/; max-age=0; SameSite=Lax'
+}
 
 export function useStreamingWebSocket() {
   const socketRef = useRef<Socket | null>(null)
@@ -167,7 +198,7 @@ export function useStreamingWebSocket() {
         setWebSocketState({ connected: false, status: 'error', error: 'Failed to reconnect' })
       })
     })
-  }, [setWebSocketState ])
+  }, [setWebSocketState])
   // Set up Socket.IO event handlers for streaming (defined before useEffect to satisfy dependency ordering)
   const setupEventHandlers = useCallback((socket: Socket) => {
     socket.on('status', (data) => {
@@ -225,7 +256,7 @@ export function useStreamingWebSocket() {
         case 'tool_result':
           if (data.data?.tool) {
             const hasError = data.data.tool.error || data.data.tool.is_error
-            
+
             const toolCall: ToolCall = {
               id: data.data.tool.id,
               name: data.data.tool.name,
@@ -322,7 +353,15 @@ export function useStreamingWebSocket() {
                 const state = useStreamingConversationStore.getState()
                 const { conversations } = state
                 const currentConversation = conversations.find((conv: any) => conv.appId === currentAppId)
-                const conversationId = currentConversation?.id
+                let conversationId = currentConversation?.id
+
+                // If conversationId is null, check cookie and delete it
+                if (!conversationId) {
+                  conversationId = getConversationIdFromCookie()
+                  if (conversationId) {
+                    deleteConversationIdCookie()
+                  }
+                }
 
                 const richContext: AgentsAppContext = {
                   metadata: {
@@ -427,7 +466,7 @@ export function useStreamingWebSocket() {
 
         socketRef.current = socket
         createdHereRef.current = true // Mark that this instance created the socket
-        
+
         // Register socket globally for OAuth popup access
         setSharedSocket(socket)
 
@@ -490,10 +529,10 @@ export function useStreamingWebSocket() {
             reason: 'app change or unmount',
             appId: currentAppId
           })
-          
+
           // Clear shared socket reference
           setSharedSocket(null)
-          
+
           socketRef.current.removeAllListeners()
           socketRef.current.disconnect()
         } else {
@@ -502,7 +541,7 @@ export function useStreamingWebSocket() {
             appId: currentAppId
           })
         }
-        
+
         socketRef.current = null
         createdHereRef.current = false
       }
@@ -559,7 +598,15 @@ export function useStreamingWebSocket() {
 
       // Find current conversation ID
       const currentConversation = conversations.find((conv: any) => conv.appId === currentAppId)
-      const conversationId = currentConversation?.id
+      let conversationId = currentConversation?.id
+
+      // If conversationId is null, check cookie and delete it
+      if (!conversationId) {
+        conversationId = getConversationIdFromCookie()
+        if (conversationId) {
+          deleteConversationIdCookie()
+        }
+      }
 
       // Capture visual context from iframe
       const visualContext = await captureVisualContext()
@@ -610,7 +657,7 @@ export function useStreamingWebSocket() {
         ...(aiEditContext && { aiEditContext }),
 
         // Build error context if available (from publish failures)
-        ...(buildErrorContext && { 
+        ...(buildErrorContext && {
           buildError: {
             error: buildErrorContext.error,
             details: buildErrorContext.details,

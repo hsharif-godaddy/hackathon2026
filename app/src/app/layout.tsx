@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { withGasketData } from '@gasket/nextjs/layout';
 import { makeLayout } from '@godaddy/gasket-next/layout';
 import { QueryClientProvider } from "@/providers/QueryClientProvider";
@@ -7,6 +8,7 @@ import FullStoryProvider from "@/components/providers/FullStoryProvider";
 import RumProvider from "@/components/providers/RumProvider";
 import SubscriptionCacheProvider from "@/components/providers/SubscriptionCacheProvider";
 import FrameBuster from "@/components/security/FrameBuster";
+import ConversationIdCookie from "@/components/security/ConversationIdCookie";
 
 import "@/styles/globals.scss";
 
@@ -27,6 +29,9 @@ async function RootLayout({
   return (
     <PresentationLayout>
       <FrameBuster />
+      <Suspense fallback={null}>
+        <ConversationIdCookie />
+      </Suspense>
       <RumProvider>
         <FullStoryProvider>
           <QueryClientProvider>

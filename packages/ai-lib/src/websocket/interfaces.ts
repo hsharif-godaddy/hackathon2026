@@ -47,7 +47,7 @@ export interface MessageProvider {
    * @returns Array of conversation messages in chronological order
    */
   loadMessages(
-    conversationId: string, 
+    conversationId: string,
     context: Record<string, unknown>
   ): Promise<ConversationMessage[]>
 }
@@ -99,6 +99,7 @@ export interface ConversationContext {
   appId?: string
   userId?: string
   sessionId?: string
+  conversationId?: string
   [key: string]: any
 }
 
@@ -121,8 +122,8 @@ export interface ConversationPersistence {
    * @param context - Conversation context
    */
   continueConversation?(
-    conversationId: string, 
-    message: string, 
+    conversationId: string,
+    message: string,
     context: ConversationContext
   ): Promise<void>
 

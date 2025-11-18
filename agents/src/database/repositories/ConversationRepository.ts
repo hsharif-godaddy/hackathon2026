@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { getDatabase } from '../connection.js';
 import type { Conversation, ConversationMessage, ToolCall, MessageSegment } from '../schema.js';
@@ -7,9 +8,14 @@ export class ConversationRepository {
 
   /**
    * Create a new conversation
+   * @param appId - The app ID
+   * @param agentId - The agent ID
+   * @param title - Optional title for the conversation
+   * @param id - Optional conversation ID. If not provided, a new ID will be generated
+   * @returns The created conversation
    */
-  async create(appId: string, agentId: string, title?: string): Promise<Conversation> {
-    const id = nanoid(12);
+  async create(appId: string, agentId: string, title?: string, id?: string): Promise<Conversation> {
+    const conversationId = id || randomUUID();
     const now = new Date().toISOString();
 
     const stmt = this.db.prepare(`
@@ -17,10 +23,10 @@ export class ConversationRepository {
       VALUES (?, ?, ?, ?, ?, ?)
     `);
 
-    stmt.run(id, appId, agentId, title, now, now);
+    stmt.run(conversationId, appId, agentId, title, now, now);
 
     const conversation: Conversation = {
-      id,
+      id: conversationId,
       appId,
       agentId,
       createdAt: new Date(now),
@@ -58,8 +64,8 @@ export class ConversationRepository {
    */
   async getByAppId(appId: string): Promise<Conversation[]> {
     const stmt = this.db.prepare(`
-      SELECT * FROM conversations 
-      WHERE app_id = ? 
+      SELECT * FROM conversations
+      WHERE app_id = ?
       ORDER BY updated_at DESC
     `);
     const rows = stmt.all(appId) as any[];
@@ -79,7 +85,7 @@ export class ConversationRepository {
    */
   async findByAppAndAgent(appId: string, agentId: string): Promise<Conversation[]> {
     const stmt = this.db.prepare(`
-      SELECT * FROM conversations 
+      SELECT * FROM conversations
       WHERE app_id = ? AND agent_id = ?
       ORDER BY updated_at DESC
     `);
@@ -100,8 +106,8 @@ export class ConversationRepository {
    */
   async updateTitle(conversationId: string, title: string): Promise<void> {
     const stmt = this.db.prepare(`
-      UPDATE conversations 
-      SET title = ?, updated_at = CURRENT_TIMESTAMP 
+      UPDATE conversations
+      SET title = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `);
     stmt.run(title, conversationId);
@@ -133,7 +139,7 @@ export class ConversationRepository {
     const now = new Date().toISOString();
 
     const stmt = this.db.prepare(`
-      INSERT INTO conversation_messages 
+      INSERT INTO conversation_messages
       (id, conversation_id, sender, content, message_type, tool_calls, segments, metadata, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
@@ -183,7 +189,7 @@ export class ConversationRepository {
    */
   async getMessageById(messageId: string): Promise<ConversationMessage | null> {
     const stmt = this.db.prepare(`
-      SELECT * FROM conversation_messages 
+      SELECT * FROM conversation_messages
       WHERE id = ?
     `);
     const row = stmt.get(messageId) as any;
@@ -224,8 +230,8 @@ export class ConversationRepository {
     const mergedMetadata = { ...existingMetadata, ...metadataUpdates };
 
     const updateStmt = this.db.prepare(`
-      UPDATE conversation_messages 
-      SET metadata = ? 
+      UPDATE conversation_messages
+      SET metadata = ?
       WHERE id = ?
     `);
 
@@ -268,7 +274,7 @@ export class ConversationRepository {
         SELECT metadata FROM conversation_messages WHERE id = ?
       `);
       const row = currentStmt.get(messageId) as any;
-      
+
       if (row) {
         const existingMetadata = row.metadata ? JSON.parse(row.metadata) : {};
         const mergedMetadata = { ...existingMetadata, ...updates.metadata };
@@ -285,8 +291,8 @@ export class ConversationRepository {
     values.push(messageId);
 
     const stmt = this.db.prepare(`
-      UPDATE conversation_messages 
-      SET ${updateFields.join(', ')} 
+      UPDATE conversation_messages
+      SET ${updateFields.join(', ')}
       WHERE id = ?
     `);
 
@@ -298,8 +304,8 @@ export class ConversationRepository {
    */
   async getMessages(conversationId: string): Promise<ConversationMessage[]> {
     const stmt = this.db.prepare(`
-      SELECT * FROM conversation_messages 
-      WHERE conversation_id = ? 
+      SELECT * FROM conversation_messages
+      WHERE conversation_id = ?
       ORDER BY created_at ASC
     `);
     const rows = stmt.all(conversationId) as any[];
@@ -340,7 +346,7 @@ export class ConversationRepository {
   /**
    * Get messages for conversation history processing (LLM context)
    * Returns normalized format with snake_case field names
-   * 
+   *
    * This method is specifically for history loading and ensures consistent
    * field naming regardless of how data is stored in the database.
    */
@@ -366,8 +372,8 @@ export class ConversationRepository {
     createdAt: Date;
   }>> {
     const stmt = this.db.prepare(`
-      SELECT * FROM conversation_messages 
-      WHERE conversation_id = ? 
+      SELECT * FROM conversation_messages
+      WHERE conversation_id = ?
       ORDER BY created_at ASC
     `);
     const rows = stmt.all(conversationId) as any[];
@@ -423,13 +429,13 @@ export class ConversationRepository {
 
     // Create placeholders for the IN clause
     const placeholders = conversationIds.map(() => '?').join(',');
-    
+
     const stmt = this.db.prepare(`
-      SELECT * FROM conversation_messages 
+      SELECT * FROM conversation_messages
       WHERE conversation_id IN (${placeholders})
       ORDER BY created_at ASC
     `);
-    
+
     const rows = stmt.all(...conversationIds) as any[];
 
     return rows.map(row => {
@@ -470,9 +476,9 @@ export class ConversationRepository {
     options: { limit?: number; offset?: number } = {}
   ): Promise<Array<Conversation & { messageCount: number }>> {
     const { limit = 50, offset = 0 } = options;
-    
+
     const stmt = this.db.prepare(`
-      SELECT 
+      SELECT
         c.id,
         c.app_id,
         c.agent_id,
