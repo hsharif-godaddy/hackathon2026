@@ -89,16 +89,16 @@ export async function createUnifiedAgentFactory(options?: {
     ...(developConfig.tools || {}),
     handoff: developHandoffTool
   }
-  // Stop execution after handoff tool is called
-  developConfig.stopAfterTools = ['handoff']
+  // Stop execution after handoff or suggestedResponse tool is called
+  developConfig.stopAfterTools = ['handoff', 'suggestedResponse']
 
   colorSchemeConfig.tools = {
     ...(colorSchemeConfig.tools || {}),
     handoff: colorSchemeHandoffTool,
     end_conversation: endConversationTool
   }
-  // Stop execution after handoff or end_conversation tool is called
-  colorSchemeConfig.stopAfterTools = ['handoff', 'end_conversation']
+  // Stop execution after handoff, end_conversation, suggestedResponse, or cssSuggest tool is called
+  colorSchemeConfig.stopAfterTools = ['handoff', 'end_conversation', 'suggestedResponse', 'cssSuggest']
 
   // Conditionally configure database agent if enabled
   if (databaseConfig) {
@@ -112,8 +112,8 @@ export async function createUnifiedAgentFactory(options?: {
       ...(databaseConfig.tools || {}),
       handoff: databaseHandoffTool
     }
-    // Stop execution after handoff tool is called
-    databaseConfig.stopAfterTools = ['handoff']
+    // Stop execution after handoff or suggestedResponse tool is called
+    databaseConfig.stopAfterTools = ['handoff', 'suggestedResponse']
   }
 
   // Build agent definitions conditionally

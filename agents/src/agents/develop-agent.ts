@@ -254,9 +254,10 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       //widgetRender: allAILibTools.widgetRender,
 
       // User interaction
+      nextAction: allAILibTools.nextAction,
       suggestedResponse: allAILibTools.suggestedResponse,
 
-      // Handoff tools will be added by the factory when needed
+      // Handoff and conversation control tools will be added by the factory when needed
     },
 
     // Tool execution hooks
