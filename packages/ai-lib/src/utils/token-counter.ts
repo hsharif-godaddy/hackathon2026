@@ -1,6 +1,9 @@
 import { encoding_for_model, type TiktokenModel } from 'tiktoken'
 import { countTokens as countAnthropicTokens } from '@anthropic-ai/tokenizer'
 import { normalizeModelName, type ModelProvider } from './model-normalization.js'
+import { createLogger } from './logger.js'
+
+const logger = createLogger('token-counter')
 
 /**
  * Supported model types for token counting
@@ -56,7 +59,7 @@ function getTiktokenModelName(normalizedName: string): TiktokenModel {
   
   const tiktokenModel = tiktokenMap[normalizedName]
   if (!tiktokenModel) {
-    console.warn('No tiktoken model found for "%s", defaulting to gpt-4o', normalizedName)
+    logger.warn(`No tiktoken model found for "${normalizedName}", defaulting to gpt-4o`)
     return 'gpt-4o'
   }
   
@@ -74,7 +77,7 @@ function countOpenAITokens(text: string, modelName: string): number {
     encoding.free() // Free memory
     return tokens.length
   } catch (error) {
-    console.error('Error counting tokens for OpenAI model "%s":', modelName, error)
+    logger.error(`Error counting tokens for OpenAI model "${modelName}"`, error)
     // Fallback to rough approximation: ~4 characters per token
     return Math.ceil(text.length / 4)
   }
@@ -89,7 +92,7 @@ function countAnthropicTokensWrapper(text: string, modelName: string): number {
   try {
     return countAnthropicTokens(text)
   } catch (error) {
-    console.error('Error counting tokens for Anthropic model "%s":', modelName, error)
+    logger.error(`Error counting tokens for Anthropic model "${modelName}"`, error)
     // Fallback to rough approximation: ~4 characters per token
     return Math.ceil(text.length / 4)
   }

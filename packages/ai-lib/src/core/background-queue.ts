@@ -1,5 +1,8 @@
+import { createLogger } from '../utils/logger.js'
 import type { AgentFactory, HandoffContext } from './agent-factory.js'
 import type { AgentContext } from './types.js'
+
+const logger = createLogger('background-queue')
 
 /**
  * Check if a value is a plain object (created with {} or new Object())
@@ -174,7 +177,7 @@ export class BackgroundQueue {
       }
 
       try {
-        console.log('🔄 Background: Executing task', { task: task.task })
+        logger.info('Background: Executing task', { task: task.task })
 
         // Execute handoff with execution context
         // Convert AgentContext to Record<string, unknown> for executeHandoff
@@ -212,16 +215,16 @@ export class BackgroundQueue {
         )
 
         if (result.success) {
-          console.log('✅ Background: Task completed', { task: task.task })
+          logger.info('Background: Task completed', { task: task.task })
           task.resolve(result.result)
         } else {
           const error = new Error(result.error || 'Failed to execute background task')
-          console.error('❌ Background: Failed to execute task', { task: task.task, error })
+          logger.error('Background: Failed to execute task', { task: task.task, error })
           task.reject(error)
         }
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error))
-        console.error('❌ Background: Error executing task', { task: task.task, error: err })
+        logger.error('Background: Error executing task', { task: task.task, error: err })
         task.reject(err)
       }
     }

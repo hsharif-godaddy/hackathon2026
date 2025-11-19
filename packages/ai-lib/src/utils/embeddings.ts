@@ -3,7 +3,10 @@
  * Handles provider-specific implementations while maintaining a unified interface
  */
 
+import { createLogger } from './logger.js'
 import type { EmbeddingOptions, EmbeddingsResult } from '../core/types.js'
+
+const logger = createLogger('embeddings')
 
 export interface EmbeddingModel {
   provider: 'bedrock' | 'openai' | 'anthropic' | 'custom'
@@ -197,7 +200,7 @@ async function generateBedrockEmbeddings(
       }
     }
   } catch (error) {
-    console.error('Bedrock embeddings error:', error)
+    logger.error('Bedrock embeddings error', error)
     throw new Error(`Failed to generate Bedrock embeddings: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
@@ -244,7 +247,7 @@ async function generateOpenAIEmbeddings(
       }
     }
   } catch (error) {
-    console.error('OpenAI embeddings error:', error)
+    logger.error('OpenAI embeddings error', error)
     throw new Error(`Failed to generate OpenAI embeddings: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
@@ -302,7 +305,7 @@ async function generateGenericEmbeddings(
       }
     }
   } catch (error) {
-    console.error('Generic embeddings error:', error)
+    logger.error('Generic embeddings error', error)
     throw new Error(`Failed to generate embeddings: ${error instanceof Error ? error.message : String(error)}`)
   }
 }

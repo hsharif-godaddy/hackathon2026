@@ -6,10 +6,13 @@
  * to reference results from earlier ones.
  */
 
+import { createLogger } from '../utils/logger.js'
 import { z } from 'zod'
 import { createTool } from './index.js'
 import type { AgentFactory } from '../core/agent-factory.js'
 import { BackgroundQueue } from '../core/background-queue.js'
+
+const logger = createLogger('background-delegate-tool')
 
 /**
  * Create a background delegate tool for an agent factory
@@ -46,12 +49,12 @@ export function createBackgroundDelegateTool(
 
       const totalTasks = tasks.length
 
-      console.log('🔄 Delegating tasks for background processing', {
+      logger.info('Delegating tasks for background processing', {
         sourceAgent: sourceAgentId,
         targetAgent: targetAgentId,
         taskCount: totalTasks
       })
-      console.log('📋 Tasks queued', { tasks: tasks.map((t, i) => ({ index: i + 1, task: t })) })
+      logger.debug('Tasks queued', { tasks: tasks.map((t, i) => ({ index: i + 1, task: t })) })
 
       try {
         // Convert execution context to AgentContext format for BackgroundQueue
@@ -68,12 +71,12 @@ export function createBackgroundDelegateTool(
         // Create background queue and enqueue all tasks
         const backgroundQueue = new BackgroundQueue(factory, sourceAgentId, targetAgentId)
         
-        console.log('📦 Queueing tasks for background processing', { taskCount: totalTasks })
+        logger.info('Queueing tasks for background processing', { taskCount: totalTasks })
         
         for (const taskToQueue of tasks) {
           backgroundQueue.enqueue(taskToQueue, agentContext, context)
             .catch(error => {
-              console.error('❌ Background task failed', { task: taskToQueue, error })
+              logger.error('Background task failed', { task: taskToQueue, error })
             })
         }
 
@@ -88,7 +91,7 @@ export function createBackgroundDelegateTool(
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        console.error('❌ Background delegation error', { error: errorMessage })
+        logger.error('Background delegation error', { error: errorMessage })
         
         return {
           success: false,

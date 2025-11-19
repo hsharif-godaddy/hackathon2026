@@ -5,10 +5,13 @@
  * automatic environment variable validation, and proxy support.
  */
 
+import { createLogger } from '../utils/logger.js'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 import type { LanguageModel } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
+
+const logger = createLogger('unified-provider')
 import { 
   normalizeModelName, 
   getLegacyModelMappings, 
@@ -175,7 +178,7 @@ function validateBedrockConfig(config?: ProviderConfig): void {
   
   // Only warn about region if no profile is configured (profile can provide region)
   if (!hasRegion && !hasProfile) {
-    console.warn('⚠️  No AWS region specified and no profile configured. Using default: us-east-1')
+    logger.warn('No AWS region specified and no profile configured. Using default: us-east-1')
   }
 }
 
@@ -280,7 +283,7 @@ let cachedLitellmMetadata: { user?: string; tags?: string[] } | null = null
 export function setLitellmMetadata(metadata: { user?: string; tags?: string[] } | null): void {
   cachedLitellmMetadata = metadata
   if (metadata) {
-    console.log('✅ litellm_metadata configured:', {
+    logger.info('litellm_metadata configured', {
       subscriptionId: metadata.user || 'not-set',
       customerId: metadata.tags?.[0] || 'not-set'
     })
@@ -310,14 +313,14 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
         modifiedInit.body = JSON.stringify(body)
         
         // Log successful injection
-        console.log('🏷️  litellm_metadata injected into API request:', {
+        logger.debug('litellm_metadata injected into API request', {
           user: cachedLitellmMetadata.user,
           tags: cachedLitellmMetadata.tags,
           url: typeof url === 'string' ? url : url.toString()
         })
       } catch (error) {
         // If body parsing fails, proceed without litellm_metadata
-        console.warn('⚠️  Failed to inject litellm_metadata:', error instanceof Error ? error.message : String(error))
+        logger.warn('Failed to inject litellm_metadata', { error: error instanceof Error ? error.message : String(error) })
       }
     }
 
@@ -364,7 +367,7 @@ async function createOpenAIProvider(config?: ProviderConfig) {
       fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token injection and refresh
     }
     
-    console.log(`🔐 Using S2S authentication with GoCode endpoint: ${openaiConfig.baseURL}`)
+    logger.info(`Using S2S authentication with GoCode endpoint: ${openaiConfig.baseURL}`)
     return createOpenAI(openaiConfig)
     
   } else {
@@ -403,7 +406,7 @@ async function createBedrockProvider(config?: ProviderConfig) {
   } else if (!hasProfile) {
     // Only set default region if no profile is configured
     bedrockConfig.region = 'us-east-1'
-    console.warn('⚠️  No AWS region specified and no profile configured. Using default: us-east-1')
+    logger.warn('No AWS region specified and no profile configured. Using default: us-east-1')
   }
   // If profile is configured but no explicit region, don't set region
   // Let AWS SDK resolve region from profile configuration
@@ -503,7 +506,7 @@ export async function getModel(
       if (shouldUseClaudeProxy(modelName, config)) {
         // Use Claude proxy model name
         modelNameToUse = CLAUDE_PROXY_MODELS[modelName as keyof typeof CLAUDE_PROXY_MODELS]
-        console.log(`🔄 Routing Claude model '${modelName}' through OpenAI proxy as '${modelNameToUse}'`)
+        logger.info(`Routing Claude model '${modelName}' through OpenAI proxy as '${modelNameToUse}'`)
       } else {
         // Use regular OpenAI model mapping
         modelNameToUse = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
@@ -534,7 +537,7 @@ export async function getModel(
       if (modelName in CLAUDE_PROXY_MODELS) {
         // Use Claude proxy model name for Anthropic API
         modelNameToUse = CLAUDE_PROXY_MODELS[modelName as keyof typeof CLAUDE_PROXY_MODELS]
-        console.log(`🔄 Using Anthropic API for Claude model '${modelName}' as '${modelNameToUse}'`)
+        logger.info(`Using Anthropic API for Claude model '${modelName}' as '${modelNameToUse}'`)
       } else {
         // Use regular model mapping
         modelNameToUse = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
@@ -626,7 +629,7 @@ async function createAnthropicProvider(config?: ProviderConfig) {
       fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token injection and refresh
     }
     
-    console.log(`🔐 Using S2S authentication with GoCode endpoint (Anthropic): ${anthropicConfig.baseURL}`)
+    logger.info(`Using S2S authentication with GoCode endpoint (Anthropic): ${anthropicConfig.baseURL}`)
     return createAnthropic(anthropicConfig)
     
   } else {
@@ -642,7 +645,7 @@ async function createAnthropicProvider(config?: ProviderConfig) {
     if (baseURL) {
       // Ensure URL ends with /v1 for Anthropic API compatibility
       anthropicConfig.baseURL = baseURL.endsWith('/v1') ? baseURL : baseURL + '/v1'
-      console.log(`🔗 Using Anthropic proxy endpoint: ${anthropicConfig.baseURL}`)
+      logger.info(`Using Anthropic proxy endpoint: ${anthropicConfig.baseURL}`)
     }
     
     return createAnthropic(anthropicConfig)

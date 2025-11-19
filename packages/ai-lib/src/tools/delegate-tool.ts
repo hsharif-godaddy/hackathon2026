@@ -6,9 +6,12 @@
  * This is NOT for switching the active agent - use handoff helpers for that.
  */
 
+import { createLogger } from '../utils/logger.js'
 import { z } from 'zod'
 import { createTool } from './index.js'
 import type { AgentFactory, HandoffContext } from '../core/agent-factory.js'
+
+const logger = createLogger('delegate-tool')
 
 /**
  * Create a delegate tool for an agent factory
@@ -30,8 +33,8 @@ export function createDelegateTool(
       reason: z.string().optional().describe('Reason for the delegation')
     }),
     async ({ targetAgent, task, context, parameters, reason }) => {
-      console.log(`🔄 ${sourceAgentId} delegating task to ${targetAgent}`)
-      console.log(`📋 Task: ${task}`)
+      logger.info(`${sourceAgentId} delegating task to ${targetAgent}`)
+      logger.info(`Task: ${task}`)
       
       const handoffContext: HandoffContext = {
         task,
@@ -71,7 +74,7 @@ export function createDelegateTool(
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        console.error(`❌ Delegation error: ${errorMessage}`)
+        logger.error(`Delegation error: ${errorMessage}`)
         
         return {
           success: false,

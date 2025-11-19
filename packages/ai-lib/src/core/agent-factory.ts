@@ -9,6 +9,9 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from './types.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
 import { retryWithBackoff, DEFAULT_RETRY_CONFIG } from '../utils/retry-with-backoff.js'
+import { createLogger } from '../utils/logger.js'
+
+const logger = createLogger('agent-factory')
 
 /**
  * AsyncLocalStorage for maintaining per-request execution context
@@ -163,7 +166,7 @@ export class AgentWrapper {
     for (const [toolName, tool] of Object.entries(tools)) {
       // Skip undefined/null tools to prevent errors when accessing properties
       if (!tool) {
-        console.warn(`Skipping undefined/null tool: ${toolName}`)
+        logger.warn(`Skipping undefined/null tool: ${toolName}`)
         continue
       }
 
@@ -193,7 +196,7 @@ export class AgentWrapper {
                 processedArgs = hookResult
               }
             } catch (error) {
-              console.error('Error in beforeToolExecution hook for', toolName, error)
+              logger.error('Error in beforeToolExecution hook', { toolName, error })
               // Continue with original args if hook fails
             }
           }
@@ -227,7 +230,7 @@ export class AgentWrapper {
               }, {} as Record<string, any>)
             }
             
-            console.error('❌ Tool execution failed', {
+            logger.error('Tool execution failed', {
               toolName,
               args: processedArgs,
               error: error instanceof Error ? {
@@ -247,7 +250,7 @@ export class AgentWrapper {
                   toolCallResult = hookResult
                 }
               } catch (error) {
-                console.error('Error in afterToolExecution hook', toolName, error)
+                logger.error('Error in afterToolExecution hook', { toolName, error })
                 // Continue with original result if hook fails
               }
             }
@@ -496,7 +499,7 @@ export class AgentWrapper {
   } catch (error: any) {
       // Handle API call errors (like tool input validation failures)
       if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {
-        console.error('❌ Tool input validation error in AgentWrapper.streamGenerate:', error.message)
+        logger.error('Tool input validation error in AgentWrapper.streamGenerate', { message: error.message })
 
         // Create an error message for the LLM
         const errorMessage = `Tool call failed due to invalid input format: ${error.message}. Please ensure all tool arguments are properly formatted as valid JSON objects. Check that:
@@ -737,8 +740,8 @@ export class AgentFactory {
     this.handoffHistory.push(historyEntry)
 
     try {
-      console.log(`🔄 Executing handoff: ${sourceAgentId} → ${targetAgentId}`)
-      console.log(`📋 Task: ${handoffContext.task}`)
+      logger.info(`Executing handoff: ${sourceAgentId} -> ${targetAgentId}`)
+      logger.info(`Task: ${handoffContext.task}`)
 
       // Execute the task on the target agent with only the provided context
       const streamOptions: {
@@ -788,7 +791,7 @@ export class AgentFactory {
       historyEntry.result = handoffResult
       historyEntry.status = 'completed'
 
-      console.log(`✅ Handoff completed successfully: ${sourceAgentId} → ${targetAgentId}`)
+      logger.info(`Handoff completed successfully: ${sourceAgentId} -> ${targetAgentId}`)
 
       return handoffResult
 
@@ -808,8 +811,8 @@ export class AgentFactory {
       historyEntry.result = handoffResult
       historyEntry.status = 'failed'
 
-      console.log(`❌ Handoff failed: ${sourceAgentId} → ${targetAgentId}`)
-      console.log(`Error: ${handoffResult.error}`)
+      logger.error(`Handoff failed: ${sourceAgentId} -> ${targetAgentId}`)
+      logger.error(`Error: ${handoffResult.error}`)
 
       return handoffResult
     }

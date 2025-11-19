@@ -1,6 +1,9 @@
+import { createLogger } from '../utils/logger.js'
 import type { CoreMessage } from 'ai'
 import type { AgentContext, FileInputContext } from './types.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
+
+const logger = createLogger('message-builder')
 
 /**
  * Interface for building messages for AI SDK calls
@@ -52,12 +55,12 @@ export class SimpleMessageBuilder implements MessageBuilder {
     // Add user input with vision support if files are provided
     if (context?.files && context.files.length > 0) {
       const visionMessage = buildHybridContent(input, context.files)
-      console.log('🔍 [SimpleMessageBuilder] Building vision message with', context.files.length, 'files')
-      console.log('🔍 [SimpleMessageBuilder] Content type:', typeof visionMessage.content)
-      console.log('🔍 [SimpleMessageBuilder] Content blocks:', Array.isArray(visionMessage.content) ? visionMessage.content.length : 'string')
+      logger.debug(`Building vision message with ${context.files.length} files`)
+      logger.debug(`Content type: ${typeof visionMessage.content}`)
+      logger.debug(`Content blocks: ${Array.isArray(visionMessage.content) ? visionMessage.content.length : 'string'}`)
       if (Array.isArray(visionMessage.content)) {
-        console.log('🔍 [SimpleMessageBuilder] First block type:', visionMessage.content[0]?.type)
-        console.log('🔍 [SimpleMessageBuilder] Has image block:', visionMessage.content.some((b: any) => b.type === 'image'))
+        logger.debug(`First block type: ${visionMessage.content[0]?.type}`)
+        logger.debug(`Has image block: ${visionMessage.content.some((b: any) => b.type === 'image')}`)
       }
       messages.push(visionMessage as CoreMessage)
     } else {

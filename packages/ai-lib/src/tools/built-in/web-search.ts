@@ -1,6 +1,9 @@
+import { createLogger } from '../../utils/logger.js'
 import { z } from 'zod'
 import { BaseTool } from '../base-tool.js'
 import type { AgentContext } from '../../core/types.js'
+
+const logger = createLogger('web-search')
 
 /**
  * Web search tool (placeholder implementation)
@@ -21,7 +24,7 @@ export class WebSearchTool extends BaseTool {
 
     try {
       // Placeholder implementation - in real usage, integrate with search API
-      console.log(`[WebSearch] Searching for: "${query}" (max: ${maxResults})`)
+      logger.info(`Searching for: "${query}" (max: ${maxResults})`)
 
       // Mock results for now
       const mockResults = [

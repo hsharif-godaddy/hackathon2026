@@ -1,6 +1,11 @@
 /**
  * Environment configuration helper
  */
+
+import { createLogger } from './logger.js'
+
+const logger = createLogger('env-config')
+
 export class EnvConfig {
   /**
    * Get OpenAI configuration from environment
@@ -84,10 +89,10 @@ export class EnvConfig {
    * Print environment status for debugging
    */
   static printStatus() {
-    console.log('🔧 Environment Configuration Status:')
-    console.log(`   Default Provider: ${this.getDefaultProvider()}`)
-    console.log(`   OpenAI: ${this.validateProvider('openai') ? '✅' : '❌'} ${process.env.OPENAI_API_KEY ? '(API key set)' : '(no API key)'}`)
-    console.log(`   Anthropic: ${this.validateProvider('anthropic') ? '✅' : '❌'} ${process.env.ANTHROPIC_API_KEY ? '(API key set)' : '(no API key)'}`)
+    logger.info('Environment Configuration Status:')
+    logger.info(`Default Provider: ${this.getDefaultProvider()}`)
+    logger.info(`OpenAI: ${this.validateProvider('openai') ? 'Yes' : 'No'} ${process.env.OPENAI_API_KEY ? '(API key set)' : '(no API key)'}`)
+    logger.info(`Anthropic: ${this.validateProvider('anthropic') ? 'Yes' : 'No'} ${process.env.ANTHROPIC_API_KEY ? '(API key set)' : '(no API key)'}`)
 
     // Better Bedrock status detection
     const awsCredsInfo = []
@@ -97,7 +102,6 @@ export class EnvConfig {
     const region = process.env.AWS_REGION || 'us-west-2'
     const awsStatus = awsCredsInfo.length > 0 ? `(${awsCredsInfo.join(', ')}, region: ${region})` : `(region: ${region}, using default credential chain)`
 
-    console.log(`   Bedrock: ${this.validateProvider('bedrock') ? '✅' : '❌'} ${awsStatus}`)
-    console.log()
+    logger.info(`Bedrock: ${this.validateProvider('bedrock') ? 'Yes' : 'No'} ${awsStatus}`)
   }
 }

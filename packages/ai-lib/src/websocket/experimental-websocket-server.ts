@@ -5,6 +5,7 @@ import { createAgentFactory } from '../core/agent-factory.js'
 import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '../utils/model-pricing.js'
 import type { AgentsCollection } from '../core/types.js'
 import type { HandoffStateManager } from '../tools/handoff-helpers.js'
+import { createLogger } from '../utils/logger.js'
 import type {
   MessageProvider,
   ContextProvider,
@@ -127,6 +128,7 @@ export interface WebSocketMessage {
 export class WebSocketServer {
   private io: SocketIOServer
   private config: WebSocketConfig
+  private logger = createLogger('websocket')
   private activeStreams: Map<string, AbortController> = new Map()
   private activeConversations: Map<string, {
     conversationId: string
@@ -322,7 +324,7 @@ export class WebSocketServer {
       const agentMessageId = conversation.context.agentMessageId
 
       if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-        console.log('📝 Event captured for persistence:', {
+        this.logger.debug('Event captured for persistence', {
           type,
           hasAgentMessageId: !!agentMessageId,
           hasUpdateMethod: !!this.config.messagePersistence.updateAgentTurn,
@@ -387,7 +389,7 @@ export class WebSocketServer {
 
             try {
               if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-                console.log('💾 Updating agent turn with tool result:', {
+                this.logger.debug('Updating agent turn with tool result', {
                   messageId: agentMessageId,
                   toolId,
                   toolName: existingTool.name,
@@ -407,7 +409,7 @@ export class WebSocketServer {
                 conversation.context
               )
             } catch (error) {
-              console.warn('⚠️ Failed to update agent turn with tool result:', error)
+              this.logger.warn('Failed to update agent turn with tool result', error)
             }
           }
         }
@@ -505,7 +507,7 @@ export class WebSocketServer {
       while (true) { // Intentional infinite loop until stream is done
         // Check if the stream was cancelled
         if (abortController?.signal.aborted) {
-          console.warn('⚠️ Stream processing cancelled by client')
+          this.logger.warn('Stream processing cancelled by client')
           break
         }
 
@@ -516,7 +518,7 @@ export class WebSocketServer {
           // Handle specific stream read errors
           if (this.isNetworkError(readError)) {
             const errorMessage = readError instanceof Error ? readError.message : String(readError)
-            console.warn('⚠️ Network error during stream read, attempting graceful fallback:', errorMessage)
+            this.logger.warn('Network error during stream read, attempting graceful fallback', { error: errorMessage })
             throw readError // Re-throw to trigger fallback
           }
           throw readError
@@ -612,7 +614,7 @@ export class WebSocketServer {
               try {
                 parsedInput = JSON.parse(fullInput)
               } catch (error) {
-                console.error('Failed to parse tool input:', fullInput)
+                this.logger.error('Failed to parse tool input', { fullInput })
               }
 
               const toolCallData = {
@@ -714,7 +716,7 @@ export class WebSocketServer {
       // Enhanced error logging with structured information
       const errorInfo = this.analyzeStreamError(error)
 
-      console.error('❌ Error processing baseStream, falling back to text-only:', {
+      this.logger.error('Error processing baseStream, falling back to text-only', {
         errorType: errorInfo.type,
         errorMessage: errorInfo.message,
         isNetworkError: errorInfo.isNetworkError,
@@ -724,7 +726,7 @@ export class WebSocketServer {
 
       // Don't attempt fallback if the stream was intentionally cancelled
       if (errorInfo.isAbortError) {
-        console.info('ℹ️ Stream processing was cancelled, skipping fallback')
+        this.logger.info('Stream processing was cancelled, skipping fallback')
         return
       }
 
@@ -732,7 +734,7 @@ export class WebSocketServer {
       try {
         await this.processTextOnlyStream(socket, streamResult, currentStep, agentName)
       } catch (fallbackError: unknown) {
-        console.error('❌ Fallback to text-only streaming also failed:', fallbackError)
+        this.logger.error('Fallback to text-only streaming also failed', fallbackError)
         // Emit error to client as last resort
         socket.emit('message', {
           type: 'error',
@@ -762,7 +764,7 @@ export class WebSocketServer {
       for await (const chunk of streamResult.textStream) {
         // Check if the stream was cancelled
         if (abortController?.signal.aborted) {
-          console.warn('⚠️ Text stream processing cancelled by client')
+          this.logger.warn('Text stream processing cancelled by client')
           break
         }
 
@@ -784,7 +786,7 @@ export class WebSocketServer {
       const errorInfo = this.analyzeStreamError(error)
 
       if (!errorInfo.isAbortError) {
-        console.error('❌ Error in text-only stream processing:', errorInfo)
+        this.logger.error('Error in text-only stream processing', errorInfo)
         throw error
       }
     }
@@ -883,7 +885,7 @@ export class WebSocketServer {
     } catch (cancelError: unknown) {
       // Ignore cancel errors - reader might already be closed
       const errorMessage = cancelError instanceof Error ? cancelError.message : String(cancelError)
-      console.debug('Reader cancel error (expected if already closed):', errorMessage)
+      this.logger.debug('Reader cancel error (expected if already closed)', { error: errorMessage })
     }
 
     try {
@@ -892,7 +894,7 @@ export class WebSocketServer {
     } catch (releaseError: unknown) {
       // Ignore release errors - lock might already be released
       const errorMessage = releaseError instanceof Error ? releaseError.message : String(releaseError)
-      console.debug('Reader release error (expected if already released):', errorMessage)
+      this.logger.debug('Reader release error (expected if already released)', { error: errorMessage })
     }
   }
 
@@ -984,13 +986,13 @@ export class WebSocketServer {
         }
 
         // Handoff occurred - prepare for next iteration
-        console.log(`🔄 Handoff detected: ${agentName} → ${handoffDetails.newAgentName}`)
+        this.logger.info(`Handoff detected: ${agentName} -> ${handoffDetails.newAgentName}`)
         agentName = handoffDetails.newAgentName
         currentMessage = handoffDetails.handoffPrompt
       }
 
       if (iterationCount >= maxHandoffs) {
-        console.warn(`⚠️ Maximum handoff limit (${maxHandoffs}) reached`)
+        this.logger.warn(`Maximum handoff limit (${maxHandoffs}) reached`)
       }
 
       // 8. Complete the conversation (after all handoffs complete)
@@ -1179,7 +1181,7 @@ export class WebSocketServer {
 
       data.conversationHistory = conversationHistory
     } catch (error) {
-      console.warn('⚠️ Failed to load conversation history:', error)
+      this.logger.warn('Failed to load conversation history', error)
     }
   }
 
@@ -1202,7 +1204,7 @@ export class WebSocketServer {
     // Handoff occurred - get the prompt
     const handoffPrompt = this.config.stateManager.getLastHandoffPrompt?.(socketId)
     if (!handoffPrompt) {
-      console.warn(`⚠️ Handoff to ${newAgentName} detected but no prompt available`)
+      this.logger.warn(`Handoff to ${newAgentName} detected but no prompt available`)
       return null
     }
 
@@ -1297,10 +1299,10 @@ export class WebSocketServer {
           }
         }
 
-        console.log(`✅ Loaded ${loadedContextMessages.length} context messages (${beforeHistoryMessages.length} before history, ${afterHistoryMessages.length} after history)`)
-        console.log(`🎯 Cache points: ${loadedContextMessages.filter(m => m.cachePoint).length} messages with caching enabled`)
+        this.logger.info(`Loaded ${loadedContextMessages.length} context messages (${beforeHistoryMessages.length} before history, ${afterHistoryMessages.length} after history)`)
+        this.logger.info(`Cache points: ${loadedContextMessages.filter(m => m.cachePoint).length} messages with caching enabled`)
       } catch (error) {
-        console.error('❌ Error loading context messages:', error)
+        this.logger.error('Error loading context messages', error)
         // Continue without context if loading fails
       }
     }
@@ -1311,7 +1313,7 @@ export class WebSocketServer {
 
     // 2. Conversation history (if provided) - preserve full message structure including tool calls
     if (data.conversationHistory && data.conversationHistory.length > 0) {
-      console.log(`🔄 Adding ${data.conversationHistory.length} conversation history messages`)
+      this.logger.info(`Adding ${data.conversationHistory.length} conversation history messages`)
       const convertedHistoryMessages = data.conversationHistory.map(msg => {
         const converted: any = {
           role: msg.role,
@@ -1342,10 +1344,11 @@ export class WebSocketServer {
     // 3. Context messages marked "after_history" go to messages (after conversation history, before user message)
     messages.push(...afterHistoryMessages)
 
-    console.log(`🚀 Message assembly complete:`)
-    console.log(`  - Context messages (before history): ${contextMessages.length}`)
-    console.log(`  - Messages (history + after-history context): ${messages.length}`)
-    console.log(`  - Total cache points: ${[...contextMessages, ...messages].filter(m => m.cachePoint).length}`)
+    this.logger.info('Message assembly complete', {
+      contextMessages: contextMessages.length,
+      messages: messages.length,
+      cachePoints: contextMessages.filter(m => m.cachePoint).length + messages.filter(m => m.cachePoint).length
+    })
 
     return { messages, contextMessages }
   }
@@ -1388,7 +1391,7 @@ export class WebSocketServer {
         )
         activeConversation.context.agentMessageId = messageId
       } catch (error) {
-        console.warn('⚠️ Failed to start agent turn:', error)
+        this.logger.warn('Failed to start agent turn', error)
       }
     }
 
@@ -1428,11 +1431,11 @@ export class WebSocketServer {
             })
           }
         } catch (error) {
-          console.error('Failed to process screenshot:', error)
+          this.logger.error('Failed to process screenshot', error)
         }
       }
       if (processedFiles.length > 0) {
-        console.log(`📸 Attached ${processedFiles.length} image(s) for vision processing (screenshots + asset images)`)
+        this.logger.info(`Attached ${processedFiles.length} image(s) for vision processing (screenshots + asset images)`)
       }
     }
 
@@ -1450,7 +1453,7 @@ export class WebSocketServer {
       })
     } catch (error: any) {
       // Handle API call errors (like tool input validation failures)
-      console.log('🔍 Caught error in streamGenerate:', {
+      this.logger.debug('Caught error in streamGenerate', {
         name: error?.name,
         message: error?.message,
         isAPIError: error?.name === 'AI_APICallError',
@@ -1459,7 +1462,7 @@ export class WebSocketServer {
       })
 
       if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid') || error?.message?.includes('JSON parsing failed')) {
-        console.error('❌ Tool input validation error:', error.message)
+        this.logger.error('Tool input validation error', { message: error.message })
 
         // Emit step start for the failed tool call
         const stepStartData = {
@@ -1544,7 +1547,7 @@ Please try again with corrected formatting.`
           })
         } catch (retryError: any) {
           // If retry also fails, fall back to error handling
-          console.error('❌ Retry also failed:', retryError.message)
+          this.logger.error('Retry also failed', { message: retryError.message })
           throw retryError
         }
       } else {
@@ -1595,36 +1598,41 @@ Please try again with corrected formatting.`
         const agentConfig = agent.getConfig()
         modelName = agentConfig.modelName || agentName || 'unknown'
       } catch (error) {
-        console.warn(`⚠️  Failed to get model name from agent config: ${error}`)
+        this.logger.warn(`Failed to get model name from agent config: ${error}`)
         modelName = agentName || 'unknown'
       }
 
-      console.log(`📊 Token Usage Statistics:`)
-      console.log(`   Input tokens: ${usage.inputTokens || 0}`)
-      console.log(`   Output tokens: ${usage.outputTokens || 0}`)
-      console.log(`   Total tokens: ${usage.totalTokens || 0}`)
+      this.logger.info('Token Usage Statistics', {
+        inputTokens: usage.inputTokens || 0,
+        outputTokens: usage.outputTokens || 0,
+        totalTokens: usage.totalTokens || 0
+      })
 
       // Log cache usage if available
       const totalCachedTokens = (usage.cachedInputTokensRead || 0) + (usage.cachedInputTokensWrite || 0)
       if (totalCachedTokens > 0) {
         const cacheHitRate = getCacheHitRate(usage)
-        console.log(`   🎯 Cached input tokens: ${totalCachedTokens}`)
-        if (usage.cachedInputTokensRead && usage.cachedInputTokensWrite) {
-          console.log(`     • Read: ${usage.cachedInputTokensRead}, Write: ${usage.cachedInputTokensWrite}`)
-        } else if (usage.cachedInputTokensRead) {
-          console.log(`     • Read: ${usage.cachedInputTokensRead}`)
-        } else if (usage.cachedInputTokensWrite) {
-          console.log(`     • Write: ${usage.cachedInputTokensWrite}`)
+        const cacheDetails: any = {
+          totalCachedTokens,
+          cacheHitRate: cacheHitRate.toFixed(1) + '%'
         }
-        console.log(`   💰 Cache hit rate: ${cacheHitRate.toFixed(1)}%`)
+        if (usage.cachedInputTokensRead && usage.cachedInputTokensWrite) {
+          cacheDetails.read = usage.cachedInputTokensRead
+          cacheDetails.write = usage.cachedInputTokensWrite
+        } else if (usage.cachedInputTokensRead) {
+          cacheDetails.read = usage.cachedInputTokensRead
+        } else if (usage.cachedInputTokensWrite) {
+          cacheDetails.write = usage.cachedInputTokensWrite
+        }
+        this.logger.info('Cache usage', cacheDetails)
       } else {
-        console.log(`   🔍 No cache usage detected`)
+        this.logger.info('No cache usage detected')
       }
 
       // Calculate and log cost estimate using accurate model pricing
       const costEstimate = calculateCostEstimate(usage, modelName)
       const costLines = formatCostEstimate(costEstimate, usage)
-      costLines.forEach(line => console.log(line))
+      this.logger.info(costLines.join('\n'))
     }
 
     // Calculate duration

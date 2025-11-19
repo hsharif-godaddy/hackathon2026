@@ -23,6 +23,7 @@ export * from './utils/token-counter.js'
 export * from './utils/s2s-auth.js'
 export * from './utils/embeddings.js'
 export * from './utils/retry-with-backoff.js'
+export * from './utils/logger.js'
 
 // Convenience re-exports
 export {

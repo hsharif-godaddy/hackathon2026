@@ -16,7 +16,10 @@
  * state manager backed by Redis, database, or other shared storage.
  */
 
+import { createLogger } from '../utils/logger.js'
 import type { HandoffStateManager } from './handoff-helpers.js'
+
+const logger = createLogger('handoff-state-manager')
 
 /**
  * Suggested color palette data
@@ -138,9 +141,9 @@ export class SessionStateManager implements HandoffStateManager {
     const fromAgentId = session?.currentAgentId || this.config.defaultAgentId
 
     if (this.config.enableLogging) {
-      console.log(`🔄 Handoff: ${fromAgentId} → ${targetAgentId} (session: ${sessionId})`)
+      logger.info(`Handoff: ${fromAgentId} -> ${targetAgentId} (session: ${sessionId})`)
       if (prompt) {
-        console.log(`   Prompt: ${prompt}`)
+        logger.info(`   Prompt: ${prompt}`)
       }
     }
 
@@ -228,7 +231,7 @@ export class SessionStateManager implements HandoffStateManager {
       session.lastActivityAt = new Date()
       
       if (this.config.enableLogging) {
-        console.log(`📋 Session ${sessionId} selected todo list: ${todoListId}`)
+        logger.info(`Session ${sessionId} selected todo list: ${todoListId}`)
       }
       
       this.config.onTodoListSelect(sessionId, todoListId)
@@ -240,7 +243,7 @@ export class SessionStateManager implements HandoffStateManager {
         newSession.selectedTodoListId = todoListId
         
         if (this.config.enableLogging) {
-          console.log(`📋 Created session ${sessionId} with todo list: ${todoListId}`)
+          logger.info(`Created session ${sessionId} with todo list: ${todoListId}`)
         }
         
         this.config.onTodoListSelect(sessionId, todoListId)
@@ -270,7 +273,7 @@ export class SessionStateManager implements HandoffStateManager {
       delete session.selectedTodoListId
       
       if (this.config.enableLogging) {
-        console.log(`🗑️  Cleared selected todo list for session: ${sessionId}`)
+        logger.info(`Cleared selected todo list for session: ${sessionId}`)
       }
     }
   }
@@ -296,7 +299,7 @@ export class SessionStateManager implements HandoffStateManager {
       this.sessions.set(sessionId, session)
       
       if (this.config.enableLogging) {
-        console.log(`📝 Created new session ${sessionId} with agent: ${initialAgentId}`)
+        logger.info(`Created new session ${sessionId} with agent: ${initialAgentId}`)
       }
     } else {
       // Update last activity
@@ -343,7 +346,7 @@ export class SessionStateManager implements HandoffStateManager {
     this.sessions.delete(sessionId)
     
     if (this.config.enableLogging) {
-      console.log(`🗑️  Cleared session: ${sessionId}`)
+      logger.info(`Cleared session: ${sessionId}`)
     }
   }
 
@@ -355,7 +358,7 @@ export class SessionStateManager implements HandoffStateManager {
     this.sessions.clear()
     
     if (this.config.enableLogging) {
-      console.log(`🗑️  Cleared ${count} sessions`)
+      logger.info(`Cleared ${count} sessions`)
     }
   }
 
@@ -379,7 +382,7 @@ export class SessionStateManager implements HandoffStateManager {
       }
       
       if (this.config.enableLogging) {
-        console.log(`🧹 Cleaned up ${expiredSessions.length} expired sessions`)
+        logger.info(`Cleaned up ${expiredSessions.length} expired sessions`)
       }
     }
   }
@@ -418,7 +421,7 @@ export class SessionStateManager implements HandoffStateManager {
       this.sessions.set(sessionId, session)
       
       if (this.config.enableLogging) {
-        console.log(`📝 Created new session ${sessionId} with agent: ${this.config.defaultAgentId}`)
+        logger.info(`Created new session ${sessionId} with agent: ${this.config.defaultAgentId}`)
       }
     } else {
       // Update last activity
@@ -448,7 +451,7 @@ export class SessionStateManager implements HandoffStateManager {
     session.lastActivityAt = new Date()
 
     if (this.config.enableLogging) {
-      console.log(`[SessionState] Stored ${palettes.length} palette(s) for session ${sessionId}`)
+      logger.info(`[SessionState] Stored ${palettes.length} palette(s) for session ${sessionId}`)
     }
   }
 
@@ -495,7 +498,7 @@ export class SessionStateManager implements HandoffStateManager {
       session.lastActivityAt = new Date()
 
       if (this.config.enableLogging) {
-        console.log(`[SessionState] Cleared palettes for session ${sessionId}`)
+        logger.info(`[SessionState] Cleared palettes for session ${sessionId}`)
       }
     }
   }
