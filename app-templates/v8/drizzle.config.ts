@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { env } from 'node:process';
 import { defineConfig } from 'drizzle-kit';
 
 /**
@@ -20,7 +22,7 @@ interface DatabaseCredentials {
  * @throws Error if config file not found or invalid
  */
 function getDatabaseCredentials(): DatabaseCredentials {
-  const configPath = '/alloc/config.json';
+  const configPath = join(env.NOMAD_ALLOC_DIR || '/alloc', 'config.json');
 
   if (!existsSync(configPath)) {
     throw new Error(

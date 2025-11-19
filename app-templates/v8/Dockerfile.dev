@@ -52,7 +52,7 @@ COPY --chown=agent:agent pnpm-lock.yaml* ./
 
 # Enable corepack and prepare pnpm as root if pnpm-lock.yaml exists
 # Configure pnpm to use a shared store location accessible by both users
-RUN if [ -f pnpm-lock.yaml ]; then \
+RUN --mount=type=cache,id=pnpm,target=/shared/pnpm-store if [ -f pnpm-lock.yaml ]; then \
     corepack enable && corepack prepare pnpm@latest --activate && \
     mkdir -p /shared/pnpm-store && \
     chown -R agent:agent /shared/pnpm-store && \
@@ -77,13 +77,13 @@ USER agent
 # Create clean npm environment for agent user and configure pnpm store
 RUN mkdir -p /home/agent
 RUN echo "registry=https://registry.npmjs.org/" > ~/.npmrc
-RUN if [ -f pnpm-lock.yaml ]; then \
+RUN --mount=type=cache,id=pnpm,target=/shared/pnpm-store if [ -f pnpm-lock.yaml ]; then \
     pnpm config set store-dir /shared/pnpm-store; \
     fi
 
 # Install dependencies as the agent user
 # Support both npm and pnpm (v3 templates may use pnpm)
-RUN if [ -f pnpm-lock.yaml ]; then \
+RUN --mount=type=cache,id=pnpm,target=/shared/pnpm-store if [ -f pnpm-lock.yaml ]; then \
     pnpm install --registry=https://registry.npmjs.org/; \
     else \
     npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit; \
