@@ -10,6 +10,7 @@ import { Check, ClipboardCopy } from 'lucide-react'
 interface StreamingMessageProps {
   message: ChatMessage | StreamingMessageType
   isActiveStream?: boolean
+  isLastAssistantMessage?: boolean
   startTime?: Date
 }
 
@@ -82,7 +83,7 @@ function UserMessage({ content }: { content: string }) {
 }
 
 // Helper function to render message content based on type and role (matching Message.tsx)
-function renderMessageContent(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean, startTime?: Date) {
+function renderMessageContent(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean, isLastAssistantMessage?: boolean, startTime?: Date) {
   // Assistant messages - use streaming integrated response for proper content flow
   if (message.role === 'assistant') {
     // Check if we should show thinking indicator (no content yet, stream is active)
@@ -94,7 +95,7 @@ function renderMessageContent(message: ChatMessage | StreamingMessageType, isAct
       return <ThinkingIndicator />
     }
 
-    return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} startTime={startTime} />
+    return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} startTime={startTime} />
   }
 
   // User messages with copy functionality
@@ -110,7 +111,7 @@ function renderMessageContent(message: ChatMessage | StreamingMessageType, isAct
   )
 }
 
-export default function StreamingMessage({ message, isActiveStream = false, startTime }: StreamingMessageProps) {
+export default function StreamingMessage({ message, isActiveStream = false, isLastAssistantMessage = false, startTime }: StreamingMessageProps) {
   // Don't render messages that shouldn't be displayed
   if (!shouldRenderMessage(message)) {
     return null
@@ -127,7 +128,7 @@ export default function StreamingMessage({ message, isActiveStream = false, star
       })}>
         <div className={getMessageClasses(message, isActiveStream)}>
           <div className="overflow-hidden">
-            {renderMessageContent(message, isActiveStream, startTime)}
+            {renderMessageContent(message, isActiveStream, isLastAssistantMessage, startTime)}
           </div>
         </div>
       </div>

@@ -14,6 +14,8 @@ export interface ContentBlock {
 
 interface MessageContentRendererProps {
   blocks: ContentBlock[]
+  isActiveStream?: boolean
+  isLastAssistantMessage?: boolean
 }
 
 /**
@@ -23,9 +25,11 @@ interface MessageContentRendererProps {
  * the proper sequence of content as it was streamed or stored.
  *
  * @param blocks - Array of content blocks to render in order
+ * @param isActiveStream - Whether this is part of the active stream
+ * @param isLastAssistantMessage - Whether this is the last assistant message
  * @returns React element containing all content blocks
  */
-function MessageContentRenderer({ blocks }: MessageContentRendererProps) {
+function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistantMessage = false }: MessageContentRendererProps) {
   const toolCallArraysCacheRef = useRef<Map<string, ToolCall[]>>(new Map())
 
   // Create stable array references for tool calls using a cache
@@ -58,7 +62,7 @@ function MessageContentRenderer({ blocks }: MessageContentRendererProps) {
             )}
 
             {block.type === 'tool' && block.toolCall && toolCallArray && (
-              <MessageToolCallsRenderer toolCalls={toolCallArray} />
+              <MessageToolCallsRenderer toolCalls={toolCallArray} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
             )}
           </div>
         )

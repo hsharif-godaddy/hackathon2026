@@ -12,10 +12,11 @@ import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/st
 interface StreamingIntegratedResponseProps {
   message: ChatMessage | StreamingMessageType
   isActiveStream?: boolean
+  isLastAssistantMessage?: boolean
   startTime?: Date
 }
 
-export default function StreamingIntegratedResponse({ message, isActiveStream = false, startTime }: StreamingIntegratedResponseProps) {
+export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime }: StreamingIntegratedResponseProps) {
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
 
@@ -185,9 +186,9 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
           {/* Always use segments - extract tool calls directly if chronologicalContent is empty */}
           {hasSegments ? (
             chronologicalContent.length > 0 ? (
-              <MessageContentRenderer blocks={chronologicalContent} />
+              <MessageContentRenderer blocks={chronologicalContent} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
             ) : (
-              <MessageToolCallsRenderer toolCalls={extractToolCallsFromSegments(message.segments)} />
+              <MessageToolCallsRenderer toolCalls={extractToolCallsFromSegments(message.segments)} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
             )
           ) : null}
         </div>

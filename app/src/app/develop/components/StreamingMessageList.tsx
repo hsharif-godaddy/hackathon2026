@@ -37,6 +37,16 @@ export default function StreamingMessageList() {
     return activeStream ? [...messages, activeStream] : messages
   }, [messages, activeStream])
 
+  // Find the last assistant message ID for suggested response rendering
+  const lastAssistantMessageId = useMemo(() => {
+    for (let i = allMessages.length - 1; i >= 0; i--) {
+      if (allMessages[i].role === 'assistant') {
+        return allMessages[i].id
+      }
+    }
+    return null
+  }, [allMessages])
+
   // Handle load more conversations
   const handleLoadMore = async () => {
     if (currentAppId && pagination.hasMore && !pagination.isLoading) {
@@ -196,11 +206,14 @@ export default function StreamingMessageList() {
           }
         }
 
+        const isLastAssistantMessage = message.role === 'assistant' && message.id === lastAssistantMessageId
+
         return (
           <StreamingMessage
             key={message.id}
             message={message}
             isActiveStream={'isComplete' in message && !message.isComplete}
+            isLastAssistantMessage={isLastAssistantMessage}
             startTime={startTime}
           />
         )

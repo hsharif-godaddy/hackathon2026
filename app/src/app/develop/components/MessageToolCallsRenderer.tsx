@@ -7,6 +7,8 @@ import type { ToolCall } from '@/stores/useStreamingConversationStore'
 
 interface MessageToolCallsRendererProps {
   toolCalls: ToolCall[]
+  isActiveStream?: boolean
+  isLastAssistantMessage?: boolean
 }
 
 /**
@@ -14,9 +16,15 @@ interface MessageToolCallsRendererProps {
  *
  * @param toolCall - The tool call to render
  * @param index - Optional index for key generation
+ * @param isActiveStream - Whether this is part of the active stream
+ * @param isLastAssistantMessage - Whether this is the last assistant message
  * @returns React element for the tool call
  */
-function renderToolCall(toolCall: ToolCall, index?: number) {
+function renderToolCall(toolCall: ToolCall, index?: number, isActiveStream?: boolean, isLastAssistantMessage?: boolean) {
+  if (toolCall.name === 'suggestedResponse' && !isLastAssistantMessage) {
+    return null
+  }
+
   const isWidgetRender = toolCall.name === 'widgetRender' &&
     toolCall.result &&
     typeof toolCall.result === 'object' &&
@@ -45,11 +53,11 @@ function renderToolCall(toolCall: ToolCall, index?: number) {
  * @param toolCalls - Array of tool calls to render
  * @returns React element containing all tool calls, or null if empty
  */
-function MessageToolCallsRenderer({ toolCalls }: MessageToolCallsRendererProps) {
+function MessageToolCallsRenderer({ toolCalls, isActiveStream = false, isLastAssistantMessage = false }: MessageToolCallsRendererProps) {
 
   return (
     <div className="space-y-2">
-      {toolCalls.map((toolCall, index) => renderToolCall(toolCall, index))}
+      {toolCalls.map((toolCall, index) => renderToolCall(toolCall, index, isActiveStream, isLastAssistantMessage))}
     </div>
   )
 }
