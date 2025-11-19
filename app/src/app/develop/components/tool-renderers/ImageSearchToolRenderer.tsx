@@ -103,9 +103,13 @@ export default function ImageSearchToolRenderer({
     setIsModalOpen(true)
   }
 
-  const handleHeaderClick = () => {
+  const handleOpenModal = () => {
     setIsModalOpen(true)
   }
+
+  // Determine which images to show in the gallery
+  const shouldShowSeeAll = imageCount > 4
+  const displayedImages = shouldShowSeeAll ? images.slice(0, 3) : images
 
   const modalContent = mounted && (
     <AnimatePresence>
@@ -160,13 +164,13 @@ export default function ImageSearchToolRenderer({
                 <>
                   {/* Image navigation */}
                   {images.length > 1 && (
-                    <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+                    <div className="flex gap-2 mb-4 overflow-x-scroll pb-2 w-full max-w-full">
                       {images.map((img, index) => (
                         <button
                           key={index}
                           onClick={() => setSelectedImageIndex(index)}
-                          className={`flex-shrink-0 w-20 h-20 rounded border-2 overflow-hidden ${
-                            selectedImageIndex === index ? 'border-primary' : 'border-border'
+                          className={`flex-shrink-0 w-20 h-20 rounded border-4 overflow-hidden transition-all hover:cursor-pointer hover:opacity-100 ${
+                            selectedImageIndex === index ? 'border-primary' : 'border-border opacity-70'
                           }`}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -182,7 +186,7 @@ export default function ImageSearchToolRenderer({
 
                   {/* Main image display */}
                   <div className="flex-1 overflow-y-auto flex flex-col items-center">
-                    <div className="text-sm font-semibold mb-2 text-foreground/70">
+                    <div className="text-sm font-semibold italic mb-2 text-foreground/70">
                       {images[selectedImageIndex]?.prompt}
                     </div>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -212,28 +216,37 @@ export default function ImageSearchToolRenderer({
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasDetails}
-        onOpenModal={handleHeaderClick}
+        onOpenModal={handleOpenModal}
       />
 
       {/* Image gallery - always showing when completed */}
       {toolStatus === 'completed' && hasImages && (
-        <div className="mt-3 mb-3">
-          <div className="flex gap-3 overflow-x-auto pb-2 border border-border rounded-lg p-3 bg-muted">
-            {images.map((img, index) => (
+        <div className="my-4">
+          <div className="grid grid-cols-2 gap-3">
+            {displayedImages.map((img, index) => (
               <button
                 key={index}
                 onClick={() => handleImageClick(index)}
-                className="flex-shrink-0 group cursor-pointer"
+                className="aspect-square group cursor-pointer overflow-hidden rounded-md"
                 title={img.prompt}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={img.url}
                   alt={img.prompt}
-                  className="h-[200px] w-auto object-cover rounded-lg shadow-md hover:shadow-xl transition-shadow duration-200"
+                  className="w-full h-full object-cover opacity-90 hover:opacity-100 transition-all hover:scale-105"
                 />
               </button>
             ))}
+            {shouldShowSeeAll && (
+              <button
+                onClick={handleOpenModal}
+                className="aspect-square cursor-pointer border border-dashed border-border overflow-hidden rounded-md bg-intents-ux-boxLowContrast-backgroundColor transition-all flex flex-col items-center justify-center"
+              >
+                <span className="text-md font-semibold">+{imageCount - 3}</span>
+                <span className="text-sm">See all</span>
+              </button>
+            )}
           </div>
         </div>
       )}

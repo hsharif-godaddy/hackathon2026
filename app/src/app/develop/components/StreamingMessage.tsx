@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import StreamingIntegratedResponse from './StreamingIntegratedResponse'
 import ThinkingIndicator from './ThinkingIndicator'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
+import { Check, ClipboardCopy } from 'lucide-react'
 
 interface StreamingMessageProps {
   message: ChatMessage | StreamingMessageType
@@ -74,7 +75,7 @@ function UserMessage({ content }: { content: string }) {
         className="absolute -bottom-1 -right-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600 text-xs"
         title="Copy message to clipboard"
       >
-        {copiedToClipboard ? '✓' : '⧉'}
+        {copiedToClipboard ? <Check className="w-4 h-4" /> : <ClipboardCopy className="w-4 h-4" />}
       </button>
     </div>
   )
@@ -120,9 +121,9 @@ export default function StreamingMessage({ message, isActiveStream = false, star
       'justify-end': message.role === 'user',
       'justify-start': message.role !== 'user'
     })}>
-      <div className={clsx('max-w-full', {
-        'order-2 max-w-sm': message.role === 'user',
-        'order-1': message.role !== 'user'
+      <div className={clsx({
+        'order-2 max-w-sm max-w-full': message.role === 'user',
+        'order-1 w-full': message.role !== 'user'
       })}>
         <div className={getMessageClasses(message, isActiveStream)}>
           <div className="overflow-hidden">

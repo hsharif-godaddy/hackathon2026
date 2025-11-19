@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import StreamingMessage from './StreamingMessage'
+import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
 import {
@@ -166,25 +167,27 @@ export default function StreamingMessageList() {
       {pagination.hasMore && (
         <div className="flex justify-center mb-4">
           <Button
-            design="secondary"
+            design="tertiary"
             size="sm"
             disabled={pagination.isLoading}
             onClick={handleLoadMore}
           >
-            {pagination.isLoading ? (
-              <>
-                <Spinner size="sm" /> Loading...
-              </>
-            ) : (
-              'Load previous conversations'
-            )}
+            <Box orientation="horizontal" gap="sm">
+              {pagination.isLoading ? (
+                <>
+                  <Spinner size="sm" /> Loading...
+                </>
+              ) : (
+                'Load previous conversations'
+              )}
+            </Box>
           </Button>
         </div>
       )}
 
       {allMessages.map((message, index) => {
         let startTime: Date | undefined
-        
+
         // For assistant messages, find the previous user message as the start time
         if (message.role === 'assistant' && index > 0) {
           const prevMessage = allMessages[index - 1]
@@ -192,7 +195,7 @@ export default function StreamingMessageList() {
             startTime = prevMessage.timestamp
           }
         }
-        
+
         return (
           <StreamingMessage
             key={message.id}

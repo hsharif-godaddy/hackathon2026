@@ -25,10 +25,10 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
    */
   const extractToolCallsFromSegments = (segments: typeof message.segments): ToolCall[] => {
     if (!segments) return []
-    
+
     const toolCalls: ToolCall[] = []
     const seenIds = new Set<string>()
-    
+
     segments.forEach((segment) => {
       if ((segment.type === 'tool_start' || segment.type === 'tool_result' || segment.type === 'tool_call') && segment.toolCall) {
         const toolId = segment.toolCall.id
@@ -38,7 +38,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
         }
       }
     })
-    
+
     return toolCalls
   }
 
@@ -179,7 +179,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
 
   return (
     <div>
-      <div className="p-2">
+      <div className="px-2">
 
         <div className="space-y-2">
           {/* Always use segments - extract tool calls directly if chronologicalContent is empty */}

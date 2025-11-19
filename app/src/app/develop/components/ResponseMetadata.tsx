@@ -57,7 +57,7 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
   }
 
   return (
-    <div className="flex items-center justify-between mt-3 text-xs hover:text-muted-foreground text-muted-foreground/70">
+    <div className="flex items-center justify-between mt-3 text-xs text-foreground/60">
       <span>
         Completed in {formatDuration(duration)}
       </span>
