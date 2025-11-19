@@ -13,18 +13,18 @@ import { hasBeenPublished } from '@/utils/site';
 
 /**
  * PublishStatusAlert Component
- * 
+ *
  * Displays alerts for various publish states:
  * - Publishing in progress (info alert)
  * - Publish failed (error alert with 'Try Again' button)
  * - Publish succeeded (success alert with FQDN link to view app)
- * 
+ *
  * The success alert appears when a deployment completes successfully and
  * displays the app's FQDN with the following priority:
  * 1. Primary custom domain (site.domains[].fqdn where isPrimary=true)
  * 2. First custom domain (site.domains[0].fqdn)
  * 3. Preview URL as fallback (site.preview_url)
- * 
+ *
  * The alert can be dismissed by the user and does not persist across refreshes.
  */
 export default function PublishStatusAlert() {
@@ -97,12 +97,12 @@ export default function PublishStatusAlert() {
 
   const handleDismiss = useCallback(() => {
     if (!currentAppId) return;
-    
+
     logger.info('publish-alert.dismissed', {
       message: 'User dismissed publish status alert',
       appId: currentAppId,
     });
-    
+
     clearPublishStatus(currentAppId);
   }, [currentAppId, clearPublishStatus]);
 
@@ -148,18 +148,23 @@ export default function PublishStatusAlert() {
           actions={
             <Button
               design="primary"
-              as='external'
-              text='View Now'
-              data-eid={generateClickEID(`publish-alert.success.view_now`)}
+              text='Setup Domain'
+              data-eid={generateClickEID(`publish-alert.success.custom_domain`)}
               className="!hover:bg-transparent"
-              href={fqdn ? (fqdn.includes('https://') ? fqdn : `https://${fqdn}`) : '#'}
-              external
+              href={`/develop/${currentAppId}?tab=settings&settings=domain`}
             />
           }
         >
           <text.h3 as='title' size={1}>Published Successfully!</text.h3>
           <text.p>
-            Your app is now live at: <text.strong className='font-mono'>{fqdn}</text.strong>
+            Your app is now live at: <Button
+              design='inline'
+              target='_blank'
+              rel='noopener noreferrer'
+              href={fqdn ? (fqdn.includes('https://') ? fqdn : `https://${fqdn}`) : '#'}
+              text={fqdn}
+              data-eid={generateClickEID(`publish-alert.success.view_now`)}
+            />
           </text.p>
         </Alert>
       </div>
