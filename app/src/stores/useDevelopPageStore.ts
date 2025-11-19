@@ -33,6 +33,7 @@ interface DevelopPageStore {
   chatPaneWidth: number
   isChatPaneCollapsed: boolean
   isMobile: boolean
+  isPreviewVisible: boolean
 
   // UI loading indicators
   isRestarting: boolean
@@ -88,6 +89,7 @@ interface DevelopPageStore {
   setIsVersionHistoryOpen: (open: boolean) => void
   setSelectedCommit: (commit: GitCommit | null) => void
   setOpenOptionsSheet: (sheet: OptionsSheetTab | null) => void
+  setIsPreviewVisible: (visible: boolean) => void
 
   // Feedback modal actions
   openFeedbackModal: (feedbackId: string) => void
@@ -148,6 +150,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     chatPaneWidth: 400,
     isChatPaneCollapsed: false,
     isMobile: false,
+    isPreviewVisible: false,
     isRestarting: false,
     hasUnsavedChanges: false,
     isCheckingApp: false,
@@ -197,6 +200,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),
     setSelectedCommit: (commit) => set((state) => { state.selectedCommit = commit }),
     setOpenOptionsSheet: (sheet) => set((state) => { state.openOptionsSheet = sheet }),
+    setIsPreviewVisible: (visible) => set((state) => { state.isPreviewVisible = visible }),
 
     // Feedback modal actions
     openFeedbackModal: (feedbackId: string) => {

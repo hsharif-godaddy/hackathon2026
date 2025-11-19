@@ -8,6 +8,9 @@ import ChatPane from '@/app/develop/components/chat/ChatPane'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
+import { Loader } from '@airo-ux/loader'
+import Box from '@ux/box'
+import text from '@ux/text'
 import { ChatTab, SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { ProtectedRoute } from '@/components/auth'
@@ -26,7 +29,9 @@ import {
   useIsLoading,
   useAutoSendInitialMessage,
   useLoadConversationHistory,
-  useStreamingConversationStore
+  useStreamingConversationStore,
+  useMessages,
+  useActiveStream
 } from '@/stores/useStreamingConversationStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
@@ -36,6 +41,10 @@ import { logger } from '@/lib/request-context'
 import { Feedback } from '@/components/feedback/Feedback'
 import { agentFetch } from '@/lib/agent-fetch'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
+
+// Delay to allow conversation history messages to load before checking if preview should be visible
+// This ensures we have accurate message count when determining initial preview visibility
+const MESSAGE_LOAD_DELAY_MS = 100
 
 function DevelopPageContent() {
   const searchParams = useSearchParams()
@@ -49,6 +58,8 @@ function DevelopPageContent() {
 
   // Streaming conversation store - for conversations and messages
   const conversations = useConversations()
+  const messages = useMessages()
+  const activeStream = useActiveStream()
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
   const setBuildErrorContext = useSetBuildErrorContext()
@@ -64,6 +75,7 @@ function DevelopPageContent() {
     isChatPaneCollapsed,
     isMobile,
     activeChatTab,
+    isPreviewVisible,
     setChatPaneWidth,
     setIsSelectMode,
     setSelectedCommit,
@@ -74,7 +86,8 @@ function DevelopPageContent() {
     openFeedbackId,
     closeFeedbackModal,
     setActiveSettingsSection,
-    setActiveChatTab
+    setActiveChatTab,
+    setIsPreviewVisible
   } = useDevelopPageStore()
 
   const queryClient = useQueryClient()
@@ -99,6 +112,7 @@ function DevelopPageContent() {
   // Streaming store state
   const isLoading = useIsLoading()
   const prevIsLoadingRef = useRef(isLoading)
+  const [hasInitialPrompt, setHasInitialPrompt] = useState(false)
 
   useEffect(() => {
     logImpressionEvent('develop.page.view')();
@@ -173,6 +187,41 @@ function DevelopPageContent() {
       setIsLoading(false)
     })
   }, [loadingPhase, appId, loadConversationHistory])
+
+  // Check for initial prompt state from sessionStorage
+  useEffect(() => {
+    if (!appId) return
+
+    const initialPromptKey = `initial-prompt-pending-${appId}`
+    const hasPendingPrompt = sessionStorage.getItem(initialPromptKey) === 'true'
+    setHasInitialPrompt(hasPendingPrompt)
+  }, [appId])
+
+  // Determine initial preview visibility based on localStorage and conversation history
+  useEffect(() => {
+    if (loadingPhase !== 'ready' || !appId) return
+
+    // Check localStorage first
+    const storageKey = `airo-preview-visible-${appId}`
+    const savedState = localStorage.getItem(storageKey)
+
+    if (savedState !== null) {
+      // Use saved state
+      setIsPreviewVisible(JSON.parse(savedState))
+    } else {
+      // No saved state - check conversation history
+      // Wait a bit for messages to load, then check
+      const timer = setTimeout(() => {
+        const hasHistory = messages.length > 0
+        setIsPreviewVisible(hasHistory)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(storageKey, JSON.stringify(hasHistory))
+        }
+      }, MESSAGE_LOAD_DELAY_MS)
+
+      return () => clearTimeout(timer)
+    }
+  }, [loadingPhase, appId, messages.length, setIsPreviewVisible])
 
   // Git history management - centralized for page-level coordination
   
@@ -316,6 +365,27 @@ function DevelopPageContent() {
       }
     }, 5000)
   }, [appId, sendStyleUpdate])
+
+  // Listen for file edit tool completions to show preview
+  useEffect(() => {
+    if (!appId || !activeStream) return
+
+    // Check if any fileEdit tool calls have completed successfully
+    const completedFileEdit = activeStream.toolCalls.find(
+      toolCall => toolCall.name === 'fileEdit' &&
+                  toolCall.status === 'completed' &&
+                  !toolCall.error
+    )
+
+    if (completedFileEdit && !isPreviewVisible) {
+      // First successful file edit - show preview
+      setIsPreviewVisible(true)
+      const storageKey = `airo-preview-visible-${appId}`
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(storageKey, 'true')
+      }
+    }
+  }, [appId, activeStream?.toolCalls, isPreviewVisible, setIsPreviewVisible])
 
   // Listen for messages from preview iframe
   useEffect(() => {
@@ -595,14 +665,53 @@ function DevelopPageContent() {
             />
           )}
 
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col relative">
             {isPublishButtonEnabled && <PublishStatusAlert />}
             <div className="flex-1 overflow-hidden relative">
               <div className="absolute inset-0">
                 {activeChatTab !== ChatTab.SETTINGS ? (
-                  <PreviewPane
-                    onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-                  />
+                  <>
+                    <PreviewPane
+                      onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                    />
+                    {!isPreviewVisible && (
+                      <div
+                        className="absolute inset-0 p-4 z-50 pointer-events-none"
+                        role="status"
+                        aria-live="polite"
+                        aria-label={hasInitialPrompt ? "Building your app" : "Loading preview"}
+                      >
+                        <div className="h-full relative">
+                          <div className="flex flex-col items-center justify-center h-full">
+                            <div className="flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg border p-3 w-full">
+                              <Box
+                                className="h-full"
+                                blockAlignChildren="center"
+                                inlineAlignChildren="center"
+                                gap="md"
+                              >
+                                <Loader
+                                  title={hasInitialPrompt ? "Building Your App" : "Loading Preview"}
+                                  description={
+                                    hasInitialPrompt
+                                      ? "The AI agent is building your app..."
+                                      : "Preparing your workspace..."
+                                  }
+                                />
+                                <Box inlineAlignChildren="center" gap="sm">
+                                  <text.p size={-1} emphasis="passive">
+                                    {hasInitialPrompt
+                                      ? "Once the agent creates the first files, you'll see the preview"
+                                      : "Loading your app"}
+                                  </text.p>
+                                </Box>
+                              </Box>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <SettingsView />
                 )}
