@@ -67,6 +67,12 @@ COPY --chown=agent:agent . .
 RUN mkdir -p logs /tmp/supervisor
 RUN chown -R agent:agent logs /tmp/supervisor
 
+# Create /shared/pnpm-store directory for runtime use
+# This is separate from the build-time cache mount and persists in the container
+RUN mkdir -p /shared/pnpm-store && \
+    chown -R agent:agent /shared/pnpm-store && \
+    chmod -R 775 /shared/pnpm-store
+
 # Make sure the agent user owns the app directory initially
 RUN mkdir -p /publish/dist /app/dist \
     && chown -R agent:agent /app /publish

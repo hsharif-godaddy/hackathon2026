@@ -146,6 +146,7 @@ http {
 	 * - App code directory with hot reload support
 	 * - Anonymous volume for node_modules (performance optimization)
 	 * - Alloc directory for configuration and secrets (read-only)
+	 * - Shared pnpm store directory (single volume shared across all local dev apps)
 	 * - Dev-supervisor socket directory (Unix socket mode only)
 	 *
 	 * @param config - Service configuration containing paths and connection settings
@@ -159,6 +160,7 @@ http {
 			`${config.appPath}:/app`, // Mount app code directory
 			"/app/node_modules", // Anonymous volume for node_modules
 			`${allocPath}:/alloc:ro`, // Mount alloc directory for config and secrets
+			`airo-pnpm-store:/shared`, // Shared volume for pnpm store (shared across all local dev apps)
 		];
 
 		// Add dev-supervisor socket directory if using Unix socket mode
@@ -263,6 +265,10 @@ networks:
   app-network:
     external: true
     name: airo-network
+
+volumes:
+  airo-pnpm-store:
+    driver: local
 `;
 
 		logger.info("compose.generate.success", {
