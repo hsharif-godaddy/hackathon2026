@@ -1,5 +1,6 @@
 // Export new AgentFactory-based agents
 export * from './color-scheme-agent.js';
+export * from './commerce-agent.js';
 export * from './database-agent.js';
 export * from './design-agent.js';
 export * from './develop-agent.js';
@@ -13,6 +14,12 @@ export {
   createColorSchemeAgentFactory,
   ColorSchemeAgent
 } from './color-scheme-agent.js';
+
+export {
+  createCommerceAgent,
+  createCommerceAgentFactory,
+  CommerceAgent
+} from './commerce-agent.js';
 
 export {
   createDatabaseAgent,

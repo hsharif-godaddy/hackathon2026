@@ -166,10 +166,32 @@ export class FileEditTool {
     try {
       // Resolve the file path within the app directory
       const filePath = this.resolveFilePath(appPath, options.path);
-      
+
       // Auto-detect mode if not specified
       const mode = options.mode || await this.detectMode(filePath, options);
-      
+
+      // Check if file is marked as immutable (except for create mode which is for new files)
+      if (mode !== 'create') {
+        const isImmutable = await this.isFileImmutable(filePath);
+        if (isImmutable) {
+          const errorResult: FileEditResult = {
+            success: false,
+            path: options.path,
+            mode,
+            error: 'This file is marked as immutable and cannot be edited. The file contains "TREAT AS IMMUTABLE" in its first line, indicating it must be copied exactly as-is from the template without any modifications.',
+          };
+
+          toolFileEditEvents.failure(logger, new Error('File is immutable'), {
+            toolName: 'FileEditTool',
+            filePath: options.path,
+            mode,
+            ...(context?.appId && { appId: context.appId }),
+          });
+
+          return errorResult;
+        }
+      }
+
       // Log the beginning of the file edit operation
       toolFileEditEvents.begin(logger, {
         toolName: 'FileEditTool',
@@ -178,7 +200,7 @@ export class FileEditTool {
         ...(context?.appId && { appId: context.appId }),
         ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
       });
-      
+
       let result: FileEditResult;
       
       // Route to appropriate handler
@@ -241,12 +263,42 @@ export class FileEditTool {
   }
 
   /**
+   * Check if a file is marked as immutable
+   * Files with "TREAT AS IMMUTABLE" in the first line cannot be edited
+   * Only reads the first 500 bytes for efficiency
+   */
+  private async isFileImmutable(filePath: string): Promise<boolean> {
+    try {
+      if (!existsSync(filePath)) {
+        return false; // Non-existent files are not immutable
+      }
+
+      // Only read first 500 bytes to check for marker (efficient for large files)
+      const buffer = Buffer.alloc(500);
+      const fs = await import('fs');
+      const fd = await fs.promises.open(filePath, 'r');
+      try {
+        const { bytesRead } = await fd.read(buffer, 0, 500, 0);
+        const firstBytes = buffer.toString('utf-8', 0, bytesRead);
+        const firstLine = firstBytes.split('\n')[0] || '';
+
+        return firstLine.includes('TREAT AS IMMUTABLE');
+      } finally {
+        await fd.close();
+      }
+    } catch (error) {
+      // If we can't read the file, assume it's not immutable
+      return false;
+    }
+  }
+
+  /**
    * Resolve file path safely within the app directory
    */
   private resolveFilePath(appPath: string, relativePath: string): string {
     const normalizedPath = translateDockerPath(relativePath);
     const resolved = resolve(appPath, normalizedPath);
-    
+
     // Ensure the file is within the app directory (before resolving symlinks)
     // Use relative() to check for escape attempts with '..' - if the relative path
     // starts with '..' then it's trying to escape the app directory
@@ -254,10 +306,10 @@ export class FileEditTool {
     if (rel.startsWith('..') || resolve(appPath) === resolved.slice(0, -1)) {
       throw new Error(`File path must be within the app directory. Resolved: ${resolved}, App path: ${appPath}`);
     }
-    
+
     // Check all components of the path for symlinks that might escape
     this.validateNoEscapingSymlinks(resolved, appPath);
-    
+
     return resolved;
   }
 
@@ -436,6 +488,10 @@ export class FileEditTool {
     );
 
     if (!options.dryRun) {
+      // Create parent directories if needed
+      if (options.createDirs !== false) {
+        await mkdir(dirname(filePath), { recursive: true });
+      }
       await writeFile(filePath, options.content, 'utf-8');
     }
 

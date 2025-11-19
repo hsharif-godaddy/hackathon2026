@@ -42,3 +42,7 @@ suggestedResponse({
 ```
 
 Customize suggestions based on what was just done and what makes sense next.
+
+## Critical file handling rules
+
+Files containing `TREAT AS IMMUTABLE` in the first line cannot be modified. The file-edit tool will reject any attempts to edit, rewrite, or delete these files.

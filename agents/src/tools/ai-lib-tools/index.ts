@@ -3,56 +3,79 @@
  * Central registry that imports all converted tools from individual files
  */
 
-import type { Tool } from '@airo/ai-lib'
+import type { Tool } from '@airo/ai-lib';
 
 // Import all individual tools
-export { fileEditAITool } from './file-edit.js'
-export { directoryListingAITool } from './directory-listing.js'
-export { terminalCommandAITool } from './terminal-command.js'
-export { gitOperationAITool } from './git-operation.js'
-export { readFileAITool } from './read-file.js'
-export { grepSearchAITool } from './grep-search.js'
-export { serverRestartAITool, serverStatusAITool } from './server-management.js'
-export { imageGenerateAITool } from './image-tools.js'
-export { mediaSearchAITool } from './media-tools.js'
-export { iconsValidatorAITool } from './icons-validator.js'
-export { viewLogsAITool } from './view-logs.js'
-export { appPlanAITool } from './app-plan.js'
-export { todoListAITool } from './todo-list.js'
-export { memorySetAITool, memoryReadAITool, memorySearchAITool, memoryListKeysAITool } from './memory-tool.js'
-export { memoryAITool } from './memory.js'
-export { ragSearchAITool } from './rag-search.js'
-export { widgetRenderAITool } from './widget-render.js'
-export { cssColorAITool } from './css-color.js'
-export { cssSuggestAITool } from './css-suggest.js'
-export { suggestedResponseAITool } from './suggested-response.js'
-export { seoAnalyze } from './seo-analyze.js'
-export { oauthConnect } from './oauth-tool.js'
-export { createGoDaddyProductTool } from './godaddy-product-tool.js'
+export { fileEditAITool } from './file-edit.js';
+export { directoryListingAITool } from './directory-listing.js';
+export { terminalCommandAITool } from './terminal-command.js';
+export { gitOperationAITool } from './git-operation.js';
+export { readFileAITool } from './read-file.js';
+export { grepSearchAITool } from './grep-search.js';
+export { serverRestartAITool, serverStatusAITool } from './server-management.js';
+export { imageGenerateAITool } from './image-tools.js';
+export { mediaSearchAITool } from './media-tools.js';
+export { iconsValidatorAITool } from './icons-validator.js';
+export { viewLogsAITool } from './view-logs.js';
+export { appPlanAITool } from './app-plan.js';
+export { todoListAITool } from './todo-list.js';
+export {
+  memorySetAITool,
+  memoryReadAITool,
+  memorySearchAITool,
+  memoryListKeysAITool,
+} from './memory-tool.js';
+export { memoryAITool } from './memory.js';
+export { ragSearchAITool } from './rag-search.js';
+export { widgetRenderAITool } from './widget-render.js';
+export { cssColorAITool } from './css-color.js';
+export { cssSuggestAITool } from './css-suggest.js';
+export { suggestedResponseAITool } from './suggested-response.js';
+export { seoAnalyze } from './seo-analyze.js';
+export {
+  commerceAddStoreProducts,
+  commerceGetStore,
+  commerceSearchStoreProducts,
+  commerceSetupStore
+} from './commerce-tools.js';
+export { oauthConnect } from './oauth-tool.js';
+export { writeCommerceCredentials } from './commerce-credentials.js';
 
 // Re-import for registry
-import { fileEditAITool } from './file-edit.js'
-import { directoryListingAITool } from './directory-listing.js'
-import { terminalCommandAITool } from './terminal-command.js'
-import { gitOperationAITool } from './git-operation.js'
-import { readFileAITool } from './read-file.js'
-import { grepSearchAITool } from './grep-search.js'
-import { serverRestartAITool, serverStatusAITool } from './server-management.js'
-import { imageGenerateAITool } from './image-tools.js'
-import { mediaSearchAITool } from './media-tools.js'
-import { iconsValidatorAITool } from './icons-validator.js'
-import { viewLogsAITool } from './view-logs.js'
-import { appPlanAITool } from './app-plan.js'
-import { todoListAITool } from './todo-list.js'
-import { memorySetAITool, memoryReadAITool, memorySearchAITool, memoryListKeysAITool } from './memory-tool.js'
-import { memoryAITool } from './memory.js'
-import { ragSearchAITool } from './rag-search.js'
-import { widgetRenderAITool } from './widget-render.js'
-import { cssColorAITool } from './css-color.js'
-import { cssSuggestAITool } from './css-suggest.js'
-import { suggestedResponseAITool } from './suggested-response.js'
-import { seoAnalyze } from './seo-analyze.js'
-import { oauthConnect } from './oauth-tool.js'
+import { fileEditAITool } from './file-edit.js';
+import { directoryListingAITool } from './directory-listing.js';
+import { terminalCommandAITool } from './terminal-command.js';
+import { gitOperationAITool } from './git-operation.js';
+import { readFileAITool } from './read-file.js';
+import { grepSearchAITool } from './grep-search.js';
+import { serverRestartAITool, serverStatusAITool } from './server-management.js';
+import { imageGenerateAITool } from './image-tools.js';
+import { mediaSearchAITool } from './media-tools.js';
+import { iconsValidatorAITool } from './icons-validator.js';
+import { viewLogsAITool } from './view-logs.js';
+import { appPlanAITool } from './app-plan.js';
+import { todoListAITool } from './todo-list.js';
+import {
+  memorySetAITool,
+  memoryReadAITool,
+  memorySearchAITool,
+  memoryListKeysAITool,
+} from './memory-tool.js';
+import { memoryAITool } from './memory.js';
+import { ragSearchAITool } from './rag-search.js';
+import { widgetRenderAITool } from './widget-render.js';
+import { cssColorAITool } from './css-color.js';
+import { cssSuggestAITool } from './css-suggest.js';
+import { suggestedResponseAITool } from './suggested-response.js';
+import { seoAnalyze } from './seo-analyze.js';
+import {
+  commerceSetupStore,
+  commerceGetStore,
+  commerceSearchStoreProducts,
+  commerceAddStoreProducts,
+} from './commerce-tools.js';
+import { oauthConnect } from './oauth-tool.js';
+import { writeCommerceCredentials } from './commerce-credentials.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -85,7 +108,11 @@ export const allAILibTools: Record<string, Tool> = {
   suggestedResponse: suggestedResponseAITool,
   seoAnalysis: seoAnalyze,
   oauthConnect: oauthConnect,
-}
+  commerceSetupStore: commerceSetupStore,
+  commerceGetStore: commerceGetStore,
+  commerceSearchStoreProducts: commerceSearchStoreProducts,
+  commerceAddStoreProducts: commerceAddStoreProducts,
+};
 
 /**
  * Grouped tool sets for specific use cases
@@ -115,6 +142,16 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
   // Backend tools (empty - database operations removed)
   backend: {},
 
+  // Commerce tools
+  commerce: {
+    oauthConnect: oauthConnect,
+    setupStore: commerceSetupStore,
+    getStore: commerceGetStore,
+    searchStoreProducts: commerceSearchStoreProducts,
+    addStoreProducts: commerceAddStoreProducts,
+    writeCommerceCredentials: writeCommerceCredentials,
+  },
+
   // Media and content tools
   media: {
     mediaSearch: mediaSearchAITool,
@@ -140,8 +177,8 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
   // Marketing tools
   marketing: {
     seoAnalysis: seoAnalyze,
-  }
-}
+  },
+};
 
 /**
  * Tool counts for reference
@@ -151,7 +188,9 @@ export const toolStats = {
   coreTools: Object.keys(toolGroups.core!).length,
   systemTools: Object.keys(toolGroups.system!).length,
   backendTools: Object.keys(toolGroups.backend!).length,
+  commerceTools: Object.keys(toolGroups.commerce!).length,
   mediaTools: Object.keys(toolGroups.media!).length,
   debugTools: Object.keys(toolGroups.debug!).length,
-  planningTools: Object.keys(toolGroups.planning!).length
-}
+  planningTools: Object.keys(toolGroups.planning!).length,
+  marketingTools: Object.keys(toolGroups.marketing!).length,
+};

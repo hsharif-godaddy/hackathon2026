@@ -25,6 +25,8 @@ packages/design-extractor/output/
 
 .env
 .env.local
+.env.bak
+*.env.bak
 
 # Development CA (per-project certificate authority)
 .dev-ca/

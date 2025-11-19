@@ -50,7 +50,7 @@ export const toolRendererRegistry = {
   imageSearch: ImageSearchToolRenderer,
   todoList: TodoListToolRenderer,
   suggestedResponse: SuggestedResponseToolRenderer,
-  oauthAccessToken: OAuthToolRenderer,
+  oauthConnect: OAuthToolRenderer,
 } as const
 
 /**

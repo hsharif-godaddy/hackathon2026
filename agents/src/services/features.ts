@@ -57,6 +57,7 @@ interface AgentFeatureConfig {
   // Agent enablement configuration
   enabledAgents: {
     database: boolean
+    commerce: boolean
   }
 }
 
@@ -136,7 +137,8 @@ function parseEnvironmentFeatures(): AgentFeatureConfig {
 
     // Agent enablement configuration
     enabledAgents: {
-      database: process.env.ENABLE_DATABASE_AGENT === 'true'
+      database: process.env.ENABLE_DATABASE_AGENT === 'true',
+      commerce: process.env.ENABLE_COMMERCE_AGENT === 'true'
     }
   }
 }
@@ -229,7 +231,7 @@ export const auth = {
  */
 export const agents = {
   /** Check if a specific agent is enabled */
-  isEnabled: (agentId: 'database'): boolean => {
+  isEnabled: (agentId: 'database' | 'commerce'): boolean => {
     const features = getAgentFeatures();
     return features.enabledAgents[agentId] ?? false;
   }

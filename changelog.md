@@ -4,12 +4,29 @@
 
 ### Public Facing Changes
 
+- **Improved Tool Response Quality**: Tools now follow Anthropic best practices with consistent error handling, actionable hints, and token-efficient responses
+  - Added `responseFormat` parameter (concise/detailed) to all commerce tools for flexible detail levels
+  - Commerce tools now provide structured error codes (AUTH_REQUIRED, CONTEXT_MISSING, etc.) with helpful hints
+  - Added pagination support to `commerceGetProducts` (default 20 items, max 50) to prevent context overflow
+  - Added `dryRun` option to `commerceCreateProduct` for validating inputs before creating
+
+### Public Facing Changes (Original)
+
 - For errors that are only reported in the UI and don't make it to the logs, add a fix this in Airo button
 - **Todo List Tool**: Added a todo list tool the agent
   - Agent will create a todo-list when creating a site
   - Lists are currently rendered as standard tool calls, updates to the ui will happen later
 
 ### Internal Changes
+
+- **Standardized Tool Response System**: Implemented shared response envelope pattern following Anthropic's tool design guidance
+  - Created `tool-response.ts` with standardized `ToolResponse<T>` interface and helper functions (`ok`, `fail`, `needAuth`)
+  - Consistent error structure across all tools with `code`, `message`, `hint`, and `retryable` fields
+  - Unified authentication handling with `ToolRequires` and `ToolAuthRequirement` interfaces
+  - Added response metadata (`tookMs`, `responseFormat`, `truncated`) for better observability
+  - Fixed critical bugs in `commerce-tools.ts`: SKU mapping property name and type inconsistencies
+  - Tightened schema validation: 3-letter currency codes, required SKU arrays, email validation
+  - All commerce tools updated to return standardized envelopes instead of mixed response shapes
 
 - **Nginx Proxy for HTTPS Termination**: Added nginx reverse proxy to generated app Docker Compose stacks for production-aligned SSL/TLS handling
   - Added nginx service to `DockerComposeGenerator`: Auto-generated nginx.conf with HTTPS termination, WebSocket support for Vite HMR
@@ -20,6 +37,17 @@
   - Uses fully-qualified container names (airo-app-{appId}-app-1) to prevent DNS collisions on shared Docker network
   - Better separation of concerns: nginx for SSL termination and reverse proxy, app for business logic
   - Maintains production parity with standard reverse proxy architecture pattern
+
+- **Commerce Product Catalog Integration**: New Commerce Agent for GoDaddy Commerce API integration with product catalog capabilities
+  - Added `CommerceProductTool`: OAuth 2.0 client credentials flow with GraphQL API integration for product retrieval
+  - Added `getProductsAITool`: AI-Lib compatible tool wrapper for fetching product catalogs (SKU ID, title, description, price)
+  - Added `CommerceAgent`: Specialized agent with minimal toolset (getProducts only) - no HTML rendering or file operations
+  - Agent fetches product data and hands off to Develop Agent for HTML/UI implementation
+  - Added commerce agent prompts emphasizing clear role boundaries and handoff protocols
+  - Environment variables: `COMMERCE_CLIENT_ID`, `COMMERCE_CLIENT_SECRET`, `COMMERCE_API_BASE_URL`, `COMMERCE_STORE_ID`
+  - No caching - always fetches fresh data from commerce API
+  - Complete separation of concerns: Commerce Agent handles data retrieval, Develop Agent handles rendering
+  - Updated tool registry with commerce tools group and updated agent exports
 
 - **Shared MySQL Database Architecture**: Consolidated per-app MySQL containers to a single shared MySQL instance for better resource utilization and production parity
   - Added `SharedMySQLService`: Manages database and user provisioning in the shared MySQL instance
@@ -81,6 +109,108 @@
     - Summarize file writes when file has subsequent read or is in hot files list
     - Drop details for failed tool calls older than 2 most recent messages
     - Identify and compress tools where inputs/outputs overlap (e.g., file edit operations)
+
+- **Commerce Checkout Email Removed**: Simplified checkout flow by removing email requirement from frontend and backend
+  - **Removed email field** from `CreateCheckoutSessionRequest` interface in POST.ts
+  - **Removed email parameter** from `CreateCheckoutSessionParams` in commerce-client.ts
+  - **Removed email from function call** in POST.ts (line 336-341)
+  - Updated validation to only check: skuId, quantity, returnUrl, successUrl
+  - **Updated test files**: Removed email from all test cases in POST.test.ts and commerce-client.test.ts
+  - Customer email is now collected in the GoDaddy Commerce checkout flow (not on preparation page)
+  - Simplified checkout preparation page - no form needed, just direct "Continue to Payment" button
+  - Updated all code examples in documentation to remove email input field
+  - Updated JSDoc examples to reflect no email requirement
+  - Cleaner, faster checkout experience for customers
+
+- **Commerce Checkout Complete Field Support**: Added all required GraphQL mutation fields for comprehensive checkout session creation
+  - **Expanded GraphQL Input**: Added 14+ additional fields to createCheckoutSession mutation
+  - Added `environment: "dev"` for proper environment context
+  - Added `storeName: "My Store"` for display purposes
+  - Added `customerId: null` to support guest checkout
+  - Added collection flags: `enableBillingAddressCollection: true`, `enablePaymentMethodCollection: true`
+  - Disabled unnecessary collections: shipping, local pickup, phone, tax (all false)
+  - Added `paymentMethods` configuration: `{ card: { processor: "godaddy", checkoutTypes: ["standard"] } }`
+  - All fields hardcoded for simplified implementation (can be customized per store needs)
+  - Enhanced console logging to show all configured fields
+  - Added comprehensive JSDoc documentation explaining each field's purpose
+  - Matches Commerce API specification for complete checkout session creation
+
+- **Commerce Checkout HTTPS to HTTP Conversion for Redirect URLs**: Converts only returnUrl and successUrl to HTTP for local development
+  - **Selective HTTPS to HTTP Conversion**: POST.ts converts `returnUrl` and `successUrl` from `https://` to `http://`
+  - **OAuth and GraphQL remain HTTPS**: Commerce API calls (OAuth, GraphQL mutations) continue using HTTPS with proper SSL
+  - **Localhost Hostname Replacement**: Automatically replaces `localhost` with `success.preview.dev-godaddy.com` in redirect URLs
+  - Preserves path and port when replacing hostname (e.g., `http://localhost:5012/checkout/success` → `http://success.preview.dev-godaddy.com:5012/checkout/success`)
+  - Uses `success.preview.dev-godaddy.com` which is covered by existing `.preview.dev-godaddy.com` wildcard in vite.config.ts
+  - Applies to both localhost and preview domains: converts to `http://success.preview.dev-godaddy.com:5012` and `http://siteid.preview.dev-godaddy.com:5012`
+  - Enables Commerce API to successfully redirect back to local dev servers without SSL certificates
+  - Added console warnings when localhost or HTTPS is detected in returnUrl/successUrl parameters
+  - Uses regex replacement: `returnUrl.replace(/localhost/, 'success.preview.dev-godaddy.com')` and `returnUrl.replace(/^https:\/\//, 'http://')`
+  - Fixes redirect failures where HTTPS URLs or localhost would fail with Commerce API
+  - Works with `/etc/hosts` domain mapping for preview domains (add `127.0.0.1 success.preview.dev-godaddy.com` to `/etc/hosts`)
+  - **Environment Variable Pattern**: Updated documentation to use `VITE_PREVIEW_URL` with actual preview domain pattern
+  - Preview URL format: `http://[app-id].preview.dev-godaddy.com:[port]` (HTTP, not HTTPS - preview domains don't have SSL)
+  - Added critical warning sections in `commerce-checkout-guide.md` about URL handling
+  - **SKU ID Correctness**: Comprehensive documentation updates emphasizing correct SKU ID usage
+  - Added `⚠️ CRITICAL - SKU ID` warnings in multiple locations
+  - Clarified that `product.skuId` (from `sku.id` in GraphQL) is the ONLY valid SKU ID for checkout
+  - Warned against using other ID fields like `code`, `groupId`, etc.
+  - Enhanced JSDoc comments in `commerce-client.ts` and `POST.ts` templates
+  - **⚠️ MANDATORY UI Requirement**: ALL commerce UI pages MUST visibly display SKU IDs
+  - SKU IDs must be shown on: product listing pages, product detail pages, checkout preparation pages, order confirmations
+  - Added mandatory UI requirement warnings in documentation with code examples
+  - Updated all example code patterns to include visible SKU ID display: `<p><strong>SKU:</strong> {product.skuId}</p>`
+  - Added dedicated "Common Patterns" section emphasizing mandatory SKU ID display
+  - **⚠️ MANDATORY API Requirement**: SKU ID MUST be sent to POST.ts backend via createCheckoutSession
+  - Added explicit documentation: "MUST pass the SKU ID: `skuId: skuId!`"
+  - Added inline comments in code examples: "This SKU ID is sent to POST.ts"
+  - Checkout preparation page enforces dual requirement: display SKU ID in UI AND send to backend
+  - Implementation steps explicitly require extracting SKU ID from URL params and passing to API
+  - Added test cases to verify both UI display and API requirements are documented
+  - All 16 verification tests passing for commerce checkout documentation
+
+- **Commerce Checkout Integration**: Complete GoDaddy Commerce Checkout API integration for generated applications with secure payment flows
+  - Added backend API route template: `app-templates/v8/src/api/commerce/create-checkout-session/POST.ts`
+    - Handles OAuth 2.0 client credentials flow for Commerce API authentication
+    - Creates checkout sessions via GraphQL mutation to GoDaddy Commerce Checkout API
+    - Accepts SKU ID, quantity, customer email, return URL, and success URL
+    - Returns checkout session ID and redirect URL for GoDaddy hosted checkout
+    - Complete error handling and validation
+    - Comprehensive console.log statements for debugging (prefixed with [Commerce])
+  - Added frontend commerce client helper: `app-templates/v8/src/lib/commerce-client.ts`
+    - `createCheckoutSession()` function for calling backend API from React components
+    - `formatPrice()` utility for currency formatting
+    - TypeScript interfaces for all request/response types
+  - Added comprehensive Develop Agent guidance: `agents/src/prompts/develop/commerce-checkout-guide.md`
+    - Three-page checkout flow pattern: product listing → checkout preparation → success
+    - Detailed implementation examples with React/TypeScript code snippets
+    - Security best practices and credential management
+    - Integration with Commerce Agent handoff workflow
+    - **CRITICAL:** Develop Agent hardcodes Commerce credentials directly in generated code
+    - Credentials are read from app service environment and written as constants in `POST.ts`
+    - **No restart needed** - Credentials immediately available in source code
+    - **No `.env` files** - Credentials hardcoded in `src/api/commerce/create-checkout-session/POST.ts`
+  - Updated `agents/src/prompts/develop/decision-matrix.md` with checkout trigger rules
+  - Added environment variables to `app/env.example`: `COMMERCE_CHECKOUT_API_BASE_URL`, `COMMERCE_CHECKOUT_CHANNEL_ID`
+  - Hardcoded credential approach for generated apps via dedicated tool:
+    - Added `createCommerceCredentials` tool to Develop Agent
+    - Tool reads credentials from agent's environment (agents/.env) and creates `src/config/commerce-credentials.ts`
+    - POST.ts imports credentials from config file using relative path `../../../config/commerce-credentials.js` (no path alias issues)
+    - Single tool call replaces complex string replacement logic (more reliable)
+    - Tool uses `mode: 'rewrite'` to overwrite if file exists (handles multiple calls gracefully)
+    - No environment variable configuration needed in generated apps
+    - Checkout functionality works immediately without restart
+    - Secure: credentials remain server-side only, never exposed to browser
+    - Simple deployment: credentials hardcoded in TypeScript file
+    - Tool usage guidance prominently featured in decision-matrix.md with MANDATORY first step instructions
+    - Tool description emphasizes "Call this ONCE" to prevent duplicate calls
+    - Credentials file NOT included in template - generated fresh by tool for each app
+    - Comprehensive test suite with 6 test cases verifying tool functionality (all passing)
+    - Fixed FileEditTool `rewrite` mode to create parent directories when `createDirs` is true
+  - Added Commerce env vars to `app/env.example` for app service configuration
+  - Develop Agent now generates complete e-commerce checkout flows when requested
+  - All checkout credentials and OAuth logic secured in backend API routes (never exposed client-side)
+  - Commerce Agent remains unchanged - only fetches product data for display
+  - Comprehensive test coverage: 34 tests (unit, integration, prompt verification, live API)
 
 - **CORS Middleware Bug Fix**: Fixed critical bug causing 500 errors when rejecting non-allowed origins
   - Changed origin rejection from `callback(new Error(...))` to `callback(null, false)` to prevent server crashes

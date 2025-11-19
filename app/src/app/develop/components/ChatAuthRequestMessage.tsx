@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Button from '@ux/button'
 import { openOAuthPopupAndAwait } from '@/lib/oauth-popup'
 import { logger } from '@/lib/request-context'
 import { useCurrentAppId } from '@/stores/useStreamingConversationStore'
+import { getSharedSocket } from '@/lib/socketRegistry'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 
 /**
@@ -43,6 +44,52 @@ export default function ChatAuthRequestMessage({
 
     const { title, description, scopes, redirectUrl, state, provider } = payload
 
+    /**
+     * Listen for OAuth completion events via WebSocket
+     * When OAuth succeeds, automatically notify agent to continue
+     */
+    useEffect(() => {
+        const socket = getSharedSocket()
+        if (!socket) return
+
+        const handleOAuthResult = (data: any) => {
+            // Check if this OAuth result matches our state
+            if (data.state !== state) return
+            if (data.appId !== currentAppId) return
+
+            if (data.success) {
+                logger.info('oauth.auth_request.completed', {
+                    conversationId,
+                    state,
+                    provider: data.provider
+                })
+
+                setStatus('success')
+
+                // Automatically notify agent to continue
+                setTimeout(() => {
+                    sendMessage('OAuth authentication completed successfully. Please continue.')
+                }, 500)
+            } else {
+                logger.error('oauth.auth_request.failed', {
+                    conversationId,
+                    state,
+                    error: data.error,
+                    description: data.description
+                })
+
+                setStatus('failed')
+                setError(data.description || data.error || 'Authentication failed')
+            }
+        }
+
+        socket.on('oauth:result', handleOAuthResult)
+
+        return () => {
+            socket.off('oauth:result', handleOAuthResult)
+        }
+    }, [state, currentAppId, conversationId, sendMessage])
+
     const handleAuthenticate = async () => {
         if (!currentAppId) {
             setError('No app selected')
@@ -53,52 +100,12 @@ export default function ChatAuthRequestMessage({
         setStatus('authenticating')
         setError(null)
 
-        if (conversationId) {
-            logger.info('oauth.auth_request.user_clicked', {
-                conversationId,
-                state,
-                scopes,
-                provider
-            })
-        }
-
         try {
-            const success = await openOAuthPopupAndAwait(redirectUrl, state, currentAppId)
-
-            if (success) {
-                setStatus('success')
-                if (conversationId) {
-                    logger.info('oauth.auth_request.completed', {
-                        conversationId,
-                        state
-                    })
-                }
-
-                // Automatically continue the conversation after successful OAuth
-                // Minimal delay to ensure UI state updates, then immediately continue
-                setTimeout(async () => {
-                  logger.info('oauth.auth_request.auto_continue', {
-                    conversationId,
-                    state,
-                    provider
-                  })
-                  
-                  // Send a continuation message to trigger the agent to proceed
-                  await sendMessage('Authentication successful. Please continue with the previous request.')
-                }, 100)
-            } else {
-                setStatus('failed')
-                setError('Authentication was cancelled or timed out')
-                if (conversationId) {
-                    logger.warn('oauth.auth_request.cancelled', {
-                        conversationId,
-                        state
-                    })
-                }
-            }
+            openOAuthPopupAndAwait(redirectUrl, state, currentAppId)
+            setStatus('authenticating')
         } catch (err) {
             setStatus('failed')
-            const errorMessage = err instanceof Error ? err.message : 'Authentication failed'
+            const errorMessage = err instanceof Error ? err.message : 'Failed to open authentication popup'
             setError(errorMessage)
             if (conversationId) {
                 logger.error('oauth.auth_request.error', {
@@ -154,15 +161,14 @@ export default function ChatAuthRequestMessage({
 
                     {status === 'authenticating' && (
                         <div className="flex items-center gap-2 text-sm text-typography-mediumEmphasis">
-                            <div className="animate-spin h-4 w-4 border-2 border-intents-ux-primary-borderColor border-t-transparent rounded-full" />
-                            <span>Opening authentication window...</span>
+                            <span>Please continue authenticating in the popup window...</span>
                         </div>
                     )}
 
                     {status === 'success' && (
                         <div className="flex items-center gap-2 text-sm text-intents-ux-success-textColor">
                             <span className="text-lg">✓</span>
-                            <span className="font-medium">Authenticated successfully</span>
+                            <span className="font-medium">Authentication successful</span>
                         </div>
                     )}
 

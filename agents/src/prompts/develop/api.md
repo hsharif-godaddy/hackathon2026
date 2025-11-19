@@ -65,6 +65,18 @@ export default async function handler(_req: Request, res: Response) {
 
 This creates a `GET /api/health` endpoint.
 
+**⚠️ CRITICAL: Backend Import Rules**
+
+Backend API routes run in Node.js (not Vite bundler). Always use relative imports with `.js` extensions. Never use `@/` alias - it only works in frontend code.
+
+```typescript
+// ✅ CORRECT - Backend API imports
+import { config } from '../../../config/file.js';
+
+// ❌ WRONG - This breaks in Node.js
+import { config } from '@/config/file';
+```
+
 #### Example: Data Retrieval with Query Parameters
 
 File: `src/server/api/users/GET.ts`

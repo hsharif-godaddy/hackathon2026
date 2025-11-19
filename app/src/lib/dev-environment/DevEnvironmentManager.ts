@@ -343,6 +343,9 @@ export class DevEnvironmentManager {
       if (result.success) {
         logger.info(`✅ Template setup completed for app ${appId}`);
 
+        // Note: Commerce API credentials are hardcoded in generated code by Develop Agent
+        // See agents/src/prompts/develop/commerce-checkout-guide.md for details
+
         // Create .is_ready file for Docker mode to signal template is ready
         if (!this.adapter?.getCapabilities().supportsProcessOperations) {
           const readyFilePath = path.join(appPath, '.is_ready');

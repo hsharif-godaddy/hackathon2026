@@ -19,11 +19,14 @@ import {
   createColorSchemeAgent,
   createMarketingAgent,
   createInitialAgent,
+  createCommerceAgent,
+  createExampleAgent,
   DevelopAgent,
   DatabaseAgent,
-  ExampleAgent,
+  ColorSchemeAgent,
   MarketingAgent,
-  ColorSchemeAgent
+  CommerceAgent,
+  ExampleAgent
 } from '../index.js'
 import type { EnhancedAgentContext } from './types.js'
 import { agents as featureAgents } from '../../services/features.js'
@@ -68,6 +71,10 @@ export async function createUnifiedAgentFactory(options?: {
   // Conditionally create database agent based on feature flag
   const isDatabaseAgentEnabled = featureAgents.isEnabled('database')
   const databaseConfig = isDatabaseAgentEnabled ? await createDatabaseAgent() : null
+
+  // Conditionally create commerce agent based on feature flag
+  const isCommerceAgentEnabled = featureAgents.isEnabled('commerce')
+  const commerceConfig = isCommerceAgentEnabled ? await createCommerceAgent() : null
 
   // Create handoff tools BEFORE defining agents (using only agent IDs)
   // Extract valid targets from handoffs configuration
@@ -145,6 +152,24 @@ export async function createUnifiedAgentFactory(options?: {
     agentDefinitions.database = databaseConfig
   }
 
+  // Conditionally configure commerce agent if enabled
+  if (commerceConfig) {
+    const commerceHandoffTool = createHandoffTool({
+      sourceAgentId: 'commerce',
+      validTargets: (commerceConfig.handoffs || []).map(h => h.agentName),
+      stateManager
+    })
+
+    commerceConfig.tools = {
+      ...(commerceConfig.tools || {}),
+      handoff: commerceHandoffTool
+    }
+    // Stop execution after handoff tool is called
+    commerceConfig.stopAfterTools = ['handoff']
+
+    agentDefinitions.commerce = commerceConfig
+  }
+
   // Now define agents with handoff tools already included
   const agents = factory.defineAgents(agentDefinitions)
 
@@ -175,7 +200,12 @@ export const aiLibAgentFactories = {
     await agent.initialize()
     return agent.getAgent()
   },
-  example: async (_context?: EnhancedAgentContext) => {
+  commerce: async (context?: EnhancedAgentContext) => {
+    const agent = new CommerceAgent()
+    await agent.initialize()
+    return agent.getAgent()
+  },
+  example: async (context?: EnhancedAgentContext) => {
     const agent = new ExampleAgent()
     await agent.initialize()
     return agent.getAgent()
@@ -234,6 +264,14 @@ export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
     tags: ['marketing', 'seo', 'content', 'optimization', 'search'],
     toolGroups: ['core', 'planning', 'content'],
   },
+  commerce: {
+    id: 'commerce',
+    name: 'Commerce Agent',
+    description: 'Specialized agent for GoDaddy Commerce product catalog operations. Fetches products from Commerce API and hands off to Develop Agent for HTML rendering.',
+    version: '2.0.0',
+    tags: ['commerce', 'e-commerce', 'products', 'catalog', 'godaddy'],
+    toolGroups: ['commerce'],
+  },
 }
 
 /**
@@ -258,6 +296,10 @@ export function getAvailableAgentIds(): string[] {
     // Filter out database agent if not enabled
     if (agentId === 'database') {
       return featureAgents.isEnabled('database')
+    }
+    // Filter out commerce agent if not enabled
+    if (agentId === 'commerce') {
+      return featureAgents.isEnabled('commerce')
     }
     return true
   })

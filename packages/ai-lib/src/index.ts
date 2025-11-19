@@ -75,3 +75,10 @@ export {
   type DynamicTextFunction,
   type DynamicListFunction
 } from './prompt/prompt-builder.js'
+export {
+  createInMemoryHandoffStateManager
+} from './tools/handoff-state-manager.js'
+export type {
+  InMemoryHandoffStateManager,
+  InMemoryHandoffStateManagerConfig
+} from './tools/handoff-state-manager.js'

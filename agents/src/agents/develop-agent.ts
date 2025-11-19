@@ -191,6 +191,11 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getSharedFile('filesystem.md'))
     .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules
 
+  // Conditionally load commerce handoff rules if commerce agent is enabled
+  if (featureAgents.isEnabled('commerce')) {
+    promptBuilder.file(paths.getAgentFile('develop', 'handoff-commerce.md'))
+  }
+
   // Conditionally load database documentation if database agent is enabled
   if (featureAgents.isEnabled('database')) {
     promptBuilder.file(paths.getAgentFile('develop', 'database.md'))
@@ -202,6 +207,15 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'email.md'))
     .file(paths.getAgentFile('develop', 'deployment.md'))
     .file(paths.getAgentFile('develop', 'decision-matrix.md'))
+
+  // Conditionally load commerce decision matrix and checkout guide if commerce agent is enabled
+  if (featureAgents.isEnabled('commerce')) {
+    promptBuilder
+      .file(paths.getAgentFile('develop', 'decision-matrix-commerce.md'))
+      .file(paths.getAgentFile('develop', 'commerce-checkout-guide.md'))
+  }
+
+  promptBuilder
     .file(paths.getAgentFile('develop', 'approach.md'))
     .file(paths.getAgentFile('develop', 'visual-context.md'))
     .file(paths.getAgentFile('develop', 'validation.md'))
@@ -264,7 +278,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     beforeToolExecution,
     afterToolExecution,
 
-    // Handoff configuration (conditionally include database agent based on feature flag)
+    // Handoff configuration (conditionally include database and commerce agents based on feature flags)
     handoffs: [
       {
         agentName: 'color-scheme',
@@ -277,6 +291,10 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       ...(featureAgents.isEnabled('database') ? [{
         agentName: 'database',
         description: 'MySQL database operations, schema design, and database integration',
+      }] : []),
+      ...(featureAgents.isEnabled('commerce') ? [{
+        agentName: 'commerce',
+        description: 'GoDaddy Commerce product catalog operations - fetch products for e-commerce listings',
       }] : []),
     ],
 

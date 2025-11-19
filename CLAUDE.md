@@ -181,7 +181,7 @@ Key points:
 - Base class: `agents/src/base/base-agent.ts`
 - Agent registry: `agents/src/registry/agent-registry.ts`
 - Agent factory: `agents/src/agents/ai-lib-agents/index.ts`
-- Available agents: DevelopAgent, DatabaseAgent (conditional), ColorSchemeAgent, ExampleAgent
+- Available agents: DevelopAgent, DatabaseAgent (conditional), ColorSchemeAgent, CommerceAgent (conditional), ExampleAgent
 - Prompts stored in: `agents/src/prompts/`
 
 **Conditional Agent Enablement:**
@@ -194,6 +194,12 @@ The system supports environment-based agent enablement through feature flags in 
   - Specializes in MySQL database operations and backend coordination
   - When disabled, the agent will not be registered or available through the WebSocket server
 
+- **CommerceAgent**: Disabled by default, requires explicit opt-in
+  - Enable with `ENABLE_COMMERCE_AGENT=true` in `agents/.env`
+  - Use in development/testing environments only
+  - Specializes in GoDaddy Commerce product catalog operations and checkout flows
+  - When disabled, the agent will not be registered or available through the WebSocket server
+
 **Checking Agent Availability:**
 
 ```typescript
@@ -201,6 +207,10 @@ import { agents } from "./services/features.js";
 
 if (agents.isEnabled("database")) {
   // Database agent is available
+}
+
+if (agents.isEnabled("commerce")) {
+  // Commerce agent is available
 }
 ```
 
