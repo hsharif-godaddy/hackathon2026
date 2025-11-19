@@ -385,7 +385,7 @@ function DevelopPageContent() {
         localStorage.setItem(storageKey, 'true')
       }
     }
-  }, [appId, activeStream?.toolCalls, isPreviewVisible, setIsPreviewVisible])
+  }, [appId, activeStream, isPreviewVisible, setIsPreviewVisible])
 
   // Listen for messages from preview iframe
   useEffect(() => {
@@ -493,7 +493,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setBuildErrorContext, setIsSelectMode, sendMessage, setInputValue])
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setBuildErrorContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload])
 
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
@@ -674,12 +674,12 @@ function DevelopPageContent() {
                     <PreviewPane
                       onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                     />
-                    {!isPreviewVisible && (
+                    {!isPreviewVisible && hasInitialPrompt && (
                       <div
                         className="absolute inset-0 p-4 z-50 pointer-events-none"
                         role="status"
                         aria-live="polite"
-                        aria-label={hasInitialPrompt ? "Building your app" : "Loading preview"}
+                        aria-label="Building your app"
                       >
                         <div className="h-full relative">
                           <div className="flex flex-col items-center justify-center h-full">
@@ -691,18 +691,12 @@ function DevelopPageContent() {
                                 gap="md"
                               >
                                 <Loader
-                                  title={hasInitialPrompt ? "Building Your App" : "Loading Preview"}
-                                  description={
-                                    hasInitialPrompt
-                                      ? "The AI agent is building your app..."
-                                      : "Preparing your workspace..."
-                                  }
+                                  title="Building Your App"
+                                  description="The AI agent is building your app..."
                                 />
                                 <Box inlineAlignChildren="center" gap="sm">
                                   <text.p size={-1} emphasis="passive">
-                                    {hasInitialPrompt
-                                      ? "Once the agent creates the first files, you'll see the preview"
-                                      : "Loading your app"}
+                                    Once the agent creates the first files, you&apos;ll see the preview
                                   </text.p>
                                 </Box>
                               </Box>
