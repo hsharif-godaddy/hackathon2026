@@ -439,7 +439,7 @@ async function fullSetup(): Promise<void> {
   console.log(chalk.gray('   pnpm install  # Install all workspace dependencies'));
   console.log('');
   console.log('2. Run database migrations:');
-  console.log(chalk.gray('   pnpm --filter website dlx prisma migrate dev'));
+  console.log(chalk.gray('   pnpm --filter website exec prisma migrate dev'));
   console.log('');
   console.log('3. Start the services:');
   console.log(chalk.gray('   pnpm run dev  # Start both services concurrently'));

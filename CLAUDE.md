@@ -231,9 +231,9 @@ if (agents.isEnabled("commerce")) {
 - Package name is `website` (directory is `app/`)
 - Commands:
   ```bash
-  pnpm --filter website dlx prisma migrate dev    # Run migrations
-  pnpm --filter website dlx prisma generate       # Generate Prisma client
-  pnpm --filter website dlx prisma studio         # Open Prisma Studio
+  pnpm --filter website exec prisma migrate dev    # Run migrations
+  pnpm --filter website exec prisma generate       # Generate Prisma client
+  pnpm --filter website exec prisma studio         # Open Prisma Studio
   ```
 
 ### File Operations & Tools

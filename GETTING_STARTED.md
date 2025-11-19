@@ -140,7 +140,7 @@ pnpm run dev:app
 
 ```bash
 # Run from project root using workspace filter
-pnpm --filter website dlx prisma migrate dev
+pnpm --filter website exec prisma migrate dev
 ```
 
 ## Access
