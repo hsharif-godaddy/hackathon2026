@@ -27,7 +27,7 @@
 ## Ratings Summary
 - Ease of Use: 4.9/5.0
 - Processing Speed: 4.8/5.0
-- Accuracy: 4.7/5.0  
+- Accuracy: 4.7/5.0
 - Overall Satisfaction: 4.8/5.0
 
 ## Common Requests

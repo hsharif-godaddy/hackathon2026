@@ -118,7 +118,7 @@ if (handoff.canHandoffTo('developer', 'database')) {
   const databaseAgent = await handoff.switchAgent('developer', 'database', {
     reason: 'User requested database operations'
   })
-  
+
   // Now use databaseAgent as the active agent
   const result = await databaseAgent.execute({
     prompt: 'Create a users table'
@@ -155,25 +155,25 @@ Add custom logic before and after handoffs:
 const handoff = createHandoffHelpers(agents, {
   beforeHandoff: async (context) => {
     console.log(`Switching from ${context.sourceAgentId} to ${context.targetAgentId}`)
-    
+
     // Save current state
     await saveAgentState(context.sourceAgentId)
-    
+
     // Validate handoff
     if (!isUserAuthorized(context.targetAgentId)) {
       return false // Cancel handoff
     }
-    
+
     return true // Allow handoff
   },
   afterHandoff: async (context, success) => {
     if (success) {
       // Update UI
       updateActiveAgent(context.targetAgentId)
-      
+
       // Log to analytics
       trackHandoff(context)
-      
+
       // Notify user
       showNotification(`Switched to ${context.targetAgentId}`)
     }
@@ -220,13 +220,13 @@ const validator = createHandoffValidator((context) => {
   if (context.targetAgentId === 'admin') {
     return currentUser.isAdmin
   }
-  
+
   // Check business hours
   const hour = new Date().getHours()
   if (context.targetAgentId === 'support' && (hour < 9 || hour > 17)) {
     return false
   }
-  
+
   return true
 })
 
@@ -307,8 +307,8 @@ const tools = {
 Here's a complete example showing both delegation and handoff:
 
 ```typescript
-import { 
-  createAgentFactory, 
+import {
+  createAgentFactory,
   getModel,
   addDelegationTools,
   createHandoffHelpers,
@@ -317,7 +317,7 @@ import {
 
 async function main() {
   const factory = createAgentFactory()
-  
+
   // Define agents
   const agents = factory.defineAgents({
     coordinator: {
@@ -351,36 +351,36 @@ async function main() {
       handoffs: []
     }
   })
-  
+
   // Create handoff helpers for agent switching
   const logger = createHandoffLogger(console.log)
   const handoff = createHandoffHelpers(agents, {
     beforeHandoff: logger.beforeHandoff,
     afterHandoff: logger.afterHandoff
   })
-  
+
   // Track current agent
   let currentAgent = agents.get('coordinator')
-  
+
   // Example 1: Coordinator delegates to developer (delegation)
   console.log('=== Delegation Example ===')
   const delegationResult = await currentAgent.execute({
     prompt: 'Please delegate the task of creating a REST API to the developer agent'
   })
   console.log('Delegation result:', delegationResult)
-  
+
   // Example 2: User switches to developer agent (handoff)
   console.log('\n=== Handoff Example ===')
   currentAgent = await handoff.switchAgent('coordinator', 'developer', {
     reason: 'User wants to work directly with developer agent'
   })
-  
+
   // Now developer is the active agent
   const devResult = await currentAgent.execute({
     prompt: 'Create a users API endpoint'
   })
   console.log('Developer result:', devResult)
-  
+
   // Example 3: Developer delegates to database (delegation)
   console.log('\n=== Nested Delegation Example ===')
   const nestedResult = await currentAgent.execute({
@@ -409,4 +409,3 @@ main()
 - [Examples](../examples/)
   - [handoff-helpers-example.ts](../examples/handoff-helpers-example.ts)
   - [agent-handoff-demo.ts](../examples/agent-handoff-demo.ts)
-

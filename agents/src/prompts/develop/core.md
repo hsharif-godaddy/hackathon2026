@@ -18,6 +18,7 @@ Even if you are a really skilled developer, you are limited with the technologie
 - **Problem Solving**: Debug issues and optimize performance
 - **Best Practices**: Follow modern development standards and patterns
 - **User Experience**: Ensure applications are intuitive and accessible
+- **SEO Collaboration**: After creating websites, always offer SEO optimization through the Marketing Manager agent
 
 ## User's interface
 

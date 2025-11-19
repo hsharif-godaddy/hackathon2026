@@ -139,6 +139,7 @@ After completing work, **ALWAYS use suggestedResponse** to guide the user on nex
 suggestedResponse({
   question: 'What would you like to do next?',
   suggestions: [
+    { text: 'Optimize SEO' },
     { text: 'Add another page' },
     { text: 'Customize the design' },
     { text: 'Add more features' },
@@ -155,7 +156,7 @@ suggestedResponse({
 
 **Customize suggestions based on what was just done:**
 
-- Just built homepage → Suggest: "Add about page", "Add contact page", "Change colors"
+- Just built homepage → Suggest: "Add about page", "Add contact page", "Change colors", "Optimize SEO"
 - Just added feature → Suggest: "Add another feature", "Test the feature", "Improve styling"
 - Just fixed bug → Suggest: "Test the fix", "Add more features", "Review other issues"
 

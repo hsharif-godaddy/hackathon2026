@@ -26,6 +26,7 @@ export { widgetRenderAITool } from './widget-render.js'
 export { cssColorAITool } from './css-color.js'
 export { cssSuggestAITool } from './css-suggest.js'
 export { suggestedResponseAITool } from './suggested-response.js'
+export { seoAnalyze } from './seo-analyze.js'
 export { oauthConnect } from './oauth-tool.js'
 export { createGoDaddyProductTool } from './godaddy-product-tool.js'
 
@@ -50,6 +51,7 @@ import { widgetRenderAITool } from './widget-render.js'
 import { cssColorAITool } from './css-color.js'
 import { cssSuggestAITool } from './css-suggest.js'
 import { suggestedResponseAITool } from './suggested-response.js'
+import { seoAnalyze } from './seo-analyze.js'
 import { oauthConnect } from './oauth-tool.js'
 
 /**
@@ -81,6 +83,7 @@ export const allAILibTools: Record<string, Tool> = {
   cssColor: cssColorAITool,
   cssSuggest: cssSuggestAITool,
   suggestedResponse: suggestedResponseAITool,
+  seoAnalysis: seoAnalyze,
   oauthConnect: oauthConnect,
 }
 
@@ -132,6 +135,11 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     appPlan: appPlanAITool,
     todoList: todoListAITool,
     directoryListing: directoryListingAITool,
+  },
+
+  // Marketing tools
+  marketing: {
+    seoAnalysis: seoAnalyze,
   }
 }
 
@@ -145,5 +153,5 @@ export const toolStats = {
   backendTools: Object.keys(toolGroups.backend!).length,
   mediaTools: Object.keys(toolGroups.media!).length,
   debugTools: Object.keys(toolGroups.debug!).length,
-  planningTools: Object.keys(toolGroups.planning!).length,
+  planningTools: Object.keys(toolGroups.planning!).length
 }

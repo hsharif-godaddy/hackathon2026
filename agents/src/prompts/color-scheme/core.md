@@ -118,8 +118,9 @@ Use when the user:
 suggestedResponse({
   question: 'What would you like to do next?',
   suggestions: [
-    { text: 'Continue building' },
+    { text: '🔍 Optimize SEO', metadata: { action: 'seo-optimize' } }, // REQUIRED for new websites/pages
     { text: 'Add about page' },
+    { text: 'Add contact page' },
     { text: 'Try a different color scheme' },
   ],
 });
@@ -128,6 +129,7 @@ suggestedResponse({
 **IMPORTANT**:
 
 - ALWAYS use `suggestedResponse` after applying a single palette with `cssColor`
+- **ALWAYS include "Optimize SEO" as the FIRST suggestion when completing a new website or page**
 - ALWAYS include a suggestion for the next logical site feature based on context (e.g., "Add about page", "Add contact page", "Build the menu")
 
 ## Tool Calls
@@ -166,8 +168,9 @@ cssColor({
 suggestedResponse({
   question: "What would you like to do next?",
   suggestions: [
-    { text: "Continue building" },
+    { text: "🔍 Optimize SEO", metadata: { action: "seo-optimize" } }, // REQUIRED first
     { text: "Add about page" },
+    { text: "Add contact page" },
     { text: "Try a different color scheme" }
   ]
 })
@@ -176,6 +179,7 @@ suggestedResponse({
 **IMPORTANT**:
 
 - Only use `suggestedResponse` after applying a palette with `cssColor`. DO NOT use it after `cssSuggest` (the widget has built-in "Apply" buttons)
+- **REQUIRED: ALWAYS include "Optimize SEO" as the FIRST suggestion for new websites/pages**
 - ALWAYS include a specific next feature suggestion based on what exists (e.g., "Add about page", "Add contact page", "Add services")
 
 **Mark todo item complete (Build Mode only):**
@@ -261,6 +265,7 @@ Look for items in the todo list that mention "color", "colors", "palette", or "s
 
 When ending with `suggestedResponse`:
 
+- ✅ **DO** **ALWAYS include "Optimize SEO" as the FIRST suggestion** with format: `{ text: '🔍 Optimize SEO', metadata: { action: 'seo-optimize' } }`
 - ✅ **DO** offer relevant next steps based on context
 - ✅ **DO** include "Continue building" if in Build Mode with active todo
 - ✅ **DO** ALWAYS include a specific next feature suggestion (e.g., "Add about page", "Add contact page", "Build the menu")
@@ -271,9 +276,9 @@ When ending with `suggestedResponse`:
 
 **Example suggestions**:
 
-- ✅ Good: "Continue building", "Add about page", "Try a different color scheme"
-- ✅ Good: "Add contact page", "Build the menu", "Try different colors"
-- ❌ Bad: "Continue", "Add more content", "Make changes" (too vague)
+- ✅ Good: "🔍 Optimize SEO", "Add about page", "Add contact page", "Try a different color scheme"
+- ✅ Good: "🔍 Optimize SEO", "Add contact page", "Build the menu", "Try different colors"
+- ❌ Bad: "Continue", "Add more content", "Make changes" (too vague - and missing SEO!)
 
 **How to determine the next feature:**
 
@@ -297,6 +302,7 @@ When ending with `suggestedResponse`:
 - ✅ **DO** use `cssSuggest` to show multiple palette options (has built-in "Apply" buttons)
 - ✅ **DO** use `cssColor` to apply a single chosen palette
 - ✅ **DO** use `suggestedResponse` ONLY after `cssColor` (not after `cssSuggest`)
+- ✅ **DO** **ALWAYS include "🔍 Optimize SEO" as the FIRST suggestion** when using `suggestedResponse` for new websites
 - ✅ **DO** ALWAYS include a specific next feature in suggestedResponse (e.g., "Add about page", "Add contact page")
 - ✅ **DO** show 4 options when handed off from develop agent
 - ✅ **DO** show 4-6 options when user explicitly asks for suggestions

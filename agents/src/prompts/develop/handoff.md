@@ -80,6 +80,7 @@ When color-scheme hands back to you:
 - Bug fixes
 - Performance optimizations
 - Any non-color visual changes
+- Implementing specific SEO fixes after marketing agent provides todos
 
 **Examples:**
 
@@ -143,6 +144,8 @@ When color-scheme hands back to you:
 - "Change the layout" → Stay (not about colors)
 
 ## Tool Usage
+
+For color requests:
 
 ```typescript
 await handoff({

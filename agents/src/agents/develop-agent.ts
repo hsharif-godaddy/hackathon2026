@@ -270,6 +270,10 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
         agentName: 'color-scheme',
         description: 'Color palette design and visual branding for applications',
       },
+      {
+        agentName: 'marketing',
+        description: 'SEO optimization and marketing strategy for websites',
+      },
       ...(featureAgents.isEnabled('database') ? [{
         agentName: 'database',
         description: 'MySQL database operations, schema design, and database integration',

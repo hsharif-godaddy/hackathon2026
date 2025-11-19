@@ -17,9 +17,12 @@ import {
   createDevelopAgent,
   createDatabaseAgent,
   createColorSchemeAgent,
+  createMarketingAgent,
   createInitialAgent,
   DevelopAgent,
   DatabaseAgent,
+  ExampleAgent,
+  MarketingAgent,
   ColorSchemeAgent
 } from '../index.js'
 import type { EnhancedAgentContext } from './types.js'
@@ -50,7 +53,7 @@ export async function createUnifiedAgentFactory(options?: {
   const factory = createAgentFactory({
     globalTools: []
   })
-  
+
   // Create or use provided state manager
   const stateManager = options?.stateManager || createSessionStateManager({
     defaultAgentId: 'develop',
@@ -59,6 +62,7 @@ export async function createUnifiedAgentFactory(options?: {
 
   const developConfig = await createDevelopAgent()
   const colorSchemeConfig = await createColorSchemeAgent()
+  const marketingConfig = await createMarketingAgent()
   const initialConfig = await createInitialAgent(stateManager)
 
   // Conditionally create database agent based on feature flag
@@ -100,6 +104,19 @@ export async function createUnifiedAgentFactory(options?: {
   // Stop execution after handoff, end_conversation, suggestedResponse, or cssSuggest tool is called
   colorSchemeConfig.stopAfterTools = ['handoff', 'end_conversation', 'suggestedResponse', 'cssSuggest']
 
+  const marketingHandoffTool = createHandoffTool({
+    sourceAgentId: 'marketing',
+    validTargets: (marketingConfig.handoffs || []).map(h => h.agentName),
+    stateManager
+  })
+
+  marketingConfig.tools = {
+    ...(marketingConfig.tools || {}),
+    handoff: marketingHandoffTool
+  }
+  // Stop execution after handoff tool is called
+  marketingConfig.stopAfterTools = ['handoff']
+
   // Conditionally configure database agent if enabled
   if (databaseConfig) {
     const databaseHandoffTool = createHandoffTool({
@@ -121,6 +138,7 @@ export async function createUnifiedAgentFactory(options?: {
     initial: initialConfig,
     develop: developConfig,
     'color-scheme': colorSchemeConfig,
+    marketing: marketingConfig,
   }
 
   if (databaseConfig) {
@@ -129,7 +147,7 @@ export async function createUnifiedAgentFactory(options?: {
 
   // Now define agents with handoff tools already included
   const agents = factory.defineAgents(agentDefinitions)
-  
+
   return { factory, agents, stateManager }
 }
 
@@ -149,6 +167,16 @@ export const aiLibAgentFactories = {
   },
   'color-scheme': async (_context?: EnhancedAgentContext) => {
     const agent = new ColorSchemeAgent()
+    await agent.initialize()
+    return agent.getAgent()
+  },
+  marketing: async (_context?: EnhancedAgentContext) => {
+    const agent = new MarketingAgent()
+    await agent.initialize()
+    return agent.getAgent()
+  },
+  example: async (_context?: EnhancedAgentContext) => {
+    const agent = new ExampleAgent()
     await agent.initialize()
     return agent.getAgent()
   }
@@ -198,6 +226,14 @@ export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
     tags: ['design', 'color', 'ui', 'themes', 'accessibility'],
     toolGroups: ['core', 'planning', 'design'],
   },
+  marketing: {
+    id: 'marketing',
+    name: 'Marketing Manager',
+    description: 'SEO specialist that helps optimize websites for better visibility and performance in search engines.',
+    version: '1.0.0',
+    tags: ['marketing', 'seo', 'content', 'optimization', 'search'],
+    toolGroups: ['core', 'planning', 'content'],
+  },
 }
 
 /**
@@ -205,11 +241,11 @@ export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
  */
 export async function createAgent(agentId: string, context?: EnhancedAgentContext) {
   const factory = aiLibAgentFactories[agentId as keyof typeof aiLibAgentFactories]
-  
+
   if (!factory) {
     throw new Error(`Unknown agent ID: ${agentId}`)
   }
-  
+
   return await factory(context)
 }
 
@@ -248,7 +284,7 @@ export function getAllAgentMetadata(): AILibAgentMetadata[] {
  * Find agents by tag
  */
 export function findAgentsByTag(tag: string): AILibAgentMetadata[] {
-  return Object.values(aiLibAgentMetadata).filter(metadata => 
+  return Object.values(aiLibAgentMetadata).filter(metadata =>
     metadata.tags.includes(tag)
   )
 }
@@ -271,7 +307,7 @@ export async function createWebSocketAgentFactory(options?: {
   stateManager?: SessionStateManager
 }) {
   const { factory, agents, stateManager } = await createUnifiedAgentFactory(options)
-  
+
   return {
     factory,
     agents,

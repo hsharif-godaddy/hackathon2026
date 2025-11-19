@@ -1,5 +1,5 @@
-import { 
-  createAgentFactory, 
+import {
+  createAgentFactory,
   type AgentConfig,
   createPromptBuilder,
 } from '@airo/ai-lib'
@@ -20,15 +20,16 @@ const logger = Logger.create({ service: 'color-scheme-agent' })
  */
 async function buildColorSchemeSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()
-  
+
   // Get modular prompt paths using helper utility
   const paths = getModularPromptPaths(import.meta.url)
-  
+
   // Load all modular prompt sections in order
   promptBuilder
     .file(paths.getAgentFile('color-scheme', 'core.md'))
     .file(paths.getAgentFile('color-scheme', 'themes.md'))
-  
+    .file(paths.getAgentFile('color-scheme', 'handoff.md'))
+
   return await promptBuilder.build()
 }
 
@@ -38,7 +39,7 @@ async function buildColorSchemeSystemPrompt(): Promise<string> {
 export async function createColorSchemeAgent(): Promise<AgentConfig> {
   const systemPrompt = await buildColorSchemeSystemPrompt()
   const { model, modelName } = await getAgentModelWithName('fast') // Use fast model for color scheme generation
-  
+
   return {
     name: 'Color Scheme Designer',
     system: systemPrompt,
@@ -51,19 +52,23 @@ export async function createColorSchemeAgent(): Promise<AgentConfig> {
       suggestedResponse: allAILibTools.suggestedResponse,
       // Global tools (like oauthAccessToken) are added by the factory
     },
-    
+
     // Handoff configuration
     handoffs: [
       {
         agentName: 'develop',
         description: 'Hand off to development agent to build the rest of the application using the updated color scheme',
       },
+      {
+        agentName: 'marketing',
+        description: 'SEO optimization and marketing strategy for websites',
+      },
     ],
-    
+
     maxSteps: 15,
     temperature: 0.7, // Higher temperature for creative color work
     maxOutputTokens: 3000,
-    
+
     metadata: {
       contextPreferences: {
         includeAppContext: false,
@@ -82,11 +87,11 @@ export async function createColorSchemeAgent(): Promise<AgentConfig> {
  */
 export async function createColorSchemeAgentFactory() {
   const factory = createAgentFactory()
-  
+
   const agents = factory.defineAgents({
     colorScheme: await createColorSchemeAgent()
   })
-  
+
   return {
     factory,
     agents,
@@ -99,12 +104,12 @@ export async function createColorSchemeAgentFactory() {
  */
 export class ColorSchemeAgent {
   private factory: Awaited<ReturnType<typeof createColorSchemeAgentFactory>>
-  
+
   constructor() {
     // Note: This will be async in the new system
     this.factory = null as any
   }
-  
+
   /**
    * Initialize the agent (required for new system)
    */
@@ -113,7 +118,7 @@ export class ColorSchemeAgent {
     this.factory = await createColorSchemeAgentFactory()
     logger.info('agent.color-scheme.initialize.complete', {})
   }
-  
+
   /**
    * Get the agent instance
    */
@@ -123,7 +128,7 @@ export class ColorSchemeAgent {
     }
     return this.factory.getAgent()
   }
-  
+
   /**
    * Get agent factory for advanced usage
    */
@@ -133,7 +138,7 @@ export class ColorSchemeAgent {
     }
     return this.factory.factory
   }
-  
+
   /**
    * Get agent configuration
    */
@@ -143,7 +148,7 @@ export class ColorSchemeAgent {
     }
     return this.factory.agents.getConfig('colorScheme')
   }
-  
+
   /**
    * Stream generate response (main interface)
    */
@@ -151,7 +156,7 @@ export class ColorSchemeAgent {
     const agent = this.getAgent()
     return agent.streamGenerate(prompt, options)
   }
-  
+
   /**
    * Generate response (non-streaming)
    */
@@ -159,20 +164,20 @@ export class ColorSchemeAgent {
     const agent = this.getAgent()
     return agent.generate(prompt, options)
   }
-  
+
   /**
    * Get agent name
    */
   getName(): string {
     return this.getAgent().getName()
   }
-  
+
   /**
    * Hand off to development agent
    */
   async handoffToDevelop(colorScheme: any): Promise<any> {
     const factory = this.getFactory()
-    
+
     return factory.executeHandoff(
       'colorScheme',
       'develop',
@@ -191,7 +196,7 @@ export class ColorSchemeAgent {
       }
     )
   }
-  
+
   /**
    * Cleanup resources
    */
