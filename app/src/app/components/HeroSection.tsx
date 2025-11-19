@@ -190,9 +190,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 rows={5}
                 disabled={isLoading}
                 maxLength={MAX_PROMPT_LENGTH + 1}
-                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-8 pr-24 z-10 w-full text-3xl font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
-                  'h-60 py-4 rounded-2xl': isExpanded,
-                  'h-24 py-7 rounded-[3rem]': !isExpanded
+                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-8 pr-24 py-7 z-10 w-full text-2xl font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
+                  'h-60 rounded-2xl': isExpanded,
+                  'h-24 rounded-[3rem]': !isExpanded
                 })}
                 placeholder={isTyping ? "" : "Describe your app idea..."}
               />

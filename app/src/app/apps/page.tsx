@@ -34,8 +34,6 @@ function SitesPageContent() {
     refreshSites
   } = useSites()
 
-  console.log('SITES', sites)
-
   useEffect(() => {
     logImpressionEvent('apps.page.view')();
     // Always refresh apps when the page loads to show newly created apps

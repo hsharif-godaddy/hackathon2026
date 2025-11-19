@@ -1,5 +1,6 @@
 /* -> Import styles for UXCore icons */
 @import "@ux/icon/alert/index.css";
+@import "@ux/icon/apps/index.css";
 @import "@ux/icon/arrow-right/index.css";
 @import "@ux/icon/checkbox-filled/index.css";
 @import "@ux/icon/checkbox-list/index.css";

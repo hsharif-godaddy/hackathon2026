@@ -5,6 +5,7 @@ import clsx from 'clsx';
 import Box from '@ux/box';
 import { generateClickEID } from '@/utils/instrumentation';
 import { Site } from '@/stores/useSitesStore';
+import AppsIcon from '@ux/icon/apps';
 import PlusIcon from '@ux/icon/plus';
 import text from '@ux/text';
 import AppThumbnail from '@/app/apps/AppThumbnail';
@@ -47,8 +48,8 @@ export function AppItemSkeleton() {
       inlineAlignChildren="center"
       className="p-2 rounded-md w-full text-left group rounded-sm bg-intents-ux-boxLowContrast-backgroundColor animate-pulse"
     >
-      <div className="size-12 shrink-0 rounded-md bg-intents-ux-boxLowContrast-borderColor " />
-      <div className="w-24 h-4 bg-intents-ux-boxLowContrast-borderColor animate-pulse"></div>
+      <div className="size-12 shrink-0 rounded-md bg-intents-ux-boxLowContrast-borderColor" />
+      <div className="w-24 h-4 bg-intents-ux-boxLowContrast-borderColor animate-pulse" />
     </Box>
   )
 }
@@ -58,19 +59,45 @@ export function AppItemNew({ location }: { location?: string }) {
   return (
     <button
       onClick={() => router.push(`/`)}
-      className="px-2 hover:cursor-pointer group"
+      className="hover:cursor-pointer group"
       data-eid={generateClickEID(`${location}.apps_menu.new`)}
     >
       <Box
         orientation="horizontal"
         gap="md"
         inlineAlignChildren="center"
+        className="p-2 rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
       >
-        <div className="size-12 shrink-0 flex items-center justify-center">
-          <PlusIcon className="size-7 text-ai group-hover:rotate-90 transition-all" />
+        <div className="size-12 shrink-0 flex items-center justify-center border border-dashed border-primary rounded-md">
+          <PlusIcon className="size-7 text-ai transition-all" />
         </div>
         <div>
           <text.p>Create a new app</text.p>
+        </div>
+      </Box>
+    </button>
+  )
+}
+
+export function AppItemSeeAll({ location }: { location?: string }) {
+  const router = useRouter();
+  return (
+    <button
+      onClick={() => router.push(`/apps`)}
+      className="hover:cursor-pointer group"
+      data-eid={generateClickEID(`${location}.apps_menu.see_all`)}
+    >
+      <Box
+        orientation="horizontal"
+        gap="md"
+        inlineAlignChildren="center"
+        className="p-2 rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
+      >
+        <div className="size-12 shrink-0 flex items-center justify-center border border-primary rounded-md">
+          <text.p className="text-ai"><AppsIcon className="size-7 text-ai" /></text.p>
+        </div>
+        <div>
+          <text.p>See all</text.p>
         </div>
       </Box>
     </button>

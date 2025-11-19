@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useSites } from '@/stores/useSitesStore';
-import AppItem, { AppItemNew } from '@/components/layout/AppItem';
+import AppItem, { AppItemNew, AppItemSeeAll } from '@/components/layout/AppItem';
 import {
   Popover,
   PopoverContent,
@@ -50,6 +50,25 @@ export default function AppSelector({ location }: { location?: string }) {
   const currentSite = currentSiteId ? sites.find(site => site.id === currentSiteId) : null;
   const displayTitle = currentSite?.name || "My Apps";
 
+  // Sort sites: running sites first (by updated_at desc), then other sites (by updated_at desc)
+  const sortedSites = [...sites].sort((a, b) => {
+    // First priority: running status
+    const aIsRunning = a.status === 'running';
+    const bIsRunning = b.status === 'running';
+
+    if (aIsRunning && !bIsRunning) return -1;
+    if (!aIsRunning && bIsRunning) return 1;
+
+    // Second priority: updated_at (most recent first)
+    const dateA = new Date(a.updated_at).getTime();
+    const dateB = new Date(b.updated_at).getTime();
+    return dateB - dateA;
+  });
+
+  // Show only the first 5 sites
+  const displayedSites = sortedSites.slice(0, 5);
+  const hasMoreSites = sites.length > 5;
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
@@ -70,20 +89,21 @@ export default function AppSelector({ location }: { location?: string }) {
         </Box>
       </PopoverTrigger>
       {sites.length > 0 && (
-        <PopoverContent 
-          align="end" 
+        <PopoverContent
+          align="end"
           className="w-[300px] p-2"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <div className="flex flex-col gap-2">
-            {sites.map((site) => (
+            {location !== 'homepage' && <AppItemNew location={location} />}
+            {displayedSites.map((site) => (
               <AppItem
                 key={site.id}
                 site={site}
                 dataEid={generateClickEID(`${location}.apps_menu.app`)}
               />
             ))}
-            { location !== 'homepage' && <AppItemNew location={location} /> }
+            {hasMoreSites && <AppItemSeeAll location={location} />}
           </div>
         </PopoverContent>
       )}
