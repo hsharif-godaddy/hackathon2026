@@ -15,12 +15,10 @@ export interface ModelConfig {
 
 export interface AuthConfig {
 	authType: "none" | "mock" | "jwt";
-	ssoLoginUrl?: string;
-	ssoLogoutUrl?: string;
-	authRealm?: string;
-	authRisk?: string;
 	// Deprecated - maintained for backward compatibility
 	useMockLogin?: boolean;
+	authRealm?: string;
+	authRisk?: string;
 }
 
 export interface AppEnvConfig {
@@ -258,22 +256,17 @@ export class EnvGenerator {
 				message: "Which authentication type would you like to use?",
 				choices: [
 					{
-						name: "None - No authentication required (Local Development)",
-						value: "none",
-						short: "None"
-					},
-					{
-						name: "Mock - Fake authentication with test users (Development/Testing)",
-						value: "mock",
-						short: "Mock"
-					},
-					{
-						name: "JWT - Full authentication with SSO (Production)",
+						name: "JWT - Full authentication with SSO (Recommended for proper local development)",
 						value: "jwt",
 						short: "JWT"
 					},
+					{
+						name: "None - No authentication (Some UI functionalities will be degraded)",
+						value: "none",
+						short: "None"
+					},
 				],
-				default: "none",
+				default: "jwt",
 			},
 		]);
 
@@ -281,9 +274,9 @@ export class EnvGenerator {
 			return await this.promptSSOConfig();
 		} else {
 			return {
-				authType: authType as "none" | "mock",
+				authType: authType as "none" | "jwt",
 				// Set legacy flag for backward compatibility
-				useMockLogin: authType === "mock"
+				useMockLogin: false
 			};
 		}
 	}
@@ -375,9 +368,6 @@ export class EnvGenerator {
 		return {
 			authType: "jwt",
 			useMockLogin: false,
-			// Default to dev SSO URLs for base .env (will be overridden by .env.local.* files)
-			ssoLoginUrl: "https://sso.dev-godaddy.com/login",
-			ssoLogoutUrl: "https://sso.dev-godaddy.com/logout",
 			...answers,
 		};
 	}
