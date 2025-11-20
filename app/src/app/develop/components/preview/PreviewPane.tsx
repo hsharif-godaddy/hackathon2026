@@ -25,9 +25,16 @@ const STATE_RESTORE_FALLBACK_MS = 3000 // Fallback timeout if iframe doesn't sen
 interface PreviewPaneProps {
   onPreviewRefresh: () => void
   isMobile?: boolean
+  showBuildingOverlay?: boolean
+  buildingMessage?: string
 }
 
-export default function PreviewPane({onPreviewRefresh, isMobile = false}: PreviewPaneProps) {
+export default function PreviewPane({
+  onPreviewRefresh,
+  isMobile = false,
+  showBuildingOverlay = false,
+  buildingMessage = "The AI agent is building your app..."
+}: PreviewPaneProps) {
   const {
     getServerState,
     startPollingForServer,
@@ -249,7 +256,30 @@ export default function PreviewPane({onPreviewRefresh, isMobile = false}: Previe
     setIframeError(true)
   }
 
-  // Loading state while polling
+  // Priority 1: Show "Building your app" overlay during initial app creation
+  // This takes precedence over server status to avoid flashing between states
+  if (showBuildingOverlay) {
+    return (
+      <Box
+        className="h-full"
+        blockAlignChildren="center"
+        inlineAlignChildren="center"
+        gap="md"
+      >
+        <Loader
+          title="Building Your App"
+          description={buildingMessage}
+        />
+        <Box inlineAlignChildren="center" gap="sm">
+          <text.p size={-1} emphasis="passive">
+            Once the agent creates the first files, you&apos;ll see the preview
+          </text.p>
+        </Box>
+      </Box>
+    )
+  }
+
+  // Priority 2: Show "Starting Server" while server is not ready
   if (!serverState || (isPollingServer(appId) && !serverState.isReady)) {
     return (
       <Box

@@ -168,9 +168,9 @@ export function useStreamingWebSocket() {
         timeout: 10000,
         autoConnect: true,
         reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
+        reconnectionAttempts: 20,  // 20 attempts over ~90 seconds
+        reconnectionDelay: 2000,   // Start with 2 second delay
+        reconnectionDelayMax: 5000, // Max 5 second delay between attempts
         randomizationFactor: 0.5
       }
       if (authToken) {
@@ -179,8 +179,9 @@ export function useStreamingWebSocket() {
       }
       const socket = io(socketUrl, socketOptions)
       if (process.env.NODE_ENV === 'development') {
-        socket.onAny((event, ...args) => logger.debug('websocket.event.incoming', { event, argsPreview: JSON.stringify(args).slice(0, 500), timestamp: Date.now() }))
-        socket.onAnyOutgoing((event, ...args) => logger.debug('websocket.event.outgoing', { event, argsCount: args.length, timestamp: Date.now() }))
+        // Disabled noisy websocket logging
+        // socket.onAny((event, ...args) => logger.debug('websocket.event.incoming', { event, argsPreview: JSON.stringify(args).slice(0, 500), timestamp: Date.now() }))
+        // socket.onAnyOutgoing((event, ...args) => logger.debug('websocket.event.outgoing', { event, argsCount: args.length, timestamp: Date.now() }))
       }
       socket.on('connect', () => {
         setWebSocketState({ connected: true, status: 'idle' })

@@ -26,6 +26,7 @@ import {
   useSetAiEditContext,
   useSetBuildErrorContext,
   useSetCurrentAppId,
+  useCurrentAppId,
   useIsLoading,
   useAutoSendInitialMessage,
   useLoadConversationHistory,
@@ -54,23 +55,14 @@ function DevelopPageContent() {
   const appId = useAppIdFromParams()
   const isJobId = searchParams.get('type') === 'job'
 
-  // Unified initialization hook - handles all sequencing
-  const {
-    phase: initPhase,
-    isReady,
-    showCreationLoader,
-    creationError,
-    retryCount,
-    maxRetries,
-    onRetry,
-    onCancel,
-    initialJobId
-  } = useInitialization({ appId, isJobId })
+  // Unified initialization hook - handles all sequencing and UI state
+  const init = useInitialization({ appId, isJobId })
 
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
 
   // Server polling store - unified server status management
   const { startPollingForServer, stopPollingForServer, cleanup: cleanupServerPolling } = useServerPollingStore()
+  const serverState = useServerPollingStore(state => appId ? state.servers.get(appId)?.server : null)
 
   // Streaming conversation store - for conversations and messages
   const conversations = useConversations()
@@ -126,7 +118,8 @@ function DevelopPageContent() {
   // Streaming store state
   const isLoading = useIsLoading()
   const prevIsLoadingRef = useRef(isLoading)
-  const [hasInitialPrompt, setHasInitialPrompt] = useState(false)
+  
+  // No longer need local state - all handled by init.ui
 
   useEffect(() => {
     logImpressionEvent('develop.page.view')();
@@ -152,6 +145,8 @@ function DevelopPageContent() {
     }
   }, [site?.name])
 
+  // State logging moved to useInitialization hook to prevent render loop
+
   // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
     return () => {
@@ -164,16 +159,6 @@ function DevelopPageContent() {
   }, [cleanupServerPolling])
 
   // WebSocket and conversation history are now initialized by useInitialization hook
-
-  // Check for initial prompt state from sessionStorage
-  useEffect(() => {
-    if (!appId) return
-
-    const initialPromptKey = `initial-prompt-pending-${initialJobId}`
-    logger.info('app.develop.page.initialPromptKey.hasPendingPrompt', { initialPromptKey, initialJobId, appId })
-    const hasPendingPrompt = sessionStorage.getItem(initialPromptKey) === 'true'
-    setHasInitialPrompt(hasPendingPrompt)
-  }, [appId, initialJobId])
 
   // Determine initial preview visibility based on localStorage and conversation history
   useEffect(() => {
@@ -356,14 +341,15 @@ function DevelopPageContent() {
     )
 
     if (completedFileEdit && !isPreviewVisible) {
-      // First successful file edit - show preview
+      // First successful file edit - show preview and mark it
       setIsPreviewVisible(true)
+      init.actions.markFirstFileEditSeen()
       const storageKey = `airo-preview-visible-${appId}`
       if (typeof window !== 'undefined') {
         localStorage.setItem(storageKey, 'true')
       }
     }
-  }, [appId, activeStream, isPreviewVisible, setIsPreviewVisible])
+  }, [appId, activeStream, isPreviewVisible, setIsPreviewVisible, init.actions])
 
   // Listen for messages from preview iframe
   useEffect(() => {
@@ -541,57 +527,35 @@ function DevelopPageContent() {
     }
   }, [loadingPhase, searchParams, conversations.length, router, setInputValue])
 
-  // Handle auto-send initial message for new apps (after conversation history is loaded AND WebSocket is connected)
+  // Handle auto-send initial message for new apps (driven by init.ui.shouldAutoSendPrompt)
   useEffect(() => {
-    // Only proceed when page is ready, we have an appId, not currently loading, and WebSocket is connected
-    if (loadingPhase !== 'ready' || !appId || isLoading || !isWebSocketConnected) return
+    if (!init.ui.shouldAutoSendPrompt || !init.ui.autoSendPromptText) return
+    if (searchParams.get('message')) return // Don't auto-send if there's a URL message
 
-    // Wait a bit for conversation history to load, then check if we should auto-send
-    const timer = setTimeout(() => {
-      // Check if initial prompt should be sent (only after setup completion)
-      const initialPromptKey = `initial-prompt-pending-${initialJobId}`
-      logger.info('app.develop.page.initialPromptKey.shouldSendInitialPrompt', { initialPromptKey, initialJobId, appId })
-      const shouldSendInitialPrompt = sessionStorage.getItem(initialPromptKey) === 'true'
+    logger.info('develop-page.auto-send.triggered', {
+      message: 'Auto-sending initial message for new app',
+      appId,
+      promptPreview: init.ui.autoSendPromptText.substring(0, 50) + '...'
+    })
 
-      if (!shouldSendInitialPrompt) return
+    // Use the streaming store's auto-send function
+    const wasTriggered = autoSendInitialMessage(init.ui.autoSendPromptText, appId!)
 
-      // Check if conditions are met to actually send
-      const canSendNow =
-        site?.initial_prompt &&
-        site.status === 'running' &&
-        isWebSocketConnected &&
-        !searchParams.get('message') // Don't auto-send if there's a URL message
-
-      if (canSendNow) {
-        // Clear the flag immediately to prevent duplicate sends
-        sessionStorage.removeItem(initialPromptKey)
-
-        logger.info('develop-page.auto-send.triggered', {
-          message: 'Auto-sending initial message for new app',
-          appId,
-          promptPreview: site.initial_prompt?.substring(0, 50) + '...'
-        })
-
-        // Use the streaming store's auto-send function
-        const wasTriggered = autoSendInitialMessage(site.initial_prompt!, appId)
-
-        if (wasTriggered) {
-          // Send immediately - WebSocket is confirmed to be connected
-          sendMessage(site.initial_prompt!, null)
-        }
-      }
-    }, 500) // Wait 500ms for conversation history to load
-
-    return () => clearTimeout(timer)
-  }, [loadingPhase, appId, site, searchParams, autoSendInitialMessage, isLoading, sendMessage, isWebSocketConnected, initialJobId])
+    if (wasTriggered) {
+      // Send immediately - WebSocket is confirmed to be connected
+      sendMessage(init.ui.autoSendPromptText, null)
+      // Mark as sent so we don't trigger again
+      init.actions.markInitialPromptSent()
+    }
+  }, [init.ui.shouldAutoSendPrompt, init.ui.autoSendPromptText, searchParams, autoSendInitialMessage, sendMessage, appId, init.actions])
 
   // Handle async name suggestion and registration after redirect from setup
   useEffect(() => {
     if (loadingPhase !== 'ready' || !appId || !site) return
 
     // Check if name registration is pending after setup
-    const nameRegistrationKey = `name-registration-pending-${initialJobId}`
-    logger.info('app.develop.page.nameRegistrationKey:', { nameRegistrationKey, initialJobId, appId })
+    const nameRegistrationKey = `name-registration-pending-${init.initialJobId}`
+    logger.info('app.develop.page.nameRegistrationKey:', { nameRegistrationKey, initialJobId: init.initialJobId, appId })
     const shouldRegisterName = sessionStorage.getItem(nameRegistrationKey) === 'true'
 
     if (!shouldRegisterName) return
@@ -601,7 +565,7 @@ function DevelopPageContent() {
 
     // Run async without blocking page load
     appService.updateNameAndRegister(appId)
-  }, [loadingPhase, appId, site, initialJobId])
+  }, [loadingPhase, appId, site, init.initialJobId])
 
   const handlePanelResize = useCallback((newWidth: number) => {
     setChatPaneWidth(newWidth)
@@ -630,14 +594,14 @@ function DevelopPageContent() {
                 maxWidth: `${chatPaneWidth}px`
               }}
             >
-              {showCreationLoader || creationError ? (
+              {init.ui.showChatLoader ? (
                 <ChatPaneLoader
-                  phase={initPhase === 'creating' ? 'deploying' : 'initializing'}
-                  error={creationError}
-                  retryCount={retryCount}
-                  maxRetries={maxRetries}
-                  onRetry={onRetry}
-                  onCancel={onCancel}
+                  phase={init.ui.chatLoaderPhase}
+                  error={init.ui.chatLoaderError}
+                  retryCount={init.retryCount}
+                  maxRetries={init.maxRetries}
+                  onRetry={init.actions.retry}
+                  onCancel={init.actions.cancel}
                 />
               ) : (
                 <ChatPane
@@ -661,42 +625,11 @@ function DevelopPageContent() {
             <div className="flex-1 overflow-hidden relative">
               <div className="absolute inset-0">
                 {activeChatTab !== ChatTab.SETTINGS ? (
-                  <>
-                    <PreviewPane
-                      onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-                    />
-                    {!isPreviewVisible && hasInitialPrompt && (
-                      <div
-                        className="absolute inset-0 p-4 z-50 pointer-events-none"
-                        role="status"
-                        aria-live="polite"
-                        aria-label="Building your app"
-                      >
-                        <div className="h-full relative">
-                          <div className="flex flex-col items-center justify-center h-full">
-                            <div className="flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg border p-3 w-full">
-                              <Box
-                                className="h-full"
-                                blockAlignChildren="center"
-                                inlineAlignChildren="center"
-                                gap="md"
-                              >
-                                <Loader
-                                  title="Building Your App"
-                                  description="The AI agent is building your app..."
-                                />
-                                <Box inlineAlignChildren="center" gap="sm">
-                                  <text.p size={-1} emphasis="passive">
-                                    Once the agent creates the first files, you&apos;ll see the preview
-                                  </text.p>
-                                </Box>
-                              </Box>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
+                  <PreviewPane
+                    onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                    showBuildingOverlay={init.ui.showPreviewLoader}
+                    buildingMessage={init.ui.previewLoaderMessage}
+                  />
                 ) : (
                   <SettingsView />
                 )}

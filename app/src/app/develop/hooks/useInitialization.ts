@@ -1,17 +1,51 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSiteCreationStore, cleanupSiteCreationStore } from '@/stores/useSiteCreationStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useLoadConversationHistory } from '@/stores/useStreamingConversationStore'
+import {
+  useLoadConversationHistory,
+  useStreamingConversationStore,
+} from '@/stores/useStreamingConversationStore'
 import { logger } from '@/lib/request-context'
+import type { Site } from '@/stores/useSitesStore'
 
-// Helper to get initialJobId from sessionStorage
+/**
+ * Helper to get initialJobId from sessionStorage
+ * 
+ * @param appId - The app ID to look up
+ * @returns The initial job ID or null if not found
+ */
 function getInitialJobIdFromStorage(appId: string | null): string | null {
   if (typeof window === 'undefined' || !appId) return null
   return sessionStorage.getItem(`initial-job-id-${appId}`)
 }
 
-type InitializationPhase =
+/**
+ * Helper to check if initial prompt is pending
+ * 
+ * @param initialJobId - The initial job ID to check
+ * @returns True if initial prompt is pending
+ */
+function checkHasInitialPrompt(initialJobId: string | null): boolean {
+  if (typeof window === 'undefined' || !initialJobId) return false
+  
+  // Check if initial prompt is pending
+  const hasPromptPending = sessionStorage.getItem(`initial-prompt-pending-${initialJobId}`) === 'true'
+  
+  // Check if we're in an active creation flow (set when jobId is first seen)
+  const inCreationFlow = sessionStorage.getItem(`in-creation-flow-${initialJobId}`) === 'true'
+  
+  return hasPromptPending && inCreationFlow
+}
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+/**
+ * Main initialization phases
+ */
+export type InitializationPhase =
   | 'idle'
   | 'checking-creation'
   | 'creating'
@@ -20,34 +54,273 @@ type InitializationPhase =
   | 'ready'
   | 'error'
 
-interface UseInitializationParams {
+/**
+ * Sub-phases within the 'ready' state for finer-grained tracking
+ */
+export type InitializationSubPhase =
+  | 'waiting-for-websocket'    // WebSocket not connected yet
+  | 'websocket-connected'       // Connected, ready to send initial prompt
+  | 'waiting-for-first-edit'    // Initial prompt sent, waiting for AI to create first files
+  | 'active'                    // Normal operation (first edit seen or no initial prompt)
+
+/**
+ * Context object containing all raw state needed for UI decisions
+ */
+export interface InitializationContext {
+  // IDs
+  appId: string | null
+  initialJobId: string | null
+  isJobId: boolean
+  
+  // Data state (from stores)
+  site: Site | null
+  hasConversationHistory: boolean
+  
+  // Connection state (from WebSocket store)
+  isWebSocketConnected: boolean
+  
+  // Interaction state (from streaming store)
+  isStreamingMessage: boolean
+  hasSeenFirstFileEdit: boolean
+  
+  // Initial creation flow
+  hasInitialPrompt: boolean
+  initialPromptSent: boolean
+}
+
+/**
+ * Computed UI state - all UI decisions are made here
+ */
+export interface InitializationUIState {
+  // Chat pane
+  showChatLoader: boolean
+  chatLoaderPhase: 'initializing' | 'deploying' | 'verifying-agent'
+  chatLoaderError: string | null
+  canInteractWithChat: boolean
+  
+  // Preview pane
+  showPreviewLoader: boolean
+  previewLoaderMessage: string
+  
+  // Auto-send
+  shouldAutoSendPrompt: boolean
+  autoSendPromptText: string | null
+  
+  // Error handling
+  hasError: boolean
+  errorMessage: string | null
+  canRetry: boolean
+}
+
+/**
+ * Actions that can be performed on the initialization state
+ */
+export interface InitializationActions {
+  /**
+   * Retry initialization after an error
+   */
+  retry: () => void
+  
+  /**
+   * Cancel initialization and return to home
+   */
+  cancel: () => void
+  
+  /**
+   * Mark that the initial prompt has been sent
+   */
+  markInitialPromptSent: () => void
+  
+  /**
+   * Mark that the first file edit has been seen
+   */
+  markFirstFileEditSeen: () => void
+}
+
+/**
+ * Parameters for useInitialization hook
+ */
+export interface UseInitializationParams {
   appId: string | null
   isJobId: boolean
 }
 
-interface UseInitializationReturn {
+/**
+ * Return type for useInitialization hook
+ */
+export interface UseInitializationReturn {
+  // State machine
   phase: InitializationPhase
+  subPhase: InitializationSubPhase | null
   isReady: boolean
+  
+  // Context (raw state)
+  context: InitializationContext
+  
+  // Computed UI state (derived)
+  ui: InitializationUIState
+  
+  // Actions
+  actions: InitializationActions
+  
+  // Legacy compatibility (deprecated - will be removed in future)
+  /** @deprecated Use ui.showChatLoader instead */
   showCreationLoader: boolean
+  /** @deprecated Use ui.chatLoaderError instead */
   creationError: string | null
   retryCount: number
   maxRetries: number
+  /** @deprecated Use actions.retry instead */
   onRetry: () => void
+  /** @deprecated Use actions.cancel instead */
   onCancel: () => void
   initialJobId: string | null
 }
 
+// ============================================================================
+// PURE COMPUTATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Compute all UI state from the current phase, subPhase, and context
+ * This is a pure function with no side effects
+ * 
+ * @param phase - Current initialization phase
+ * @param subPhase - Current sub-phase (if in ready state)
+ * @param context - Current context state
+ * @param creationError - Error from site creation (if any)
+ * @param isActiveCreationSession - Whether this page session is part of initial creation
+ * @returns Computed UI state
+ */
+function computeUIState(
+  phase: InitializationPhase,
+  subPhase: InitializationSubPhase | null,
+  context: InitializationContext,
+  creationError: string | null,
+  isActiveCreationSession: boolean
+): InitializationUIState {
+  
+  // Chat loader logic - show during initial creation flow, when waiting for websocket, or on error with jobId
+  const showChatLoader = 
+    phase === 'checking-creation' ||
+    phase === 'creating' ||
+    (phase === 'initializing-page' && context.hasInitialPrompt) || // Only show during page init if it's a new app
+    (phase === 'loading-history' && context.hasInitialPrompt) || // Only show during history load if it's a new app
+    (phase === 'ready' && subPhase === 'waiting-for-websocket' && context.hasInitialPrompt && !context.initialPromptSent) ||
+    (phase === 'error' && context.hasInitialPrompt) // Show error/retry screen for failed new app creation
+  
+  const chatLoaderPhase: 'initializing' | 'deploying' | 'verifying-agent' = 
+    phase === 'creating' ? 'deploying' :
+    (subPhase === 'waiting-for-websocket' || phase === 'error') ? 'verifying-agent' :
+    'initializing'
+  
+  // Preview loader logic - show from when we're ready to send initial prompt until first file edit
+  // This overlay sits on top of PreviewPane's internal "Starting Server" loader
+  // Uses isActiveCreationSession (not hasInitialPrompt) because sessionStorage is cleared after prompt is sent
+  const showPreviewLoader =
+    phase === 'ready' &&
+    isActiveCreationSession &&
+    !context.hasSeenFirstFileEdit &&
+    (subPhase === 'websocket-connected' || subPhase === 'waiting-for-first-edit')
+  
+  // Auto-send logic - trigger when websocket connects and we have a prompt
+  const shouldAutoSendPrompt =
+    phase === 'ready' &&
+    subPhase === 'websocket-connected' &&
+    context.hasInitialPrompt &&
+    !context.initialPromptSent &&
+    context.isWebSocketConnected
+  
+  // Interaction logic - can interact when ready and websocket connected
+  const canInteractWithChat =
+    phase === 'ready' &&
+    subPhase !== 'waiting-for-websocket' &&
+    context.isWebSocketConnected
+  
+  // Error logic
+  const hasError = phase === 'error' || !!creationError
+  
+  return {
+    showChatLoader,
+    chatLoaderPhase,
+    chatLoaderError: creationError,
+    canInteractWithChat,
+    
+    showPreviewLoader,
+    previewLoaderMessage: 'The AI agent is building your app...',
+    
+    shouldAutoSendPrompt,
+    autoSendPromptText: context.site?.initial_prompt || null,
+    
+    hasError,
+    errorMessage: creationError || 'Initialization failed',
+    canRetry: phase === 'error',
+  }
+}
+
+// ============================================================================
+// MAIN HOOK
+// ============================================================================
+
+/**
+ * Enhanced initialization hook that orchestrates the entire develop page lifecycle
+ * 
+ * This hook manages:
+ * - Site creation flow (job → app conversion)
+ * - Page data loading
+ * - Conversation history loading
+ * - WebSocket connection tracking
+ * - Initial prompt auto-send
+ * - All UI state derivation
+ * 
+ * @param params - Hook parameters
+ * @returns Initialization state, context, UI state, and actions
+ * 
+ * @example
+ * ```typescript
+ * const init = useInitialization({ appId, isJobId })
+ * 
+ * // Check if should show loader
+ * if (init.ui.showChatLoader) {
+ *   return <ChatPaneLoader phase={init.ui.chatLoaderPhase} />
+ * }
+ * 
+ * // Auto-send prompt when ready
+ * if (init.ui.shouldAutoSendPrompt) {
+ *   sendMessage(init.ui.autoSendPromptText)
+ *   init.actions.markInitialPromptSent()
+ * }
+ * ```
+ */
 export function useInitialization({ appId, isJobId }: UseInitializationParams): UseInitializationReturn {
   const router = useRouter()
+  
+  // -------------------------------------------------------------------------
+  // LOCAL STATE (State Machine)
+  // -------------------------------------------------------------------------
   const [phase, setPhase] = useState<InitializationPhase>('idle')
+  const [subPhase, setSubPhase] = useState<InitializationSubPhase | null>(null)
   const hasInitialized = useRef(false)
-
+  
   // Initialize initialJobId from sessionStorage on mount
   const [initialJobId, setInitialJobId] = useState<string | null>(() => {
     return getInitialJobIdFromStorage(appId)
   })
-
-  // Site creation store
+  
+  // Track initial creation flow state
+  const [initialPromptSent, setInitialPromptSent] = useState(false)
+  const [hasSeenFirstFileEdit, setHasSeenFirstFileEdit] = useState(false)
+  
+  // Track if we're in an active creation flow for THIS page session
+  // This is set to true when we detect hasInitialPrompt on mount, and persists in memory
+  // even after sessionStorage is cleared (for showing preview loader until first edit)
+  const isActiveCreationSession = useRef(false)
+  
+  // -------------------------------------------------------------------------
+  // STORE SUBSCRIPTIONS (Read-only)
+  // -------------------------------------------------------------------------
+  
+  // Site creation (internal)
   const {
     phase: creationPhase,
     error: creationError,
@@ -57,13 +330,76 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     initializeSite,
     retry: retryCreation,
   } = useSiteCreationStore()
-
-  // Page store
-  const { initializePage, loadingPhase } = useDevelopPageStore()
-
-  // Streaming store
+  
+  // Page data
+  const { 
+    site, 
+    loadingPhase,
+    initializePage 
+  } = useDevelopPageStore()
+  
+  // Streaming/WebSocket
+  const streamingStore = useStreamingConversationStore()
   const loadConversationHistory = useLoadConversationHistory()
+  
+  const isWebSocketConnected = streamingStore.websocket.connected
+  const isStreamingMessage = streamingStore.isLoading
+  const messages = streamingStore.messages
+  const activeStream = streamingStore.activeStream
+  
+  // -------------------------------------------------------------------------
+  // DERIVED STATE (Context)
+  // -------------------------------------------------------------------------
+  
+  const context: InitializationContext = {
+    appId,
+    initialJobId,
+    isJobId,
+    site,
+    hasConversationHistory: messages.length > 0,
+    isWebSocketConnected,
+    isStreamingMessage,
+    hasSeenFirstFileEdit,
+    hasInitialPrompt: checkHasInitialPrompt(initialJobId),
+    initialPromptSent,
+  }
+  
+  // -------------------------------------------------------------------------
+  // COMPUTED UI STATE (Memoized to prevent render loops)
+  // -------------------------------------------------------------------------
+  
+  const ui = useMemo(
+    () => computeUIState(phase, subPhase, context, creationError, isActiveCreationSession.current),
+    [
+      phase,
+      subPhase,
+      creationError,
+      // Individual context properties instead of the whole object
+      appId,
+      initialJobId,
+      isJobId,
+      site,
+      messages.length, // hasConversationHistory
+      isWebSocketConnected,
+      isStreamingMessage,
+      hasSeenFirstFileEdit,
+      initialPromptSent,
+    ]
+  )
+  
+  // -------------------------------------------------------------------------
+  // STATE MACHINE EFFECTS (Existing + New)
+  // -------------------------------------------------------------------------
 
+  // Set the active creation session flag when we detect hasInitialPrompt
+  // This persists in memory even after sessionStorage is cleared
+  useEffect(() => {
+    if (context.hasInitialPrompt && !isActiveCreationSession.current) {
+      isActiveCreationSession.current = true
+      logger.info('initialization.active-creation-session.set', { appId, initialJobId })
+    }
+  }, [context.hasInitialPrompt, appId, initialJobId])
+  
   // Store initialJobId when first appId is received or when route changes
   // This captures the original job ID for sessionStorage key lookups, persisting across route changes
   useEffect(() => {
@@ -71,6 +407,8 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     if (isJobId && appId) {
       if (appId !== initialJobId) {
         setInitialJobId(appId)
+        // Set the creation flow flag when we first see a jobId
+        sessionStorage.setItem(`in-creation-flow-${appId}`, 'true')
         logger.info('initialization.initialJobId.set', { initialJobId: appId, isJobId })
       }
       return
@@ -90,14 +428,17 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   useEffect(() => {
     if (!appId) {
       setPhase('idle')
+      setSubPhase(null)
       return
     }
 
     if (isJobId) {
       setPhase('checking-creation')
+      setSubPhase(null)
     } else {
       // Existing site, skip creation phase
       setPhase('initializing-page')
+      setSubPhase(null)
     }
   }, [appId, isJobId])
 
@@ -155,6 +496,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
         .catch(error => {
           logger.error('initialization.page.error', { appId: effectiveAppId, error })
           setPhase('error')
+          setSubPhase(null)
         })
     }
   }, [phase, appId, realAppId, initializePage])
@@ -169,14 +511,75 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
         .then(() => {
           logger.info('initialization.history.success', { appId: effectiveAppId })
           setPhase('ready')
+          // Determine initial subPhase based on context
+          if (context.hasInitialPrompt && !context.initialPromptSent) {
+            setSubPhase('waiting-for-websocket')
+          } else {
+            setSubPhase('active')
+          }
         })
         .catch(error => {
           logger.error('initialization.history.error', { appId: effectiveAppId, error })
           // Don't fail - history is optional
           setPhase('ready')
+          if (context.hasInitialPrompt && !context.initialPromptSent) {
+            setSubPhase('waiting-for-websocket')
+          } else {
+            setSubPhase('active')
+          }
         })
     }
-  }, [phase, appId, realAppId, loadingPhase, loadConversationHistory])
+  }, [phase, appId, realAppId, loadingPhase, loadConversationHistory, context.hasInitialPrompt, context.initialPromptSent])
+
+  // NEW: Track WebSocket connection state transitions
+  useEffect(() => {
+    if (phase !== 'ready') return
+    
+    logger.debug('initialization.websocket-state-check', {
+      phase,
+      subPhase,
+      isWebSocketConnected,
+      hasInitialPrompt: context.hasInitialPrompt,
+      initialPromptSent: context.initialPromptSent
+    })
+    
+    if (isWebSocketConnected) {
+      if (subPhase === 'waiting-for-websocket') {
+        logger.info('initialization.websocket-connected', { appId })
+        setSubPhase('websocket-connected')
+      }
+    } else {
+      // Only show loader if we're in initial creation flow
+      if (context.hasInitialPrompt && !context.initialPromptSent) {
+        if (subPhase !== 'waiting-for-websocket') {
+          logger.info('initialization.websocket-disconnected', { appId, reason: 'initial-creation-flow' })
+          setSubPhase('waiting-for-websocket')
+        }
+      }
+    }
+  }, [phase, subPhase, isWebSocketConnected, context.hasInitialPrompt, context.initialPromptSent, appId])
+
+  // NEW: Track first file edit
+  useEffect(() => {
+    if (hasSeenFirstFileEdit) return
+    
+    const completedFileEdit = activeStream?.toolCalls.find(
+      tc => tc.name === 'fileEdit' && tc.status === 'completed' && !tc.error
+    )
+    
+    if (completedFileEdit) {
+      logger.info('initialization.first-file-edit-seen', { appId })
+      setHasSeenFirstFileEdit(true)
+    }
+  }, [activeStream, hasSeenFirstFileEdit, appId])
+
+  // Transition to active after first file edit
+  useEffect(() => {
+    if (subPhase === 'waiting-for-first-edit' && context.hasSeenFirstFileEdit) {
+      logger.info('initialization.first-edit-transition-to-active', { appId })
+      setSubPhase('active')
+    }
+  }, [subPhase, context.hasSeenFirstFileEdit, appId])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -188,25 +591,124 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     }
   }, [isJobId])
 
-  const handleCancel = () => {
-    cleanupSiteCreationStore()
-    router.push('/')
+  // -------------------------------------------------------------------------
+  // ACTIONS
+  // -------------------------------------------------------------------------
+  
+  const actions: InitializationActions = {
+    retry: () => {
+      logger.info('initialization.retry', { appId })
+      setPhase('checking-creation')
+      setSubPhase(null)
+      retryCreation()
+    },
+    
+    cancel: () => {
+      logger.info('initialization.cancel', { appId })
+      cleanupSiteCreationStore()
+      router.push('/')
+    },
+    
+    markInitialPromptSent: () => {
+      logger.info('initialization.mark-prompt-sent', { appId, initialJobId })
+      setInitialPromptSent(true)
+      setSubPhase('waiting-for-first-edit')
+      if (initialJobId) {
+        // Clear both flags - creation flow is complete once message is sent
+        sessionStorage.removeItem(`initial-prompt-pending-${initialJobId}`)
+        sessionStorage.removeItem(`in-creation-flow-${initialJobId}`)
+      }
+    },
+    
+    markFirstFileEditSeen: () => {
+      logger.info('initialization.mark-first-file-edit', { appId })
+      setHasSeenFirstFileEdit(true)
+    }
   }
 
-  const handleRetry = () => {
-    setPhase('checking-creation')
-    retryCreation()
-  }
+  // Legacy handlers for backward compatibility
+  const handleCancel = () => actions.cancel()
+  const handleRetry = () => actions.retry()
 
+  // -------------------------------------------------------------------------
+  // LOGGING (State transitions)
+  // -------------------------------------------------------------------------
+  
+  useEffect(() => {
+    logger.info('initialization.state', {
+      phase,
+      subPhase,
+      isReady: phase === 'ready' && subPhase === 'active',
+      context: {
+        appId,
+        isWebSocketConnected,
+        hasInitialPrompt: context.hasInitialPrompt,
+        initialPromptSent: context.initialPromptSent,
+        hasSeenFirstFileEdit: context.hasSeenFirstFileEdit,
+      },
+      ui: {
+        showChatLoader: ui.showChatLoader,
+        showPreviewLoader: ui.showPreviewLoader,
+        shouldAutoSendPrompt: ui.shouldAutoSendPrompt,
+        canInteractWithChat: ui.canInteractWithChat,
+      }
+    })
+  }, [
+    phase,
+    subPhase,
+    appId,
+    isWebSocketConnected,
+    context.hasInitialPrompt,
+    context.initialPromptSent,
+    context.hasSeenFirstFileEdit,
+    ui.showChatLoader,
+    ui.showPreviewLoader,
+    ui.shouldAutoSendPrompt,
+    ui.canInteractWithChat
+  ])
+
+  // Debug logging specifically for preview loader state (only when hasInitialPrompt is true)
+  useEffect(() => {
+    if (!context.hasInitialPrompt) return
+    
+    logger.debug('initialization.preview-loader.state', {
+      showPreviewLoader: ui.showPreviewLoader,
+      phase,
+      subPhase,
+      hasSeenFirstFileEdit: context.hasSeenFirstFileEdit,
+      conditions: {
+        phaseReady: phase === 'ready',
+        correctSubPhase: subPhase === 'websocket-connected' || subPhase === 'waiting-for-first-edit',
+        notSeenEdit: !context.hasSeenFirstFileEdit
+      }
+    })
+  }, [
+    phase,
+    subPhase,
+    context.hasInitialPrompt,
+    context.hasSeenFirstFileEdit,
+    ui.showPreviewLoader
+  ])
+
+  // -------------------------------------------------------------------------
+  // RETURN API
+  // -------------------------------------------------------------------------
+  
   return {
     phase,
-    isReady: phase === 'ready',
+    subPhase,
+    isReady: phase === 'ready' && subPhase === 'active',
+    context,
+    ui,
+    actions,
+    
+    // Legacy compatibility (deprecated)
     showCreationLoader: phase === 'checking-creation' || phase === 'creating',
     creationError,
     retryCount,
     maxRetries,
     onRetry: handleRetry,
     onCancel: handleCancel,
-    initialJobId
+    initialJobId,
   }
 }

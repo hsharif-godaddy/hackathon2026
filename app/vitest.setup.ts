@@ -26,3 +26,6 @@ global.console = {
 // Mock fetch globally (can be overridden in individual tests)
 global.fetch = vi.fn();
 
+// jsdom provides sessionStorage and localStorage, but we need to ensure they're cleared between tests
+// This will be handled in beforeEach hooks in individual test files
+

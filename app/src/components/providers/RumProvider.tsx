@@ -67,7 +67,7 @@ export default function RumProvider({
           
           transactionSampleRate: environment === 'production' ? 0.5 : 1.0,
           
-          logLevel: environment === 'development' ? 'debug' : 'warn',
+          logLevel: 'warn',
         });
 
       // Store APM instance globally for access by custom hooks

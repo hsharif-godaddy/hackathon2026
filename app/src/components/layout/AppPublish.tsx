@@ -253,9 +253,8 @@ export default function AppPublish({ location }: { location?: string }) {
           data-partial='gradientAiro'
           data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
           disabled={isButtonDisabled}
-        >
-          {isPublishing || isDeploymentInProgress ? 'Publishing...' : 'Publish'}
-        </Button>
+          text={isPublishing || isDeploymentInProgress ? 'Publishing...' : 'Publish'}
+        />
       </PopoverTrigger>
       <PopoverContent align='end' className='w-[400px] p-6'>
         <div className='flex flex-col gap-4'>
