@@ -45,8 +45,8 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
       // Step 1: Initialize dev environment manager
       await this.devEnvironmentManager.initialize();
 
-      // Step 2: Create app directory and copy template
-      const appPath = getAppPath(siteId); // Use centralized utility
+      // Step 2: Create app directory and copy template (fast - ~1-2s)
+      const appPath = getAppPath(siteId);
       const result = await this.devEnvironmentManager.createDevApp({
         siteId,
         name: title || siteId,
@@ -58,34 +58,36 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
         throw new Error(result.error || 'Failed to create dev app');
       }
 
-      // Step 3: Start the app using Docker (must be started before getting connection path)
-      const started = await this.devEnvironmentManager.startDevServer(siteId);
+      // Step 3: Start async deployment in background (DON'T AWAIT)
+      // This includes docker-compose up, health checks, and agent registration
+      this.startAsyncDeployment(
+        siteId,
+        title || siteId,
+        prompt,
+        result.appPath || appPath,
+        result.port!,
+        subscriptionId,
+        customerId || accountId
+      ).catch(error => {
+        this.log('error', 'Async deployment failed', { siteId, error });
+        // Update site status to 'error' in database
+        this.updateSiteStatusToError(siteId, error.message).catch(err => {
+          this.log('error', 'Failed to update site status to error', { siteId, err });
+        });
+      });
 
-      if (!started) {
-        throw new Error('Failed to start Docker container');
-      }
-
-      // Step 4: Get app status to get actual URLs
-      const appStatus = await this.devEnvironmentManager.getDevAppStatus(siteId);
-
-      // Generate URLs based on app status and result
-      const backendUrl = appStatus.metadata?.url || `https://localhost:${result.port}`;
-
-      // Step 5: Get dev-supervisor connection path and register with agents service
-      const connectionPath = this.devEnvironmentManager.getConnectionPath(siteId);
-      await this.registerWithAgents(siteId, title || `App ${siteId}`, prompt, result.appPath || appPath, backendUrl, connectionPath, subscriptionId, customerId || accountId);
+      // Step 4: Return immediately with 'creating' status
       const urls = {
-        agent: `${this.agentsServiceUrl}`, // For AI interactions
-        backend: backendUrl,
-        preview: backendUrl
+        agent: `${this.agentsServiceUrl}`,
+        backend: `https://localhost:${result.port}`,
+        preview: `https://localhost:${result.port}`
       };
 
-      this.log('info', 'Docker deployment completed successfully', {
+      this.log('info', 'Docker deployment initiated (async)', {
         siteId,
         appPath,
         port: result.port,
-        urls,
-        appStatus: appStatus.status
+        status: 'creating'
       });
 
       return {
@@ -97,7 +99,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
           port: result.port,
           mode: 'docker'
         },
-        status: 'running'
+        status: 'creating'  // Return immediately with 'creating' status
       };
 
     } catch (error) {
@@ -116,6 +118,105 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
         status: 'failed'
       };
     }
+  }
+
+  /**
+   * Background deployment process
+   * Starts docker containers, waits for health checks, and registers with agents service
+   */
+  private async startAsyncDeployment(
+    siteId: string,
+    title: string,
+    prompt: string,
+    appPath: string,
+    port: number,
+    subscriptionId?: string,
+    customerId?: string
+  ): Promise<void> {
+    try {
+      this.log('info', 'Starting async Docker container startup', { siteId });
+
+      // Update status to 'creating'
+      await this.updateSiteStatus(siteId, 'creating');
+
+      // Start the app using Docker (this is the slow part - docker-compose up + health checks)
+      const started = await this.devEnvironmentManager.startDevServer(siteId);
+
+      if (!started) {
+        throw new Error('Failed to start Docker container');
+      }
+
+      // Get app status to get actual URLs
+      const appStatus = await this.devEnvironmentManager.getDevAppStatus(siteId);
+      const backendUrl = appStatus.metadata?.url || `https://localhost:${port}`;
+
+      // Get dev-supervisor connection path and register with agents service
+      const connectionPath = this.devEnvironmentManager.getConnectionPath(siteId);
+      await this.registerWithAgents(
+        siteId,
+        title,
+        prompt,
+        appPath,
+        backendUrl,
+        connectionPath,
+        subscriptionId,
+        customerId
+      );
+
+      // Update status to 'running' with URLs
+      await this.updateSiteStatus(siteId, 'running', {
+        agent_url: this.agentsServiceUrl,
+        backend_url: backendUrl,
+        preview_url: backendUrl
+      });
+
+      this.log('info', 'Async Docker deployment completed successfully', {
+        siteId,
+        status: 'running',
+        urls: {
+          agent: this.agentsServiceUrl,
+          backend: backendUrl,
+          preview: backendUrl
+        }
+      });
+
+    } catch (error) {
+      this.log('error', 'Async Docker deployment failed', { siteId, error });
+      await this.updateSiteStatus(siteId, 'error');
+      throw error;
+    }
+  }
+
+  /**
+   * Helper to update site status in database
+   */
+  private async updateSiteStatus(
+    siteId: string,
+    status: 'creating' | 'running' | 'error',
+    urls?: { agent_url?: string; backend_url?: string; preview_url?: string }
+  ): Promise<void> {
+    try {
+      // Import dynamically to avoid circular dependencies
+      const { PrismaSiteService } = await import('@/lib/database/prisma-site-service');
+      const siteService = new PrismaSiteService();
+
+      await siteService.updateSite(siteId, {
+        status,
+        ...urls
+      });
+
+      this.log('info', 'Site status updated', { siteId, status });
+    } catch (error) {
+      this.log('error', 'Failed to update site status', { siteId, status, error });
+    }
+  }
+
+  /**
+   * Helper to update site to error status
+   */
+  private async updateSiteStatusToError(siteId: string, errorMessage: string): Promise<void> {
+    this.log('error', 'Updating site to error status', { siteId, errorMessage });
+    await this.updateSiteStatus(siteId, 'error');
   }
 
   async destroy(siteId: string): Promise<DeploymentResult> {
