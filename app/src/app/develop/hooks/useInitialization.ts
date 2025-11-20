@@ -5,7 +5,13 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useLoadConversationHistory } from '@/stores/useStreamingConversationStore'
 import { logger } from '@/lib/request-context'
 
-type InitializationPhase = 
+// Helper to get initialJobId from sessionStorage
+function getInitialJobIdFromStorage(appId: string | null): string | null {
+  if (typeof window === 'undefined' || !appId) return null
+  return sessionStorage.getItem(`initial-job-id-${appId}`)
+}
+
+type InitializationPhase =
   | 'idle'
   | 'checking-creation'
   | 'creating'
@@ -28,12 +34,18 @@ interface UseInitializationReturn {
   maxRetries: number
   onRetry: () => void
   onCancel: () => void
+  initialJobId: string | null
 }
 
 export function useInitialization({ appId, isJobId }: UseInitializationParams): UseInitializationReturn {
   const router = useRouter()
   const [phase, setPhase] = useState<InitializationPhase>('idle')
   const hasInitialized = useRef(false)
+
+  // Initialize initialJobId from sessionStorage on mount
+  const [initialJobId, setInitialJobId] = useState<string | null>(() => {
+    return getInitialJobIdFromStorage(appId)
+  })
 
   // Site creation store
   const {
@@ -51,6 +63,28 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
   // Streaming store
   const loadConversationHistory = useLoadConversationHistory()
+
+  // Store initialJobId when first appId is received or when route changes
+  // This captures the original job ID for sessionStorage key lookups, persisting across route changes
+  useEffect(() => {
+    // If we have a job ID, store it in sessionStorage and state
+    if (isJobId && appId) {
+      if (appId !== initialJobId) {
+        setInitialJobId(appId)
+        logger.info('initialization.initialJobId.set', { initialJobId: appId, isJobId })
+      }
+      return
+    }
+
+    // If we have a real app ID, try to get the job ID from sessionStorage
+    if (!isJobId && appId) {
+      const storedJobId = getInitialJobIdFromStorage(appId)
+      if (storedJobId && storedJobId !== initialJobId) {
+        setInitialJobId(storedJobId)
+        logger.info('initialization.initialJobId.loaded', { initialJobId: storedJobId, appId })
+      }
+    }
+  }, [appId, isJobId, initialJobId])
 
   // Step 1: Check if this is a new site creation
   useEffect(() => {
@@ -79,6 +113,14 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // Step 3: Update URL when we get real app ID
   useEffect(() => {
     if (phase === 'creating' && realAppId && realAppId !== appId) {
+      // This ensures we can retrieve the job ID after the component remounts
+      const jobId = appId // appId is the job ID at this point
+      sessionStorage.setItem(`initial-job-id-${realAppId}`, jobId)
+      logger.info('initialization.initialJobId.mapped-before-route-change', {
+        jobId,
+        realAppId
+      })
+
       logger.info('initialization.url-update', {
         jobId: appId,
         realAppId
@@ -101,9 +143,9 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     if (phase === 'initializing-page' && appId && !hasInitialized.current) {
       const effectiveAppId = realAppId || appId
       logger.info('initialization.page.start', { appId: effectiveAppId })
-      
+
       hasInitialized.current = true
-      
+
       initializePage(effectiveAppId)
         .then(() => {
           logger.info('initialization.page.success', { appId: effectiveAppId })
@@ -122,7 +164,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     if (phase === 'loading-history' && appId && loadingPhase === 'ready') {
       const effectiveAppId = realAppId || appId
       logger.info('initialization.history.start', { appId: effectiveAppId })
-      
+
       loadConversationHistory(effectiveAppId)
         .then(() => {
           logger.info('initialization.history.success', { appId: effectiveAppId })
@@ -164,6 +206,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     retryCount,
     maxRetries,
     onRetry: handleRetry,
-    onCancel: handleCancel
+    onCancel: handleCancel,
+    initialJobId
   }
 }

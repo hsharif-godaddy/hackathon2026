@@ -63,7 +63,8 @@ function DevelopPageContent() {
     retryCount,
     maxRetries,
     onRetry,
-    onCancel
+    onCancel,
+    initialJobId
   } = useInitialization({ appId, isJobId })
 
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
@@ -168,10 +169,11 @@ function DevelopPageContent() {
   useEffect(() => {
     if (!appId) return
 
-    const initialPromptKey = `initial-prompt-pending-${appId}`
+    const initialPromptKey = `initial-prompt-pending-${initialJobId}`
+    logger.info('app.develop.page.initialPromptKey.hasPendingPrompt', { initialPromptKey, initialJobId, appId })
     const hasPendingPrompt = sessionStorage.getItem(initialPromptKey) === 'true'
     setHasInitialPrompt(hasPendingPrompt)
-  }, [appId])
+  }, [appId, initialJobId])
 
   // Determine initial preview visibility based on localStorage and conversation history
   useEffect(() => {
@@ -200,16 +202,16 @@ function DevelopPageContent() {
   }, [loadingPhase, appId, messages.length, setIsPreviewVisible])
 
   // Git history management - centralized for page-level coordination
-  
+
   // Refresh git history when AI conversation completes (new commit created)
   useEffect(() => {
     const wasLoading = prevIsLoadingRef.current
     const isNowIdle = !isLoading
-    
+
     // When conversation completes (was loading, now idle), refresh git history
     if (appId && wasLoading && isNowIdle && conversations.length > 0) {
       // Invalidate and refetch git history to get the new commit
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: ['git-history', appId],
         refetchType: 'active'
       }).then(() => {
@@ -220,7 +222,7 @@ function DevelopPageContent() {
         }
       })
     }
-    
+
     prevIsLoadingRef.current = isLoading
   }, [appId, isLoading, conversations.length, queryClient, setSelectedCommit])
 
@@ -272,7 +274,7 @@ function DevelopPageContent() {
 
       // Build correct API URL with site context
       const apiUrl = await buildDynamicApiUrl('screenshot', appId)
-      
+
       // Upload to agents API using agentFetch with authentication
       const uploadResponse = await agentFetch(apiUrl, {
         method: 'POST',
@@ -286,9 +288,9 @@ function DevelopPageContent() {
 
       logger.info('develop-page.screenshot.upload.success', { appId })
     } catch (error) {
-      logger.error('develop-page.screenshot.upload.error', { 
-        appId, 
-        error: error instanceof Error ? error.message : String(error) 
+      logger.error('develop-page.screenshot.upload.error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
       })
     }
   }, [appId])
@@ -349,8 +351,8 @@ function DevelopPageContent() {
     // Check if any fileEdit tool calls have completed successfully
     const completedFileEdit = activeStream.toolCalls.find(
       toolCall => toolCall.name === 'fileEdit' &&
-                  toolCall.status === 'completed' &&
-                  !toolCall.error
+        toolCall.status === 'completed' &&
+        !toolCall.error
     )
 
     if (completedFileEdit && !isPreviewVisible) {
@@ -547,7 +549,8 @@ function DevelopPageContent() {
     // Wait a bit for conversation history to load, then check if we should auto-send
     const timer = setTimeout(() => {
       // Check if initial prompt should be sent (only after setup completion)
-      const initialPromptKey = `initial-prompt-pending-${appId}`
+      const initialPromptKey = `initial-prompt-pending-${initialJobId}`
+      logger.info('app.develop.page.initialPromptKey.shouldSendInitialPrompt', { initialPromptKey, initialJobId, appId })
       const shouldSendInitialPrompt = sessionStorage.getItem(initialPromptKey) === 'true'
 
       if (!shouldSendInitialPrompt) return
@@ -580,14 +583,15 @@ function DevelopPageContent() {
     }, 500) // Wait 500ms for conversation history to load
 
     return () => clearTimeout(timer)
-  }, [loadingPhase, appId, site, searchParams, autoSendInitialMessage, isLoading, sendMessage, isWebSocketConnected])
+  }, [loadingPhase, appId, site, searchParams, autoSendInitialMessage, isLoading, sendMessage, isWebSocketConnected, initialJobId])
 
   // Handle async name suggestion and registration after redirect from setup
   useEffect(() => {
     if (loadingPhase !== 'ready' || !appId || !site) return
 
     // Check if name registration is pending after setup
-    const nameRegistrationKey = `name-registration-pending-${appId}`
+    const nameRegistrationKey = `name-registration-pending-${initialJobId}`
+    logger.info('app.develop.page.nameRegistrationKey:', { nameRegistrationKey, initialJobId, appId })
     const shouldRegisterName = sessionStorage.getItem(nameRegistrationKey) === 'true'
 
     if (!shouldRegisterName) return
@@ -597,7 +601,7 @@ function DevelopPageContent() {
 
     // Run async without blocking page load
     appService.updateNameAndRegister(appId)
-  }, [loadingPhase, appId, site])
+  }, [loadingPhase, appId, site, initialJobId])
 
   const handlePanelResize = useCallback((newWidth: number) => {
     setChatPaneWidth(newWidth)
