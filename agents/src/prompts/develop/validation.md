@@ -39,7 +39,7 @@
 
 #### Technical Validation
 
-- ✅ Run `pnpm type-check` - zero TypeScript errors
+- ✅ Run `npm run type-check` - zero TypeScript errors
 - ✅ Code builds successfully without warnings
 - ✅ No console errors in browser
 - ✅ All interactive elements keyboard accessible

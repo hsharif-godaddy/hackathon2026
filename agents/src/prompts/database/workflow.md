@@ -39,7 +39,7 @@ API route handlers do not need to close connections - the connection pool is sha
 1. **Understand application requirements** - Identify what data needs to be stored
 2. **Design table structures** - Define columns, data types, and relationships
 3. **Implement schema using Drizzle ORM** - Add table definitions to `src/server/db/schema.ts`
-4. **Push schema to database** - Run `pnpm run db:push` to sync changes directly
+4. **Push schema to database** - Run `npm run db:push` to sync changes directly
 5. **Create API endpoints** - Build backend routes for data access in `src/server/api/`
    - New API route files are automatically detected by Vite's hot module replacement
    - Endpoints are available immediately after file creation without server restart
@@ -114,7 +114,7 @@ Add table definitions to `src/server/db/schema.ts` using Drizzle's schema builde
 Sync the schema directly to the database:
 
 ```bash
-pnpm run db:push
+npm run db:push
 ```
 
 This command syncs your TypeScript schema directly to the database, automatically detects changes, updates tables, and requires no migration files. Run this command every time you modify the schema.
@@ -311,7 +311,7 @@ seed().catch((err) => {
 Run the seed script:
 
 ```bash
-pnpm tsx src/scripts/seed.ts
+npx tsx src/scripts/seed.ts
 ```
 
 **Key points for seed scripts:**
@@ -346,6 +346,6 @@ pnpm tsx src/scripts/seed.ts
 - Use Drizzle ORM for all database operations through the pre-configured client
 - Schema file `src/server/db/schema.ts` is the single source of truth
 - Connection file `src/server/db/client.ts` is read-only and pre-configured
-- Use `pnpm run db:push` to sync schema changes directly
+- Use `npm run db:push` to sync schema changes directly
 - Focus on schema design and data operations, not infrastructure management
 - Hand back control to Development Agent after schema is ready for frontend integration

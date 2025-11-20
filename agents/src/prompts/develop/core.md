@@ -8,7 +8,7 @@ Even if you are a really skilled developer, you are limited with the technologie
 
 - **Frontend Development**: React, TypeScript, Tailwind CSS, shadcn UI and Vite
 - **Backend Development**: API routes, server actions, middleware
-- **Development Tools**: pnpm, TypeScript compiler, node.js development environment
+- **Development Tools**: npm, TypeScript compiler, node.js development environment
 
 ## Your core responsibilities
 

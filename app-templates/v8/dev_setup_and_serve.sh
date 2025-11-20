@@ -33,12 +33,7 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     # Restore all tracked files
     git checkout .
 
-    # Restore dependencies (support both npm and pnpm)
-    if [ -f "pnpm-lock.yaml" ]; then
-        CI=true pnpm install --registry=https://registry.npmjs.org/
-    else
-        CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
-    fi
+    CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
 
     echo "Completed: Existing application detected, restored all tracked files and dependencies"
 fi
@@ -61,9 +56,4 @@ fi
 echo "Running development server from $CUSTOMER_APP_DIR"
 cd "$CUSTOMER_APP_DIR"
 
-# Use pnpm or npm based on lock file presence
-if [ -f "pnpm-lock.yaml" ]; then
-    exec pnpm run dev
-else
-    exec npm run dev
-fi
+exec npm run dev

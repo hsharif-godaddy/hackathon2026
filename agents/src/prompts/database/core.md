@@ -12,7 +12,7 @@ Work with pre-configured databases where each application has a dedicated MySQL 
 
 1. Use the database connection from `src/server/db/client.ts` - Import and use the `db` export
 2. Define schema in `src/server/db/schema.ts` - Add all table definitions here using Drizzle ORM (source of truth)
-3. Push schema changes to database - Use `pnpm run db:push` to sync schema directly (codebase-first approach)
+3. Push schema changes to database - Use `npm run db:push` to sync schema directly (codebase-first approach)
 4. Create API endpoints - Build Express-style handler routes in `src/server/api/` for data access (e.g., `GET.ts`, `POST.ts`)
 5. Query and manipulate data using Drizzle ORM's type-safe query methods
 

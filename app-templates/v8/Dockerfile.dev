@@ -46,32 +46,15 @@ WORKDIR /app
 # Copy dev-supervisor binary from pre-built image
 COPY --chown=agent:agent --from=airo-dev-supervisor:latest /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
 
-# Copy package files to check for pnpm-lock.yaml
-COPY --chown=agent:agent package.json ./
-COPY --chown=agent:agent pnpm-lock.yaml* ./
-
-# Enable corepack and prepare pnpm as root if pnpm-lock.yaml exists
-# Configure pnpm to use a shared store location accessible by both users
-RUN --mount=type=cache,id=pnpm,target=/shared/pnpm-store if [ -f pnpm-lock.yaml ]; then \
-    corepack enable && corepack prepare pnpm@latest --activate && \
-    mkdir -p /shared/pnpm-store && \
-    chown -R agent:agent /shared/pnpm-store && \
-    chmod -R 775 /shared/pnpm-store && \
-    pnpm config set store-dir /shared/pnpm-store --global; \
-    fi
-
 # Copy source code (node_modules excluded via .dockerignore)
 COPY --chown=agent:agent . .
 
-# Create logs and supervisor socket directories
-RUN mkdir -p logs /tmp/supervisor
-RUN chown -R agent:agent logs /tmp/supervisor
+# Build time cache for npm
+RUN --mount=type=cache,id=npm,target=/npm-cache chown -R agent:agent /npm-cache
 
-# Create /shared/pnpm-store directory for runtime use
-# This is separate from the build-time cache mount and persists in the container
-RUN mkdir -p /shared/pnpm-store && \
-    chown -R agent:agent /shared/pnpm-store && \
-    chmod -R 775 /shared/pnpm-store
+# Create logs and supervisor socket directories
+RUN mkdir -p logs /tmp/supervisor /npm-cache
+RUN chown -R agent:agent logs /tmp/supervisor /npm-cache
 
 # Make sure the agent user owns the app directory initially
 RUN mkdir -p /publish/dist /app/dist \
@@ -80,20 +63,13 @@ RUN mkdir -p /publish/dist /app/dist \
 # Switch to the agent user so we are not running as root
 USER agent
 
-# Create clean npm environment for agent user and configure pnpm store
+# Create clean npm environment for agent user
 RUN mkdir -p /home/agent
 RUN echo "registry=https://registry.npmjs.org/" > ~/.npmrc
-RUN --mount=type=cache,id=pnpm,target=/shared/pnpm-store if [ -f pnpm-lock.yaml ]; then \
-    pnpm config set store-dir /shared/pnpm-store; \
-    fi
 
 # Install dependencies as the agent user
-# Support both npm and pnpm (v3 templates may use pnpm)
-RUN --mount=type=cache,id=pnpm,target=/shared/pnpm-store if [ -f pnpm-lock.yaml ]; then \
-    pnpm install --registry=https://registry.npmjs.org/; \
-    else \
-    npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit; \
-    fi
+ENV NPM_CONFIG_CACHE=/npm-cache/
+RUN --mount=type=cache,id=npm,target=/npm-cache npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
 
 # Expose the frontend port (will be overridden by PREFERRED_FRONTEND_PORT)
 EXPOSE 3000

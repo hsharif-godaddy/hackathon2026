@@ -105,6 +105,12 @@ Config: {
     {
       type: 'bind',
       readonly: false,
+      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/npm-cache`,
+      target: '/npm-cache'
+    },
+    {
+      type: 'bind',
+      readonly: false,
       source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/preview/assets/public`,
       target: '/app/public/assets'
     },
@@ -140,6 +146,12 @@ Config: {
     {
       type: 'bind',
       readonly: false,
+      source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/npm-cache`,
+      target: '/npm-cache'
+    },
+    {
+      type: 'bind',
+      readonly: false,
       source: `/mnt/ceph/${cephMountId}/${cephDirNumber}/${appId}/publish/assets/public`,
       target: '/app/public/assets'
     },
@@ -161,6 +173,7 @@ Entry point script will copy current version from `/publish` to `/app`.
 /mnt/ceph/${cephMountId}/${cephDirNumber}/
     └── ${appId}/
         ├── agent/                     # Persistent storage for the agent
+        ├── npm-cache/                 # NPM package cache for faster installations
         ├── git-repo/                  # Persistent Git repository (development/preview)
         └── preview/                   # Preview Artifacts (development)
             └── assets/                # Preview Persistent Assets
@@ -185,6 +198,7 @@ Entry point script will copy current version from `/publish` to `/app`.
 | ------------------------------------------ | -------------------- | ----------------------------------------------- | ----------- |
 | `${NOMAD_ALLOC_DIR}/customer-app/${appId}` | `/app`               | Application runtime directory                   | Ephemeral   |
 | `/mnt/ceph/.../git-repo`                   | `/app/.git`          | Git repository and metadata                     | Persistent  |
+| `/mnt/ceph/.../npm-cache`                  | `/npm-cache`         | NPM package cache for faster installations      | Persistent  |
 | `/mnt/ceph/.../preview/assets/public`      | `/app/public/assets` | public file assets                              | Persistent  |
 | `/mnt/ceph/.../preview/assets/private`     | `/private`           | private file assets (outside /app for security) | Persistent  |
 
@@ -194,6 +208,7 @@ Entry point script will copy current version from `/publish` to `/app`.
 | ------------------------------------------ | -------------------- | ----------------------------------------------- | ----------- |
 | `${NOMAD_ALLOC_DIR}/customer-app/${appId}` | `/app`               | Production runtime directory                    | Ephemeral   |
 | `/mnt/ceph/.../publish/dist`               | `/publish`           | Built application files                         | Persistent  |
+| `/mnt/ceph/.../npm-cache`                  | `/npm-cache`         | NPM package cache for faster installations      | Persistent  |
 | `/mnt/ceph/.../publish/assets/public`      | `/app/public/assets` | public file assets                              | Persistent  |
 | `/mnt/ceph/.../publish/assets/private`     | `/private`           | private file assets (outside /app for security) | Persistent  |
 

@@ -15,12 +15,24 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     git checkout .
 
     # Restore dependencies
-    CI=true pnpm install --registry=https://registry.npmjs.org/
+    CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
 
     # dotenv-local needs to be installed so that publishing works
     # this can be removed once all apps are reloaded in dev and prod
-    DOTENV_VERSION=$(jq -r '.dependencies["dotenv-local"]' "$BASE_APP_DIR/package.json")
-    pnpm add "dotenv-local@$DOTENV_VERSION"
+    if ! jq -e '.dependencies["dotenv-local"]' package.json > /dev/null 2>&1; then
+        DOTENV_VERSION=$(jq -r '.dependencies["dotenv-local"]' "$BASE_APP_DIR/package.json")
+        CI=true npm install "dotenv-local@$DOTENV_VERSION" --registry=https://registry.npmjs.org/ --no-fund --no-audit
+    fi
+
+    # if .gitignore contains package-lock.json, then sed it out
+    # remove the node_modules and npm-cache directories
+    # reinstall the dependencies to resolve the bloated npm cache issue
+    # this can be removed once all apps are reloaded in dev and prod
+    if grep -q "package-lock.json" .gitignore; then
+        sed -i '/package-lock.json/d' .gitignore
+        rm -rf node_modules/ /npm-cache/*
+        CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
+    fi
 
     # sync upstream dev-tools from base app template
     # we need to eventually create a public repo for dev-tools and sync them from there
@@ -42,7 +54,7 @@ if [ ! -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     cp -r "$BASE_APP_DIR"/. "$CUSTOMER_APP_DIR"
 
     # Install dependencies
-    CI=true pnpm install --frozen-lockfile --registry=https://registry.npmjs.org/
+    CI=true npm ci --registry=https://registry.npmjs.org/ --no-fund --no-audit
 
     # Initial commit
     git add .

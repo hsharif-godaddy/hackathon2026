@@ -18,13 +18,6 @@ RUN adduser -S -G agent -u 790 agent
 # Copy dev-supervisor binary from pre-built image
 COPY --chown=agent:agent --from=dev-supervisor /usr/local/bin/dev-supervisor /usr/local/bin/dev-supervisor
 
-# Copy package files first to check for pnpm-lock.yaml
-COPY --chown=agent:agent package.json /app-template/
-COPY --chown=agent:agent pnpm-lock.yaml* /app-template/
-
-# Enable corepack and prepare pnpm as root
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
 # copy all except nomad_setup_and_serve.sh to /app-template
 COPY --chown=agent:agent . /app-template
 

@@ -16,7 +16,7 @@
     "type-check": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx,json,md}\"",
     "clean": "rm -rf dist node_modules/.vite",
-    "reset": "pnpm run clean && pnpm install",
+    "reset": "npm run clean && npm install",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push"
   },

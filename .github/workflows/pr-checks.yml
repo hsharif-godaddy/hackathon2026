@@ -133,13 +133,13 @@ jobs:
         working-directory: ./app-templates/v8
         run: |
           echo "Checking if v8 template lockfile is current..."
-          pnpm install --ignore-workspace
-          if ! git diff --quiet pnpm-lock.yaml; then
-            echo "ERROR: v8 template pnpm-lock.yaml is out of date"
-            echo "Please run: cd app-templates/v8 && pnpm install --ignore-workspace"
+          npm ci
+          if ! git diff --quiet package-lock.json; then
+            echo "ERROR: v8 template package-lock.json is out of date"
+            echo "Please run: cd app-templates/v8 && npm install"
             echo ""
             echo "Changes detected:"
-            git diff pnpm-lock.yaml
+            git diff package-lock.json
             exit 1
           fi
           echo "v8 template lockfile is up-to-date"
@@ -147,14 +147,16 @@ jobs:
       - name: Install v8 template dependencies
         working-directory: ./app-templates/v8
         run: |
-          echo "Installing v8 template with frozen lockfile"
-          pnpm install --frozen-lockfile --ignore-workspace
+          echo "Installing v8 template"
+          npm ci
 
       - name: Check v8 template license compliance
         working-directory: ./app-templates/v8
         run: |
           echo "🔍 Checking v8 template license compliance using script..."
           ../../scripts/license-check.sh
+        env:
+          MATRIX_PACKAGE: v8-template
         continue-on-error: false
 
       - name: Upload v8 template license report

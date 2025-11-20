@@ -10,7 +10,7 @@ import { appContextEvents } from '../logging/events/index.js';
  * Provides comprehensive project context including:
  * - Directory structure (max depth 3, up to 100 lines)
  * - Package.json information (up to 50 main dependencies, scripts, project details)
- * - Dependency installation status (checks pnpm-lock.yaml vs package.json timestamps with 5s tolerance for WSL2)
+ * - Dependency installation status (checks package-lock.json vs package.json timestamps with 5s tolerance for WSL2)
  */
 export class AppContextManager {
   private directoryTool: DirectoryListingTool;
@@ -195,7 +195,7 @@ export class AppContextManager {
   }
 
   /**
-   * Check if dependencies are installed by comparing pnpm-lock.yaml and package.json modification times
+   * Check if dependencies are installed by comparing package-lock.json and package.json modification times
    * Uses a 5-second tolerance window to account for WSL2 time inconsistencies
    * @param context - The agent execution context
    * @returns Promise<boolean> - true if dependencies appear to be installed
@@ -208,7 +208,7 @@ export class AppContextManager {
         return false;
       }
 
-      // Get file stats for both package.json and pnpm-lock.yaml using directory listing
+      // Get file stats for both package.json and package-lock.json using directory listing
       const listing = await this.directoryTool.listDirectory(appPath, {
         path: '',
         maxDepth: 1,
@@ -224,27 +224,27 @@ export class AppContextManager {
       // The directory listing should show file modification times
       const listingStr = listing as string;
       const packageJsonMatch = listingStr.match(/package\.json.*?(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/);
-      const pnpmLockMatch = listingStr.match(/pnpm-lock\.yaml.*?(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/);
+      const packageLockMatch = listingStr.match(/package-lock\.json.*?(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})/);
 
-      if (!packageJsonMatch || !pnpmLockMatch) {
+      if (!packageJsonMatch || !packageLockMatch) {
         // If we can't find both files with timestamps, assume not installed
         return false;
       }
 
       const packageJsonTime = new Date(packageJsonMatch[1]!);
-      const pnpmLockTime = new Date(pnpmLockMatch[1]!);
+      const packageLockTime = new Date(packageLockMatch[1]!);
 
       // Calculate time difference in seconds
-      const timeDiffSeconds = Math.abs(pnpmLockTime.getTime() - packageJsonTime.getTime()) / 1000;
+      const timeDiffSeconds = Math.abs(packageLockTime.getTime() - packageJsonTime.getTime()) / 1000;
       
-      // If pnpm-lock.yaml is newer than package.json OR within 5 seconds (for WSL2 time inconsistencies)
+      // If package-lock.json is newer than package.json OR within 5 seconds (for WSL2 time inconsistencies)
       // consider dependencies installed
-      const isInstalled = pnpmLockTime >= packageJsonTime || timeDiffSeconds <= 5;
+      const isInstalled = packageLockTime >= packageJsonTime || timeDiffSeconds <= 5;
       
       logger.debug('app.context.dependencies.check', {
         appId: context.metadata?.appId as string,
         packageJsonTime: packageJsonTime.toISOString(),
-        pnpmLockTime: pnpmLockTime.toISOString(),
+        packageLockTime: packageLockTime.toISOString(),
         timeDifferenceSeconds: Number(timeDiffSeconds.toFixed(2)),
         dependenciesInstalled: isInstalled,
         toleranceSeconds: 5

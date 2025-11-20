@@ -36,9 +36,6 @@
     "packages/ai-lib/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter ai-lib lint:fix"
     ],
-    "app-templates/v8/**/*.{ts,tsx,js,jsx}": [
-      "pnpm --filter v8-template lint:fix"
-    ],
     "website/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter website lint"
     ],

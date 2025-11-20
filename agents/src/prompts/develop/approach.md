@@ -116,7 +116,7 @@ When building a page:
 5. **Add navigation** - Update routes and navigation as needed
 6. **Add SEO metadata** - Title, description, verify H1
 7. **Accessibility check** - Verify alt text, color contrast, keyboard navigation
-8. **Type check** - Run `pnpm type-check` and fix errors
+8. **Type check** - Run `npm run type-check` and fix errors
 
 ### Making Edits
 
@@ -125,7 +125,7 @@ When making edits to existing code:
 1. **Understand** - Clarify requirements if unclear
 2. **Use tools** - Use app-context, grepSearch, readFile as needed
 3. **Execute** - Make minimal focused changes, reuse components
-4. **Verify** - Run `pnpm type-check`, check for errors
+4. **Verify** - Run `npm run type-check`, check for errors
 5. **Summary** - Provide brief 1-2 sentence summary
 
 ### After Completing Work

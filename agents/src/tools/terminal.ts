@@ -137,23 +137,6 @@ export class TerminalTool {
     /\bdd\s+of=/,
   ];
 
-  /**
-   * Create default npm-to-pnpm command overrides
-   */
-  static createNpmToPnpmOverrides(): CommandOverride[] {
-    return [
-      {
-        pattern: /^npm\s+/,
-        replacement: 'pnpm ',
-        startOnly: true,
-      },
-      {
-        pattern: /^npx\s+/,
-        replacement: 'pnpm dlx ',
-        startOnly: true,
-      },
-    ];
-  }
 
   /**
    * Apply command overrides to transform the command

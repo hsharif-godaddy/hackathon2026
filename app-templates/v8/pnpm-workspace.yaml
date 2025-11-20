@@ -1,3 +1,0 @@
-# This is a standalone project, not part of the parent workspace
-packages:
-  - "."

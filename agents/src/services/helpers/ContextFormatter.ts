@@ -395,7 +395,7 @@ ${sanitizedError.details}
 
 Please review the error output above, identify the root cause, and make the necessary changes to fix the build.
 
-With the terminal tool, you should be able to run "pnpm run build" without any errors.
+With the terminal tool, you should be able to run "npm run build" without any errors.
 
 After fixing the issue and confirming the build is successful, inform the user to try the Publish button again.
 `.trim()
