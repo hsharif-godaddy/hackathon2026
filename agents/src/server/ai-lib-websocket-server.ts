@@ -41,6 +41,7 @@ import type { AgentsAppContext } from '../types/websocket-context.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { GitTool } from '../tools/git-tool.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
+import { initializeContextRegistry } from '../services/initializeContextRegistry.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -142,6 +143,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
   }
 
   try {
+    // Initialize context attachment registry with default renderers
+    initializeContextRegistry()
+
     // Create the agent factory with state manager
     const agentFactory = await createWebSocketAgentFactory()
     const stateManager = agentFactory.stateManager

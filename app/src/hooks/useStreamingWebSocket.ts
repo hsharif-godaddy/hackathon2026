@@ -629,6 +629,69 @@ export function useStreamingWebSocket() {
         })
       } : null
 
+      // Build context attachments array using new framework
+      const contextAttachments: any[] = []
+      
+      // Add AI Edit context as attachment (persisted)
+      if (aiEditContext) {
+        contextAttachments.push({
+          type: 'ai_edit_context',
+          data: aiEditContext,
+          persistence: 'save',
+          renderStrategy: 'before_prompt',
+          metadata: {
+            timestamp: Date.now(),
+            source: 'ai-edit-dialog'
+          }
+        })
+      }
+      
+      // Add Visual context as attachment (ephemeral)
+      if (visualContext) {
+        contextAttachments.push({
+          type: 'visual_context',
+          data: visualContext,
+          persistence: 'ephemeral',
+          renderStrategy: 'before_prompt',
+          metadata: {
+            timestamp: Date.now(),
+            source: 'iframe-capture'
+          }
+        })
+      }
+      
+      // Add Selected Assets as attachment (ephemeral)
+      if (transformedAsset) {
+        contextAttachments.push({
+          type: 'selected_assets',
+          data: [transformedAsset],
+          persistence: 'ephemeral',
+          renderStrategy: 'before_prompt',
+          metadata: {
+            timestamp: Date.now(),
+            source: 'asset-manager'
+          }
+        })
+      }
+      
+      // Add Build Error as attachment (ephemeral - from publish failures)
+      if (buildErrorContext) {
+        contextAttachments.push({
+          type: 'build_error',
+          data: {
+            error: buildErrorContext.error,
+            details: buildErrorContext.details,
+            exitCode: buildErrorContext.exitCode
+          },
+          persistence: 'ephemeral',
+          renderStrategy: 'before_prompt',
+          metadata: {
+            timestamp: Date.now(),
+            source: 'publish-failure'
+          }
+        })
+      }
+
       // Build rich context object with proper typing
       const richContext: AgentsAppContext = {
         // Basic metadata
@@ -653,23 +716,8 @@ export function useStreamingWebSocket() {
           maxDirectoryDepth: 3
         },
 
-        // AI Edit context if available
-        ...(aiEditContext && { aiEditContext }),
-
-        // Build error context if available (from publish failures)
-        ...(buildErrorContext && {
-          buildError: {
-            error: buildErrorContext.error,
-            details: buildErrorContext.details,
-            exitCode: buildErrorContext.exitCode
-          }
-        }),
-
-        // Visual context from iframe
-        ...(visualContext && { visualContext }),
-
-        // Selected assets from Asset Manager
-        ...(transformedAsset && { selectedAssets: [transformedAsset] }),
+        // Generic context attachments (new framework)
+        ...(contextAttachments.length > 0 && { contextAttachments }),
       }
 
       // Send the message to start streaming with rich context

@@ -3,10 +3,14 @@
  * These match the backend types but are defined separately to avoid coupling
  */
 
+import type { ContextAttachment } from './context-attachment'
+
 /**
  * App-specific context structure for agents application
  */
 export interface AgentsAppContext {
+  // Generic context attachments (new flexible system)
+  contextAttachments?: ContextAttachment[]
   // Basic metadata
   metadata?: {
     appId?: string
@@ -29,68 +33,6 @@ export interface AgentsAppContext {
     includeDependencyStatus?: boolean
     maxDirectoryDepth?: number
   }
-  
-  // AI Edit context - selected element information
-  aiEditContext?: {
-    elementInfo?: {
-      tagName?: string
-      className?: string
-      id?: string
-      textContent?: string
-    }
-    devContext?: {
-      fileName?: string
-      componentName?: string
-      lineNumber?: number
-    }
-    selector?: string
-    screenshot?: string | null
-  }
-  
-  // Visual context - user's current view state
-  visualContext?: {
-    page?: string
-    scroll_position?: { x: number; y: number }
-    active_section?: string
-    viewport?: { width: number; height: number }
-    timestamp?: number
-  }
-  
-  // Image upload context
-  uploadedFiles?: {
-    uploadId: string
-    files: Array<{
-      id: string
-      originalName: string
-      filename: string
-      size: number
-      mimeType: string | null
-      uploadedAt: string
-    }>
-  }
-  
-  // Asset Manager selected assets context (IMAGE, VIDEO, PDF)
-  selectedAssets?: Array<{
-    mediaType: 'IMAGE' | 'VIDEO' | 'PDF'
-    sourceType: string
-    imageUrl: string
-    // IMAGE specific fields
-    filename?: string
-    contentType?: string
-    size?: number
-    dimensions?: {
-      width: number
-      height: number
-    }
-    thumbnailUrl?: string
-    altText?: string
-    // VIDEO specific fields
-    videoUrl?: string
-    id?: string
-    urlHash?: string
-    width?: number
-    height?: number
-  }>
   
   // Extensibility for future context types
   [key: string]: unknown

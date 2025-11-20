@@ -6,7 +6,6 @@
  */
 
 import type {
-  ConversationPersistence,
   ConversationPersistenceWithCleanup,
   PersistenceStreamingEvent,
   ConversationContext
@@ -229,6 +228,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       socketId: context.socketId
     })
 
+    // Extract contextAttachments if present (they're passed through agent context)
+    const contextAttachments = (context as any).contextAttachments
+    const filteredAttachments = contextAttachments && Array.isArray(contextAttachments)
+      ? contextAttachments.filter((att: any) => att.persistence === 'save')
+      : undefined
+
     await this.conversationRepo.addMessage(conversationId, 'user', message, {
       metadata: {
         socketId: context.socketId,
@@ -236,7 +241,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         appId: context.appId,
         userId: context.userId,
         sessionId: context.sessionId
-      }
+      },
+      ...(filteredAttachments && filteredAttachments.length > 0 && { contextAttachments: filteredAttachments })
     })
 
     this.activeConversations.set(context.socketId, {
@@ -387,6 +393,12 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       contextLogger.info('conversation.created', { conversationId })
     }
 
+    // Extract contextAttachments if present (they're passed through agent context)
+    const contextAttachments = (context as any).contextAttachments
+    const filteredAttachments = contextAttachments && Array.isArray(contextAttachments)
+      ? contextAttachments.filter((att: any) => att.persistence === 'save')
+      : undefined
+
     await this.conversationRepo.addMessage(conversationId, 'user', message, {
       metadata: {
         socketId: context.socketId,
@@ -394,7 +406,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         appId: context.appId,
         userId: context.userId,
         sessionId: context.sessionId
-      }
+      },
+      ...(filteredAttachments && filteredAttachments.length > 0 && { contextAttachments: filteredAttachments })
     })
 
     this.activeConversations.set(context.socketId, {

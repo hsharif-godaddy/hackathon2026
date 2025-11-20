@@ -88,6 +88,13 @@ export interface ConversationMessage {
   toolCalls?: ToolCall[];
   segments?: MessageSegment[];
   metadata?: Record<string, any>;
+  contextAttachments?: Array<{
+    type: string;
+    data: any;
+    metadata?: Record<string, any>;
+    persistence?: 'save' | 'ephemeral';
+    renderStrategy?: 'before_prompt' | 'after_prompt' | 'replace_prompt' | 'hidden';
+  }>;
   createdAt: Date;
 }
 
@@ -278,6 +285,7 @@ function createConversationMessagesTable(db: Database): void {
       tool_calls TEXT, -- JSON string
       segments TEXT,   -- JSON string
       metadata TEXT,   -- JSON string
+      context_attachments TEXT, -- JSON string for generic context attachments
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     )
@@ -656,6 +664,13 @@ function applyMigrations(db: Database): void {
   // Add customer_id column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN customer_id TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+
+  // Add context_attachments column if it doesn't exist (for generic context attachments)
+  try {
+    db.exec(`ALTER TABLE conversation_messages ADD COLUMN context_attachments TEXT`);
   } catch (err) {
     // Column might already exist, that's fine
   }

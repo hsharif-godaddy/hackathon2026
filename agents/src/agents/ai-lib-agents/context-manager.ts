@@ -10,7 +10,7 @@ import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig, Age
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
 import { logger, log } from '../../logging/index.js'
 import { getAgentConfig } from '../../services/features.js'
-import { ContextFormatter, type FormattedContext } from '../../services/helpers/ContextFormatter.js'
+import type { FormattedContext } from '../../services/helpers/ContextFormatter.js'
 
 import type { AgentExecutionContext } from '../../base/agent.interface.js'
 import type { AgentsAppContext } from '../../types/websocket-context.js'
@@ -19,6 +19,15 @@ import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { existsSync, readFileSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { contextAttachmentRegistry } from '../../services/ContextAttachmentRegistry.js'
+import type { ContextAttachment } from '../../types/context-attachment.js'
+
+type AttachmentContextMessage = {
+  role: 'user' | 'system'
+  content: string
+  insertionOrder?: 'before_history' | 'after_history'
+  cachePoint?: { type: 'ephemeral' }
+}
 
 /**
  * AI-Lib Context Manager
@@ -60,9 +69,7 @@ export class AILibContextManager {
         const contextSummary = {
             hasMetadata: !!context.metadata,
             hasAppContext: !!context.appContext,
-            hasVisualContext: !!context.visualContext,
-            hasAiEditContext: !!context.aiEditContext,
-            hasSelectedAssets: !!context.selectedAssets && context.selectedAssets.length > 0
+            hasContextAttachments: !!context.contextAttachments && context.contextAttachments.length > 0
         }
         
         logger.info('context.build.start', {
@@ -77,7 +84,7 @@ export class AILibContextManager {
                 ...contextSummary,
                 conversationMaxMessages: context.conversation?.maxMessages,
                 appContextDepth: context.appContext?.maxDirectoryDepth,
-                selectedAssetsCount: context.selectedAssets?.length || 0
+                contextAttachmentsCount: context.contextAttachments?.length || 0
             })
         }
 
@@ -129,76 +136,25 @@ export class AILibContextManager {
             })
         }
 
-        // Add visual context as user message (third priority) - but skip if we have AI edit context
-        const visualMessages = contextMessages.filter(msg => msg.type === 'visual_context')
-        const aiEditMessages = contextMessages.filter(msg => msg.type === 'ai_edit_context')
-        const hasAiEditContext = aiEditMessages.length > 0
-        if (visualMessages.length > 0 && !hasAiEditContext) {
-            conversationContextMessages.push({
-                role: 'user',
-                content: visualMessages.map(msg => msg.content).join('\n\n'),
-                insertionOrder: 'after_history'
-            })
-        }
-
-        // Add AI edit context as user message (high priority - specific element)
-        if (aiEditMessages.length > 0) {
-            conversationContextMessages.push({
-                role: 'user',
-                content: aiEditMessages.map(msg => msg.content).join('\n\n'),
-                insertionOrder: 'after_history'
-            })
-        }
-
-        // Add selected assets context as user message (LAST - most immediate/recent)
-        const selectedAssetsMessages = contextMessages.filter(msg => msg.type === 'selected_assets_context')
-        if (selectedAssetsMessages.length > 0) {
-            conversationContextMessages.push({
-                role: 'user',
-                content: selectedAssetsMessages.map(msg => msg.content).join('\n\n'),
-                insertionOrder: 'after_history'
-            })
-        }
-
-        // Add build error context as user message (CRITICAL - must be included for fixing build failures)
-        const buildErrorMessages = contextMessages.filter(msg => msg.type === 'build_error_context')
-        if (buildErrorMessages.length > 0) {
-            conversationContextMessages.push({
-                role: 'user',
-                content: buildErrorMessages.map(msg => msg.content).join('\n\n'),
-                insertionOrder: 'after_history'
-            })
-            logger.info('context.build_error.included', {
-                message: 'Build error context included in conversation',
-                messageCount: buildErrorMessages.length
-            })
-        }
-
-        // Determine message types based on order and context
-        const messageTypes: string[] = []
-        let typeIndex = 0
-        if (templateDescription) {
-            messageTypes[typeIndex++] = 'template'
-        }
-        if (appContextMessages.length > 0) {
-            messageTypes[typeIndex++] = 'app'
-        }
-        if (visualMessages.length > 0 && !hasAiEditContext) {
-            messageTypes[typeIndex++] = 'visual'
-        }
-        if (aiEditMessages.length > 0) {
-            messageTypes[typeIndex++] = 'element'
-        }
-        if (selectedAssetsMessages.length > 0) {
-            messageTypes[typeIndex++] = 'assets'
-        }
-        if (buildErrorMessages.length > 0) {
-            messageTypes[typeIndex++] = 'build_error'
+        // Process generic context attachments using the registry
+        if (context.contextAttachments && Array.isArray(context.contextAttachments) && context.contextAttachments.length > 0) {
+            try {
+                const attachmentMessages = await this.processContextAttachments(
+                    context.contextAttachments,
+                    '', // User prompt not available at this stage
+                    context
+                )
+                conversationContextMessages.push(...attachmentMessages)
+            } catch (error) {
+                logger.error('context.attachments.processing.error', {
+                    error: error instanceof Error ? error.message : String(error),
+                    attachmentCount: context.contextAttachments.length
+                })
+            }
         }
 
         logger.info('context.build.success', {
-            messageCount: conversationContextMessages.length,
-            messageTypes
+            messageCount: conversationContextMessages.length
         })
 
         // Detailed logging if enabled
@@ -206,12 +162,7 @@ export class AILibContextManager {
             logger.debug('context.build.breakdown', {
                 staticSystemPromptLength: baseSystemPrompt.length,
                 totalContextLength: conversationContextMessages.reduce((sum, msg) => sum + msg.content.length, 0),
-                messageDetails: conversationContextMessages.map((msg, index) => ({
-                    index: index + 1,
-                    type: messageTypes[index] || 'unknown',
-                    role: msg.role,
-                    length: msg.content.length
-                }))
+                messageCount: conversationContextMessages.length
             })
         }
 
@@ -241,7 +192,7 @@ export class AILibContextManager {
                 '', // Empty system prompt since we handle that separately
                 'placeholder', // Placeholder user message
                 context.conversation.conversationId,
-                context.aiEditContext,
+                undefined, // aiEditContext now handled via contextAttachments
                 executionContext
             )
 
@@ -295,9 +246,6 @@ export class AILibContextManager {
             ...this.config,
             ...(agentPreferences?.includeAppContext !== undefined && { includeAppContext: agentPreferences.includeAppContext }),
             ...(agentPreferences?.includeConversationHistory !== undefined && { includeConversationHistory: agentPreferences.includeConversationHistory }),
-            ...(agentPreferences?.includeAiEditContext !== undefined && { includeAiEditContext: agentPreferences.includeAiEditContext }),
-            ...(agentPreferences?.includeVisualContext !== undefined && { includeVisualContext: agentPreferences.includeVisualContext }),
-            ...(agentPreferences?.includeSelectedImages !== undefined && { includeSelectedImages: agentPreferences.includeSelectedImages }),
             ...(agentPreferences?.maxHistoryMessages !== undefined && { maxHistoryMessages: agentPreferences.maxHistoryMessages }),
             ...(agentPreferences?.maxDirectoryDepth !== undefined && { maxDirectoryDepth: agentPreferences.maxDirectoryDepth })
         }
@@ -319,57 +267,6 @@ export class AILibContextManager {
                 }
             }
 
-            // Build AI edit context
-            if (effectiveConfig.includeAiEditContext && context.aiEditContext) {
-                const formatted = ContextFormatter.formatAiEditContext(context.aiEditContext)
-                if (formatted) {
-                    messages.push({
-                        role: 'user',
-                        content: formatted.content,
-                        type: formatted.type
-                    })
-                    formattedContexts.push(formatted)
-                }
-            }
-
-            // Build visual context
-            if (effectiveConfig.includeVisualContext && context.visualContext) {
-                const formatted = ContextFormatter.formatVisualContext(context.visualContext)
-                if (formatted) {
-                    messages.push({
-                        role: 'user',
-                        content: formatted.content,
-                        type: formatted.type
-                    })
-                    formattedContexts.push(formatted)
-                }
-            }
-
-            // Build selected assets context
-            if (effectiveConfig.includeSelectedImages && context.selectedAssets) {
-                const formatted = await ContextFormatter.formatSelectedAssets(context.selectedAssets)
-                if (formatted) {
-                    messages.push({
-                        role: 'user',
-                        content: formatted.content,
-                        type: formatted.type
-                    })
-                    formattedContexts.push(formatted)
-                }
-            }
-
-            // Build error context (always include if present - critical for fixing build failures)
-            if (context.buildError) {
-                const formatted = ContextFormatter.formatBuildError(context.buildError)
-                if (formatted) {
-                    messages.push({
-                        role: 'user',
-                        content: formatted.content,
-                        type: formatted.type
-                    })
-                    formattedContexts.push(formatted)
-                }
-            }
         } catch (error) {
             logger.error('context.messages.build.failure', {
                 error: error instanceof Error ? error.message : String(error)
@@ -380,6 +277,64 @@ export class AILibContextManager {
             contextMessages: messages,
             formattedContexts
         }
+    }
+
+    /**
+     * Process context attachments using the registry system
+     */
+    private async processContextAttachments(
+        attachments: ContextAttachment[],
+        userPrompt: string,
+        context: EnhancedAgentContext
+    ): Promise<AttachmentContextMessage[]> {
+        const messages: AttachmentContextMessage[] = []
+        
+        const appId = context.metadata?.appId as string
+        const contextLogger = appId ? log.forApp(appId) : logger
+
+        contextLogger.info('context.attachments.processing', {
+            count: attachments.length,
+            types: attachments.map(a => a.type)
+        })
+
+        for (const attachment of attachments) {
+            try {
+                const renderContext: { appId?: string; appPath?: string; conversationId?: string } = {}
+                
+                if (context.metadata?.appId) renderContext.appId = context.metadata.appId as string
+                if (context.metadata?.appPath) renderContext.appPath = context.metadata.appPath as string
+                if (context.conversation?.conversationId) renderContext.conversationId = context.conversation.conversationId
+                
+                const rendered = await contextAttachmentRegistry.render(
+                    attachment,
+                    userPrompt,
+                    renderContext
+                )
+
+                if (rendered) {
+                    messages.push({
+                        role: rendered.role || 'user',
+                        content: rendered.content,
+                        insertionOrder: rendered.insertionOrder || 'after_history',
+                        ...(rendered.cachePoint && { cachePoint: rendered.cachePoint })
+                    })
+
+                    contextLogger.debug('context.attachment.rendered', {
+                        type: attachment.type,
+                        role: rendered.role,
+                        insertionOrder: rendered.insertionOrder,
+                        contentLength: rendered.content.length
+                    })
+                }
+            } catch (error) {
+                contextLogger.error('context.attachment.render.error', {
+                    type: attachment.type,
+                    error: error instanceof Error ? error.message : String(error)
+                })
+            }
+        }
+
+        return messages
     }
 
     /**
@@ -502,7 +457,6 @@ export class AILibContextManager {
             metadata: {
                 appId: context.metadata?.appId,
                 appPath, // Resolved from AppRepository
-                visualContext: context.visualContext,
                 ...context.metadata
             }
         }
@@ -530,10 +484,7 @@ export class AILibContextManager {
                 hasMetadata: !!rawContext.metadata,
                 hasConversation: !!rawContext.conversation,
                 hasAppContext: !!rawContext.appContext,
-                hasAiEditContext: !!rawContext.aiEditContext,
-                hasVisualContext: !!rawContext.visualContext,
-                hasSelectedAssets: !!rawContext.selectedAssets,
-                hasBuildError: !!rawContext.buildError
+                hasContextAttachments: !!rawContext.contextAttachments
             })
         }
 
@@ -542,10 +493,7 @@ export class AILibContextManager {
             metadata: rawContext.metadata || {},
             ...(rawContext.conversation && { conversation: rawContext.conversation }),
             ...(rawContext.appContext && { appContext: rawContext.appContext }),
-            ...(rawContext.aiEditContext && { aiEditContext: rawContext.aiEditContext }),
-            ...(rawContext.visualContext && { visualContext: rawContext.visualContext }),
-            ...(rawContext.selectedAssets && { selectedAssets: rawContext.selectedAssets }),
-            ...(rawContext.buildError && { buildError: rawContext.buildError })
+            ...(rawContext.contextAttachments && { contextAttachments: rawContext.contextAttachments })
         }
 
         return enhancedContext

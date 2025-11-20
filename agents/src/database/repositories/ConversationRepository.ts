@@ -154,6 +154,13 @@ export class ConversationRepository {
       toolCalls?: ToolCall[];
       segments?: MessageSegment[];
       metadata?: Record<string, any>;
+      contextAttachments?: Array<{
+        type: string;
+        data: any;
+        metadata?: Record<string, any>;
+        persistence?: 'save' | 'ephemeral';
+        renderStrategy?: 'before_prompt' | 'after_prompt' | 'replace_prompt' | 'hidden';
+      }>;
     } = {}
   ): Promise<ConversationMessage> {
     const id = nanoid(12);
@@ -161,8 +168,8 @@ export class ConversationRepository {
 
     const stmt = this.db.prepare(`
       INSERT INTO conversation_messages
-      (id, conversation_id, sender, content, message_type, tool_calls, segments, metadata, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, conversation_id, sender, content, message_type, tool_calls, segments, metadata, context_attachments, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -174,6 +181,7 @@ export class ConversationRepository {
       options.toolCalls ? JSON.stringify(options.toolCalls) : null,
       options.segments ? JSON.stringify(options.segments) : null,
       options.metadata ? JSON.stringify(options.metadata) : null,
+      options.contextAttachments ? JSON.stringify(options.contextAttachments) : null,
       now
     );
 
@@ -201,6 +209,9 @@ export class ConversationRepository {
     if (options.metadata) {
       message.metadata = options.metadata;
     }
+    if (options.contextAttachments) {
+      message.contextAttachments = options.contextAttachments;
+    }
 
     return message;
   }
@@ -226,6 +237,7 @@ export class ConversationRepository {
       toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
       segments: row.segments ? JSON.parse(row.segments) : undefined,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      contextAttachments: row.context_attachments ? JSON.parse(row.context_attachments) : undefined,
       createdAt: new Date(row.created_at)
     };
   }
@@ -342,6 +354,7 @@ export class ConversationRepository {
         toolCalls: row.tool_calls ? JSON.parse(row.tool_calls) : undefined,
         segments,
         metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+        contextAttachments: row.context_attachments ? JSON.parse(row.context_attachments) : undefined,
         createdAt: new Date(row.created_at)
       };
     });
