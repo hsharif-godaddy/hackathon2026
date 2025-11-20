@@ -23,24 +23,24 @@ You work from the application root directory. Use **relative paths** for app fil
 - **Security:** Isolated from web server, never expose these paths publicly
 - **Example:** `await fs.writeFile('/private/documents/${userId}/${docId}.pdf', buffer)`
 
-### Working Directory - Ephemeral Files
+### Working Directory - Application Code
 
 - **Purpose:** Application code (`.tsx`, `.ts`, config files)
 - **Path:** Relative (e.g., `src/components/Button.tsx`)
-- **Persistence:** Only via git commits (auto-restored on restart)
+- **Persistence:** Application code is version controlled through git
 - **Not for:** User-generated content
 
 ## Storage Decision Matrix
 
-| File Type            | Public Access? | Persisted?    | Location                  | Example           |
-| -------------------- | -------------- | ------------- | ------------------------- | ----------------- |
-| User profile image   | Yes            | Yes           | `public/assets/profiles/` | `avatar.jpg`      |
-| Product photo        | Yes            | Yes           | `public/assets/products/` | `product-123.png` |
-| Generated PDF report | No             | Yes           | `/private/reports/`       | `report-456.pdf`  |
-| User document        | No             | Yes           | `/private/documents/`     | `invoice.pdf`     |
-| Application code     | N/A            | Yes (via git) | `src/`                    | `component.tsx`   |
-| Temp processing file | No             | No            | `/tmp/`                   | `temp-upload.bin` |
-| Build artifacts      | No             | Yes           | `dist/`                   | `bundle.js`       |
+| File Type            | Public Access? | Persisted? | Location                  | Example           |
+| -------------------- | -------------- | ---------- | ------------------------- | ----------------- |
+| User profile image   | Yes            | Yes        | `public/assets/profiles/` | `avatar.jpg`      |
+| Product photo        | Yes            | Yes        | `public/assets/products/` | `product-123.png` |
+| Generated PDF report | No             | Yes        | `/private/reports/`       | `report-456.pdf`  |
+| User document        | No             | Yes        | `/private/documents/`     | `invoice.pdf`     |
+| Application code     | N/A            | Yes        | `src/`                    | `component.tsx`   |
+| Temp processing file | No             | No         | `/tmp/`                   | `temp-upload.bin` |
+| Build artifacts      | No             | Yes        | `dist/`                   | `bundle.js`       |
 
 ## Best Practices
 

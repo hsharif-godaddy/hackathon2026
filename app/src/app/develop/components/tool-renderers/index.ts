@@ -15,7 +15,6 @@ import HandoffToolRenderer from './HandoffToolRenderer'
 import ReadFileToolRenderer from './ReadFileToolRenderer'
 import FileEditToolRenderer from './FileEditToolRenderer'
 import TerminalCommandToolRenderer from './TerminalCommandToolRenderer'
-import GitOperationToolRenderer from './GitOperationToolRenderer'
 import ImageSearchToolRenderer from './ImageSearchToolRenderer'
 import MediaSearchToolRenderer from './MediaSearchToolRenderer'
 import TodoListToolRenderer from './TodoListToolRenderer'
@@ -45,7 +44,6 @@ export const toolRendererRegistry = {
   readFile: ReadFileToolRenderer,
   fileEdit: FileEditToolRenderer,
   terminalCommand: TerminalCommandToolRenderer,
-  gitOperation: GitOperationToolRenderer,
   mediaSearch: MediaSearchToolRenderer,
   imageSearch: ImageSearchToolRenderer,
   todoList: TodoListToolRenderer,
@@ -84,5 +82,5 @@ export function getToolRenderer(toolName: string) {
 /**
  * Export tool renderer components
  */
-export { CssColorToolRenderer, CssSuggestToolRenderer, EndConversationToolRenderer, GrepSearchToolRenderer, HandoffToolRenderer, ReadFileToolRenderer, FileEditToolRenderer, TerminalCommandToolRenderer, GitOperationToolRenderer, MediaSearchToolRenderer, ImageSearchToolRenderer, TodoListToolRenderer, SuggestedResponseToolRenderer, OAuthToolRenderer, DefaultToolRenderer }
+export { CssColorToolRenderer, CssSuggestToolRenderer, EndConversationToolRenderer, GrepSearchToolRenderer, HandoffToolRenderer, ReadFileToolRenderer, FileEditToolRenderer, TerminalCommandToolRenderer, MediaSearchToolRenderer, ImageSearchToolRenderer, TodoListToolRenderer, SuggestedResponseToolRenderer, OAuthToolRenderer, DefaultToolRenderer }
 export type { DefaultToolRendererProps }

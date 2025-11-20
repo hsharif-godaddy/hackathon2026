@@ -25,7 +25,6 @@ The complete prompt is assembled from these files in order:
 ### 2. `tools.md` - Available Tools Documentation
 
 - File Edit Tool configuration and usage
-- Git Operation Tool capabilities
 - Directory Listing Tool options
 - Terminal Command Tool features
 - Server Management Tools

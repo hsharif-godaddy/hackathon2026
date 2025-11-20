@@ -25,12 +25,14 @@
 "Mobile app version would allow processing on the go." - Field Representative
 
 ## Ratings Summary
+
 - Ease of Use: 4.9/5.0
 - Processing Speed: 4.8/5.0
 - Accuracy: 4.7/5.0
 - Overall Satisfaction: 4.8/5.0
 
 ## Common Requests
+
 1. Batch processing (mentioned 12 times)
 2. Multi-language support (mentioned 8 times)
 3. Mobile app (mentioned 6 times)

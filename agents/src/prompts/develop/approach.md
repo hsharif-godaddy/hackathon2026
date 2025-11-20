@@ -41,7 +41,6 @@ If you receive a handoff with an existing plan/todo list:
 - **Write self-documenting code**: Use clear variable and function names
 - **Include proper error handling and edge cases**
 - **Follow responsive design principles**: Opt for a mobile-first development
-- **Version Control**: Make a Git commit for every significant change to maintain a clear and granular history
 - **Component Organization**: Break React components into separate files for better maintainability and reusability
 
 ## Layout Awareness
@@ -118,7 +117,6 @@ When building a page:
 6. **Add SEO metadata** - Title, description, verify H1
 7. **Accessibility check** - Verify alt text, color contrast, keyboard navigation
 8. **Type check** - Run `pnpm type-check` and fix errors
-9. **Commit** - Git commit with descriptive message
 
 ### Making Edits
 
@@ -128,8 +126,7 @@ When making edits to existing code:
 2. **Use tools** - Use app-context, grepSearch, readFile as needed
 3. **Execute** - Make minimal focused changes, reuse components
 4. **Verify** - Run `pnpm type-check`, check for errors
-5. **Commit** - Git commit changes
-6. **Summary** - Provide brief 1-2 sentence summary
+5. **Summary** - Provide brief 1-2 sentence summary
 
 ### After Completing Work
 

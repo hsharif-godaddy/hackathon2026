@@ -856,9 +856,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         if (userMessage) {
           const truncatedMessage = userMessage.length > 50 ?
             `${userMessage.substring(0, 47)}...` : userMessage;
-          commitMessage = `${truncatedMessage} (${reason.replace('_', ' ')})`;
+          commitMessage = `${truncatedMessage}`;
         } else {
-          commitMessage = `Saving changes after ${reason.replace('_', ' ')}`;
+          commitMessage = `Saving changes after`;
         }
 
         const result = await gitTool.executeGitOperation(app.path, {

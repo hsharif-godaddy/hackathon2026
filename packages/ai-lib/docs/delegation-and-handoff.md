@@ -5,6 +5,7 @@ This guide explains the difference between **delegation** (calling another agent
 ## Overview
 
 ### Delegation (formerly "handoff tool")
+
 **Delegation** is when one agent calls another agent to perform a task and waits for the result. The calling agent remains in control.
 
 - **Use case**: "I need the database agent to create a schema for me"
@@ -13,6 +14,7 @@ This guide explains the difference between **delegation** (calling another agent
 - **Analogy**: Like calling a function or making an API request
 
 ### Handoff (agent switching)
+
 **Handoff** is when you switch from one agent to another as the active agent. The original agent is no longer in control.
 
 - **Use case**: "The user wants to switch from the developer agent to the database agent"
@@ -25,35 +27,33 @@ This guide explains the difference between **delegation** (calling another agent
 ### Basic Usage
 
 ```typescript
-import { createAgentFactory, addDelegationTools } from '@airo/ai-lib'
+import { createAgentFactory, addDelegationTools } from "@airo/ai-lib";
 
-const factory = createAgentFactory()
+const factory = createAgentFactory();
 
 const agents = factory.defineAgents({
   coordinator: {
-    name: 'Coordinator',
-    system: 'You coordinate tasks and can delegate to specialists',
-    model: await getModel('gpt4o'),
+    name: "Coordinator",
+    system: "You coordinate tasks and can delegate to specialists",
+    model: await getModel("gpt4o"),
     tools: {
-      ...addDelegationTools(factory, 'coordinator', true) // Includes history tool
+      ...addDelegationTools(factory, "coordinator", true), // Includes history tool
     },
-    handoffs: [
-      { agentName: 'specialist', description: 'Specialized tasks' }
-    ]
+    handoffs: [{ agentName: "specialist", description: "Specialized tasks" }],
   },
   specialist: {
-    name: 'Specialist',
-    system: 'You handle specialized tasks',
-    model: await getModel('gpt4o'),
+    name: "Specialist",
+    system: "You handle specialized tasks",
+    model: await getModel("gpt4o"),
     tools: {},
-    handoffs: []
-  }
-})
+    handoffs: [],
+  },
+});
 
 // The coordinator can now use the 'delegate' tool to call the specialist
-const result = await agents.get('coordinator').execute({
-  prompt: 'Please delegate the task of analyzing data to the specialist'
-})
+const result = await agents.get("coordinator").execute({
+  prompt: "Please delegate the task of analyzing data to the specialist",
+});
 ```
 
 ### Delegation Tool Parameters
@@ -72,7 +72,7 @@ When you include the history tool (`addDelegationTools(factory, agentId, true)`)
 
 ```typescript
 // In agent's system prompt or during execution
-"Use the delegationHistory tool to see past delegations"
+"Use the delegationHistory tool to see past delegations";
 
 // The tool accepts:
 // - agentFilter: Filter by specific agent
@@ -85,44 +85,42 @@ When you include the history tool (`addDelegationTools(factory, agentId, true)`)
 ### Basic Usage
 
 ```typescript
-import { createAgentFactory, createHandoffHelpers } from '@airo/ai-lib'
+import { createAgentFactory, createHandoffHelpers } from "@airo/ai-lib";
 
-const factory = createAgentFactory()
+const factory = createAgentFactory();
 
 // Define agents with handoff configurations
 const agents = factory.defineAgents({
   developer: {
-    name: 'Developer',
-    system: 'You handle development',
-    model: await getModel('gpt4o'),
+    name: "Developer",
+    system: "You handle development",
+    model: await getModel("gpt4o"),
     tools: {},
-    handoffs: [
-      { agentName: 'database', description: 'Database operations' }
-    ]
+    handoffs: [{ agentName: "database", description: "Database operations" }],
   },
   database: {
-    name: 'Database Agent',
-    system: 'You handle database operations',
-    model: await getModel('gpt4o'),
+    name: "Database Agent",
+    system: "You handle database operations",
+    model: await getModel("gpt4o"),
     tools: {},
-    handoffs: []
-  }
-})
+    handoffs: [],
+  },
+});
 
 // Create handoff helpers
-const handoff = createHandoffHelpers(agents)
+const handoff = createHandoffHelpers(agents);
 
 // Check if handoff is allowed
-if (handoff.canHandoffTo('developer', 'database')) {
+if (handoff.canHandoffTo("developer", "database")) {
   // Switch to database agent
-  const databaseAgent = await handoff.switchAgent('developer', 'database', {
-    reason: 'User requested database operations'
-  })
+  const databaseAgent = await handoff.switchAgent("developer", "database", {
+    reason: "User requested database operations",
+  });
 
   // Now use databaseAgent as the active agent
   const result = await databaseAgent.execute({
-    prompt: 'Create a users table'
-  })
+    prompt: "Create a users table",
+  });
 }
 ```
 
@@ -154,31 +152,33 @@ Add custom logic before and after handoffs:
 ```typescript
 const handoff = createHandoffHelpers(agents, {
   beforeHandoff: async (context) => {
-    console.log(`Switching from ${context.sourceAgentId} to ${context.targetAgentId}`)
+    console.log(
+      `Switching from ${context.sourceAgentId} to ${context.targetAgentId}`,
+    );
 
     // Save current state
-    await saveAgentState(context.sourceAgentId)
+    await saveAgentState(context.sourceAgentId);
 
     // Validate handoff
     if (!isUserAuthorized(context.targetAgentId)) {
-      return false // Cancel handoff
+      return false; // Cancel handoff
     }
 
-    return true // Allow handoff
+    return true; // Allow handoff
   },
   afterHandoff: async (context, success) => {
     if (success) {
       // Update UI
-      updateActiveAgent(context.targetAgentId)
+      updateActiveAgent(context.targetAgentId);
 
       // Log to analytics
-      trackHandoff(context)
+      trackHandoff(context);
 
       // Notify user
-      showNotification(`Switched to ${context.targetAgentId}`)
+      showNotification(`Switched to ${context.targetAgentId}`);
     }
-  }
-})
+  },
+});
 ```
 
 ### Validation
@@ -187,8 +187,8 @@ By default, handoff helpers validate that the handoff is configured in the sourc
 
 ```typescript
 const handoff = createHandoffHelpers(agents, {
-  validateHandoff: false // Allow any handoff
-})
+  validateHandoff: false, // Allow any handoff
+});
 ```
 
 ### Logging
@@ -196,16 +196,16 @@ const handoff = createHandoffHelpers(agents, {
 Use the built-in logger helper:
 
 ```typescript
-import { createHandoffHelpers, createHandoffLogger } from '@airo/ai-lib'
+import { createHandoffHelpers, createHandoffLogger } from "@airo/ai-lib";
 
 const logger = createHandoffLogger((message, data) => {
-  console.log(`[HANDOFF] ${message}`, data)
-})
+  console.log(`[HANDOFF] ${message}`, data);
+});
 
 const handoff = createHandoffHelpers(agents, {
   beforeHandoff: logger.beforeHandoff,
-  afterHandoff: logger.afterHandoff
-})
+  afterHandoff: logger.afterHandoff,
+});
 ```
 
 ### Custom Validation
@@ -213,31 +213,32 @@ const handoff = createHandoffHelpers(agents, {
 Create custom validators:
 
 ```typescript
-import { createHandoffValidator } from '@airo/ai-lib'
+import { createHandoffValidator } from "@airo/ai-lib";
 
 const validator = createHandoffValidator((context) => {
   // Check user permissions
-  if (context.targetAgentId === 'admin') {
-    return currentUser.isAdmin
+  if (context.targetAgentId === "admin") {
+    return currentUser.isAdmin;
   }
 
   // Check business hours
-  const hour = new Date().getHours()
-  if (context.targetAgentId === 'support' && (hour < 9 || hour > 17)) {
-    return false
+  const hour = new Date().getHours();
+  if (context.targetAgentId === "support" && (hour < 9 || hour > 17)) {
+    return false;
   }
 
-  return true
-})
+  return true;
+});
 
 const handoff = createHandoffHelpers(factory, {
-  beforeHandoff: validator
-})
+  beforeHandoff: validator,
+});
 ```
 
 ## When to Use Each
 
 ### Use Delegation When:
+
 - An agent needs help from another agent
 - You want the result back to continue processing
 - The calling agent remains responsible for the task
@@ -245,6 +246,7 @@ const handoff = createHandoffHelpers(factory, {
 - Example: "Developer agent asks database agent to create a schema"
 
 ### Use Handoff When:
+
 - User explicitly switches between agents
 - You're building a multi-agent chat interface
 - Different agents handle different conversation phases
@@ -259,10 +261,10 @@ If you were using the old `handoff` tool (now renamed to `delegate`):
 
 ```typescript
 // Old
-import { createHandoffTool, addHandoffTools } from '@airo/ai-lib'
+import { createHandoffTool, addHandoffTools } from "@airo/ai-lib";
 
 // New
-import { createDelegateTool, addDelegationTools } from '@airo/ai-lib'
+import { createDelegateTool, addDelegationTools } from "@airo/ai-lib";
 ```
 
 ### Update Tool Names
@@ -270,23 +272,23 @@ import { createDelegateTool, addDelegationTools } from '@airo/ai-lib'
 ```typescript
 // Old
 const tools = {
-  ...addHandoffTools(factory, 'agentId')
-}
+  ...addHandoffTools(factory, "agentId"),
+};
 
 // New
 const tools = {
-  ...addDelegationTools(factory, 'agentId')
-}
+  ...addDelegationTools(factory, "agentId"),
+};
 ```
 
 ### Update System Prompts
 
 ```typescript
 // Old
-system: 'Use the handoff tool to delegate tasks'
+system: "Use the handoff tool to delegate tasks";
 
 // New
-system: 'Use the delegate tool to delegate tasks'
+system: "Use the delegate tool to delegate tasks";
 ```
 
 ### Backward Compatibility
@@ -295,11 +297,11 @@ The old `addHandoffTools` function is still available but deprecated:
 
 ```typescript
 // Still works, but deprecated
-import { addHandoffTools } from '@airo/ai-lib'
+import { addHandoffTools } from "@airo/ai-lib";
 
 const tools = {
-  ...addHandoffTools(factory, 'agentId') // Internally calls addDelegationTools
-}
+  ...addHandoffTools(factory, "agentId"), // Internally calls addDelegationTools
+};
 ```
 
 ## Complete Example
@@ -312,84 +314,83 @@ import {
   getModel,
   addDelegationTools,
   createHandoffHelpers,
-  createHandoffLogger
-} from '@airo/ai-lib'
+  createHandoffLogger,
+} from "@airo/ai-lib";
 
 async function main() {
-  const factory = createAgentFactory()
+  const factory = createAgentFactory();
 
   // Define agents
   const agents = factory.defineAgents({
     coordinator: {
-      name: 'Coordinator',
+      name: "Coordinator",
       system: `You coordinate tasks. Use the delegate tool to ask specialists for help.`,
-      model: await getModel('gpt4o'),
+      model: await getModel("gpt4o"),
       tools: {
-        ...addDelegationTools(factory, 'coordinator', true)
+        ...addDelegationTools(factory, "coordinator", true),
       },
       handoffs: [
-        { agentName: 'developer', description: 'Development tasks' },
-        { agentName: 'database', description: 'Database operations' }
-      ]
+        { agentName: "developer", description: "Development tasks" },
+        { agentName: "database", description: "Database operations" },
+      ],
     },
     developer: {
-      name: 'Developer',
-      system: 'You handle development tasks',
-      model: await getModel('gpt4o'),
+      name: "Developer",
+      system: "You handle development tasks",
+      model: await getModel("gpt4o"),
       tools: {
-        ...addDelegationTools(factory, 'developer', true)
+        ...addDelegationTools(factory, "developer", true),
       },
-      handoffs: [
-        { agentName: 'database', description: 'Database operations' }
-      ]
+      handoffs: [{ agentName: "database", description: "Database operations" }],
     },
     database: {
-      name: 'Database Agent',
-      system: 'You handle database operations',
-      model: await getModel('gpt4o'),
+      name: "Database Agent",
+      system: "You handle database operations",
+      model: await getModel("gpt4o"),
       tools: {},
-      handoffs: []
-    }
-  })
+      handoffs: [],
+    },
+  });
 
   // Create handoff helpers for agent switching
-  const logger = createHandoffLogger(console.log)
+  const logger = createHandoffLogger(console.log);
   const handoff = createHandoffHelpers(agents, {
     beforeHandoff: logger.beforeHandoff,
-    afterHandoff: logger.afterHandoff
-  })
+    afterHandoff: logger.afterHandoff,
+  });
 
   // Track current agent
-  let currentAgent = agents.get('coordinator')
+  let currentAgent = agents.get("coordinator");
 
   // Example 1: Coordinator delegates to developer (delegation)
-  console.log('=== Delegation Example ===')
+  console.log("=== Delegation Example ===");
   const delegationResult = await currentAgent.execute({
-    prompt: 'Please delegate the task of creating a REST API to the developer agent'
-  })
-  console.log('Delegation result:', delegationResult)
+    prompt:
+      "Please delegate the task of creating a REST API to the developer agent",
+  });
+  console.log("Delegation result:", delegationResult);
 
   // Example 2: User switches to developer agent (handoff)
-  console.log('\n=== Handoff Example ===')
-  currentAgent = await handoff.switchAgent('coordinator', 'developer', {
-    reason: 'User wants to work directly with developer agent'
-  })
+  console.log("\n=== Handoff Example ===");
+  currentAgent = await handoff.switchAgent("coordinator", "developer", {
+    reason: "User wants to work directly with developer agent",
+  });
 
   // Now developer is the active agent
   const devResult = await currentAgent.execute({
-    prompt: 'Create a users API endpoint'
-  })
-  console.log('Developer result:', devResult)
+    prompt: "Create a users API endpoint",
+  });
+  console.log("Developer result:", devResult);
 
   // Example 3: Developer delegates to database (delegation)
-  console.log('\n=== Nested Delegation Example ===')
+  console.log("\n=== Nested Delegation Example ===");
   const nestedResult = await currentAgent.execute({
-    prompt: 'Delegate database schema creation to the database agent'
-  })
-  console.log('Nested delegation result:', nestedResult)
+    prompt: "Delegate database schema creation to the database agent",
+  });
+  console.log("Nested delegation result:", nestedResult);
 }
 
-main()
+main();
 ```
 
 ## Best Practices

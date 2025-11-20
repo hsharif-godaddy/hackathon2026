@@ -9,7 +9,6 @@ import type { Tool } from '@airo/ai-lib';
 export { fileEditAITool } from './file-edit.js';
 export { directoryListingAITool } from './directory-listing.js';
 export { terminalCommandAITool } from './terminal-command.js';
-export { gitOperationAITool } from './git-operation.js';
 export { readFileAITool } from './read-file.js';
 export { grepSearchAITool } from './grep-search.js';
 export { serverRestartAITool, serverStatusAITool } from './server-management.js';
@@ -45,7 +44,6 @@ export { writeCommerceCredentials } from './commerce-credentials.js';
 import { fileEditAITool } from './file-edit.js';
 import { directoryListingAITool } from './directory-listing.js';
 import { terminalCommandAITool } from './terminal-command.js';
-import { gitOperationAITool } from './git-operation.js';
 import { readFileAITool } from './read-file.js';
 import { grepSearchAITool } from './grep-search.js';
 import { serverRestartAITool, serverStatusAITool } from './server-management.js';
@@ -85,7 +83,6 @@ export const allAILibTools: Record<string, Tool> = {
   fileEdit: fileEditAITool,
   directoryListing: directoryListingAITool,
   terminalCommand: terminalCommandAITool,
-  gitOperation: gitOperationAITool,
   readFile: readFileAITool,
   grepSearch: grepSearchAITool,
   serverRestart: serverRestartAITool,
@@ -134,7 +131,6 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
   // System and server tools
   system: {
     terminalCommand: terminalCommandAITool,
-    gitOperation: gitOperationAITool,
     serverRestart: serverRestartAITool,
     serverStatus: serverStatusAITool,
   },

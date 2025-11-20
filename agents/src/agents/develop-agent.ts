@@ -44,7 +44,7 @@ const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, ar
   });
 
   // File-modifying tools that need git branch check
-  const fileModifyingTools = ['fileEdit', 'terminalCommand', 'gitOperation']
+  const fileModifyingTools = ['fileEdit', 'terminalCommand']
 
   if (fileModifyingTools.includes(toolName)) {
     contextLogger.info('develop_agent.git.branch_check.start', {
@@ -248,7 +248,6 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       directoryListing: allAILibTools.directoryListing,
       terminalCommand: allAILibTools.terminalCommand,
       fileEdit: allAILibTools.fileEdit,
-      gitOperation: allAILibTools.gitOperation,
       readFile: allAILibTools.readFile,
       grepSearch: allAILibTools.grepSearch,
 

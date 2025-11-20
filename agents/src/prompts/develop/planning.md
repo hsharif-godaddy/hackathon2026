@@ -253,7 +253,6 @@ The todo list tool is designed to complement your development process:
 
 **❌ DO NOT wait until:**
 
-- Making a git commit (too late - mark as you go!)
 - Finishing multiple related tasks (mark each one individually)
 - End of the conversation (defeats the purpose of progress tracking)
 - User asks for status update (should already be marked)
