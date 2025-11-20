@@ -8,8 +8,6 @@
  * // On airo-builder.test-godaddy.com
  * getRootDomain() // 'test-godaddy.com'
  * 
- * // On localhost:3000
- * getRootDomain() // ''
  * ```
  */
 export function getRootDomain() {

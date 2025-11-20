@@ -31,6 +31,107 @@ export default makeGasket({
         '@gasket/plugin-analyze'
       ]
     },
+    'local.dev': {
+      http: false,
+      https: {
+        port: 8443
+      },
+      httpsProxy: {
+        protocol: 'https',
+        hostname: 'local.gasket.dev-godaddy.com',
+        port: 8443,
+        xfwd: true,
+        ws: true,
+        secure: false,
+        target: {
+          protocol: 'https:',
+          host: 'localhost',
+          port: 3000
+        },
+        ssl: {
+          key: fs.readFileSync('./node_modules/@godaddy/gasket-plugin-dev-certs/certs/_.gasket.dev-godaddy.com.key'),
+          cert: fs.readFileSync('./node_modules/@godaddy/gasket-plugin-dev-certs/certs/_.gasket.dev-godaddy.com.crt')
+        }
+      }
+    },
+    'local.test': {
+      http: false,
+      https: {
+        port: 443
+      },
+      httpsProxy: {
+        protocol: 'https',
+        hostname: 'airo-builder.test-godaddy.com',
+        port: 443,
+        xfwd: true,
+        ws: true,
+        secure: false,
+        target: {
+          protocol: 'https:',
+          host: 'localhost',
+          port: 3000
+        },
+        ssl: (() => {
+          const keyPath = './certificates/airo-builder.test-godaddy.com.key';
+          const certPath = './certificates/airo-builder.test-godaddy.com.crt';
+          
+          if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+            return {
+              key: fs.readFileSync(keyPath),
+              cert: fs.readFileSync(certPath)
+            };
+          }
+          
+          console.warn('No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.');
+          return undefined;
+        })()
+      },
+      devCerts: {
+        path: 'certificates',
+        commonNames: [
+          'airo-builder.test-godaddy.com'
+        ]
+      },
+    },
+    'local.prod': {
+      http: false,
+      https: {
+        port: 443
+      },
+      httpsProxy: {
+        protocol: 'https',
+        hostname: 'airo-builder.godaddy.com',
+        port: 443,
+        xfwd: true,
+        ws: true,
+        secure: false,
+        target: {
+          protocol: 'https:',
+          host: 'localhost',
+          port: 3000
+        },
+        ssl: (() => {
+          const keyPath = './certificates/airo-builder.godaddy.com.key';
+          const certPath = './certificates/airo-builder.godaddy.com.crt';
+          
+          if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+            return {
+              key: fs.readFileSync(keyPath),
+              cert: fs.readFileSync(certPath)
+            };
+          }
+          
+          console.warn('No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.');
+          return undefined;
+        })()
+      },
+      devCerts: {
+        path: 'certificates',
+        commonNames: [
+          'airo-builder.godaddy.com'
+        ]
+      },
+    },
   },
   plugins: [
     pluginCommand,

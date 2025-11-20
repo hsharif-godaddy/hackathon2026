@@ -74,7 +74,8 @@ export class DockerComposeGenerator {
 		// Template-specific environment variables (v8)
 		env.PORT = APP_INTERNAL_PORT.toString();
 		env.VITE_HOST = "0.0.0.0";
-		env.ALLOWED_ORIGINS = "http://localhost:3000,https://localhost:3000,https://airo-builder.godaddy.com,https://airo-builder.test-godaddy.com,https://airo-builder.dev-godaddy.com";
+
+		env.ALLOWED_ORIGINS = "https://local.gasket.dev-godaddy.com:8443,https://airo-builder.test-godaddy.com,https://airo-builder.godaddy.com,https://airo-builder.dev-godaddy.com";
 
 		return env;
 	}

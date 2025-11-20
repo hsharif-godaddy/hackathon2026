@@ -16,7 +16,15 @@ const corsOptions: CorsOptions = {
     if (process.env.ALLOWED_ORIGINS) {
       allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
     } else if (isDevelopment) {
-      allowedOrigins = ['https://localhost:3000', 'https://localhost:3001', 'http://localhost:3000', 'http://localhost:3001'];
+      allowedOrigins = [
+        'https://local.gasket.dev-godaddy.com:8443',
+        'https://local.gasket.dev-godaddy.com',
+        'https://airo-builder.test-godaddy.com:8443',
+        'https://airo-builder.test-godaddy.com',
+        'https://airo-builder.godaddy.com:8443',
+        'https://airo-builder.godaddy.com',
+        'https://airo-builder.dev-godaddy.com'
+      ];
     }
     
     if (allowedOrigins.includes(origin)) {

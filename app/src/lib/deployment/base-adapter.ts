@@ -28,7 +28,7 @@ export abstract class BaseDeploymentAdapter implements DeploymentAdapter {
       case 'docker':
         return {
           agent: `http://localhost:4000/api/apps/${siteId}`,
-          preview: `http://localhost:3000`
+          preview: `http://localhost:3000` // legacy code as each app is spun up as its own container and using 5*** ports
         };
 
       case 'production':
