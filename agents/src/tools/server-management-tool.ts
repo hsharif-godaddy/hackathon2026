@@ -176,7 +176,6 @@ export class ServerManagementTool {
       const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
       if (devSupervisor) {
         try {
-          
           // Use built-in restart process API
           const restarted = await devSupervisor.restartProcess({ graceful: true });
           

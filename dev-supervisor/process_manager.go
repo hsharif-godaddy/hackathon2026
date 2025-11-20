@@ -354,25 +354,55 @@ func (mp *ManagedProcess) Stop(signal string, timeout int) error {
 	case err := <-done:
 		// For gracefully terminated processes, we don't treat the signal as an error
 		mp.infoMu.Lock()
+		defer mp.infoMu.Unlock()
+
 		mp.info.State = ProcessStateStopped
 		if err != nil {
-			// Store the exit information but don't treat it as an error
+			// Store the exit information
+			var exitCode int
+			var hasExitCode bool
 			if exitError, ok := err.(*exec.ExitError); ok {
-				code := exitError.ExitCode()
-				mp.info.ExitCode = &code
+				exitCode = exitError.ExitCode()
+				mp.info.ExitCode = &exitCode
+				hasExitCode = true
 			}
+
+			// Check if error contains signal indication
+			containsSignalString := strings.Contains(err.Error(), "signal:")
+
+			// Expected exit codes from signals (only check if we have an exit code):
+			// 143 = SIGTERM (128 + 15) - graceful shutdown
+			// 130 = SIGINT (128 + 2) - Ctrl+C
+			// 137 = SIGKILL (128 + 9) - force kill
+			isExpectedSignalExit := hasExitCode && (exitCode == 143 || exitCode == 130 || exitCode == 137)
+
+			// Log the exit status
+			if isExpectedSignalExit || containsSignalString {
+				slog.Info("process stopped",
+					"exit_code", exitCode,
+					"expected", true)
+			} else {
+				if hasExitCode {
+					slog.Warn("process stopped with unexpected exit code",
+						"exit_code", exitCode,
+						"error", err.Error())
+				} else {
+					slog.Warn("process stopped with non-exit error",
+						"error", err.Error())
+				}
+			}
+
 			// Only return the error if it's not a signal-based termination
-			if !strings.Contains(err.Error(), "signal:") {
+			if !containsSignalString && !isExpectedSignalExit {
 				mp.info.State = ProcessStateError
 				mp.info.Error = err.Error()
-				mp.infoMu.Unlock()
 				return err
 			}
 		} else {
 			code := 0
 			mp.info.ExitCode = &code
+			slog.Info("process stopped cleanly", "exit_code", 0)
 		}
-		mp.infoMu.Unlock()
 		return nil
 	case <-time.After(timeoutDuration):
 		// Force kill if timeout exceeded
@@ -380,8 +410,8 @@ func (mp *ManagedProcess) Stop(signal string, timeout int) error {
 			return fmt.Errorf("failed to force kill process: %w", err)
 		}
 		mp.infoMu.Lock()
+		defer mp.infoMu.Unlock()
 		mp.info.State = ProcessStateStopped
-		mp.infoMu.Unlock()
 		return nil
 	}
 }
@@ -536,8 +566,16 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 
 	// Check if we have a current process to get config from
 	if pm.currentProcess == nil {
+		slog.Error("restart failed: no process to restart",
+			"restart_count", pm.restartCount)
 		return fmt.Errorf("no previous process to restart")
 	}
+
+	currentStatus := pm.currentProcess.GetInfo()
+	slog.Info("restarting process",
+		"graceful", req.Graceful,
+		"old_pid", currentStatus.PID,
+		"command", currentStatus.Command)
 
 	// Get the configuration from the current process
 	config := pm.currentProcess.config
@@ -565,8 +603,7 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 		}
 	}
 
-	// Stop current process if running
-	currentStatus := pm.currentProcess.GetInfo()
+	// Stop current process if running (recheck status)
 	if currentStatus.State == ProcessStateRunning {
 		stopReq := ProcessStopRequest{
 			Signal:  "SIGTERM",
@@ -576,6 +613,11 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 			stopReq.Signal = "SIGKILL"
 			stopReq.Timeout = 5
 		}
+
+		slog.Info("stopping process",
+			"signal", stopReq.Signal,
+			"timeout_seconds", stopReq.Timeout,
+			"pid", currentStatus.PID)
 
 		// Stop health monitoring first
 		pm.healthMon.Stop()
@@ -599,18 +641,28 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 	}
 
 	// Create and start a completely new managed process with the same config
+	slog.Info("starting new process", "command", config.Command, "working_dir", config.WorkingDir)
+
 	managedProcess, err := NewManagedProcess(config)
 	if err != nil {
 		return err
 	}
 
 	if err := managedProcess.Start(pm.logMgr, pm.pid1Mgr, pm.enableLogging, pm.outputToStructuredLog); err != nil {
+		slog.Error("failed to start new process", "error", err)
 		return err
 	}
 
 	// Replace current process
 	pm.currentProcess = managedProcess
 	pm.restartCount++
+
+	newInfo := managedProcess.GetInfo()
+	slog.Info("restart completed",
+		"new_pid", newInfo.PID,
+		"command", config.Command,
+		"working_dir", config.WorkingDir,
+		"restart_count", pm.restartCount)
 
 	// Start health monitoring again if configured
 	pm.healthMon.Start(func() error {

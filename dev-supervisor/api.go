@@ -103,11 +103,13 @@ func (s *Server) handleProcessStop(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleProcessRestart(w http.ResponseWriter, r *http.Request) {
 	var req ProcessRestartRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		slog.Error("restart request decode failed", "error", err)
 		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
 		return
 	}
 
 	if err := s.procMgr.Restart(req); err != nil {
+		slog.Error("restart failed", "error", err)
 		s.sendError(w, http.StatusBadRequest, "restart_failed", err.Error())
 		return
 	}

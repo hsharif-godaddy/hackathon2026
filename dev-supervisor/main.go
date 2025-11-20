@@ -465,13 +465,17 @@ func (s *Server) StartCommandOnStartup(args []string) error {
 		WorkingDir: workingDir,
 	}
 
-	slog.Info("starting initial command", "command", startReq.Command)
-
 	if err := s.procMgr.Start(startReq); err != nil {
+		slog.Error("failed to start initial command",
+			"command", startReq.Command,
+			"error", err)
 		return fmt.Errorf("failed to start command: %w", err)
 	}
 
-	slog.Info("initial command started", "command", startReq.Command)
+	status := s.procMgr.GetStatus()
+	slog.Info("initial command started",
+		"pid", status.PID,
+		"command", startReq.Command)
 	return nil
 }
 
