@@ -1,20 +1,30 @@
 import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
 import { generateClickEID } from '@/utils/instrumentation';
-import type { AppDomain } from '@/hooks/useDomainOperations';
+import type { AppDomain } from '@/hooks/useAppDetails';
 import type { Domain } from '@/hooks/useDomainsQuery';
+import { DomainStatus } from '@/lib/control-plane/types';
 import DomainConnectConfirmation from './DomainConnectConfirmation';
 import CircleIcon from '@ux/icon/circle';
 import CircleHalfIcon from '@ux/icon/circle-half';
 import MenuIcon from '@ux/icon/menu';
 import EditIcon from '@ux/icon/edit';
+import WindowNewIcon from '@ux/icon/window-new';
 import Spinner from '@ux/spinner';
 import OkIcon from '@ux/icon/ok';
-import LinkIcon from '@ux/icon/link';
 import Button from "@ux/button";
 import text from "@ux/text";
 import Box from "@ux/box";
 import Tag from "@ux/tag";
+
+
+function getDomainUrl(domain: string): string {
+  if (!domain) return '';
+  if (domain.startsWith('http://') || domain.startsWith('https://')) {
+    return domain;
+  }
+  return `https://${domain}`;
+}
 
 /**
  * Get status icon and color based on domain connection status
@@ -25,22 +35,22 @@ function getDomainStatusInfo(appDomain?: AppDomain) {
   }
 
   // Check if domain is fully active
-  if (appDomain.status === 'active') {
+  if (appDomain.status === DomainStatus.ACTIVE) {
     return { icon: OkIcon, className: 'text-intents-ux-text-success', label: 'Active' };
   }
 
   // Check if domain is pending
-  if (appDomain.status === 'pending' || !appDomain.status) {
+  if (appDomain.status === DomainStatus.PENDING || !appDomain.status) {
     return { icon: CircleHalfIcon, className: 'text-intents-ux-text-info', label: 'Pending' };
   }
 
   // Error state
-  if (appDomain.status === 'error') {
+  if (appDomain.status === DomainStatus.FAILED) {
     return { icon: CircleIcon, className: 'text-intents-ux-text-destructive', label: 'Error' };
   }
 
   // Deleting state
-  if (appDomain.status === 'deleting') {
+  if (appDomain.status === DomainStatus.DELETING) {
     return { icon: Spinner, className: 'text-intents-ux-text-subtle', label: 'Deleting' };
   }
 
@@ -107,9 +117,30 @@ export default function DomainItem({
       <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
         <StatusIcon className={`size-6 ${statusInfo.className}`} />
         <Box orientation="horizontal" gap="md">
-          <text.p>{domainName}</text.p>
+        {isConnected && appDomain?.status === DomainStatus.ACTIVE ? (
+            <Button
+              design="inline"
+              data-eid={generateClickEID(`settings/domains.domain_item.link`)}
+              className="!hover:bg-transparent"
+              href={getDomainUrl(domainName)}
+              external
+            >
+              <Box
+                className="w-auto"
+                orientation="horizontal"
+                gap="sm"
+                inlineAlignChildren="center"
+                blockAlignChildren="start"
+              >
+                <text.p>{domainName}</text.p>
+                <WindowNewIcon className="size-4" />
+              </Box>
+            </Button>
+          ) : (
+            <text.p>{domainName}</text.p>
+          )}
           {isConnected && (
-            <Tag emphasis="passive">
+            <Tag emphasis={appDomain?.status === DomainStatus.ACTIVE ? 'success' : 'info'}>
               {statusInfo.label}
             </Tag>
           )}
@@ -158,14 +189,6 @@ export default function DomainItem({
                   external
                 />
               )}
-              <Button
-                icon={<LinkIcon />}
-                design="tertiary"
-                data-eid={generateClickEID(`settings/domains.custom_domain.visit`)}
-                text="Visit Site"
-                href={`https://${domainName}`}
-                external
-              />
             </div>
           )}
         </PopoverContent>

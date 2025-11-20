@@ -48,13 +48,33 @@ export interface AiroApp {
 }
 
 /**
+ * Domain status values
+ */
+export enum DomainStatus {
+  PENDING = 'pending',
+  ACTIVE = 'active',
+  DELETING = 'deleting',
+}
+
+/**
+ * CDN status values (numeric)
+ */
+export enum CdnStatus {
+  INIT = 1,
+  PENDING = 2,
+  ACTIVE = 3,
+  ERROR = 4,
+  DELETED = 5,
+}
+
+/**
  * Domain information in app details response
  */
 export interface AiroDomain {
   fqdn: string;
   isPrimary: boolean;
-  status: string;
-  cdnStatus?: string;
+  status: DomainStatus;
+  cdnStatus?: CdnStatus;
   anycastIp?: string;
   domainType: string;
   prefix: string;

@@ -1,8 +1,6 @@
-import { generateClickEID } from '@/utils/instrumentation';
-import type { AppDomain } from '@/hooks/useDomainOperations';
+import type { AppDomain } from '@/hooks/useAppDetails';
 import { getDnsRecords } from '@/utils/domain';
 import Spinner from '@ux/spinner';
-import Button from "@ux/button";
 import text from "@ux/text";
 import Box from "@ux/box";
 

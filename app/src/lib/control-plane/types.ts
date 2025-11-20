@@ -24,6 +24,7 @@ export enum DomainStatus {
   PENDING = 'pending',
   INACTIVE = 'inactive',
   FAILED = 'failed',
+  DELETING = 'deleting',
 }
 
 /**

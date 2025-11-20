@@ -45,12 +45,6 @@ export function useDomainAttach() {
 
   return useMutation({
     mutationFn: async (payload: DomainAttachPayload): Promise<DomainAttachResponse> => {
-      logger.info('domain-attach.api.start', {
-        message: 'Starting domain attach API call',
-        domainName: payload.domainName,
-        hasIp: !!payload.ip,
-      });
-
       const response = await appFetch(`/api/domains/attach`, {
         method: 'POST',
         headers: {
@@ -62,20 +56,11 @@ export function useDomainAttach() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const errorMessage = errorData.error || `Failed to attach domain: ${response.status}`;
-        logger.error('domain-attach.api.failure', {
-          message: errorMessage,
-          domainName: payload.domainName,
-          status: response.status,
-        });
+
         throw new Error(errorMessage);
       }
 
       const data: DomainAttachResponse = await response.json();
-
-      logger.info('domain-attach.api.success', {
-        message: 'Domain attached successfully',
-        domainName: payload.domainName,
-      });
 
       return data;
     },
