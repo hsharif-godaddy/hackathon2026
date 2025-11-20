@@ -146,13 +146,9 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
 
         <Button
           text="More options"
-          design="secondary"
+          design="tertiary"
           size="sm"
           onClick={handleMoreOptions}
-          className="rounded-md py-2 font-normal"
-          style={{
-            borderStyle: 'dashed'
-          }}
         />
 
         <Button
