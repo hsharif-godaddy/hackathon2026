@@ -41,6 +41,8 @@ import { logger } from '@/lib/request-context'
 import { Feedback } from '@/components/feedback/Feedback'
 import { agentFetch } from '@/lib/agent-fetch'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import ChatPaneLoader from '@/app/develop/components/chat/ChatPaneLoader'
+import { useInitialization } from '@/app/develop/hooks/useInitialization'
 
 // Delay to allow conversation history messages to load before checking if preview should be visible
 // This ensures we have accurate message count when determining initial preview visibility
@@ -50,6 +52,19 @@ function DevelopPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const appId = useAppIdFromParams()
+  const isJobId = searchParams.get('type') === 'job'
+
+  // Unified initialization hook - handles all sequencing
+  const {
+    phase: initPhase,
+    isReady,
+    showCreationLoader,
+    creationError,
+    retryCount,
+    maxRetries,
+    onRetry,
+    onCancel
+  } = useInitialization({ appId, isJobId })
 
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
 
@@ -63,9 +78,7 @@ function DevelopPageContent() {
   const setInputValue = useSetInputValue()
   const setAiEditContext = useSetAiEditContext()
   const setBuildErrorContext = useSetBuildErrorContext()
-  const setCurrentAppId = useSetCurrentAppId()
   const autoSendInitialMessage = useAutoSendInitialMessage()
-  const loadConversationHistory = useLoadConversationHistory()
   const { sendMessage, isConnected: isWebSocketConnected } = useStreamingWebSocket()
 
   // Develop page store - for UI state and coordination
@@ -129,15 +142,7 @@ function DevelopPageContent() {
     return cleanup
   }, [initializeMobileDetection])
 
-  // Main initialization - orchestrated through store
-  useEffect(() => {
-    if (appId) {
-      console.log('🚀 Initializing page for appId:', appId)
-      initializePage(appId).catch(error => {
-        console.error('❌ Page initialization failed:', error)
-      })
-    }
-  }, [appId, initializePage])
+  // All initialization is now handled by useInitialization hook
 
   // Update document title with site name
   useEffect(() => {
@@ -157,36 +162,7 @@ function DevelopPageContent() {
     }
   }, [cleanupServerPolling])
 
-  // Initialize streaming conversation store for this app
-  useEffect(() => {
-    if (!appId) return
-
-    console.log('🔄 Initializing streaming conversation store for:', appId)
-    setCurrentAppId(appId)
-  }, [appId, setCurrentAppId])
-
-  // Load conversation history when page is ready
-  useEffect(() => {
-    console.log('🔍 Conversation loading effect triggered:', {
-      loadingPhase,
-      appId,
-      hasLoadFunction: !!loadConversationHistory
-    })
-
-    if (loadingPhase !== 'ready' || !appId) {
-      console.log('⏭️ Skipping conversation load:', { loadingPhase, appId })
-      return
-    }
-
-    console.log('📚 Loading conversation history for app:', appId)
-    // Add error handling to ensure loading state is always properly reset
-    loadConversationHistory(appId).catch((error) => {
-      console.error('❌ Failed to load conversation history in page component:', error)
-      // Additional safety: force reset loading state if not handled by store
-      const { setIsLoading } = useStreamingConversationStore.getState()
-      setIsLoading(false)
-    })
-  }, [loadingPhase, appId, loadConversationHistory])
+  // WebSocket and conversation history are now initialized by useInitialization hook
 
   // Check for initial prompt state from sessionStorage
   useEffect(() => {
@@ -643,17 +619,28 @@ function DevelopPageContent() {
         <div className="flex-1 min-h-0 overflow-hidden p-4 flex">
           {!isChatPaneCollapsed && (
             <div
-              className="flex flex-col flex-shrink-0"
+              className="flex flex-col flex-shrink-0 relative"
               style={{
                 width: `${chatPaneWidth}px`,
                 minWidth: `${chatPaneWidth}px`,
                 maxWidth: `${chatPaneWidth}px`
               }}
             >
-              <ChatPane
-                onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-                sendMessage={sendMessage}
-              />
+              {showCreationLoader || creationError ? (
+                <ChatPaneLoader
+                  phase={initPhase === 'creating' ? 'deploying' : 'initializing'}
+                  error={creationError}
+                  retryCount={retryCount}
+                  maxRetries={maxRetries}
+                  onRetry={onRetry}
+                  onCancel={onCancel}
+                />
+              ) : (
+                <ChatPane
+                  onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                  sendMessage={sendMessage}
+                />
+              )}
             </div>
           )}
 

@@ -18,6 +18,7 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
 
   /**
    * Create site using legacy database + deployment system
+   * Returns real site ID with type: 'job' to enable consistent polling UX
    */
   async createSite(params: CreateSiteParams): Promise<CreateSiteResult> {
     try {
@@ -33,58 +34,25 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
         initial_prompt: params.prompt
       });
 
-      try {
-        // Deploy via existing deployment adapter (Nomad/SQS)
-        const deploymentAdapter = getDeploymentAdapter();
-        const deployResult = await deploymentAdapter.deploy({
-          siteId: site.id,
-          accountId: params.accountId,
-          prompt: params.prompt,
-          title: site.title
-        });
+      logger.info('legacy-control-plane.create-site.success', {
+        siteId: site.id,
+        status: 'creating'
+      });
 
-        if (deployResult.success) {
-          // Update site with deployment results
-          await this.siteService.updateSite(site.id, {
-            status: deployResult.status,
-            agent_url: deployResult.urls?.agent,
-            backend_url: deployResult.urls?.backend,
-            preview_url: deployResult.urls?.preview,
-            ...(deployResult.infrastructure?.cephMountId && {
-              ceph_mount_id: deployResult.infrastructure.cephMountId,
-              ceph_dir_number: deployResult.infrastructure.cephDirNumber
-            })
-          });
+      // Start background deployment (fire and forget)
+      this.deployInBackground(site.id, params.accountId, params.prompt);
 
-          logger.info('legacy-control-plane.create-site.success', {
-            siteId: site.id,
-            status: deployResult.status
-          }, {
-            tags: ['security']
-          });
-
-          return {
-            success: true,
-            siteId: site.id,
-            status: deployResult.status,
-            created_at: site.created_at,
-            // Include all fields to match interface
-            name: site.title,
-            account_id: site.account_id,
-            updated_at: site.updated_at,
-            type: 'site' // Explicitly mark as real site ID
-          };
-        } else {
-          // Deployment failed
-          await this.siteService.updateSite(site.id, { status: 'failed' });
-          throw new Error(deployResult.error || 'Deployment failed');
-        }
-      } catch (deployError) {
-        // Update site status to failed
-        await this.siteService.updateSite(site.id, { status: 'failed' });
-        logger.error('legacy-control-plane.deploy.error', { error: deployError });
-        throw deployError;
-      }
+      const createdAt = new Date();
+      return {
+        success: true,
+        siteId: site.id, // Return real site ID (not a temp job ID)
+        status: 'creating',
+        created_at: createdAt,
+        name: site.title,
+        account_id: params.accountId,
+        updated_at: createdAt,
+        type: 'job' // Mark as 'job' to trigger polling UX (even though ID is real)
+      };
     } catch (error) {
       logger.error('legacy-control-plane.create-site.error', { error });
       return {
@@ -249,7 +217,11 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
           status: deployResult.status,
           agent_url: deployResult.urls?.agent,
           backend_url: deployResult.urls?.backend,
-          preview_url: deployResult.urls?.preview
+          preview_url: deployResult.urls?.preview,
+          ...(deployResult.infrastructure?.cephMountId && {
+            ceph_mount_id: deployResult.infrastructure.cephMountId,
+            ceph_dir_number: deployResult.infrastructure.cephDirNumber
+          })
         });
 
         logger.info('legacy-control-plane.deploy-background.success', {
