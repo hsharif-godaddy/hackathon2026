@@ -164,7 +164,7 @@ function adjustSaturation(hex: string, amount: number): string {
 function complementary(hex: string): string {
   const { r, g, b } = hexToRgb(hex)
   let { h, s, l } = rgbToHsl(r, g, b)
-  
+
   if (l < 15) {
     l = 50
     s = 60
@@ -175,7 +175,7 @@ function complementary(hex: string): string {
   } else {
     h = (h + 180) % 360
   }
-  
+
   const rgb = hslToRgb(h, s, l)
   return rgbToHex(rgb.r, rgb.g, rgb.b)
 }
@@ -186,23 +186,23 @@ function complementary(hex: string): string {
 function analogous(hex: string): { color1: string; color2: string } {
   const { r, g, b } = hexToRgb(hex)
   const { h, s: origS, l: origL } = rgbToHsl(r, g, b)
-  
+
   let s = origS
   let l = origL
-  
+
   if (l < 15) {
     l = 45
     s = 50
   } else if (s < 10) {
     s = 50
   }
-  
+
   const h1 = (h + 30) % 360
   const h2 = (h - 30 + 360) % 360
-  
+
   const rgb1 = hslToRgb(h1, s, l)
   const rgb2 = hslToRgb(h2, s, l)
-  
+
   return {
     color1: rgbToHex(rgb1.r, rgb1.g, rgb1.b),
     color2: rgbToHex(rgb2.r, rgb2.g, rgb2.b)
@@ -211,24 +211,32 @@ function analogous(hex: string): { color1: string; color2: string } {
 
 /**
  * Generate triadic colors (120° apart on color wheel)
- * 
+ *
  * Note: Currently unused but kept for potential future use
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function triadic(hex: string): { color1: string; color2: string } {
   const { r, g, b } = hexToRgb(hex)
   const { h, s, l } = rgbToHsl(r, g, b)
-  
+
   const h1 = (h + 120) % 360
   const h2 = (h + 240) % 360
-  
+
   const rgb1 = hslToRgb(h1, s, l)
   const rgb2 = hslToRgb(h2, s, l)
-  
+
   return {
     color1: rgbToHex(rgb1.r, rgb1.g, rgb1.b),
     color2: rgbToHex(rgb2.r, rgb2.g, rgb2.b)
   }
+}
+
+/**
+ * Check if a background color is dark based on luminance
+ */
+function isDarkBackground(hex: string): boolean {
+  const luminance = getLuminance(hex)
+  return luminance < 0.5
 }
 
 /**
@@ -237,23 +245,23 @@ function triadic(hex: string): { color1: string; color2: string } {
 function ensureContrast(foreground: string, background: string, targetRatio: number = 4.5): string {
   let currentColor = foreground
   let ratio = getContrastRatio(currentColor, background)
-  
+
   if (ratio >= targetRatio) {
     return currentColor
   }
-  
+
   const bgLum = getLuminance(background)
   const shouldDarken = bgLum > 0.5
-  
+
   let attempts = 0
   const maxAttempts = 20
-  
+
   while (ratio < targetRatio && attempts < maxAttempts) {
     currentColor = shouldDarken ? darken(currentColor, 5) : lighten(currentColor, 5)
     ratio = getContrastRatio(currentColor, background)
     attempts++
   }
-  
+
   return currentColor
 }
 
@@ -294,7 +302,8 @@ export interface GeneratedPalette {
   destructiveForeground: string
   successForeground: string
   warningForeground: string
-  displayColors: Array<{ name: string; hex: string; role: string; foreground: string }>
+  theme: 'light' | 'dark'
+  displayColors: Array<{ id: string; name: string; hex: string; role: string; foreground: string }>
 }
 
 /**
@@ -303,25 +312,27 @@ export interface GeneratedPalette {
 export function generatePalette(input: ColorPalette): GeneratedPalette {
   const primary: string = input.primary
   const background: string = input.background || '#FFFFFF'
-  const foreground: string = input.foreground || '#000000'
-  
+
+  // Smart foreground default based on background darkness
+  const foreground: string = input.foreground || (isDarkBackground(background) ? '#F5F5F5' : '#0A0A0A')
+
   // Generate secondary if not provided (analogous)
   const secondary: string = input.secondary || analogous(primary).color1
-  
+
   // Generate accent if not provided (complementary)
   const accent: string = input.accent || complementary(primary)
-  
+
   // Generate muted (desaturated primary)
   const muted: string = input.muted || adjustSaturation(lighten(primary, 40), -30)
-  
+
   // Generate border (very light version of foreground)
   const border: string = input.border || lighten(foreground, 80)
-  
+
   // Generate semantic colors if not provided
   const destructive: string = input.destructive || '#EF4444' // Red
   const success: string = input.success || '#10B981' // Green
   const warning: string = input.warning || '#F59E0B' // Orange
-  
+
   // Generate foreground colors with proper contrast
   const primaryForeground = ensureContrast('#FFFFFF', primary, 4.5)
   const secondaryForeground = ensureContrast('#FFFFFF', secondary, 4.5)
@@ -330,17 +341,19 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
   const destructiveForeground = ensureContrast('#FFFFFF', destructive, 4.5)
   const successForeground = ensureContrast('#FFFFFF', success, 4.5)
   const warningForeground = ensureContrast('#FFFFFF', warning, 4.5)
-  
-  // Generate display colors (6 most important)
+
+  // Generate display colors
   const displayColors = [
-    { name: 'Primary', hex: primary, role: 'Main brand color', foreground: primaryForeground },
-    { name: 'Secondary', hex: secondary, role: 'Secondary brand color', foreground: secondaryForeground },
-    { name: 'Accent', hex: accent, role: 'Accent and highlights', foreground: accentForeground },
-    { name: 'Muted', hex: muted, role: 'Subtle backgrounds', foreground: mutedForeground },
-    { name: 'Success', hex: success, role: 'Success states', foreground: successForeground },
-    { name: 'Destructive', hex: destructive, role: 'Error states', foreground: destructiveForeground }
+    { id: 'base', name: 'Base', hex: background, role: 'Base text and background color', foreground: foreground },
+    { id: 'primary', name: 'Primary', hex: primary, role: 'Main brand color', foreground: primaryForeground },
+    { id: 'secondary', name: 'Secondary', hex: secondary, role: 'Secondary brand color', foreground: secondaryForeground },
+    { id: 'accent', name: 'Accent', hex: accent, role: 'Accent and highlights', foreground: accentForeground },
+    { id: 'muted', name: 'Muted', hex: muted, role: 'Subtle backgrounds', foreground: mutedForeground }
   ]
-  
+
+  // Determine theme based on background darkness
+  const theme: 'light' | 'dark' = isDarkBackground(background) ? 'dark' : 'light'
+
   const result: GeneratedPalette = {
     primary,
     secondary,
@@ -359,9 +372,10 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
     destructiveForeground,
     successForeground,
     warningForeground,
+    theme,
     displayColors
   }
-  
+
   return result
 }
 
@@ -372,13 +386,13 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
 function generateChartColors(primary: string): string[] {
   const { r, g, b } = hexToRgb(primary)
   const { h, s, l } = rgbToHsl(r, g, b)
-  
+
   // Create 5-step scale: lighter → base → darker
   const lightest = hslToRgb(h, s, Math.min(100, l + 30))
   const light = hslToRgb(h, s, Math.min(100, l + 15))
   const dark = hslToRgb(h, s, Math.max(0, l - 15))
   const darkest = hslToRgb(h, s, Math.max(0, l - 30))
-  
+
   return [
     rgbToHex(lightest.r, lightest.g, lightest.b), // Lightest
     rgbToHex(light.r, light.g, light.b),           // Light
@@ -394,10 +408,10 @@ function generateChartColors(primary: string): string[] {
 export async function updateCssColors(appPath: string, palette: GeneratedPalette): Promise<void> {
   const cssPath = join(appPath, 'src/styles/globals.css')
   let content = await readFile(cssPath, 'utf-8')
-  
+
   // Generate chart colors from primary
   const chartColors = generateChartColors(palette.primary)
-  
+
   // Map palette to CSS variables (shadcn/ui structure)
   const colorMap: Record<string, string> = {
     // Core colors
@@ -420,14 +434,14 @@ export async function updateCssColors(appPath: string, palette: GeneratedPalette
     '--border': palette.border,
     '--input': palette.border,
     '--ring': palette.primary,
-    
+
     // Chart colors (5-step scale)
     '--chart-1': chartColors[0] ?? palette.primary,
     '--chart-2': chartColors[1] ?? palette.primary,
     '--chart-3': chartColors[2] ?? palette.primary,
     '--chart-4': chartColors[3] ?? palette.primary,
     '--chart-5': chartColors[4] ?? palette.primary,
-    
+
     // Sidebar colors (mirror main theme)
     '--sidebar': palette.muted,
     '--sidebar-foreground': palette.foreground,
@@ -438,20 +452,20 @@ export async function updateCssColors(appPath: string, palette: GeneratedPalette
     '--sidebar-border': palette.border,
     '--sidebar-ring': palette.primary
   }
-  
+
   // Update each CSS variable
   for (const [varName, hexColor] of Object.entries(colorMap)) {
     const { r, g, b } = hexToRgb(hexColor)
     const { h, s, l } = rgbToHsl(r, g, b)
-    
+
     // Format as HSL: "hue saturation% lightness%"
     const cssValue = `${Math.round(h)} ${Math.round(s)}% ${Math.round(l)}%`
-    
+
     // Match pattern: --variable-name: value;
     const regex = new RegExp(`(${varName}:\\s*)[^;]+;`, 'g')
     content = content.replace(regex, `$1${cssValue};`)
   }
-  
+
   await writeFile(cssPath, content, 'utf-8')
 }
 
@@ -474,13 +488,13 @@ export async function updateCssColorPalette(
   try {
     // Generate complete palette
     const palette = generatePalette(input)
-    
+
     // The generatePalette function already ensures contrast via ensureContrast()
     // All foreground colors are automatically adjusted to meet WCAG AA standards
-    
+
     // Update CSS file
     await updateCssColors(appPath, palette)
-    
+
     return {
       success: true,
       palette,
@@ -494,4 +508,3 @@ export async function updateCssColorPalette(
     }
   }
 }
-

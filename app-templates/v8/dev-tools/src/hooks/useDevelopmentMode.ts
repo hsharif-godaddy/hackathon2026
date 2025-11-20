@@ -754,7 +754,7 @@ export function useDevelopmentMode() {
   /**
    * Apply theme preview by updating CSS custom properties
    * Stores original values in localStorage for revert functionality
-   * 
+   *
    * Note: This function converts hex colors to HSL format to match shadcn/ui CSS variables
    */
   const applyThemePreview = useCallback((palette: any) => {
@@ -766,40 +766,43 @@ export function useDevelopmentMode() {
     function hexToHsl(hex: string): string {
       const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
       if (!result) return '0 0% 0%'
-      
+
       const r = parseInt(result[1], 16) / 255
       const g = parseInt(result[2], 16) / 255
       const b = parseInt(result[3], 16) / 255
-      
+
       const max = Math.max(r, g, b)
       const min = Math.min(r, g, b)
       let h = 0
       let s = 0
       const l = (max + min) / 2
-      
+
       if (max !== min) {
         const d = max - min
         s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-        
+
         switch (max) {
           case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break
           case g: h = ((b - r) / d + 2) / 6; break
           case b: h = ((r - g) / d + 4) / 6; break
         }
       }
-      
+
       return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`
     }
 
     // CSS custom properties to update (shadcn/ui format)
     const cssVars = [
       { key: '--primary', value: palette.primary },
+      { key: '--primary-foreground', value: palette.primaryForeground },
       { key: '--secondary', value: palette.secondary },
+      { key: '--secondary-foreground', value: palette.secondaryForeground },
       { key: '--accent', value: palette.accent },
+      { key: '--accent-foreground', value: palette.accentForeground },
       { key: '--background', value: palette.background || '#FFFFFF' },
-      { key: '--muted', value: palette.surface || '#F8F9FA' },
-      { key: '--foreground', value: palette.text || '#212529' },
-      { key: '--destructive', value: palette.error || '#DC3545' },
+      { key: '--foreground', value: palette.foreground || '#212529' },
+      { key: '--destructive', value: palette.destructive || '#DC3545' },
+      { key: '--destructive-foreground', value: palette.destructiveForeground },
     ]
 
     // Only store original theme if this is the first preview in the session

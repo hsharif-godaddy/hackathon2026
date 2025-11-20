@@ -8,13 +8,23 @@ import { generatePalette, type ColorPalette } from '../css-color-tool.js'
 function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, name: string) {
   return {
     name,
+    theme: palette.theme,
     colors: palette.displayColors.map(function mapColor(c) {
-      const fgKey = `${c.name.toLowerCase()}Foreground` as keyof typeof palette
+      // For base color, the foreground is stored as 'foreground' not 'baseForeground'
+      let foreground: string
+      if (c.id === 'base') {
+        foreground = palette.foreground
+      } else {
+        const fgKey = `${c.name.toLowerCase()}Foreground` as keyof typeof palette
+        foreground = palette[fgKey] as string
+      }
+
       return {
+        id: c.id,
         name: c.name,
         hex: c.hex,
         role: c.role,
-        foreground: palette[fgKey] as string
+        foreground
       }
     })
   }
@@ -22,42 +32,63 @@ function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, nam
 
 /**
  * CSS Suggest Tool for AI-Lib
- * 
+ *
  * Generates multiple color palette suggestions in a single call and automatically
  * displays them in a grid widget. Much faster than calling cssColor multiple times.
- * 
+ *
  * This tool:
  * - Generates 2-6 complete palettes in one operation
  * - Automatically renders a color-palette-grid widget
  * - Uses the same color generation algorithms as cssColor
  * - Returns data ready for user selection
- * 
+ *
  * Use this when showing multiple palette options to users.
  */
 export const cssSuggestAITool: Tool = createTool(
-  `Generate multiple color palette suggestions and display them in a grid.
+  `Generate DIVERSE color palette suggestions with BOTH light and dark variations.
 
 This tool is optimized for showing color options to users. It:
 - Generates 2-6 complete palettes in a single call
 - Automatically renders a visual grid of all palettes
-- Uses intelligent color generation (analogous, complementary, triadic)
+- Uses intelligent color generation (analogous, complementary, color theory)
 - Returns data ready for the user to choose from
 
+BEST PRACTICES FOR VARIETY:
+1. For generic requests (e.g., "purple website"):
+   - Generate 2 light palettes (white or near-white backgrounds)
+   - Generate 2 dark palettes (true black + soft dark backgrounds)
+
+2. For "dark theme" requests:
+   - Generate 4 dark palettes with varied darkness levels
+
+3. For "light theme" requests:
+   - Generate 4 light palettes with varied brightness levels
+
+CREATING COLOR VARIETY:
+- Vary the primary color (lighter, darker, more/less saturated)
+- Use different background colors for each palette:
+  * Light: #FFFFFF (pure white), #FAFAFA (off-white), #F5F5F5 (very light gray)
+  * Dark: #0A0A0A (true black), #1A1A1A (soft dark), #2A2A2A (charcoal)
+- Adjust primary colors to work well on their backgrounds
+- Each palette should feel distinctly different
+
 Each palette requires:
-- name: Descriptive name (e.g., "Ocean Blue", "Forest Green")
-- primary: Primary brand color in hex format (e.g., #3B82F6)
+- name: Descriptive name that indicates style (e.g., "Vibrant Purple Light", "Deep Purple Dark")
+- primary: Primary brand color in hex format (e.g., #9333EA)
+- background (optional): Background color (defaults to white if not specified)
 
-The tool will automatically generate secondary, accent, muted, and semantic colors
-for each palette using color theory algorithms.
-
-Use this instead of calling cssColor multiple times when showing options!`,
+The tool will automatically:
+- Generate secondary, accent, muted colors using color theory
+- Choose appropriate foreground text color based on background darkness
+- Ensure all colors meet WCAG AA contrast requirements`,
   z.object({
     palettes: z.array(z.object({
-      name: z.string().describe('Descriptive name for the palette (e.g., "Ocean Blue", "Sunset Orange")'),
-      primary: z.string().regex(/^#[0-9A-Fa-f]{6}$/).describe('Primary brand color (hex format, e.g., #3B82F6)'),
+      name: z.string().describe('Descriptive name for the palette (e.g., "Vibrant Purple Light", "Deep Purple Dark")'),
+      primary: z.string().regex(/^#[0-9A-Fa-f]{6}$/).describe('Primary brand color (hex format, e.g., #9333EA)'),
+      background: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('Background color (hex format). Use #FFFFFF for light, #0A0A0A for dark, etc.'),
       secondary: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('Secondary color (auto-generated if not provided)'),
       accent: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('Accent color (auto-generated if not provided)'),
-    })).min(2).max(6).describe('Array of 2-6 palette suggestions to generate')
+    })).min(2).max(6).describe('Array of 2-6 palette suggestions to generate. Include variety: 2 light + 2 dark for generic requests.')
   }),
   async (input, context) => {
     // Generate all palettes
@@ -69,7 +100,7 @@ Use this instead of calling cssColor multiple times when showing options!`,
     // Store palettes in session state for later retrieval
     const sessionId = context?.metadata?.sessionId as string | undefined
     const stateManager = context?.metadata?.stateManager as any
-    
+
     if (sessionId && stateManager?.storeSuggestedPalettes) {
       const palettesToStore = input.palettes.map(function mapPalette(p) {
         return {

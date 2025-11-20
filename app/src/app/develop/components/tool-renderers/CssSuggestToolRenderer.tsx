@@ -115,7 +115,7 @@ export default function CssSuggestToolRenderer({
                     onClick={() => setActiveTab(index)}
                     className={`pb-2 px-1 text-sm font-medium transition-colors whitespace-nowrap ${
                       activeTab === index
-                        ? 'border-b-2 border-blue-500 text-blue-600'
+                        ? 'border-b-2'
                         : 'text-muted-foreground hover:text-foreground/70'
                     }`}
                   >
@@ -144,9 +144,6 @@ export default function CssSuggestToolRenderer({
                           }}
                         >
                           Aa Text
-                        </div>
-                        <div className="text-xs text-center text-muted-foreground">
-                          Background
                         </div>
                       </div>
 
@@ -194,12 +191,12 @@ export default function CssSuggestToolRenderer({
       {toolStatus === 'completed' && hasPalettes && (
         <div className="mt-4 mb-4">
           <ColorPaletteGridWidget palettes={palettes} />
-          
+
           {/* Helper message */}
           <div className="flex items-center gap-2 text-xs text-intents-ux-textSubtle-textColor mt-4">
-            <svg 
-              className="w-6 h-6" 
-              fill="currentColor" 
+            <svg
+              className="w-6 h-6"
+              fill="currentColor"
               viewBox="0 0 24 24"
               aria-hidden="true"
             >

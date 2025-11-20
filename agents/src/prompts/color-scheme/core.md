@@ -198,20 +198,75 @@ The `listId` and `itemId` are shown in the `[Current Todo List]` context.
 ### cssSuggest (for showing multiple options)
 
 - `palettes` (required): Array of 2-6 palette objects
-  - `name` (required): Descriptive name (e.g., "Ocean Blue")
+  - `name` (required): Descriptive name (e.g., "Ocean Blue Light", "Deep Ocean Dark")
   - `primary` (required): Primary brand color (hex format: #3B82F6)
+  - `background` (optional): Background color (hex format: #FFFFFF for light, #0A0A0A for dark)
   - `secondary` (optional): Auto-generated if not provided
   - `accent` (optional): Auto-generated if not provided
+
+**IMPORTANT - Palette Variety Strategy:**
+
+When showing multiple palette options, create DIVERSE variations by combining different primary colors AND background colors:
+
+**For generic requests** (e.g., "purple website", "blue colors"):
+
+- Generate 2 light palettes with different primary shades
+  - Use backgrounds: `#FFFFFF` (pure white), `#FAFAFA` (off-white)
+- Generate 2 dark palettes with different primary shades
+  - Use backgrounds: `#0A0A0A` (true black), `#1A1A1A` (soft dark)
+
+**For "dark theme/mode" requests**:
+
+- Generate 4 dark palettes with varied darkness levels
+  - Use backgrounds: `#0A0A0A`, `#1A1A1A`, `#2A2A2A`, `#1C1C1C`
+
+**For "light theme/mode" requests**:
+
+- Generate 4 light palettes with varied brightness levels
+  - Use backgrounds: `#FFFFFF`, `#FAFAFA`, `#F5F5F5`, `#F8F8F8`
+
+**Examples:**
+
+Generic "purple website" request:
+
+```
+cssSuggest({
+  palettes: [
+    { name: "Vibrant Purple Light", primary: "#9333EA", background: "#FFFFFF" },
+    { name: "Soft Purple Light", primary: "#A855F7", background: "#FAFAFA" },
+    { name: "Deep Purple Dark", primary: "#7C3AED", background: "#0A0A0A" },
+    { name: "Rich Purple Dark", primary: "#8B5CF6", background: "#1A1A1A" }
+  ]
+})
+```
+
+"Dark theme" request:
+
+```
+cssSuggest({
+  palettes: [
+    { name: "Midnight Blue", primary: "#3B82F6", background: "#0A0A0A" },
+    { name: "Deep Ocean", primary: "#2563EB", background: "#1A1A1A" },
+    { name: "Charcoal Blue", primary: "#60A5FA", background: "#2A2A2A" },
+    { name: "Slate Blue", primary: "#1D4ED8", background: "#1C1C1C" }
+  ]
+})
+```
 
 ### cssColor (for applying a single palette)
 
 - `paletteName` (required): Name of the palette (e.g., "Ocean Blue")
 - `primary` (required): Primary brand color (hex format: #3B82F6)
+- `background` (optional): Background color (hex format). Defaults to #FFFFFF. Use #0A0A0A for dark themes
 - `secondary` (optional): Auto-generated if not provided
 - `accent` (optional): Auto-generated if not provided
-- `background` (optional): Defaults to #FFFFFF
-- `foreground` (optional): Defaults to #000000
+- `foreground` (optional): Auto-generated based on background darkness (light text on dark backgrounds)
 - `generateOnly` (boolean): false = update CSS (default behavior)
+
+**Note**: When you specify `background`, the `foreground` color will automatically be set to ensure proper contrast:
+
+- Dark backgrounds (< 0.5 luminance) → Light foreground (#F5F5F5)
+- Light backgrounds (>= 0.5 luminance) → Dark foreground (#0A0A0A)
 
 ### suggestedResponse (use after cssColor only)
 

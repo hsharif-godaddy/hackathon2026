@@ -24,7 +24,7 @@ export interface ColorPaletteGridWidgetProps {
 
 /**
  * Color Palette Grid Widget
- * 
+ *
  * Displays multiple color palettes in a responsive grid layout with preview controls.
  * Users can preview color schemes before saving them.
  */
@@ -130,7 +130,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
   return (
     <div className={className}>
       {/* Palette Grid */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-4">
         {palettes.map((palette, index) => (
           <ColorPaletteWidget
             key={index}

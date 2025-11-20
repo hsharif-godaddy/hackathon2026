@@ -15,6 +15,7 @@ import { Palette } from 'lucide-react'
  * Color info structure from cssColor tool result
  */
 interface ColorInfo {
+  id: string
   name: string
   hex: string
   role?: string
@@ -98,7 +99,6 @@ export default function CssColorToolRenderer({
     return null
   }
 
-
   // Extract colors from result
   const colors: ColorInfo[] = []
   if (toolStatus === 'completed' && result && typeof result === 'object') {
@@ -115,11 +115,12 @@ export default function CssColorToolRenderer({
     // Fallback to palette object
     else if (resultObj.palette) {
       const palette = resultObj.palette
-      if (palette.primary) colors.push({ name: 'Primary', hex: palette.primary, role: 'Main brand color' })
-      if (palette.secondary) colors.push({ name: 'Secondary', hex: palette.secondary, role: 'Supporting elements' })
-      if (palette.accent) colors.push({ name: 'Accent', hex: palette.accent, role: 'Highlights' })
-      if (palette.background) colors.push({ name: 'Background', hex: palette.background, role: 'Base layer' })
-      if (palette.success) colors.push({ name: 'Success', hex: palette.success, role: 'Success states' })
+      if (palette.base) colors.push({ id: 'base', name: 'Base', hex: palette.base, role: 'Base text and background color' })
+      if (palette.primary) colors.push({ id: 'primary', name: 'Primary', hex: palette.primary, role: 'Main brand color' })
+      if (palette.secondary) colors.push({ id: 'secondary', name: 'Secondary', hex: palette.secondary, role: 'Supporting elements' })
+      if (palette.accent) colors.push({ id: 'accent', name: 'Accent', hex: palette.accent, role: 'Highlights' })
+      if (palette.background) colors.push({ id: 'background', name: 'Background', hex: palette.background, role: 'Base layer' })
+      if (palette.success) colors.push({ id: 'success', name: 'Success', hex: palette.success, role: 'Success states' })
     }
   }
 
@@ -189,7 +190,7 @@ export default function CssColorToolRenderer({
                     onClick={() => setActiveTab('details')}
                     className={`pb-2 px-1 text-sm font-medium transition-colors ${
                       activeTab === 'details'
-                        ? 'border-b-2 border-blue-500 text-blue-600'
+                        ? 'border-b-2'
                         : 'text-muted-foreground hover:text-foreground/70'
                     }`}
                   >
@@ -219,9 +220,6 @@ export default function CssColorToolRenderer({
                             }}
                           >
                             Aa Text
-                          </div>
-                          <div className="text-xs text-center text-muted-foreground">
-                            Background
                           </div>
                         </div>
 
