@@ -1,8 +1,9 @@
 import { generateCodeVerifier, generateCodeChallenge, generateState } from '../utils/pkce-utils.js';
-import { TokenStore, type TokenKey, type TokenRecord } from './token-store.js';
+import { TokenStore } from './token-store.js';
 import { Logger } from '../logging/index.js';
 import { OAuthTokenRepository } from '../database/repositories/OAuthTokenRepository.js';
 import { getSocketIO } from '../server/ai-lib-websocket-server.js';
+import { getNomadAllocConfig } from '../utils/nomad-config.js';
 
 const logger = Logger.create({ service: 'auth-service' });
 
@@ -33,10 +34,38 @@ function isScopesSuperset(storedScopes: string, requestedScopes: string[]): bool
 }
 
 /**
- * Get OAuth configuration from environment variables
+ * Get OAuth configuration from Nomad alloc config or environment variables
  * Called at runtime to support test environment variable changes
  */
 function getConfig() {
+  const nomadConfig = getNomadAllocConfig();
+
+  if (nomadConfig) {
+    const apiUrl = nomadConfig.GODADDY_API_BASE_URL?.VALUE;
+    const clientId = nomadConfig.GODADDY_OAUTH_CLIENT_ID?.VALUE;
+    const clientSecret = nomadConfig.GODADDY_OAUTH_CLIENT_SECRET?.VALUE;
+    const agentUrl = nomadConfig.AGENT_URL?.VALUE;
+
+    if (apiUrl && clientId && clientSecret && agentUrl) {
+      return {
+        apiUrl,
+        authEndpoint: '/v2/oauth2/authorize',
+        tokenEndpoint: '/v2/oauth2/token',
+        clientId,
+        clientSecret,
+        redirectUri: `${agentUrl.replace(/\/+$/, '')}/oauth/godaddy/callback`,
+      };
+    }
+    // If we have nomad config but it is incomplete, throw an error
+    logger.error('auth-service.nomad-config.incomplete', {
+      hasApiUrl: !!apiUrl,
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret,
+      hasAgentUrl: !!agentUrl,
+    });
+    throw new Error('Incomplete configuration for auth service');
+  }
+
   return {
     apiUrl: process.env.GODADDY_API_BASE_URL || 'https://api.dev-godaddy.com',
     authEndpoint: process.env.GODADDY_OAUTH_AUTH_ENDPOINT || '/v2/oauth2/authorize',
