@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { logger } from '../logging/index.js'
 
 /**
  * Color manipulation utilities
@@ -302,6 +303,11 @@ export interface GeneratedPalette {
   destructiveForeground: string
   successForeground: string
   warningForeground: string
+  chart1: string
+  chart2: string
+  chart3: string
+  chart4: string
+  chart5: string
   theme: 'light' | 'dark'
   displayColors: Array<{ id: string; name: string; hex: string; role: string; foreground: string }>
 }
@@ -322,8 +328,14 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
   // Generate accent if not provided (complementary)
   const accent: string = input.accent || complementary(primary)
 
-  // Generate muted (desaturated primary)
-  const muted: string = input.muted || adjustSaturation(lighten(primary, 40), -30)
+  // Generate muted (desaturated, theme-aware)
+  // For dark backgrounds: darken and desaturate the primary
+  // For light backgrounds: lighten and desaturate the primary
+  const muted: string = input.muted || (
+    isDarkBackground(background)
+      ? adjustSaturation(darken(background, 5), -10)  // Slightly lighter than background, low saturation
+      : adjustSaturation(lighten(primary, 40), -30)   // Original light theme behavior
+  )
 
   // Generate border (very light version of foreground)
   const border: string = input.border || lighten(foreground, 80)
@@ -341,6 +353,9 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
   const destructiveForeground = ensureContrast('#FFFFFF', destructive, 4.5)
   const successForeground = ensureContrast('#FFFFFF', success, 4.5)
   const warningForeground = ensureContrast('#FFFFFF', warning, 4.5)
+
+  // Generate chart colors (5-step scale from lighter to darker)
+  const chartColors = generateChartColors(primary)
 
   // Generate display colors
   const displayColors = [
@@ -372,6 +387,11 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
     destructiveForeground,
     successForeground,
     warningForeground,
+    chart1: chartColors[0] ?? primary,
+    chart2: chartColors[1] ?? primary,
+    chart3: chartColors[2] ?? primary,
+    chart4: chartColors[3] ?? primary,
+    chart5: chartColors[4] ?? primary,
     theme,
     displayColors
   }
@@ -409,15 +429,12 @@ export async function updateCssColors(appPath: string, palette: GeneratedPalette
   const cssPath = join(appPath, 'src/styles/globals.css')
   let content = await readFile(cssPath, 'utf-8')
 
-  // Generate chart colors from primary
-  const chartColors = generateChartColors(palette.primary)
-
   // Map palette to CSS variables (shadcn/ui structure)
   const colorMap: Record<string, string> = {
     // Core colors
     '--background': palette.background,
     '--foreground': palette.foreground,
-    '--card': palette.background,
+    '--card': palette.muted,
     '--card-foreground': palette.foreground,
     '--popover': palette.background,
     '--popover-foreground': palette.foreground,
@@ -435,12 +452,12 @@ export async function updateCssColors(appPath: string, palette: GeneratedPalette
     '--input': palette.border,
     '--ring': palette.primary,
 
-    // Chart colors (5-step scale)
-    '--chart-1': chartColors[0] ?? palette.primary,
-    '--chart-2': chartColors[1] ?? palette.primary,
-    '--chart-3': chartColors[2] ?? palette.primary,
-    '--chart-4': chartColors[3] ?? palette.primary,
-    '--chart-5': chartColors[4] ?? palette.primary,
+    // Chart colors (from palette)
+    '--chart-1': palette.chart1,
+    '--chart-2': palette.chart2,
+    '--chart-3': palette.chart3,
+    '--chart-4': palette.chart4,
+    '--chart-5': palette.chart5,
 
     // Sidebar colors (mirror main theme)
     '--sidebar': palette.muted,
@@ -486,11 +503,13 @@ export async function updateCssColorPalette(
   input: ColorPalette
 ): Promise<CssColorToolResult> {
   try {
-    // Generate complete palette
-    const palette = generatePalette(input)
+    // Check if input is already a complete generated palette (from session state)
+    // GeneratedPalette has foreground colors and theme property, ColorPalette doesn't
+    const inputAny = input as any
+    const isCompletePalette = !!(inputAny.primaryForeground && inputAny.theme)
 
-    // The generatePalette function already ensures contrast via ensureContrast()
-    // All foreground colors are automatically adjusted to meet WCAG AA standards
+    // If already complete, use it directly; otherwise generate
+    const palette = isCompletePalette ? (input as unknown as GeneratedPalette) : generatePalette(input)
 
     // Update CSS file
     await updateCssColors(appPath, palette)

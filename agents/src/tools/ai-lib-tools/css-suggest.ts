@@ -9,24 +9,31 @@ function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, nam
   return {
     name,
     theme: palette.theme,
-    colors: palette.displayColors.map(function mapColor(c) {
-      // For base color, the foreground is stored as 'foreground' not 'baseForeground'
-      let foreground: string
-      if (c.id === 'base') {
-        foreground = palette.foreground
-      } else {
-        const fgKey = `${c.name.toLowerCase()}Foreground` as keyof typeof palette
-        foreground = palette[fgKey] as string
-      }
-
-      return {
-        id: c.id,
-        name: c.name,
-        hex: c.hex,
-        role: c.role,
-        foreground
-      }
-    })
+    // Include complete palette for accurate preview (matches updateCssColors exactly)
+    palette: {
+      primary: palette.primary,
+      primaryForeground: palette.primaryForeground,
+      secondary: palette.secondary,
+      secondaryForeground: palette.secondaryForeground,
+      accent: palette.accent,
+      accentForeground: palette.accentForeground,
+      background: palette.background,
+      foreground: palette.foreground,
+      muted: palette.muted,
+      mutedForeground: palette.mutedForeground,
+      border: palette.border,
+      destructive: palette.destructive,
+      destructiveForeground: palette.destructiveForeground,
+      success: palette.success,
+      successForeground: palette.successForeground,
+      warning: palette.warning,
+      warningForeground: palette.warningForeground,
+      chart1: palette.chart1,
+      chart2: palette.chart2,
+      chart3: palette.chart3,
+      chart4: palette.chart4,
+      chart5: palette.chart5
+    }
   }
 }
 
@@ -102,12 +109,10 @@ The tool will automatically:
     const stateManager = context?.metadata?.stateManager as any
 
     if (sessionId && stateManager?.storeSuggestedPalettes) {
-      const palettesToStore = input.palettes.map(function mapPalette(p) {
+      const palettesToStore = generatedPalettes.map(function mapPalette(paletteData) {
         return {
-          name: p.name,
-          primary: p.primary,
-          secondary: p.secondary,
-          accent: p.accent
+          name: paletteData.name,
+          ...paletteData.palette
         }
       })
       stateManager.storeSuggestedPalettes(sessionId, palettesToStore)

@@ -791,19 +791,44 @@ export function useDevelopmentMode() {
       return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`
     }
 
-    // CSS custom properties to update (shadcn/ui format)
+    // CSS custom properties to update (shadcn/ui format) - matches updateCssColors exactly
     const cssVars = [
+      // Core colors
+      { key: '--background', value: palette.background },
+      { key: '--foreground', value: palette.foreground },
+      { key: '--card', value: palette.muted },
+      { key: '--card-foreground', value: palette.foreground },
+      { key: '--popover', value: palette.background },
+      { key: '--popover-foreground', value: palette.foreground },
       { key: '--primary', value: palette.primary },
       { key: '--primary-foreground', value: palette.primaryForeground },
       { key: '--secondary', value: palette.secondary },
       { key: '--secondary-foreground', value: palette.secondaryForeground },
+      { key: '--muted', value: palette.muted },
+      { key: '--muted-foreground', value: palette.mutedForeground },
       { key: '--accent', value: palette.accent },
       { key: '--accent-foreground', value: palette.accentForeground },
-      { key: '--background', value: palette.background || '#FFFFFF' },
-      { key: '--foreground', value: palette.foreground || '#212529' },
-      { key: '--destructive', value: palette.destructive || '#DC3545' },
+      { key: '--destructive', value: palette.destructive },
       { key: '--destructive-foreground', value: palette.destructiveForeground },
-    ]
+      { key: '--border', value: palette.border },
+      { key: '--input', value: palette.border },
+      { key: '--ring', value: palette.primary },
+      // Chart colors
+      { key: '--chart-1', value: palette.chart1 },
+      { key: '--chart-2', value: palette.chart2 },
+      { key: '--chart-3', value: palette.chart3 },
+      { key: '--chart-4', value: palette.chart4 },
+      { key: '--chart-5', value: palette.chart5 },
+      // Sidebar colors (mirror main theme)
+      { key: '--sidebar', value: palette.muted },
+      { key: '--sidebar-foreground', value: palette.foreground },
+      { key: '--sidebar-primary', value: palette.primary },
+      { key: '--sidebar-primary-foreground', value: palette.primaryForeground },
+      { key: '--sidebar-accent', value: palette.accent },
+      { key: '--sidebar-accent-foreground', value: palette.accentForeground },
+      { key: '--sidebar-border', value: palette.border },
+      { key: '--sidebar-ring', value: palette.primary }
+    ].filter(item => item.value !== undefined && item.value !== null)
 
     // Only store original theme if this is the first preview in the session
     const hasOriginalTheme = localStorage.getItem('airo-dev-original-theme')

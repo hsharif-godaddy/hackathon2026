@@ -1,17 +1,46 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import ColorPaletteWidget, { type ColorInfo } from './ColorPaletteWidget'
+import ColorPaletteWidget from './ColorPaletteWidget'
 import { postMessageToIframe } from '@/utils/postMessage'
 import Button from '@ux/button'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+
+/**
+ * Complete palette data structure (matches GeneratedPalette from backend)
+ */
+export interface CompletePalette {
+  primary: string
+  primaryForeground: string
+  secondary: string
+  secondaryForeground: string
+  accent: string
+  accentForeground: string
+  background: string
+  foreground: string
+  muted: string
+  mutedForeground: string
+  border: string
+  destructive: string
+  destructiveForeground: string
+  success: string
+  successForeground: string
+  warning: string
+  warningForeground: string
+  chart1: string
+  chart2: string
+  chart3: string
+  chart4: string
+  chart5: string
+}
 
 /**
  * Palette data for grid display
  */
 export interface PaletteData {
   name: string
-  colors: ColorInfo[]
+  theme?: 'light' | 'dark'
+  palette: CompletePalette
 }
 
 /**
@@ -119,24 +148,32 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
     }
   }
 
+  // Check if palettes array is empty or invalid
   if (!palettes || palettes.length === 0) {
-    return (
-      <div className={`rounded-lg border bg-white p-4 shadow-sm ${className}`}>
-        <p className="text-gray-500 text-sm">No palettes to display</p>
-      </div>
-    )
+    return null
+  }
+
+  // Check if palettes have the new complete format (background + foreground)
+  // If not, they're from the old version - return null to hide component
+  const hasCompleteFormat = palettes.every(
+    (p) => p.palette?.background && p.palette?.foreground
+  )
+
+  if (!hasCompleteFormat) {
+    return null
   }
 
   return (
     <div className={className}>
       {/* Palette Grid */}
       <div className="grid grid-cols-2 gap-4">
-        {palettes.map((palette, index) => (
+        {palettes.map((paletteData, index) => (
           <ColorPaletteWidget
             key={index}
-            name={palette.name}
-            colors={palette.colors}
-            isSelected={previewedPalette?.name === palette.name}
+            name={paletteData.name}
+            theme={paletteData.theme}
+            palette={paletteData.palette}
+            isSelected={previewedPalette?.name === paletteData.name}
           />
         ))}
       </div>

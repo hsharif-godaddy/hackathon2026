@@ -6,14 +6,31 @@ import MapPinIcon from '@ux/icon/map-pin'
 import clsx from 'clsx'
 
 /**
- * Color data structure
+ * Complete palette data structure
  */
-export interface ColorInfo {
-  id: string
-  name: string
-  hex: string
-  role?: string
-  foreground?: string
+export interface CompletePalette {
+  primary: string
+  primaryForeground: string
+  secondary: string
+  secondaryForeground: string
+  accent: string
+  accentForeground: string
+  background: string
+  foreground: string
+  muted: string
+  mutedForeground: string
+  border: string
+  destructive: string
+  destructiveForeground: string
+  success: string
+  successForeground: string
+  warning: string
+  warningForeground: string
+  chart1: string
+  chart2: string
+  chart3: string
+  chart4: string
+  chart5: string
 }
 
 /**
@@ -21,8 +38,8 @@ export interface ColorInfo {
  */
 export interface ColorPaletteWidgetProps {
   name?: string
-  colors: ColorInfo[]
   theme?: 'light' | 'dark'
+  palette: CompletePalette
   className?: string
   isSelected?: boolean
 }
@@ -30,25 +47,7 @@ export interface ColorPaletteWidgetProps {
 /**
  * Color Palette Widget
  */
-export default function ColorPaletteWidget({ name, colors, theme, className = '', isSelected = false }: ColorPaletteWidgetProps) {
-  const safeColors = colors.slice(0, 5) // Take only first 5 colors
-
-  if (safeColors.length === 0) {
-    return (
-      <div className={`rounded-lg border p-4 shadow-sm w-56 ${className}`}>
-        <p className="text-sm">No colors to display</p>
-      </div>
-    )
-  }
-
-  // Pad to 5 colors if needed
-  while (safeColors.length < 5) {
-    safeColors.push({ id: '', name: '', hex: '#E5E7EB', role: '' })
-  }
-
-  const getColorById = (id: string) => {
-    return colors.find(color => color.id === id)
-  }
+export default function ColorPaletteWidget({ name, theme, palette, className = '', isSelected = false }: ColorPaletteWidgetProps) {
 
   /**
    * Handle click on palette - send preview message to iframe
@@ -63,19 +62,10 @@ export default function ColorPaletteWidget({ name, colors, theme, className = ''
       return
     }
 
-    // Create palette data from colors
+    // Use complete palette for preview (matches updateCssColors exactly)
     const paletteData = {
       name,
-      primary: getColorById('primary')?.hex || '#007bff',
-      primaryForeground: getColorById('primary')?.foreground || '#000000',
-      secondary: getColorById('secondary')?.hex || '#6c757d',
-      secondaryForeground: getColorById('secondary')?.foreground || '#000000',
-      accent: getColorById('accent')?.hex || '#17a2b8',
-      accentForeground: getColorById('accent')?.foreground || '#000000',
-      background: getColorById('base')?.hex || '#ffffff',
-      foreground: getColorById('base')?.foreground || '#000000',
-      destructive: getColorById('destructive')?.hex || '#ef4444',
-      destructiveForeground: getColorById('destructive')?.foreground || '#000000',
+      ...palette
     }
 
     // Post message to iframe to preview theme
@@ -91,38 +81,41 @@ export default function ColorPaletteWidget({ name, colors, theme, className = ''
     window.dispatchEvent(event)
   }
 
+  console.log('palette', palette)
+
+  const renderColorCircle = (color: string) => (
+    <div className="size-8 rounded-full -ml-2" style={{ backgroundColor: color }}></div>
+  )
+
   return (
     <button
       className={clsx(
-        "flex flex-row gap-2 justify-between items-center w-full p-4 rounded-md border-2 border-border transition-all duration-300 hover:shadow-md hover:cursor-pointer hover:border-intents-ux-boxHighContrast-borderColor relative",
+        "flex flex-col w-full gap-4 p-4 rounded-md border-2 border-border transition-all duration-300 hover:shadow-md hover:cursor-pointer hover:border-intents-ux-boxHighContrast-borderColor relative",
         className,
         {
           "border-intents-ux-boxHighContrast-borderColor shadow-md": isSelected,
         }
       )}
-      style={{ backgroundColor: getColorById('base')?.hex, color: getColorById('base')?.foreground }}
+      style={{ backgroundColor: palette?.background, color: palette?.foreground }}
       onClick={handleClick}
     >
-      {theme && (
-        <div
-          className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-xs font-medium opacity-60"
-          style={{
-            backgroundColor: getColorById('primary')?.hex,
-            color: getColorById('primary')?.foreground
-          }}
-        >
-          {theme === 'dark' ? 'Dark' : 'Light'}
+      <div className="flex flex-row gap-2 justify-between items-center w-full">
+        <div className="flex flex-col items-start">
+          <text.span size={3} className="!font-semibold !leading-none">Aa</text.span>
+          <text.span size={0} className="!font-thin !leading-none">Aa</text.span>
         </div>
-      )}
-      <div className="flex flex-col items-start">
-        <text.span size={3} className="!font-semibold !leading-none">Aa</text.span>
-        <text.span size={0} className="!font-thin !leading-none">Aa</text.span>
+        <div
+          style={{ backgroundColor: palette?.primary, color: palette?.primaryForeground }}
+          className="size-12 rounded-sm flex items-center justify-center"
+        >
+          <MapPinIcon className="size-6" />
+        </div>
       </div>
-      <div
-        style={{ backgroundColor: getColorById('primary')?.hex, color: getColorById('primary')?.foreground }}
-        className="size-12 rounded-sm flex items-center justify-center"
-      >
-        <MapPinIcon className="size-6" />
+      <div className="flex flex-row pl-2">
+        {renderColorCircle(palette?.primary)}
+        {renderColorCircle(palette?.secondary)}
+        {renderColorCircle(palette?.accent)}
+        {renderColorCircle(palette?.muted)}
       </div>
     </button>
   )

@@ -40,7 +40,7 @@ export const appPlanAITool: Tool = createTool(
       }
       
       if (result.data.colorPalette) {
-        responseMessage += `\n- **Color Scheme:** ${result.data.colorPalette.scheme}`
+        responseMessage += `\n- **Color Theme:** ${result.data.colorPalette.theme}`
         if (result.data.colorPalette.name) {
           responseMessage += ` (${result.data.colorPalette.name})`
         }

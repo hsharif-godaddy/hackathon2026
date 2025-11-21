@@ -13,16 +13,32 @@ const appRepo = new AppRepository()
 function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, name: string) {
   return {
     name,
-    colors: palette.displayColors.map(function mapColor(c) {
-      const fgKey = `${c.name.toLowerCase()}Foreground` as keyof typeof palette
-      return {
-        id: c.id,
-        name: c.name,
-        hex: c.hex,
-        role: c.role,
-        foreground: palette[fgKey] as string
-      }
-    })
+    theme: palette.theme,
+    // Include complete palette for accurate preview (matches updateCssColors exactly)
+    palette: {
+      primary: palette.primary,
+      primaryForeground: palette.primaryForeground,
+      secondary: palette.secondary,
+      secondaryForeground: palette.secondaryForeground,
+      accent: palette.accent,
+      accentForeground: palette.accentForeground,
+      background: palette.background,
+      foreground: palette.foreground,
+      muted: palette.muted,
+      mutedForeground: palette.mutedForeground,
+      border: palette.border,
+      destructive: palette.destructive,
+      destructiveForeground: palette.destructiveForeground,
+      success: palette.success,
+      successForeground: palette.successForeground,
+      warning: palette.warning,
+      warningForeground: palette.warningForeground,
+      chart1: palette.chart1,
+      chart2: palette.chart2,
+      chart3: palette.chart3,
+      chart4: palette.chart4,
+      chart5: palette.chart5
+    }
   }
 }
 
@@ -82,13 +98,12 @@ Use this tool instead of fileEdit when updating color schemes!`,
         logger.info('cssColor.palette.restored', {
           sessionId,
           paletteName,
-          primary: suggestedPalette.primary
+          primary: suggestedPalette.primary,
+          keys: Object.keys(suggestedPalette)
         })
-        // Merge suggested palette with any provided overrides
-        paletteInput = {
-          ...suggestedPalette,
-          ...input
-        } as ColorPalette
+        // Use suggested palette directly - don't allow overrides from input
+        // This ensures the exact palette from cssSuggest is applied
+        paletteInput = suggestedPalette as ColorPalette
       }
     }
 
@@ -100,18 +115,14 @@ Use this tool instead of fileEdit when updating color schemes!`,
     // Generate-only mode: just create the palette without updating CSS
     if (input.generateOnly) {
       const palette = generatePalette(paletteInput)
+      const widgetData = formatPaletteForWidget(palette, paletteName)
 
       return {
         success: true,
         message: `Generated palette: ${paletteName}`,
-        widget: formatPaletteForWidget(palette, paletteName),
-        palette: {
-          primary: palette.primary,
-          secondary: palette.secondary,
-          accent: palette.accent,
-          background: palette.background,
-          success: palette.success
-        }
+        widget: widgetData,
+        palette: widgetData.palette,
+        theme: widgetData.theme
       }
     }
 
@@ -139,18 +150,7 @@ Use this tool instead of fileEdit when updating color schemes!`,
         operation: 'update',
         colorPalette: {
           name: paletteName,
-          primary: result.palette.primary,
-          secondary: result.palette.secondary,
-          accent: result.palette.accent,
-          background: result.palette.background,
-          surface: result.palette.muted,
-          text: result.palette.foreground,
-          textSecondary: result.palette.mutedForeground,
-          error: result.palette.destructive,
-          warning: result.palette.warning || '#F59E0B',
-          success: result.palette.success,
-          info: result.palette.primary,
-          scheme: 'light'
+          ...result.palette
         }
       })
       logger.info('cssColor.palette.saved', {
@@ -167,34 +167,50 @@ Use this tool instead of fileEdit when updating color schemes!`,
     }
 
     // Format response for agent
-    let response = `✅ CSS color palette updated successfully!\n\n`
-
-    // Show the 6 most important colors
-    response += `**Display Colors:**\n`
-    result.palette.displayColors.forEach(function formatColor(color) {
-      response += `- ${color.name}: ${color.hex} (${color.role})\n`
-    })
-
-    response += `\n**All CSS variables updated:**\n`
-    response += `- Core colors: Primary, Secondary, Accent, Background, Foreground, Muted, Border\n`
-    response += `- Extended colors: Card, Popover, Input, Ring, Destructive\n`
-    response += `- Chart colors: 5-step scale for data visualization\n`
-    response += `- Sidebar colors: Complete sidebar theme\n`
-    response += `- All foreground colors automatically adjusted for WCAG AA contrast\n`
+    const response = `CSS color palette updated successfully!\n\n` +
+      `Main Colors:\n` +
+      `- Background: ${result.palette.background}\n` +
+      `- Foreground: ${result.palette.foreground}\n` +
+      `- Primary: ${result.palette.primary}\n` +
+      `- Secondary: ${result.palette.secondary}\n` +
+      `- Accent: ${result.palette.accent}\n` +
+      `- Muted: ${result.palette.muted}\n\n` +
+      `All CSS variables updated:\n` +
+      `- Core colors: Primary, Secondary, Accent, Background, Foreground, Muted, Border\n` +
+      `- Extended colors: Card, Popover, Input, Ring, Destructive\n` +
+      `- Chart colors: 5-step scale for data visualization\n` +
+      `- Sidebar colors: Complete sidebar theme\n` +
+      `- All foreground colors automatically adjusted for WCAG AA contrast`
 
     return {
       success: true,
       message: response,
       paletteName,
-      displayColors: result.palette.displayColors,
       palette: {
         primary: result.palette.primary,
+        primaryForeground: result.palette.primaryForeground,
         secondary: result.palette.secondary,
+        secondaryForeground: result.palette.secondaryForeground,
         accent: result.palette.accent,
+        accentForeground: result.palette.accentForeground,
+        background: result.palette.background,
+        foreground: result.palette.foreground,
         muted: result.palette.muted,
+        mutedForeground: result.palette.mutedForeground,
+        border: result.palette.border,
         destructive: result.palette.destructive,
-        success: result.palette.success
-      }
+        destructiveForeground: result.palette.destructiveForeground,
+        success: result.palette.success,
+        successForeground: result.palette.successForeground,
+        warning: result.palette.warning,
+        warningForeground: result.palette.warningForeground,
+        chart1: result.palette.chart1,
+        chart2: result.palette.chart2,
+        chart3: result.palette.chart3,
+        chart4: result.palette.chart4,
+        chart5: result.palette.chart5
+      },
+      theme: result.palette.theme
     }
   }
 )

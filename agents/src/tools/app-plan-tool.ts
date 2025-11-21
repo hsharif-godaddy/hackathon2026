@@ -10,19 +10,30 @@ export interface AppPlanData {
 }
 
 export interface ColorPalette {
+  name?: string;
   primary: string;
+  primaryForeground: string;
   secondary: string;
+  secondaryForeground: string;
   accent: string;
+  accentForeground: string;
   background: string;
-  surface: string;
-  text: string;
-  textSecondary: string;
-  error: string;
-  warning: string;
+  foreground: string;
+  muted: string;
+  mutedForeground: string;
+  border: string;
+  destructive: string;
+  destructiveForeground: string;
   success: string;
-  info: string;
-  scheme: 'light' | 'dark' | 'auto';
-  name?: string; // User-friendly name like "Ocean Blue" or "Forest Green"
+  successForeground: string;
+  warning: string;
+  warningForeground: string;
+  chart1: string;
+  chart2: string;
+  chart3: string;
+  chart4: string;
+  chart5: string;
+  theme: 'light' | 'dark';
 }
 
 export interface AppPlanToolOptions {
@@ -41,19 +52,30 @@ export interface AppPlanToolResult {
 }
 
 const ColorPaletteSchema = z.object({
-  primary: z.string().optional(),
-  secondary: z.string().optional(),
-  accent: z.string().optional(),
-  background: z.string().optional(),
-  surface: z.string().optional(),
-  text: z.string().optional(),
-  textSecondary: z.string().optional(),
-  error: z.string().optional(),
-  warning: z.string().optional(),
-  success: z.string().optional(),
-  info: z.string().optional(),
-  scheme: z.enum(['light', 'dark', 'auto']).optional(),
   name: z.string().optional(),
+  primary: z.string().optional(),
+  primaryForeground: z.string().optional(),
+  secondary: z.string().optional(),
+  secondaryForeground: z.string().optional(),
+  accent: z.string().optional(),
+  accentForeground: z.string().optional(),
+  background: z.string().optional(),
+  foreground: z.string().optional(),
+  muted: z.string().optional(),
+  mutedForeground: z.string().optional(),
+  border: z.string().optional(),
+  destructive: z.string().optional(),
+  destructiveForeground: z.string().optional(),
+  success: z.string().optional(),
+  successForeground: z.string().optional(),
+  warning: z.string().optional(),
+  warningForeground: z.string().optional(),
+  chart1: z.string().optional(),
+  chart2: z.string().optional(),
+  chart3: z.string().optional(),
+  chart4: z.string().optional(),
+  chart5: z.string().optional(),
+  theme: z.enum(['light', 'dark']).optional(),
 });
 
 export const AppPlanToolOptionsSchema = z.object({
@@ -107,17 +129,28 @@ export class AppPlanTool {
 
     const defaultColorPalette: ColorPalette = {
       primary: '#007bff',
+      primaryForeground: '#ffffff',
       secondary: '#6c757d',
+      secondaryForeground: '#ffffff',
       accent: '#17a2b8',
+      accentForeground: '#ffffff',
       background: '#ffffff',
-      surface: '#f8f9fa',
-      text: '#212529',
-      textSecondary: '#6c757d',
-      error: '#dc3545',
-      warning: '#ffc107',
+      foreground: '#0a0a0a',
+      muted: '#f8f9fa',
+      mutedForeground: '#6c757d',
+      border: '#e9ecef',
+      destructive: '#dc3545',
+      destructiveForeground: '#ffffff',
       success: '#28a745',
-      info: '#17a2b8',
-      scheme: 'light',
+      successForeground: '#ffffff',
+      warning: '#ffc107',
+      warningForeground: '#000000',
+      chart1: '#007bff',
+      chart2: '#6610f2',
+      chart3: '#6f42c1',
+      chart4: '#e83e8c',
+      chart5: '#fd7e14',
+      theme: 'light',
     };
 
     const newPlan: AppPlanData = {
@@ -213,9 +246,9 @@ export class AppPlanTool {
     );
   }
 
-  getPlansByColorScheme(scheme: 'light' | 'dark' | 'auto'): AppPlanData[] {
-    return this.getAllPlans().filter(plan => 
-      plan.colorPalette?.scheme === scheme
+  getPlansByColorTheme(theme: 'light' | 'dark'): AppPlanData[] {
+    return this.getAllPlans().filter(plan =>
+      plan.colorPalette?.theme === theme
     );
   }
 }

@@ -1,26 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { createPortal } from 'react-dom'
-import Button from '@ux/button'
-import XThickIcon from '@ux/icon/x-thick'
-import ColorPaletteWidget from '../widgets/ColorPaletteWidget'
-import ToolHeader from './ToolHeader'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import { getContrastColor } from '@/utils/color'
+import ColorPaletteWidget from '../widgets/ColorPaletteWidget'
+import ColorPaletteModal from './ColorPaletteModal'
+import { useState, useEffect } from 'react'
 import { Palette } from 'lucide-react'
-
-/**
- * Color info structure from cssColor tool result
- */
-interface ColorInfo {
-  id: string
-  name: string
-  hex: string
-  role?: string
-  foreground?: string
-}
+import ToolHeader from './ToolHeader'
 
 /**
  * Custom renderer for cssColor tool
@@ -40,24 +25,6 @@ export default function CssColorToolRenderer({
 }: DefaultToolRendererProps) {
   const [isVisible, setIsVisible] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-  const [activeTab, setActiveTab] = useState<'colors' | 'details'>('colors')
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (isModalOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = 'unset'
-    }
-
-    return () => {
-      document.body.style.overflow = 'unset'
-    }
-  }, [isModalOpen])
 
   // Extract palette name and mode from result or input
   const isGenerateOnly = input?.generateOnly === true
@@ -99,163 +66,35 @@ export default function CssColorToolRenderer({
     return null
   }
 
-  // Extract colors from result
-  const colors: ColorInfo[] = []
+  // Extract palette from result
+  let palette: any = null
+  let theme: 'light' | 'dark' | undefined = undefined
+
   if (toolStatus === 'completed' && result && typeof result === 'object') {
     const resultObj = result as any
 
-    // Check for displayColors (applied mode)
-    if (resultObj.displayColors && Array.isArray(resultObj.displayColors)) {
-      colors.push(...resultObj.displayColors)
-    }
-    // Check for widget.colors (generate-only mode)
-    else if (resultObj.widget?.colors && Array.isArray(resultObj.widget.colors)) {
-      colors.push(...resultObj.widget.colors)
-    }
-    // Fallback to palette object
-    else if (resultObj.palette) {
-      const palette = resultObj.palette
-      if (palette.base) colors.push({ id: 'base', name: 'Base', hex: palette.base, role: 'Base text and background color' })
-      if (palette.primary) colors.push({ id: 'primary', name: 'Primary', hex: palette.primary, role: 'Main brand color' })
-      if (palette.secondary) colors.push({ id: 'secondary', name: 'Secondary', hex: palette.secondary, role: 'Supporting elements' })
-      if (palette.accent) colors.push({ id: 'accent', name: 'Accent', hex: palette.accent, role: 'Highlights' })
-      if (palette.background) colors.push({ id: 'background', name: 'Background', hex: palette.background, role: 'Base layer' })
-      if (palette.success) colors.push({ id: 'success', name: 'Success', hex: palette.success, role: 'Success states' })
+    if (resultObj.palette) {
+      palette = resultObj.palette
+      theme = resultObj.theme
+    } else if (resultObj.widget?.palette) {
+      palette = resultObj.widget.palette
+      theme = resultObj.widget.theme
     }
   }
 
-  const hasColors = colors.length > 0
+  // Check if palette has the new complete format (background + foreground)
+  // If not, it's from the old version - return null to hide component
+  if (palette && (!palette.background || !palette.foreground)) {
+    return null
+  }
+
+  const hasPalette = palette !== null
   const showDetailsTab = !isGenerateOnly && toolStatus === 'completed'
 
   // Get the full message output for details tab
   const fullMessage = result && typeof result === 'object' && (result as any).message
     ? (result as any).message
     : ''
-
-  const modalContent = mounted && (
-    <AnimatePresence>
-      {isModalOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            className="fixed inset-0 z-50 bg-intents-ux-boxHighContrastOverlay-backgroundColor"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onClick={() => setIsModalOpen(false)}
-          />
-
-          {/* Modal Container */}
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            onClick={() => setIsModalOpen(false)}
-          >
-            <motion.div
-              className="max-w-2xl w-full bg-intents-ux-box-backgroundColor p-6 rounded-lg shadow-xl relative max-h-[80vh] flex flex-col"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: 'tween', duration: 0.2, ease: 'easeOut' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Close button */}
-              <div className="absolute top-3 right-3">
-                <Button
-                  onClick={() => setIsModalOpen(false)}
-                  icon={<XThickIcon className="h-6 w-6" />}
-                  design="control"
-                  aria-label="Close"
-                  size="sm"
-                />
-              </div>
-
-              {/* Title */}
-              <h2 className="text-xl font-bold mb-4">{paletteName}</h2>
-
-              {/* Tabs */}
-              {showDetailsTab && (
-                <div className="flex gap-4 border-b mb-4">
-                  <button
-                    onClick={() => setActiveTab('colors')}
-                    className={`pb-2 px-1 text-sm font-medium transition-colors ${
-                      activeTab === 'colors'
-                        ? 'border-b-2 border-blue-500 text-blue-600'
-                        : 'text-muted-foreground hover:text-foreground/70'
-                    }`}
-                  >
-                    Colors
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('details')}
-                    className={`pb-2 px-1 text-sm font-medium transition-colors ${
-                      activeTab === 'details'
-                        ? 'border-b-2'
-                        : 'text-muted-foreground hover:text-foreground/70'
-                    }`}
-                  >
-                    Details
-                  </button>
-                </div>
-              )}
-
-              {/* Content area with scroll */}
-              <div className="flex-1 overflow-y-auto">
-                {activeTab === 'colors' ? (
-                  /* Color grid */
-                  <div className="space-y-3">
-                    {colors.map((color, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center gap-4 p-3 rounded-lg border"
-                        style={{ backgroundColor: `${color.hex}15` }}
-                      >
-                        {/* Color swatch with foreground text */}
-                        <div className="flex flex-col gap-2">
-                          <div
-                            className="w-24 h-24 rounded-md shadow-sm flex items-center justify-center text-sm font-mono font-semibold"
-                            style={{
-                              backgroundColor: color.hex,
-                              color: color.foreground || getContrastColor(color.hex)
-                            }}
-                          >
-                            Aa Text
-                          </div>
-                        </div>
-
-                        {/* Color info */}
-                        <div className="flex-1">
-                          <div className="font-semibold text-base">{color.name}</div>
-                          <div className="text-sm text-muted-foreground font-mono mt-1">
-                            Background: {color.hex}
-                          </div>
-                          {color.foreground && (
-                            <div className="text-sm text-muted-foreground font-mono">
-                              Foreground: {color.foreground}
-                            </div>
-                          )}
-                          {color.role && (
-                            <div className="text-xs text-muted-foreground/70 mt-2">{color.role}</div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  /* Details tab */
-                  <div className="prose prose-sm max-w-none">
-                    <pre className="text-xs whitespace-pre-wrap bg-gray-50 p-4 rounded border">
-                      {fullMessage}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        </>
-      )}
-    </AnimatePresence>
-  )
 
   const displayName = toolStatus === 'completed'
     ? `Color Scheme: ${paletteName} ${mode}`
@@ -267,21 +106,29 @@ export default function CssColorToolRenderer({
         icon={<Palette className="w-4 h-4" />}
         displayName={displayName}
         toolStatus={toolStatus}
-        hasDetails={hasColors}
+        hasDetails={hasPalette}
         onOpenModal={() => setIsModalOpen(true)}
       />
 
       {/* Display palette widget beneath when applied (not generate-only) */}
-      {toolStatus === 'completed' && !isGenerateOnly && hasColors && (
+      {toolStatus === 'completed' && !isGenerateOnly && hasPalette && (
         <div className="mt-4 mb-4">
           <ColorPaletteWidget
             name={paletteName}
-            colors={colors}
+            theme={theme}
+            palette={palette}
           />
         </div>
       )}
 
-      {mounted && createPortal(modalContent, document.body)}
+      <ColorPaletteModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={paletteName}
+        palette={palette}
+        showDetailsTab={showDetailsTab}
+        detailsContent={fullMessage}
+      />
     </div>
   )
 }

@@ -48,6 +48,40 @@ from-purple-400 to-pink-600
 border-gray-300 text-slate-900
 ```
 
+#### 🚫 NEVER Use Opacity Modifiers on Backgrounds with Text
+
+**CRITICAL ACCESSIBILITY RULE**: Opacity modifiers (`/50`, `/60`, `/70`, etc.) break carefully calculated contrast ratios and make text unreadable.
+
+```css
+/* ❌ NEVER DO THIS - breaks contrast and readability */
+bg-muted/50 text-muted-foreground
+bg-primary/60 text-primary-foreground
+bg-accent/70 text-accent-foreground
+
+/* ✅ ALWAYS USE FULL OPACITY backgrounds with text */
+bg-muted text-muted-foreground
+bg-primary text-primary-foreground
+bg-accent text-accent-foreground
+```
+
+**Why this matters:**
+
+- Color foregrounds are calculated to ensure WCAG AA contrast (4.5:1 ratio) against their FULL OPACITY backgrounds
+- When you add `/50` to a background, it becomes 50% transparent and blends with whatever is underneath
+- This changes the effective background color unpredictably, breaking the contrast ratio
+- Result: text becomes unreadable, especially in dark themes
+
+**When opacity is acceptable:**
+
+- Overlays without text: `bg-black/50` for image overlays (no text on top)
+- Decorative elements: `bg-accent/20` for subtle background patterns (no text)
+- Borders and dividers: `border-primary/30` (not affecting text contrast)
+
+**If you need a subtle background:**
+
+- Use the `muted` color instead of adding opacity to other colors
+- Or use `bg-muted/5` or `bg-muted/10` for very subtle tints (but never with text directly on it)
+
 #### 🎨 Color Scheme: Conditional usage
 
 - **ONLY** hand off to `color-scheme` agent when creating new pages/applications or when user explicitly requests color changes
