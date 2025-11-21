@@ -26,6 +26,9 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     # Restore dependencies
     CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
 
+    # sync package.json and package-lock.json, this needs to be done after npm install to ensure the lockfile is up to date
+    git add package.json package-lock.json && git commit -m "Sync upstream package.json $(date +%s)" || true
+
     # if .gitignore contains package-lock.json, then sed it out
     # remove the node_modules and npm-cache directories
     # reinstall the dependencies to resolve the bloated npm cache issue
@@ -44,8 +47,7 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
             echo "Syncing missing file: $file"
             mkdir -p "$(dirname "$file")"
             cp "$BASE_APP_DIR/$file" "$file"
-            git add "$file"
-            git commit -m "Sync upstream file: $file $(date +%s)" || true
+            git add "$file" && git commit -m "Sync upstream file: $file $(date +%s)" || true
         fi
     done
 
@@ -54,7 +56,7 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     cp -r "$BASE_APP_DIR/dev-tools/." "$CUSTOMER_APP_DIR/dev-tools/"
 
     # if changes then commit them
-    git add dev-tools package.json && git commit -m "Sync upstream dev tools and package.json $(date +%s)" || true
+    git add dev-tools && git commit -m "Sync upstream dev tools $(date +%s)" || true
 
     echo "Completed: Existing application detected, restored all tracked files and dependencies"
 fi
