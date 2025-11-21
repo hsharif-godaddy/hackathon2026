@@ -14,6 +14,7 @@ import {
   type SessionStateManager
 } from '@airo/ai-lib'
 import {
+  createApiAgent,
   createDevelopAgent,
   createDatabaseAgent,
   createColorSchemeAgent,
@@ -21,6 +22,7 @@ import {
   createInitialAgent,
   createCommerceAgent,
   createExampleAgent,
+  ApiAgent,
   DevelopAgent,
   DatabaseAgent,
   ColorSchemeAgent,
@@ -68,9 +70,11 @@ export async function createUnifiedAgentFactory(options?: {
   const marketingConfig = await createMarketingAgent()
   const initialConfig = await createInitialAgent(stateManager)
 
-  // Conditionally create database agent based on feature flag
+  // Conditionally create database and api agents based on feature flag
+  // API agent requires database agent (reads schemas), so both use same flag
   const isDatabaseAgentEnabled = featureAgents.isEnabled('database')
   const databaseConfig = isDatabaseAgentEnabled ? await createDatabaseAgent() : null
+  const apiConfig = isDatabaseAgentEnabled ? await createApiAgent() : null
 
   // Conditionally create commerce agent based on feature flag
   const isCommerceAgentEnabled = featureAgents.isEnabled('commerce')
@@ -140,12 +144,32 @@ export async function createUnifiedAgentFactory(options?: {
     databaseConfig.stopAfterTools = ['handoff', 'suggestedResponse']
   }
 
+  // Conditionally configure api agent if enabled
+  if (apiConfig) {
+    const apiHandoffTool = createHandoffTool({
+      sourceAgentId: 'api',
+      validTargets: (apiConfig.handoffs || []).map(h => h.agentName),
+      stateManager
+    })
+
+    apiConfig.tools = {
+      ...(apiConfig.tools || {}),
+      handoff: apiHandoffTool
+    }
+    // Stop execution after handoff or suggestedResponse tool is called
+    apiConfig.stopAfterTools = ['handoff', 'suggestedResponse']
+  }
+
   // Build agent definitions conditionally
   const agentDefinitions: Record<string, AgentConfig> = {
     initial: initialConfig,
     develop: developConfig,
     'color-scheme': colorSchemeConfig,
     marketing: marketingConfig,
+  }
+
+  if (apiConfig) {
+    agentDefinitions.api = apiConfig
   }
 
   if (databaseConfig) {
@@ -182,6 +206,11 @@ export async function createUnifiedAgentFactory(options?: {
 export const aiLibAgentFactories = {
   develop: async (_context?: EnhancedAgentContext) => {
     const agent = new DevelopAgent()
+    await agent.initialize()
+    return agent.getAgent()
+  },
+  api: async (_context?: EnhancedAgentContext) => {
+    const agent = new ApiAgent()
     await agent.initialize()
     return agent.getAgent()
   },
@@ -227,10 +256,18 @@ export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
   develop: {
     id: 'develop',
     name: 'AI Developer',
-    description: 'An AI developer agent that helps build web applications, websites, and digital solutions. Specializes in API generation from database schemas with flexible CRUD operations, full-stack development, and modern web technologies.',
+    description: 'An AI developer agent that helps build web applications, websites, and digital solutions. Specializes in full-stack development and modern web technologies. Orchestrates handoffs to specialized agents for database and API work.',
     version: '2.0.0',
-    tags: ['developer', 'coding', 'web-development', 'ai-assistant', 'api-generation', 'database', 'crud', 'backend'],
-    toolGroups: ['core', 'system', 'backend', 'media', 'debug'],
+    tags: ['developer', 'coding', 'web-development', 'ai-assistant', 'frontend', 'orchestration'],
+    toolGroups: ['core', 'system', 'media', 'debug'],
+  },
+  api: {
+    id: 'api',
+    name: 'API Generator',
+    description: 'Specialized agent for generating HTTP API routes using vite-plugin-api-routes. Reads database schemas and creates properly-typed RESTful endpoints with Express-style handlers.',
+    version: '1.0.0',
+    tags: ['api', 'backend', 'http', 'rest', 'endpoints', 'routes'],
+    toolGroups: ['core', 'system', 'backend'],
   },
   example: {
     id: 'example',
@@ -243,9 +280,9 @@ export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
   database: {
     id: 'database',
     name: 'Database Manager',
-    description: 'Specialized agent for MySQL database operations, user management, and backend server coordination.',
+    description: 'Specialized agent for MySQL database schema design and deployment using Drizzle ORM. Focuses exclusively on schema definition and deployment, not API generation.',
     version: '2.0.0',
-    tags: ['database', 'mysql', 'backend', 'api'],
+    tags: ['database', 'mysql', 'schema', 'drizzle', 'backend'],
     toolGroups: ['core', 'system', 'backend'],
   },
   'color-scheme': {
@@ -293,8 +330,9 @@ export async function createAgent(agentId: string, context?: EnhancedAgentContex
 export function getAvailableAgentIds(): string[] {
   const allAgentIds = Object.keys(aiLibAgentFactories)
   return allAgentIds.filter(agentId => {
-    // Filter out database agent if not enabled
-    if (agentId === 'database') {
+    // Filter out api and database agents if database feature not enabled
+    // API agent requires database agent (reads schemas), so both use same flag
+    if (agentId === 'api' || agentId === 'database') {
       return featureAgents.isEnabled('database')
     }
     // Filter out commerce agent if not enabled

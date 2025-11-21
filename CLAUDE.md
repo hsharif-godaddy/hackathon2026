@@ -181,18 +181,20 @@ Key points:
 - Base class: `agents/src/base/base-agent.ts`
 - Agent registry: `agents/src/registry/agent-registry.ts`
 - Agent factory: `agents/src/agents/ai-lib-agents/index.ts`
-- Available agents: DevelopAgent, DatabaseAgent (conditional), ColorSchemeAgent, CommerceAgent (conditional), ExampleAgent
+- Available agents: DevelopAgent, ApiAgent (conditional), DatabaseAgent (conditional), ColorSchemeAgent, CommerceAgent (conditional), ExampleAgent
 - Prompts stored in: `agents/src/prompts/`
 
 **Conditional Agent Enablement:**
 
 The system supports environment-based agent enablement through feature flags in `agents/src/services/features.ts`:
 
-- **DatabaseAgent**: Disabled by default, requires explicit opt-in
+- **DatabaseAgent + ApiAgent**: Disabled by default, requires explicit opt-in
   - Enable with `ENABLE_DATABASE_AGENT=true` in `agents/.env`
   - Use in local development environments only
-  - Specializes in MySQL database operations and backend coordination
-  - When disabled, the agent will not be registered or available through the WebSocket server
+  - **Both agents are enabled/disabled together** (API agent reads database schemas)
+  - DatabaseAgent: Specializes in MySQL database schema design using Drizzle ORM
+  - ApiAgent: Specializes in HTTP API route generation using vite-plugin-api-routes
+  - When disabled, neither agent will be registered or available through the WebSocket server
 
 - **CommerceAgent**: Disabled by default, requires explicit opt-in
   - Enable with `ENABLE_COMMERCE_AGENT=true` in `agents/.env`
@@ -206,7 +208,7 @@ The system supports environment-based agent enablement through feature flags in 
 import { agents } from "./services/features.js";
 
 if (agents.isEnabled("database")) {
-  // Database agent is available
+  // Both Database and API agents are available
 }
 
 if (agents.isEnabled("commerce")) {
@@ -215,13 +217,6 @@ if (agents.isEnabled("commerce")) {
 ```
 
 ### Database Architecture
-
-**Agents Service (SQLite):**
-
-- File: `agents/database.sqlite`
-- Auto-created on first run
-- Tables: `apps`, `running_processes`, `token_usage`, `conversations`
-- Direct database access via better-sqlite3
 
 **App Service (MySQL via Prisma):**
 

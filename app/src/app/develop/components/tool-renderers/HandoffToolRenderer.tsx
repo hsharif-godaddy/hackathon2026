@@ -12,6 +12,7 @@ import { Bot } from 'lucide-react'
  */
 function getAgentDisplayName(agentId: string): string {
   const nameMap: Record<string, string> = {
+    'api': 'Backend Designer',
     'develop': 'Developer',
     'database': 'Database Designer',
     'color-scheme': 'Color Scheme Designer',

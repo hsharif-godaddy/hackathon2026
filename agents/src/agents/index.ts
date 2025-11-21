@@ -1,4 +1,5 @@
 // Export new AgentFactory-based agents
+export * from './api-agent.js';
 export * from './color-scheme-agent.js';
 export * from './commerce-agent.js';
 export * from './database-agent.js';
@@ -9,6 +10,12 @@ export * from './marketing-agent.js';
 export * from './initial-agent.js';
 
 // Export agent factory creation functions
+export {
+  createApiAgent,
+  createApiAgentFactory,
+  ApiAgent
+} from './api-agent.js';
+
 export {
   createColorSchemeAgent,
   createColorSchemeAgentFactory,

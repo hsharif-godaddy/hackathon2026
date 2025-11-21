@@ -189,21 +189,19 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getAgentFile('develop', 'core.md'))
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     .file(paths.getSharedFile('filesystem.md'))
-    .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules
+    .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules (always available agents)
+
+  // Conditionally load backend agent handoff rules if database agent is enabled
+  if (featureAgents.isEnabled('database')) {
+    promptBuilder.file(paths.getAgentFile('develop', 'handoff-backend.md'))
+  }
 
   // Conditionally load commerce handoff rules if commerce agent is enabled
   if (featureAgents.isEnabled('commerce')) {
     promptBuilder.file(paths.getAgentFile('develop', 'handoff-commerce.md'))
   }
 
-  // Conditionally load database documentation if database agent is enabled
-  if (featureAgents.isEnabled('database')) {
-    promptBuilder.file(paths.getAgentFile('develop', 'database.md'))
-  }
-
   promptBuilder
-    // OAuth instructions early for high salience - must call tools, not just promise actions
-    .file(paths.getAgentFile('develop', 'api.md'))
     .file(paths.getAgentFile('develop', 'email.md'))
     .file(paths.getAgentFile('develop', 'deployment.md'))
     .file(paths.getAgentFile('develop', 'decision-matrix.md'))
@@ -280,6 +278,10 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     // Handoff configuration (conditionally include database and commerce agents based on feature flags)
     handoffs: [
       {
+        agentName: 'api',
+        description: 'HTTP API route generation using vite-plugin-api-routes - creates RESTful endpoints',
+      },
+      {
         agentName: 'color-scheme',
         description: 'Color palette design and visual branding for applications',
       },
@@ -289,7 +291,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       },
       ...(featureAgents.isEnabled('database') ? [{
         agentName: 'database',
-        description: 'MySQL database operations, schema design, and database integration',
+        description: 'MySQL database schema design and deployment using Drizzle ORM',
       }] : []),
       ...(featureAgents.isEnabled('commerce') ? [{
         agentName: 'commerce',

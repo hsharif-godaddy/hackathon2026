@@ -29,26 +29,36 @@ The complete prompt is assembled from these files in order:
 - Terminal Command Tool features
 - Server Management Tools
 
-### 3. `database.md` - Database Operations
+### 3. `handoff.md` - Agent Handoff Rules (Always Available)
 
-- Handoff procedures to Database Agent
-- Recognition patterns for database requests
-- Integration workflow examples
-- Important limitations and boundaries
+- Handoff procedures for always-available agents (Color Scheme, Marketing)
+- Recognition patterns for handoff triggers
+- Post-handoff behavior
+- Handoff loop prevention
 
-### 4. `api.md` - API Development Guidelines
+### 3a. `handoff-backend.md` - Backend Agent Handoffs (Conditional)
 
-- API creation patterns and best practices
-- Common operation combinations
-- Database prerequisites and workflows
+**Only loaded when `ENABLE_DATABASE_AGENT=true`**
 
-### 5. `approach.md` - Development Methodology
+- Database Agent handoff rules and examples
+- API Agent handoff rules and examples
+- Sequential backend workflow (Database → API → Frontend)
+- Post-handoff checks after Database Agent returns
+
+### 4. `approach.md` - Development Methodology
 
 - Planning and analysis approach
 - Implementation strategies
 - Code quality standards
 - User-centric development principles
 - Supported project types
+
+### 5. `decision-matrix.md` - Decision Logic
+
+- Tool usage decision trees
+- When to use specific tools vs handoffs
+- Context priority hierarchy
+- Conflict resolution rules
 
 ### 6. `planning.md` - Task Planning and Management
 
@@ -91,13 +101,29 @@ The modular prompt system is configured in `src/agents/develop-agent.ts` within 
 // Load all modular prompt sections in order
 promptBuilder
   .file(join(developDir, 'core.md'))
-  .file(join(developDir, 'tools.md'))
-  .file(join(developDir, 'database.md'))
-  .file(join(developDir, 'api.md'))
+  .file(join(sharedDir, 'communication.md')) // Shared section
+  .file(join(sharedDir, 'filesystem.md')) // Shared section
+  .file(join(developDir, 'handoff.md')); // Agent handoff rules (always available)
+
+// Conditionally load backend agent handoffs if database agent is enabled
+if (featureAgents.isEnabled('database')) {
+  promptBuilder.file(join(developDir, 'handoff-backend.md'));
+}
+
+// Conditionally load commerce handoffs if commerce agent is enabled
+if (featureAgents.isEnabled('commerce')) {
+  promptBuilder.file(join(developDir, 'handoff-commerce.md'));
+}
+
+promptBuilder
+  .file(join(developDir, 'email.md'))
+  .file(join(developDir, 'deployment.md'))
+  .file(join(developDir, 'decision-matrix.md'))
   .file(join(developDir, 'approach.md'))
   .file(join(developDir, 'visual-context.md'))
-  .file(join(sharedDir, 'communication.md')) // Shared section
+  .file(join(developDir, 'validation.md'))
   .file(join(developDir, 'design.md'))
+  .file(join(developDir, 'planning.md'))
   .file(join(sharedDir, 'security.md')); // Shared section
 ```
 
