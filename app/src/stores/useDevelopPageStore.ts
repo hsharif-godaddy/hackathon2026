@@ -47,6 +47,7 @@ interface DevelopPageStore {
   commitHistory: GitCommit[]
   isLoadingCommits: boolean
   isSelectingCommit: boolean
+  commitSelectionError: string | null
 
   // Options sheet UI
   openOptionsSheet: OptionsSheetTab | null
@@ -88,6 +89,7 @@ interface DevelopPageStore {
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
   setSelectedCommit: (commit: GitCommit | null) => void
+  setCommitSelectionError: (error: string | null) => void
   setOpenOptionsSheet: (sheet: OptionsSheetTab | null) => void
   setIsPreviewVisible: (visible: boolean) => void
 
@@ -161,6 +163,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     isLoadingCommits: false,
     openOptionsSheet: null,
     isSelectingCommit: false, // Track commit selection state
+    commitSelectionError: null,
 
     // Feedback modal state
     openFeedbackId: null,
@@ -199,6 +202,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),
     setSelectedCommit: (commit) => set((state) => { state.selectedCommit = commit }),
+    setCommitSelectionError: (error) => set((state) => { state.commitSelectionError = error }),
     setOpenOptionsSheet: (sheet) => set((state) => { state.openOptionsSheet = sheet }),
     setIsPreviewVisible: (visible) => set((state) => { state.isPreviewVisible = visible }),
 
@@ -388,6 +392,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.commitHistory = []
         state.hasUnsavedChanges = false
         state.openOptionsSheet = null
+        state.commitSelectionError = null
       })
     },
 
@@ -598,7 +603,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         return;
       }
 
-      set((state) => { state.isSelectingCommit = true });
+      set((state) => { 
+        state.isSelectingCommit = true;
+        state.commitSelectionError = null;
+      });
 
       try {
         if (commit === null) {
@@ -625,7 +633,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         logger.info('develop-store.commit-selection.checkout-success', { message: 'Checked out commit', commitHash: commit.hash.substring(0, 7) })
 
       } catch (error) {
-        logger.error('develop-store.commit-selection.error', { message: 'Error selecting commit', error: error instanceof Error ? error.message : String(error) })
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error('develop-store.commit-selection.error', { message: 'Error selecting commit', error: errorMessage })
+        set((state) => { 
+          state.commitSelectionError = errorMessage;
+        });
         throw error
       } finally {
         set((state) => { state.isSelectingCommit = false });

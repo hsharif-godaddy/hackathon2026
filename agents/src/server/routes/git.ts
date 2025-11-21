@@ -107,6 +107,53 @@ router.post('/apps/:id/git/checkout', async (req, res) => {
       currentBranch,
     });
 
+    // Check for uncommitted changes and auto-commit if needed
+    const statusResult = await gitTool.executeGitOperation(app.path, {
+      operation: 'status'
+    });
+
+    if (statusResult.success && statusResult.status && !statusResult.status.isClean) {
+      contextLogger.info('route.git.checkout.auto-committing', {
+        stagedFiles: statusResult.status.stagedFiles,
+        modifiedFiles: statusResult.status.modifiedFiles,
+        untrackedFiles: statusResult.status.untrackedFiles,
+      });
+
+      // Add all files
+      const addResult = await gitTool.executeGitOperation(app.path, {
+        operation: 'add',
+        files: ['.']
+      });
+
+      if (!addResult.success) {
+        contextLogger.error('route.git.checkout.add-failed', {
+          error: addResult.error,
+        });
+        return res.status(500).json({
+          error: 'Failed to stage changes before checkout',
+          details: addResult.error
+        });
+      }
+
+      // Commit with descriptive message
+      const commitResult = await gitTool.executeGitOperation(app.path, {
+        operation: 'commit',
+        message: `Auto-commit: Save changes before switching to version ${commitHash.substring(0, 7)}`
+      });
+
+      if (!commitResult.success) {
+        contextLogger.error('route.git.checkout.commit-failed', {
+          error: commitResult.error,
+        });
+        return res.status(500).json({
+          error: 'Failed to commit changes before checkout',
+          details: commitResult.error
+        });
+      }
+
+      contextLogger.info('route.git.checkout.auto-committed', {});
+    }
+
     // Create a temporary branch at the specified commit (not used currently)
     // const branchName = `temp-view-${commitHash.substring(0, 7)}`;
 

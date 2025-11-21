@@ -10,6 +10,7 @@ import { DeploymentStatus } from '@/lib/mgmt-airo/types'
 import Tag from '@ux/tag'
 import Spinner from '@ux/spinner'
 import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
+import Alert from '@ux/alert'
 import { logger } from '@/lib/request-context'
 import { useAppIdFromParams } from './utils'
 import { formatDate } from '@/utils/common'
@@ -27,7 +28,9 @@ export default function VersionHistory() {
   const {
     selectedCommit,
     selectCommit,
-    isSelectingCommit
+    isSelectingCommit,
+    commitSelectionError,
+    setCommitSelectionError
   } = useDevelopPageStore()
 
   const appId = useAppIdFromParams()
@@ -81,12 +84,19 @@ export default function VersionHistory() {
       return;
     }
 
-    if (selectedCommit?.hash === commit.hash) {
-      // Deselect current commit (return to latest)
-      await selectCommit(appId, null)
-    } else {
-      // Select new commit
-      await selectCommit(appId, commit)
+    try {
+      if (selectedCommit?.hash === commit.hash) {
+        // Deselect current commit (return to latest)
+        await selectCommit(appId, null)
+      } else {
+        // Select new commit
+        await selectCommit(appId, commit)
+      }
+    } catch (error) {
+      logger.error('version-history.commit.selection-error', { 
+        message: 'Failed to select commit', 
+        error: error instanceof Error ? error.message : String(error) 
+      });
     }
   }
 
@@ -143,6 +153,16 @@ export default function VersionHistory() {
           <div className="bg-intents-ux-feedbackCritical-feedbackColor p-3 text-sm">
             Error: {error}
           </div>
+        )}
+
+        {commitSelectionError && (
+          <Alert 
+            emphasis="critical"
+            onClose={() => setCommitSelectionError(null)}
+          >
+            <div className="font-semibold">Failed to switch version</div>
+            <div className="text-sm mt-1">{commitSelectionError}</div>
+          </Alert>
         )}
 
         {loading && (

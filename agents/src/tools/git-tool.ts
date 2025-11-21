@@ -71,6 +71,9 @@ export interface GitToolResult {
     ahead?: number;
     behind?: number;
     isClean?: boolean;
+    stagedFiles?: number;
+    modifiedFiles?: number;
+    untrackedFiles?: number;
   };
   /** Diff output */
   diff?: string;
@@ -310,6 +313,9 @@ export class GitTool {
           ahead: status.ahead,
           behind: status.behind,
           isClean: status.isClean,
+          stagedFiles: status.stagedFiles,
+          modifiedFiles: status.modifiedFiles,
+          untrackedFiles: status.untrackedFiles,
         },
         output: this.formatStatus(status),
       };
