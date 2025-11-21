@@ -291,26 +291,38 @@ When implementing commerce checkout, you need to create these files:
 2. **`src/lib/commerce-client.ts`** - Frontend helper (copy from template)
 3. **Frontend pages** - Product listing, checkout, success pages
 
-**Commerce Credentials:** The POST.ts file reads OAuth credentials from `/alloc/config.json`, which is automatically populated by the platform when OAuth setup completes. The config.json structure includes:
+**Commerce Credentials:** The POST.ts file reads OAuth credentials from `/alloc/config.json` and `GODADDY_API_BASE_URL` from environment variables. The config.json structure includes:
 
 ```json
 {
-  "DATABASE": { ... },
-  "COMMERCE": {
-    "CLIENT_ID": "...",
-    "CLIENT_SECRET": "...",
-    "STORE_ID": "...",
-    "GODADDY_API_BASE_URL": "https://api.dev-godaddy.com",
-    "CHECKOUT_API_BASE_URL": "https://checkout.commerce.api.dev-godaddy.com",
-    "CHANNEL_ID": "web"
+  "GODADDY_OAUTH_CLIENT_ID": {
+    "SYSTEM_MANAGED": true,
+    "VALUE": "..."
+  },
+  "GODADDY_OAUTH_CLIENT_SECRET": {
+    "SYSTEM_MANAGED": true,
+    "VALUE": "..."
+  },
+  "STORE_ID": {
+    "SYSTEM_MANAGED": true,
+    "VALUE": "..."
+  },
+  "CHANNEL_ID": {
+    "SYSTEM_MANAGED": true,
+    "VALUE": "web"
   }
 }
 ```
 
+**Environment Variables (required):**
+
+- `GODADDY_API_BASE_URL`: GoDaddy API base URL (e.g., `https://api.dev-godaddy.com`)
+
 **IMPORTANT:**
 
 - DO NOT manually create or edit `/alloc/config.json` - the platform manages this file
-- Simply copy POST.ts from the template exactly as-is - it already knows how to read from config.json
+- Ensure `GODADDY_API_BASE_URL` is set in the environment
+- Simply copy POST.ts from the template exactly as-is - it already knows how to read from config.json and environment variables
 
 ## Security Best Practices
 

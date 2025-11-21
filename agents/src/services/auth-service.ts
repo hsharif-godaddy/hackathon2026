@@ -34,45 +34,62 @@ function isScopesSuperset(storedScopes: string, requestedScopes: string[]): bool
 }
 
 /**
- * Get OAuth configuration from Nomad alloc config or environment variables
+ * Get OAuth configuration from environment variables and Nomad alloc config
  * Called at runtime to support test environment variable changes
+ *
+ * Configuration sources:
+ * - GODADDY_API_BASE_URL: Always from process.env
+ * - AGENT_URL: Always from process.env
+ * - GODADDY_OAUTH_CLIENT_ID: From process.env (sandbox) or /alloc/config.json (deployed)
+ * - GODADDY_OAUTH_CLIENT_SECRET: From process.env (sandbox) or /alloc/config.json (deployed)
+ *
+ * @throws {Error} If required configuration values are missing
  */
-function getConfig() {
+function getConfig(): {
+  apiUrl: string;
+  authEndpoint: string;
+  tokenEndpoint: string;
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+} {
+  // Get values from environment variables (always for apiUrl/agentUrl, fallback for credentials)
+  const apiUrl = process.env.GODADDY_API_BASE_URL;
+  const agentUrl = process.env.AGENT_URL;
+
+  // Override OAuth credentials from nomad config if present, otherwise use env vars
   const nomadConfig = getNomadAllocConfig();
+  const clientId = nomadConfig?.GODADDY_OAUTH_CLIENT_ID?.VALUE || process.env.GODADDY_OAUTH_CLIENT_ID;
+  const clientSecret = nomadConfig?.GODADDY_OAUTH_CLIENT_SECRET?.VALUE || process.env.GODADDY_OAUTH_CLIENT_SECRET;
 
-  if (nomadConfig) {
-    const apiUrl = nomadConfig.GODADDY_API_BASE_URL?.VALUE;
-    const clientId = nomadConfig.GODADDY_OAUTH_CLIENT_ID?.VALUE;
-    const clientSecret = nomadConfig.GODADDY_OAUTH_CLIENT_SECRET?.VALUE;
-    const agentUrl = nomadConfig.AGENT_URL?.VALUE;
+  // Validate all required values are present
+  const missing = [];
+  if (!apiUrl) missing.push('GODADDY_API_BASE_URL');
+  if (!agentUrl) missing.push('AGENT_URL');
+  if (!clientId) missing.push('GODADDY_OAUTH_CLIENT_ID');
+  if (!clientSecret) missing.push('GODADDY_OAUTH_CLIENT_SECRET');
 
-    if (apiUrl && clientId && clientSecret && agentUrl) {
-      return {
-        apiUrl,
-        authEndpoint: '/v2/oauth2/authorize',
-        tokenEndpoint: '/v2/oauth2/token',
-        clientId,
-        clientSecret,
-        redirectUri: `${agentUrl.replace(/\/+$/, '')}/oauth/godaddy/callback`,
-      };
-    }
-    // If we have nomad config but it is incomplete, throw an error
-    logger.error('auth-service.nomad-config.incomplete', {
-      hasApiUrl: !!apiUrl,
-      hasClientId: !!clientId,
-      hasClientSecret: !!clientSecret,
-      hasAgentUrl: !!agentUrl,
+  if (missing.length > 0) {
+    logger.error('auth-service.config.missing-required-values', {
+      missing,
+      hasNomadConfig: !!nomadConfig,
     });
-    throw new Error('Incomplete configuration for auth service');
+    throw new Error(
+      `Missing required OAuth configuration: ${missing.join(', ')}. ` +
+      'Cannot perform authentication without these values.'
+    );
   }
 
+  // TypeScript now knows these values are defined
+  const redirectUri = `${agentUrl!.replace(/\/+$/, '')}/oauth/godaddy/callback`;
+
   return {
-    apiUrl: process.env.GODADDY_API_BASE_URL || 'https://api.dev-godaddy.com',
+    apiUrl: apiUrl!,
     authEndpoint: process.env.GODADDY_OAUTH_AUTH_ENDPOINT || '/v2/oauth2/authorize',
     tokenEndpoint: process.env.GODADDY_OAUTH_TOKEN_ENDPOINT || '/v2/oauth2/token',
-    clientId: process.env.GODADDY_OAUTH_CLIENT_ID || '',
-    clientSecret: process.env.GODADDY_OAUTH_CLIENT_SECRET || '',
-    redirectUri: process.env.OAUTH_REDIRECT_URI || 'http://localhost:4000/oauth/godaddy/callback',
+    clientId: clientId!,
+    clientSecret: clientSecret!,
+    redirectUri,
   };
 }
 
@@ -263,6 +280,10 @@ export class AuthService {
 
     logger.info('auth-service.get-token.auth-required', {
       appId,
+      authEndpoint: `${config.apiUrl}${config.authEndpoint}`,
+      scopes: OAuthScopes,
+      scopeKey,
+      redirectUri,
       // Don't log state value for security - it's sensitive PKCE flow state
     });
 

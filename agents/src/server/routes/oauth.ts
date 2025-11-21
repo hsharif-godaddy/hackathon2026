@@ -29,7 +29,7 @@ const router: IRouter = Router();
  * // GET /oauth/godaddy/callback?error=access_denied&error_description=User+denied
  * // Returns HTML error page with details
  */
-router.get('/oauth/godaddy/callback', async (req, res) => {
+router.get('/godaddy/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query;
 
   logger.info('oauth.callback.godaddy.received', {
