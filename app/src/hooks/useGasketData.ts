@@ -1,19 +1,12 @@
-import { gasketData } from '@gasket/data';
+import { gasketData, type GasketData } from '@gasket/data';
 
 declare global {
   interface Window {
-    gasketData?: {
-      intl?: {
-        locale: string;
-      },
-      switchboard?: {
-        [key: string]: boolean;
-      }
-    }
+    gasketData?: GasketData;
   }
 }
 
-export function useGasketData() {
+export function useGasketData(): GasketData {
   if (typeof window === 'undefined') {
     return {};
   }
@@ -22,5 +15,5 @@ export function useGasketData() {
     window.gasketData = gasketData();
   }
 
-  return window.gasketData;
+  return window.gasketData || {};
 }

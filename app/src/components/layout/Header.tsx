@@ -12,8 +12,10 @@ import AppPublish from '@/components/layout/AppPublish'
 import { generateClickEID } from '@/utils/instrumentation'
 import { HeaderProps } from './types'
 import { AiroLogo } from './AiroLogo';
+import { useTranslations } from '@/hooks/useTranslations';
 
 export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
+  const t = useTranslations();
   const { isAuthenticated, isAuthDisabled } = useAuthContext();
   const showAuthenticatedUI = isAuthenticated || isAuthDisabled;
 
@@ -37,7 +39,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
                 <AiroLogo className="-top-0.5 relative" design="dark" />
               </div>
             </Link>
-            <Tag emphasis="info">Beta</Tag>
+            <Tag emphasis="info">{t('builder_beta', undefined, 'beta')}</Tag>
           </div>
           <Box orientation="horizontal" gap="md">
             {actions && actions}

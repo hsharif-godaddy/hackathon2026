@@ -1,26 +1,30 @@
+'use client';
+
 import { useState, useEffect, useRef } from "react";
+import { useTranslations } from '@/hooks/useTranslations';
 import { useQuery } from '@tanstack/react-query';
+import TextInput from "@ux/text-input";
+import Button from "@ux/button";
+import text from "@ux/text";
+import Box from "@ux/box";
+import SiblingSet from "@ux/sibling-set";
+import Skeleton from "@ux/skeleton";
+import WindowNewIcon from '@ux/icon/window-new';
 import { DomainType, DomainStatus } from "@/lib/control-plane/types";
 import { DomainMode } from "@/lib/mgmt-airo/types";
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import { getDomainErrorMessage } from '@/utils/domain-validation';
-import SiblingSet from "@ux/sibling-set";
-import Skeleton from "@ux/skeleton";
-import WindowNewIcon from '@ux/icon/window-new';
 import { useAppNameUpdate } from '@/hooks/useAppName';
 import { generateClickEID } from '@/utils/instrumentation';
 import { useSiteStore } from "@/stores/useSiteStore";
 import { useAppIdFromParams } from "@/app/develop/components/utils";
 import { logger } from "@/lib/request-context";
 import BigCard from "@/components/layout/BigCard";
-import TextInput from "@ux/text-input";
-import Button from "@ux/button";
-import text from "@ux/text";
-import Box from "@ux/box";
 import { Status } from "@/app/develop/components/types";
 import { hasBeenPublished } from '@/utils/site';
 
 export default function ProjectDomain() {
+  const t = useTranslations();
   const currentAppId = useAppIdFromParams();
 
   const site = useSiteStore((state) => {
@@ -166,20 +170,20 @@ export default function ProjectDomain() {
    */
   const getErrorMessage = () => {
     if (validationData && !validationData.available) {
-      return getDomainErrorMessage(validationData.errors);
+      return getDomainErrorMessage(validationData.errors, t);
     }
     if (is409Error) {
-      return "This subdomain is unavailable. Please pick a different subdomain";
+      return t('builder_project_domain_error_unavailable');
     }
     if (updateAppNameMutation.error) {
       const errorData = (updateAppNameMutation.error as any)?.response || (updateAppNameMutation.error as any);
       if (errorData.validationErrors && Array.isArray(errorData.validationErrors)) {
-        return getDomainErrorMessage(errorData.validationErrors);
+        return getDomainErrorMessage(errorData.validationErrors, t);
       }
-      return errorData.error || "Failed to update subdomain. Please try again";
+      return errorData.error || t('builder_project_domain_error_update_failed');
     }
     if (hasValidationError) {
-      return "Unable to validate domain. Please try again or pick a different subdomain.";
+      return t('builder_project_domain_error_validation_failed');
     }
     return undefined;
   };
@@ -252,8 +256,8 @@ export default function ProjectDomain() {
 
   return (
     <BigCard
-      title="Project Domain"
-      description="Your project is currently accessible via the airoapp.ai subdomain below."
+      title={t('builder_project_domain_title')}
+      description={t('builder_project_domain_description')}
       status={getProjectDomainStatus()}
     >
       <Box orientation="vertical" gap="md" className="w-full" blockAlignChildren="start">
@@ -269,10 +273,10 @@ export default function ProjectDomain() {
             <TextInput
               className="flex-1"
               id="project-domain-name"
-              label="Name"
+              label={t('builder_project_domain_label')}
               value={currentProjectName}
               onChange={handleInputChange}
-              helpMessage="Must be 5 or more characters. Letters, numbers, and hyphens only. Must start and end with a letter or number."
+              helpMessage={t('builder_project_domain_help')}
               errorMessage={getErrorMessage()}
               disabled={isDomainPending || shouldPoll || updateAppNameMutation.isPending || disableProjectDomain}
             />
@@ -321,7 +325,10 @@ export default function ProjectDomain() {
               onClick={handleUpdateAppName}
               data-eid={generateClickEID(`settings/domains.project_domain.update`)}
               className="!hover:bg-transparent"
-              text={isValidatingDomain || (currentProjectName !== debouncedDomain) ? "Checking domain…" : "Save Changes"}
+              text={isValidatingDomain || (currentProjectName !== debouncedDomain) 
+                ? t('builder_project_domain_button_checking')
+                : t('builder_project_domain_button_save')
+            }
             />
             <Button
               disabled={updateAppNameMutation.isPending }
@@ -329,7 +336,7 @@ export default function ProjectDomain() {
               onClick={handleCancel}
               data-eid={generateClickEID(`settings/domains.project_domain.cancel`)}
               className="!hover:bg-transparent"
-              text="Cancel"
+              text={t('builder_project_domain_button_cancel')}
             />
           </SiblingSet>
         ) }

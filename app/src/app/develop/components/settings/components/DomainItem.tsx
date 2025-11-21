@@ -1,10 +1,5 @@
 import { useState } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
-import { generateClickEID } from '@/utils/instrumentation';
-import type { AppDomain } from '@/hooks/useAppDetails';
-import type { Domain } from '@/hooks/useDomainsQuery';
-import { DomainStatus } from '@/lib/control-plane/types';
-import DomainConnectConfirmation from './DomainConnectConfirmation';
+import { useTranslations } from '@/hooks/useTranslations';
 import CircleIcon from '@ux/icon/circle';
 import CircleHalfIcon from '@ux/icon/circle-half';
 import MenuIcon from '@ux/icon/menu';
@@ -14,9 +9,14 @@ import Spinner from '@ux/spinner';
 import OkIcon from '@ux/icon/ok';
 import Button from "@ux/button";
 import text from "@ux/text";
-import Box from "@ux/box";
 import Tag from "@ux/tag";
-
+import Box from "@ux/box";
+import { DomainStatus } from '@/lib/control-plane/types';
+import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
+import DomainConnectConfirmation from './DomainConnectConfirmation';
+import { generateClickEID } from '@/utils/instrumentation';
+import type { AppDomain } from '@/hooks/useAppDetails';
+import type { Domain } from '@/hooks/useDomainsQuery';
 
 function getDomainUrl(domain: string): string {
   if (!domain) return '';
@@ -28,30 +28,53 @@ function getDomainUrl(domain: string): string {
 
 /**
  * Get status icon and color based on domain connection status
+ *
+ * @param appDomain - App domain object with status information
+ * @param intl - IntlShape instance for translations
+ * @returns Object with icon component, CSS class, and translated label
  */
-function getDomainStatusInfo(appDomain?: AppDomain) {
+function getDomainStatusInfo(appDomain: AppDomain | undefined, t: ReturnType<typeof useTranslations>) {
   if (!appDomain) {
-    return { icon: CircleIcon, className: 'text-intents-ux-text-subtle', label: 'Not connected' };
+    return { 
+      icon: CircleIcon, 
+      className: 'text-intents-ux-text-subtle', 
+      label: t('builder_domain_status_not_connected') 
+    };
   }
 
-  // Check if domain is fully active
   if (appDomain.status === DomainStatus.ACTIVE) {
-    return { icon: OkIcon, className: 'text-intents-ux-text-success', label: 'Active' };
+    return { 
+      icon: OkIcon, 
+      className: 'text-intents-ux-text-success', 
+      label: t('builder_domain_status_active') 
+    };
   }
 
   // Check if domain is pending
   if (appDomain.status === DomainStatus.PENDING || !appDomain.status) {
-    return { icon: CircleHalfIcon, className: 'text-intents-ux-text-info', label: 'Pending' };
+    return { 
+      icon: CircleHalfIcon, 
+      className: 'text-intents-ux-text-info', 
+      label: t('builder_domain_status_pending') 
+    };
   }
 
   // Error state
   if (appDomain.status === DomainStatus.FAILED) {
-    return { icon: CircleIcon, className: 'text-intents-ux-text-destructive', label: 'Error' };
+    return { 
+      icon: CircleIcon, 
+      className: 'text-intents-ux-text-destructive', 
+      label: t('builder_domain_status_error') 
+    };
   }
 
   // Deleting state
   if (appDomain.status === DomainStatus.DELETING) {
-    return { icon: Spinner, className: 'text-intents-ux-text-subtle', label: 'Deleting' };
+    return { 
+      icon: Spinner, 
+      className: 'text-intents-ux-text-subtle', 
+      label: t('builder_domain_status_deleting') 
+    };
   }
 
   return { icon: CircleIcon, className: 'text-intents-ux-text-subtle', label: appDomain.status };
@@ -74,11 +97,12 @@ export default function DomainItem({
   disableConnect?: boolean;
   isCustomDomain?: boolean;
 }) {
+  const t = useTranslations();
   const [open, setOpen] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const domainName = domain.domain || domain.name || '';
   const isConnected = !!appDomain;
-  const statusInfo = getDomainStatusInfo(appDomain);
+  const statusInfo = getDomainStatusInfo(appDomain, t);
   const StatusIcon = statusInfo.icon;
 
   const handleConnectClick = () => {
@@ -166,7 +190,7 @@ export default function DomainItem({
                   onClick={handleConnectClick}
                   disabled={isLoading || disableConnect}
                   data-eid={generateClickEID(`settings/domains.custom_domain.connect`)}
-                  text="Connect Domain"
+                  text={t('builder_domain_button_connect')}
                 />
               ) : (
                 <Button
@@ -175,7 +199,7 @@ export default function DomainItem({
                   onClick={handleDisconnect}
                   disabled={isLoading}
                   data-eid={generateClickEID(`settings/domains.custom_domain.disconnect`)}
-                  text="Disconnect Domain"
+                  text={t('builder_domain_button_disconnect')}
                 />
               )}
               {!isCustomDomain && (
@@ -184,7 +208,7 @@ export default function DomainItem({
                   design="tertiary"
                   onClick={() => setOpen(false)}
                   data-eid={generateClickEID(`settings/domains.custom_domain.manage`)}
-                  text="Manage Domain"
+                  text={t('builder_domain_button_manage')}
                   href={`https://dcc.godaddy.com/control/dnsmanagement?domainName=${domainName}`}
                   external
                 />

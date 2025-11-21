@@ -28,6 +28,23 @@ export default gasket.actions.getNextConfig({
       config.externals.push({
         './jwt-service': 'commonjs ./jwt-service',
       });
+      
+      // Add fallbacks for Node.js modules that Gasket plugins try to import
+      // These modules are not available in the browser, so we provide empty fallbacks
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        crypto: false,
+        path: false,
+        os: false,
+        stream: false,
+        http: false,
+        https: false,
+        zlib: false,
+        async_hooks: false,
+      };
     }
     return config;
   },

@@ -1,3 +1,4 @@
+import { useTranslations } from '@/hooks/useTranslations';
 import { generateClickEID } from '@/utils/instrumentation';
 import Button from "@ux/button";
 import SiblingSet from '@ux/sibling-set';
@@ -26,25 +27,27 @@ export default function DomainConnectConfirmation({
   onConfirm,
   onCancel,
 }: DomainConnectConfirmationProps) {
+  const t = useTranslations();
+  
   return (
     <div className="flex flex-col gap-3 p-2">
         <text.h3 as="title" size={1}>
-            Are you sure you want to connect this domain?
+            {t('builder_domain_connect_confirmation_title')}
         </text.h3>
         <text.span as="paragraph">
-            By proceeding, this will automatically update the DNS for this domain. Anything already using this domain will stop working.
+            {t('builder_domain_connect_confirmation_description')}
         </text.span>
       <SiblingSet gap="md">
         <Button
           design="primary"
           onClick={onConfirm}
-          text="Yes, Continue"
+          text={t('builder_custom_domain_modal_button_continue')}
           data-eid={generateClickEID(`settings/domains.connect_confirm.continue`)}
         />
         <Button
           design="secondary"
           onClick={onCancel}
-          text="Cancel"
+          text={t('builder_custom_domain_modal_button_cancel')}
           data-eid={generateClickEID(`settings/domains.connect_confirm.cancel`)}
         />
       </SiblingSet>

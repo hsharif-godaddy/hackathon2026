@@ -1,4 +1,5 @@
 import { DomainValidationError, type DomainValidationErrorObject } from '@/lib/mgmt-airo/types';
+import type { useTranslations } from '@/hooks/useTranslations';
 
 /**
  * Get user-friendly error message for domain validation errors
@@ -8,10 +9,12 @@ import { DomainValidationError, type DomainValidationErrorObject } from '@/lib/m
  * Works for both project domains and custom domains.
  * 
  * @param errors - Array of DomainValidationErrorObject from mgmt-airo API
+ * @param t - Translation function from useTranslations hook
  * @returns User-friendly error message
  * 
  * @example
  * ```typescript
+ * const t = useTranslations();
  * const errors = [{
  *   code: DomainValidationError.DOMAIN_RESERVED,
  *   message: "Project prefix 'admin' is reserved",
@@ -19,48 +22,46 @@ import { DomainValidationError, type DomainValidationErrorObject } from '@/lib/m
  *   value: 'admin'
  * }];
  * 
- * const message = getDomainErrorMessage(errors);
+ * const message = getDomainErrorMessage(errors, t);
  * // Returns: "This subdomain is reserved and cannot be used."
  * ```
  */
-export function getDomainErrorMessage(errors?: DomainValidationErrorObject[]): string {
-    const defaultMessage = 'Domain is not available. Please enter a different domain.';
+export function getDomainErrorMessage(errors: DomainValidationErrorObject[] | undefined, t: ReturnType<typeof useTranslations>): string {
+  const defaultMessage = t('builder_domain_error_default');
   if (!errors || errors.length === 0) {
     return defaultMessage;
   }
 
-  // Use the first error to determine the message
   const firstError = errors[0];
   const errorCode = firstError.code;
 
   switch (errorCode) {
     // Project domain errors
     case DomainValidationError.DOMAIN_FORMAT_INVALID:
-      return 'Subdomain must use only letters, numbers, and hyphens. Must start and end with a letter or number (minimum 5 characters).';
+      return t('builder_domain_error_format_invalid');
     case DomainValidationError.DOMAIN_LABEL_INVALID:
-      return 'Invalid subdomain. Must start and end with a letter or number, and cannot contain consecutive hyphens.';
+      return t('builder_domain_error_label_invalid');
     case DomainValidationError.DOMAIN_TOO_SHORT:
-      return 'Subdomain must be at least 5 characters long.';
+      return t('builder_domain_error_too_short');
     case DomainValidationError.DOMAIN_RESERVED:
-      return 'This subdomain is reserved and cannot be used.';
+      return t('builder_domain_error_reserved');
     case DomainValidationError.DOMAIN_PROFANITY:
-      return 'This subdomain contains inappropriate language. Please choose a different one.';
+      return t('builder_domain_error_profanity');
     
     // Custom domain errors
     case DomainValidationError.DOMAIN_FQDN_INVALID:
-      return 'Invalid domain format. Please enter a valid fully qualified domain name.';
+      return t('builder_domain_error_fqdn_invalid');
     case DomainValidationError.DOMAIN_SUBDOMAIN_INVALID:
-      return 'Invalid subdomain format in the domain name.';
+      return t('builder_domain_error_subdomain_invalid');
     case DomainValidationError.DOMAIN_LABEL_TOO_LONG:
-      return 'Domain label exceeds the maximum length of 63 characters.';
+      return t('builder_domain_error_label_too_long');
     
     // Common errors
     case DomainValidationError.DOMAIN_NOT_UNIQUE:
     case DomainValidationError.DOMAIN_ALREADY_OWNED:
-      return 'This subdomain is already taken. Please choose a different one.';
+      return t('builder_domain_error_already_taken');
     
     default:
-      // Fallback to API-provided message if available
       return firstError.message || defaultMessage;
   }
 }

@@ -1,0 +1,68 @@
+/* -- GENERATED FILE - DO NOT EDIT -- */
+import { makeIntlManager } from '@gasket/intl';
+
+const manifest = {
+  defaultLocaleFilePath: 'locales',
+  staticLocaleFilePaths: [
+    'locales'
+  ],
+  defaultLocale: 'en-US',
+  locales: [
+    'en-US',
+    'en-AE',
+    'en-AU',
+    'en-CA',
+    'en-IE',
+    'en-IL',
+    'en-IN',
+    'en-MY',
+    'en-NZ',
+    'en-PH',
+    'en-PK',
+    'en-SG',
+    'en-UK',
+    'en-ZA',
+    'da-DK',
+    'de-DE',
+    'de-AT',
+    'de-CH',
+    'el-GR',
+    'es-ES',
+    'es-MX',
+    'es-US',
+    'es-AR',
+    'es-CL',
+    'es-CO',
+    'es-PE',
+    'es-VE',
+    'fi-FI',
+    'fr-CA',
+    'fr-FR',
+    'fr-BE',
+    'fr-CH',
+    'hi-IN',
+    'id-ID',
+    'it-IT',
+    'it-CH',
+    'ja-JP',
+    'ko-KR',
+    'nb-NO',
+    'nl-NL',
+    'nl-BE',
+    'pl-PL',
+    'pt-BR',
+    'pt-PT',
+    'sv-SE',
+    'th-TH',
+    'tr-TR',
+    'uk-UA',
+    'vi-VN',
+    'zh-CN',
+    'zh-TW',
+    'zh-SG'
+  ],
+  localesMap: {},
+  imports: {}
+};
+
+export default makeIntlManager(manifest);

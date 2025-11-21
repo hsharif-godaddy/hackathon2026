@@ -1,4 +1,5 @@
 import type { AppDomain } from '@/hooks/useAppDetails';
+import { useTranslations } from '@/hooks/useTranslations';
 import { getDnsRecords } from '@/utils/domain';
 import Spinner from '@ux/spinner';
 import text from "@ux/text";
@@ -13,6 +14,7 @@ import Box from "@ux/box";
  * @param domainDetails - Pending domain details with anycast IP
  */
 export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain }) {
+  const t = useTranslations();
   const { fqdn, anycastIp } = domainDetails;
 
   // Show provisioning message if anycast IP is not ready yet
@@ -25,11 +27,10 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
       >
         <Box orientation="horizontal" inlineAlignChildren="center" gap="sm">
           <Spinner size="sm" />
-          <text.p className="font-semibold">Provisioning CDN</text.p>
+          <text.p className="font-semibold">{t('builder_domain_dns_provisioning')}</text.p>
         </Box>
         <text.p className="text-sm">
-          Your domain is being provisioned. DNS configuration instructions will appear here once the CDN is ready.
-          This typically takes a few moments.
+          {t('builder_domain_dns_provisioning_description')}
         </text.p>
       </Box>
     );
@@ -45,9 +46,7 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
       className="rounded-lg"
     >
       <text.p className="text-sm">
-        To finish connecting your domain, you&apos;ll need to make some updates to your DNS records.
-        Your DNS provider (typically where your domain is registered) can help if you get stuck.
-        DNS records to add/modify with your provider:
+        {t('builder_domain_dns_instructions')}
       </text.p>
 
       {/* DNS Records Table */}
@@ -57,10 +56,10 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
           gap="md"
           className="font-semibold text-sm border-b border-intents-ux-border-subtle pb-2"
         >
-          <div className="w-20">Type</div>
-          <div className="w-24">Name</div>
-          <div className="flex-1">Value</div>
-          <div className="w-20">TTL</div>
+          <div className="w-20">{t('builder_domain_dns_table_type')}</div>
+          <div className="w-24">{t('builder_domain_dns_table_name')}</div>
+          <div className="flex-1">{t('builder_domain_dns_table_value')}</div>
+          <div className="w-20">{t('builder_domain_dns_table_ttl')}</div>
         </Box>
 
         {/* A Record */}

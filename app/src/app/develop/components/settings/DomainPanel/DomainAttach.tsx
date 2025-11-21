@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useTranslations } from '@/hooks/useTranslations';
 import TextInput from "@ux/text-input";
 import Skeleton from "@ux/skeleton";
 import Button from "@ux/button";
@@ -29,15 +30,19 @@ import { validateDomain, sanitizeDomainInput, isCustomerDomain } from '@/utils/d
 
 /**
  * Get error message from unknown error type
+ *
+ * @param error - The error object to extract message from
+ * @param t - Translation function from useTranslations hook
+ * @returns Error message string
  */
-function getErrorMessage(error: unknown): string {
+function getErrorMessage(error: unknown, t: ReturnType<typeof useTranslations>): string {
   if (error instanceof Error) {
     return error.message
   }
   if (typeof error === 'string') {
     return error
   }
-  return 'Failed to fetch domains'
+  return t('builder_custom_domain_error_fetch_failed')
 }
 
 /**
@@ -47,6 +52,7 @@ function getErrorMessage(error: unknown): string {
  * including DNS configuration instructions for pending domains.
  */
 export default function DomainAttach() {
+  const t = useTranslations();
   const currentAppId = useAppIdFromParams()
   const { isAuthenticated, isLoading: authLoading, getUserInfo } = useAuth();
   const [customDomain, setCustomDomain] = useState(null);
@@ -184,17 +190,17 @@ export default function DomainAttach() {
    */
   function getValidationErrorMessage(): string | undefined {
     if (validationData && !validationData.available) {
-      return getDomainErrorMessage(validationData.errors);
+      return getDomainErrorMessage(validationData.errors, t);
     }
     if (modifyDomainsMutation.error) {
       const errorData = (modifyDomainsMutation.error as any)?.response || (modifyDomainsMutation.error as any);
       if (errorData.validationErrors && Array.isArray(errorData.validationErrors)) {
-        return getDomainErrorMessage(errorData.validationErrors);
+        return getDomainErrorMessage(errorData.validationErrors, t);
       }
-      return errorData.error || "Failed to add custom domain. Please try again";
+      return errorData.error || t('builder_custom_domain_error_add_failed');
     }
     if (hasValidationError) {
-      return "Unable to validate domain. Please try again or pick a different domain.";
+      return t('builder_custom_domain_error_validation_failed');
     }
     return undefined;
   }
@@ -255,7 +261,7 @@ export default function DomainAttach() {
     const validation = validateDomain(customDomain);
 
     if (!validation.isValid) {
-      setCustomDomainError(validation.error || 'Invalid domain');
+      setCustomDomainError(validation.error || t('builder_custom_domain_error_invalid'));
       return;
     }
 
@@ -340,12 +346,12 @@ export default function DomainAttach() {
 
   return (
     <BigCard
-      title="Custom Domain"
-      description="You can also allow visitors to access your project with your own custom domain, or by purchasing a new one or connecting one you own."
+      title={t('builder_custom_domain_title')}
+      description={t('builder_custom_domain_description')}
       status={getCustomDomainStatus()}
       button={(
         <Button
-          text="Buy a New Domain"
+          text={t('builder_custom_domain_button_buy')}
           design="primary"
           data-eid={generateClickEID(`settings/domains.custom_domain.buy_new_domain`)}
           href={`https://www.${getRootDomain()}.com/domains`}
@@ -370,11 +376,11 @@ export default function DomainAttach() {
         )}
         {error && (
           <text.p className="text-intents-ux-text-destructive">
-            {getErrorMessage(error)}
+            {getErrorMessage(error, t)} 
           </text.p>
         )}
         {!isLoading && !error && domains.length === 0 && (
-          <text.p>No domains found.</text.p>
+          <text.p>{t('builder_custom_domain_no_domains')}</text.p>
         )}
         {!isLoading && !error && customerDomainEntries.map((entry, index) => {
           const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
@@ -426,12 +432,13 @@ export default function DomainAttach() {
         gap="sm"
         inlineAlignChildren="start"
       >
+        <text.span as="label" text={t('builder_custom_domain_input_label')} />
         <TextInput
           className="w-full"
           id="custom-domain-slug"
-          label="Or tell us the domain you would like to use for your website and we'll help you connect it."
+          label={null}
           onChange={handleCustomDomainChange}
-          helpMessage="e.g. mydomain.com"
+          helpMessage={t('builder_custom_domain_input_help')}
           value={customDomain}
           disabled={shouldDisableAddingDomain}
           errorMessage={getValidationErrorMessage()}
@@ -440,7 +447,10 @@ export default function DomainAttach() {
       { customDomain && (
         <div>
           <Button
-            text={isValidatingDomain || (customDomain !== debouncedDomain) ? "Checking domain…" : "Add Custom Domain"}
+            text={isValidatingDomain || (customDomain !== debouncedDomain) 
+              ? t('builder_custom_domain_button_checking')
+              : t('builder_custom_domain_button_add')
+            }
             design="primary"
             onClick={() => setShowAddConfirmation(true)}
             disabled={shouldDisableAddingDomain ||
@@ -455,24 +465,23 @@ export default function DomainAttach() {
           />
         </div>
       ) }
-
         {showAddConfirmation && (
-          <Modal onClose={() => setShowAddConfirmation(false)} title='Are you sure you want to add this domain?' centered>
+          <Modal onClose={() => setShowAddConfirmation(false)} title={t('builder_custom_domain_modal_title')} centered>
             <Box className='text-center max-w-2xl mx-auto' gap='md' inlineAlignChildren='center'>
                <text.span as="paragraph">
-                If your domain is hosted at GoDaddy, we&rsquo;ll update the DNS automatically. If it&rsquo;s hosted elsewhere, you&rsquo;ll need to update the DNS manually. Connecting this domain to this site will disconnect it from any site it&rsquo;s currently attached to.
+                {t('builder_custom_domain_modal_description')}
                </text.span>
              <SiblingSet gap="md" className="justify-center">
                <Button
                  design="primary"
                  onClick={handleConfirmAdd}
-                 text="Yes, Continue"
+                 text={t('builder_custom_domain_modal_button_continue')}
                  data-eid={generateClickEID(`settings/domains.connect_confirm.continue`)}
                />
                <Button
                  design="secondary"
                  onClick={() => setShowAddConfirmation(false)}
-                 text="Cancel"
+                 text={t('builder_custom_domain_modal_button_cancel')}
                  data-eid={generateClickEID(`settings/domains.connect_confirm.cancel`)}
                />
              </SiblingSet>

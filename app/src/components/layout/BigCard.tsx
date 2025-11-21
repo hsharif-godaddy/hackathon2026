@@ -2,6 +2,7 @@ import { StatusValue } from "@/app/develop/components/types";
 import Box from "@ux/box";
 import text from "@ux/text";
 import CircleFilledIcon from '@ux/icon/circle-filled';
+import { useTranslations } from "@/hooks/useTranslations";
 
 interface BigCardProps {
   children: React.ReactNode
@@ -39,6 +40,7 @@ export default function BigCard({ children, title, description, status, button }
 }
 
 function BigCardStatus({ status }: { status: StatusValue }) {
+  const t = useTranslations();
   const { type, label } = status;
   return (
     <Box
@@ -48,7 +50,7 @@ function BigCardStatus({ status }: { status: StatusValue }) {
       blockAlignChildren="start"
       className={getStatusColor(type)}
     >
-      <text.p>{label}</text.p>
+      <text.p>{t(`builder_status_${label?.toLowerCase() || 'ready'}`)}</text.p>
       <CircleFilledIcon className="size-6" />
     </Box>
   )

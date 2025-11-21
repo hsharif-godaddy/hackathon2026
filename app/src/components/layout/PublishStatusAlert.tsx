@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback } from 'react';
+import { FormattedMessage } from 'react-intl';
+import { useTranslations } from '@/hooks/useTranslations';
 import Alert from '@ux/alert';
 import Button from '@ux/button';
 import text from '@ux/text';
@@ -28,6 +30,7 @@ import { hasBeenPublished } from '@/utils/site';
  * The alert can be dismissed by the user and does not persist across refreshes.
  */
 export default function PublishStatusAlert() {
+  const t = useTranslations();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const getPublishState = useDevelopPageStore((state) => state.getPublishState);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
@@ -148,22 +151,22 @@ export default function PublishStatusAlert() {
           actions={
             <Button
               design="primary"
-              text='Setup Domain'
-              data-eid={generateClickEID(`publish-alert.success.custom_domain`)}
+              as='external'
+              text={t('builder_publish_success_button_view')}
+              data-eid={generateClickEID(`publish-alert.success.view_now`)}
               className="!hover:bg-transparent"
               href={`/develop/${currentAppId}?tab=settings&settings=domain`}
             />
           }
         >
-          <text.h3 as='title' size={1}>Published Successfully!</text.h3>
+          <text.h3 as='title' size={1}>{t('builder_publish_success_title')}</text.h3>
           <text.p>
-            Your app is now live at: <Button
-              design='inline'
-              target='_blank'
-              rel='noopener noreferrer'
-              href={fqdn ? (fqdn.includes('https://') ? fqdn : `https://${fqdn}`) : '#'}
-              text={fqdn}
-              data-eid={generateClickEID(`publish-alert.success.view_now`)}
+            <FormattedMessage
+              id='builder_publish_success_message'
+              values={{
+                fqdn: fqdn.replace('https://', ''),
+                strong: (chunks) => <text.strong>{chunks}</text.strong>
+              }}
             />
           </text.p>
         </Alert>
@@ -177,9 +180,9 @@ export default function PublishStatusAlert() {
         <Alert
           emphasis='info'
         >
-          <div className='font-semibold'>Publishing in Progress</div>
+          <div className='font-semibold'>{t('builder_publish_progress_title')}</div>
           <div className='text-sm mt-1'>
-            Your app is being published. This may take a few moments...
+            {t('builder_publish_progress_message')}
           </div>
         </Alert>
       </div>
@@ -195,18 +198,18 @@ export default function PublishStatusAlert() {
           onClose={handleDismiss}
           actions={
             <div className='flex gap-2'>
-              <Button design='secondary' onClick={handleTryAgain}>Try Again</Button>
-              <Button design='primary' onClick={handleFixBuildError}>Fix this error</Button>
+              <Button design='secondary' onClick={handleTryAgain}>{t('builder_publish_error_button_try_again')}</Button>
+              <Button design='primary' onClick={handleFixBuildError}>{t('builder_publish_error_button_fix')}</Button>
             </div>
           }
         >
-          <div className='font-semibold'>Build Failed</div>
+          <div className='font-semibold'>{t('builder_publish_build_failed_title')}</div>
           <div className='text-sm mt-1'>
             {buildErrorDetails.error}
           </div>
           {buildErrorDetails.exitCode && (
             <text.p size={0} emphasis='passive' className='mt-1'>
-              Exit code: {buildErrorDetails.exitCode}
+              {t('builder_publish_build_failed_exit_code', { exitCode: buildErrorDetails.exitCode })}
             </text.p>
           )}
         </Alert>
@@ -221,10 +224,10 @@ export default function PublishStatusAlert() {
         <Alert
           emphasis='critical'
           onClose={handleDismiss}
-          actions={<Button design='primary' onClick={handleTryAgain}>Try Again</Button>}
+          actions={<Button design='primary' onClick={handleTryAgain}>{t('builder_publish_error_button_try_again')}</Button>}
         >
-          <div className='font-semibold'>Publish Failed</div>
-          <div className='text-sm mt-1'>We failed to publish your app. Please try again.</div>
+          <div className='font-semibold'>{t('builder_publish_failed_title')}</div>
+          <div className='text-sm mt-1'>{t('builder_publish_failed_message')}</div>
         </Alert>
       </div>
     );

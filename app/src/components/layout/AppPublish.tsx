@@ -2,6 +2,8 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
+import { useIntl } from 'react-intl';
+import { useTranslations } from '@/hooks/useTranslations';
 import Button from '@ux/button';
 import text from '@ux/text';
 import Collapsible from '@ux/collapsible';
@@ -22,26 +24,9 @@ import { ChatTab } from '@/app/develop/components/types';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import Tag from '@ux/tag';
 
-/**
- * Format date like 'September 13, 2025 at 3:45 PM'
- * 
- * @param date - Date to format
- * @returns Formatted date string with time
- */
-function formatDate(date: Date): string {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  });
-  
-  return formatter.format(date);
-}
-
 export default function AppPublish({ location }: { location?: string }) {
+  const intl = useIntl();
+  const t = useTranslations();
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
@@ -233,12 +218,21 @@ export default function AppPublish({ location }: { location?: string }) {
   const unpublishedCount = lastDeployedIndex === -1 ? gitCommits.length : lastDeployedIndex;
   const lastDeployedDate = lastDeployedCommit?.updatedAt ? new Date(lastDeployedCommit.updatedAt) : null;
 
+  const formattedDate = lastDeployedDate ? intl.formatDate(lastDeployedDate, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  }) : '';
+
   const changesTitle = (
     <>
-      <text.h3 size={1}>Changes</text.h3>
+      <text.h3 size={1}>{t('builder_publish_changes_title')}</text.h3>
       {lastDeployedDate && (
         <text.p size={0} emphasis='passive'>
-          {unpublishedCount} {unpublishedCount === 1 ? 'change' : 'changes'} since your last publish on {formatDate(lastDeployedDate)}
+          {t('builder_publish_changes_since', { count: unpublishedCount, date: formattedDate })}
         </text.p>
       )}
     </>
@@ -253,7 +247,10 @@ export default function AppPublish({ location }: { location?: string }) {
           data-partial='gradientAiro'
           data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
           disabled={isButtonDisabled}
-          text={isPublishing || isDeploymentInProgress ? 'Publishing...' : 'Publish'}
+          text={isPublishing || isDeploymentInProgress 
+            ? t('builder_publish_button_publishing')
+            : t('builder_publish_button')
+          }
         />
       </PopoverTrigger>
       <PopoverContent align='end' className='w-[400px] p-6'>
@@ -266,13 +263,16 @@ export default function AppPublish({ location }: { location?: string }) {
               <div className='mt-2 space-y-2'>
                 {unpublishedCount > 0 && (
                   <>
-                    <text.h5 size={0}>Unpublished</text.h5>
+                    <text.h5 size={0}>{t('builder_publish_unpublished_title')}</text.h5>
                     <div className='flex items-center gap-1'>
                       <Button design='inline' onClick={handleViewHistory}>
-                        {unpublishedCount} {unpublishedCount === 1 ? 'change' : 'changes'}
+                        {t('builder_publish_changes_count', { count: unpublishedCount })}
                       </Button>
                       <text.p>
-                        {deployments.length > 0 ? 'since currently published version' : 'will be included in your first publish'}
+                        {deployments.length > 0 
+                          ? t('builder_publish_since_current')
+                          : t('builder_publish_first_publish')
+                        }
                       </text.p>
                     </div>
                   </>
@@ -299,18 +299,27 @@ export default function AppPublish({ location }: { location?: string }) {
                         ? nextDeploymentCommitIndex - deploymentCommitIndex
                         : 1;
                                           
+                      const deploymentFormattedDate = intl.formatDate(deploymentDate, {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                      });
+
                       return (
                         <div key={deployment.id} className='space-y-1'>
                           <div className='flex items-center justify-between'>
                             <text.h5 size={0} emphasis='passive'>
-                              {formatDate(deploymentDate)}
+                              {deploymentFormattedDate}
                             </text.h5>
                             {isMostRecent && (
-                              <Tag emphasis='info'>CURRENT</Tag>
+                              <Tag emphasis='info'>{t('builder_publish_current_tag')}</Tag>
                             )}
                           </div>
                           <text.p size={0} emphasis='passive'>
-                            {commitCount} {commitCount === 1 ? 'change' : 'changes'}
+                            {t('builder_publish_changes_count', { count: commitCount })}
                           </text.p>
                         </div>
                       );
@@ -329,11 +338,14 @@ export default function AppPublish({ location }: { location?: string }) {
             disabled={isButtonDisabled}
             onClick={handleDeploy}
           >
-            {isPublishing || isDeploymentInProgress ? 'Publishing...' : 'Publish'}
+            {isPublishing || isDeploymentInProgress 
+              ? t('builder_publish_button_publishing')
+              : t('builder_publish_button')
+            }
           </Button>
 
           <text.p emphasis='passive' size={0}>
-            Publishing your app is free while we&apos;re in beta. Enjoy building and sharing today — paid plans will be required once the full product launches.
+            {t('builder_publish_beta_message')}
           </text.p>
         </div>
       </PopoverContent>
