@@ -63,21 +63,34 @@ This tool is optimized for showing color options to users. It:
 BEST PRACTICES FOR VARIETY:
 1. For generic requests (e.g., "purple website"):
    - Generate 2 light palettes (white or near-white backgrounds)
-   - Generate 2 dark palettes (true black + soft dark backgrounds)
+   - Generate 2 dark palettes (mix of neutral dark + colored dark backgrounds)
 
 2. For "dark theme" requests:
-   - Generate 4 dark palettes with varied darkness levels
+   - Generate 4 dark palettes with DIVERSE background colors
+   - Mix neutral blacks/grays with COLORED dark backgrounds
+   - Example: dark purple (#1a0a1f), dark blue (#0a1420), dark brown (#1a0f0a), charcoal (#1a1a1a)
 
 3. For "light theme" requests:
-   - Generate 4 light palettes with varied brightness levels
+   - Generate 4 light palettes with varied brightness and subtle tints
 
-CREATING COLOR VARIETY:
-- Vary the primary color (lighter, darker, more/less saturated)
-- Use different background colors for each palette:
-  * Light: #FFFFFF (pure white), #FAFAFA (off-white), #F5F5F5 (very light gray)
-  * Dark: #0A0A0A (true black), #1A1A1A (soft dark), #2A2A2A (charcoal)
+CREATING DARK THEME VARIETY (IMPORTANT):
+- Dark backgrounds should be DIVERSE - not all black/gray!
+- Neutral dark: #0A0A0A (true black), #1A1A1A (soft dark), #2A2A2A (charcoal)
+- Colored dark: Very dark versions of primary color (lightness 5-12%)
+  * Dark purple: #1a0a1f, #31133a, #41194d
+  * Dark blue: #0a1420, #18304e, #2a5589
+  * Dark brown: #1a0f0a, #25150e, #4a2a1c
+  * Dark green: #0a1a0f, #0e2515, #003300
+  * Dark red: #1a0a0a, #4d1300, #200a0f
+- Match colored dark backgrounds with appropriate primary colors
+- Colored dark themes create richer, more unique aesthetics
+
+LIGHT THEME VARIETY:
+- Vary background colors for each palette:
+  * Pure: #FFFFFF (pure white)
+  * Tinted: #FAFAFA (off-white), #F5F5F5 (very light gray)
+  * Colored subtle: Very light tints of primary (lightness 90-98%)
 - Adjust primary colors to work well on their backgrounds
-- Each palette should feel distinctly different
 
 Each palette requires:
 - name: Descriptive name that indicates style (e.g., "Vibrant Purple Light", "Deep Purple Dark")

@@ -328,17 +328,56 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
   // Generate accent if not provided (complementary)
   const accent: string = input.accent || complementary(primary)
 
-  // Generate muted (desaturated, theme-aware)
-  // For dark backgrounds: darken and desaturate the primary
-  // For light backgrounds: lighten and desaturate the primary
-  const muted: string = input.muted || (
-    isDarkBackground(background)
-      ? adjustSaturation(darken(background, 5), -10)  // Slightly lighter than background, low saturation
-      : adjustSaturation(lighten(primary, 40), -30)   // Original light theme behavior
-  )
+  // Generate muted (desaturated, theme-aware with pattern variety)
+  // Multiple strategies create different visual styles
+  const muted: string = input.muted || ((): string => {
+    if (isDarkBackground(background)) {
+      // Dark theme strategies
+      const darkStrategies = [
+        () => adjustSaturation(darken(primary, 35), -40),  // Colored subtle (moderate saturation)
+        () => adjustSaturation(darken(primary, 30), -50),  // Colored muted (low saturation, more color visible)
+        () => adjustSaturation(darken(background, 5), -10), // Near-background subtle (minimal contrast)
+        () => adjustSaturation(darken(primary, 40), -30),  // Deep colored (darker, keeps more saturation)
+      ]
+      const strategy = darkStrategies[Math.floor(Math.random() * darkStrategies.length)]
+      return strategy?.() ?? ''
+    } else {
+      // Light theme strategies
+      const lightStrategies = [
+        () => adjustSaturation(lighten(primary, 40), -30),  // Classic light subtle
+        () => adjustSaturation(lighten(primary, 45), -40),  // Very light minimal color
+        () => adjustSaturation(lighten(primary, 35), -20),  // Soft colored (more visible color)
+        () => adjustSaturation(lighten(background, 3), -5), // Near-background subtle
+      ]
+      const strategy = lightStrategies[Math.floor(Math.random() * lightStrategies.length)]
+      return strategy?.() ?? ''
+    }
+  })()
 
-  // Generate border (very light version of foreground)
-  const border: string = input.border || lighten(foreground, 80)
+  // Generate border (theme-aware with pattern variety)
+  const border: string = input.border || ((): string => {
+    if (isDarkBackground(background)) {
+      // Dark theme border strategies
+      const darkBorderStrategies = [
+        () => adjustSaturation(lighten(background, 20), -10), // Subtle gray, lighter than background
+        () => adjustSaturation(lighten(primary, 50), -35),    // Subtle primary-colored border
+        () => lighten(muted, 10),                             // Based on muted color
+        () => adjustSaturation(lighten(primary, 45), -25),    // Medium colored border
+      ]
+      const strategy = darkBorderStrategies[Math.floor(Math.random() * darkBorderStrategies.length)]
+      return strategy?.() ?? ''
+    } else {
+      // Light theme border strategies
+      const lightBorderStrategies = [
+        () => adjustSaturation(darken(background, 15), -5),   // Subtle gray, darker than background
+        () => adjustSaturation(lighten(primary, 55), -35),    // Subtle primary-colored border
+        () => darken(muted, 8),                               // Based on muted color
+        () => adjustSaturation(lighten(primary, 50), -30),    // Medium colored border
+      ]
+      const strategy = lightBorderStrategies[Math.floor(Math.random() * lightBorderStrategies.length)]
+      return strategy?.() ?? ''
+    }
+  })()
 
   // Generate semantic colors if not provided
   const destructive: string = input.destructive || '#EF4444' // Red
