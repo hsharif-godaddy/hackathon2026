@@ -11,27 +11,20 @@ git config --global user.email "ai@airo.dev"
 if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     echo "Existing application detected, checking if restoration is needed"
 
-    # Only restore tracked files if the directory is essentially empty (only .git exists)
-    # This prevents discarding uncommitted changes
+    # Only restore tracked files if package.json doesn't exist
     cd "$CUSTOMER_APP_DIR"
-    FILE_COUNT=$(find . -mindepth 1 -maxdepth 1 ! -name '.git' | wc -l)
-    
-    if [ "$FILE_COUNT" -eq 0 ]; then
-        echo "Directory is empty (only .git exists), restoring all tracked files"
+    if [ ! -f "package.json" ]; then
+        echo "package.json not found, restoring all tracked files"
         git checkout .
     else
-        echo "Directory contains files, skipping checkout to preserve uncommitted changes"
+        echo "package.json exists, skipping checkout to preserve uncommitted changes"
     fi
+
+    # sync package.json from base app template
+    /management-scripts/sync-package-additions.js "$BASE_APP_DIR/package.json" "package.json"
 
     # Restore dependencies
     CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
-
-    # dotenv-local needs to be installed so that publishing works
-    # this can be removed once all apps are reloaded in dev and prod
-    if ! jq -e '.dependencies["dotenv-local"]' package.json > /dev/null 2>&1; then
-        DOTENV_VERSION=$(jq -r '.dependencies["dotenv-local"]' "$BASE_APP_DIR/package.json")
-        CI=true npm install "dotenv-local@$DOTENV_VERSION" --registry=https://registry.npmjs.org/ --no-fund --no-audit
-    fi
 
     # if .gitignore contains package-lock.json, then sed it out
     # remove the node_modules and npm-cache directories
@@ -47,8 +40,8 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     # we need to eventually create a public repo for dev-tools and sync them from there
     cp -r "$BASE_APP_DIR/dev-tools" "$CUSTOMER_APP_DIR/dev-tools"
 
-    # if changes then commit them (only dev-tools directory)
-    git add dev-tools && git commit -m "Sync upstream dev tools $(date +%s)" || true
+    # if changes then commit them
+    git add dev-tools package.json && git commit -m "Sync upstream dev tools and package.json $(date +%s)" || true
 
     echo "Completed: Existing application detected, restored all tracked files and dependencies"
 fi
