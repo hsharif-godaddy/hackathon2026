@@ -482,3 +482,78 @@ When an app is pre-provisioned, we perform the following steps:
 ### 10.3 When this runs
 
 All OpenFGA updates above happen during the **Pre-Provisioning / Client Registration** phase, immediately after the OAuth client is successfully created in the IdP for a specific `(C1, app_id, variant)` combination. From a product perspective, this should be treated as a single logical operation: if either the OAuth client creation or the OpenFGA tuple writes fail, the app installation / variant provisioning should be rolled back or retried.
+
+## 11. OAuth Architecture Q&A
+
+### 11.1 Exact Client Configuration
+
+We will create **one OAuth client per App Instance** (during the warm-up phase) with the following configuration:
+
+- **Redirect URIs** (using the pre-generated unique hostname for the warm instance):
+  - `https://<app-id>.airoapp.ai/oauth/godaddy/callback` (Production)
+  - `http://localhost:4000/oauth/godaddy/callback` (Local/Dev)
+- **Scopes**:
+  - `commerce.store:read`
+  - `commerce.product:read`
+  - `commerce.product:write`
+  - `commerce.onboarding-application:write`
+  - `commerce.onboarding-application:read`
+  - `apps.app-registry:read`
+  - `apps.app-registry:write`
+- **Allowed Grant Types**:
+  - `authorization_code` (for Agent/Admin interactive flows).
+  - `client_credentials` (for App Variant server-to-server flows).
+
+### 11.2 Exact OpenFGA Tuples
+
+This process is split into two phases: **Warm-up** (System) and **Claim** (User).
+
+**Phase A: Warm-up (Background System Process)**
+When the app instance and OAuth client are created in the pool:
+
+```fga
+oauth_client:<client_id>#owner @airo_application:<app_id>
+```
+
+**Phase B: Claim (User Action)**
+When a user (C1) selects "Create App" and claims a warm instance, linking it to their specific Store:
+
+```fga
+commerce_store:<store_id>#product_read @oauth_client:<client_id>
+```
+
+_(Future extensions may add `order_create` etc. at this stage.)_
+
+### 11.3 Reasoning for Multiple Clients
+
+- **Redirect URI Constraints**: Each app instance has a unique hostname (`<app-id>.airoapp.ai`). OAuth providers require strict, pre-registered allow-lists. A single master client cannot support thousands of dynamic, unique subdomains securely.
+- **Security Isolation**: If one app's credentials are compromised, only that specific app is affected.
+- **Lifecycle Management**: We can delete/revoke a single app's client without affecting any other customer on the platform.
+
+### 11.4 Reasoning for `client_credentials` Grant Type
+
+- **Server-to-Server Logic**: The Published App acts as a backend service performing operations (e.g., initializing checkout) on behalf of the merchant, triggered by anonymous shoppers.
+- **No Interactive User**: The shopper (C2) is not a system user and cannot perform an OAuth login.
+- **Security**: `client_id` and `client_secret` are securely injected into the App's server environment (never exposed to the browser), allowing secure, non-interactive authentication.
+
+### 11.5 User Story
+
+> "As a Business Owner, I want to click 'Create App' and have my store's products immediately available for sale in my new application, without needing to manually generate API keys or wait for technical provisioning."
+
+### 11.6 Description: Immediately Before Client Creation
+
+**The user is not involved.**
+This is a background system process. The user might be sleeping, browsing the marketing site, or not even exist in our system yet. The Control Plane is automatically monitoring the "Warm Pool" size and deciding to spin up a new, unassigned app instance to maintain buffer capacity.
+
+### 11.7 Description: Immediately After Client Creation
+
+**The client sits idle in the 'Warm Pool'.**
+The OAuth client is created and ready, mapped to a specific (but empty) App Instance. It waits in a "Ready" state. The user is still not involved until they eventually log in and click "Create App," at which point this pre-created client is instantly assigned to them.
+
+### 11.8 FUTURE WORK: View/Delete/Revoke Access
+
+- **Agent Access (Auth Code)**: Users can revoke the Agent's permission via their **GoDaddy Account Settings** (under "Connected Apps").
+- **App Access (Client Credentials)**: Users revoke this by **Deleting/Disconnecting the App** in the **Airo Dashboard**. This action triggers the system to:
+  1. Delete the OpenFGA `product_read` tuple (cutting off access).
+  2. (Optionally) Delete the OAuth Client or return the app to a dirty state for cleanup.
+- Timeline: This architecture and the necessary changes will be fully implemented and operational by the **end of Q1**.
