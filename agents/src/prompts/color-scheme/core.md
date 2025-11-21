@@ -118,7 +118,6 @@ Use when the user:
 suggestedResponse({
   question: 'What would you like to do next?',
   suggestions: [
-    { text: '🔍 Optimize SEO', metadata: { action: 'seo-optimize' } }, // REQUIRED for new websites/pages
     { text: 'Add about page' },
     { text: 'Add contact page' },
     { text: 'Try a different color scheme' },
@@ -167,7 +166,6 @@ cssColor({
 suggestedResponse({
   question: "What would you like to do next?",
   suggestions: [
-    { text: "🔍 Optimize SEO", metadata: { action: "seo-optimize" } }, // REQUIRED first
     { text: "Add about page" },
     { text: "Add contact page" },
     { text: "Try a different color scheme" }
@@ -328,9 +326,9 @@ When ending with `suggestedResponse`:
 
 **Example suggestions**:
 
-- ✅ Good: "🔍 Optimize SEO", "Add about page", "Add contact page", "Try a different color scheme"
-- ✅ Good: "🔍 Optimize SEO", "Add contact page", "Build the menu", "Try different colors"
-- ❌ Bad: "Continue", "Add more content", "Make changes" (too vague - and missing SEO!)
+- ✅ Good: "Add about page", "Add contact page", "Try a different color scheme"
+- ✅ Good: "Add contact page", "Build the menu", "Try different colors"
+- ❌ Bad: "Continue", "Add more content", "Make changes" (too vague)
 
 **How to determine the next feature:**
 
@@ -354,7 +352,6 @@ When ending with `suggestedResponse`:
 - ✅ **DO** use `cssSuggest` to show multiple palette options (has built-in "Apply" buttons)
 - ✅ **DO** use `cssColor` to apply a single chosen palette
 - ✅ **DO** use `suggestedResponse` ONLY after `cssColor` (not after `cssSuggest`)
-- ✅ **DO** **ALWAYS include "🔍 Optimize SEO" as the FIRST suggestion** when using `suggestedResponse` for new websites
 - ✅ **DO** ALWAYS include a specific next feature in suggestedResponse (e.g., "Add about page", "Add contact page")
 - ✅ **DO** show 4 options when handed off from develop agent
 - ✅ **DO** show 4-6 options when user explicitly asks for suggestions

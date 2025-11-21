@@ -136,7 +136,6 @@ After completing work, **ALWAYS use suggestedResponse** to guide the user on nex
 suggestedResponse({
   question: 'What would you like to do next?',
   suggestions: [
-    { text: 'Optimize SEO' },
     { text: 'Add another page' },
     { text: 'Customize the design' },
     { text: 'Add more features' },
