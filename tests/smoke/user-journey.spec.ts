@@ -86,13 +86,8 @@ test.describe('Complete User Journey', () => {
     await page.getByRole('button', { name: 'Sign In', exact: true }).click();
     console.log('✅ Signed in, should continue with building...');
     
-    // Wait for redirect to creation page first
-    await page.waitForURL('**/create/**', { timeout: 300000 });
-    console.log('✅ Redirected to creation page, now waiting for site creation...');
-    
-    // Wait for automatic redirect to develop page (happens when site is ready)
-    // The app automatically redirects from /create/[id] to /develop/[id] when complete
-    console.log('⏳ Waiting for site creation to complete and auto-redirect to develop page (up to 5 minutes)...');
+    // Wait for direct redirect to develop page (create route removed)
+    console.log('⏳ Waiting for site creation and redirect to develop page (up to 5 minutes)...');
     await page.waitForURL('**/develop/**', { timeout: 300000 });
     console.log('✅ Site creation completed - redirected to develop page');
     
