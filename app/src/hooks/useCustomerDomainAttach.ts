@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useDomainAttach } from './useDomainAttach';
-import { useAppDetails, AppDomain } from './useAppDetails';
+import { AppDomain } from './useAppDetails';
 import { DomainStatus, CdnStatus } from '@/lib/mgmt-airo/types';
 import { isCustomerDomain } from '@/utils/domain';
 import { logger } from '@/lib/request-context';
@@ -10,33 +10,41 @@ import { Domain } from '@/hooks/useDomainsQuery';
  * Custom hook to manage customer domain attachment flow
  *
  * Handles the automatic DNS configuration for GoDaddy-owned domains:
- * 1. Waits for anycastIp to be assigned (polling handled by parent component)
- * 2. Calls attach API to configure DNS
+ * 1. Monitors app details for customer domains with anycastIp assigned
+ * 2. Automatically calls attach API when anycastIp becomes available (once per domain)
  * 3. Cleans up tracking when domain becomes fully active (status='active' AND cdnStatus=3)
  *
+ * The hook attempts the attach mutation only once per domain. The mutation itself
+ * handles retries (3 attempts with exponential backoff). If the mutation fails after
+ * all retries, the hook will not attempt it again.
  *
- * @param appId - Application ID
+ * @param appDetails - App details including domain list (from parent's useAppDetails)
  * @param customerDomains - List of customer-owned domains
- * @param customerId - Customer ID for authentication
- * @returns Object with pending domain info and polling state
+ * @returns Object with pending domain info and attach state
  */
 export function useCustomerDomainAttach(
-  appId: string | null,
+  appDetails: { domains?: AppDomain[] } | undefined,
   customerDomains: Domain[],
-  customerId: string | undefined
 ) {
   const attachMutation = useDomainAttach();
   const hasCalledAttachRef = useRef<Set<string>>(new Set());
 
-  /**
-   * Find customer domain that is pending activation
-   *
-   * Returns the first customer domain that hasn't reached fully active state.
-   */
-  function findPendingCustomerDomain(domains: AppDomain[] | undefined): AppDomain | null {
-    if (!domains) return null;
+  logger.info('domain-attach.hook.called', {
+    message: 'useCustomerDomainAttach hook called',
+    appDetailsProvided: !!appDetails,
+    domainsCount: appDetails?.domains?.length || 0,
+    customerDomainsCount: customerDomains.length,
+  });
 
-    return domains.find((d) => {
+  /**
+   * Get the currently pending customer domain
+   *
+   * Finds the first customer domain that hasn't reached fully active state.
+   */
+  const pendingCustomerDomain = useMemo(() => {
+    if (!appDetails?.domains) return null;
+
+    return appDetails.domains.find((d) => {
       // Only check customer domains
       if (!isCustomerDomain(d.fqdn, customerDomains)) return false;
 
@@ -44,40 +52,44 @@ export function useCustomerDomainAttach(
       const isFullyActive = d.status === DomainStatus.ACTIVE && d.cdnStatus === CdnStatus.ACTIVE;
       return !isFullyActive;
     }) || null;
-  }
-
-  const {
-    data: appDetails,
-    isLoading,
-  } = useAppDetails(appId, {
-    enabled: !!appId,
-    includeCdn: true,
-  });
-
-  /**
-   * Get the currently pending customer domain
-   */
-  const pendingCustomerDomain = useMemo(
-    () => findPendingCustomerDomain(appDetails?.domains),
-    [appDetails?.domains, customerDomains] // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  }, [appDetails?.domains, customerDomains]);
 
   /**
    * Check if domain is ready for attach API call
    */
   const isReadyForAttach = useMemo(() => {
-    if (!pendingCustomerDomain || !customerId) return false;
+    logger.info('domain-attach.ready-check', {
+      message: 'Checking if domain is ready for attach',
+      pendingDomainFqdn: pendingCustomerDomain?.fqdn,
+      anycastIp: pendingCustomerDomain?.anycastIp,
+      isAttachPending: attachMutation.isPending,
+      alreadyCalled: pendingCustomerDomain ? hasCalledAttachRef.current.has(pendingCustomerDomain.fqdn) : false,
+      domainStatus: pendingCustomerDomain?.status,
+      cdnStatus: pendingCustomerDomain?.cdnStatus,
+    });
+
+    if (!pendingCustomerDomain) return false;
     if (!pendingCustomerDomain.anycastIp) return false;
     if (attachMutation.isPending) return false;
 
     // Check if we've already called attach for this domain
     return !hasCalledAttachRef.current.has(pendingCustomerDomain.fqdn);
-  }, [pendingCustomerDomain, customerId, attachMutation.isPending]);
+  }, [pendingCustomerDomain, attachMutation.isPending]);
 
   /**
    * Call attach API when domain is ready
+   *
+   * Attempts the mutation once per domain. The mutation handles its own retries.
+   * If it fails after all retries, we don't attempt again.
    */
   useEffect(() => {
+    logger.info('domain-attach.effect.triggered', {
+      message: 'Attach effect triggered',
+      isReadyForAttach,
+      hasPendingDomain: !!pendingCustomerDomain,
+      pendingDomainFqdn: pendingCustomerDomain?.fqdn,
+    });
+
     if (!isReadyForAttach || !pendingCustomerDomain) return;
 
     const domainName = pendingCustomerDomain.fqdn;
@@ -97,9 +109,13 @@ export function useCustomerDomainAttach(
     attachMutation.mutate(
       { domainName, ip: anycastIp },
       {
-        onError: () => {
-          // Remove from set on error to allow retry
-          hasCalledAttachRef.current.delete(domainName);
+        onError: (error) => {
+          // dont remove from set since it has reached a terminal failed state
+          logger.error('domain-attach.hook.mutation-failed', {
+            message: 'Domain attach mutation failed, will not retry from hook',
+            domainName,
+            error: error instanceof Error ? error.message : String(error),
+          });
         },
       }
     );
@@ -131,7 +147,6 @@ export function useCustomerDomainAttach(
     pendingCustomerDomain,
     isPolling: !!pendingCustomerDomain,
     isAttaching: attachMutation.isPending,
-    isLoading,
   };
 }
 

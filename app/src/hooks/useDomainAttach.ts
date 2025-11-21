@@ -64,7 +64,23 @@ export function useDomainAttach() {
 
       return data;
     },
-    onSuccess: () => {
+    retry: 3,
+    retryDelay: (attemptIndex) => 1000 * 2 ** attemptIndex,
+    onError: (error, variables, _context) => {
+      logger.error('domain-attach.mutation.error', {
+        message: 'Domain attach mutation failed after retries',
+        error: error instanceof Error ? error.message : String(error),
+        domainName: variables.domainName,
+        ip: variables.ip,
+      });
+    },
+    onSuccess: (_data, variables) => {
+      logger.info('domain-attach.mutation.success', {
+        message: 'Domain attached successfully',
+        domainName: variables.domainName,
+        ip: variables.ip,
+      });
+      
       // Invalidate domains query to refresh the list
       queryClient.invalidateQueries({ queryKey: ['domains'] });
     },

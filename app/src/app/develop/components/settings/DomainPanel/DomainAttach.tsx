@@ -89,10 +89,6 @@ export default function DomainAttach() {
   // Compute actual loading state - show loading until we've attempted to fetch
   const isLoading = authLoading || isLoadingDomains || (!isDomainsFetched && isAuthenticated);
 
-  // Handle customer domain attachment with automatic DNS configuration
-  // Hook manages auto-attach flow for GoDaddy-owned domains
-  useCustomerDomainAttach(currentAppId, domains, userInfo?.customerId);
-
   // Get app details for displaying domain list
   // Poll while any domain (customer or custom) is pending activation
   // This single polling instance handles both customer and custom domains
@@ -115,6 +111,10 @@ export default function DomainAttach() {
     },
     includeCdn: true,
   });
+
+  // Handle customer domain attachment with automatic DNS configuration
+  // Hook receives appDetails from above query and manages auto-attach flow for GoDaddy domains
+  useCustomerDomainAttach(appDetails, domains);
 
   /**
    * Find CUSTOM domains (not prefix domains, not customer domains) that are pending
