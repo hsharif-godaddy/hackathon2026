@@ -122,7 +122,7 @@ export class CommerceProductTool {
   constructor() {
     this.clientId = process.env.COMMERCE_CLIENT_ID || '';
     this.clientSecret = process.env.COMMERCE_CLIENT_SECRET || '';
-    this.apiBaseUrl = process.env.COMMERCE_API_BASE_URL || 'https://api.dev-godaddy.com';
+    this.apiBaseUrl = process.env.GODADDY_API_BASE_URL || 'https://api.dev-godaddy.com';
     this.storeId = process.env.COMMERCE_STORE_ID || '';
 
     if (!this.clientId || !this.clientSecret || !this.storeId) {

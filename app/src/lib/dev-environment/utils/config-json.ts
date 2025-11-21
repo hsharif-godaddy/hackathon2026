@@ -37,11 +37,34 @@ export interface DatabaseSecret {
 }
 
 /**
+ * Generic secret wrapper with SYSTEM_MANAGED flag
+ */
+export interface Secret<T> {
+	SYSTEM_MANAGED: boolean;
+	VALUE: T;
+}
+
+/**
  * Root configuration structure for app secrets
+ * Each field is wrapped with SYSTEM_MANAGED flag and VALUE
  */
 export interface AppSecretsConfig {
-	/** Database configuration */
+	/** Database configuration (required) */
 	DATABASE: DatabaseSecret;
+
+	/** GoDaddy OAuth credentials (used for both OAuth flows and Commerce API) */
+	GODADDY_OAUTH_CLIENT_ID?: Secret<string>;
+	GODADDY_OAUTH_CLIENT_SECRET?: Secret<string>;
+	GODADDY_OAUTH_ENCRYPTION_KEY?: Secret<string>;
+
+	/** Commerce-specific configuration */
+	STORE_ID?: Secret<string>;
+	API_BASE_URL?: Secret<string>;
+	CHANNEL_ID?: Secret<string>;
+
+	/** Customer/Shopper identifiers */
+	CUSTOMER_ID?: Secret<string>;
+	SHOPPER_ID?: Secret<string>;
 }
 
 /**

@@ -168,7 +168,7 @@ export class GoDaddyCommerce {
   private baseHeaders: Record<string, string>;
 
   constructor() {
-    this.baseUrl = process.env.GODADDY_BASE_URL;
+    this.baseUrl = process.env.GODADDY_API_BASE_URL;
     this.baseHeaders = {
       'Content-Type': 'application/json',
       'User-Agent': 'GoDaddy: Airo App Builder Agent',

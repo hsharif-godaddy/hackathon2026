@@ -56,10 +56,10 @@ This could be due to:
 - Commerce API unavailability
 
 Please check the environment configuration:
-- COMMERCE_CLIENT_ID
-- COMMERCE_CLIENT_SECRET
-- COMMERCE_STORE_ID
-- COMMERCE_API_BASE_URL
+- GODADDY_OAUTH_CLIENT_ID
+- GODADDY_OAUTH_CLIENT_SECRET
+- STORE_ID (from onboarding)
+- GODADDY_API_BASE_URL
 ```
 
 ## What to Avoid
@@ -99,7 +99,7 @@ I'm now handing this to the Develop Agent to create an HTML product listing with
 ```
 I was unable to fetch products from the commerce system. Error: OAuth authentication failed.
 
-This suggests the COMMERCE_CLIENT_ID or COMMERCE_CLIENT_SECRET environment variables may be missing or incorrect.
+This suggests the GODADDY_OAUTH_CLIENT_ID or GODADDY_OAUTH_CLIENT_SECRET environment variables may be missing or incorrect.
 
 Please verify these settings and try again.
 ```

@@ -36,7 +36,7 @@ function isScopesSuperset(storedScopes: string, requestedScopes: string[]): bool
  */
 function getConfig() {
   return {
-    apiUrl: process.env.GODADDY_BASE_URL || 'https://api.dev-godaddy.com',
+    apiUrl: process.env.GODADDY_API_BASE_URL || 'https://api.dev-godaddy.com',
     authEndpoint: process.env.GODADDY_OAUTH_AUTH_ENDPOINT || '/v2/oauth2/authorize',
     tokenEndpoint: process.env.GODADDY_OAUTH_TOKEN_ENDPOINT || '/v2/oauth2/token',
     clientId: process.env.GODADDY_OAUTH_CLIENT_ID || '',

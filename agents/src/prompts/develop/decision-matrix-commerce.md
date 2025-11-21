@@ -33,8 +33,7 @@
 
 **Commerce Agent will:**
 
-- **Create commerce credentials** configuration file (`src/config/commerce-credentials.ts`) on first request
-- Fetch product data (SKU, title, description, price, images) from GoDaddy Commerce API
+- Fetch product data (SKU, title, description, price, images) from GoDaddy Commerce API using OAuth
 - Return product data to you for HTML rendering
 - **You are responsible** for creating the product listing UI with checkout buttons
 
@@ -48,16 +47,15 @@
 
 When user requests checkout functionality, hand off to Commerce Agent. The Commerce Agent will:
 
-1. Create the credentials configuration file automatically
+1. Handle OAuth authentication if needed
 2. Fetch product data
 3. Hand back to you for UI implementation
 
 **CRITICAL RULES:**
 
-- DO NOT create `src/config/commerce-credentials.ts` yourself - the Commerce Agent handles this
-- DO NOT use `fileEdit` to create this file
+- Commerce credentials come from environment variables populated during app creation from OAuth flow
 - Always hand off to Commerce Agent for any commerce functionality
-- The Commerce Agent will set up credentials before fetching products
+- The backend POST.ts file reads credentials from environment variables
 
 **CRITICAL URL PATTERN - MUST USE PREVIEW URL:**
 

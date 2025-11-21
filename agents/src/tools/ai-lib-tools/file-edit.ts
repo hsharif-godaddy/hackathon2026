@@ -22,9 +22,7 @@ CRITICAL: For 'edit' mode, you MUST provide the EXACT text that you want replace
 - DO NOT use placeholders like "existing content" or "current value"
 - You MUST read the file, search it, or check the context to get the actual current content
 - The 'old' field must match the file contents you want to replace EXACTLY (whitespace, indentation, etc.)
-- If you don't know the current content, read the file first
-
-WARNING: DO NOT use this tool to create src/config/commerce-credentials.ts - use the createCommerceCredentials tool instead.`,
+- If you don't know the current content, read the file first`,
   z.object({
     path: z.string().describe('Path to the file to edit (relative to app root)'),
     mode: z.enum(['edit', 'rewrite', 'create']).optional().describe('Edit mode: edit for partial changes, rewrite for full replacement, create for new files (auto-detected if not specified)'),

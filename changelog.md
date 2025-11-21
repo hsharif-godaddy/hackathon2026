@@ -44,7 +44,7 @@
   - Added `CommerceAgent`: Specialized agent with minimal toolset (getProducts only) - no HTML rendering or file operations
   - Agent fetches product data and hands off to Develop Agent for HTML/UI implementation
   - Added commerce agent prompts emphasizing clear role boundaries and handoff protocols
-  - Environment variables: `COMMERCE_CLIENT_ID`, `COMMERCE_CLIENT_SECRET`, `COMMERCE_API_BASE_URL`, `COMMERCE_STORE_ID`
+  - Environment variables: `COMMERCE_CLIENT_ID`, `COMMERCE_CLIENT_SECRET`, `COMMERCE_STORE_ID`, `GODADDY_API_BASE_URL`
   - No caching - always fetches fresh data from commerce API
   - Complete separation of concerns: Commerce Agent handles data retrieval, Develop Agent handles rendering
   - Updated tool registry with commerce tools group and updated agent exports

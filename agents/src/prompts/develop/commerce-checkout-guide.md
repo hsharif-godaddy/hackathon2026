@@ -300,7 +300,7 @@ When implementing commerce checkout, you need to create these files:
     "CLIENT_ID": "...",
     "CLIENT_SECRET": "...",
     "STORE_ID": "...",
-    "API_BASE_URL": "https://api.dev-godaddy.com",
+    "GODADDY_API_BASE_URL": "https://api.dev-godaddy.com",
     "CHECKOUT_API_BASE_URL": "https://checkout.commerce.api.dev-godaddy.com",
     "CHANNEL_ID": "web"
   }
@@ -309,7 +309,6 @@ When implementing commerce checkout, you need to create these files:
 
 **IMPORTANT:**
 
-- DO NOT create `src/config/commerce-credentials.ts` - this file is obsolete
 - DO NOT manually create or edit `/alloc/config.json` - the platform manages this file
 - Simply copy POST.ts from the template exactly as-is - it already knows how to read from config.json
 

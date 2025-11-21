@@ -136,7 +136,8 @@ When the Control Plane warms up a new pre-provisioned App instance:
      ```ts
      function getConfig() {
        return {
-         apiUrl: process.env.GODADDY_BASE_URL || "https://api.dev-godaddy.com",
+         apiUrl:
+           process.env.GODADDY_API_BASE_URL || "https://api.dev-godaddy.com",
          authEndpoint:
            process.env.GODADDY_OAUTH_AUTH_ENDPOINT || "/v2/oauth2/authorize",
          tokenEndpoint:

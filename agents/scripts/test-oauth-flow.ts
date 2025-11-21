@@ -15,7 +15,7 @@
  *
  * Environment variables required:
  *   GODADDY_OAUTH_CLIENT_ID - OAuth client ID for testing
- *   GODADDY_BASE_URL - OAuth API base URL (default: https://api.dev-godaddy.com)
+ *   GODADDY_API_BASE_URL - OAuth API base URL (default: https://api.dev-godaddy.com)
  *   GODADDY_OAUTH_ENCRYPTION_KEY - Token encryption key (generate with: openssl rand -base64 32)
  */
 
@@ -101,8 +101,8 @@ function validateEnvironment(): void {
     }
 
     // Set defaults for optional env vars
-    if (!process.env.GODADDY_BASE_URL) {
-        process.env.GODADDY_BASE_URL = 'https://api.dev-godaddy.com';
+    if (!process.env.GODADDY_API_BASE_URL) {
+        process.env.GODADDY_API_BASE_URL = 'https://api.dev-godaddy.com';
     }
     if (!process.env.OAUTH_REDIRECT_URI) {
         process.env.OAUTH_REDIRECT_URI = REDIRECT_URI;
@@ -194,7 +194,7 @@ async function main() {
     try {
         validateEnvironment();
         logSuccess('Environment validated');
-        logInfo(`API URL: ${process.env.GODADDY_BASE_URL}`);
+        logInfo(`API URL: ${process.env.GODADDY_API_BASE_URL}`);
         logInfo(`Client ID: ${process.env.GODADDY_OAUTH_CLIENT_ID}`);
         logInfo(`Redirect URI: ${REDIRECT_URI}`);
     } catch (err) {

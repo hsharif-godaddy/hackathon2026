@@ -59,7 +59,7 @@ describe('AuthService', () => {
         pkceStateStore.clear();
 
         // Set test environment variables
-        process.env.GODADDY_BASE_URL = 'https://api.test-godaddy.com';
+        process.env.GODADDY_API_BASE_URL = 'https://api.test-godaddy.com';
         process.env.GODADDY_OAUTH_AUTH_ENDPOINT = '/v2/oauth2/authorize';
         process.env.GODADDY_OAUTH_TOKEN_ENDPOINT = '/v2/oauth2/token';
         process.env.GODADDY_OAUTH_CLIENT_ID = 'test-client-id-12345';

@@ -11,7 +11,7 @@ if ! command -v license-checker &> /dev/null; then
 fi
 
 # Define allowed licenses globally
-ALLOWED_LICENSES="MIT;Apache-2.0;0BSD;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0;Python-2.0;Unlicense"
+ALLOWED_LICENSES="MIT;Apache-2.0;0BSD;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0;Python-2.0;Unlicense;CC0-1.0"
 
 # Dynamically detect and exclude internal packages (@airo-ux/*, @godaddy/*, @ux/*, gd-*)
 echo "🔍 Detecting internal packages to exclude..."

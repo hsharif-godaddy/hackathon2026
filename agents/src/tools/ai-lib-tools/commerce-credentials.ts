@@ -9,14 +9,18 @@ const appRepo = new AppRepository();
 
 /**
  * Commerce Credentials Structure
- * Matches the format expected by the generated app's create-checkout-session endpoint
+ *
+ * Represents the fields that are stored in the commerce-credentials.json file.
+ * These credentials are used by the generated app's create-checkout-session endpoint.
+ *
+ * The checkout endpoint derives additional URLs (like CHECKOUT_API_BASE_URL) from
+ * GODADDY_API_BASE_URL at runtime - those derived values are NOT stored in this structure.
  */
 interface CommerceCredentials {
-  CLIENT_ID: string;
-  CLIENT_SECRET: string;
+  GODADDY_OAUTH_CLIENT_ID: string;
+  GODADDY_OAUTH_CLIENT_SECRET: string;
   STORE_ID: string;
-  API_BASE_URL: string;
-  CHECKOUT_API_BASE_URL: string;
+  GODADDY_API_BASE_URL: string;
   CHANNEL_ID: string;
 }
 
@@ -70,7 +74,6 @@ environment configuration.`,
     const clientId = process.env.GODADDY_OAUTH_CLIENT_ID;
     const clientSecret = process.env.GODADDY_OAUTH_CLIENT_SECRET;
     const apiBaseUrl = process.env.GODADDY_API_BASE_URL || 'https://api.dev-godaddy.com';
-    const checkoutApiBaseUrl = process.env.GODADDY_COMMERCE_CHECKOUT_API_URL || 'https://checkout.commerce.api.dev-godaddy.com';
 
     if (!clientId || !clientSecret) {
       throw new Error('OAuth credentials not configured. Set GODADDY_OAUTH_CLIENT_ID and GODADDY_OAUTH_CLIENT_SECRET environment variables.');
@@ -99,14 +102,29 @@ environment configuration.`,
         });
       }
 
-      // Build credentials object matching expected format
-      const credentials: CommerceCredentials = {
-        CLIENT_ID: clientId,
-        CLIENT_SECRET: clientSecret,
-        STORE_ID: input.storeId,
-        API_BASE_URL: apiBaseUrl,
-        CHECKOUT_API_BASE_URL: checkoutApiBaseUrl,
-        CHANNEL_ID: input.channelId,
+      // Build credentials object matching /alloc/config.json structure
+      // Each field is wrapped with SYSTEM_MANAGED flag (false for agent-managed)
+      const credentials = {
+        GODADDY_OAUTH_CLIENT_ID: {
+          SYSTEM_MANAGED: false,
+          VALUE: clientId,
+        },
+        GODADDY_OAUTH_CLIENT_SECRET: {
+          SYSTEM_MANAGED: false,
+          VALUE: clientSecret,
+        },
+        STORE_ID: {
+          SYSTEM_MANAGED: false,
+          VALUE: input.storeId,
+        },
+        GODADDY_API_BASE_URL: {
+          SYSTEM_MANAGED: false,
+          VALUE: apiBaseUrl,
+        },
+        CHANNEL_ID: {
+          SYSTEM_MANAGED: false,
+          VALUE: input.channelId,
+        },
       };
 
       // Write credentials file
