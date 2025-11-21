@@ -39,11 +39,12 @@ API route handlers do not need to close connections - the connection pool is sha
 1. **Understand application requirements** - Identify what data needs to be stored
 2. **Design table structures** - Define columns, data types, and relationships
 3. **Implement schema using Drizzle ORM** - Add table definitions to `src/server/db/schema.ts`
-4. **Push schema to database** - Run `npm run db:push` to sync changes directly
-5. **Create API endpoints** - Build backend routes for data access in `src/server/api/`
+4. **Generate migrations** - Run `npm run db:generate` to create migration files
+5. **Apply migrations** - Run `npm run db:migrate` to update the database
+6. **Create API endpoints** - Build backend routes for data access in `src/server/api/`
    - New API route files are automatically detected by Vite's hot module replacement
    - Endpoints are available immediately after file creation without server restart
-6. **Hand back control** to Development Agent for frontend integration
+7. **Hand back control** to Development Agent for frontend integration
 
 ## Drizzle Schema Implementation
 
@@ -101,27 +102,39 @@ userId: int('user_id')
   .references(() => users.id);
 ```
 
-### Codebase-First Workflow
+### Migration-Based Workflow
 
-This project uses a codebase-first approach for rapid prototyping where the TypeScript schema is the source of truth.
+This project uses a migration-based approach where database changes are tracked through migration files.
 
 **Step 1: Define Schema**
 
 Add table definitions to `src/server/db/schema.ts` using Drizzle's schema builder.
 
-**Step 2: Push Schema to Database**
+**Step 2: Generate Migration Files**
 
-Sync the schema directly to the database:
+Generate SQL migration files based on schema changes:
 
 ```bash
-npm run db:push
+npm run db:generate
 ```
 
-This command syncs your TypeScript schema directly to the database, automatically detects changes, updates tables, and requires no migration files. Run this command every time you modify the schema.
+This command analyzes your schema changes and creates timestamped migration files in the `drizzle/` directory. These files contain the SQL statements needed to update the database structure.
 
-**Step 3: Verify Schema**
+**Step 3: Apply Migrations**
+
+Apply the generated migrations to the database:
+
+```bash
+npm run db:migrate
+```
+
+This command executes all pending migration files against the database, bringing the database structure in sync with your schema.
+
+**Step 4: Verify Schema**
 
 Test the connection and verify tables were created successfully.
+
+**Important:** Migration files will be automatically committed to Git by the conversation flow. This ensures database changes are tracked in version control and available for the publish/deployment process.
 
 ## API Route Implementation
 
@@ -286,7 +299,7 @@ async function seed() {
         {
           userId: insertedUsers[0].id,
           title: 'Rapid Prototyping Tips',
-          content: 'Use db:push for quick iteration without managing migrations.',
+          content: 'Use migrations to track database changes in version control.',
         },
       ])
       .returning();
@@ -346,6 +359,7 @@ npx tsx src/scripts/seed.ts
 - Use Drizzle ORM for all database operations through the pre-configured client
 - Schema file `src/server/db/schema.ts` is the single source of truth
 - Connection file `src/server/db/client.ts` is read-only and pre-configured
-- Use `npm run db:push` to sync schema changes directly
+- Use `npm run db:generate` to create migrations and `npm run db:migrate` to apply them
+- Migration files are automatically committed to Git by the conversation flow
 - Focus on schema design and data operations, not infrastructure management
 - Hand back control to Development Agent after schema is ready for frontend integration

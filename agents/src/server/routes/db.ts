@@ -1,6 +1,6 @@
 import { Router, Request, Response, IRouter } from 'express';
 import { AppRepository } from '../../database/index.js';
-import { MySQLUtils } from '../../utils/mysql-utils.js';
+import { MySQLUtils, isSystemTable } from '../../utils/mysql-utils.js';
 import { Logger, log } from '../../logging/index.js';
 
 const router: IRouter = Router();
@@ -91,6 +91,15 @@ router.get('/apps/:id/database/tables/:tableName/schema', async (req: Request, r
       return res.status(400).json({ error: 'Table name is required' });
     }
 
+    // Prevent access to system tables
+    if (isSystemTable(tableName)) {
+      logger.warn('route.db.table_schema.system_table_blocked', {
+        appId: id,
+        tableName,
+      });
+      return res.status(403).json({ error: 'Access to system tables is not allowed' });
+    }
+
     logger.info('route.db.table_schema.begin', {
       appId: id,
       tableName,
@@ -148,6 +157,15 @@ router.get('/apps/:id/database/tables/:tableName/data', async (req: Request, res
     }
     if (!tableName) {
       return res.status(400).json({ error: 'Table name is required' });
+    }
+
+    // Prevent access to system tables
+    if (isSystemTable(tableName)) {
+      logger.warn('route.db.table_data.system_table_blocked', {
+        appId: id,
+        tableName,
+      });
+      return res.status(403).json({ error: 'Access to system tables is not allowed' });
     }
 
     logger.info('route.db.table_data.begin', {
@@ -214,6 +232,15 @@ router.post('/apps/:id/database/tables/:tableName/rows', async (req: Request, re
       return res.status(400).json({ error: 'Row data is required' });
     }
 
+    // Prevent access to system tables
+    if (isSystemTable(tableName)) {
+      logger.warn('route.db.insert_row.system_table_blocked', {
+        appId: id,
+        tableName,
+      });
+      return res.status(403).json({ error: 'Access to system tables is not allowed' });
+    }
+
     logger.info('route.db.insert_row.begin', {
       appId: id,
       tableName,
@@ -276,6 +303,15 @@ router.put('/apps/:id/database/tables/:tableName/rows', async (req: Request, res
       return res.status(400).json({ error: 'Row data is required' });
     }
 
+    // Prevent access to system tables
+    if (isSystemTable(tableName)) {
+      logger.warn('route.db.update_row.system_table_blocked', {
+        appId: id,
+        tableName,
+      });
+      return res.status(403).json({ error: 'Access to system tables is not allowed' });
+    }
+
     logger.info('route.db.update_row.begin', {
       appId: id,
       tableName,
@@ -333,6 +369,15 @@ router.delete('/apps/:id/database/tables/:tableName/rows', async (req: Request, 
     }
     if (!primaryKey || typeof primaryKey !== 'object') {
       return res.status(400).json({ error: 'Primary key is required' });
+    }
+
+    // Prevent access to system tables
+    if (isSystemTable(tableName)) {
+      logger.warn('route.db.delete_row.system_table_blocked', {
+        appId: id,
+        tableName,
+      });
+      return res.status(403).json({ error: 'Access to system tables is not allowed' });
     }
 
     logger.info('route.db.delete_row.begin', {

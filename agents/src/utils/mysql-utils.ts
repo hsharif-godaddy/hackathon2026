@@ -56,6 +56,21 @@ export interface QueryResult {
 }
 
 /**
+ * List of system tables that should not be accessible via the API
+ */
+export const SYSTEM_TABLES = ['__drizzle_migrations'] as const;
+
+/**
+ * Check if a table name is a protected system table
+ *
+ * @param tableName - Name of the table to check
+ * @returns True if the table is a system table
+ */
+export function isSystemTable(tableName: string): boolean {
+  return SYSTEM_TABLES.includes(tableName as any);
+}
+
+/**
  * Centralized MySQL utilities class for all database interactions
  * Handles connection management, credentials loading, query building, and CRUD operations
  */
@@ -290,7 +305,7 @@ export class MySQLUtils {
    * List all tables in a database
    *
    * @param credentials - Database credentials
-   * @returns Array of table names
+   * @returns Array of table names (excludes system tables like __drizzle_migrations)
    */
   async listTables(credentials: DatabaseCredentials): Promise<string[]> {
     const startTime = Date.now();
@@ -305,15 +320,19 @@ export class MySQLUtils {
 
       // Transform results - MySQL returns tables with key "Tables_in_<database_name>"
       const tableKey = `Tables_in_${credentials.database}`;
-      const tables: string[] = Array.isArray(rows)
+      const allTables: string[] = Array.isArray(rows)
         ? rows.map((row: any) => row[tableKey] as string)
         : [];
+
+      // Filter out system tables
+      const tables = allTables.filter(tableName => !isSystemTable(tableName));
 
       const executionTime = Date.now() - startTime;
       logger.info('MySQL: Successfully listed tables', {
         component: 'MySQLUtils',
         database: credentials.database,
         tableCount: tables.length,
+        filteredCount: allTables.length - tables.length,
         executionTime,
       });
 

@@ -85,4 +85,6 @@ export default defineConfig({
       rejectUnauthorized: false,
     }
   },
+  verbose: true,
+  strict: false,
 });

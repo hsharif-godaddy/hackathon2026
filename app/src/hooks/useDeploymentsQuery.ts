@@ -248,6 +248,47 @@ export function useDeploymentsQuery({
         // Invalidate git history cache to refresh commit list with deployment tag
         queryClient.invalidateQueries({ queryKey: ['git-history', appId] });
 
+        // Refetch git history and select the published commit
+        const publishedGitHash = deploymentInProgress.gitHash;
+
+        void (async function handleGitHistoryRefetch() {
+          try {
+            await queryClient.refetchQueries({ queryKey: ['git-history', appId] });
+
+            const historyData = queryClient.getQueryData<{ commits?: any[] }>(['git-history', appId]);
+            const commits = historyData?.commits || [];
+            const publishedCommit = commits.find((commit: any) => commit.hash === publishedGitHash);
+
+            if (publishedCommit) {
+              logger.info('deployments-query.auto-select-commit', {
+                appId,
+                commitHash: publishedCommit.hash.substring(0, 7),
+                message: 'Auto-selecting published commit in history view',
+              });
+
+              const { selectCommit } = useDevelopPageStore.getState();
+              selectCommit(appId, publishedCommit)
+                .catch(function handleSelectError(error) {
+                  logger.error('deployments-query.auto-select-commit.error', {
+                    appId,
+                    error: error instanceof Error ? error.message : String(error),
+                  });
+                });
+            } else {
+              logger.warn('deployments-query.auto-select-commit.not-found', {
+                appId,
+                publishedGitHash: publishedGitHash.substring(0, 7),
+                message: 'Published commit not found in git history',
+              });
+            }
+          } catch (error) {
+            logger.error('deployments-query.git-history-refetch.error', {
+              appId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        })();
+
         // Refetch site data to get updated domains/URLs/variants, then show success
         fetchSite(appId, true)
           .then(function handleRefetchSuccess() {
@@ -277,4 +318,3 @@ export function useDeploymentsQuery({
 
   return query;
 }
-

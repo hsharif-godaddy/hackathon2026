@@ -18,6 +18,10 @@ const appRepository = new AppRepository();
  * 4. Build verification - run `npm run build` to ensure project is buildable
  * 5. Create archive at /publish/dist/{fullCommitHash}.tar.gz using git archive
  *
+ * Note: Database migrations are handled during development by the Database Agent
+ * and are committed to the repository before publish. This step no longer
+ * generates migrations as they should already exist in the commit being published.
+ *
  * @route POST /apps/:id/publish
  * @param {string} req.params.id - The application ID
  * @param {string} req.body.commitHash - The git commit reference (short hash, full hash, tag, branch)

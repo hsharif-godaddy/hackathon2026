@@ -12,9 +12,40 @@ Work with pre-configured databases where each application has a dedicated MySQL 
 
 1. Use the database connection from `src/server/db/client.ts` - Import and use the `db` export
 2. Define schema in `src/server/db/schema.ts` - Add all table definitions here using Drizzle ORM (source of truth)
-3. Push schema changes to database - Use `npm run db:push` to sync schema directly (codebase-first approach)
-4. Create API endpoints - Build Express-style handler routes in `src/server/api/` for data access (e.g., `GET.ts`, `POST.ts`)
-5. Query and manipulate data using Drizzle ORM's type-safe query methods
+3. Generate migrations - Use `npm run db:generate` to create migration files based on schema changes
+4. Apply migrations - Use `npm run db:migrate` to apply migrations to the database
+5. Create API endpoints - Build Express-style handler routes in `src/server/api/` for data access (e.g., `GET.ts`, `POST.ts`)
+6. Query and manipulate data using Drizzle ORM's type-safe query methods
+
+**Important:** Migration files are automatically committed to Git by the conversation flow, ensuring database changes are tracked in version control.
+
+**MySQL Limitations:**
+
+The platform uses MySQL databases. Be aware of these MySQL-specific limitations when writing Drizzle ORM code:
+
+- **NO `.returning()` support**: MySQL does not support the `.returning()` clause. This method works in PostgreSQL but will fail in MySQL.
+  - ❌ Wrong: `await db.insert(users).values(newUser).returning()`
+  - ✅ Correct: Use separate query after insert or use `insertId` from result
+
+  Example patterns:
+
+  ```typescript
+  // For INSERT operations
+  const result = await db.insert(users).values(newUser);
+  const insertedId = result.insertId;
+  const insertedUser = await db.select().from(users).where(eq(users.id, insertedId)).limit(1);
+
+  // For UPDATE operations
+  await db.update(users).set(updates).where(eq(users.id, userId));
+  const updatedUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+
+  // For DELETE operations
+  const userToDelete = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  await db.delete(users).where(eq(users.id, userId));
+  return userToDelete[0];
+  ```
+
+Always use MySQL-compatible patterns and avoid PostgreSQL-specific features.
 
 ### Integration Support
 
