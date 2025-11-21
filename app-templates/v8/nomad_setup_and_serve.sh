@@ -51,7 +51,7 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
 
     # sync upstream dev-tools from base app template
     # we need to eventually create a public repo for dev-tools and sync them from there
-    cp -r "$BASE_APP_DIR/dev-tools" "$CUSTOMER_APP_DIR/dev-tools"
+    cp -r "$BASE_APP_DIR/dev-tools/." "$CUSTOMER_APP_DIR/dev-tools/"
 
     # if changes then commit them
     git add dev-tools package.json && git commit -m "Sync upstream dev tools and package.json $(date +%s)" || true
