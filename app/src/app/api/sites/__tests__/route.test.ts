@@ -32,7 +32,19 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/lib/customer-auth', () => ({
-  withCustomerAuth: (handler: any) => handler,
+  withCustomerAuth: (handler: any) => {
+    return async (request: any) => {
+      // Provide mock auth context with JWT
+      const mockAuthContext = {
+        jwt: 'test-jwt-token',
+        user: {
+          accountId: 'test-account',
+          email: 'test@example.com'
+        }
+      };
+      return handler(request, mockAuthContext);
+    };
+  },
   customerHasAccount: vi.fn(() => true),
   createCustomerAuthError: vi.fn()
 }));

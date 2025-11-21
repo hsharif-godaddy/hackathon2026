@@ -152,6 +152,9 @@ describe('handleControlPlaneError', function errorHandlerTests() {
         expect.objectContaining({
           message: expect.stringContaining('401'),
           status: 401
+        }),
+        expect.objectContaining({
+          tags: ['security']
         })
       );
     });
@@ -211,6 +214,7 @@ describe('handleControlPlaneError', function errorHandlerTests() {
 
       expect(logger.warn).toHaveBeenCalledWith(
         'control-plane.create-site.auth-error',
+        expect.any(Object),
         expect.any(Object)
       );
     });

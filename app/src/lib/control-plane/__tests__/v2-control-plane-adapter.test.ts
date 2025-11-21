@@ -553,6 +553,15 @@ describe('V2ControlPlaneAdapter', () => {
         status: 404
       });
 
+      // Mock customer tree (for cache initialization)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          customerId: 'customer-123',
+          subscriptions: [] // No subscriptions = no apps
+        })
+      });
+
       // Mock customer check
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -915,6 +924,22 @@ describe('V2ControlPlaneAdapter', () => {
     });
 
     it('should return error if site not found', async () => {
+      // Mock cache initialization (getCustomerTree)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          customerId: 'customer-123',
+          subscriptions: [{
+            subscriptionId: 'sub-123',
+            status: 'active',
+            systems: [{
+              systemId: MOCK_SYSTEM_ID,
+              apps: [] // No apps
+            }]
+          }]
+        })
+      });
+
       // Mock findAppMetadata search - no apps found
       mockFetch
         .mockResolvedValueOnce({ ok: true }) // checkCustomer

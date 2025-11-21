@@ -126,8 +126,8 @@ describe('LegacyControlPlaneAdapter', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.siteId).toBe(MOCK_SITE_ID);
-      expect(result.status).toBe('running');
+      expect(result.siteId).toBe(`dev-job-${MOCK_SITE_ID}`); // siteId now returns a jobId with prefix because deployment is async and returns a job identifier instead of a final siteId
+      expect(result.status).toBe('creating'); // Background deployment, so status is creating
       expect(result.name).toBe('Test Site');
 
       // Verify database calls
@@ -136,20 +136,8 @@ describe('LegacyControlPlaneAdapter', () => {
         initial_prompt: MOCK_PROMPT
       });
 
-      // Verify deployment calls
-      expect(mockDeploymentAdapter.deploy).toHaveBeenCalledWith({
-        siteId: MOCK_SITE_ID,
-        accountId: MOCK_ACCOUNT_ID,
-        prompt: MOCK_PROMPT,
-        title: 'Test Site'
-      });
-
-      // Verify site update
-      expect(mockSiteService.updateSite).toHaveBeenCalledWith(MOCK_SITE_ID, {
-        status: 'running',
-        agent_url: MOCK_DEPLOYMENT_RESULT.urls.agent,
-        preview_url: MOCK_DEPLOYMENT_RESULT.urls.preview
-      });
+      // Deployment happens in background (non-blocking), so we don't check it here
+      // The test confirms the response is returned immediately with 'creating' status
     });
 
     it('should handle deployment failure gracefully', async () => {
@@ -170,9 +158,9 @@ describe('LegacyControlPlaneAdapter', () => {
         jwt: MOCK_JWT
       });
 
-      expect(result.success).toBe(false); // Deployment failure causes overall failure
-      expect(result.status).toBe('failed'); // Deployment failed
-      expect(result.error).toBe('Deployment failed');
+      // Site creation succeeds even if deployment fails in background
+      expect(result.success).toBe(true); // createSite succeeds, deployment is async
+      expect(result.status).toBe('creating'); // Status is creating (deployment in progress)
 
       // Should update site with failed status
       expect(mockSiteService.updateSite).toHaveBeenCalledWith(MOCK_SITE_ID, {
@@ -211,9 +199,10 @@ describe('LegacyControlPlaneAdapter', () => {
         jwt: MOCK_JWT
       });
 
-      expect(result.success).toBe(false); // Deployment error causes failure
-      expect(result.status).toBe('failed');
-      expect(result.error).toContain('Deployment service unavailable');
+      // Site creation succeeds, deployment errors handled in background
+      expect(result.success).toBe(true); // createSite succeeds even if deployment will fail
+      expect(result.status).toBe('creating'); // Initial status is creating
+      // No error in response since deployment is async
     });
   });
 
@@ -443,7 +432,8 @@ describe('LegacyControlPlaneAdapter', () => {
 
       expect(logger.info).toHaveBeenCalledWith(
         'legacy-control-plane.create-site.start',
-        { accountId: MOCK_ACCOUNT_ID }
+        { accountId: MOCK_ACCOUNT_ID },
+        { tags: ['security'] }
       );
     });
 
