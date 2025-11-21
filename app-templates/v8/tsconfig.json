@@ -19,7 +19,6 @@
     "forceConsistentCasingInFileNames": true,
     "paths": {
       "@/api/*": ["./src/server/api/*"],
-      "@/db/*": ["./src/server/db/*"],
       "@/*": ["./src/*"]
     },
     "baseUrl": "."

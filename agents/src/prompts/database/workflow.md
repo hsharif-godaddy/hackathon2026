@@ -17,11 +17,11 @@
 Use pre-configured Drizzle client for all operations:
 
 ```typescript
-import { db } from '@/db/client';
-import { users, posts } from '@/db/schema';
+import { db } from './server/db/client';
+import { users, posts } from './server/db/schema';
 
 // For standalone scripts that need to exit:
-import { db, closeConnection } from '@/db/client';
+import { db, closeConnection } from './server/db/client';
 
 // ... perform database operations ...
 
@@ -40,7 +40,7 @@ After schema design is complete, immediately hand back control to the calling ag
 
 - **Schema definitions**: `src/server/db/schema.ts` - Single source of truth for all table definitions
 - **Database connection**: `src/server/db/client.ts` - Pre-configured `db` instance (read-only, do not modify)
-  - Import with: `import { db } from '@/db/client'`
+  - Import with: `import { db } from './server/db/client'`
   - Connection details automatically loaded from environment
   - Credentials and configuration managed by platform
 
@@ -124,8 +124,8 @@ Test the connection and verify tables were created successfully.
 ## Data Seeding
 
 ```typescript
-import { db, closeConnection } from '@/db/client';
-import { users } from '@/db/schema';
+import { db, closeConnection } from './client';
+import { users } from './schema';
 
 async function seed() {
   try {
