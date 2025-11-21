@@ -22,7 +22,7 @@ export class DockerAppService implements IAppAdapter {
 
   constructor(devDb: DevDatabase) {
     this.devDb = devDb;
-    this.containerManager = new DockerContainerManager(devDb);
+    this.containerManager = DockerContainerManager.getInstance(devDb);
   }
 
   async initialize(): Promise<void> {

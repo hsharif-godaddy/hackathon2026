@@ -35,12 +35,13 @@ export default function PreviewPane({
   showBuildingOverlay = false,
   buildingMessage = "The AI agent is building your app..."
 }: PreviewPaneProps) {
+  const serverPollingStore = useServerPollingStore()
   const {
     getServerState,
     startPollingForServer,
     stopPollingForServer,
     isPollingServer
-  } = useServerPollingStore()
+  } = serverPollingStore
 
   const restoreMutation = useRestoreCommitMutation();
 

@@ -58,15 +58,17 @@ export class DevEnvironmentManager {
     // Initialize in-memory dev database (no database tables needed)
     this.devDb.initializeTables();
 
-    // Initialize the appropriate adapter using the factory
-    const adapterType = getAdapterType();
-    // Only log adapter initialization in development to reduce noise
-    if (process.env.NODE_ENV === 'development') {
-      logger.info(`🔧 Initializing ${adapterType} adapter for dev environment`);
-    }
+    // Initialize the appropriate adapter using the factory (only once)
+    if (!this.adapter) {
+      const adapterType = getAdapterType();
+      // Only log adapter initialization in development to reduce noise
+      if (process.env.NODE_ENV === 'development') {
+        logger.info(`🔧 Initializing ${adapterType} adapter for dev environment`);
+      }
 
-    this.adapter = await createAppAdapter(this.devDb);
-    await this.adapter.initialize();
+      this.adapter = await createAppAdapter(this.devDb);
+      await this.adapter.initialize();
+    }
 
     this.initialized = true;
     // Only log in development to reduce noise

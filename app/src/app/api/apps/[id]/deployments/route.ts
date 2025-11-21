@@ -1,4 +1,4 @@
-import { getControlPlaneAdapter } from '@/lib/control-plane';
+import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
 import { NextRequest, NextResponse } from 'next/server';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
@@ -77,17 +77,34 @@ export const GET = withCustomerAuth(async (
       );
     }
 
-    // Check if site has subscription and system IDs (required for deployments)
+    const isV2 = isV2ControlPlaneEnabled();
+
+    // Check if site has subscription and system IDs (required for V2 deployments)
     if (!site.subscription_id || !site.system_id) {
-      logger.warn('deployments.api.no-ids', {
-        siteId,
-        hasSubscriptionId: !!site.subscription_id,
-        hasSystemId: !!site.system_id,
-      });
-      return NextResponse.json(
-        { error: 'Site does not have deployment configuration' },
-        { status: 400 }
-      );
+      if (isV2) {
+        // V2 sites MUST have these fields - return 400 error
+        logger.error('deployments.api.missing-v2-ids', {
+          siteId,
+          hasSubscriptionId: !!site.subscription_id,
+          hasSystemId: !!site.system_id,
+          message: 'V2 site missing required subscription_id or system_id'
+        });
+        return NextResponse.json(
+          { error: 'Site missing required V2 metadata (subscription_id or system_id)' },
+          { status: 400 }
+        );
+      } else {
+        // Legacy/dev sites don't have V2 IDs - return empty array
+        logger.info('deployments.api.legacy-site', {
+          siteId,
+          message: 'Legacy site has no V2 deployments - returning empty array'
+        });
+        return NextResponse.json({
+          deployments: [],
+          totalCount: 0,
+          hasMore: false
+        });
+      }
     }
 
     // Parse query parameters

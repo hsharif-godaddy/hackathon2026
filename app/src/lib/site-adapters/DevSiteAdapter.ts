@@ -10,10 +10,13 @@ import { SiteStatus } from '@/generated/prisma';
  *
  * Manages sites using local development environment (processes/Docker)
  * Maps dev apps to the site interface for consistent API behavior
+ * 
+ * IMPORTANT: JobId handling delegated to LegacyControlPlaneAdapter
  */
 export class DevSiteAdapter implements ISiteAdapter {
   private siteService: PrismaSiteService;
   private devEnvManager: DevEnvironmentManager | null = null;
+  private static readonly JOB_ID_PREFIX = 'dev-job-'; // Match LegacyControlPlaneAdapter prefix
 
   constructor() {
     // SAFETY CHECK: Prevent usage in production environments
@@ -44,67 +47,118 @@ export class DevSiteAdapter implements ISiteAdapter {
       throw new Error('Initial prompt is required');
     }
 
-    logger.info('🔧 Creating new development site:', {
-      accountId,
-      prompt: prompt.substring(0, 50) + '...'
-    });
-
-    // Create simplified site record without Ceph
+    // Create site record in database immediately
     const site = await this.siteService.createSiteSimple({
       account_id: accountId,
       initial_prompt: prompt
     });
 
-    try {
-      // Deploy using development deployment adapter (local or docker)
-      const deploymentAdapter = getDeploymentAdapter();
-      const deploymentResult = await deploymentAdapter.deploy({
-        siteId: site.id,
-        accountId: accountId,
-        prompt,
-        title: site.title
-      });
+    // Create "jobId" by prefixing the real appId (no storage needed!)
+    const jobId = `${DevSiteAdapter.JOB_ID_PREFIX}${site.id}`;
 
-      if (deploymentResult.success) {
-        // Map deployment status to SiteStatus enum
-        const siteStatus = this.mapDeploymentStatusToSiteStatus(deploymentResult.status);
+    logger.info('dev-site-adapter.create-site', {
+      jobId,
+      realAppId: site.id,
+      accountId
+    });
 
-        // Update site with deployment results
-        const updatedSite = await this.siteService.updateSite(site.id, {
-          status: siteStatus,
-          agent_url: deploymentResult.urls?.agent,
-          backend_url: deploymentResult.urls?.backend,
-          preview_url: deploymentResult.urls?.preview
+    // Start deployment in background (non-blocking)
+    this.deployInBackground(site.id, accountId, prompt);
+
+    // Return jobId immediately (matches prod V2 flow)
+    return {
+      id: jobId,
+      name: 'Creating...',
+      status: 'creating',
+      account_id: accountId,
+      initial_prompt: prompt,
+      created_at: site.created_at.toISOString(),
+      updated_at: site.updated_at.toISOString()
+    };
+  }
+
+  /**
+   * Background deployment - fire and forget
+   */
+  private deployInBackground(siteId: string, accountId: string, prompt: string): void {
+    (async () => {
+      try {
+        logger.info('dev-site-adapter.deploy.start', { siteId });
+
+        const deploymentAdapter = getDeploymentAdapter();
+        const site = await this.siteService.getSiteById(siteId);
+        
+        if (!site) {
+          logger.error('dev-site-adapter.deploy.site-not-found', { siteId });
+          return;
+        }
+
+        const deploymentResult = await deploymentAdapter.deploy({
+          siteId,
+          accountId,
+          prompt,
+          title: site.title
         });
 
-        logger.info('✅ Development site created and deployed successfully:', {
-          siteId: site.id,
-          status: deploymentResult.status,
-          urls: deploymentResult.urls
-        });
+        if (deploymentResult.success) {
+          const siteStatus = this.mapDeploymentStatusToSiteStatus(deploymentResult.status);
+          await this.siteService.updateSite(siteId, {
+            status: siteStatus,
+            agent_url: deploymentResult.urls?.agent,
+            backend_url: deploymentResult.urls?.backend,
+            preview_url: deploymentResult.urls?.preview
+          });
 
-        return this.mapToSiteInfo(updatedSite);
-      } else {
-        // Deployment failed - update site status
-        await this.siteService.updateSite(site.id, {
-          status: SiteStatus.failed
-        });
+          logger.info('dev-site-adapter.deploy.success', {
+            siteId,
+            status: deploymentResult.status,
+            urls: deploymentResult.urls
+          });
+        } else {
+          await this.siteService.updateSite(siteId, {
+            status: SiteStatus.failed
+          });
 
-        logger.error('❌ Development deployment failed:', deploymentResult.error);
-        throw new Error(`Deployment failed: ${deploymentResult.error}`);
+          logger.error('dev-site-adapter.deploy.failed', {
+            siteId,
+            error: deploymentResult.error
+          });
+        }
+      } catch (error) {
+        logger.error('dev-site-adapter.deploy.error', {
+          siteId,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
       }
-    } catch (deployError) {
-      // Update site status to failed
-      await this.siteService.updateSite(site.id, {
-        status: SiteStatus.failed
-      });
-
-      logger.error('❌ Development site deployment error:', deployError);
-      throw new Error(`Deployment failed: ${deployError instanceof Error ? deployError.message : 'Unknown error'}`);
-    }
+    })().catch(error => {
+      logger.error('dev-site-adapter.deploy.uncaught', { siteId, error });
+    });
   }
 
   async getSiteById(siteId: string): Promise<SiteInfo | null> {
+    // Check if this is a jobId (matches prod V2 flow)
+    if (this.isJobId(siteId)) {
+      // Delegate to control plane adapter which manages the job registry
+      const { getControlPlaneAdapter } = await import('@/lib/control-plane');
+      const controlPlane = getControlPlaneAdapter();
+      
+      // Control plane getSite handles jobId lookup internally
+      const site = await controlPlane.getSite(siteId, '');
+      
+      if (!site) {
+        return null;
+      }
+      
+      // Ensure required fields are present and timestamps are strings
+      return {
+        ...site,
+        name: site.name || 'Untitled',
+        created_at: typeof site.created_at === 'string' ? site.created_at : site.created_at.toISOString(),
+        updated_at: typeof site.updated_at === 'string' ? site.updated_at : site.updated_at.toISOString()
+      };
+    }
+
+    // Normal appId lookup
     const site = await this.siteService.getSiteById(siteId);
 
     if (!site) {
@@ -112,6 +166,13 @@ export class DevSiteAdapter implements ISiteAdapter {
     }
 
     return this.mapToSiteInfo(site);
+  }
+
+  /**
+   * Check if ID is a jobId
+   */
+  private isJobId(siteId: string): boolean {
+    return siteId.startsWith(DevSiteAdapter.JOB_ID_PREFIX);
   }
 
   async updateSite(siteId: string, updates: Partial<SiteInfo>): Promise<SiteInfo | null> {

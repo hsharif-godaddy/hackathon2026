@@ -46,6 +46,9 @@ export interface ContainerInfo {
  * Manages Docker containers for development apps (v1, v2, v3, etc.)
  */
 export class DockerContainerManager {
+	private static instance: DockerContainerManager | null = null;
+	private static initializationPromise: Promise<void> | null = null;
+
 	private devDb: DevDatabase;
 	private composeGenerator: DockerComposeGenerator;
 	private composeManager: DockerComposeManager;
@@ -54,11 +57,21 @@ export class DockerContainerManager {
 	private initialized = false;
 	private activeRebuilds = new Set<string>(); // Track ongoing rebuilds
 
-	constructor(devDb: DevDatabase) {
+	private constructor(devDb: DevDatabase) {
 		this.devDb = devDb;
 		this.composeGenerator = new DockerComposeGenerator();
 		this.composeManager = new DockerComposeManager();
 		this.sharedMySQLService = new SharedMySQLService();
+	}
+
+	/**
+	 * Get or create singleton instance
+	 */
+	static getInstance(devDb: DevDatabase): DockerContainerManager {
+		if (!DockerContainerManager.instance) {
+			DockerContainerManager.instance = new DockerContainerManager(devDb);
+		}
+		return DockerContainerManager.instance;
 	}
 
 	/**
@@ -100,10 +113,32 @@ export class DockerContainerManager {
 
 	/**
 	 * Initialize the container manager
+	 * Runs recovery only once on first initialization
 	 */
 	async initialize(): Promise<void> {
+		// If already initialized, return immediately
 		if (this.initialized) return;
 
+		// If initialization is in progress, wait for it
+		if (DockerContainerManager.initializationPromise) {
+			return DockerContainerManager.initializationPromise;
+		}
+
+		// Start initialization
+		DockerContainerManager.initializationPromise = this.doInitialize();
+		
+		try {
+			await DockerContainerManager.initializationPromise;
+		} finally {
+			// Clear the promise so subsequent calls just check initialized flag
+			DockerContainerManager.initializationPromise = null;
+		}
+	}
+
+	/**
+	 * Internal initialization method
+	 */
+	private async doInitialize(): Promise<void> {
 		const startTime = Date.now();
 
 		logger.info('🔄 Initializing Docker Container Manager...');
@@ -127,7 +162,7 @@ export class DockerContainerManager {
 			// Initialize database table
 			this.initializeDatabase();
 
-			// Recover any existing running containers
+			// Recover any existing running containers (ONLY on first initialization)
 			await this.recoverExistingContainers();
 
 			this.initialized = true;

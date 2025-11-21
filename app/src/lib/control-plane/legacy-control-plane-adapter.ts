@@ -8,9 +8,13 @@ import { logger } from '@/lib/request-context';
  *
  * Implements control plane interface using existing database and deployment systems.
  * Provides backward compatibility with V1 architecture.
+ * 
+ * IMPORTANT: Uses dev-job-{appId} pattern - no separate job storage needed!
+ * JobId is just the real appId with a prefix, stripped on lookup.
  */
 export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   private siteService: PrismaSiteService;
+  private static readonly JOB_ID_PREFIX = 'dev-job-'; // Match DevSiteAdapter prefix
 
   constructor() {
     this.siteService = new PrismaSiteService();
@@ -18,7 +22,7 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
 
   /**
    * Create site using legacy database + deployment system
-   * Returns real site ID with type: 'job' to enable consistent polling UX
+   * Returns dev-job-{appId} as jobId (no separate job storage needed!)
    */
   async createSite(params: CreateSiteParams): Promise<CreateSiteResult> {
     try {
@@ -28,30 +32,35 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
         tags: ['security']
       });
 
-      // Create site record in database
+      // Create site record in database immediately
       const site = await this.siteService.createSite({
         account_id: params.accountId,
         initial_prompt: params.prompt
       });
 
+      // Create "jobId" by prefixing the real appId (no storage needed!)
+      const jobId = `${LegacyControlPlaneAdapter.JOB_ID_PREFIX}${site.id}`;
+
       logger.info('legacy-control-plane.create-site.success', {
-        siteId: site.id,
-        status: 'creating'
+        jobId,
+        realAppId: site.id,
+        accountId: params.accountId
       });
 
-      // Start background deployment (fire and forget)
+      // Start deployment in background (non-blocking)
       this.deployInBackground(site.id, params.accountId, params.prompt);
 
+      // Return jobId immediately (matches V2 flow)
       const createdAt = new Date();
       return {
         success: true,
-        siteId: site.id, // Return real site ID (not a temp job ID)
+        siteId: jobId, // Return jobId (dev-job-{appId})
         status: 'creating',
         created_at: createdAt,
         name: site.title,
         account_id: params.accountId,
         updated_at: createdAt,
-        type: 'job' // Mark as 'job' to trigger polling UX (even though ID is real)
+        type: 'job' // Marks as job to trigger polling UX
       };
     } catch (error) {
       logger.error('legacy-control-plane.create-site.error', { error });
@@ -63,16 +72,58 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
     }
   }
 
+
   /**
-   * Get site by database ID
+   * Get site by ID (handles both jobIds and real appIds)
    */
   async getSite(siteId: string, _jwt: string): Promise<SiteInfo | null> {
+    // Check if this is a jobId (matches V2 flow)
+    if (this.isJobId(siteId)) {
+      return await this.jobIdLookup(siteId);
+    }
+
+    // Normal appId lookup
     const site = await this.siteService.getSiteById(siteId);
 
     if (!site) {
       return null;
     }
 
+    return this.mapToSiteInfo(site);
+  }
+
+  /**
+   * Check if ID is a jobId
+   */
+  private isJobId(siteId: string): boolean {
+    return siteId.startsWith(LegacyControlPlaneAdapter.JOB_ID_PREFIX);
+  }
+
+  /**
+   * Job ID lookup - strips dev-job- prefix and looks up real site
+   * Simple stateless approach - no job registry needed!
+   */
+  private async jobIdLookup(jobId: string): Promise<SiteInfo | null> {
+    // Extract real appId by stripping prefix
+    const realAppId = jobId.replace(LegacyControlPlaneAdapter.JOB_ID_PREFIX, '');
+
+    logger.info('legacy-control-plane.job-id-lookup.extracting', {
+      jobId,
+      realAppId
+    });
+
+    // Look up the actual site
+    const site = await this.siteService.getSiteById(realAppId);
+
+    if (!site) {
+      logger.info('legacy-control-plane.job-id-lookup.not-found', {
+        jobId,
+        realAppId
+      });
+      return null;
+    }
+
+    // Return site with real appId (triggers frontend transition)
     return this.mapToSiteInfo(site);
   }
 
