@@ -107,19 +107,25 @@ export class DockerComposeGenerator {
 }
 
 http {
+    # Use Docker embedded DNS to resolve containers dynamically after restarts
+    resolver 127.0.0.11 ipv6=off valid=10s;
+    resolver_timeout 5s;
+
     # WebSocket upgrade support - map Connection header based on Upgrade header
     map $http_upgrade $connection_upgrade {
         default upgrade;
         '' close;
     }
 
-    upstream app_backend {
-        # Use fully-qualified container name to avoid DNS collisions on shared network
-        server airo-app-${appId}-app-1:${APP_INTERNAL_PORT};
-    }
+	    upstream app_backend {
+	        # Use fully-qualified container name to avoid DNS collisions on shared network
+	        zone app_backend 64k;
+	        server airo-app-${appId}-app-1:${APP_INTERNAL_PORT} resolve;
+	    }
 
     server {
-        listen ${nginxPort} ssl http2;
+        listen ${nginxPort} ssl;
+        http2 on;
         server_name localhost;
 
         ssl_certificate /etc/nginx/ssl/cert.pem;
