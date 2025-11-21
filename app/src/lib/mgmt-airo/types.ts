@@ -174,7 +174,7 @@ export interface AiroUpdateProjectDomainResponse {
 
 /**
  * Domain mode types for validation
- * 
+ *
  * Determines which type of domain is being validated
  */
 export enum DomainMode {
@@ -186,7 +186,7 @@ export enum DomainMode {
 
 /**
  * Domain validation error codes from mgmt-airo API
- * 
+ *
  * Error codes returned when domain availability check fails
  */
 export enum DomainValidationError {
@@ -214,7 +214,7 @@ export enum DomainValidationError {
 
 /**
  * Domain validation error object from mgmt-airo API
- * 
+ *
  * Detailed error information when domain validation fails
  */
 export interface DomainValidationErrorObject {
@@ -230,7 +230,7 @@ export interface DomainValidationErrorObject {
 
 /**
  * Domain check response
- * 
+ *
  * Response from domain availability validation endpoint
  */
 export interface AiroDomainCheckResponse {
@@ -473,4 +473,94 @@ export interface AiroMgmtClientConfig {
   jwt: string;
   maxRetries?: number;
   retryDelayMs?: number;
+}
+
+/**
+ * Secret metadata from mgmt-airo
+ */
+export interface AiroSecretMetadata {
+  name: string;
+  systemManaged: boolean;
+  variants: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Raw secret from control plane API (nested structure)
+ */
+export interface AiroRawSecret {
+  name: string;
+  value: string | object;
+  systemManaged: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Raw secrets response from control plane API (actual API structure)
+ */
+export interface AiroRawSecretsResponse {
+  appId: string;
+  cellId?: string;
+  shared: {
+    secrets: AiroRawSecret[];
+  };
+  variants: {
+    preview?: {
+      secrets: AiroRawSecret[];
+    };
+    publish?: {
+      secrets: AiroRawSecret[];
+    };
+  };
+  metadata?: any;
+}
+
+/**
+ * Get secrets response from mgmt-airo (transformed structure)
+ */
+export interface AiroGetSecretsResponse {
+  appId: string;
+  secrets: AiroSecretMetadata[];
+  count: number;
+}
+
+/**
+ * Secret operation for update secrets
+ */
+export interface AiroSecretOperation {
+  type: 'upsert' | 'delete';
+  secret: {
+    name: string;
+    value?: string;
+    variants: string[];
+    systemManaged?: boolean;
+  };
+}
+
+/**
+ * Update secrets request payload
+ */
+export interface AiroUpdateSecretsPayload {
+  operations: AiroSecretOperation[];
+  workflowName: string;
+}
+
+/**
+ * Update secrets response from mgmt-airo
+ */
+export interface AiroUpdateSecretsResponse {
+  message: string;
+  appId: string;
+  cellId?: string;
+  variants: string[];
+  workflowStatus: string;
+  secretsUpdated: boolean;
+  s3Bucket?: string;
+  s3Key?: string;
+  s3VersionId?: string;
+  contentHash?: string;
+  artifactId?: string;
+  statusJobId?: string;
 }

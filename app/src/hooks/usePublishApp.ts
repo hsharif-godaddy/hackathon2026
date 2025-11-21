@@ -4,6 +4,7 @@ import { appService } from '@/services/AppService';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import type { AiroDeployment } from '@/lib/mgmt-airo';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 
 /**
  * Response from the publish API endpoint
@@ -40,21 +41,21 @@ interface PublishResult {
 
 /**
  * React Query hook for publishing an app
- * 
+ *
  * Handles fetching the latest commit hash if not provided and making the publish request.
  * Stores the last published commit hash in the store for retry functionality.
- * 
+ *
  * After successful publish:
  * - Sets deploymentInProgressId in store to track the new deployment
  * - useDeploymentsQuery detects this ID and starts polling
  * - Polling continues until deployment status is 'deployed' or 'failed'
- * 
+ *
  * @returns Mutation object with mutate, mutateAsync, isLoading, isError, error, data
- * 
+ *
  * @example
  * ```tsx
  * const publishMutation = usePublishApp();
- * 
+ *
  * const handlePublish = async () => {
  *   try {
  *     const result = await publishMutation.mutateAsync({ appId: 'app-123' });
@@ -70,6 +71,7 @@ export function usePublishApp() {
   const setLastPublishedCommitHash = useDevelopPageStore((state) => state.setLastPublishedCommitHash);
   const setDeploymentInProgressId = useDevelopPageStore((state) => state.setDeploymentInProgressId);
   const setBuildErrorDetails = useDevelopPageStore((state) => state.setBuildErrorDetails);
+  const { data: isSecretsSyncEnabled } = useSwitchboard('appbuilder-settings-secrets');
 
   return useMutation<PublishResult, Error, PublishParams>({
     mutationFn: async ({ appId, commitHash }) => {
@@ -98,6 +100,52 @@ export function usePublishApp() {
       // Store the commit hash for retry functionality
       setLastPublishedCommitHash(appId, hashToPublish);
 
+      // Sync secrets from preview to publish before publishing
+      logger.info('publish.secrets-sync.start', {
+        appId,
+        source: 'preview',
+        destination: 'publish'
+      });
+
+      if (isSecretsSyncEnabled) {
+        try {
+          const syncResponse = await appFetch(`/api/secrets/${appId}/sync`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              source: 'preview',
+              destination: 'publish'
+            }),
+          });
+
+          if (syncResponse.ok) {
+            const syncResult = await syncResponse.json();
+            logger.info('publish.secrets-sync.success', {
+              appId,
+              added: syncResult.operations?.added || 0,
+              updated: syncResult.operations?.updated || 0,
+              deleted: syncResult.operations?.deleted || 0
+            });
+          } else {
+            // Log warning but don't fail publish - secrets sync is non-critical
+            logger.warn('publish.secrets-sync.failed', {
+              appId,
+              status: syncResponse.status,
+              message: 'Secrets sync failed but continuing with publish'
+            });
+          }
+        } catch (syncError) {
+          // Log error but don't fail publish - secrets sync is non-critical
+          logger.warn('publish.secrets-sync.error', {
+            appId,
+            error: syncError instanceof Error ? syncError.message : String(syncError),
+            message: 'Secrets sync error but continuing with publish'
+          });
+        }
+      }
+
       const response = await appFetch(`/api/apps/${appId}/publish`, {
         method: 'POST',
         headers: {
@@ -108,7 +156,7 @@ export function usePublishApp() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        
+
         // If this is a build error (400 status with details), store it for the UI to handle
         if (response.status === 400 && errorData.details) {
           setBuildErrorDetails(appId, {
@@ -117,7 +165,7 @@ export function usePublishApp() {
             exitCode: errorData.exitCode
           });
         }
-        
+
         throw new Error(errorData.error || `Publish failed: ${response.status}`);
       }
 
@@ -135,7 +183,7 @@ export function usePublishApp() {
       // Set deployment ID in store to trigger polling in useDeploymentsQuery
       if (data.result.deployment?.deploymentId) {
         setDeploymentInProgressId(variables.appId, data.result.deployment.deploymentId);
-        
+
         logger.info('publish.deployment-tracking-started', {
           appId: variables.appId,
           deploymentId: data.result.deployment.deploymentId,
@@ -156,4 +204,3 @@ export function usePublishApp() {
     },
   });
 }
-

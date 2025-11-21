@@ -161,5 +161,132 @@ export interface IControlPlaneAdapter {
    * @returns Updated site information or null if not found
    */
   updateSite(siteId: string, updates: Partial<SiteInfo>, jwt: string): Promise<SiteInfo | null>;
+
+  /**
+   * Get secrets for an app
+   *
+   * @param appId - Application identifier
+   * @param variant - Variant (preview or publish)
+   * @param jwt - Customer JWT token
+   * @returns Secrets response with list of secret names and metadata
+   */
+  getSecrets(appId: string, variant: 'preview' | 'publish', jwt: string): Promise<SecretsResponse>;
+
+  /**
+   * Perform bulk secret operations (add/update/delete)
+   *
+   * @param appId - Application identifier
+   * @param variant - Variant (preview or publish)
+   * @param operations - Secret operations to perform
+   * @param jwt - Customer JWT token
+   * @returns Operation results
+   */
+  updateSecrets(
+    appId: string,
+    variant: 'preview' | 'publish',
+    operations: SecretOperations,
+    jwt: string
+  ): Promise<SecretOperationsResult>;
+
+  /**
+   * Compare secrets between two variants
+   *
+   * Compares non-system-managed secrets only and returns the differences:
+   * - added: Secrets in source variant but not in destination
+   * - updated: Secrets in both variants but with different values
+   * - deleted: Secrets in destination variant but not in source
+   *
+   * @param appId - Application identifier
+   * @param sourceVariant - Source variant to compare from
+   * @param destinationVariant - Destination variant to compare to
+   * @param jwt - Customer JWT token
+   * @returns Diff result with added, updated, and deleted secret names
+   */
+  compareSecrets(
+    appId: string,
+    sourceVariant: 'preview' | 'publish',
+    destinationVariant: 'preview' | 'publish',
+    jwt: string
+  ): Promise<SecretsDiffResult>;
+
+  /**
+   * Sync secrets from source variant to destination variant
+   *
+   * Copies all non-system-managed secrets from source to destination:
+   * - Adds secrets that exist only in source
+   * - Updates secrets that have different values
+   * - Deletes secrets that exist only in destination
+   *
+   * @param appId - Application identifier
+   * @param sourceVariant - Source variant to sync from
+   * @param destinationVariant - Destination variant to sync to
+   * @param jwt - Customer JWT token
+   * @returns Operation results with counts of added, updated, and deleted secrets
+   */
+  syncSecrets(
+    appId: string,
+    sourceVariant: 'preview' | 'publish',
+    destinationVariant: 'preview' | 'publish',
+    jwt: string
+  ): Promise<SecretOperationsResult>;
 }
 
+/**
+ * Secret metadata returned by control plane
+ */
+export interface SecretMetadata {
+  name: string;
+  systemManaged: boolean;
+  variants: ('preview' | 'publish')[];
+}
+
+/**
+ * Response from getSecrets
+ */
+export interface SecretsResponse {
+  appId: string;
+  secrets: SecretMetadata[];
+  count: number;
+}
+
+/**
+ * Secret update operation
+ */
+export interface SecretUpdate {
+  name: string;
+  value: string;
+}
+
+/**
+ * Bulk secret operations
+ */
+export interface SecretOperations {
+  additions?: SecretUpdate[];
+  updates?: SecretUpdate[];
+  deletions?: string[];
+}
+
+/**
+ * Result of secret operations
+ */
+export interface SecretOperationsResult {
+  success: boolean;
+  message: string;
+  operations: {
+    added: number;
+    updated: number;
+    deleted: number;
+  };
+}
+
+/**
+ * Result of comparing secrets between two variants
+ */
+export interface SecretsDiffResult {
+  /** Secret names added in source variant (not in destination) */
+  added: string[];
+  /** Secret names updated (exist in both but with different values) */
+  updated: string[];
+  /** Secret names deleted (exist in destination but not in source) */
+  deleted: string[];
+}

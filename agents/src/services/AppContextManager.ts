@@ -4,6 +4,8 @@ import { ReadFileTool } from '../tools/read-file.js';
 import { appPlanTool } from '../tools/app-plan-tool.js';
 import { logger } from '../logging/index.js';
 import { appContextEvents } from '../logging/events/index.js';
+import { SecretsManagementTool } from '../tools/secrets-management-tool.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 
 /**
  * Service for managing app context information that should be injected into LLM conversations
@@ -20,7 +22,7 @@ export class AppContextManager {
     this.directoryTool = new DirectoryListingTool();
     this.readFileTool = new ReadFileTool();
   }
-  
+
   /**
    * Generate context message that provides directory listing and package information to the LLM
    * @param context - The agent execution context containing app metadata
@@ -73,9 +75,12 @@ export class AppContextManager {
       // Get color scheme information
       const colorSchemeInfo = await this.getColorSchemeInfo(appId);
 
+      // Get secrets information
+      const secretsInfo = await this.getSecretsInfo(appId);
+
       // Format directory listing and package info into context message
-      const formattedContext = this.formatAppContext(directoryListing, packageInfo, colorSchemeInfo);
-      
+      const formattedContext = this.formatAppContext(directoryListing, packageInfo, colorSchemeInfo, secretsInfo);
+
       // Log successful generation
       const generateData: any = {
         appId,
@@ -100,7 +105,7 @@ export class AppContextManager {
       appContextEvents.generateSuccess(logger, generateData);
 
       return formattedContext;
-      
+
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       appContextEvents.generateFailure(logger, err, { appId, directoryPath: appPath });
@@ -125,13 +130,13 @@ export class AppContextManager {
     const appId = context.metadata?.appId as string;
     const appPath = context.metadata?.appPath as string;
     let packageContent: unknown = null;
-    
+
     if (!appPath || !appId) {
       return null;
     }
 
     appContextEvents.packageBegin(logger, { appId });
-    
+
     try {
       // Try to read package.json using the read_file tool
       const readResult = await this.readFileTool.readFile({ path: 'package.json' }, appPath);
@@ -157,10 +162,10 @@ export class AppContextManager {
       }
 
       const packageJson = JSON.parse(jsonContent);
-      
+
       // Check if dependencies are installed by comparing lock file modification time
       const dependenciesInstalled = await this.checkDependenciesInstalled(context);
-      
+
       const result = {
         name: packageJson.name,
         version: packageJson.version,
@@ -182,7 +187,7 @@ export class AppContextManager {
         dependenciesInstalled: result.dependenciesInstalled,
         installationCheckMethod: 'timestamps'
       });
-      
+
       return result;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -236,11 +241,11 @@ export class AppContextManager {
 
       // Calculate time difference in seconds
       const timeDiffSeconds = Math.abs(packageLockTime.getTime() - packageJsonTime.getTime()) / 1000;
-      
+
       // If package-lock.json is newer than package.json OR within 5 seconds (for WSL2 time inconsistencies)
       // consider dependencies installed
       const isInstalled = packageLockTime >= packageJsonTime || timeDiffSeconds <= 5;
-      
+
       logger.debug('app.context.dependencies.check', {
         appId: context.metadata?.appId as string,
         packageJsonTime: packageJsonTime.toISOString(),
@@ -249,7 +254,7 @@ export class AppContextManager {
         dependenciesInstalled: isInstalled,
         toleranceSeconds: 5
       });
-      
+
       return isInstalled;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -288,26 +293,59 @@ export class AppContextManager {
   }
 
   /**
+   * Get secrets information for the app
+   * @param appId - The app ID
+   * @returns Secrets information or null
+   */
+  private async getSecretsInfo(appId: string): Promise<any> {
+    try {
+      // Create dev-supervisor client for the app
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      if (!devSupervisor) {
+        return null;
+      }
+
+      const secretsTool = new SecretsManagementTool(devSupervisor);
+      const result = await secretsTool.listSecretNames(appId);
+
+      if (result.success && result.secretNames.length > 0) {
+        return result.secretNames;
+      }
+      return null;
+    } catch (error) {
+      logger.warn('app.context.secrets.failure', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+
+  /**
    * Format directory listing and package info into a comprehensive context message
    * @param directoryListing - Raw directory listing output
    * @param packageInfo - Package information from package.json
    * @param colorSchemeInfo - Color scheme information from app plan
+   * @param secretsInfo - Secrets information from secrets management
    * @returns Formatted context message
    */
-  private formatAppContext(directoryListing: string, packageInfo: any, colorSchemeInfo: any): string {
+  private formatAppContext(directoryListing: string, packageInfo: any, colorSchemeInfo: any, secretsInfo: any): string {
     const directorySection = this.formatDirectorySection(directoryListing);
     const packageSection = this.formatPackageSection(packageInfo);
     const colorSchemeSection = this.formatColorSchemeSection(colorSchemeInfo);
-    
+    const secretsSection = this.formatSecretsSection(secretsInfo);
+
     return `[Current Project Context]
 
 ${packageSection}
 
 ${colorSchemeSection}
 
+${secretsSection}
+
 ${directorySection}
 
-Note: This is the current project context including dependencies and directory structure. You don't need to run additional directory listings unless you need to explore specific subdirectories in detail.`;
+Note: This is the current project context including dependencies, color scheme, secrets, and directory structure. You don't need to run additional directory listings unless you need to explore specific subdirectories in detail.`;
   }
 
   /**
@@ -321,24 +359,56 @@ Note: This is the current project context including dependencies and directory s
     }
 
     const parts = [];
-    
+
     if (colorSchemeInfo.name) {
       parts.push(`Name: ${colorSchemeInfo.name}`);
     }
-    
+
     if (colorSchemeInfo.primary) {
       parts.push(`Primary: ${colorSchemeInfo.primary}`);
     }
-    
+
     if (colorSchemeInfo.secondary) {
       parts.push(`Secondary: ${colorSchemeInfo.secondary}`);
     }
-    
+
     if (colorSchemeInfo.accent) {
       parts.push(`Accent: ${colorSchemeInfo.accent}`);
     }
 
     return `Color Scheme: ${parts.join(', ')}`;
+  }
+
+  /**
+   * Format secrets information into a compact section
+   * @param secretsInfo - Array of secret names or null
+   * @returns Formatted secrets section
+   */
+  private formatSecretsSection(secretsInfo: string[] | null): string {
+    const timestamp = new Date().toISOString();
+    let secretsContext = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    secretsContext += `🔐 LIVE SECRETS STATE - REFRESHED ON THIS MESSAGE (${timestamp})\n`;
+    secretsContext += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    secretsContext += "⚠️  IMPORTANT: This list is regenerated fresh on EVERY message you receive.\n";
+    secretsContext += "⚠️  This is NOT a snapshot from session start - it's the CURRENT state RIGHT NOW.\n";
+    secretsContext += "⚠️  If a secret was mentioned earlier but is not in this list, it has been DELETED.\n";
+    secretsContext += "⚠️  ONLY use secrets that appear in THIS list - ignore any from conversation history.\n\n";
+
+    if (!secretsInfo || secretsInfo.length === 0) {
+      secretsContext += "❌ NO SECRETS CURRENTLY CONFIGURED\n";
+      secretsContext += "   The user has not added any secrets yet, or all secrets have been deleted.\n";
+    } else {
+      secretsContext += `✅ CURRENTLY CONFIGURED SECRETS: ${secretsInfo.length}\n`;
+      const secretsList = secretsInfo.map((name, index) => `   ${index + 1}. ${name}`).join('\n');
+      secretsContext += secretsList + "\n";
+      secretsContext += "\n📝 How to use these secrets in backend code:" +
+      "\n   import { getSecret } from '../../../dev-tools/src/secrets-utils.js';" +
+      "\n   const value = getSecret('SECRET_NAME');\n";
+    }
+
+    secretsContext += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+
+    return secretsContext;
   }
 
   /**
@@ -378,7 +448,7 @@ ${compactListing}${truncated ? '\n... (truncated for brevity)' : ''}`;
     }
 
     const sections = [];
-    
+
     // Basic project info
     if (packageInfo.name || packageInfo.version || packageInfo.description) {
       const basicInfo = [];

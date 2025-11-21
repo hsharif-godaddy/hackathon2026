@@ -59,3 +59,6 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# App secrets storage (local development)
+/app-secrets

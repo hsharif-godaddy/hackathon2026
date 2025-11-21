@@ -1,14 +1,17 @@
-import { IControlPlaneAdapter, CreateSiteParams, CreateSiteResult, SiteInfo } from './types';
+import { IControlPlaneAdapter, CreateSiteParams, CreateSiteResult, SiteInfo, SecretsResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretUpdate } from './types';
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 import { getDeploymentAdapter } from '@/lib/deployment';
+import { getAllocPath } from '@/lib/dev-environment/utils/app-paths';
 import { logger } from '@/lib/request-context';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 /**
  * Legacy Control Plane Adapter - Uses database + Nomad/SQS
  *
  * Implements control plane interface using existing database and deployment systems.
  * Provides backward compatibility with V1 architecture.
- * 
+ *
  * IMPORTANT: Uses dev-job-{appId} pattern - no separate job storage needed!
  * JobId is just the real appId with a prefix, stripped on lookup.
  */
@@ -346,4 +349,355 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
       updated_at: site.updated_at
     };
   }
+
+  /**
+   * Get secrets for an app (Legacy: reads from local JSON files)
+   *
+   * For preview variant: reads from /tmp/apps/{appId}/alloc/config.json
+   * For publish variant: reads from /tmp/apps/{appId}/alloc/publish-config.json
+   */
+  async getSecrets(appId: string, variant: 'preview' | 'publish', jwt: string): Promise<SecretsResponse> {
+    const allocPath = getAllocPath(appId);
+    const configFileName = variant === 'preview' ? 'config.json' : 'publish-config.json';
+    const configPath = join(allocPath, configFileName);
+
+    const variantSecrets = await this.readSecretsFile(configPath);
+
+    const secrets = Object.entries(variantSecrets).map(([name, secret]) => ({
+      name,
+      systemManaged: secret.SYSTEM_MANAGED,
+      variants: [variant] as ('preview' | 'publish')[]
+    }));
+
+    return {
+      appId,
+      secrets,
+      count: secrets.length
+    };
+  }
+
+  /**
+   * Perform bulk secret operations (Legacy: writes to local JSON files)
+   *
+   * For preview variant: writes to /tmp/apps/{appId}/alloc/config.json
+   * For publish variant: writes to /tmp/apps/{appId}/alloc/publish-config.json
+   */
+  async updateSecrets(
+    appId: string,
+    variant: 'preview' | 'publish',
+    operations: SecretOperations,
+    jwt: string
+  ): Promise<SecretOperationsResult> {
+    const { additions = [], updates = [], deletions = [] } = operations;
+
+    const allocPath = getAllocPath(appId);
+    await mkdir(allocPath, { recursive: true });
+
+    const configFileName = variant === 'preview' ? 'config.json' : 'publish-config.json';
+    const variantPath = join(allocPath, configFileName);
+
+    const currentSecrets = await this.readSecretsFile(variantPath);
+
+    let addedCount = 0;
+    let updatedCount = 0;
+    let deletedCount = 0;
+
+    for (const addition of additions) {
+      if (!addition.name || !addition.value) {
+        throw new Error('Invalid addition: name and value are required');
+      }
+      currentSecrets[addition.name] = {
+        VALUE: this.parseSecretValue(addition.value),
+        SYSTEM_MANAGED: false
+      };
+      addedCount++;
+    }
+
+    for (const update of updates) {
+      if (!update.name || !update.value) {
+        throw new Error('Invalid update: name and value are required');
+      }
+      if (currentSecrets[update.name]?.SYSTEM_MANAGED) {
+        throw new Error(`Cannot update system-managed secret '${update.name}'`);
+      }
+      currentSecrets[update.name] = {
+        SYSTEM_MANAGED: false,
+        VALUE: this.parseSecretValue(update.value)
+      };
+      updatedCount++;
+    }
+
+    for (const name of deletions) {
+      if (!name) {
+        throw new Error('Invalid deletion: name is required');
+      }
+      if (name in currentSecrets && !currentSecrets[name].SYSTEM_MANAGED) {
+        delete currentSecrets[name];
+        deletedCount++;
+      }
+    }
+
+    // Write secrets to file (which is mounted in container for preview variant)
+    await this.writeSecretsFile(variantPath, currentSecrets);
+
+    logger.info('legacy-control-plane.update-secrets.success', {
+      appId,
+      variant,
+      added: addedCount,
+      updated: updatedCount,
+      deleted: deletedCount
+    });
+
+    return {
+      success: true,
+      message: 'Secret operations completed successfully',
+      operations: {
+        added: addedCount,
+        updated: updatedCount,
+        deleted: deletedCount
+      }
+    };
+  }
+
+  /**
+   * Read secrets from a JSON file
+   */
+  private async readSecretsFile(filePath: string): Promise<SecretsStorage> {
+    try {
+      const content = await readFile(filePath, 'utf8');
+      return JSON.parse(content);
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Write secrets to a JSON file
+   */
+  private async writeSecretsFile(filePath: string, secrets: SecretsStorage): Promise<void> {
+    const dir = dirname(filePath);
+    await mkdir(dir, { recursive: true });
+    await writeFile(filePath, JSON.stringify(secrets, null, 2));
+  }
+
+  /**
+   * Parse secret value as JSON if possible, otherwise return as string
+   */
+  private parseSecretValue(value: string): string | object {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+
+  /**
+   * Compare secrets between two variants (Legacy: compares local JSON files)
+   *
+   * Compares non-system-managed secrets only:
+   * - added: Secrets in source variant but not in destination
+   * - updated: Secrets in both variants but with different values
+   * - deleted: Secrets in destination variant but not in source
+   *
+   * @param appId - Application identifier
+   * @param sourceVariant - Source variant to compare from
+   * @param destinationVariant - Destination variant to compare to
+   * @param jwt - Customer JWT token (not used in legacy mode)
+   * @returns Diff result with added, updated, and deleted secret names
+   */
+  async compareSecrets(
+    appId: string,
+    sourceVariant: 'preview' | 'publish',
+    destinationVariant: 'preview' | 'publish',
+    jwt: string
+  ): Promise<SecretsDiffResult> {
+    const allocPath = getAllocPath(appId);
+
+    // Get config file names for each variant
+    const sourceFileName = sourceVariant === 'preview' ? 'config.json' : 'publish-config.json';
+    const destFileName = destinationVariant === 'preview' ? 'config.json' : 'publish-config.json';
+
+    const sourcePath = join(allocPath, sourceFileName);
+    const destPath = join(allocPath, destFileName);
+
+    // Read both files
+    const sourceSecrets = await this.readSecretsFile(sourcePath);
+    const destSecrets = await this.readSecretsFile(destPath);
+
+    // Filter to only non-system-managed secrets
+    const sourceUserSecrets: Record<string, string | object> = {};
+    const destUserSecrets: Record<string, string | object> = {};
+
+    for (const [name, secret] of Object.entries(sourceSecrets)) {
+      if (!secret.SYSTEM_MANAGED) {
+        sourceUserSecrets[name] = secret.VALUE;
+      }
+    }
+
+    for (const [name, secret] of Object.entries(destSecrets)) {
+      if (!secret.SYSTEM_MANAGED) {
+        destUserSecrets[name] = secret.VALUE;
+      }
+    }
+
+    // Calculate differences
+    const added: string[] = [];
+    const updated: string[] = [];
+    const deleted: string[] = [];
+
+    // Find added and updated secrets
+    for (const [name, sourceSecret] of Object.entries(sourceUserSecrets)) {
+      if (!(name in destUserSecrets)) {
+        // Secret exists in source but not in destination
+        added.push(name);
+      } else {
+        // Secret exists in both - check if values are different
+        const sourceValue = JSON.stringify(sourceSecret);
+        const destValue = JSON.stringify(destUserSecrets[name]);
+
+        if (sourceValue !== destValue) {
+          updated.push(name);
+        }
+      }
+    }
+
+    // Find deleted secrets (in destination but not in source)
+    for (const name of Object.keys(destUserSecrets)) {
+      if (!(name in sourceUserSecrets)) {
+        deleted.push(name);
+      }
+    }
+
+    logger.info('legacy-control-plane.compare-secrets.success', {
+      appId,
+      sourceVariant,
+      destinationVariant,
+      added: added.length,
+      updated: updated.length,
+      deleted: deleted.length
+    });
+
+    return {
+      added,
+      updated,
+      deleted
+    };
+  }
+
+
+  /**
+   * Sync secrets between two variants (V2: uses mgmt-airo API)
+   *
+   * @param appId - Application identifier
+   * @param sourceVariant - Source variant to sync from
+   * @param destinationVariant - Destination variant to sync to
+   * @param jwt - Customer JWT token
+   * @returns Sync result with operations result
+   */
+  async syncSecrets(
+    appId: string,
+    sourceVariant: 'preview' | 'publish',
+    destinationVariant: 'preview' | 'publish',
+    jwt: string
+  ): Promise<SecretOperationsResult> {
+    try {
+      logger.info('v2-control-plane.sync-secrets.start', {
+        appId,
+        sourceVariant,
+        destinationVariant
+      });
+
+      const allocPath = getAllocPath(appId);
+
+    // Get config file names for each variant
+    const sourceFileName = sourceVariant === 'preview' ? 'config.json' : 'publish-config.json';
+    const destFileName = destinationVariant === 'preview' ? 'config.json' : 'publish-config.json';
+
+    const sourcePath = join(allocPath, sourceFileName);
+    const destPath = join(allocPath, destFileName);
+
+    // Read both files
+    const sourceSecrets = await this.readSecretsFile(sourcePath);
+    const destSecrets = await this.readSecretsFile(destPath);
+
+      // Filter to only non-system-managed secrets
+      const sourceUserSecrets: Record<string, string | object> = {};
+      const destUserSecrets: Record<string, string | object> = {};
+
+      for (const [name, secret] of Object.entries(sourceSecrets)) {
+        if (!secret.SYSTEM_MANAGED) {
+          sourceUserSecrets[name] = secret.VALUE;
+        }
+      }
+
+      for (const [name, secret] of Object.entries(destSecrets)) {
+        if (!secret.SYSTEM_MANAGED) {
+          destUserSecrets[name] = secret.VALUE;
+        }
+      }
+
+      // Calculate differences
+      const added: SecretUpdate[] = [];
+      const updated: SecretUpdate[] = [];
+      const deleted: string[] = [];
+
+      // Find added and updated secrets
+      for (const [name, sourceSecret] of Object.entries(sourceUserSecrets)) {
+        if (!(name in destUserSecrets)) {
+          // Secret exists in source but not in destination
+          added.push({name, value: typeof sourceSecret === 'string' ? sourceSecret : JSON.stringify(sourceSecret)});
+        } else {
+          // Secret exists in both - check if values are different
+          const sourceValue = JSON.stringify(sourceSecret);
+          const destValue = JSON.stringify(destUserSecrets[name]);
+
+          if (sourceValue !== destValue) {
+            updated.push({name, value: typeof sourceSecret === 'string' ? sourceSecret : JSON.stringify(sourceSecret)});
+          }
+        }
+      }
+
+      // Find deleted secrets (exists in destination but not in source)
+      for (const name of Object.keys(destUserSecrets)) {
+        if (!(name in sourceUserSecrets)) {
+          deleted.push(name);
+        }
+      }
+
+      const secretOperations: SecretOperations = {
+        additions: added,
+        updates: updated,
+        deletions: deleted
+      };
+
+      return await this.updateSecrets(appId, destinationVariant, secretOperations, jwt);
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
+      logger.error('v2-control-plane.sync-secrets.error', {
+        appId,
+        sourceVariant,
+        destinationVariant,
+        error
+      });
+      throw error;
+    }
+  }
+}
+
+/**
+ * Secret stored in JSON files
+ */
+interface StoredSecret {
+  VALUE: string | object;
+  SYSTEM_MANAGED: boolean;
+}
+
+/**
+ * Secrets storage structure from JSON files
+ */
+interface SecretsStorage {
+  [key: string]: StoredSecret;
 }

@@ -14,6 +14,7 @@ import {
   FileEditCompressionStrategy,
   FileEditInputCompressionStrategy,
   DuplicateFileReadStrategy,
+  AppContextRemovalStrategy,
   TodoListRemovalStrategy,
 } from './compression/strategies/index.js';
 import { CssSuggestCompressionStrategy } from './compression/strategies/CssSuggestCompressionStrategy.js';
@@ -53,18 +54,20 @@ export class ConversationContextManager {
     this.maxMessages = maxMessages;
     this.appContextManager = new AppContextManager();
     this.todoContextManager = new TodoContextManager();
-    
+
     this.historyLoader = new ConversationHistoryLoader(conversationRepo);
-    
+
     const hotFileStrategy = new HotFileInclusionStrategy();
     const fileEditStrategy = new FileEditCompressionStrategy(hotFileStrategy);
     const fileEditInputStrategy = new FileEditInputCompressionStrategy(hotFileStrategy);
     const duplicateFileReadStrategy = new DuplicateFileReadStrategy(hotFileStrategy);
-    
+
     this.historyLoader.registerCompressionStrategy(hotFileStrategy);
     this.historyLoader.registerCompressionStrategy(duplicateFileReadStrategy);
     this.historyLoader.registerCompressionStrategy(fileEditStrategy);
     this.historyLoader.registerCompressionStrategy(fileEditInputStrategy);
+    // Remove all app context entries from history - fresh context is injected before history on every turn
+    this.historyLoader.registerCompressionStrategy(new AppContextRemovalStrategy());
     // Remove all todoList entries from history - persistent [Current Todo List] section is the single source of truth
     this.historyLoader.registerCompressionStrategy(new TodoListRemovalStrategy());
     // Compress cssSuggest results to only show palette names
@@ -210,21 +213,21 @@ export class ConversationContextManager {
     executionContext?: AgentExecutionContext
   ): Promise<LLMMessage[]> {
     const appId = executionContext?.metadata?.appId as string | undefined;
-    
+
     if (!appId) {
-      logger.warn('conversation.history.missing_app_id', { 
-        conversationId, 
+      logger.warn('conversation.history.missing_app_id', {
+        conversationId,
         message: 'Cannot load compressed history without appId for app path lookup'
       });
       return [];
     }
-    
+
     const appRepo = new AppRepository();
     const app = appRepo.findById(appId);
     const appPath = app?.path;
 
     const maxTokens = 40000;
-    
+
     try {
       const llmMessages = await this.historyLoader.loadMessagesWithTokenLimitByAppId(
         appId,
@@ -233,12 +236,12 @@ export class ConversationContextManager {
         true,
         appPath
       );
-      
+
       logger.debug('conversation.history.compressed.loaded', {
         appId,
         messageCount: llmMessages.length,
       });
-      
+
       return llmMessages;
     } catch (error) {
       logger.error('conversation.history.compressed.load_failure', {

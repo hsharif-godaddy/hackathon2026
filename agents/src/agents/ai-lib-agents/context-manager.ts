@@ -71,7 +71,7 @@ export class AILibContextManager {
             hasAppContext: !!context.appContext,
             hasContextAttachments: !!context.contextAttachments && context.contextAttachments.length > 0
         }
-        
+
         logger.info('context.build.start', {
             availableContexts: Object.entries(contextSummary).filter(([_, v]) => v).map(([k]) => k.replace('has', '').toLowerCase()),
             ...contextSummary
@@ -97,7 +97,7 @@ export class AILibContextManager {
         logger.info('context.messages.generated', {
             messageCount: contextMessages.length
         })
-        
+
         // Detailed logging if enabled
         if (contextLogging.detailed) {
             logger.debug('context.messages.details', {
@@ -117,7 +117,7 @@ export class AILibContextManager {
                     contentPreview: templateDescription.substring(0, 500)
                 })
             }
-            
+
             conversationContextMessages.push({
                 role: 'system',
                 content: templateDescription,
@@ -206,18 +206,18 @@ export class AILibContextManager {
                         role: msg.role as 'user' | 'assistant' | 'system',
                         content: msg.content
                     }
-                    
+
                     // Preserve tool calls for assistant messages
                     if (msg.role === 'assistant' && msg.tool_calls) {
                         result.tool_calls = msg.tool_calls
                     }
-                    
+
                     // Preserve tool result references
                     if (msg.role === 'tool') {
                         result.tool_call_id = msg.tool_call_id
                         result.name = msg.name
                     }
-                    
+
                     return result
                 })
         } catch (error) {
@@ -392,7 +392,7 @@ export class AILibContextManager {
             })
 
             const executionContext = this.buildExecutionContext(context)
-            
+
             contextLogger.debug('context.execution.built', {
                 threadId: executionContext.threadId,
                 hasMetadata: !!executionContext.metadata,
@@ -422,7 +422,8 @@ export class AILibContextManager {
             return {
                 role: 'user',
                 content: appContextContent,
-                type: 'app_context'
+                type: 'app_context',
+                insertionOrder: 'before_history' // Insert fresh context BEFORE conversation history
             }
         } catch (error) {
             logger.error('context.app.build.failure', {
@@ -439,7 +440,7 @@ export class AILibContextManager {
         // Resolve appPath from appId using AppRepository
         let appPath = ''
         const appId = context.metadata?.appId as string
-        
+
         if (appId) {
             const contextLogger = log.forApp(appId)
             const app = this.appRepository.findById(appId)
@@ -470,7 +471,7 @@ export class AILibContextManager {
     convertToEnhancedContext(rawContext: AgentsAppContext): EnhancedAgentContext {
         // Always show concise conversion summary
         const availableContexts = Object.keys(rawContext).filter(key => rawContext[key as keyof AgentsAppContext])
-        
+
         logger.info('context.conversion.start', {
             availableSections: availableContexts.length,
             sections: availableContexts
@@ -552,18 +553,18 @@ export class AILibContextManager {
         // Get template description file path
         // Note: We need to handle both source (src/) and compiled (dist/) locations
         let templateDescPath = getTemplateDescriptionPath(validatedVersion, import.meta.url)
-        
-        // If the path doesn't exist (likely because we're running from dist/), 
+
+        // If the path doesn't exist (likely because we're running from dist/),
         // try to find it in the source directory
         if (!existsSync(templateDescPath)) {
             // Construct path to source directory
             const currentDir = path.dirname(fileURLToPath(import.meta.url))
             const sourcePromptsDir = path.resolve(currentDir, '..', '..', '..', 'src', 'prompts')
             templateDescPath = path.join(sourcePromptsDir, 'template-descriptions', `${validatedVersion}.md`)
-            
+
             contextLogger.debug('context.template.path.fallback', { templateDescPath })
         }
-        
+
         if (!existsSync(templateDescPath)) {
             contextLogger.warn('context.template.file_not_found', { templateDescPath })
             return null
@@ -572,7 +573,7 @@ export class AILibContextManager {
         try {
             const templateDescription = readFileSync(templateDescPath, 'utf-8')
             const trimmedDescription = templateDescription.trim()
-            
+
             contextLogger.info('context.template.load.success', {
                 templateVersion: validatedVersion,
                 contentLength: trimmedDescription.length,
@@ -586,7 +587,7 @@ export class AILibContextManager {
                     content: trimmedDescription
                 })
             }
-            
+
             return trimmedDescription
         } catch (error) {
             contextLogger.error('context.template.read.failure', {

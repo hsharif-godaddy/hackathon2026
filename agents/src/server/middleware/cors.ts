@@ -9,14 +9,16 @@ const corsOptions: CorsOptions = {
       callback(null, true);
       return;
     }
-    
+
     const isDevelopment = process.env.NODE_ENV === 'development';
     let allowedOrigins: string[] = [];
-    
+
     if (process.env.ALLOWED_ORIGINS) {
       allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
     } else if (isDevelopment) {
       allowedOrigins = [
+        'http://localhost:3000',
+        'https://localhost:3000',
         'https://local.gasket.dev-godaddy.com:8443',
         'https://local.gasket.dev-godaddy.com',
         'https://airo-builder.test-godaddy.com:8443',
@@ -26,7 +28,7 @@ const corsOptions: CorsOptions = {
         'https://airo-builder.dev-godaddy.com'
       ];
     }
-    
+
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {

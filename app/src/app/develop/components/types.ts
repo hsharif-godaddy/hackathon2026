@@ -82,6 +82,7 @@ export enum SettingsSection {
   BACKUPS = 'backups',
   SECURITY = 'security',
   DATABASE = 'database',
+  SECRETS = 'secrets',
   VISUAL_SCAN = 'visualScan',
   FEEDBACK = 'feedback'
 }

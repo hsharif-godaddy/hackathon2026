@@ -29,7 +29,10 @@ import {
   type AiroSystem,
   AiroHttpError,
   DomainMode,
-  type AiroApp
+  type AiroApp,
+  type AiroRawSecretsResponse,
+  type AiroUpdateSecretsPayload,
+  type AiroUpdateSecretsResponse
 } from './types';
 
 /**
@@ -405,9 +408,9 @@ export class AiroMgmtClient {
 
   /**
    * Update app project domain
-   * 
+   *
    * Updates the project domain (subdomain) for an app
-   * 
+   *
    * @param subscriptionId - Subscription ID
    * @param systemId - System ID
    * @param appId - App ID
@@ -430,9 +433,9 @@ export class AiroMgmtClient {
 
   /**
    * Check domain availability
-   * 
+   *
    * Validates if a domain (project prefix or custom domain) is available
-   * 
+   *
    * @param subscriptionId - Subscription ID
    * @param systemId - System ID
    * @param appId - App ID
@@ -449,7 +452,7 @@ export class AiroMgmtClient {
     options: { mode: DomainMode.PROJECT; projectPrefix: string } | { mode: DomainMode.CUSTOM; fqdn: string }
   ): Promise<AiroDomainCheckResponse> {
     const queryParams = new URLSearchParams({ mode: options.mode });
-    
+
     if (options.mode === DomainMode.PROJECT) {
       queryParams.append('projectPrefix', options.projectPrefix);
     } else {
@@ -686,6 +689,104 @@ export class AiroMgmtClient {
       `/api/airo/v1/attributes/${attributeId}`,
       payload,
       { logEvent: 'mgmt-airo.update-attribute' }
+    );
+  }
+
+  /**
+   * Get secrets for an app
+   *
+   * Retrieves the list of secrets configured for a specific application and variant.
+   * The response includes secret metadata (name, systemManaged, variants, timestamps)
+   * but does NOT include the actual secret values for security.
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - Application ID
+   * @param variant - Variant to filter by (preview or publish)
+   * @returns Promise resolving to secrets response with metadata
+   *
+   * @example
+   * ```typescript
+   * const secrets = await client.getSecrets(subId, sysId, appId, 'preview');
+   * console.log(secrets.secrets); // Array of secret metadata
+   * ```
+   */
+  async getSecrets(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    variant?: 'preview' | 'publish',
+    includeValues?: boolean
+  ): Promise<AiroRawSecretsResponse> {
+    const params = new URLSearchParams({
+      ...(variant ? { filter: 'variant', variant } : {}),
+      ...(includeValues ? { includeValues: 'true' } : {})
+    });
+    return this.request<AiroRawSecretsResponse>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/secrets?${params.toString()}`,
+      undefined,
+      {
+        logEvent: 'mgmt-airo.get-secrets',
+        noCache: true
+      }
+    );
+  }
+
+  /**
+   * Update secrets for an app
+   *
+   * Performs bulk secret operations (upsert and delete) for a specific application.
+   * Operations are processed atomically via a workflow execution.
+   *
+   * Operation types:
+   * - upsert: Create new secret or update existing (requires name, value, variants, systemManaged)
+   * - delete: Delete existing secret (requires name, variants, systemManaged)
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - Application ID
+   * @param payload - Update payload with operations and workflow name
+   * @returns Promise resolving to update response with workflow execution details
+   *
+   * @example
+   * ```typescript
+   * const result = await client.updateSecrets(subId, sysId, appId, {
+   *   operations: [
+   *     {
+   *       type: 'upsert',
+   *       secret: {
+   *         name: 'API_KEY',
+   *         value: 'secret123',
+   *         variants: ['preview'],
+   *         systemManaged: false
+   *       }
+   *     },
+   *     {
+   *       type: 'delete',
+   *       secret: {
+   *         name: 'OLD_KEY',
+   *         variants: ['preview'],
+   *         systemManaged: false
+   *       }
+   *     }
+   *   ],
+   *   workflowName: 'airo-app-secrets'
+   * });
+   * console.log(result.statusJobId);
+   * ```
+   */
+  async updateSecrets(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    payload: AiroUpdateSecretsPayload
+  ): Promise<AiroUpdateSecretsResponse> {
+    return this.request<AiroUpdateSecretsResponse>(
+      'POST',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/secrets`,
+      payload,
+      { logEvent: 'mgmt-airo.update-secrets' }
     );
   }
 }

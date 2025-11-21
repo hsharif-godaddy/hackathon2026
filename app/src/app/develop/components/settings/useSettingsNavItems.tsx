@@ -41,6 +41,8 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
   const { data: isFeedbackEnabled } = useSwitchboard('appbuilder-settings-feedback');
+  const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
+  // const { data: isSecretsEnabled } = {data: true};
 
   const handleFeedbackClick = () => {
     localStorage.removeItem('airo-feedback-shown:airo#app-builder');
@@ -77,6 +79,12 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       label: 'Database',
       icon: <DatabaseIcon />,
       disabled: isDatabaseEnabled !== true,
+    },
+    {
+      id: SettingsSection.SECRETS,
+      label: 'Secrets',
+      icon: <LockedIcon />,
+      disabled: isSecretsEnabled !== true,
     },
     ...(isVisualScanEnabled ? [{
         id: SettingsSection.VISUAL_SCAN,

@@ -10,6 +10,9 @@ export { devToolsPlugin } from './vite-plugin'
 // FullStory injector for development tracking
 export { injectFullStory } from './fullstory-injector'
 
+// Secrets management utilities
+export { getSecret, listSecretNames } from './secrets-utils'
+
 // Development mode injector - only works in development
 export function injectDevelopmentMode() {
   // Only inject in development environment
@@ -47,11 +50,11 @@ export function injectDevelopmentMode() {
       import('./components/DevelopmentMode')
     ]).then(([React, ReactDOM, DevelopmentModeModule]) => {
       const root = ReactDOM.createRoot(container)
-      
+
       // Create dev tools component
       const DevelopmentModeComponent = DevelopmentModeModule.default
       const DevToolsComponent = React.createElement(DevelopmentModeComponent)
-      
+
       root.render(DevToolsComponent)
       console.log('✅ Dev tools successfully injected into DOM')
     }).catch(error => {

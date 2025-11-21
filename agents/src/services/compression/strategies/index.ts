@@ -3,6 +3,7 @@ export { DuplicateFileReadStrategy } from './DuplicateFileReadStrategy.js';
 export { DuplicateTodoCreateStrategy } from './DuplicateTodoCreateStrategy.js';
 export { TodoCreateResultSummarizer } from './TodoCreateResultSummarizer.js';
 export { TodoMarkDoneAggregator } from './TodoMarkDoneAggregator.js';
+export { AppContextRemovalStrategy } from './AppContextRemovalStrategy.js';
 export { TodoListRemovalStrategy } from './TodoListRemovalStrategy.js';
 export { HotFileInclusionStrategy } from './HotFileInclusionStrategy.js';
 export { FileEditCompressionStrategy } from './FileEditCompressionStrategy.js';

@@ -1,4 +1,4 @@
-import { IControlPlaneAdapter, CreateSiteParams, CreateSiteResult, SiteInfo, SiteStatus } from './types';
+import { IControlPlaneAdapter, CreateSiteParams, CreateSiteResult, SiteInfo, SiteStatus, SecretsResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretUpdate } from './types';
 import { extractCustomerId, decodeJWT } from '@/lib/utils/jwt-utils';
 import { hasBeenPublished } from '@/utils/site';
 import { logger } from '@/lib/request-context';
@@ -1130,9 +1130,9 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
    *
    * CRITICAL: Uses app.id (the real appId from hosting_apps) as the siteId
    * NOT the jobId - that's just a temporary handle during creation
-   * 
+   *
    * Includes custom domains from mgmt-hosting if available (app.domains)
-   * 
+   *
    * @param app - App data from mgmt-hosting
    * @param customerId - Customer ID from subscription cache (defaults to 'customer' if not provided)
    */
@@ -1247,6 +1247,468 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       case 'error': return 'failed';
       case null:
       default: return 'init';
+    }
+  }
+
+  /**
+   * Parse secret value as JSON if possible, otherwise return as string
+   */
+  private parseSecretValue(value: string): string | object {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+
+  /**
+   * Get secrets for an app (V2: uses mgmt-airo API)
+   *
+   * Retrieves secret metadata from mgmt-airo for the specified app and variant.
+   *
+   * @param appId - Application ID
+   * @param variant - Variant (preview or publish)
+   * @param jwt - Customer JWT token
+   * @returns Secrets response with metadata
+   */
+  async getSecrets(appId: string, variant: 'preview' | 'publish', jwt: string): Promise<SecretsResponse> {
+    try {
+      logger.info('v2-control-plane.get-secrets.start', { appId, variant });
+
+      const client = this.createClient(jwt);
+      const site = await this.getSite(appId, jwt);
+
+      if (!site || !site.system_id || !site.subscription_id) {
+        logger.warn('v2-control-plane.get-secrets.missing-ids', {
+          appId,
+          hasSystemId: !!site?.system_id,
+          hasSubscriptionId: !!site?.subscription_id
+        });
+        throw new Error(`Unable to retrieve system/subscription IDs for app ${appId}`);
+      }
+
+      // Call mgmt-airo API to get secrets (returns raw nested structure)
+      const rawResponse = await client.getSecrets(
+        site.subscription_id,
+        site.system_id,
+        appId,
+        variant
+      );
+
+      // Combine shared secrets and variant-specific secrets
+      const sharedSecrets = rawResponse.shared?.secrets || [];
+      const variantSecrets = rawResponse.variants?.[variant]?.secrets || [];
+      const allSecrets = [...sharedSecrets, ...variantSecrets];
+
+      // Create a Set of shared secret names for O(1) lookups
+      const sharedSecretNames = new Set(sharedSecrets.map(s => s.name));
+
+      // Transform to our format
+      const secrets = allSecrets.map(secret => ({
+        name: secret.name,
+        systemManaged: secret.systemManaged,
+        variants: sharedSecretNames.has(secret.name)
+          ? ['preview', 'publish'] as ('preview' | 'publish')[]
+          : [variant] as ('preview' | 'publish')[]
+      }));
+
+      logger.info('v2-control-plane.get-secrets.success', {
+        appId,
+        variant,
+        count: secrets.length
+      });
+
+      return {
+        appId: rawResponse.appId,
+        secrets,
+        count: secrets.length
+      };
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
+      logger.error('v2-control-plane.get-secrets.error', { appId, variant, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Perform bulk secret operations (V2: uses mgmt-airo API)
+   *
+   * Transforms operations to mgmt-airo format and executes via workflow.
+   * - additions and updates are combined into 'upsert' operations
+   * - deletions map to 'delete' operations
+   *
+   * @param appId - Application ID
+   * @param variant - Variant (preview or publish)
+   * @param operations - Secret operations (additions, updates, deletions)
+   * @param jwt - Customer JWT token
+   * @returns Operation results
+   */
+  async updateSecrets(
+    appId: string,
+    variant: 'preview' | 'publish',
+    operations: SecretOperations,
+    jwt: string
+  ): Promise<SecretOperationsResult> {
+    try {
+      const { additions = [], updates = [], deletions = [] } = operations;
+
+      logger.info('v2-control-plane.update-secrets.start', {
+        appId,
+        variant,
+        additionsCount: additions.length,
+        updatesCount: updates.length,
+        deletionsCount: deletions.length
+      });
+
+      const client = this.createClient(jwt);
+      const site = await this.getSite(appId, jwt);
+
+      if (!site || !site.system_id || !site.subscription_id) {
+        logger.warn('v2-control-plane.update-secrets.missing-ids', {
+          appId,
+          hasSystemId: !!site?.system_id,
+          hasSubscriptionId: !!site?.subscription_id
+        });
+        throw new Error(`Unable to retrieve system/subscription IDs for app ${appId}`);
+      }
+
+      // Transform operations to mgmt-airo format
+      const airoOperations = [];
+
+      // Both additions and updates map to 'upsert' type
+      for (const addition of additions) {
+        airoOperations.push({
+          type: 'upsert' as const,
+          secret: {
+            name: addition.name,
+            value: this.parseSecretValue(addition.value),
+            variants: [variant],
+            systemManaged: false
+          }
+        });
+      }
+
+      for (const update of updates) {
+        airoOperations.push({
+          type: 'upsert' as const,
+          secret: {
+            name: update.name,
+            value: this.parseSecretValue(update.value),
+            variants: [variant],
+            systemManaged: false
+          }
+        });
+      }
+
+      // Deletions map to 'delete' type
+      for (const name of deletions) {
+        airoOperations.push({
+          type: 'delete' as const,
+          secret: {
+            name,
+            variants: [variant],
+            systemManaged: false
+          }
+        });
+      }
+
+      logger.info('v2-control-plane.update-secrets.transformed', {
+        appId,
+        variant,
+        totalOperations: airoOperations.length
+      });
+
+      if (airoOperations.length === 0) {
+        logger.info('v2-control-plane.update-secrets.no-operations', {
+          appId,
+          variant
+        });
+        return {
+          success: true,
+          message: 'No operations to perform',
+          operations: {
+            added: 0,
+            updated: 0,
+            deleted: 0
+          }
+        };
+      }
+
+      // Call mgmt-airo API to update secrets
+      const airoResponse = await client.updateSecrets(
+        site.subscription_id,
+        site.system_id,
+        appId,
+        {
+          operations: airoOperations,
+          workflowName: 'airo-app-secrets'
+        }
+      );
+
+      logger.info('v2-control-plane.update-secrets.success', {
+        appId,
+        variant,
+        workflowStatus: airoResponse.workflowStatus,
+        statusJobId: airoResponse.statusJobId,
+        secretsUpdated: airoResponse.secretsUpdated
+      });
+
+      // Transform response to our format
+      return {
+        success: true,
+        message: airoResponse.message,
+        operations: {
+          added: additions.length,
+          updated: updates.length,
+          deleted: deletions.length
+        }
+      };
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
+      logger.error('v2-control-plane.update-secrets.error', {
+        appId,
+        variant,
+        error
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Compare secrets between two variants (V2: uses mgmt-airo API)
+   *
+   * @param appId - Application identifier
+   * @param sourceVariant - Source variant to compare from
+   * @param destinationVariant - Destination variant to compare to
+   * @param jwt - Customer JWT token
+   * @returns Diff result with added, updated, and deleted secret names
+   */
+  async compareSecrets(
+    appId: string,
+    sourceVariant: 'preview' | 'publish',
+    destinationVariant: 'preview' | 'publish',
+    jwt: string
+  ): Promise<SecretsDiffResult> {
+    try {
+      logger.info('v2-control-plane.compare-secrets.start', {
+        appId,
+        sourceVariant,
+        destinationVariant
+      });
+
+      const client = this.createClient(jwt);
+      const site = await this.getSite(appId, jwt);
+
+      if (!site || !site.system_id || !site.subscription_id) {
+        logger.warn('v2-control-plane.get-secrets.missing-ids', {
+          appId,
+          hasSystemId: !!site?.system_id,
+          hasSubscriptionId: !!site?.subscription_id
+        });
+        throw new Error(`Unable to retrieve system/subscription IDs for app ${appId}`);
+      }
+
+      // Call mgmt-airo API to get secrets (returns raw nested structure)
+      const rawResponse = await client.getSecrets(
+        site.subscription_id,
+        site.system_id,
+        appId,
+        undefined,
+        true
+      );
+
+      const sharedSecrets = rawResponse.shared?.secrets || [];
+      const sourceSecrets = [...sharedSecrets, ...(rawResponse.variants?.[sourceVariant]?.secrets || [])];
+      const destSecrets = [...sharedSecrets, ...(rawResponse.variants?.[destinationVariant]?.secrets || [])];
+
+      // Filter to only non-system-managed secrets
+      const sourceUserSecrets: Record<string, string | object> = {};
+      const destUserSecrets: Record<string, string | object> = {};
+
+      for (const sourceSecret of sourceSecrets) {
+        if (!sourceSecret.systemManaged) {
+          sourceUserSecrets[sourceSecret.name] = sourceSecret.value;
+        }
+      }
+
+      for (const destSecret of destSecrets) {
+        if (!destSecret.systemManaged) {
+          destUserSecrets[destSecret.name] = destSecret.value;
+        }
+      }
+
+      // Calculate differences
+      const added: string[] = [];
+      const updated: string[] = [];
+      const deleted: string[] = [];
+
+      // Find added and updated secrets
+      for (const [name, sourceSecret] of Object.entries(sourceUserSecrets)) {
+        if (!(name in destUserSecrets)) {
+          // Secret exists in source but not in destination
+          added.push(name);
+        } else {
+          // Secret exists in both - check if values are different
+          const sourceValue = JSON.stringify(sourceSecret);
+          const destValue = JSON.stringify(destUserSecrets[name]);
+
+          if (sourceValue !== destValue) {
+            updated.push(name);
+          }
+        }
+      }
+
+      // Find deleted secrets (in destination but not in source)
+      for (const name of Object.keys(destUserSecrets)) {
+        if (!(name in sourceUserSecrets)) {
+          deleted.push(name);
+        }
+      }
+
+      logger.info('v2-control-plane.compare-secrets.success', {
+        appId,
+        sourceVariant,
+        destinationVariant,
+        added: added.length,
+        updated: updated.length,
+        deleted: deleted.length
+      });
+
+      return {
+        added,
+        updated,
+        deleted
+      };
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
+      logger.error('v2-control-plane.compare-secrets.error', {
+        appId,
+        sourceVariant,
+        destinationVariant,
+        error
+      });
+      throw error;
+    }
+  }
+
+
+  /**
+   * Sync secrets between two variants (V2: uses mgmt-airo API)
+   *
+   * @param appId - Application identifier
+   * @param sourceVariant - Source variant to sync from
+   * @param destinationVariant - Destination variant to sync to
+   * @param jwt - Customer JWT token
+   * @returns Sync result with operations result
+   */
+  async syncSecrets(
+    appId: string,
+    sourceVariant: 'preview' | 'publish',
+    destinationVariant: 'preview' | 'publish',
+    jwt: string
+  ): Promise<SecretOperationsResult> {
+    try {
+      logger.info('v2-control-plane.sync-secrets.start', {
+        appId,
+        sourceVariant,
+        destinationVariant
+      });
+
+      const client = this.createClient(jwt);
+      const site = await this.getSite(appId, jwt);
+
+      if (!site || !site.system_id || !site.subscription_id) {
+        logger.warn('v2-control-plane.get-secrets.missing-ids', {
+          appId,
+          hasSystemId: !!site?.system_id,
+          hasSubscriptionId: !!site?.subscription_id
+        });
+        throw new Error(`Unable to retrieve system/subscription IDs for app ${appId}`);
+      }
+
+      // Call mgmt-airo API to get secrets (returns raw nested structure)
+      const rawResponse = await client.getSecrets(
+        site.subscription_id,
+        site.system_id,
+        appId,
+        undefined,
+        true
+      );
+      const sourceSecrets = rawResponse.variants?.[sourceVariant]?.secrets || [];
+      const destSecrets = rawResponse.variants?.[destinationVariant]?.secrets || [];
+
+      // Filter to only non-system-managed secrets
+      const sourceUserSecrets: Record<string, string | object> = {};
+      const destUserSecrets: Record<string, string | object> = {};
+
+      for (const sourceSecret of sourceSecrets) {
+        if (!sourceSecret.systemManaged) {
+          sourceUserSecrets[sourceSecret.name] = sourceSecret.value;
+        }
+      }
+
+      for (const destSecret of destSecrets) {
+        if (!destSecret.systemManaged) {
+          destUserSecrets[destSecret.name] = destSecret.value;
+        }
+      }
+
+      // Calculate differences
+      const added: SecretUpdate[] = [];
+      const updated: SecretUpdate[] = [];
+      const deleted: string[] = [];
+
+      // Find added and updated secrets
+      for (const [name, sourceSecret] of Object.entries(sourceUserSecrets)) {
+        if (!(name in destUserSecrets)) {
+          // Secret exists in source but not in destination
+          added.push({name, value: typeof sourceSecret === 'string' ? sourceSecret : JSON.stringify(sourceSecret)});
+        } else {
+          // Secret exists in both - check if values are different
+          const sourceValue = JSON.stringify(sourceSecret);
+          const destValue = JSON.stringify(destUserSecrets[name]);
+
+          if (sourceValue !== destValue) {
+            updated.push({name, value: typeof sourceSecret === 'string' ? sourceSecret : JSON.stringify(sourceSecret)});
+          }
+        }
+      }
+
+      // Find deleted secrets (exists in destination but not in source)
+      for (const name of Object.keys(destUserSecrets)) {
+        if (!(name in sourceUserSecrets)) {
+          deleted.push(name);
+        }
+      }
+
+      const secretOperations: SecretOperations = {
+        additions: added,
+        updates: updated,
+        deletions: deleted
+      };
+
+      return await this.updateSecrets(appId, destinationVariant, secretOperations, jwt);
+    } catch (error: any) {
+      // Re-throw 401 for auth redirect
+      if (error.status === 401) {
+        throw error;
+      }
+      logger.error('v2-control-plane.sync-secrets.error', {
+        appId,
+        sourceVariant,
+        destinationVariant,
+        error
+      });
+      throw error;
     }
   }
 }

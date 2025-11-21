@@ -10,6 +10,7 @@ import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
 import { DatabasePanel } from '@/app/develop/components/settings/DatabasePanel'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { SecretsPanel } from './SecretsPanel'
 
 export default function SettingsView() {
   const { activeSettingsSection } = useDevelopPageStore()
@@ -21,6 +22,8 @@ export default function SettingsView() {
   const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
+  const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
+  // const { data: isSecretsEnabled } = {data: true};
 
   const renderSection = () => {
     switch (activeSettingsSection) {
@@ -34,6 +37,8 @@ export default function SettingsView() {
         return isSecurityEnabled ? <SecurityPanel /> : null;
       case SettingsSection.DATABASE:
         return isDatabaseEnabled ? <DatabasePanel appId={appId} /> : null;
+      case SettingsSection.SECRETS:
+        return isSecretsEnabled ? <SecretsPanel appId={appId} variant="preview" /> : null;
       case SettingsSection.VISUAL_SCAN:
         return isVisualScanEnabled ? <VisualScanPanel /> : null;
       case SettingsSection.FEEDBACK:
