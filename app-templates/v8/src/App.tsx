@@ -45,24 +45,35 @@ const footerConfig: RootLayoutConfig['footer'] = {
   }
 };
 
+/**
+ * Layout wrapper
+ */
+function LayoutWrapper({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
+
 // Create router with layout wrapper
 const router = createBrowserRouter([
   {
     path: '/',
     element: import.meta.env.DEV ? (
       <AiroErrorBoundary>
+        <LayoutWrapper>
+          <Suspense fallback={<SpinnerFallback />}>
+            <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
+              <Outlet />
+            </RootLayout>
+          </Suspense>
+        </LayoutWrapper>
+      </AiroErrorBoundary>
+    ) : (
+      <LayoutWrapper>
         <Suspense fallback={<SpinnerFallback />}>
           <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
             <Outlet />
           </RootLayout>
         </Suspense>
-      </AiroErrorBoundary>
-    ) : (
-      <Suspense fallback={<SpinnerFallback />}>
-        <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
-          <Outlet />
-        </RootLayout>
-      </Suspense>
+      </LayoutWrapper>
     ),
     children: routes,
   },

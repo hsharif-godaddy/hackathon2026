@@ -4,6 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import './styles/globals.css';
 
+// Initialize SCC c2 client for event tracking (auto-injects on import)
+import '../scc-c2-tracking/src'
+
+
+
 // Add robots meta tag only in development mode
 if (import.meta.env.DEV) {
   const meta = document.createElement('meta');
