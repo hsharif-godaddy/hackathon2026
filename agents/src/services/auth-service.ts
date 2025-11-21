@@ -81,7 +81,15 @@ function getConfig(): {
   }
 
   // TypeScript now knows these values are defined
-  const redirectUri = `${agentUrl!.replace(/\/+$/, '')}/oauth/godaddy/callback`;
+  let normalizedAgentUrl = agentUrl!.replace(/\/+$/, '');
+  if (!normalizedAgentUrl.startsWith('http://') && !normalizedAgentUrl.startsWith('https://')) {
+    // Default to https for non-localhost, http for localhost
+    const protocol = (normalizedAgentUrl.includes('localhost') || normalizedAgentUrl.includes('127.0.0.1')) 
+      ? 'http://' 
+      : 'https://';
+    normalizedAgentUrl = `${protocol}${normalizedAgentUrl}`;
+  }
+  const redirectUri = `${normalizedAgentUrl}/oauth/godaddy/callback`;
 
   return {
     apiUrl: apiUrl!,
