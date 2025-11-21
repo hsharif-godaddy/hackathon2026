@@ -7,10 +7,10 @@ import {
 } from '@airo/ai-lib';
 import { getAgentModelWithName } from '../utils/model-selection.js';
 import {
-  commerceGetStore,
-  commerceSetupStore,
+  commerceStore,
+  commerceSetupIntegration,
   commerceSearchStoreProducts,
-  commerceAddStoreProducts,
+  commerceProduct,
 } from '../tools/ai-lib-tools/commerce-tools.js';
 import { getModularPromptPaths } from '../utils/prompt-utils.js';
 import { Logger } from '../logging/index.js';
@@ -95,10 +95,10 @@ export async function createCommerceAgent(options?: { appPath?: string }): Promi
     modelName,
     tools: {
       oauthConnect,
-      getStore: commerceGetStore,
-      setupStore: commerceSetupStore,
+      store: commerceStore,
+      setupIntegration: commerceSetupIntegration,
       searchProducts: commerceSearchStoreProducts,
-      addStoreProducts: commerceAddStoreProducts,
+      product: commerceProduct,
       writeCommerceCredentials,
     },
 

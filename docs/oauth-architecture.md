@@ -165,7 +165,7 @@ This is the core flow implemented in the provided files.
 Every AI‑lib tool that needs OAuth requires `context.metadata.appId`. Examples:
 
 - `oauth-tool.ts` – `oauthConnect`
-- `commerce-tools.ts` – `commerceGetStore`, `commerceSetupStore`, `commerceSearchStoreProducts`, `commerceAddStoreProducts`
+- `commerce-tools.ts` – `commerceStore`, `commerceSetupIntegration`, `commerceSearchStoreProducts`, `commerceAddStoreProducts`
 
 `appId` identifies the specific App instance. All tokens and PKCE state are keyed by this.
 

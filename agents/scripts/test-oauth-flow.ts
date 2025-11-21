@@ -44,7 +44,7 @@ function decodeJWT(token: string): any {
     }
 }
 
-const PORT = 4001;
+const PORT = 4000;
 const REDIRECT_URI = `http://localhost:${PORT}/oauth/godaddy/callback`;
 
 // ANSI color codes for terminal output

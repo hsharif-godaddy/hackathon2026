@@ -1,167 +1,71 @@
 import { v4 as uuid } from 'uuid';
 import { Logger } from '../logging/index.js';
+import type {
+  CommerceOnboardingApplicationResponse,
+  MutationCreateSkuGroupInput,
+  MutationUpdateSkuGroupInput,
+  GetSkuGroupsResponse as GraphQLGetSkuGroupsResponse,
+  CreateSkuGroupResponse as GraphQLCreateSkuGroupResponse,
+  UpdateSkuGroupResponse as GraphQLUpdateSkuGroupResponse,
+  DeleteSkuGroupResponse as GraphQLDeleteSkuGroupResponse,
+  SKUGroupResponse,
+  SKUResponse,
+  SKUPriceResponse,
+  SimpleMoneyInput,
+  SimpleMoney,
+  PriceRange,
+  CreateSKUPriceInput,
+  CreateMediaObjectInput,
+  CreateSKUGroupSKUInput
+} from './godaddy-commerce-types.js';
 
 const logger = Logger.create({ service: 'godaddy-commerce' });
 
-/**
- * Money input type for prices
- */
-export interface SimpleMoneyInput {
-  currencyCode: string;
-  value: number;
-}
+// Re-export types for backward compatibility
+export type {
+  SimpleMoneyInput,
+  CreateSKUPriceInput,
+  CreateMediaObjectInput,
+  CreateSKUGroupSKUInput,
+  PriceRange,
+  SimpleMoney,
+  SKUPriceResponse,
+  SKUResponse,
+  SKUGroupResponse,
+  CommerceOnboardingApplicationResponse
+};
+
+// Aliases for backward compatibility
+export type CreateSkuGroupInput = MutationCreateSkuGroupInput;
+export type UpdateSkuGroupInput = MutationUpdateSkuGroupInput;
 
 /**
- * SKU price input
+ * GraphQL SKU Groups query response wrapper
  */
-export interface CreateSKUPriceInput {
-  value: SimpleMoneyInput;
-  compareAtValue?: SimpleMoneyInput;
-}
+export type GetSkuGroupsResponse =
+  | { success: true; data: GraphQLGetSkuGroupsResponse; error?: never }
+  | { success: false; data?: never; error: string };
 
 /**
- * Media object input
+ * GraphQL create SKU Group mutation response wrapper
  */
-export interface CreateMediaObjectInput {
-  type: 'PHOTO' | 'VIDEO' | 'IMAGE';
-  url: string;
-  label?: string;
-  name?: string;
-  position?: number;
-}
+export type CreateSkuGroupResponse =
+  | { success: true; data: GraphQLCreateSkuGroupResponse; error?: never }
+  | { success: false; data?: never; error: string };
 
 /**
- * SKU within a SKU Group
+ * GraphQL update SKU Group mutation response wrapper
  */
-export interface CreateSKUGroupSKUInput {
-  label: string;
-  name?: string;
-  status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
-  code?: string;
-  description?: string;
-  htmlDescription?: string;
-  shortLabel?: string;
-  prices?: CreateSKUPriceInput[];
-  unitCost?: SimpleMoneyInput;
-  weight?: number;
-  unitOfWeight?: 'KG' | 'GR' | 'LB' | 'OZ';
-  mediaObjects?: CreateMediaObjectInput[];
-  disableInventoryTracking?: boolean;
-  disablePriceOverrides?: boolean;
-  disableShipping?: boolean;
-  backorderLimit?: number;
-}
+export type UpdateSkuGroupResponse =
+  | { success: true; data: GraphQLUpdateSkuGroupResponse; error?: never }
+  | { success: false; data?: never; error: string };
 
 /**
- * SKU Group creation input
+ * GraphQL delete SKU Group mutation response wrapper
  */
-export interface CreateSkuGroupInput {
-  label: string;
-  type: string;
-  name?: string;
-  status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
-  description?: string;
-  htmlDescription?: string;
-  shortLabel?: string;
-  skus?: CreateSKUGroupSKUInput[];
-  mediaObjects?: CreateMediaObjectInput[];
-}
-
-/**
- * Price range response
- */
-export interface PriceRange {
-  min: number;
-  max: number;
-}
-
-/**
- * Money object from GraphQL
- */
-export interface SimpleMoney {
-  value: number;
-  currencyCode: string;
-}
-
-/**
- * SKU Price response
- */
-export interface SKUPriceResponse {
-  id: string;
-  value: SimpleMoney;
-  compareAtValue?: SimpleMoney;
-}
-
-/**
- * SKU response
- */
-export interface SKUResponse {
-  id: string;
-  label: string;
-  name: string;
-  code?: string;
-  status: string;
-  prices?: {
-    edges: Array<{
-      node: SKUPriceResponse;
-    }>;
-  };
-}
-
-/**
- * SKU Group response from GraphQL
- */
-export interface SKUGroupResponse {
-  id: string;
-  label: string;
-  name: string;
-  description?: string;
-  htmlDescription?: string;
-  status: string;
-  type: string;
-  priceRange?: PriceRange;
-  compareAtPriceRange?: PriceRange;
-  createdAt?: string;
-  updatedAt?: string;
-  skus?: {
-    edges: Array<{
-      node: SKUResponse;
-    }>;
-  };
-}
-
-/**
- * GraphQL SKU Groups query response
- */
-export interface GetSkuGroupsResponse {
-  success: boolean;
-  data?: {
-    skuGroups: {
-      edges: Array<{
-        node: SKUGroupResponse;
-      }>;
-      pageInfo: {
-        hasNextPage: boolean;
-        hasPreviousPage: boolean;
-        startCursor?: string;
-        endCursor?: string;
-      };
-      totalCount: number;
-    };
-  };
-  error?: string;
-}
-
-/**
- * GraphQL create SKU Group mutation response
- */
-export interface CreateSkuGroupResponse {
-  success: boolean;
-  data?: {
-    createSkuGroup: SKUGroupResponse;
-  };
-  error?: string;
-}
+export type DeleteSkuGroupResponse =
+  | { success: true; data: GraphQLDeleteSkuGroupResponse; error?: never }
+  | { success: false; data?: never; error: string };
 
 export class GoDaddyCommerce {
   private baseUrl: string | undefined;
@@ -201,14 +105,16 @@ export class GoDaddyCommerce {
   }
 
   public async onboardApplication(
-    args: { appId: string; customerId: string; email: string; firstName: string; lastName: string },
+    args: { appId: string; customerId: string; storeName?: string | undefined; email: string; firstName: string; lastName: string },
     accessToken: string
-  ): Promise<unknown> {
+  ) {
     if (!this.baseUrl) {
       throw new Error('Godaddy base url not set');
     }
 
-    const url = 'https://signup.payments.dev-godaddy.com/api/v1/commerce/onboarding-applications';
+    const hostname = new URL(this.baseUrl).hostname;
+    const domain = hostname.replace(/^api\./, '');
+    const url = `https://signup.payments.${domain}/api/v1/commerce/onboarding-applications`;
     const requestId = uuid();
     const requestBody = {
       individuals: [
@@ -224,6 +130,7 @@ export class GoDaddyCommerce {
         address: {
           countryCode: 'US',
         },
+        ...(args.storeName && { legalName: args.storeName }),
       },
       metadata: {
         source: 'GoDaddy - Airo App Builder Agent',
@@ -249,23 +156,61 @@ export class GoDaddyCommerce {
       body: JSON.stringify(requestBody),
     });
 
-    const data = await result.json();
+    const data = await result.json() as CommerceOnboardingApplicationResponse;
 
     if (!result.ok) {
-      throw new Error(
-        `Commerce onboarding API error (${result.status}): ${JSON.stringify(data)}`
-      );
+      throw new Error(`Commerce onboarding API error (${result.status}): ${JSON.stringify(data)}`);
     }
 
     return data;
   }
 
-  public async getSkuGroups(args: { storeId: string }, accessToken: string) {
+  public async enableGoDaddyPaymentsApplication(args: { storeId: string }, accessToken: string) {
+    const graphqlUrl = `${this.baseUrl}/v1/apps/app-registry-subgraph`;
+
+    const query = `
+    mutation EnableGoDaddyPaymentsApplication($storeId: String!) {
+      enableStoreApplication(input: { applicationName: "godaddy-payments", storeId: $storeId }) {
+        id
+        name
+        status
+        url
+      }
+    }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        query,
+        variables: {
+          storeId: args.storeId,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`GraphQL request failed: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+
+    if (data.errors) {
+      throw new Error(`GraphQL request failed: ${data.errors[0].message}`);
+    }
+
+    return data;
+  }
+
+  public async getSkuGroups(args: { storeId: string }, accessToken: string): Promise<GetSkuGroupsResponse> {
     const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const query = `
         query GetProducts {
-          skuGroups(first: 20) {
+          skuGroups(status: { eq: "ACTIVE" }, first: 20) {
             edges {
               node {
                 id
@@ -331,9 +276,9 @@ export class GoDaddyCommerce {
   }
 
   public async createSkuGroup(
-    args: { storeId: string; product: CreateSkuGroupInput },
+    args: { storeId: string; product: MutationCreateSkuGroupInput },
     accessToken: string
-  ) {
+  ): Promise<CreateSkuGroupResponse> {
     const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const mutation = `
@@ -423,6 +368,279 @@ export class GoDaddyCommerce {
     if (data.errors) {
       logger.error('commerce.create-sku-group.graphql-errors', {
         storeId: args.storeId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async getSkuGroup(
+    args: { storeId: string; skuGroupId: string },
+    accessToken: string
+  ): Promise<{ success: boolean; data?: { skuGroup: SKUGroupResponse }; error?: string }> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const query = `
+      query GetSkuGroup($id: String!) {
+        skuGroup(id: $id) {
+          id
+          label
+          name
+          description
+          htmlDescription
+          status
+          type
+          priceRange {
+            min
+            max
+          }
+          compareAtPriceRange {
+            min
+            max
+          }
+          createdAt
+          updatedAt
+          skus(first: 50) {
+            edges {
+              node {
+                id
+                label
+                name
+                code
+                status
+                prices(first: 1) {
+                  edges {
+                    node {
+                      id
+                      value {
+                        value
+                        currencyCode
+                      }
+                      compareAtValue {
+                        value
+                        currencyCode
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query,
+        variables: { id: args.skuGroupId },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.get-sku-group.request-failed', {
+        storeId: args.storeId,
+        skuGroupId: args.skuGroupId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.get-sku-group.graphql-errors', {
+        storeId: args.storeId,
+        skuGroupId: args.skuGroupId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async updateSkuGroup(
+    args: { storeId: string; skuGroupId: string; product: MutationUpdateSkuGroupInput },
+    accessToken: string
+  ): Promise<UpdateSkuGroupResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const mutation = `
+      mutation UpdateSkuGroup($id: String!, $input: MutationUpdateSkuGroupInput!) {
+        updateSkuGroup(id: $id, input: $input) {
+          id
+          label
+          name
+          description
+          htmlDescription
+          status
+          type
+          priceRange {
+            min
+            max
+          }
+          compareAtPriceRange {
+            min
+            max
+          }
+          createdAt
+          updatedAt
+          skus(first: 50) {
+            edges {
+              node {
+                id
+                label
+                name
+                code
+                status
+                prices(first: 1) {
+                  edges {
+                    node {
+                      id
+                      value {
+                        value
+                        currencyCode
+                      }
+                      compareAtValue {
+                        value
+                        currencyCode
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: {
+          id: args.skuGroupId,
+          input: args.product,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.update-sku-group.request-failed', {
+        storeId: args.storeId,
+        skuGroupId: args.skuGroupId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.update-sku-group.graphql-errors', {
+        storeId: args.storeId,
+        skuGroupId: args.skuGroupId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async deleteSkuGroup(
+    args: { storeId: string; skuGroupId: string },
+    accessToken: string
+  ): Promise<DeleteSkuGroupResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const mutation = `
+      mutation DeleteSkuGroup($id: String!) {
+        deleteSkuGroupById(id: $id) {
+          id
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: { id: args.skuGroupId },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.delete-sku-group.request-failed', {
+        storeId: args.storeId,
+        skuGroupId: args.skuGroupId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.delete-sku-group.graphql-errors', {
+        storeId: args.storeId,
+        skuGroupId: args.skuGroupId,
         errors: data.errors.map((e: any) => e.message),
       });
       return {

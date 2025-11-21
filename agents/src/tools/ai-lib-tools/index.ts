@@ -32,10 +32,10 @@ export { cssSuggestAITool } from './css-suggest.js';
 export { suggestedResponseAITool } from './suggested-response.js';
 export { seoAnalyze } from './seo-analyze.js';
 export {
-  commerceAddStoreProducts,
-  commerceGetStore,
+  commerceStore,
   commerceSearchStoreProducts,
-  commerceSetupStore
+  commerceSetupIntegration,
+  commerceProduct,
 } from './commerce-tools.js';
 export { oauthConnect } from './oauth-tool.js';
 export { writeCommerceCredentials } from './commerce-credentials.js';
@@ -67,10 +67,10 @@ import { cssSuggestAITool } from './css-suggest.js';
 import { suggestedResponseAITool } from './suggested-response.js';
 import { seoAnalyze } from './seo-analyze.js';
 import {
-  commerceSetupStore,
-  commerceGetStore,
+  commerceSetupIntegration,
+  commerceStore,
   commerceSearchStoreProducts,
-  commerceAddStoreProducts,
+  commerceProduct,
 } from './commerce-tools.js';
 import { oauthConnect } from './oauth-tool.js';
 import { writeCommerceCredentials } from './commerce-credentials.js';
@@ -105,10 +105,10 @@ export const allAILibTools: Record<string, Tool> = {
   suggestedResponse: suggestedResponseAITool,
   seoAnalysis: seoAnalyze,
   oauthConnect: oauthConnect,
-  commerceSetupStore: commerceSetupStore,
-  commerceGetStore: commerceGetStore,
+  commerceSetupIntegration: commerceSetupIntegration,
+  commerceStore: commerceStore,
   commerceSearchStoreProducts: commerceSearchStoreProducts,
-  commerceAddStoreProducts: commerceAddStoreProducts,
+  commerceProduct: commerceProduct,
 };
 
 /**
@@ -141,10 +141,10 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
   // Commerce tools
   commerce: {
     oauthConnect: oauthConnect,
-    setupStore: commerceSetupStore,
-    getStore: commerceGetStore,
+    setupIntegration: commerceSetupIntegration,
+    store: commerceStore,
     searchStoreProducts: commerceSearchStoreProducts,
-    addStoreProducts: commerceAddStoreProducts,
+    product: commerceProduct,
     writeCommerceCredentials: writeCommerceCredentials,
   },
 
