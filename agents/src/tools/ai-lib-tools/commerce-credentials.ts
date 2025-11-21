@@ -75,8 +75,10 @@ environment configuration.`,
     const clientSecret = process.env.GODADDY_OAUTH_CLIENT_SECRET;
     const apiBaseUrl = process.env.GODADDY_API_BASE_URL || 'https://api.dev-godaddy.com';
 
-    if (!clientId || !clientSecret) {
-      throw new Error('OAuth credentials not configured. Set GODADDY_OAUTH_CLIENT_ID and GODADDY_OAUTH_CLIENT_SECRET environment variables.');
+    if (process.env.NODE_ENV === 'development' && (!clientId || !clientSecret)) {
+      throw new Error(
+        'OAuth credentials not configured. Set GODADDY_OAUTH_CLIENT_ID and GODADDY_OAUTH_CLIENT_SECRET environment variables.'
+      );
     }
 
     // Construct path to src/config/commerce-credentials.json
@@ -104,15 +106,14 @@ environment configuration.`,
 
       // Build credentials object matching /alloc/config.json structure
       // Each field is wrapped with SYSTEM_MANAGED flag (false for agent-managed)
-      const credentials = {
-        GODADDY_OAUTH_CLIENT_ID: {
-          SYSTEM_MANAGED: false,
-          VALUE: clientId,
-        },
-        GODADDY_OAUTH_CLIENT_SECRET: {
-          SYSTEM_MANAGED: false,
-          VALUE: clientSecret,
-        },
+
+      let credentials: {
+        STORE_ID: { SYSTEM_MANAGED: boolean; VALUE: string };
+        GODADDY_API_BASE_URL: { SYSTEM_MANAGED: boolean; VALUE: string };
+        CHANNEL_ID: { SYSTEM_MANAGED: boolean; VALUE: string };
+        GODADDY_OAUTH_CLIENT_ID?: { SYSTEM_MANAGED: boolean; VALUE: string };
+        GODADDY_OAUTH_CLIENT_SECRET?: { SYSTEM_MANAGED: boolean; VALUE: string };
+      } = {
         STORE_ID: {
           SYSTEM_MANAGED: false,
           VALUE: input.storeId,
@@ -126,6 +127,20 @@ environment configuration.`,
           VALUE: input.channelId,
         },
       };
+
+      if (process.env.NODE_ENV === 'development') {
+        credentials = {
+          ...credentials,
+          GODADDY_OAUTH_CLIENT_ID: {
+            SYSTEM_MANAGED: false,
+            VALUE: clientId!,
+          },
+          GODADDY_OAUTH_CLIENT_SECRET: {
+            SYSTEM_MANAGED: false,
+            VALUE: clientSecret!,
+          },
+        };
+      }
 
       // Write credentials file
       const jsonContent = JSON.stringify(credentials, null, 2);
@@ -141,13 +156,17 @@ environment configuration.`,
         fileSize: jsonContent.length,
       });
 
-      return JSON.stringify({
-        success: true,
-        message: `Commerce credentials written to ${credentialsPath}`,
-        path: credentialsPath,
-        storeId: input.storeId,
-        note: 'Credentials will be used by checkout session creator. /alloc/config.json takes precedence if present.',
-      }, null, 2);
+      return JSON.stringify(
+        {
+          success: true,
+          message: `Commerce credentials written to ${credentialsPath}`,
+          path: credentialsPath,
+          storeId: input.storeId,
+          note: 'Credentials will be used by checkout session creator. /alloc/config.json takes precedence if present.',
+        },
+        null,
+        2
+      );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
