@@ -36,6 +36,19 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
         CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
     fi
 
+    # sync database and server configuration files from base app template if they don't exist
+    # this ensures apps have the latest db client, schema, and server configuration
+    # this can be removed once all apps are reloaded in dev and prod
+    for file in "src/server/configure.js" "bundle.js" "drizzle.config.ts" "src/server/db/client.ts" "src/server/db/schema.ts"; do
+        if [ ! -f "$file" ]; then
+            echo "Syncing missing file: $file"
+            mkdir -p "$(dirname "$file")"
+            cp "$BASE_APP_DIR/$file" "$file"
+            git add "$file"
+            git commit -m "Sync upstream file: $file $(date +%s)" || true
+        fi
+    done
+
     # sync upstream dev-tools from base app template
     # we need to eventually create a public repo for dev-tools and sync them from there
     cp -r "$BASE_APP_DIR/dev-tools" "$CUSTOMER_APP_DIR/dev-tools"
