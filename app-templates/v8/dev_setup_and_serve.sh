@@ -28,10 +28,19 @@ git config --global user.name "Airo AI Builder"
 git config --global user.email "ai@airo.dev"
 
 if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
-    echo "Existing application detected, restoring all tracked files and dependencies"
+    echo "Existing application detected, checking if restoration is needed"
 
-    # Restore all tracked files
-    git checkout .
+    # Only restore tracked files if the directory is essentially empty (only .git exists)
+    # This prevents discarding uncommitted changes
+    cd "$CUSTOMER_APP_DIR"
+    FILE_COUNT=$(find . -mindepth 1 -maxdepth 1 ! -name '.git' | wc -l)
+    
+    if [ "$FILE_COUNT" -eq 0 ]; then
+        echo "Directory is empty (only .git exists), restoring all tracked files"
+        git checkout .
+    else
+        echo "Directory contains files, skipping checkout to preserve uncommitted changes"
+    fi
 
     CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
 

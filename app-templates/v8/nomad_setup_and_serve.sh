@@ -9,10 +9,19 @@ git config --global user.name "Airo AI Builder"
 git config --global user.email "ai@airo.dev"
 
 if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
-    echo "Existing application detected, restoring all tracked files and dependencies"
+    echo "Existing application detected, checking if restoration is needed"
 
-    # Restore all tracked files
-    git checkout .
+    # Only restore tracked files if the directory is essentially empty (only .git exists)
+    # This prevents discarding uncommitted changes
+    cd "$CUSTOMER_APP_DIR"
+    FILE_COUNT=$(find . -mindepth 1 -maxdepth 1 ! -name '.git' | wc -l)
+    
+    if [ "$FILE_COUNT" -eq 0 ]; then
+        echo "Directory is empty (only .git exists), restoring all tracked files"
+        git checkout .
+    else
+        echo "Directory contains files, skipping checkout to preserve uncommitted changes"
+    fi
 
     # Restore dependencies
     CI=true npm install --registry=https://registry.npmjs.org/ --no-fund --no-audit
@@ -38,8 +47,8 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     # we need to eventually create a public repo for dev-tools and sync them from there
     cp -r "$BASE_APP_DIR/dev-tools" "$CUSTOMER_APP_DIR/dev-tools"
 
-    # if changes then commit them
-    git add . && git commit -m "Sync upstream dev tools $(date +%s)" || true
+    # if changes then commit them (only dev-tools directory)
+    git add dev-tools && git commit -m "Sync upstream dev tools $(date +%s)" || true
 
     echo "Completed: Existing application detected, restored all tracked files and dependencies"
 fi
