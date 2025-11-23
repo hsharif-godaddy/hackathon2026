@@ -1,6 +1,7 @@
 /* -> Import styles for UXCore icons */
 @import "@ux/icon/alert/index.css";
 @import "@ux/icon/apps/index.css";
+@import "@ux/icon/arrow-left/index.css";
 @import "@ux/icon/arrow-right/index.css";
 @import "@ux/icon/checkbox-filled/index.css";
 @import "@ux/icon/checkbox-list/index.css";
@@ -41,6 +42,7 @@
 @import "@ux/icon/sidebar-collapse/index.css";
 @import "@ux/icon/sidebar-expand/index.css";
 @import "@ux/icon/sparkles/index.css";
+@import "@ux/icon/trash/index.css";
 @import "@ux/icon/user/index.css";
 @import "@ux/icon/wand/index.css";
 @import "@ux/icon/wand-filled/index.css";

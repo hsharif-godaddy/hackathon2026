@@ -7,7 +7,7 @@ import DomainPanel from '@/app/develop/components/settings/DomainPanel'
 import BackupsPanel from '@/app/develop/components/settings/BackupsPanel'
 import SecurityPanel from '@/app/develop/components/settings/SecurityPanel'
 import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
-import { DatabasePanel } from '@/app/develop/components/settings/DatabasePanel'
+import { DatabasePanel } from '@/app/develop/components/settings/Database/DatabasePanel'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { SecretsPanel } from './SecretsPanel'

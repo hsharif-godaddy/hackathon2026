@@ -87,23 +87,6 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         active={viewMode === ViewMode.CODE}
         tooltip="Code Editor"
       />
-      {showDatabaseSettings && (
-        <IconButton
-          icon={<DatabaseIcon />}
-          onClick={() => {
-            setActiveChatTab(ChatTab.SETTINGS)
-            setActiveSettingsSection(SettingsSection.DATABASE)
-            const params = new URLSearchParams({
-              tab: 'settings',
-              settings: 'database'
-            })
-            router.push(`/develop/${appId}?${params.toString()}`, { scroll: false })
-          }}
-          label="Database"
-          dataEid={generateClickEID('develop.preview.database')}
-          separator
-        />
-      )}
       <IconButton
         icon={<EditIcon />}
         disabled={viewMode === ViewMode.CODE}

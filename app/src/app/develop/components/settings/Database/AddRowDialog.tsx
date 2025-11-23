@@ -1,12 +1,14 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Modal from '@ux/modal';
 import Button from '@ux/button';
 import TextInput from '@ux/text-input';
 import SelectInput from '@ux/select-input';
+import { useAddRow } from '@/hooks/useTableMutations';
+import { formatColumnName, formatColumnType, getGridClasses } from './utils';
 
-interface EditRowDialogProps {
+interface AddRowDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
@@ -20,113 +22,81 @@ interface EditRowDialogProps {
     default: string | null;
     extra: string;
   }[];
-  row: Record<string, any> | null;
 }
 
-export function EditRowDialog({
+export function AddRowDialog({
   isOpen,
   onClose,
   onSuccess,
   appId,
   tableName,
   schema,
-  row,
-}: EditRowDialogProps) {
+}: AddRowDialogProps) {
   const [formData, setFormData] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (row) {
-      // Initialize form with existing row data
-      const initialData: Record<string, string> = {};
-      Object.entries(row).forEach(([key, value]) => {
-        if (value !== null && value !== undefined) {
-          initialData[key] = String(value);
-        }
-      });
-      setFormData(initialData);
-    }
-  }, [row]);
+  const addRow = useAddRow({
+    appId,
+    tableName,
+    onSuccess: () => {
+      setFormData({});
+      onSuccess();
+      handleClose();
+    },
+  });
+
+  const handleClose = () => {
+    addRow.reset();
+    onClose();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
-    setError(null);
 
-    try {
-      if (!row) {
-        throw new Error('No row data provided');
+    // Convert form data to appropriate types
+    const data: Record<string, any> = {};
+
+    schema.forEach(col => {
+      const value = formData[col.name];
+
+      // Skip auto-increment fields
+      if (col.extra === 'auto_increment') {
+        return;
       }
 
-      // Extract primary key
-      const primaryKey: Record<string, any> = {};
-      schema.forEach(col => {
-        if (col.key === 'PRI') {
-          primaryKey[col.name] = row[col.name];
-        }
-      });
-
-      if (Object.keys(primaryKey).length === 0) {
-        throw new Error('No primary key found for this table');
+      // Skip auto-managed timestamp fields
+      if (isAutoManagedTimestamp(col)) {
+        return;
       }
 
-      // Convert form data to appropriate types
-      const data: Record<string, any> = {};
-
-      schema.forEach(col => {
-        // Skip primary key columns (they shouldn't be editable)
-        if (col.key === 'PRI') {
+      // Handle empty values
+      if (value === '' || value === undefined) {
+        if (col.nullable) {
+          data[col.name] = null;
+        } else if (col.default !== null) {
+          // Let database use default
           return;
-        }
-
-        // Skip auto-managed timestamp fields
-        if (isAutoManagedTimestamp(col)) {
-          return;
-        }
-
-        const value = formData[col.name];
-
-        // Handle empty values
-        if (value === '' || value === undefined) {
-          if (col.nullable) {
-            data[col.name] = null;
-          }
-          return;
-        }
-
-        // Type conversion based on MySQL type
-        const type = col.type.toLowerCase();
-        // Check for enum/set first before checking for 'int' (to avoid matching 'intermediate' in enum values)
-        if (type.startsWith('enum(') || type.startsWith('set(')) {
-          data[col.name] = value;
-        } else if (type.includes('int') || type.includes('decimal') || type.includes('float') || type.includes('double')) {
-          data[col.name] = Number(value);
-        } else if (type.includes('bool') || type.includes('tinyint(1)')) {
-          data[col.name] = value === 'true' || value === '1';
         } else {
-          data[col.name] = value;
+          // Required field with no value - this shouldn't happen if form validation works
+          // but we'll skip it and let the backend validation catch it
+          return;
         }
-      });
-
-      const response = await fetch(`/api/database/${appId}/tables/${tableName}/rows`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ primaryKey, data }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update row');
       }
 
-      setFormData({});
-      onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsSubmitting(false);
-    }
+      // Type conversion based on MySQL type
+      const type = col.type.toLowerCase();
+      // Check for enum/set first before checking for 'int' (to avoid matching 'intermediate' in enum values)
+      if (type.startsWith('enum(') || type.startsWith('set(')) {
+        data[col.name] = value;
+      } else if (type.includes('int') || type.includes('decimal') || type.includes('float') || type.includes('double')) {
+        data[col.name] = Number(value);
+      } else if (type.includes('bool') || type.includes('tinyint(1)')) {
+        data[col.name] = value === 'true' || value === '1';
+      } else {
+        data[col.name] = value;
+      }
+    });
+
+    addRow.mutate(data);
   };
 
   const handleChange = (columnName: string, value: string) => {
@@ -228,33 +198,34 @@ export function EditRowDialog({
     default: string | null;
     extra: string;
   }) => {
-    const type = col.type.toLowerCase();
-    const enumValues = parseEnumValues(col.type);
-    const isRequired = !col.nullable && col.default === null && col.key !== 'PRI';
-    const labelText = `${col.name}${col.key === 'PRI' ? ' (PK)' : ''}`;
-    const helpText = `${col.type}${col.nullable ? ' (nullable)' : ''}`;
-
-    // Primary keys should be read-only
-    if (col.key === 'PRI') {
+    // Show auto-increment fields as disabled
+    if (col.extra === 'auto_increment') {
+      const labelText = `${formatColumnName(col.name)}${col.key === 'PRI' ? ' (Primary Key)' : ''}`;
       return (
         <TextInput
           key={col.name}
-          id={`edit-row-${col.name}`}
+          id={`add-row-${col.name}`}
+          name={col.name}
           label={labelText}
-          value={formData[col.name] || ''}
+          value="Auto-generated"
           disabled
-          helpMessage="Primary key (read-only)"
           stretch
         />
       );
     }
+
+    const type = col.type.toLowerCase();
+    const enumValues = parseEnumValues(col.type);
+    const isRequired = !col.nullable && col.default === null && col.extra !== 'auto_increment';
+    const labelText = `${formatColumnName(col.name)}${col.key === 'PRI' ? ' (Primary Key)' : ''}`;
+    const helpText = `${formatColumnType(col.type)}${col.nullable ? ' (optional)' : ''}${col.default ? ` (default: ${col.default})` : ''}`;
 
     // Render SelectInput dropdown for enum fields
     if (enumValues) {
       return (
         <SelectInput
           key={col.name}
-          id={`edit-row-${col.name}`}
+          id={`add-row-${col.name}`}
           name={col.name}
           label={labelText}
           value={formData[col.name] || ''}
@@ -274,18 +245,9 @@ export function EditRowDialog({
       );
     }
 
-    let inputType = 'text';
     let isMultiline = false;
 
-    if (type.includes('int') || type.includes('decimal') || type.includes('float') || type.includes('double')) {
-      inputType = 'number';
-    } else if (type.includes('date') && !type.includes('time')) {
-      inputType = 'date';
-    } else if (type.includes('time') && !type.includes('stamp')) {
-      inputType = 'time';
-    } else if (type.includes('datetime') || type.includes('timestamp')) {
-      inputType = 'datetime-local';
-    } else if (type.includes('text')) {
+    if (type.includes('text')) {
       // TEXT, TINYTEXT, MEDIUMTEXT, LONGTEXT columns should use multiline
       isMultiline = true;
     }
@@ -293,7 +255,7 @@ export function EditRowDialog({
     return (
       <TextInput
         key={col.name}
-        id={`edit-row-${col.name}`}
+        id={`add-row-${col.name}`}
         label={labelText}
         placeholder={col.nullable ? 'NULL' : ''}
         value={formData[col.name] || ''}
@@ -306,41 +268,42 @@ export function EditRowDialog({
     );
   };
 
-  if (!row || !isOpen) return null;
+  if (!isOpen) return null;
+
+  const editableColumns = schema.filter(col => !isAutoManagedTimestamp(col));
 
   return (
     <Modal
-      title={`Edit Row in ${tableName}`}
-      onClose={onClose}
-      className="max-w-5xl"
+      title={`Add Row to ${tableName}`}
+      onClose={handleClose}
       actions={
         <>
           <Button
             design="secondary"
             text="Cancel"
-            onClick={onClose}
-            disabled={isSubmitting}
+            onClick={handleClose}
+            disabled={addRow.isPending}
           />
           <Button
             design="primary"
-            text={isSubmitting ? 'Updating...' : 'Update Row'}
+            text={addRow.isPending ? 'Adding...' : 'Add Row'}
             type="submit"
-            disabled={isSubmitting}
+            disabled={addRow.isPending}
             onClick={handleSubmit}
           />
         </>
       }
     >
-      <form onSubmit={handleSubmit} id="edit-row-form">
-        <div className="space-y-4">
-          {schema
-            .filter(col => !isAutoManagedTimestamp(col))
-            .map(col => renderInput(col))}
+      <form onSubmit={handleSubmit} id="add-row-form">
+        <div className="max-h-[60vh] overflow-y-auto pr-2">
+          <div className={`grid gap-4 ${getGridClasses(editableColumns.length)}`}>
+            {editableColumns.map(col => renderInput(col))}
+          </div>
         </div>
 
-        {error && (
+        {addRow.error && (
           <div className="bg-destructive/10 text-destructive rounded-lg p-3 mt-4 text-sm">
-            {error}
+            {addRow.error instanceof Error ? addRow.error.message : String(addRow.error)}
           </div>
         )}
       </form>
