@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { FormattedMessage } from 'react-intl';
 import { useTranslations } from '@/hooks/useTranslations';
 import Alert from '@ux/alert';
@@ -31,6 +32,7 @@ import { hasBeenPublished } from '@/utils/site';
  */
 export default function PublishStatusAlert() {
   const t = useTranslations();
+  const router = useRouter();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const getPublishState = useDevelopPageStore((state) => state.getPublishState);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
@@ -127,6 +129,17 @@ export default function PublishStatusAlert() {
     }, window.location.origin);
   }, [currentAppId, buildErrorDetails]);
 
+  const handleViewSettings = useCallback(() => {
+    if (!currentAppId) return;
+
+    logger.info('publish-alert.view-settings', {
+      message: 'User clicked view domain settings from publish success alert',
+      appId: currentAppId,
+    });
+
+    router.push(`/develop/${currentAppId}?tab=settings&settings=domain`);
+  }, [currentAppId, router]);
+
   if (!isPublishing && !publishError && !showSuccessAlert) {
     return null;
   }
@@ -141,7 +154,7 @@ export default function PublishStatusAlert() {
     const prefixDomain = site?.domains?.find(d => d.domainType === 'prefix');
     const publishedFqdn = site?.published_url;
 
-    const fqdn = customDomain?.fqdn || prefixDomain?.fqdn || publishedFqdn;
+    const fqdn = customDomain?.fqdn || prefixDomain?.fqdn || publishedFqdn || '';
 
     return (
       <div className='px-4 py-4'>
@@ -151,11 +164,10 @@ export default function PublishStatusAlert() {
           actions={
             <Button
               design="primary"
-              as='external'
-              text={t('builder_publish_success_button_view')}
-              data-eid={generateClickEID(`publish-alert.success.view_now`)}
+              text={t('builder_publish_success_button_domain')}
+              data-eid={generateClickEID(`publish-alert.success.custom_domain`)}
               className="!hover:bg-transparent"
-              href={`/develop/${currentAppId}?tab=settings&settings=domain`}
+              onClick={handleViewSettings}
             />
           }
         >

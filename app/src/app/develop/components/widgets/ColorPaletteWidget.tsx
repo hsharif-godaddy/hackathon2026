@@ -55,33 +55,30 @@ export default function ColorPaletteWidget({ name, theme, palette, className = '
   function handleClick() {
     if (!name) return
 
-    // Get the iframe element
-    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
-    if (!iframe || !iframe.contentWindow) {
-      console.error('Could not find preview iframe')
-      return
-    }
-
     // Use complete palette for preview (matches updateCssColors exactly)
     const paletteData = {
       name,
       ...palette
     }
 
-    // Post message to iframe to preview theme
-    postMessageToIframe(iframe, {
-      type: 'PREVIEW_THEME',
-      palette: paletteData
-    })
+    // Get the iframe element
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
 
-    // Emit custom event to notify grid of selection
+    // Try to post message to iframe if available (for live preview)
+    if (iframe && iframe.contentWindow) {
+      postMessageToIframe(iframe, {
+        type: 'PREVIEW_THEME',
+        palette: paletteData
+      })
+    }
+
+    // Always emit custom event to notify grid of selection
+    // This ensures palette selection works even when preview is not available
     const event = new CustomEvent('palette-preview', {
       detail: paletteData
     })
     window.dispatchEvent(event)
   }
-
-  console.log('palette', palette)
 
   const renderColorCircle = (color: string) => (
     <div className="size-8 rounded-full -ml-2" style={{ backgroundColor: color }}></div>

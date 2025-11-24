@@ -75,7 +75,7 @@ function DevelopPageContent() {
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
   const site = useDevelopPageStore((state) => state.site)
   const openFeedbackId = useDevelopPageStore((state) => state.openFeedbackId)
-  
+
   const setChatPaneWidth = useDevelopPageStore((state) => state.setChatPaneWidth)
   const setIsSelectMode = useDevelopPageStore((state) => state.setIsSelectMode)
   const initializeMobileDetection = useDevelopPageStore((state) => state.initializeMobileDetection)
