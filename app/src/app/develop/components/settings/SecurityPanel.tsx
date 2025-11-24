@@ -2,7 +2,6 @@ import { useState } from 'react';
 import BigCard from "@/components/layout/BigCard";
 import Button from "@ux/button";
 import Box from "@ux/box";
-import Card from "@ux/card";
 import WandIcon from "@ux/icon/wand";
 import Spinner from "@ux/spinner";
 import { useAppIdFromParams } from '../utils';
@@ -85,7 +84,7 @@ export default function SecurityPanel() {
             {isLoading ? 'Running Analysis...' : 'Run Analysis'}
           </Button>
         }>
-        <Card>
+        <Box>
           {error && (
             <div className="text-red-600 mb-4">
               <p className="font-medium">Error:</p>
@@ -114,7 +113,7 @@ export default function SecurityPanel() {
               No results yet. Click &ldquo;Run Analysis&rdquo; to start security scan.
             </p>
           )}
-        </Card>
+        </Box>
       </BigCard>
     </Box>
   );

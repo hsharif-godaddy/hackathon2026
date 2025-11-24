@@ -127,6 +127,34 @@ function DevelopPageContent() {
 
   // State logging moved to useInitialization hook to prevent render loop
 
+  // Handle todoListId query parameter
+  useEffect(() => {
+    const todoListId = searchParams.get('todoListId')
+    if (todoListId) {
+      const handleTodoListContext = async () => {
+        try {
+            // Send message with todo list context
+            const message = 'Fix my selected Security Vulnerabilities.'
+            await sendMessage(message, undefined, undefined, { id: todoListId })
+        } catch (error) {
+          console.error('Failed to send context:', error)
+        }
+      }
+
+      handleTodoListContext()
+
+      // Remove the todoListId from the URL
+      const newSearchParams = new URLSearchParams(searchParams.toString())
+      newSearchParams.delete('todoListId')
+
+      const newUrl = newSearchParams.toString()
+        ? `${window.location.pathname}?${newSearchParams.toString()}`
+        : window.location.pathname
+
+      router.replace(newUrl)
+    }
+  }, [searchParams, router, appId, sendMessage])
+
   // Cleanup WebSocket connections and batched updates on unmount
   useEffect(() => {
     return () => {

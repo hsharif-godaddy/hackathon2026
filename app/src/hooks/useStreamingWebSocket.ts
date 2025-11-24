@@ -676,7 +676,8 @@ export function useStreamingWebSocket() {
   const sendMessage = useCallback(async (
     content: string,
     aiEditContext?: any,
-    selectedAsset?: any
+    selectedAsset?: any,
+    todoListContext?: any
   ) => {
     if (!content.trim() || !currentAppId) return
 
@@ -806,6 +807,19 @@ export function useStreamingWebSocket() {
           metadata: {
             timestamp: Date.now(),
             source: 'publish-failure'
+          }
+        })
+      }
+
+      if(todoListContext) {
+        contextAttachments.push({
+          type: 'todo_list_context',
+          data: todoListContext,
+          persistence: 'save',
+          renderStrategy: 'before_prompt',
+          metadata: {
+            timestamp: Date.now(),
+            source: 'todo-list-tool'
           }
         })
       }

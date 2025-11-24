@@ -1,3 +1,5 @@
+@import '~@ux/intents/lib/index';
+
 html, body {
   max-width: 100vw;
   overflow-x: hidden;
@@ -103,4 +105,15 @@ html, body {
 #dc-messaging-proactive div,
 #dc-messaging-bottom-right div {
   display: none !important;
+}
+
+.checkbox-card {
+  &:has(.ux-card-hidden:checked){
+    border-color: $ux-controlChosen-borderColor !important;
+  }
+  .ux-button[role="checkbox"][aria-checked="true"]:not(.ux-button-inline) {
+    border-color: $ux-controlChosen-borderColor !important;
+    background-color: $ux-controlChosen-backgroundColor !important;
+    color: $ux-controlChosen-foregroundColor !important;
+  }
 }

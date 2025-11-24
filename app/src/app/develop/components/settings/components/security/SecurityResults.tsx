@@ -1,8 +1,15 @@
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Button from "@ux/button";
 import text from '@ux/text';
 import Tag from '@ux/tag';
 import Box from "@ux/box";
-import OkIcon from '@ux/icon/ok';
+import Card from "@ux/card";
 import XThickIcon from '@ux/icon/x-thick';
+import OkIcon from '@ux/icon/ok';
+import ShieldIcon from '@ux/icon/shield-check-filled';
+import { TodoListService } from '@/services/TodoListService';
+import { useAppIdFromParams } from '../../../utils';
 
 /**
  * Security vulnerability interface based on TestPilot response
@@ -55,9 +62,44 @@ interface SecurityTestResult {
 }
 
 /**
+ * Component to display success screen when no vulnerabilities are found
+ */
+function SecuritySuccessScreen() {
+  return (
+    <Card className="p-8 text-center">
+      <Box gap="lg" className="items-center">
+        <div className="flex justify-center">
+          <div className="p-4">
+            <ShieldIcon color="green" height="3rem" width="3rem" />
+          </div>
+        </div>
+        <Box gap="md">
+          <text.h3 as="title" size={2}>
+            Security Analysis Complete
+          </text.h3>
+          <text.p>
+            Great news! No security vulnerabilities were found in your application. Your application is secure.
+          </text.p>
+        </Box>
+      </Box>
+    </Card>
+  );
+}
+
+/**
  * Component to display security vulnerabilities
  */
-function SecurityVulnerabilityCard({ vulnerability }: { vulnerability: SecurityVulnerability }) {
+function SecurityVulnerabilityCard({
+  vulnerability,
+  vulnerabilityId,
+  isChecked,
+  onToggle
+}: {
+  vulnerability: SecurityVulnerability;
+  vulnerabilityId: string;
+  isChecked: boolean;
+  onToggle: (id: string) => void;
+}) {
   const getSeverityTagEmphasis = (severity: string): 'critical' | 'warning' | 'info' | 'neutral' => {
     switch (severity.toLowerCase()) {
       case 'critical':
@@ -74,47 +116,38 @@ function SecurityVulnerabilityCard({ vulnerability }: { vulnerability: SecurityV
   };
 
   return (
-    <div className="border rounded-lg p-5">
-      <div className="flex justify-between items-start mb-2">
-        <text.h4 as="title" className="mr-1">
+    <Card
+      id={vulnerabilityId}
+      className="p-5 checkbox-card"
+      as="checkbox"
+      checked={isChecked}
+      onChange={() => onToggle(vulnerabilityId)}
+      cornerActions={
+        <Button
+          as="checkbox"
+          onClick={() => onToggle(vulnerabilityId)}
+          active={isChecked}
+          size="sm"
+        />
+      }
+      title={
+        <Box orientation="horizontal" gap="md" className="pb-3">
+            <Tag
+              emphasis={getSeverityTagEmphasis(vulnerability.severity)}
+              size="lg"
+            >
+              {vulnerability.severity}
+            </Tag>
           {vulnerability.title}
-        </text.h4>
-        <Tag emphasis={getSeverityTagEmphasis(vulnerability.severity)} size="lg">
-          {vulnerability.severity}
-        </Tag>
-      </div>
-
-      <text.p className="mb-3">
-        {vulnerability.description}
-      </text.p>
-
+        </Box>
+      }
+    >
       {vulnerability.impact && (
-        <div className="mb-3">
-          <text.span className="font-bold">Impact:</text.span>{' '}
+        <div>
           <text.span>{vulnerability.impact}</text.span>
         </div>
       )}
-
-      {vulnerability.location && (
-        <div className="mb-3">
-          <text.span className="font-bold">Location:</text.span>{' '}
-          <code className="bg-white px-2 py-1 rounded text-sm">{vulnerability.location}</code>
-        </div>
-      )}
-
-      {vulnerability.remediation && vulnerability.remediation.length > 0 && (
-        <div>
-          <text.span className="font-bold">Remediation:</text.span>
-          <ul className="list-disc list-inside mt-1 ml-4">
-            {vulnerability.remediation.map((item, index) => (
-              <li key={index} className="mb-1">
-                <text.span>{item}</text.span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
+    </Card>
   );
 }
 
@@ -124,6 +157,12 @@ function SecurityVulnerabilityCard({ vulnerability }: { vulnerability: SecurityV
  * @param results - The TestPilot API response containing security test results
  */
 export default function SecurityResults({ results }: { results: { security?: SecurityTestResult } }) {
+  const router = useRouter();
+  const appId = useAppIdFromParams();
+  const [checkedVulnerabilities, setCheckedVulnerabilities] = useState<Set<string>>(new Set());
+  const [isCreatingTodoList, setIsCreatingTodoList] = useState(false);
+  const todoListService = new TodoListService();
+
   // Check if security results exists
   if (!results.security) {
     return (
@@ -142,121 +181,172 @@ export default function SecurityResults({ results }: { results: { security?: Sec
 
   const securityData: SecurityTestResult = results.security;
   const securityReport = securityData.aiInsights?.securityReport;
+  const vulnerabilities = (securityReport?.vulnerabilities || []).slice().sort((a, b) => {
+    const getSeverityOrder = (severity: string) => {
+      switch (severity.toLowerCase()) {
+        case "critical":
+          return 1;
+        case "high":
+          return 2;
+        case "medium":
+          return 3;
+        case "low":
+          return 4;
+        default:
+          return 5; // Unknown severity goes last
+      }
+    };
 
-  const testResultData = [
-    {
-      data: securityData.testsPassed,
-      label: "Passed",
-    },
-    {
-      data: securityData.testsFailed,
-      label: "Failed",
-    },
-    {
-      data: securityData.totalTests,
-      label: "Total Tests",
-    },
-    {
-      data:
-        securityData.passRate !== undefined
-          ? Math.round(securityData.passRate * 100) + "%"
-          : undefined,
-      label: "Pass Rate",
-    },
-  ];
+    return (
+      getSeverityOrder(a.severity) - getSeverityOrder(b.severity)
+    );
+  })
+
+  /**
+   * Toggle the checked state of a vulnerability
+   *
+   * @param vulnerabilityId - The unique ID of the vulnerability to toggle
+   */
+  const toggleVulnerability = (vulnerabilityId: string) => {
+    setCheckedVulnerabilities(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(vulnerabilityId)) {
+        newSet.delete(vulnerabilityId);
+      } else {
+        newSet.add(vulnerabilityId);
+      }
+      return newSet;
+    });
+  };
+
+  /**
+   * Get all vulnerability IDs for select all functionality
+   */
+  const getAllVulnerabilityIds = (): string[] => {
+    if (!securityReport?.vulnerabilities) return [];
+    return securityReport.vulnerabilities.map((_, index) => `vulnerability-${index}`);
+  };
+
+  /**
+   * Check if all vulnerabilities are selected
+   */
+  const areAllSelected = (): boolean => {
+    const allIds = getAllVulnerabilityIds();
+    return allIds.length > 0 && allIds.every(id => checkedVulnerabilities.has(id));
+  };
+
+  /**
+   * Handle select all / deselect all functionality
+   */
+  const handleSelectAll = () => {
+    const allIds = getAllVulnerabilityIds();
+    if (areAllSelected()) {
+      // Deselect all
+      setCheckedVulnerabilities(new Set());
+    } else {
+      // Select all
+      setCheckedVulnerabilities(new Set(allIds));
+    }
+  };
+
+  /**
+   * Handle creating a TO-DO list from selected vulnerabilities
+   */
+  const handleQuickFix = async () => {
+    if (!appId || checkedVulnerabilities.size === 0 || !securityReport?.vulnerabilities) {
+      return;
+    }
+
+    setIsCreatingTodoList(true);
+
+    try {
+      // Get selected vulnerabilities
+      const selectedVulnerabilities = vulnerabilities.filter((_, index) => {
+        const vulnerabilityId = `vulnerability-${index}`;
+        return checkedVulnerabilities.has(vulnerabilityId);
+      });
+
+      // Create items from selected vulnerabilities
+      const todoItems = selectedVulnerabilities.map(vulnerability => ({
+        title: `Fix ${vulnerability.severity} severity: ${vulnerability.title}`,
+        description: `${vulnerability.description}${vulnerability.remediation ? `\nSuggested Remediation:\n${vulnerability.remediation.map(item => `- ${item}`).join('\n')}` : ''}`
+      }));
+
+      // Create the list
+      const newTodoList = await todoListService.createList(
+        appId,
+        'Selected Security Vulnerabilities',
+        `Security vulnerabilities found during analysis on ${new Date().toLocaleDateString()}`,
+        todoItems
+      );
+
+      // Clear selections after successful creation
+      setCheckedVulnerabilities(new Set());
+
+      // Route to develop page with todoListId query parameter
+      router.push(`/develop/${appId}?todoListId=${newTodoList.id}`);
+    } catch (error) {
+      console.error('Failed to create TODO list:', error);
+      // TODO: Show error message to user
+    } finally {
+      setIsCreatingTodoList(false);
+    }
+  };
+
+  // Get only failed test details
+  const failedTests = securityData.details?.filter(detail =>
+    detail.status?.toLowerCase() !== "passed"
+  ) || [];
+
+  // Check if there are any issues (vulnerabilities or failed tests)
+  const hasIssues = (vulnerabilities && vulnerabilities.length > 0) || failedTests.length > 0;
 
   return (
     <Box gap="lg" className="p-3">
-      {/* Test Summary */}
-      {(securityData.testsPassed !== undefined ||
-        securityData.testsFailed !== undefined) && (
+      {/* Show success screen if no issues found */}
+      {!hasIssues && <SecuritySuccessScreen />}
+
+      {/* Vulnerabilities - Only show if vulnerabilities exist */}
+      {vulnerabilities && vulnerabilities.length > 0 && (
         <Box gap="md">
           <div className="flex justify-between items-center">
             <text.h3 as="title" size={2}>
-              Tests Results
+              Vulnerabilities ({vulnerabilities.length})
             </text.h3>
-            {securityData.success !== undefined && (
-              <Tag
-                emphasis={securityData.success ? "success" : "critical"}
-                size="lg"
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                design="secondary"
+                onClick={handleSelectAll}
               >
-                {securityData.success ? "Passed" : "Issues Found"}
-              </Tag>
-            )}
-          </div>
-          <Box gap="lg" className="p-6 border border-gray-200 rounded-lg">
-            <div className="py-4 grid md:grid-cols-4">
-              {testResultData.map((item, index) => (
-                <div key={index} className="text-center">
-                  <text.p>{item.data}</text.p>
-                  <text.p>{item.label}</text.p>
-                </div>
-              ))}
+                {areAllSelected() ? 'Deselect All' : 'Select All'}
+              </Button>
+              <Button
+                size="sm"
+                design="primary"
+                onClick={handleQuickFix}
+                disabled={checkedVulnerabilities.size === 0 || isCreatingTodoList}
+              >
+                {isCreatingTodoList ? 'Creating...' : 'Quick Fix'}
+              </Button>
             </div>
-
-            {/* Details */}
-            {securityData.details && securityData.details.length > 0 && (
-              <ul className="space-y-1">
-                {securityData.details.map((detail, index) => {
-                  const isPassed = detail.status?.toLowerCase() === "passed";
-
-                  return (
-                    <li key={index} className="flex items-center gap-2">
-                      {isPassed ? (
-                        <OkIcon color="green" height="1.5rem" />
-                      ) : (
-                        <XThickIcon color="red" height='1.5rem' />
-                      )}
-                      <text.span className="font-medium">
-                        {detail.name}
-                      </text.span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Box>
+          </div>
+          <div className="grid gap-4">
+            {vulnerabilities.map((vulnerability, index) => {
+              const vulnerabilityId = `vulnerability-${index}`;
+              return (
+                <SecurityVulnerabilityCard
+                  key={index}
+                  vulnerability={vulnerability}
+                  vulnerabilityId={vulnerabilityId}
+                  isChecked={checkedVulnerabilities.has(vulnerabilityId)}
+                  onToggle={toggleVulnerability}
+                />
+              );
+            })}
+          </div>
         </Box>
       )}
-
-      {/* Vulnerabilities */}
-      {securityReport?.vulnerabilities &&
-        securityReport.vulnerabilities.length > 0 && (
-          <Box gap="md">
-            <text.h3 as="title" size={2}>
-              Vulnerabilities Found
-            </text.h3>
-            <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
-              {securityReport.vulnerabilities
-                .slice()
-                .sort((a, b) => {
-                  const getSeverityOrder = (severity: string) => {
-                    switch (severity.toLowerCase()) {
-                      case "critical":
-                        return 1;
-                      case "high":
-                        return 2;
-                      case "medium":
-                        return 3;
-                      case "low":
-                        return 4;
-                      default:
-                        return 5; // Unknown severity goes last
-                    }
-                  };
-                  return (
-                    getSeverityOrder(a.severity) - getSeverityOrder(b.severity)
-                  );
-                })
-                .map((vulnerability, index) => (
-                  <SecurityVulnerabilityCard
-                    key={index}
-                    vulnerability={vulnerability}
-                  />
-                ))}
-            </div>
-          </Box>
-        )}
     </Box>
   );
 }

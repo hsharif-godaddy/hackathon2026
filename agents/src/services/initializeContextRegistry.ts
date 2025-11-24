@@ -1,5 +1,5 @@
 import { contextAttachmentRegistry } from './ContextAttachmentRegistry.js'
-import { DefaultContextRenderer, AiEditContextRenderer, VisualContextRenderer, SelectedAssetsContextRenderer, BuildErrorContextRenderer } from './renderers/index.js'
+import { DefaultContextRenderer, AiEditContextRenderer, VisualContextRenderer, SelectedAssetsContextRenderer, BuildErrorContextRenderer, TodoListContextRenderer } from './renderers/index.js'
 import { logger } from '../logging/index.js'
 
 /**
@@ -31,6 +31,12 @@ export function initializeContextRegistry(): void {
     type: 'build_error',
     renderer: new BuildErrorContextRenderer(),
     defaultPersistence: 'ephemeral'
+  })
+
+  contextAttachmentRegistry.register({
+    type: 'todo_list_context',
+    renderer: new TodoListContextRenderer(),
+    defaultPersistence: 'save'
   })
 
   contextAttachmentRegistry.setDefaultRenderer(new DefaultContextRenderer())

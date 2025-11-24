@@ -38,7 +38,7 @@ import { postMessageToIframe } from '@/utils/postMessage'
 
 interface ChatPaneProps {
   onPreviewRefresh?: () => void
-  sendMessage: (content: string, aiEditContext?: any, selectedAsset?: AssetManagerItem | null) => Promise<void>
+  sendMessage: (content: string, aiEditContext?: any, selectedAsset?: AssetManagerItem | null, additionalContextAttachments?: any[]) => Promise<void>
 }
 
 export default function ChatPane({

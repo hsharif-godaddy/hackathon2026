@@ -1,5 +1,5 @@
 import { Router, type IRouter } from 'express'
-import { TodoListRepository } from '../../database/repositories/TodoListRepository.js'
+import { CreateItemInput, TodoListRepository } from '../../database/repositories/TodoListRepository.js';
 import { logger } from '../../logging/index.js'
 
 const router: IRouter = Router()
@@ -20,12 +20,12 @@ router.get('/todo-lists/:appId', async (req, res) => {
 
   try {
     const lists = todoListRepo.getAllLists(appId)
-    
+
     logger.info('todo-lists.get-all.success', {
       appId,
       listsFound: lists.length
     })
-    
+
     return res.json({ lists })
   } catch (error) {
     logger.error('todo-lists.get-all.failure', {
@@ -37,8 +37,45 @@ router.get('/todo-lists/:appId', async (req, res) => {
 })
 
 /**
+ * POST /agent/todo-lists/:appId - Create a todo list for an app
+ *
+ * Body: { name: string; description?: string; items?: CreateItemInput[] }
+ */
+router.post('/todo-lists/:appId', async (req, res) => {
+  const { appId } = req.params
+  const { name, description, items }: { name: string; description?: string; items?: CreateItemInput[] }  = req.body
+
+  // Basic validation
+  if (!name) {
+    return res.status(400).json({ error: 'name is required' })
+  }
+  if (items) {
+    if(items.some(item => !item.title)) {
+      return res.status(400).json({ error: 'items.title is required' })
+    }
+  }
+  
+  try {
+    const list = await todoListRepo.createList(name, appId, description, items)
+
+    logger.info('todo-lists.create-new.success', {
+      appId,
+      list
+    })
+
+    return res.json({ list })
+  } catch (error) {
+    logger.error('todo-lists.create-new.failure', {
+      appId,
+      error: getErrorMessage(error)
+    })
+    return res.status(500).json({ error: 'Failed to create todo list' })
+  }
+})
+
+/**
  * GET /agent/todo-lists/:appId/current - Get the currently selected/active list
- * 
+ *
  * Returns the most recently updated list for the app, or null if no lists exist.
  */
 router.get('/todo-lists/:appId/current', async (req, res) => {
@@ -46,7 +83,7 @@ router.get('/todo-lists/:appId/current', async (req, res) => {
 
   try {
     const lists = todoListRepo.getAllLists(appId)
-    
+
     if (lists.length === 0) {
       logger.info('todo-lists.get-current.empty', { appId })
       return res.json({ list: null })
@@ -54,18 +91,18 @@ router.get('/todo-lists/:appId/current', async (req, res) => {
 
     // Return the most recently updated list
     const currentList = lists[0]
-    
+
     if (!currentList) {
       logger.warn('todo-lists.get-current.unexpected-empty', { appId })
       return res.json({ list: null })
     }
-    
+
     logger.info('todo-lists.get-current.success', {
       appId,
       listId: currentList.id,
       listName: currentList.name
     })
-    
+
     return res.json({ list: currentList })
   } catch (error) {
     logger.error('todo-lists.get-current.failure', {
@@ -78,9 +115,9 @@ router.get('/todo-lists/:appId/current', async (req, res) => {
 
 /**
  * POST /agent/todo-lists/:appId/current - Set the current active list
- * 
+ *
  * Body: { listId: string }
- * 
+ *
  * This endpoint validates that the list exists and belongs to the app.
  * The "current" list is determined by the most recently updated list,
  * so we update the list's timestamp to make it current.
@@ -95,7 +132,7 @@ router.post('/todo-lists/:appId/current', async (req, res) => {
 
   try {
     const list = todoListRepo.getListById(listId)
-    
+
     if (!list) {
       logger.warn('todo-lists.set-current.not-found', { appId, listId })
       return res.status(404).json({ error: 'Todo list not found' })
@@ -112,16 +149,16 @@ router.post('/todo-lists/:appId/current', async (req, res) => {
 
     // Update the list timestamp to make it "current"
     todoListRepo.updateListTimestamp(listId)
-    
+
     // Fetch the updated list
     const updatedList = todoListRepo.getListById(listId)
-    
+
     logger.info('todo-lists.set-current.success', {
       appId,
       listId,
       listName: list.name
     })
-    
+
     return res.json({ list: updatedList })
   } catch (error) {
     logger.error('todo-lists.set-current.failure', {

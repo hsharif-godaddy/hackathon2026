@@ -91,6 +91,48 @@ export class TodoListService {
   }
 
   /**
+   * Create a new todo list for an app
+   */
+  async createList(appId: string, name: string, description?: string, items?: Array<{title: string; description?: string}>): Promise<TodoList> {
+    try {
+      const url = await buildDynamicAgentUrl(`agent/todo-lists/${appId}`, appId)
+      
+      logger.debug('todo-list-service.create.begin', { appId, name, url })
+      
+      const response = await agentFetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name, description, items }),
+        siteId: appId
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to create todo list: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      const list = data.list
+      
+      logger.debug('todo-list-service.create.success', {
+        appId,
+        listId: list?.id,
+        listName: list?.name
+      })
+      
+      return this.parseList(list)
+    } catch (error) {
+      logger.error('todo-list-service.create.failure', {
+        appId,
+        name,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      throw error
+    }
+  }
+
+  /**
    * Set the current active list for an app
    */
   async setCurrentList(appId: string, listId: string): Promise<TodoList> {
