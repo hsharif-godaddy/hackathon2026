@@ -24,12 +24,13 @@ Use the `todoList` tool to create a minimal plan for a **single-page preview onl
 
 **CRITICAL: Build only ONE page in the initial preview. Defer all other pages to future phases.**
 
-**Keep it simple - 3-4 todo items maximum:**
+**Keep it simple - 3-5 todo items maximum:**
 
-1. **Single page content** (1 item) - Build ONLY index.tsx (homepage)
-2. **Images if needed** (1 item) - Only if the homepage needs them
-3. **Header/footer for websites** (1 item) - Only if it's a public website
-4. **Ask about next phase** (1 item) - Ask user if they want to build remaining features
+1. **Search for images** (1 item) - If the content needs images, search for and identify appropriate images BEFORE creating any pages
+2. **Single page content** (1 item) - Build ONLY index.tsx (homepage)
+3. **Add images** (1 item) - Add the specific images found in step 1 to the homepage
+4. **Header/footer for websites** (1 item) - Only if it's a public website
+5. **Ask about next phase** (1 item) - Ask user if they want to build remaining features
 
 ## Step 2: Hand Off to Develop Agent
 

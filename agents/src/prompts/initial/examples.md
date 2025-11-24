@@ -13,6 +13,7 @@ User wants: Release notes blog with post listing and detail pages
 
 **Initial Preview Todo List (single page only):**
 
+- Search for post cover images for homepage
 - Build homepage (index.tsx) with site title and list of 3-4 release note cards
 - Add post cover images for homepage
 - Update header and footer in App.tsx
@@ -41,6 +42,7 @@ User wants: Personal portfolio with projects
 
 **Initial Preview Todo List (single page only):**
 
+- Search for project preview images
 - Build homepage (index.tsx) with about section and project grid (cards only)
 - Add project preview images
 - Update header and footer in App.tsx
@@ -56,6 +58,7 @@ User wants: Business website with home, about, services, and contact pages
 
 **Initial Preview Todo List (single page only):**
 
+- Search for hero image for homepage
 - Build homepage (index.tsx) with company intro and service highlights
 - Add hero image for homepage
 - Update header and footer in App.tsx

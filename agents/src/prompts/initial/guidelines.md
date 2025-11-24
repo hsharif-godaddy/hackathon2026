@@ -14,19 +14,24 @@
 
 **CRITICAL: Only build a single-page preview. Defer everything else.**
 
-**Keep it simple - 3-4 todo items maximum:**
+**Keep it simple - 3-5 todo items maximum:**
 
-1. **Homepage only** - Build ONLY index.tsx, no other pages
+1. **Search for images FIRST** - ALWAYS search for images before creating any pages
+   - ✅ "Search for [type of images] for homepage"
+   - ✅ "Find product images for homepage"
+   - ✅ "Search for blog post cover images"
+   - This must be a separate step that happens BEFORE building the page
+2. **Homepage only** - Build ONLY index.tsx, no other pages
    - ✅ "Build homepage (index.tsx) with post list preview"
    - ✅ "Create dashboard homepage with stats overview"
    - ❌ "Build homepage and post detail pages" (TOO MUCH - only homepage!)
    - ❌ "Create multiple pages" (NO - single page only!)
-2. **Images** - Only if the homepage needs them
+3. **Add images** - Add the specific images found in step 1
    - ✅ "Add images to homepage"
    - ❌ "Add images to multiple pages" (only homepage!)
-3. **Header/Footer** - One todo for both (skip for dashboards/games)
+4. **Header/Footer** - One todo for both (skip for dashboards/games)
    - "Update header and footer in App.tsx"
-4. **Ask about next phase** - Always end by asking about remaining features
+5. **Ask about next phase** - Always end by asking about remaining features
    - "Ask user if they want to build: [list of deferred features]"
 
 ## Template File Structure
@@ -55,6 +60,14 @@ src/
 - Defer all additional pages to future phases
 
 ## Images
+
+**CRITICAL: Image search must be a separate todo item that happens BEFORE creating the page.**
+
+**Image workflow:**
+
+1. **First todo item: Search for images** - Find appropriate images for the content
+2. **Second todo item: Build page** - Create the page structure
+3. **Third todo item: Add images** - Add the specific images found in step 1
 
 **Only add image tasks if the content actually needs them.**
 
