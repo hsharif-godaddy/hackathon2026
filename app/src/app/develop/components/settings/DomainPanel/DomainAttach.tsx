@@ -354,7 +354,7 @@ export default function DomainAttach() {
           text={t('builder_custom_domain_button_buy')}
           design="primary"
           data-eid={generateClickEID(`settings/domains.custom_domain.buy_new_domain`)}
-          href={`https://www.${getRootDomain()}.com/domains`}
+          href={`https://www.${getRootDomain()}/domains`}
           external
         />
       )}
