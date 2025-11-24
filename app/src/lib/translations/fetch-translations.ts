@@ -1,118 +1,72 @@
-import { getRootDomain } from '@/utils/getRootDomain';
 import { logger } from '../request-context';
 
 /**
- * Get server-side request context (domain and cookies)
+ * Fetch translation packages from the API route (client-side only)
  * 
- * @returns Object with domain and cookie header for authenticated requests
- */
-async function getServerContext(): Promise<{ domain: string; cookie: string }> {
-  // Client-side: use getRootDomain()
-  if (typeof window !== 'undefined') {
-    return {
-      domain: getRootDomain() || 'godaddy.com',
-      cookie: '',
-    };
-  }
-  
-  try {
-    const { headers } = await import('next/headers');
-    const headersList = await headers();
-    const host = headersList.get('host') || '';
-    const cookie = headersList.get('cookie') || '';
-    
-    const hostname = host.split(':')[0];
-    const matches = hostname.match(/([\w-]+\.\w+)$/);
-    const domain = matches ? matches[0].replace('ote', 'stg') : 'godaddy.com';
-
-    return { domain, cookie };
-  } catch (error) {
-    logger.error('translations.fetch.failure', { error });
-    return {
-      domain: 'godaddy.com',
-      cookie: '',
-    };
-  }
-}
-
-/**
- * Fetch translation packages from the BFF i18n endpoint
- * 
- * Shared utility function used by both client-side (React Query) and
- * server-side (getServerIntl) translation systems.
- * 
- * **Auth Handling:**
- * - Always attempts to fetch from BFF API
- * - Forwards cookies if present for authentication
- * - If BFF returns 401 (unauthenticated), returns empty object gracefully
- * - Translation fetch failures are logged but don't break the page
- * 
- * **Behavior:**
- * - Authenticated users: Full translation set from BFF
- * - Unauthenticated users (incognito, logged out): Empty object, falls back to English
- * - The BFF API handles authentication - this layer just fetches data
+ * Makes HTTP request to `/api/i18n/package` endpoint which wraps `loadTranslations`.
  * 
  * @param packages - Array of package names to load translations from
+ * @param locale - Locale string (e.g., 'en-US')
  * @param options - Optional fetch configuration
  * @returns Promise resolving to merged translation messages (empty object `{}` if fetch fails)
  * 
  * @example
  * ```typescript
- * const messages = await fetchTranslationPackages(['@airo/app-builder']);
- * // Returns translations if authenticated, {} if not
+ * // Client-side usage (in React Query hook)
+ * const { data } = useTranslationPackages(['@airo/app-builder'], 'en-US');
  * ```
  */
 export async function fetchTranslationPackages(
   packages: string[],
+  locale: string = 'en-US',
   options?: {
     credentials?: RequestCredentials;
     cache?: RequestCache;
   }
 ): Promise<Record<string, string>> {
   try {
-    const { domain, cookie } = await getServerContext();
-    const baseUrl = `https://bff.pcx.${domain}/api/i18n/package`;
+    // Client-side only: Use relative URL to API route
+    const baseUrl = `/api/i18n/package`;
+    
+    logger.debug('translations.fetch.client.start', {
+      packages,
+      locale,
+      message: 'Client-side translation fetch via API route'
+    });
     
     const fetchOptions: RequestInit = {
       credentials: options?.credentials || 'include',
-      cache: options?.cache || 'default',
+      cache: options?.cache || 'no-store',
     };
     
-    // On server-side, forward cookies in headers for authentication
-    // If no cookies present, fetch will still attempt (BFF handles auth)
-    if (cookie) {
-      fetchOptions.headers = {
-        cookie,
-      };
-    }
-    
     const responses = await Promise.all(
-      packages.map((pkg) =>
-        fetch(
-          `${baseUrl}?packageName=${encodeURIComponent(pkg)}`,
-          fetchOptions
-        )
-      )
+      packages.map((pkg) => {
+        const url = `${baseUrl}?packageName=${encodeURIComponent(pkg)}&locale=${encodeURIComponent(locale)}`;
+        return fetch(url, fetchOptions);
+      })
     );
 
     const data = await Promise.all(
       responses.map(async (response, index) => {
         if (!response.ok) {
-          logger.error('translations.fetch.response.failure', { package: packages[index], status: response.status });
+          logger.error('translations.fetch.client.failure', { 
+            package: packages[index], 
+            status: response.status,
+          });
           return {};
         }
         
         const text = await response.text();
         
         if (!text || text.trim() === '') {
-          logger.error('translations.response.empty', { package: packages[index] });
+          logger.error('translations.fetch.client.empty', { package: packages[index] });
           return {};
         }
         
         try {
           return JSON.parse(text);
         } catch (err) {
-          logger.error('translations.parse.failure', { error: err });
+          logger.error('translations.fetch.client.parse_error', { error: err });
           return {};
         }
       })
@@ -122,10 +76,26 @@ export async function fetchTranslationPackages(
       (acc, pkg) => ({ ...acc, ...(typeof pkg === 'object' && pkg !== null ? pkg : {}) }),
       {}
     );
+    
+    const translationCount = Object.keys(merged).length;
+    if (translationCount === 0) {
+      logger.warn('translations.fetch.client.empty_result', { 
+        message: 'Client-side translation fetch returned empty',
+        packages
+      });
+    } else {
+      logger.debug('translations.fetch.client.success', { 
+        packages,
+        translationCount 
+      });
+    }
         
     return merged;
   } catch (error) {
-    logger.error('translations.fetch.failure', { error });
+    logger.error('translations.fetch.client.error', { 
+      error: error instanceof Error ? error.message : String(error),
+      packages 
+    });
     return {};
   }
 }

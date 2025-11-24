@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useMemo } from 'react';
 import { IntlProvider } from 'react-intl';
-import Spinner from '@ux/spinner';
+import LoadingComponent from '@/components/auth/LoadingComponent';
 import { useTranslationPackages } from '@/hooks/useTranslationPackages';
 import { useGasketData } from '@/hooks/useGasketData';
 
@@ -43,8 +43,8 @@ const TranslationsContext = createContext<TranslationsState>(defaultTranslations
  * @example
  * ```tsx
  * // Server-side mode (in layout.tsx)
- * const messages = await fetchTranslationPackages(['@airo/app-builder']);
- * const locale = gasketData.public.intl.locale;
+ * const messages = await loadTranslations('en-US', ['@airo/app-builder']);
+ * const locale = await detectLocale();
  * 
  * <TranslationsProvider locale={locale} messages={messages}>
  *   {children}
@@ -83,7 +83,7 @@ export function TranslationsProvider(props: TranslationsProviderProps) {
     <TranslationsContext.Provider value={ translationsState }>
       <IntlProvider locale={ locale } messages={ messages }>
         { isLoading
-          ? <Spinner />
+          ? <LoadingComponent />
           : children
         }
       </IntlProvider>

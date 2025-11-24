@@ -1,5 +1,5 @@
 import { createIntl, createIntlCache, type IntlShape } from '@formatjs/intl';
-import { fetchTranslationPackages } from './fetch-translations';
+import { loadTranslations } from './load-translations';
 import { logger } from '../request-context';
 import { resolveGasketData } from '@gasket/data';
 import { request } from '@gasket/nextjs/request';
@@ -89,6 +89,66 @@ export interface ServerIntlOptions {
 }
 
 /**
+ * Get cached or load translation messages with smart caching
+ * 
+ * Shared helper function used by both getServerIntl and getTranslationMessages.
+ * Implements Map cache with 5-minute TTL. Only caches non-empty results.
+ * 
+ * @param locale - Locale string (e.g., 'en-US')
+ * @param packages - Array of package names to load
+ * @param useCache - Whether to use cache (default: true)
+ * @returns Promise resolving to translation messages
+ */
+async function getCachedOrLoadMessages(
+  locale: string,
+  packages: string[],
+  useCache: boolean
+): Promise<Record<string, string>> {
+  // Generate cache key
+  const cacheKey = `${locale}:${packages.join(',')}`;
+  
+  // Check cache first
+  let messages: Record<string, string>;
+  const cachedEntry = messagesCache.get(cacheKey);
+  const now = Date.now();
+  
+  // Check if cache exists and is still valid (not expired)
+  if (useCache && cachedEntry && (now - cachedEntry.timestamp) < CACHE_TTL) {
+    messages = cachedEntry.messages;
+    logger.debug('translations.cache.hit', { cacheKey, translationCount: Object.keys(messages).length });
+  } else {
+    // Cache miss or expired - load translations directly (no HTTP)
+    messages = await loadTranslations(locale, packages);
+    
+    const translationCount = Object.keys(messages).length;
+    
+    // Only cache if we got translations
+    if (useCache && translationCount > 0) {
+      messagesCache.set(cacheKey, {
+        messages,
+        timestamp: now,
+      });
+      
+      logger.info('translations.cache.store', { 
+        cacheKey, 
+        translationCount,
+        message: 'Stored translations in cache'
+      });
+      
+      // Clean up expired entries after storing new one
+      cleanupExpiredCache();
+    } else if (translationCount === 0) {
+      logger.warn('translations.cache.skip', { 
+        cacheKey,
+        message: 'Empty translations - not caching'
+      });
+    }
+  }
+  
+  return messages;
+}
+
+/**
  * Create a server-side intl instance for translations in Server Components
  * 
  * This utility function creates an IntlShape instance that can be used in
@@ -130,36 +190,8 @@ export async function getServerIntl(options: ServerIntlOptions = {}): Promise<In
     useCache = true,
   } = options;
 
-  // Generate cache key
-  const cacheKey = `${locale}:${packages.join(',')}`;
-
-  // Check cache first
-  let messages: Record<string, string>;
-  const cachedEntry = messagesCache.get(cacheKey);
-  const now = Date.now();
-  
-  // Check if cache exists and is still valid (not expired)
-  if (useCache && cachedEntry && (now - cachedEntry.timestamp) < CACHE_TTL) {
-    messages = cachedEntry.messages;
-  } else {
-    // Cache miss or expired - fetch fresh translations
-    messages = await fetchTranslationPackages(packages, {
-      credentials: 'include',
-      cache: 'force-cache',
-    });
-    logger.info('translations.fetch.success');
-    
-    // Cache the messages with current timestamp
-    if (useCache) {
-      messagesCache.set(cacheKey, {
-        messages,
-        timestamp: now,
-      });
-      
-      // Clean up expired entries after storing new one
-      cleanupExpiredCache();
-    }
-  }
+  // Get cached or load messages using shared helper
+  const messages = await getCachedOrLoadMessages(locale, packages, useCache);
 
   // Create and return intl instance
   return createIntl(
@@ -169,6 +201,34 @@ export async function getServerIntl(options: ServerIntlOptions = {}): Promise<In
     },
     cache
   );
+}
+
+/**
+ * Get translation messages for use in layout/providers
+ * 
+ * Similar to getServerIntl but returns just the messages object instead of IntlShape.
+ * Uses the same Map cache with 5-minute TTL. Only caches non-empty results.
+ * 
+ * @param options - Configuration options
+ * @returns Promise resolving to translation messages (empty object if fetch fails)
+ * 
+ * @example
+ * ```typescript
+ * const messages = await getTranslationMessages({ 
+ *   locale: 'en-US',
+ *   packages: ['@airo/app-builder']
+ * });
+ * ```
+ */
+export async function getTranslationMessages(options: ServerIntlOptions = {}): Promise<Record<string, string>> {
+  const {
+    locale = 'en-US',
+    packages = ['@airo/app-builder'],
+    useCache = true,
+  } = options;
+
+  // Get cached or load messages using shared helper
+  return getCachedOrLoadMessages(locale, packages, useCache);
 }
 
 /**

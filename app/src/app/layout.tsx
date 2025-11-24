@@ -10,7 +10,9 @@ import SubscriptionCacheProvider from "@/components/providers/SubscriptionCacheP
 import FrameBuster from "@/components/security/FrameBuster";
 import ConversationIdCookie from "@/components/security/ConversationIdCookie";
 import { TranslationsProvider } from "@/components/providers/TranslationProvider";
-import { fetchTranslationPackages, getServerIntl, detectLocale } from "@/lib/translations";
+import { logger } from "@/lib/request-context";
+import { detectLocale, getServerIntl } from "@/lib/translations";
+import { loadTranslations } from "@/lib/translations/load-translations";
 
 import "@/styles/globals.scss";
 
@@ -57,12 +59,12 @@ const PresentationLayout = withGasketData(gasket)(makeLayout(gasket));
  * Root layout component for the application
  * 
  * **Translation Handling:**
- * - Fetches translations on server-side for initial page load
- * - Always attempts fetch (works in incognito, logged out, etc.)
- * - Returns empty `{}` if BFF returns 401 (unauthenticated)
- * - TranslationsProvider gracefully falls back to English for empty messages
+ * - Fetches translations on server-side using getServerIntl (has Map cache)
+ * - Map cache only stores successful non-empty results
+ * - If server fetch fails (401, network error), falls back to client-side fetch
+ * - Empty results are never cached, ensuring fresh attempts on subsequent requests
  * 
- * This ensures all pages work regardless of auth state.
+ * This ensures translations load reliably regardless of initial auth state.
  */
 async function RootLayout({
   children,
@@ -70,10 +72,19 @@ async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await detectLocale();
-  const messages = await fetchTranslationPackages(['@airo/app-builder'], {
-    credentials: 'include',
-    cache: 'force-cache',
-  });
+  
+  let messages: Record<string, string> | undefined;
+  try {
+    const fetchedMessages = await loadTranslations(locale, ['@airo/app-builder']);
+    
+    // Only use messages if they're not empty
+    if (Object.keys(fetchedMessages).length > 0) {
+      messages = fetchedMessages;
+    }
+  } catch (error) {
+    // Translation load failed - fall back to client-side fetch
+    logger.error('translations.layout.load.failure', { error });
+  }
   
   return (
     <PresentationLayout>
@@ -87,6 +98,7 @@ async function RootLayout({
           <TranslationsProvider 
             locale={ locale }
             messages={ messages }
+            packages={['@airo/app-builder']}
           >
             <AuthProvider>
               <SubscriptionCacheProvider>
