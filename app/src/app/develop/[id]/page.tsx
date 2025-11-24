@@ -8,29 +8,20 @@ import ChatPane from '@/app/develop/components/chat/ChatPane'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
-import { Loader } from '@airo-ux/loader'
-import Box from '@ux/box'
-import text from '@ux/text'
 import { ChatTab, SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { ProtectedRoute } from '@/components/auth'
-import { useQueryClient } from '@tanstack/react-query'
 import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { usePageTiming } from '@/hooks/usePageTiming'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
-import { appService, GitCommit } from '@/services/AppService'
+import { appService } from '@/services/AppService'
 import {
   useConversations,
   useSetInputValue,
   useSetAiEditContext,
   useSetBuildErrorContext,
-  useSetCurrentAppId,
-  useCurrentAppId,
-  useIsLoading,
   useAutoSendInitialMessage,
-  useLoadConversationHistory,
-  useStreamingConversationStore,
   useMessages,
   useActiveStream
 } from '@/stores/useStreamingConversationStore'
@@ -61,8 +52,9 @@ function DevelopPageContent() {
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
 
   // Server polling store - unified server status management
-  const { startPollingForServer, stopPollingForServer, cleanup: cleanupServerPolling } = useServerPollingStore()
-  const serverState = useServerPollingStore(state => appId ? state.servers.get(appId)?.server : null)
+  const startPollingForServer = useServerPollingStore((state) => state.startPollingForServer)
+  const stopPollingForServer = useServerPollingStore((state) => state.stopPollingForServer)
+  const cleanupServerPolling = useServerPollingStore((state) => state.cleanup)
 
   // Streaming conversation store - for conversations and messages
   const conversations = useConversations()
@@ -72,31 +64,25 @@ function DevelopPageContent() {
   const setAiEditContext = useSetAiEditContext()
   const setBuildErrorContext = useSetBuildErrorContext()
   const autoSendInitialMessage = useAutoSendInitialMessage()
-  const { sendMessage, isConnected: isWebSocketConnected } = useStreamingWebSocket()
+  const { sendMessage } = useStreamingWebSocket()
 
-  // Develop page store - for UI state and coordination
-  const {
-    chatPaneWidth,
-    hasUnsavedChanges,
-    isChatPaneCollapsed,
-    isMobile,
-    activeChatTab,
-    isPreviewVisible,
-    setChatPaneWidth,
-    setIsSelectMode,
-    setSelectedCommit,
-    loadingPhase,
-    site,
-    initializePage,
-    initializeMobileDetection,
-    openFeedbackId,
-    closeFeedbackModal,
-    setActiveSettingsSection,
-    setActiveChatTab,
-    setIsPreviewVisible
-  } = useDevelopPageStore()
-
-  const queryClient = useQueryClient()
+  const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
+  const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
+  const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
+  const isMobile = useDevelopPageStore((state) => state.isMobile)
+  const activeChatTab = useDevelopPageStore((state) => state.activeChatTab)
+  const isPreviewVisible = useDevelopPageStore((state) => state.isPreviewVisible)
+  const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
+  const site = useDevelopPageStore((state) => state.site)
+  const openFeedbackId = useDevelopPageStore((state) => state.openFeedbackId)
+  
+  const setChatPaneWidth = useDevelopPageStore((state) => state.setChatPaneWidth)
+  const setIsSelectMode = useDevelopPageStore((state) => state.setIsSelectMode)
+  const initializeMobileDetection = useDevelopPageStore((state) => state.initializeMobileDetection)
+  const closeFeedbackModal = useDevelopPageStore((state) => state.closeFeedbackModal)
+  const setActiveSettingsSection = useDevelopPageStore((state) => state.setActiveSettingsSection)
+  const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab)
+  const setIsPreviewVisible = useDevelopPageStore((state) => state.setIsPreviewVisible)
 
   useGitHistoryQuery({
     appId: appId || '',
@@ -114,12 +100,6 @@ function DevelopPageContent() {
     url?: string
     scrollPosition?: { x: number; y: number }
   }>({})
-
-  // Streaming store state
-  const isLoading = useIsLoading()
-  const prevIsLoadingRef = useRef(isLoading)
-  
-  // No longer need local state - all handled by init.ui
 
   useEffect(() => {
     logImpressionEvent('develop.page.view')();
@@ -185,31 +165,6 @@ function DevelopPageContent() {
       return () => clearTimeout(timer)
     }
   }, [loadingPhase, appId, messages.length, setIsPreviewVisible])
-
-  // Git history management - centralized for page-level coordination
-
-  // Refresh git history when AI conversation completes (new commit created)
-  useEffect(() => {
-    const wasLoading = prevIsLoadingRef.current
-    const isNowIdle = !isLoading
-
-    // When conversation completes (was loading, now idle), refresh git history
-    if (appId && wasLoading && isNowIdle && conversations.length > 0) {
-      // Invalidate and refetch git history to get the new commit
-      queryClient.invalidateQueries({
-        queryKey: ['git-history', appId],
-        refetchType: 'active'
-      }).then(() => {
-        // After refetch completes, select the newly created commit (at index 0)
-        const gitHistory = queryClient.getQueryData<GitCommit[]>(['git-history', appId]);
-        if (gitHistory && gitHistory.length > 0) {
-          setSelectedCommit(gitHistory[0])
-        }
-      })
-    }
-
-    prevIsLoadingRef.current = isLoading
-  }, [appId, isLoading, conversations.length, queryClient, setSelectedCommit])
 
   // Server polling - unified approach with adaptive backoff
   useEffect(() => {

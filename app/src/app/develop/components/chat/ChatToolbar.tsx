@@ -7,6 +7,8 @@ import SettingsMenu from '@/app/develop/components/settings/SettingsMenu'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { generateClickEID } from '@/utils/instrumentation'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { useGitStore } from '@/stores/useGitStore'
 import Box from '@ux/box'
 import IconButton from '@/app/develop/components/IconButton'
 import CommentsIcon from '@ux/icon/comments'
@@ -26,16 +28,20 @@ interface ChatToolbarProps {
 export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventureId }: ChatToolbarProps) {
   const router = useRouter()
   const appId = useAppIdFromParams()
-  const {
-    activeChatTab,
-    setActiveChatTab,
-    isMobile,
-    activeSettingsSection
-  } = useDevelopPageStore()
+  const activeChatTab = useDevelopPageStore((state) => state.activeChatTab);
+  const isMobile = useDevelopPageStore((state) => state.isMobile);
+  const activeSettingsSection = useDevelopPageStore((state) => state.activeSettingsSection);
+  const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab);
+  const isSelectingCommit = useGitStore((state) => state.isSelectingCommit);
 
   const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager');
   const { data: isSettingsEnabled } = useSwitchboard('appbuilder-settings');
   // const { data: isSettingsEnabled } = {data: true};
+
+  const { isFetching: isFetchingCommits } = useGitHistoryQuery({
+    appId: appId || '',
+    enabled: !!appId
+  })
 
   const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false)
 
@@ -128,7 +134,7 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
         onClick={() => handleTabClick(ChatTab.HISTORY)}
         label="History"
         active={activeChatTab === ChatTab.HISTORY}
-        disabled={isProcessing}
+        disabled={isProcessing || isFetchingCommits || isSelectingCommit}
       />
       {isMobile ? (
         isSettingsEnabled && <SettingsMenu />

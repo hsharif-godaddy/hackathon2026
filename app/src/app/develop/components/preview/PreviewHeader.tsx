@@ -23,26 +23,24 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   const appId = useAppIdFromParams()
   const { data: showDatabaseSettings } = useSwitchboard('appbuilder-settings-database');
 
-  const {
-    viewMode,
-    isCheckingApp,
-    isStartingApp,
-    isRestarting,
-    previewViewMode,
-    hasUnsavedChanges,
-    handleViewModeChange,
-    setPreviewViewMode,
-    toggleSelectMode,
-    isSelectMode,
-    isChatPaneCollapsed,
-    toggleChatPaneCollapse,
-    openFeedbackModal,
-    setActiveChatTab,
-    setActiveSettingsSection,
-    site
-  } = useDevelopPageStore()
+  const viewMode = useDevelopPageStore((state) => state.viewMode)
+  const isCheckingApp = useDevelopPageStore((state) => state.isCheckingApp)
+  const isStartingApp = useDevelopPageStore((state) => state.isStartingApp)
+  const isRestarting = useDevelopPageStore((state) => state.isRestarting)
+  const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
+  const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
+  const isSelectMode = useDevelopPageStore((state) => state.isSelectMode)
+  const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
+  const site = useDevelopPageStore((state) => state.site)
+  const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
+  const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
+  const toggleSelectMode = useDevelopPageStore((state) => state.toggleSelectMode)
+  const toggleChatPaneCollapse = useDevelopPageStore((state) => state.toggleChatPaneCollapse)
+  const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal)
+  const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab)
+  const setActiveSettingsSection = useDevelopPageStore((state) => state.setActiveSettingsSection)
 
-  const { getServerState } = useServerPollingStore()
+  const getServerState = useServerPollingStore((state) => state.getServerState)
   const serverState = getServerState(appId)
   const actualPort = serverState?.port
   const serverUrl = serverState?.url

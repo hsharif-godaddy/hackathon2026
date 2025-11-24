@@ -1226,20 +1226,9 @@ export class WebSocketServer {
   ): Promise<void> {
     const duration = `${Date.now() - startTime}ms`
 
-    // Emit final completion event to client
-    socket.emit('message', {
-      type: 'complete',
-      content: '',
-      data: {
-        totalSteps: 1, // We don't track steps across handoffs
-        usage: undefined,
-        toolCalls: [],
-        agentId: agentName,
-        duration
-      }
-    } as WebSocketMessage)
-
-    // Complete persistence if configured
+    // Complete persistence FIRST (includes git commits) before sending complete event
+    // Store commit hash if persistence layer provides it via context
+    let commitHash: string | null = null
     const conversation = this.activeConversations.get(socketId)
     if (conversation && this.config.messagePersistence) {
       await this.config.messagePersistence.completeConversation(
@@ -1249,9 +1238,27 @@ export class WebSocketServer {
         conversation.context
       )
 
+      // Get commit hash from context (always set by persistence layer: string or null)
+      commitHash = (conversation.context as any).commitHash ?? null
+
       // Don't delete conversation - keep it active for next user message
       // Only cleanup happens on disconnect or error
     }
+
+    // Emit final completion event to client AFTER persistence completes
+    // Always include commit hash (null if no commit was created)
+    socket.emit('message', {
+      type: 'complete',
+      content: '',
+      data: {
+        totalSteps: 1, // We don't track steps across handoffs
+        usage: undefined,
+        toolCalls: [],
+        agentId: agentName,
+        duration,
+        commitHash // null if no commit, hash string if commit was created
+      }
+    } as WebSocketMessage)
 
     // Call completion handler
     this.config.onMessageComplete?.(socketId, {

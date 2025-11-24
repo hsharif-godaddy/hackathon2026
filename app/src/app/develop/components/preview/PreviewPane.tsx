@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import clsx from 'clsx'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -8,6 +8,7 @@ import text from '@ux/text'
 import { Loader } from '@airo-ux/loader'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { useGitStore } from '@/stores/useGitStore'
 import { useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -35,30 +36,33 @@ export default function PreviewPane({
   showBuildingOverlay = false,
   buildingMessage = "The AI agent is building your app..."
 }: PreviewPaneProps) {
-  const serverPollingStore = useServerPollingStore()
-  const {
-    getServerState,
-    startPollingForServer,
-    stopPollingForServer,
-    isPollingServer
-  } = serverPollingStore
+  const getServerState = useServerPollingStore((state) => state.getServerState)
+  const startPollingForServer = useServerPollingStore((state) => state.startPollingForServer)
+  const stopPollingForServer = useServerPollingStore((state) => state.stopPollingForServer)
+  const isPollingServer = useServerPollingStore((state) => state.isPollingServer)
 
   const restoreMutation = useRestoreCommitMutation();
 
-  const {
-    previewViewMode,
-    viewMode,
-    setPreviewViewMode,
-    selectedCommit
-  } = useDevelopPageStore()
+  const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
+  const viewMode = useDevelopPageStore((state) => state.viewMode)
+  const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
 
   const appId = useAppIdFromParams();
+  
+  // Get selected commit hash from git store
+  const selectedCommitHash = useGitStore((state) => appId ? state.getSelectedCommitHash(appId) : null)
 
   // Get commits to determine if selected commit is the latest
   const { data: commits = [] } = useGitHistoryQuery({
     appId: appId || '',
     enabled: !!appId
   });
+
+  // Derive selected commit object from hash
+  const selectedCommit = useMemo(() => {
+    if (!selectedCommitHash || !commits.length) return null
+    return commits.find(c => c.hash === selectedCommitHash) ?? null
+  }, [selectedCommitHash, commits]);
 
   useEffect(() => {
     if (isMobile) {
@@ -249,7 +253,25 @@ export default function PreviewPane({
   function handleRestoreConfirm() {
     if (!selectedCommit) return
 
-    restoreMutation.mutate({ appId, commitHash: selectedCommit.hash })
+    restoreMutation.mutate(
+      { appId, commitHash: selectedCommit.hash },
+      {
+        onSuccess: () => {
+          logger.info('preview-pane.restore.success', {
+            message: 'Successfully restored commit',
+            appId,
+            commitHash: selectedCommit.hash.substring(0, 7)
+          })
+        },
+        onError: (error) => {
+          logger.error('preview-pane.restore.error', {
+            message: 'Failed to restore commit',
+            appId,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        }
+      }
+    )
   }
 
   const handleIframeError = () => {

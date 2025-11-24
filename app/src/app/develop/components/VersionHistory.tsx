@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useMemo } from 'react'
+import { useRef, useMemo, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useGitStore } from '@/stores/useGitStore'
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -24,16 +25,14 @@ interface Commit {
 
 export default function VersionHistory() {
   const commitsListRef = useRef<HTMLUListElement>(null)
-
-  const {
-    selectedCommit,
-    selectCommit,
-    isSelectingCommit,
-    commitSelectionError,
-    setCommitSelectionError
-  } = useDevelopPageStore()
-
   const appId = useAppIdFromParams()
+  const queryClient = useQueryClient()
+
+  const selectedCommitHash = useGitStore((state) => appId ? state.getSelectedCommitHash(appId) : null)
+  const isSelectingCommit = useGitStore((state) => state.isSelectingCommit)
+  const commitSelectionError = useGitStore((state) => state.commitSelectionError)
+  const selectCommitAction = useGitStore((state) => state.selectCommit)
+  const setCommitSelectionError = useGitStore((state) => state.setCommitSelectionError)
 
   const site = useSiteStore((state) => appId ? state.getSite(appId) : null)
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button')
@@ -50,6 +49,12 @@ export default function VersionHistory() {
   // NOTE: commits array is ordered from NEWEST to OLDEST (chronologically descending)
   // Index 0 = most recent commit, higher indices = older commits
   // This ordering is assumed throughout this component for published tag logic
+
+  // Derive the selected commit object from the hash
+  const selectedCommit = useMemo(() => {
+    if (!selectedCommitHash || !commits.length) return null
+    return commits.find(c => c.hash === selectedCommitHash) ?? null
+  }, [selectedCommitHash, commits])
 
   const error = queryError?.message || null
 
@@ -69,12 +74,18 @@ export default function VersionHistory() {
     return commits.findIndex(c => c.hash === mostRecentDeployment.gitHash);
   }, [deployments, commits])
 
-  // Auto-select the latest commit when commits load and no commit is selected
+  // Auto-select latest commit when commits load or when a new commit is created
+  // Auto-select latest commit on initial load
   useEffect(() => {
-    if (commits.length > 0 && !selectedCommit) {
-      selectCommit(appId, commits[0])
+    if (commits.length === 0 || !appId || isSelectingCommit || commitSelectionError) return
+    
+    // Only auto-select if no commit is currently selected (initial load)
+    // Agent-created commits are handled directly in useStreamingWebSocket
+    // User manual selections should always be respected
+    if (!selectedCommitHash) {
+      selectCommitAction(appId, commits[0].hash)
     }
-  }, [commits, selectedCommit, appId, selectCommit])
+  }, [commits, selectedCommitHash, isSelectingCommit, commitSelectionError, appId, selectCommitAction])
 
   // Handle commit selection using global store
   const handleSelectCommit = async (commit: Commit) => {
@@ -85,17 +96,27 @@ export default function VersionHistory() {
     }
 
     try {
-      if (selectedCommit?.hash === commit.hash) {
-        // Deselect current commit (return to latest)
-        await selectCommit(appId, null)
-      } else {
-        // Select new commit
-        await selectCommit(appId, commit)
-      }
+      await selectCommitAction(appId, commit.hash)
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      
+      // Any checkout error might mean an auto-commit was created before the failure
+      // Always refetch git history to show any auto-commits that may have been created
+      logger.info('version-history.commit.error-refetch', {
+        message: 'Checkout failed, refetching git history to show any auto-commits',
+        appId,
+        targetCommit: commit.hash.substring(0, 7),
+        error: errorMessage
+      })
+      
+      await queryClient.invalidateQueries({
+        queryKey: ['git-history', appId],
+        refetchType: 'active'
+      })
+      
       logger.error('version-history.commit.selection-error', { 
         message: 'Failed to select commit', 
-        error: error instanceof Error ? error.message : String(error) 
+        error: errorMessage 
       });
     }
   }

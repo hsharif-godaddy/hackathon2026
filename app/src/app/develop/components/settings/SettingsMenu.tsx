@@ -21,7 +21,8 @@ export default function SettingsMenu() {
   const appId = useAppIdFromParams();
   const [open, setOpen] = useState(false);
 
-  const { activeSettingsSection, setActiveSettingsSection } = useDevelopPageStore();
+  const activeSettingsSection = useDevelopPageStore((state) => state.activeSettingsSection);
+  const setActiveSettingsSection = useDevelopPageStore((state) => state.setActiveSettingsSection);
 
   const handleNavigate = (id: SettingsSection) => {
     setActiveSettingsSection(id);

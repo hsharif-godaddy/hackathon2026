@@ -52,8 +52,7 @@ export function useGitHistoryQuery(options: UseGitHistoryQueryOptions) {
       return commits || [];
     },
     enabled: enabled && !!appId,
-    staleTime: 30 * 1000, // Consider data stale after 30 seconds
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    staleTime: 0, // Always consider stale - refetch on invalidation to get latest commits
     retry: 2, // Retry up to 2 times
     refetchOnWindowFocus: false,
   });

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { validate as validateUUID } from 'uuid'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   useWebSocketState,
   useCurrentAppId,
@@ -26,6 +27,7 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
+import { useGitStore } from '@/stores/useGitStore'
 import type { AgentsAppContext, AgentsAppChatMessage } from '../types/websocket-context'
 import { captureVisualContext } from '../app/develop/components/visualContextCapture'
 import { logImpressionEvent } from '@/utils/instrumentation'
@@ -127,6 +129,7 @@ export function useStreamingWebSocket() {
   const wasStreamingOnDisconnectRef = useRef<boolean>(false)
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
+  const queryClient = useQueryClient()
   // Hook setters & streaming state (declared early for use in callbacks)
   const startNewStream = useStartNewStream()
   const appendTextSegment = useAppendTextSegment()
@@ -237,7 +240,78 @@ export function useStreamingWebSocket() {
         }
       })
     })
-  }, [setWebSocketState, setStreamingState, setIsLoading])
+  }, [setWebSocketState])
+
+  /**
+   * Handle commit selection and preview refresh after message completion
+   *
+   * MESSAGE_COMPLETE must fire AFTER commit selection completes to ensure files are synced
+   *
+   * @param commitHash - Optional commit hash from the completed message
+   */
+  const handleCommitComplete = useCallback(async (commitHash?: string) => {
+    if (commitHash && currentAppId) {
+      logger.info('websocket.commit_created', {
+        appId: currentAppId,
+        commitHash: commitHash.substring(0, 7),
+        message: 'Commit created during conversation, invalidating and selecting'
+      })
+
+      try {
+        // Invalidate to get fresh commit list
+        await queryClient.invalidateQueries({
+          queryKey: ['git-history', currentAppId],
+          refetchType: 'active'
+        })
+
+        // Select the new commit
+        await useGitStore.getState().selectCommit(currentAppId, commitHash)
+
+        logger.info('websocket.commit_selected', {
+          appId: currentAppId,
+          commitHash: commitHash.substring(0, 7),
+          message: 'Successfully selected new commit, triggering preview refresh'
+        })
+
+        // Now trigger preview refresh - files are synced
+        window.postMessage({
+          type: 'MESSAGE_COMPLETE',
+          source: 'websocket'
+        }, window.location.origin)
+      } catch (error) {
+        logger.error('websocket.commit_selection_error', {
+          appId: currentAppId,
+          commitHash: commitHash.substring(0, 7),
+          error: error instanceof Error ? error.message : String(error),
+          message: 'Failed to select commit after conversation'
+        })
+
+        // Still trigger preview refresh on error
+        window.postMessage({
+          type: 'MESSAGE_COMPLETE',
+          source: 'websocket'
+        }, window.location.origin)
+      }
+    } else if (currentAppId) {
+      logger.info('websocket.no_commit', {
+        appId: currentAppId,
+        message: 'No commit created (no file changes)'
+      })
+
+      // No commit - trigger preview refresh immediately
+      window.postMessage({
+        type: 'MESSAGE_COMPLETE',
+        source: 'websocket'
+      }, window.location.origin)
+    } else {
+      // No appId - still trigger preview refresh for any other listeners
+      window.postMessage({
+        type: 'MESSAGE_COMPLETE',
+        source: 'websocket'
+      }, window.location.origin)
+    }
+  }, [currentAppId, queryClient])
+
   // Set up Socket.IO event handlers for streaming (defined before useEffect to satisfy dependency ordering)
   const setupEventHandlers = useCallback((socket: Socket) => {
     socket.on('status', (data) => {
@@ -328,6 +402,14 @@ export function useStreamingWebSocket() {
           }
           break
         case 'complete':
+          // Log what we received from the WebSocket
+          logger.info('websocket.complete_received', {
+            appId: currentAppId,
+            hasCommitHash: !!data.data?.commitHash,
+            commitHash: data.data?.commitHash ? data.data.commitHash.substring(0, 7) : null,
+            message: 'Received complete event from WebSocket'
+          })
+
           // Clear retry state on successful completion
           if (retryStateRef.current.retryTimer) {
             clearTimeout(retryStateRef.current.retryTimer)
@@ -339,15 +421,13 @@ export function useStreamingWebSocket() {
             usage: data.data?.usage,
             totalSteps: data.data?.step
           })
-          sendToolImpression('complete')
-          setWebSocketState({ status: 'idle' })
-          setStreamingState('idle')
-          setIsLoading(false)
-          // Send window message to trigger preview refresh
-          window.postMessage({
-            type: 'MESSAGE_COMPLETE',
-            source: 'websocket'
-          }, window.location.origin)
+          sendToolImpression('complete');
+          setWebSocketState({ status: 'idle' });
+          setStreamingState('idle');
+          setIsLoading(false);
+
+          // Handle commit selection and preview refresh
+          handleCommitComplete(data.data?.commitHash)
           break
         case 'error':
           // Check if this is an APP_NOT_FOUND error that we should retry
@@ -473,6 +553,7 @@ export function useStreamingWebSocket() {
     setStreamingState,
     setIsLoading,
     currentAppId,
+    handleCommitComplete,
   ])
 
   useEffect(() => {
@@ -588,7 +669,6 @@ export function useStreamingWebSocket() {
     }
     // Including createConnection & setupEventHandlers satisfies exhaustive-deps; guard prevents duplicate initialization.
   }, [currentAppId, createConnection, setupEventHandlers])
-
 
   /**
    * Send message - the main streaming function

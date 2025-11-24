@@ -30,9 +30,8 @@ export interface SettingsNavItem {
  * @returns Array of settings navigation items with current enabled/disabled state
  */
 export function useSettingsNavItems(): SettingsNavItem[] {
-  const { openFeedbackModal } = useDevelopPageStore();
-
-  const { isMobile } = useDevelopPageStore();
+  const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
+  const isMobile = useDevelopPageStore((state) => state.isMobile);
 
   const { data: isProjectEnabled } = useSwitchboard('appbuilder-settings-project');
   const { data: isDomainEnabled } = useSwitchboard('appbuilder-settings-domain');
@@ -40,7 +39,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const { data: isSecurityEnabled } = useSwitchboard('appbuilder-settings-security');
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
-  const { data: isFeedbackEnabled } = useSwitchboard('appbuilder-settings-feedback');
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
   // const { data: isSecretsEnabled } = {data: true};
 

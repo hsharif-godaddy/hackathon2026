@@ -9,14 +9,12 @@ import { logger } from '@/lib/request-context'
  * @returns Cache status information
  */
 export function useSubscriptionCache(jwt: string | null) {
-  const { 
-    initialize, 
-    refresh, 
-    lastRefresh, 
-    isRefreshing,
-    cacheHits,
-    cacheMisses
-  } = useSubscriptionCacheStore()
+  const initialize = useSubscriptionCacheStore((state) => state.initialize)
+  const refresh = useSubscriptionCacheStore((state) => state.refresh)
+  const lastRefresh = useSubscriptionCacheStore((state) => state.lastRefresh)
+  const isRefreshing = useSubscriptionCacheStore((state) => state.isRefreshing)
+  const cacheHits = useSubscriptionCacheStore((state) => state.cacheHits)
+  const cacheMisses = useSubscriptionCacheStore((state) => state.cacheMisses)
   
   // Initialize cache on mount if JWT is available
   useEffect(() => {

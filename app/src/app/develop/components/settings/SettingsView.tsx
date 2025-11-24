@@ -13,7 +13,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { SecretsPanel } from './SecretsPanel'
 
 export default function SettingsView() {
-  const { activeSettingsSection } = useDevelopPageStore()
+  const activeSettingsSection = useDevelopPageStore((state) => state.activeSettingsSection)
   const appId = useAppIdFromParams()
 
   const { data: isProjectEnabled } = useSwitchboard('appbuilder-settings-project');

@@ -8,18 +8,6 @@ import { ViewMode, PreviewViewMode, ChatTab, SettingsSection } from '@/app/devel
 import { logger } from '@/lib/request-context'
 import { logImpressionEvent } from '@/utils/instrumentation'
 
-interface GitCommit {
-  hash: string
-  message: string
-  author: string
-  date: string
-}
-
-// Options sheet tab types
-export enum OptionsSheetTab {
-  HISTORY = 'history'
-}
-
 // Loading phases for proper sequencing
 type LoadingPhase = 'idle' | 'loading-app' | 'loading-site' | 'loading-conversations' | 'ready'
 
@@ -43,14 +31,6 @@ interface DevelopPageStore {
 
   // Version history UI
   isVersionHistoryOpen: boolean
-  selectedCommit: GitCommit | null
-  commitHistory: GitCommit[]
-  isLoadingCommits: boolean
-  isSelectingCommit: boolean
-  commitSelectionError: string | null
-
-  // Options sheet UI
-  openOptionsSheet: OptionsSheetTab | null
 
   // Feedback modal UI
   openFeedbackId: string | null
@@ -88,9 +68,6 @@ interface DevelopPageStore {
   setHasUnsavedChanges: (hasChanges: boolean) => void
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
-  setSelectedCommit: (commit: GitCommit | null) => void
-  setCommitSelectionError: (error: string | null) => void
-  setOpenOptionsSheet: (sheet: OptionsSheetTab | null) => void
   setIsPreviewVisible: (visible: boolean) => void
 
   // Feedback modal actions
@@ -128,14 +105,12 @@ interface DevelopPageStore {
   // Coordinated actions (call domain stores + manage UI state)
   restartApp: (appId: string, appStoreRestartApp: (appId: string) => Promise<void>) => Promise<void>
   ensureAppIsRunning: (appId: string, appStoreEnsureAppIsRunning: (appId: string) => Promise<{ success: boolean; action?: string; message?: string }>) => Promise<void>
-  fetchCommitHistory: (appId: string) => Promise<void>
-  selectCommit: (appId: string, commit: GitCommit | null) => Promise<void>
 
   // UI helpers
   toggleSelectMode: () => void
   toggleExpandedPlan: () => void
   toggleChatPaneCollapse: () => void
-  toggleVersionHistory: (appId?: string) => void
+  toggleVersionHistory: () => void
   handleViewModeChange: (newMode: ViewMode, hasUnsavedChanges: boolean) => void
   initializeMobileDetection: () => () => void
 }
@@ -158,12 +133,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     isCheckingApp: false,
     isStartingApp: false,
     isVersionHistoryOpen: false,
-    selectedCommit: null,
-    commitHistory: [],
-    isLoadingCommits: false,
-    openOptionsSheet: null,
-    isSelectingCommit: false, // Track commit selection state
-    commitSelectionError: null,
 
     // Feedback modal state
     openFeedbackId: null,
@@ -201,9 +170,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
     }),
     setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),
-    setSelectedCommit: (commit) => set((state) => { state.selectedCommit = commit }),
-    setCommitSelectionError: (error) => set((state) => { state.commitSelectionError = error }),
-    setOpenOptionsSheet: (sheet) => set((state) => { state.openOptionsSheet = sheet }),
     setIsPreviewVisible: (visible) => set((state) => { state.isPreviewVisible = visible }),
 
     // Feedback modal actions
@@ -388,11 +354,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.site = null
         state.loadingError = null
         state.autoSendTriggered = false
-        state.selectedCommit = null
-        state.commitHistory = []
         state.hasUnsavedChanges = false
-        state.openOptionsSheet = null
-        state.commitSelectionError = null
       })
     },
 
@@ -550,100 +512,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
     },
 
-    fetchCommitHistory: async (appId: string) => {
-      set((state) => { state.isLoadingCommits = true })
-
-      try {
-        // Retry logic for git history - apps might not be ready immediately
-        let attempts = 0
-        const maxAttempts = 3
-        const baseDelay = 2000 // Start with 2 seconds
-
-        while (attempts < maxAttempts) {
-          try {
-            const { commits } = await appService.getGitHistory(appId)
-            set((state) => { state.commitHistory = commits || [] })
-            logger.info('develop-store.git-history.loaded', { message: 'Git history loaded', commits: commits?.length || 0, appId })
-            return // Success, exit retry loop
-          } catch (err: unknown) {
-            attempts++
-            logger.warn('develop-store.git-history.attempt-failed', { message: 'Git history attempt failed', attempt: attempts, maxAttempts, appId, error: (err as Error)?.message })
-
-            // Don't retry on certain error codes that won't resolve with time
-            if ((err as Error)?.message?.includes('404') || (err as Error)?.message?.includes('403')) {
-              logger.warn('develop-store.git-history.stopped', { message: 'App not found or forbidden, stopping git history retries', appId })
-              break
-            }
-
-            if (attempts < maxAttempts) {
-              const delay = baseDelay * attempts
-              logger.info('develop-store.git-history.retry', { message: 'Retrying git history', appId, delay })
-              await new Promise(resolve => setTimeout(resolve, delay))
-            }
-          }
-        }
-
-        // If all attempts failed, set empty history (don't crash the app)
-        logger.warn('develop-store.git-history.all-attempts-failed', { message: 'All git history attempts failed, using empty history', appId })
-        set((state) => { state.commitHistory = [] })
-
-      } catch (err) {
-        logger.error('develop-store.git-history.error', { message: 'Error loading commit history', appId, error: err instanceof Error ? err.message : String(err) })
-        set((state) => { state.commitHistory = [] })
-      } finally {
-        set((state) => { state.isLoadingCommits = false })
-      }
-    },
-
-    selectCommit: async (appId: string, commit: GitCommit | null) => {
-      // Prevent concurrent commit selections
-      const state = get();
-      if (state.isSelectingCommit) {
-        logger.info('develop-store.commit-selection.skip', { message: 'Commit selection already in progress, skipping' });
-        return;
-      }
-
-      set((state) => { 
-        state.isSelectingCommit = true;
-        state.commitSelectionError = null;
-      });
-
-      try {
-        if (commit === null) {
-          // Return to latest (main branch)
-          logger.info('develop-store.commit-selection.return-main', { message: 'Returning to main branch' });
-          await appService.returnToMainBranch(appId)
-          set((state) => { state.selectedCommit = null })
-          logger.info('develop-store.commit-selection.return-main-success', { message: 'Returned to main branch' })
-          return
-        }
-
-        logger.info('develop-store.commit-selection.view', {
-          message: 'Viewing commit',
-          commitHash: commit.hash.substring(0, 7),
-          commitMessage: commit.message,
-          date: commit.date
-        })
-        logger.warn('develop-store.commit-selection.note', { message: 'Changes requested after this will be made on latest commit, not the viewed commit' })
-
-        // Checkout specific commit
-        logger.info('develop-store.commit-selection.checkout', { message: 'Checking out commit', commitHash: commit.hash.substring(0, 7) });
-        await appService.checkoutCommit(appId, commit.hash)
-        set((state) => { state.selectedCommit = commit })
-        logger.info('develop-store.commit-selection.checkout-success', { message: 'Checked out commit', commitHash: commit.hash.substring(0, 7) })
-
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.error('develop-store.commit-selection.error', { message: 'Error selecting commit', error: errorMessage })
-        set((state) => { 
-          state.commitSelectionError = errorMessage;
-        });
-        throw error
-      } finally {
-        set((state) => { state.isSelectingCommit = false });
-      }
-    },
-
     // UI helpers
     toggleSelectMode: () => {
       const newSelectMode = !get().isSelectMode
@@ -667,14 +535,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       set((state) => { state.isChatPaneCollapsed = !state.isChatPaneCollapsed })
     },
 
-    toggleVersionHistory: (appId?: string) => {
+    toggleVersionHistory: () => {
       const newIsVersionHistoryOpen = !get().isVersionHistoryOpen
       set((state) => { state.isVersionHistoryOpen = newIsVersionHistoryOpen })
-
-      // If opening the history, refresh the commits
-      if (newIsVersionHistoryOpen && appId) {
-        get().fetchCommitHistory(appId)
-      }
     },
 
     handleViewModeChange: (newMode: ViewMode, hasUnsavedChanges: boolean) => {

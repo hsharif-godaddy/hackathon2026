@@ -321,31 +321,25 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // -------------------------------------------------------------------------
   
   // Site creation (internal)
-  const {
-    phase: creationPhase,
-    error: creationError,
-    retryCount,
-    maxRetries,
-    realAppId,
-    initializeSite,
-    retry: retryCreation,
-  } = useSiteCreationStore()
+  const creationPhase = useSiteCreationStore((state) => state.phase)
+  const creationError = useSiteCreationStore((state) => state.error)
+  const retryCount = useSiteCreationStore((state) => state.retryCount)
+  const maxRetries = useSiteCreationStore((state) => state.maxRetries)
+  const realAppId = useSiteCreationStore((state) => state.realAppId)
+  const initializeSite = useSiteCreationStore((state) => state.initializeSite)
+  const retryCreation = useSiteCreationStore((state) => state.retry)
   
   // Page data
-  const { 
-    site, 
-    loadingPhase,
-    initializePage 
-  } = useDevelopPageStore()
+  const site = useDevelopPageStore((state) => state.site)
+  const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
+  const initializePage = useDevelopPageStore((state) => state.initializePage)
   
   // Streaming/WebSocket
-  const streamingStore = useStreamingConversationStore()
+  const isWebSocketConnected = useStreamingConversationStore((state) => state.websocket.connected)
+  const isStreamingMessage = useStreamingConversationStore((state) => state.isLoading)
+  const messages = useStreamingConversationStore((state) => state.messages)
+  const activeStream = useStreamingConversationStore((state) => state.activeStream)
   const loadConversationHistory = useLoadConversationHistory()
-  
-  const isWebSocketConnected = streamingStore.websocket.connected
-  const isStreamingMessage = streamingStore.isLoading
-  const messages = streamingStore.messages
-  const activeStream = streamingStore.activeStream
   
   // -------------------------------------------------------------------------
   // DERIVED STATE (Context)

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  CodeBracketIcon,
   PlayIcon,
   EyeIcon,
   TrashIcon,
@@ -11,7 +10,7 @@ import {
 import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { hasBeenPublished } from '@/utils/site'
 import { generateClickEID } from '@/utils/instrumentation'
-import { useSites } from '@/stores/useSitesStore'
+import { useSitesStore } from '@/stores/useSitesStore'
 import { appFetch } from '@/lib/gasket-config'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -34,7 +33,7 @@ export default function AppCard({site}) {
   const [alertState, setAlertState] = useState<AlertState>({ siteId: null, type: null, message: '' })
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null)
 
-  const { deleteSite } = useSites()
+  const deleteSite = useSitesStore((state) => state.deleteSite)
 
   useEffect(() => {
     const fetchSiteDetails = async () => {

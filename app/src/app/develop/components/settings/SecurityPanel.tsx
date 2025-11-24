@@ -17,7 +17,7 @@ import SecurityResults from './components/security/SecurityResults';
  */
 export default function SecurityPanel() {
   const appId = useAppIdFromParams();
-  const { getServerState } = useServerPollingStore();
+  const getServerState = useServerPollingStore((state) => state.getServerState);
   const serverState = getServerState(appId);
 
   const [isLoading, setIsLoading] = useState(false);

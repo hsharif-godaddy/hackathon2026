@@ -411,20 +411,18 @@ export const useSitesStore = create<SitesStore>()(
 
 // Helper hook to get all sites data (replaces useSites hook)
 export const useSites = (options?: { enabled?: boolean }) => {
-  const {
-    allSites,
-    isLoadingAll,
-    error,
-    fetchAllSites,
-    refreshSites,
-    deleteSite,
-    stopAllSites,
-    deleteAllSites,
-    getRunningSites,
-    getTotalSites,
-    getRunningCount,
-    lastFetchedAll
-  } = useSitesStore()
+  const allSites = useSitesStore((state) => state.allSites)
+  const isLoadingAll = useSitesStore((state) => state.isLoadingAll)
+  const error = useSitesStore((state) => state.error)
+  const fetchAllSites = useSitesStore((state) => state.fetchAllSites)
+  const refreshSites = useSitesStore((state) => state.refreshSites)
+  const deleteSite = useSitesStore((state) => state.deleteSite)
+  const stopAllSites = useSitesStore((state) => state.stopAllSites)
+  const deleteAllSites = useSitesStore((state) => state.deleteAllSites)
+  const getRunningSites = useSitesStore((state) => state.getRunningSites)
+  const getTotalSites = useSitesStore((state) => state.getTotalSites)
+  const getRunningCount = useSitesStore((state) => state.getRunningCount)
+  const lastFetchedAll = useSitesStore((state) => state.lastFetchedAll)
 
   const enabled = options?.enabled ?? true
 
@@ -456,7 +454,10 @@ export const useSites = (options?: { enabled?: boolean }) => {
 
 // Helper hook to get individual site data (replaces useSite hook)
 export const useSite = (siteId: string | null) => {
-  const { sitesById, loadingById, error, fetchSite } = useSitesStore()
+  const sitesById = useSitesStore((state) => state.sitesById)
+  const loadingById = useSitesStore((state) => state.loadingById)
+  const error = useSitesStore((state) => state.error)
+  const fetchSite = useSitesStore((state) => state.fetchSite)
 
   const site = siteId ? sitesById[siteId] : null
   const isLoading = siteId ? loadingById[siteId] || false : false

@@ -147,7 +147,10 @@ export const useSiteStore = create<SiteStore>()(
 
 // Helper hook to get site data with automatic fetching
 export const useSite = (siteId: string | null) => {
-  const { sites, loading, error, fetchSite } = useSiteStore()
+  const sites = useSiteStore((state) => state.sites)
+  const loading = useSiteStore((state) => state.loading)
+  const error = useSiteStore((state) => state.error)
+  const fetchSite = useSiteStore((state) => state.fetchSite)
 
   const site = siteId ? sites[siteId] : null
   const isLoading = siteId ? loading[siteId] : false

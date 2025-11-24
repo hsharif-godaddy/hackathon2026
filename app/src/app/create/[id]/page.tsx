@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSiteCreationStore, cleanupSiteCreationStore, type SiteCreationPhase } from '@/stores/useSiteCreationStore'
-import { useSites } from '@/stores/useSitesStore'
+import { useSitesStore } from '@/stores/useSitesStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { usePageTiming } from '@/hooks/usePageTiming'
 import Box from '@ux/box'
@@ -17,19 +17,15 @@ export default function CreateAppStatus() {
   const siteId = params?.id as string
   const isJobId = searchParams.get('type') === 'job'
 
-  const {
-    phase,
-    error,
-    retryCount,
-    maxRetries,
-    realAppId,
-    initializeSite,
-    retry,
-  } = useSiteCreationStore()
+  const phase = useSiteCreationStore((state) => state.phase)
+  const error = useSiteCreationStore((state) => state.error)
+  const retryCount = useSiteCreationStore((state) => state.retryCount)
+  const maxRetries = useSiteCreationStore((state) => state.maxRetries)
+  const realAppId = useSiteCreationStore((state) => state.realAppId)
+  const initializeSite = useSiteCreationStore((state) => state.initializeSite)
+  const retry = useSiteCreationStore((state) => state.retry)
 
-  const {
-    refreshSites
-  } = useSites()
+  const refreshSites = useSitesStore((state) => state.refreshSites)
 
   // Track page timing with RUM
   const { endTransaction, updateLabels } = usePageTiming('create-page', siteId)

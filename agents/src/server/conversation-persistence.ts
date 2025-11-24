@@ -726,8 +726,14 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       });
     }
 
+    // Create git commit if there are changes and store hash on context
     if (context.appId) {
-      await this.checkAndCommitChanges(context.appId, 'conversation_complete');
+      const commitHash = await this.checkAndCommitChanges(context.appId, 'conversation_complete');
+      // Set commitHash on context so ai-lib can include it in the complete event
+      (context as any).commitHash = commitHash; // null if no commit, string if created
+    } else {
+      // No appId means no app to commit to - explicitly set null
+      (context as any).commitHash = null;
     }
 
     this.activeConversations.delete(context.socketId)
@@ -810,8 +816,10 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   /**
    * Check for uncommitted changes in the app repository and commit them
    * This is used as a safety net to prevent lost work when websocket disconnects or errors occur
+   * 
+   * @returns The commit hash if a commit was created, null otherwise
    */
-  private async checkAndCommitChanges(appId: string, reason: string): Promise<void> {
+  private async checkAndCommitChanges(appId: string, reason: string): Promise<string | null> {
     const contextLogger = log.forApp(appId)
     const startTime = Date.now();
 
@@ -825,7 +833,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         contextLogger.warn('git.auto_commit.app_not_found', {
           reason
         })
-        return;
+        return null;
       }
 
       // Create git tools with dev-supervisor for this specific app
@@ -897,12 +905,20 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             }
           });
 
+          // Get the commit hash we just created (most recent = index 0)
+          const commits = await gitUtils.getCommitHistory(app.path, 1);
+          const commitHash = commits[0]?.hash || null;
+
           contextLogger.info('git.auto_commit.success', {
             commitMessage,
+            commitHash: commitHash ? commitHash.substring(0, 7) : 'unknown',
             reason,
             filesAffected,
-            executionTime
+            executionTime,
+            message: 'Git commit created - will be included in WebSocket complete event'
           });
+
+          return commitHash;
         } else {
           toolGitEvents.failure(contextLogger, new Error(result.error || 'Auto-commit failed'), {
             toolName: 'git',
@@ -915,12 +931,15 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             reason,
             executionTime
           });
+          return null;
         }
       } else {
         contextLogger.info('git.auto_commit.not_needed', {
           reason,
-          isClean: status.status?.isClean || false
+          isClean: status.status?.isClean || false,
+          message: 'No file changes detected - no commit will be created'
         });
+        return null;
       }
     } catch (error) {
       const executionTime = Date.now() - startTime;
@@ -930,6 +949,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         executionTime,
         stack: error instanceof Error ? error.stack : undefined
       });
+      return null;
     }
   }
 }

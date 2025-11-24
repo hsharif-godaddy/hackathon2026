@@ -30,7 +30,7 @@ export default function AppPublish({ location }: { location?: string }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const { currentAppId } = useDevelopPageStore();
+  const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const getPublishState = useDevelopPageStore((state) => state.getPublishState);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);

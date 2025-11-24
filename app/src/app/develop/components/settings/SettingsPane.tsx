@@ -12,7 +12,8 @@ export default function SettingsPane() {
   const router = useRouter()
   const appId = useAppIdFromParams()
 
-  const { activeSettingsSection, setActiveSettingsSection } = useDevelopPageStore()
+  const activeSettingsSection = useDevelopPageStore((state) => state.activeSettingsSection)
+  const setActiveSettingsSection = useDevelopPageStore((state) => state.setActiveSettingsSection)
 
   const handleNavigate = (id: SettingsSection) => {
     setActiveSettingsSection(id)

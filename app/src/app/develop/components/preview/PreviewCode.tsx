@@ -47,9 +47,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const [saving, setSaving] = useState<string | null>(null)
   const [recentlySaved, setRecentlySaved] = useState<string | null>(null)
 
-  const {
-    setHasUnsavedChanges
-  } = useDevelopPageStore()
+  const setHasUnsavedChanges = useDevelopPageStore((state) => state.setHasUnsavedChanges)
 
   // Load real files from backend
   const loadFiles = useCallback(async () => {

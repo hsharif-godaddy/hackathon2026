@@ -3,10 +3,12 @@ import { useRef, useEffect } from 'react';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useGitStore } from '@/stores/useGitStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { hasBeenPublished } from '@/utils/site';
 import { logImpressionEvent, logAiroHQEvent } from '@/utils/instrumentation';
 import type { AiroDeployment } from '@/lib/mgmt-airo';
+import type { GitCommit } from '@/hooks/useGitHistory';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 
 const INITIAL_POLL_DELAY_MS = 5000;  // Wait 5 seconds before first poll
@@ -255,9 +257,8 @@ export function useDeploymentsQuery({
           try {
             await queryClient.refetchQueries({ queryKey: ['git-history', appId] });
 
-            const historyData = queryClient.getQueryData<{ commits?: any[] }>(['git-history', appId]);
-            const commits = historyData?.commits || [];
-            const publishedCommit = commits.find((commit: any) => commit.hash === publishedGitHash);
+            const commits = queryClient.getQueryData<GitCommit[]>(['git-history', appId]) || [];
+            const publishedCommit = commits.find((commit) => commit.hash === publishedGitHash);
 
             if (publishedCommit) {
               logger.info('deployments-query.auto-select-commit', {
@@ -266,8 +267,8 @@ export function useDeploymentsQuery({
                 message: 'Auto-selecting published commit in history view',
               });
 
-              const { selectCommit } = useDevelopPageStore.getState();
-              selectCommit(appId, publishedCommit)
+              const { selectCommit } = useGitStore.getState();
+              selectCommit(appId, publishedCommit.hash)
                 .catch(function handleSelectError(error) {
                   logger.error('deployments-query.auto-select-commit.error', {
                     appId,

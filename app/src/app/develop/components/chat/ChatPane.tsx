@@ -61,12 +61,10 @@ export default function ChatPane({
   const setCurrentAppId = useSetCurrentAppId()
 
 
-  const {
-    expandedPlan,
-    activeChatTab,
-    toggleExpandedPlan,
-    isMobile
-  } = useDevelopPageStore()
+  const expandedPlan = useDevelopPageStore((state) => state.expandedPlan)
+  const activeChatTab = useDevelopPageStore((state) => state.activeChatTab)
+  const toggleExpandedPlan = useDevelopPageStore((state) => state.toggleExpandedPlan)
+  const isMobile = useDevelopPageStore((state) => state.isMobile)
 
   const appId = useAppIdFromParams()
 

@@ -11,7 +11,7 @@ import Header from '@/components/layout/Header'
 import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
 import { DevelopmentAdminSection } from '@/components/development'
 import { logImpressionEvent } from '@/utils/instrumentation'
-import { useSites } from '@/stores/useSitesStore'
+import { useSitesStore } from '@/stores/useSitesStore'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
@@ -23,16 +23,15 @@ function SitesPageContent() {
   const router = useRouter()
 
   // Use the sites store (automatically loads sites on first use)
-  const {
-    sites,
-    isLoading,
-    error,
-    stopAllSites,
-    deleteAllSites,
-    totalSites,
-    runningCount,
-    refreshSites
-  } = useSites()
+  const sites = useSitesStore((state) => state.allSites)
+  const isLoading = useSitesStore((state) => state.isLoadingAll)
+  const error = useSitesStore((state) => state.error)
+  const stopAllSites = useSitesStore((state) => state.stopAllSites)
+  const deleteAllSites = useSitesStore((state) => state.deleteAllSites)
+  const refreshSites = useSitesStore((state) => state.refreshSites)
+
+  const totalSites = sites ? sites.length : 0
+  const runningCount = sites ? sites.filter(site => site.status === 'running').length : 0
 
   useEffect(() => {
     logImpressionEvent('apps.page.view')();

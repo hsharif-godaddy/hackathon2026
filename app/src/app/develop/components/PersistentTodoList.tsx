@@ -18,7 +18,9 @@ export default function PersistentTodoList() {
   const viewState = useViewState()
   const updatedItemIds = useUpdatedItemIds()
   const appId = useCurrentAppId()
-  const { setCurrentList, setViewState, toggleViewState } = useTodoListStore()
+  const setCurrentList = useTodoListStore((state) => state.setCurrentList)
+  const setViewState = useTodoListStore((state) => state.setViewState)
+  const toggleViewState = useTodoListStore((state) => state.toggleViewState)
   
   const [isLoading, setIsLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
