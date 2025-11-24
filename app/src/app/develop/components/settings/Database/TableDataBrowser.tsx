@@ -14,6 +14,7 @@ import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import DatabaseIcon from '@ux/icon/database';
 import ArrowLeftIcon from '@ux/icon/arrow-left';
 import PlusIcon from '@ux/icon/plus';
+import RefreshIcon from '@ux/icon/refresh';
 import EditIcon from '@ux/icon/edit';
 import TrashIcon from '@ux/icon/trash';
 import BigCard from '@/components/layout/BigCard';
@@ -43,7 +44,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
   const [deleteRow, setDeleteRow] = useState<Record<string, any> | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const { data: tableData, isLoading, error, refetch } = useTableData({
+  const { data: tableData, isLoading, error, refetch, isRefetching } = useTableData({
     appId,
     tableName,
     page: currentPage,
@@ -131,7 +132,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
     const type = columnType.toLowerCase().trim();
     // Remove precision/length parameters (e.g., datetime(6) -> datetime)
     const baseType = type.split('(')[0];
-    
+
     // Date/time types
     const dateTimeTypes = new Set([
       'date',
@@ -140,7 +141,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
       'time',
       'year'
     ]);
-    
+
     return dateTimeTypes.has(baseType);
   };
 
@@ -222,12 +223,23 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
         description={getDescription()}
         status={undefined}
         button={(
-          <Button
-            text="Add Row"
-            icon={<PlusIcon />}
-            design="primary"
-            onClick={() => setIsAddDialogOpen(true)}
-          />
+          <Box orientation="horizontal" gap="sm">
+            <Button
+              text="Add Row"
+              icon={<PlusIcon />}
+              design="primary"
+              onClick={() => setIsAddDialogOpen(true)}
+            />
+            <Button
+              text="Refresh"
+              icon={<RefreshIcon className={isRefetching ? 'animate-spin' : ''} />}
+              design="secondary"
+              onClick={() => refetch()}
+              disabled={isLoading || isRefetching}
+              aria-label={isRefetching ? 'Refreshing table data' : 'Refresh table data'}
+              aria-busy={isRefetching}
+            />
+          </Box>
         )}
       >
         {/* Empty state */}
