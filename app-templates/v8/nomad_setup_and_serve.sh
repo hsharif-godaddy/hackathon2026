@@ -51,12 +51,14 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
         fi
     done
 
-    # sync upstream dev-tools from base app template
-    # we need to eventually create a public repo for dev-tools and sync them from there
-    cp -r "$BASE_APP_DIR/dev-tools/." "$CUSTOMER_APP_DIR/dev-tools/"
+    # sync upstream dev-tools and airo-secrets from base app template
+    # we need to eventually create a public repo for dev-tools & airo-secrets and sync them from there
+    # using rsync to ensure the files are deleted if they don't exist in the base app template
+    rsync -a --delete "$BASE_APP_DIR/dev-tools/" "$CUSTOMER_APP_DIR/dev-tools/"
+    rsync -a --delete "$BASE_APP_DIR/airo-secrets/" "$CUSTOMER_APP_DIR/airo-secrets/"
 
     # if changes then commit them
-    git add dev-tools && git commit -m "Sync upstream dev tools $(date +%s)" || true
+    git add dev-tools airo-secrets && git commit -m "Sync upstream dev tools and airo-secrets $(date +%s)" || true
 
     echo "Completed: Existing application detected, restored all tracked files and dependencies"
 fi

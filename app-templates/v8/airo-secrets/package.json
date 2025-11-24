@@ -1,0 +1,26 @@
+{
+  "name": "@airo/secrets",
+  "version": "1.0.0",
+  "description": "Backend-only secrets management utilities for Airo applications",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "secrets",
+    "config",
+    "backend"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

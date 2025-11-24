@@ -74,7 +74,7 @@ interface TreeNode {
  */
 export class DirectoryListingTool {
   private readonly MAX_ENTRIES = 1000; // Prevent overwhelming responses
-  
+
   /**
    * Default patterns to ignore during directory traversal
    */
@@ -118,13 +118,14 @@ export class DirectoryListingTool {
 
     // things in the template we want to hide for now
     'dev-supervisor',
-    'dev-tools', 
+    'dev-tools',
+    'airo-secrets',
     'source-mapper',
     'fullstory-plugin.ts',
     'nomad_setup_and_serve.sh',
     'dev_setup_and_serve.sh',
   ];
-  
+
   /**
    * List directory contents as a tree structure
    */
@@ -156,7 +157,7 @@ export class DirectoryListingTool {
       });
       throw error;
     }
-    
+
     // Log the beginning of the directory listing operation
     toolDirectoryListingEvents.begin(logger, {
       toolName: 'DirectoryListingTool',
@@ -171,12 +172,12 @@ export class DirectoryListingTool {
         ...(ignorePatterns.length > 0 && { ignorePatterns }),
       },
     });
-    
+
     // Combine default ignores with user-provided ignores
-    const allIgnorePatterns = disableDefaultIgnores 
-      ? ignorePatterns 
+    const allIgnorePatterns = disableDefaultIgnores
+      ? ignorePatterns
       : [...this.DEFAULT_IGNORE_PATTERNS, ...ignorePatterns];
-    
+
     const result: DirectoryTreeResult = {
       rootPath: relative(appPath, targetPath) || '.',
       totalEntries: 0,
@@ -201,7 +202,7 @@ export class DirectoryListingTool {
         allIgnorePatterns,
         context
       );
-      
+
       // Log successful completion
       toolDirectoryListingEvents.success(logger, {
         toolName: 'DirectoryListingTool',
@@ -225,7 +226,7 @@ export class DirectoryListingTool {
       });
     } catch (error) {
       result.errors.push(`Failed to read directory: ${error instanceof Error ? error.message : String(error)}`);
-      
+
       toolDirectoryListingEvents.failure(logger, error as Error, {
         toolName: 'DirectoryListingTool',
         targetPath: relative(appPath, targetPath) || '.',
@@ -265,11 +266,11 @@ export class DirectoryListingTool {
       }
       return;
     }
-    
+
 
     try {
       const entries = await readdir(currentPath);
-      
+
       for (const entry of entries) {
         if (result.entries.length >= this.MAX_ENTRIES) {
           result.truncated = true;
@@ -342,7 +343,7 @@ export class DirectoryListingTool {
         } catch (error) {
           const errorMessage = `Failed to stat ${relativePath}: ${error instanceof Error ? error.message : String(error)}`;
           result.errors.push(errorMessage);
-          
+
           // Only log stat errors at debug level to reduce noise
           logger.debug('File stat error', {
             toolName: 'DirectoryListingTool',
@@ -356,7 +357,7 @@ export class DirectoryListingTool {
     } catch (error) {
       const errorMessage = `Failed to read directory ${relative(appPath, currentPath)}: ${error instanceof Error ? error.message : String(error)}`;
       result.errors.push(errorMessage);
-      
+
       // Only log directory read errors at debug level to reduce noise
       logger.debug('Directory read error', {
         toolName: 'DirectoryListingTool',
@@ -393,7 +394,7 @@ export class DirectoryListingTool {
   private resolveSafePath(appPath: string, relativePath: string): string {
     const resolved = join(appPath, relativePath);
     const normalized = join(resolved); // Normalize the path
-    
+
     // Ensure the resolved path is within the app directory
     if (!normalized.startsWith(appPath)) {
       const error = new Error('Path is outside the allowed app directory');
@@ -426,22 +427,22 @@ export class DirectoryListingTool {
    */
   formatAsTree(result: DirectoryTreeResult): string {
     const lines: string[] = [];
-    
+
     lines.push(`${result.rootPath} (${result.directoryCount} dirs, ${result.fileCount} files)`);
-    
+
     if (result.errors.length > 0) {
       lines.push(`${result.errors.length} errors`);
     }
-    
+
     if (result.truncated) {
       lines.push(`truncated (${this.MAX_ENTRIES}+ items)`);
     }
-    
+
     if (lines.length > 1) lines.push('');
 
     // Build a hierarchical structure for proper tree rendering
     const treeStructure = this.buildTreeStructure(result.entries);
-    
+
     // Render the tree with proper markers
     const treeLines = this.renderTreeNode(treeStructure, '', true);
     lines.push(...treeLines);
@@ -485,7 +486,7 @@ export class DirectoryListingTool {
       // Find parent path
       const pathParts = entry.path.split('/').filter(part => part.length > 0);
       const parentPath = pathParts.slice(0, -1).join('/');
-      
+
       const parent = nodeMap.get(parentPath);
       if (parent) {
         parent.children.push(node);
@@ -496,7 +497,7 @@ export class DirectoryListingTool {
 
     // Sort children: directories first, then alphabetically
     this.sortTreeNodes(root);
-    
+
     return root;
   }
 
@@ -519,7 +520,7 @@ export class DirectoryListingTool {
    */
   private renderTreeNode(node: TreeNode, prefix: string, isLast: boolean): string[] {
     const lines: string[] = [];
-    
+
     // Skip rendering the root node itself
     if (node.name) {
       const marker = isLast ? '└── ' : '├── ';
@@ -529,10 +530,10 @@ export class DirectoryListingTool {
     }
 
     // Render children
-    const childPrefix = node.name ? 
-      (prefix + (isLast ? '    ' : '│   ')) : 
+    const childPrefix = node.name ?
+      (prefix + (isLast ? '    ' : '│   ')) :
       '';
-    
+
     for (let i = 0; i < node.children.length; i++) {
       const child = node.children[i];
       if (child) {
@@ -552,12 +553,12 @@ export class DirectoryListingTool {
     const units = ['B', 'K', 'M', 'G'];
     let size = bytes;
     let unitIndex = 0;
-    
+
     while (size >= 1024 && unitIndex < units.length - 1) {
       size /= 1024;
       unitIndex++;
     }
-    
+
     return unitIndex === 0 ? `${size}B` : `${Math.round(size)}${units[unitIndex]}`;
   }
 }

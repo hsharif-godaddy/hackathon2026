@@ -402,7 +402,7 @@ Note: This is the current project context including dependencies, color scheme, 
       const secretsList = secretsInfo.map((name, index) => `   ${index + 1}. ${name}`).join('\n');
       secretsContext += secretsList + "\n";
       secretsContext += "\n📝 How to use these secrets in backend code:" +
-      "\n   import { getSecret } from '../../../dev-tools/src/secrets-utils.js';" +
+      "\n   import { getSecret } from '#airo/secrets';" +
       "\n   const value = getSecret('SECRET_NAME');\n";
     }
 

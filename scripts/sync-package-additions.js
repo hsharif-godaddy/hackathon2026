@@ -2,9 +2,9 @@
 
 /**
  * Sync additions from one package.json to another
- * 
+ *
  * Usage: node sync-package-additions.js <source.json> <target.json>
- * 
+ *
  * This script will:
  * - Add new scripts from source to target
  * - Add new dependencies from source to target
@@ -21,7 +21,7 @@ function syncAdditions(sourcePath, targetPath) {
   const source = JSON.parse(readFileSync(sourcePath, 'utf8'));
   const target = JSON.parse(readFileSync(targetPath, 'utf8'));
 
-  const sections = ['scripts', 'dependencies', 'devDependencies'];
+  const sections = ['imports', 'scripts', 'dependencies', 'devDependencies'];
   let addedCount = 0;
 
   sections.forEach(function processSection(section) {
@@ -80,4 +80,3 @@ try {
   console.error('❌ Error:', error.message);
   process.exit(1);
 }
-

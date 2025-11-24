@@ -2,6 +2,9 @@
   "name": "v8-app-template",
   "version": "1.0.0",
   "type": "module",
+  "imports": {
+    "#airo/secrets": "./airo-secrets/src/index.ts"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build && node bundle.js",

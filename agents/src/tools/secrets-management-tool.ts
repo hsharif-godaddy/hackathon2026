@@ -18,7 +18,7 @@ export interface ListSecretNamesResult {
  * Provides access to non-system-managed secrets in the app container.
  * Returns only secret names, never values, for security.
  *
- * Uses dev-tools/src/secrets-utils.ts listSecretNames() function
+ * Uses secrets/src/secrets-utils.ts listSecretNames() function
  * via Node.js --experimental-strip-types flag to import TypeScript directly.
  */
 export class SecretsManagementTool {
@@ -52,10 +52,10 @@ export class SecretsManagementTool {
         };
       }
 
-      // Execute command in container to list secrets using dev-tools
+      // Execute command in container to list secrets using airo-secrets package
       // Use Node.js --experimental-strip-types to import TypeScript directly
       const execResult = await this.devSupervisor!.exec({
-        command: `node --experimental-strip-types -e "import('/app/dev-tools/src/secrets-utils.ts').then(module => module.listSecretNames()).then(data => console.log(JSON.stringify(data))).catch(err => { console.error(err.message); process.exit(1); })"`,
+        command: `node --experimental-strip-types -e "import('/app/airo-secrets/src/secrets-utils.ts').then(module => module.listSecretNames()).then(data => console.log(JSON.stringify(data))).catch(err => { console.error(err.message); process.exit(1); })"`,
         working_dir: '/app',
         timeout: 10,
         capture_output: true

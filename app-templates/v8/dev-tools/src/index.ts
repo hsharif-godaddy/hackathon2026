@@ -10,9 +10,6 @@ export { devToolsPlugin } from './vite-plugin'
 // FullStory injector for development tracking
 export { injectFullStory } from './fullstory-injector'
 
-// Secrets management utilities
-export { getSecret, listSecretNames } from './secrets-utils'
-
 // Development mode injector - only works in development
 export function injectDevelopmentMode() {
   // Only inject in development environment
