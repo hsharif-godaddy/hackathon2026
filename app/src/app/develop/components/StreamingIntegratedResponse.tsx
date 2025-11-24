@@ -14,9 +14,10 @@ interface StreamingIntegratedResponseProps {
   isActiveStream?: boolean
   isLastAssistantMessage?: boolean
   startTime?: Date
+  streamingState?: 'idle' | 'streaming' | 'completing' | 'error'
 }
 
-export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime }: StreamingIntegratedResponseProps) {
+export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState }: StreamingIntegratedResponseProps) {
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
 
@@ -202,12 +203,21 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
           />
         )}
 
-        {/* Error notification */}
+        {/* Upstream service error notification */}
         {message.upstreamError && (
           <StreamingAlertMessage
             type="Critical"
             title="Error"
             message="Sorry, an error occurred while processing your request. Please try again."
+          />
+        )}
+
+        {/* Connection error notification (when streaming state is error but not upstream error) */}
+        {!message.upstreamError && streamingState === 'error' && isActiveStream && !isComplete && (
+          <StreamingAlertMessage
+            type="Critical"
+            title="Connection Error"
+            message="The connection was lost while processing your request. Please try again."
           />
         )}
 

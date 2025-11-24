@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import StreamingIntegratedResponse from './StreamingIntegratedResponse'
 import ThinkingIndicator from './ThinkingIndicator'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
+import { useStreamingState } from '@/stores/useStreamingConversationStore'
 import { Check, ClipboardCopy } from 'lucide-react'
 
 interface StreamingMessageProps {
@@ -83,19 +84,20 @@ function UserMessage({ content }: { content: string }) {
 }
 
 // Helper function to render message content based on type and role (matching Message.tsx)
-function renderMessageContent(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean, isLastAssistantMessage?: boolean, startTime?: Date) {
+function renderMessageContent(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean, isLastAssistantMessage?: boolean, startTime?: Date, streamingState?: 'idle' | 'streaming' | 'completing' | 'error') {
   // Assistant messages - use streaming integrated response for proper content flow
   if (message.role === 'assistant') {
     // Check if we should show thinking indicator (no content yet, stream is active)
     const hasNoContent = !message.content && !message.segments?.length && !message.toolCalls?.length
     const isIncomplete = 'isComplete' in message && !message.isComplete
-    const showThinking = isActiveStream && isIncomplete && hasNoContent && !message.upstreamError && !message.maxStepsReached
+    const isErrorState = streamingState === 'error'
+    const showThinking = isActiveStream && isIncomplete && hasNoContent && !message.upstreamError && !message.maxStepsReached && !isErrorState
 
     if (showThinking) {
       return <ThinkingIndicator />
     }
 
-    return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} startTime={startTime} />
+    return <StreamingIntegratedResponse message={message} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} startTime={startTime} streamingState={streamingState} />
   }
 
   // User messages with copy functionality
@@ -112,6 +114,8 @@ function renderMessageContent(message: ChatMessage | StreamingMessageType, isAct
 }
 
 export default function StreamingMessage({ message, isActiveStream = false, isLastAssistantMessage = false, startTime }: StreamingMessageProps) {
+  const streamingState = useStreamingState()
+
   // Don't render messages that shouldn't be displayed
   if (!shouldRenderMessage(message)) {
     return null
@@ -128,7 +132,7 @@ export default function StreamingMessage({ message, isActiveStream = false, isLa
       })}>
         <div className={getMessageClasses(message, isActiveStream)}>
           <div className="overflow-hidden">
-            {renderMessageContent(message, isActiveStream, isLastAssistantMessage, startTime)}
+            {renderMessageContent(message, isActiveStream, isLastAssistantMessage, startTime, streamingState)}
           </div>
         </div>
       </div>

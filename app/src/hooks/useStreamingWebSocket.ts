@@ -123,6 +123,8 @@ export function useStreamingWebSocket() {
   const initializingRef = useRef<boolean>(false)
   // Timer ref for delayed initialization
   const initTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // Track if we were streaming when disconnect happened
+  const wasStreamingOnDisconnectRef = useRef<boolean>(false)
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
   // Hook setters & streaming state (declared early for use in callbacks)
@@ -191,15 +193,51 @@ export function useStreamingWebSocket() {
         setWebSocketState({ connected: false, status: 'error', error: error.message })
         reject(error)
       })
-      socket.on('disconnect', () => setWebSocketState({ connected: false, status: 'idle' }))
+      socket.on('disconnect', () => {
+        const state = useStreamingConversationStore.getState()
+        const isStreaming = state.streamingState === 'streaming' || state.activeStream !== null
+
+        if (isStreaming) {
+          // Connection dropped during active streaming - mark that we were streaming
+          // This is a connection error, not an upstream service error
+          wasStreamingOnDisconnectRef.current = true
+          setWebSocketState({ connected: false, status: 'error', error: 'Connection lost during streaming' })
+          setStreamingState('error')
+          setIsLoading(false)
+        } else {
+          // Normal disconnect when idle
+          wasStreamingOnDisconnectRef.current = false
+          setWebSocketState({ connected: false, status: 'idle' })
+        }
+      })
       socket.on('reconnect_attempt', () => setWebSocketState({ connected: false, status: 'connecting' }))
-      socket.on('reconnect', () => setWebSocketState({ connected: true, status: 'idle' }))
+      socket.on('reconnect', () => {
+        setWebSocketState({ connected: true, status: 'idle' })
+
+        // If we were streaming when disconnect happened, set streaming state to error
+        // because the stream was interrupted and cannot be resumed
+        // This is a connection error, not an upstream service error
+        if (wasStreamingOnDisconnectRef.current) {
+          setStreamingState('error')
+          setIsLoading(false)
+          wasStreamingOnDisconnectRef.current = false // Reset after handling
+        }
+      })
       socket.on('reconnect_error', (error) => setWebSocketState({ connected: false, status: 'connecting', error: error.message }))
       socket.on('reconnect_failed', () => {
+        const state = useStreamingConversationStore.getState()
+        const isStreaming = state.streamingState === 'streaming' || state.activeStream !== null
+
         setWebSocketState({ connected: false, status: 'error', error: 'Failed to reconnect' })
+        if (isStreaming || wasStreamingOnDisconnectRef.current) {
+          // This is a connection error, not an upstream service error
+          setStreamingState('error')
+          setIsLoading(false)
+          wasStreamingOnDisconnectRef.current = false // Reset after handling
+        }
       })
     })
-  }, [setWebSocketState])
+  }, [setWebSocketState, setStreamingState, setIsLoading])
   // Set up Socket.IO event handlers for streaming (defined before useEffect to satisfy dependency ordering)
   const setupEventHandlers = useCallback((socket: Socket) => {
     socket.on('status', (data) => {
@@ -500,9 +538,8 @@ export function useStreamingWebSocket() {
       })
       socketRef.current = existingSocket
       createdHereRef.current = false // We didn't create this socket
-      return
+      return;
     }
-
     // Only create connection if we don't have one and not already initializing
     if (!socketRef.current && !initializingRef.current) {
       initializingRef.current = true
@@ -632,7 +669,7 @@ export function useStreamingWebSocket() {
 
       // Build context attachments array using new framework
       const contextAttachments: any[] = []
-      
+
       // Add AI Edit context as attachment (persisted)
       if (aiEditContext) {
         contextAttachments.push({
@@ -646,7 +683,7 @@ export function useStreamingWebSocket() {
           }
         })
       }
-      
+
       // Add Visual context as attachment (ephemeral)
       if (visualContext) {
         contextAttachments.push({
@@ -660,7 +697,7 @@ export function useStreamingWebSocket() {
           }
         })
       }
-      
+
       // Add Selected Assets as attachment (ephemeral)
       if (transformedAsset) {
         contextAttachments.push({
@@ -674,7 +711,7 @@ export function useStreamingWebSocket() {
           }
         })
       }
-      
+
       // Add Build Error as attachment (ephemeral - from publish failures)
       if (buildErrorContext) {
         contextAttachments.push({
