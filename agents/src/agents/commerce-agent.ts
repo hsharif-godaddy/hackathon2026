@@ -9,13 +9,16 @@ import { getAgentModelWithName } from '../utils/model-selection.js';
 import {
   commerceStore,
   commerceSetupIntegration,
-  commerceSearchStoreProducts,
-  commerceProduct,
+  commerceSearchSkuGroups,
+  commerceSkuGroup,
+  commerceSku,
+  commerceInventory,
 } from '../tools/ai-lib-tools/commerce-tools.js';
 import { getModularPromptPaths } from '../utils/prompt-utils.js';
 import { Logger } from '../logging/index.js';
 import { oauthConnect } from '../tools/ai-lib-tools/oauth-tool.js';
 import { writeCommerceCredentials } from '../tools/ai-lib-tools/commerce-credentials.js';
+import { suggestedResponseAITool } from '../tools/ai-lib-tools/suggested-response.js';
 
 const logger = Logger.create({ service: 'commerce-agent' });
 
@@ -97,9 +100,12 @@ export async function createCommerceAgent(options?: { appPath?: string }): Promi
       oauthConnect,
       store: commerceStore,
       setupIntegration: commerceSetupIntegration,
-      searchProducts: commerceSearchStoreProducts,
-      product: commerceProduct,
+      searchSkuGroups: commerceSearchSkuGroups,
+      skuGroup: commerceSkuGroup,
+      sku: commerceSku,
+      inventory: commerceInventory,
       writeCommerceCredentials,
+      suggestedResponse: suggestedResponseAITool,
     },
 
     // Tool execution hooks

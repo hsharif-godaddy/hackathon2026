@@ -128,23 +128,9 @@ export default function ChatAuthRequestMessage({
                             {title || 'Authentication Required'}
                         </h3>
                         <p className="text-sm text-typography-mediumEmphasis">
-                            {description || 'This action requires GoDaddy OAuth permission for:'}
+                            {description || 'This action requires your permission to access your account.'}
                         </p>
                     </div>
-                </div>
-
-                {/* Scopes List */}
-                <div className="ml-11 mb-4">
-                    <ul className="text-sm text-typography-mediumEmphasis space-y-1">
-                        {scopes.map((scope) => (
-                            <li key={scope} className="flex items-center gap-2">
-                                <span className="text-intents-ux-warning-borderColor">•</span>
-                                <code className="px-1.5 py-0.5 rounded bg-surfaces-boxLowContrast text-xs">
-                                    {scope}
-                                </code>
-                            </li>
-                        ))}
-                    </ul>
                 </div>
 
                 {/* Action Button */}

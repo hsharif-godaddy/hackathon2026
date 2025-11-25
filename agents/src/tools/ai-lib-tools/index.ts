@@ -33,9 +33,11 @@ export { suggestedResponseAITool } from './suggested-response.js';
 export { seoAnalyze } from './seo-analyze.js';
 export {
   commerceStore,
-  commerceSearchStoreProducts,
+  commerceSearchSkuGroups,
   commerceSetupIntegration,
-  commerceProduct,
+  commerceSkuGroup,
+  commerceSku,
+  commerceInventory,
 } from './commerce-tools.js';
 export { oauthConnect } from './oauth-tool.js';
 export { writeCommerceCredentials } from './commerce-credentials.js';
@@ -69,8 +71,10 @@ import { seoAnalyze } from './seo-analyze.js';
 import {
   commerceSetupIntegration,
   commerceStore,
-  commerceSearchStoreProducts,
-  commerceProduct,
+  commerceSearchSkuGroups,
+  commerceSkuGroup,
+  commerceSku,
+  commerceInventory,
 } from './commerce-tools.js';
 import { oauthConnect } from './oauth-tool.js';
 import { writeCommerceCredentials } from './commerce-credentials.js';
@@ -107,8 +111,10 @@ export const allAILibTools: Record<string, Tool> = {
   oauthConnect: oauthConnect,
   commerceSetupIntegration: commerceSetupIntegration,
   commerceStore: commerceStore,
-  commerceSearchStoreProducts: commerceSearchStoreProducts,
-  commerceProduct: commerceProduct,
+  commerceSearchSkuGroups: commerceSearchSkuGroups,
+  commerceSkuGroup: commerceSkuGroup,
+  commerceSku: commerceSku,
+  commerceInventory: commerceInventory,
 };
 
 /**
@@ -143,8 +149,10 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     oauthConnect: oauthConnect,
     setupIntegration: commerceSetupIntegration,
     store: commerceStore,
-    searchStoreProducts: commerceSearchStoreProducts,
-    product: commerceProduct,
+    searchSkuGroups: commerceSearchSkuGroups,
+    skuGroup: commerceSkuGroup,
+    sku: commerceSku,
+    inventory: commerceInventory,
     writeCommerceCredentials: writeCommerceCredentials,
   },
 

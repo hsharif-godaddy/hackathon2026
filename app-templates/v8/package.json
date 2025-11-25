@@ -27,6 +27,8 @@
     "@babel/core": "^7.26.4",
     "@babel/types": "^7.26.3",
     "@heroicons/react": "^2.2.0",
+    "@godaddy/localizations": "^1",
+    "@godaddy/react": "^1",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",

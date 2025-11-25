@@ -4,10 +4,23 @@ import type {
   CommerceOnboardingApplicationResponse,
   MutationCreateSkuGroupInput,
   MutationUpdateSkuGroupInput,
+  MutationUpdateSkuInput,
+  MutationAdjustInventoryInput,
+  MutationStockInventoryInput,
+  MutationCreateLocationInput,
   GetSkuGroupsResponse as GraphQLGetSkuGroupsResponse,
   CreateSkuGroupResponse as GraphQLCreateSkuGroupResponse,
   UpdateSkuGroupResponse as GraphQLUpdateSkuGroupResponse,
+  UpdateSkuResponse as GraphQLUpdateSkuResponse,
   DeleteSkuGroupResponse as GraphQLDeleteSkuGroupResponse,
+  GetInventoryCountsResponse as GraphQLGetInventoryCountsResponse,
+  AdjustInventoryResponse as GraphQLAdjustInventoryResponse,
+  StockInventoryResponse as GraphQLStockInventoryResponse,
+  GetLocationsResponse as GraphQLGetLocationsResponse,
+  CreateLocationResponse as GraphQLCreateLocationResponse,
+  InventoryCountResponse,
+  InventoryAdjustmentResponse,
+  LocationResponse,
   SKUGroupResponse,
   SKUResponse,
   SKUPriceResponse,
@@ -32,12 +45,18 @@ export type {
   SKUPriceResponse,
   SKUResponse,
   SKUGroupResponse,
-  CommerceOnboardingApplicationResponse
+  CommerceOnboardingApplicationResponse,
+  InventoryCountResponse,
+  InventoryAdjustmentResponse,
+  LocationResponse,
+  MutationAdjustInventoryInput,
+  MutationStockInventoryInput
 };
 
 // Aliases for backward compatibility
 export type CreateSkuGroupInput = MutationCreateSkuGroupInput;
 export type UpdateSkuGroupInput = MutationUpdateSkuGroupInput;
+export type UpdateSkuInput = MutationUpdateSkuInput;
 
 /**
  * GraphQL SKU Groups query response wrapper
@@ -61,10 +80,52 @@ export type UpdateSkuGroupResponse =
   | { success: false; data?: never; error: string };
 
 /**
+ * GraphQL update SKU mutation response wrapper
+ */
+export type UpdateSkuResponse =
+  | { success: true; data: GraphQLUpdateSkuResponse; error?: never }
+  | { success: false; data?: never; error: string };
+
+/**
  * GraphQL delete SKU Group mutation response wrapper
  */
 export type DeleteSkuGroupResponse =
   | { success: true; data: GraphQLDeleteSkuGroupResponse; error?: never }
+  | { success: false; data?: never; error: string };
+
+/**
+ * GraphQL get inventory counts query response wrapper
+ */
+export type GetInventoryCountsResponse =
+  | { success: true; data: GraphQLGetInventoryCountsResponse; error?: never }
+  | { success: false; data?: never; error: string };
+
+/**
+ * GraphQL adjust inventory mutation response wrapper
+ */
+export type AdjustInventoryResponse =
+  | { success: true; data: GraphQLAdjustInventoryResponse; error?: never }
+  | { success: false; data?: never; error: string };
+
+/**
+ * GraphQL stock inventory mutation response wrapper
+ */
+export type StockInventoryResponse =
+  | { success: true; data: GraphQLStockInventoryResponse; error?: never }
+  | { success: false; data?: never; error: string };
+
+/**
+ * GraphQL get locations query response wrapper
+ */
+export type GetLocationsResponse =
+  | { success: true; data: GraphQLGetLocationsResponse; error?: never }
+  | { success: false; data?: never; error: string };
+
+/**
+ * GraphQL create location mutation response wrapper
+ */
+export type CreateLocationResponse =
+  | { success: true; data: GraphQLCreateLocationResponse; error?: never }
   | { success: false; data?: never; error: string };
 
 export class GoDaddyCommerce {
@@ -79,6 +140,24 @@ export class GoDaddyCommerce {
       Accept: 'application/json',
       'X-Client-Version': '1.0.0',
     };
+  }
+
+  private getCommerceDomain(): string {
+    if (!this.baseUrl) {
+      return 'godaddy.com';
+    }
+    const hostname = new URL(this.baseUrl).hostname;
+    return hostname.replace(/^api\./, '');
+  }
+
+  public getStoreManagementUrl(storeId: string): string {
+    const domain = this.getCommerceDomain();
+    return `https://spa.commerce.${domain}/home/store?store=${storeId}`;
+  }
+
+  public getCatalogManagementUrl(storeId: string): string {
+    const domain = this.getCommerceDomain();
+    return `https://spa.commerce.${domain}/products?store=${storeId}`;
   }
 
   public async getStoreSummary(
@@ -114,7 +193,12 @@ export class GoDaddyCommerce {
 
     const hostname = new URL(this.baseUrl).hostname;
     const domain = hostname.replace(/^api\./, '');
-    const url = `https://signup.payments.${domain}/api/v1/commerce/onboarding-applications`;
+    let queryParams = '';
+
+    if (domain.includes('dev-') || domain.includes('test-')) {
+      queryParams = '?mock=true';
+    }
+    const url = `https://signup.payments.${domain}/api/v1/commerce/onboarding-applications${queryParams}`;
     const requestId = uuid();
     const requestBody = {
       individuals: [
@@ -205,12 +289,12 @@ export class GoDaddyCommerce {
     return data;
   }
 
-  public async getSkuGroups(args: { storeId: string }, accessToken: string): Promise<GetSkuGroupsResponse> {
+  public async getSkuGroups(args: { storeId: string; first?: number; after?: string | undefined; query?: string | undefined }, accessToken: string): Promise<GetSkuGroupsResponse> {
     const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 
     const query = `
-        query GetProducts {
-          skuGroups(status: { eq: "ACTIVE" }, first: 20) {
+        query GetProducts($first: Int, $after: String) {
+          skuGroups(status: { eq: "ACTIVE" }, first: $first, after: $after) {
             edges {
               node {
                 id
@@ -227,6 +311,15 @@ export class GoDaddyCommerce {
                 compareAtPriceRange {
                   min
                   max
+                }
+                skus (first: 2) {
+                  edges {
+                    node {
+                      id
+                        name
+                        price
+                    }
+                  }
                 }
               }
             }
@@ -248,7 +341,14 @@ export class GoDaddyCommerce {
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({
+        query,
+        variables: {
+          first: args.first || 20,
+          after: args.after,
+          label: args.query ? { contains: args.query } : null,
+        },
+      }),
     });
 
     if (!response.ok) {
@@ -593,6 +693,90 @@ export class GoDaddyCommerce {
     };
   }
 
+  public async updateSku(
+    args: { storeId: string; skuId: string; product: MutationUpdateSkuInput },
+    accessToken: string
+  ): Promise<UpdateSkuResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const mutation = `
+      mutation UpdateSku($id: String!, $input: MutationUpdateSkuInput!) {
+        updateSku(id: $id, input: $input) {
+          id
+          label
+          name
+          code
+          status
+          prices(first: 10) {
+            edges {
+              node {
+                id
+                value {
+                  value
+                  currencyCode
+                }
+                compareAtValue {
+                  value
+                  currencyCode
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: {
+          id: args.skuId,
+          input: args.product,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.update-sku.request-failed', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.update-sku.graphql-errors', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
   public async deleteSkuGroup(
     args: { storeId: string; skuGroupId: string },
     accessToken: string
@@ -641,6 +825,427 @@ export class GoDaddyCommerce {
       logger.error('commerce.delete-sku-group.graphql-errors', {
         storeId: args.storeId,
         skuGroupId: args.skuGroupId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async getInventoryCounts(
+    args: { storeId: string; skuId?: string; locationId?: string; first?: number },
+    accessToken: string
+  ): Promise<GetInventoryCountsResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const query = `
+      query GetInventoryCounts($skuId: SKUIdFilter, $locationId: LocationIdFilter, $first: Int) {
+        inventoryCounts(skuId: $skuId, locationId: $locationId, first: $first, type: { eq: "AVAILABLE" }) {
+          edges {
+            node {
+              id
+              quantity
+              type
+              onHand
+              createdAt
+              updatedAt
+              sku {
+                id
+                label
+                name
+              }
+              location {
+                id
+                label
+                name
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          totalCount
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query,
+        variables: {
+          skuId: args.skuId ? { eq: args.skuId } : undefined,
+          locationId: args.locationId ? { eq: args.locationId } : undefined,
+          first: args.first || 50,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.get-inventory-counts.request-failed', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        locationId: args.locationId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.get-inventory-counts.graphql-errors', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async adjustInventory(
+    args: { storeId: string; skuId: string; locationId: string; delta: number },
+    accessToken: string
+  ): Promise<AdjustInventoryResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const mutation = `
+      mutation AdjustInventory($input: MutationAdjustInventoryInput!) {
+        adjustInventory(input: $input) {
+          id
+          delta
+          type
+          createdAt
+          occurredAt
+          sku {
+            id
+            label
+            name
+          }
+          location {
+            id
+            label
+            name
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: {
+          input: {
+            skuId: args.skuId,
+            locationId: args.locationId,
+            delta: args.delta,
+          },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.adjust-inventory.request-failed', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        locationId: args.locationId,
+        delta: args.delta,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.adjust-inventory.graphql-errors', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async stockInventory(
+    args: { storeId: string; skuId: string; locationId: string; quantity: number },
+    accessToken: string
+  ): Promise<StockInventoryResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const mutation = `
+      mutation StockInventory($input: MutationStockInventoryInput!) {
+        stockInventory(input: $input) {
+          id
+          delta
+          type
+          createdAt
+          occurredAt
+          sku {
+            id
+            label
+            name
+          }
+          location {
+            id
+            label
+            name
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: {
+          input: {
+            skuId: args.skuId,
+            locationId: args.locationId,
+            quantity: args.quantity,
+          },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.stock-inventory.request-failed', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        locationId: args.locationId,
+        quantity: args.quantity,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.stock-inventory.graphql-errors', {
+        storeId: args.storeId,
+        skuId: args.skuId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async getLocations(
+    args: { storeId: string; first?: number; status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED' },
+    accessToken: string
+  ): Promise<GetLocationsResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const query = `
+      query GetLocations($first: Int, $status: LocationStatusFilter) {
+        locations(first: $first, status: $status) {
+          edges {
+            node {
+              id
+              label
+              name
+              status
+              address {
+                addressLine1
+                addressLine2
+                adminArea1
+                adminArea2
+                postalCode
+                countryCode
+              }
+              createdAt
+              updatedAt
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          totalCount
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query,
+        variables: {
+          first: args.first || 50,
+          status: args.status ? { eq: args.status } : { eq: 'ACTIVE' },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.get-locations.request-failed', {
+        storeId: args.storeId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.get-locations.graphql-errors', {
+        storeId: args.storeId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async createLocation(
+    args: { storeId: string; location: MutationCreateLocationInput },
+    accessToken: string
+  ): Promise<CreateLocationResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const mutation = `
+      mutation CreateLocation($input: MutationCreateLocationInput!) {
+        createLocation(input: $input) {
+          id
+          label
+          name
+          status
+          address {
+            addressLine1
+            addressLine2
+            adminArea1
+            adminArea2
+            postalCode
+            countryCode
+          }
+          createdAt
+          updatedAt
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: {
+          input: args.location,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.create-location.request-failed', {
+        storeId: args.storeId,
+        label: args.location.label,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.create-location.graphql-errors', {
+        storeId: args.storeId,
+        label: args.location.label,
         errors: data.errors.map((e: any) => e.message),
       });
       return {

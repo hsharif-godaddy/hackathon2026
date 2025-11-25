@@ -41,9 +41,7 @@ function getCommerceConfig() {
   const REQUIRED_FIELDS = [
     "GODADDY_OAUTH_CLIENT_ID",
     "GODADDY_OAUTH_CLIENT_SECRET",
-    "STORE_ID",
     "GODADDY_API_BASE_URL",
-    "CHANNEL_ID",
   ] as const;
 
   const allocConfigPath = "/alloc/config.json";
@@ -59,20 +57,13 @@ function getCommerceConfig() {
           extractedConfig[field] = srcConfig[field].VALUE;
         }
       }
-      console.log(
-        "[Commerce] Loaded from src/config/commerce-credentials.json:",
-        Object.keys(extractedConfig).join(", "),
-      );
     } catch (error) {
       if (error instanceof SyntaxError) {
         throw new Error(
           `Failed to parse ${srcConfigPath}: Invalid JSON format`,
         );
       }
-      console.warn(
-        "[Commerce] Failed to parse src/config/commerce-credentials.json:",
-        error,
-      );
+
     }
   }
 
@@ -88,23 +79,13 @@ function getCommerceConfig() {
         }
       }
 
-      const loadedFields = REQUIRED_FIELDS.filter((f) => allocConfig[f]?.VALUE);
-      if (loadedFields.length > 0) {
-        console.log(
-          "[Commerce] Loaded from /alloc/config.json:",
-          loadedFields.join(", "),
-          overriddenFields.length > 0
-            ? `(overrode: ${overriddenFields.join(", ")})`
-            : "",
-        );
-      }
     } catch (error) {
       if (error instanceof SyntaxError) {
         throw new Error(
           `Failed to parse ${allocConfigPath}: Invalid JSON format`,
         );
       }
-      console.warn("[Commerce] Failed to parse /alloc/config.json:", error);
+
     }
   }
 
@@ -120,24 +101,12 @@ function getCommerceConfig() {
   const checkoutApiBaseUrl = deriveCheckoutUrl(
     extractedConfig.GODADDY_API_BASE_URL,
   );
-  console.log(
-    "[Commerce] Config loaded - GODADDY_OAUTH_CLIENT_ID:",
-    extractedConfig.GODADDY_OAUTH_CLIENT_ID.substring(0, 8) + "...",
-    "STORE_ID:",
-    extractedConfig.STORE_ID,
-    "GODADDY_API_BASE_URL:",
-    extractedConfig.GODADDY_API_BASE_URL,
-    "CHECKOUT_API_BASE_URL (derived):",
-    checkoutApiBaseUrl,
-  );
 
   return {
     clientId: extractedConfig.GODADDY_OAUTH_CLIENT_ID,
     clientSecret: extractedConfig.GODADDY_OAUTH_CLIENT_SECRET,
-    storeId: extractedConfig.STORE_ID,
     apiBaseUrl: extractedConfig.GODADDY_API_BASE_URL,
     checkoutApiBaseUrl,
-    channelId: extractedConfig.CHANNEL_ID,
   };
 }
 
@@ -150,11 +119,24 @@ function getCommerceConfigCached(): ReturnType<typeof getCommerceConfig> {
   return cachedCommerceConfig;
 }
 
-interface CreateCheckoutSessionRequest {
+interface LineItem {
   skuId: string;
   quantity: number;
+}
+
+interface CreateCheckoutSessionRequest {
+  storeId: string;
   returnUrl: string;
   successUrl: string;
+  lineItems: LineItem[];
+  storeName?: string;
+  enableShipping?: boolean;
+  enableLocalPickup?: boolean;
+  enableBillingAddressCollection?: boolean;
+  enableShippingAddressCollection?: boolean;
+  enablePhoneCollection?: boolean;
+  enableTaxCollection?: boolean;
+  enablePaymentMethodCollection?: boolean;
 }
 
 interface OAuthTokenResponse {
@@ -190,12 +172,6 @@ function transformUrlsForCommerce(
     finalReturnUrl = returnUrl
       .replace(/localhost/, "success.preview.dev-godaddy.com")
       .replace(/^https:\/\//, "http://");
-    console.warn(
-      "[Commerce] ⚠️  Localhost in returnUrl transformed:",
-      returnUrl,
-      "→",
-      finalReturnUrl,
-    );
   } else if (returnUrl.startsWith("https://")) {
     finalReturnUrl = returnUrl.replace(/^https:\/\//, "http://");
   }
@@ -204,22 +180,10 @@ function transformUrlsForCommerce(
     finalSuccessUrl = successUrl
       .replace(/localhost/, "success.preview.dev-godaddy.com")
       .replace(/^https:\/\//, "http://");
-    console.warn(
-      "[Commerce] ⚠️  Localhost in successUrl transformed:",
-      successUrl,
-      "→",
-      finalSuccessUrl,
-    );
   } else if (successUrl.startsWith("https://")) {
     finalSuccessUrl = successUrl.replace(/^https:\/\//, "http://");
   }
 
-  console.log(
-    "[Commerce] URL transformation complete - returnUrl:",
-    finalReturnUrl,
-    "successUrl:",
-    finalSuccessUrl,
-  );
   return { returnUrl: finalReturnUrl, successUrl: finalSuccessUrl };
 }
 
@@ -230,15 +194,7 @@ async function getAccessToken(): Promise<string> {
   const apiBaseUrl = config.apiBaseUrl;
   const tokenUrl = `${apiBaseUrl}/v2/oauth2/token`;
 
-  console.log(
-    "[Commerce] Getting OAuth access token - URL:",
-    tokenUrl,
-    "ClientID:",
-    clientId ? `${clientId.substring(0, 8)}...` : "MISSING",
-  );
-
   if (!clientId || !clientSecret) {
-    console.error("[Commerce] ❌ Missing OAuth credentials");
     throw new Error(
       "Missing required Commerce credentials (CLIENT_ID or CLIENT_SECRET)",
     );
@@ -263,31 +219,14 @@ async function getAccessToken(): Promise<string> {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(
-        "[Commerce] ❌ OAuth token request failed - Status:",
-        response.status,
-        "Error:",
-        errorText,
-      );
       throw new Error(
         `OAuth token request failed: ${response.status} - ${errorText}`,
       );
     }
 
     const tokenData = (await response.json()) as OAuthTokenResponse;
-    console.log("[Commerce] ✓ OAuth token obtained - Status:", response.status);
     return tokenData.access_token;
   } catch (error) {
-    if (error instanceof Error) {
-      console.error(
-        "[Commerce] ❌ OAuth token fetch error -",
-        error.name + ":",
-        error.message,
-        error.stack,
-      );
-    } else {
-      console.error("[Commerce] ❌ OAuth token fetch error:", error);
-    }
     throw error;
   }
 }
@@ -297,25 +236,9 @@ async function createCheckoutSession(
   params: CreateCheckoutSessionRequest,
 ): Promise<{ id: string; storeId: string; url: string }> {
   const config = getCommerceConfigCached();
-  const storeId = config.storeId;
   const checkoutApiBaseUrl = config.checkoutApiBaseUrl;
-  const channelId = config.channelId;
 
-  console.log(
-    "[Commerce] Creating checkout session - StoreID:",
-    storeId,
-    "CheckoutURL:",
-    checkoutApiBaseUrl,
-    "ChannelID:",
-    channelId,
-    "SKU:",
-    params.skuId,
-    "Qty:",
-    params.quantity,
-  );
-
-  if (!storeId) {
-    console.error("[Commerce] ❌ Missing Store ID");
+  if (!params.storeId) {
     throw new Error("Missing required Commerce STORE_ID");
   }
 
@@ -325,6 +248,7 @@ async function createCheckoutSession(
 				createCheckoutSession(input: $input) {
 					id
 					storeId
+          businessId
 					url
 				}
 			}
@@ -332,41 +256,31 @@ async function createCheckoutSession(
     variables: {
       input: {
         environment: "dev",
-        storeId,
-        storeName: "My Store",
-        channelId,
+        storeId: params.storeId,
+        storeName: params.storeName ?? null,
         customerId: null,
         returnUrl: params.returnUrl,
         successUrl: params.successUrl,
-        enableShipping: false,
-        enableLocalPickup: false,
-        enableBillingAddressCollection: true,
-        enableShippingAddressCollection: false,
-        enablePhoneCollection: false,
-        enableTaxCollection: false,
-        enablePaymentMethodCollection: true,
+        enableShipping: params.enableShipping ?? false,
+        enableLocalPickup: params.enableLocalPickup ?? false,
+        enableBillingAddressCollection:
+          params.enableBillingAddressCollection ?? true,
+        enableShippingAddressCollection:
+          params.enableShippingAddressCollection ?? false,
+        enablePhoneCollection: params.enablePhoneCollection ?? false,
+        enableTaxCollection: params.enableTaxCollection ?? false,
+        enablePaymentMethodCollection:
+          params.enablePaymentMethodCollection ?? true,
         paymentMethods: {
           card: {
             processor: "godaddy",
             checkoutTypes: ["standard"],
           },
         },
-        lineItems: [
-          {
-            skuId: params.skuId,
-            quantity: params.quantity,
-          },
-        ],
+        lineItems: params.lineItems,
       },
     },
   };
-
-  console.log(
-    "[Commerce] Sending GraphQL request to",
-    checkoutApiBaseUrl,
-    "with Bearer token",
-    accessToken.substring(0, 20) + "...",
-  );
 
   try {
     const response = await fetch(checkoutApiBaseUrl, {
@@ -380,12 +294,6 @@ async function createCheckoutSession(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(
-        "[Commerce] ❌ GraphQL request failed - Status:",
-        response.status,
-        "Error:",
-        errorText,
-      );
       throw new Error(
         `GraphQL request failed: ${response.status} - ${errorText}`,
       );
@@ -395,71 +303,41 @@ async function createCheckoutSession(
 
     if (graphqlData.errors?.length) {
       const errorMessages = graphqlData.errors.map((e) => e.message).join(", ");
-      console.error(
-        "[Commerce] ❌ GraphQL errors -",
-        errorMessages,
-        JSON.stringify(graphqlData.errors),
-      );
       throw new Error(`GraphQL errors: ${errorMessages}`);
     }
 
     if (!graphqlData.data?.createCheckoutSession) {
-      console.error(
-        "[Commerce] ❌ No checkout session data in response",
-        JSON.stringify(graphqlData),
-      );
       throw new Error("No checkout session data returned from API");
     }
 
-    const session = graphqlData.data.createCheckoutSession;
-    console.log(
-      "[Commerce] ✓ Checkout session created - ID:",
-      session.id,
-      "URL:",
-      session.url,
-    );
-
-    return session;
+    return graphqlData.data.createCheckoutSession;
   } catch (error) {
-    if (error instanceof Error) {
-      console.error(
-        "[Commerce] ❌ Checkout session creation error -",
-        error.name + ":",
-        error.message,
-        error.stack,
-      );
-    } else {
-      console.error("[Commerce] ❌ Checkout session creation error:", error);
-    }
     throw error;
   }
 }
 
 export default async function handler(req: Request, res: Response) {
-  console.log(
-    "\n[Commerce] ========== CREATE CHECKOUT SESSION REQUEST ==========",
-  );
-  console.log("[Commerce] Request body:", JSON.stringify(req.body, null, 2));
-
   try {
-    const { skuId, quantity, returnUrl, successUrl } =
-      req.body as Partial<CreateCheckoutSessionRequest>;
+    const {
+      storeId,
+      returnUrl,
+      successUrl,
+      lineItems,
+      storeName,
+      enableShipping,
+      enableLocalPickup,
+      enableBillingAddressCollection,
+      enableShippingAddressCollection,
+      enablePhoneCollection,
+      enableTaxCollection,
+      enablePaymentMethodCollection,
+    } = req.body as Partial<CreateCheckoutSessionRequest>;
 
-    if (!skuId || !quantity || !returnUrl || !successUrl) {
-      const missing = [
-        !skuId && "skuId",
-        !quantity && "quantity",
-        !returnUrl && "returnUrl",
-        !successUrl && "successUrl",
-      ].filter(Boolean);
-      console.error(
-        "[Commerce] ❌ Missing required fields:",
-        missing.join(", "),
-      );
+    if (!returnUrl || !successUrl || !storeId || !lineItems?.length) {
       res.status(400).json({
         success: false,
         error:
-          "Missing required fields: skuId, quantity, returnUrl, successUrl",
+          "Missing required fields: storeId, lineItems, returnUrl, successUrl",
       });
       return;
     }
@@ -468,15 +346,19 @@ export default async function handler(req: Request, res: Response) {
       transformUrlsForCommerce(returnUrl, successUrl);
     const accessToken = await getAccessToken();
     const checkoutSession = await createCheckoutSession(accessToken, {
-      skuId,
-      quantity,
+      storeId,
+      lineItems,
       returnUrl: finalReturnUrl,
       successUrl: finalSuccessUrl,
+      storeName,
+      enableShipping,
+      enableLocalPickup,
+      enableBillingAddressCollection,
+      enableShippingAddressCollection,
+      enablePhoneCollection,
+      enableTaxCollection,
+      enablePaymentMethodCollection,
     });
-
-    console.log(
-      `[Commerce] ✓ Checkout session created and returning response ====================================\n`,
-    );
 
     res.json({
       success: true,
@@ -487,15 +369,6 @@ export default async function handler(req: Request, res: Response) {
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    const stack = error instanceof Error && error.stack ? error.stack : "";
-    console.error(
-      "[Commerce] ❌ CHECKOUT SESSION CREATION FAILED -",
-      errorMessage,
-      stack,
-    );
-    console.error(
-      "[Commerce] =================================================\n",
-    );
     res.status(500).json({
       success: false,
       error: errorMessage,

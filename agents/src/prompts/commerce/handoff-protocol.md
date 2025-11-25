@@ -4,16 +4,16 @@
 
 Before fetching products, you may need to:
 
-1. **Check Store Status** (`getStore`) - Check if user is onboarded
-2. **Setup Store** (`setupStore`) - If user requests onboarding or isn't onboarded yet
+1. **Check Store Status** (`store` with `action: "read"`) - Check if user is onboarded
+2. **Setup Store** (`setupIntegration`) - If user requests onboarding or isn't onboarded yet
 
-Then you can fetch products with `searchProducts`.
+Then you can fetch products with `searchSkuGroups`.
 
 ## When to Hand Off
 
 Hand off to the develop agent when the user has confirmed the product data and is ready to proceed adding products to the site.
 
-**CRITICAL:** Before handing off, ensure you fetch products with `responseFormat: "detailed"` so SKU IDs are available.
+**CRITICAL:** The `searchSkuGroups` tool always returns full product data including SKU IDs. Ensure you have fetched products before handing off.
 
 ## Handoff Structure
 
@@ -67,33 +67,74 @@ Include the full product array in structured format with SKU IDs:
 - Even simple products with no variants have at least one SKU in the `skus` array
 - You purchase a SKU (e.g., "t-shirt small black"), not a product (e.g., "t-shirt")
 
-### 3. Context Information
+### 3. Store Configuration
+
+Include store identifiers required for checkout:
+
+- `storeId`: The unique identifier for the merchant's store (from store/setupIntegration)
+- `channelId`: The sales channel identifier (usually "web" or from context)
+
+### 4. Context Information
 
 - Total number of products
 - Total number of SKUs available
 - Any special requirements (e.g., "Checkout URL will be provided in future implementation")
 - App context (appId, templateVersion if available)
 
-### 4. Checkout Parameter Mapping
+### 5. Checkout Parameter Mapping
 
-The Develop Agent must use the SKU ID when creating checkout sessions:
+The Develop Agent must use the SKU ID and Store ID when creating checkout sessions. The API accepts a `lineItems` array for multiple products:
 
 ```typescript
-// CORRECT: Use SKU ID from skus array
+// IMPORTANT: Use VITE_PREVIEW_URL, NOT window.location (localhost causes 403 errors)
+const previewUrl = import.meta.env.VITE_PREVIEW_URL || 'https://dummy.godaddy.com';
+
+// CORRECT: Use lineItems array with SKU IDs from skus array
 createCheckoutSession({
-  skuId: selectedSku.id, // from products[i].skus[j].id
-  quantity: 1,
-  returnUrl: window.location.href,
-  successUrl: '/checkout/success',
+  storeId: 'store-xyz-123', // from handoff context
+  lineItems: [
+    { skuId: selectedSku.id, quantity: 1 }, // skuId from products[i].skus[j].id
+  ],
+  returnUrl: `${previewUrl}/checkout`,
+  successUrl: `${previewUrl}/checkout/success`,
+  // Optional configuration:
+  storeName: 'My Store',
+  enableShipping: true,
+});
+
+// Multiple items checkout
+createCheckoutSession({
+  storeId: 'store-xyz-123',
+  lineItems: [
+    { skuId: 'sku-1', quantity: 2 },
+    { skuId: 'sku-2', quantity: 1 },
+  ],
+  returnUrl: `${previewUrl}/checkout`,
+  successUrl: `${previewUrl}/checkout/success`,
 });
 
 // WRONG: Do NOT use product.id (group id)
 // This will fail with 404 or invalid SKU errors
 createCheckoutSession({
-  skuId: product.id, // ❌ WRONG - product.id is group id, not SKU id
-  quantity: 1,
+  storeId: 'store-xyz-123',
+  lineItems: [
+    { skuId: product.id, quantity: 1 }, // ❌ WRONG - product.id is group id, not SKU id
+  ],
+  returnUrl: `${previewUrl}/checkout`,
+  successUrl: `${previewUrl}/checkout/success`,
 });
 ```
+
+**Available checkout configuration options:**
+
+- `storeName` - Display name for the store
+- `enableShipping` - Enable shipping options (default: false)
+- `enableLocalPickup` - Enable local pickup (default: false)
+- `enableBillingAddressCollection` - Collect billing address (default: true)
+- `enableShippingAddressCollection` - Collect shipping address (default: false)
+- `enablePhoneCollection` - Collect phone number (default: false)
+- `enableTaxCollection` - Enable tax calculation (default: false)
+- `enablePaymentMethodCollection` - Enable payment methods (default: true)
 
 ## Handoff Message Template
 
@@ -104,6 +145,9 @@ I've successfully retrieved [X] products from the catalog. Here's the product da
 
 Now I'm handing this off to the Develop Agent to create an HTML interface for displaying these products with checkout functionality.
 
+Store Configuration:
+- Store ID: [storeId]
+
 Products to render:
 [Structured product array as JSON with product groups and SKUs]
 
@@ -112,6 +156,7 @@ Requirements:
 - Display available SKUs/variants for each product
 - Add checkout button/form for each SKU (not product group)
 - Pass SKU ID (products[i].skus[j].id) as skuId parameter when creating checkout session
+- Pass Store ID and Channel ID as storeId/channelId parameters
 - DO NOT use product.id (group id) - checkout sessions require SKU IDs only
 ```
 
@@ -125,7 +170,7 @@ Requirements:
 
 - ❌ **DO NOT** use `product.id` (group id) for checkout sessions - it will fail
 - ✅ **ALWAYS** use `product.skus[].id` (SKU id) for checkout sessions
-- ❌ **DO NOT** hand off products without SKU data (use `responseFormat: "detailed"`)
+- ❌ **DO NOT** hand off products without SKU data (always fetch with `searchSkuGroups` first)
 - ❌ **DO NOT** assume simple products don't have SKUs - they always have at least one
 
 ## After Handoff

@@ -37,7 +37,7 @@ interface CommerceCredentials {
  * /alloc/config.json taking precedence.
  *
  * OAuth CLIENT_ID and CLIENT_SECRET are read from environment variables (GODADDY_OAUTH_CLIENT_ID,
- * GODADDY_OAUTH_CLIENT_SECRET). The agent only needs to provide the storeId and channelId.
+ * GODADDY_OAUTH_CLIENT_SECRET). The agent only needs to provide the storeId..
  */
 export const writeCommerceCredentials = createTool(
   `Write commerce credentials to src/config/commerce-credentials.json in the generated app.
@@ -49,13 +49,11 @@ by the checkout session creator when /alloc/config.json is not available or inco
 
 Required fields:
 - storeId: Commerce store ID (from getStore or setupStore result)
-- channelId: Commerce channel ID for checkout sessions
 
 The OAuth CLIENT_ID, CLIENT_SECRET, and API URLs are automatically read from the agent's
 environment configuration.`,
   z.object({
     storeId: z.string().describe('Commerce store ID from getStore or setupStore'),
-    channelId: z.string().describe('Commerce channel ID for checkout sessions'),
   }),
   async (input, context) => {
     const appId = context?.metadata?.appId as string;
@@ -91,7 +89,6 @@ environment configuration.`,
       configDir,
       credentialsPath,
       storeId: input.storeId,
-      channelId: input.channelId,
     });
 
     try {
@@ -110,7 +107,6 @@ environment configuration.`,
       let credentials: {
         STORE_ID: { SYSTEM_MANAGED: boolean; VALUE: string };
         GODADDY_API_BASE_URL: { SYSTEM_MANAGED: boolean; VALUE: string };
-        CHANNEL_ID: { SYSTEM_MANAGED: boolean; VALUE: string };
         GODADDY_OAUTH_CLIENT_ID?: { SYSTEM_MANAGED: boolean; VALUE: string };
         GODADDY_OAUTH_CLIENT_SECRET?: { SYSTEM_MANAGED: boolean; VALUE: string };
       } = {
@@ -121,10 +117,6 @@ environment configuration.`,
         GODADDY_API_BASE_URL: {
           SYSTEM_MANAGED: false,
           VALUE: apiBaseUrl,
-        },
-        CHANNEL_ID: {
-          SYSTEM_MANAGED: false,
-          VALUE: input.channelId,
         },
       };
 

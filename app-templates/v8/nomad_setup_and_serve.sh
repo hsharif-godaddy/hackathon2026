@@ -60,6 +60,18 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     # if changes then commit them
     git add dev-tools airo-secrets && git commit -m "Sync upstream dev tools and airo-secrets $(date +%s)" || true
 
+    # sync commerce client and API from base app template
+    # this ensures apps have the latest commerce integration for checkout flows
+    for file in "src/lib/commerce-client.ts" "src/server/api/commerce/create-checkout-session/POST.ts"; do
+        mkdir -p "$(dirname "$file")"
+        cp "$BASE_APP_DIR/$file" "$file"
+    done
+    git add src/lib/commerce-client.ts src/server/api/commerce && git commit -m "Sync upstream commerce files $(date +%s)" || true
+
+    # sync .npmrc from base app template to ensure registry configuration is up to date
+    cp "$BASE_APP_DIR/.npmrc" "$CUSTOMER_APP_DIR/.npmrc"
+    git add .npmrc && git commit -m "Sync upstream .npmrc $(date +%s)" || true
+
     echo "Completed: Existing application detected, restored all tracked files and dependencies"
 fi
 

@@ -24,7 +24,7 @@
 - ❌ **DO NOT** try to call commerce API directly
 - ❌ **DO NOT** create mock product data
 - ✅ **ALWAYS** use the `handoff` tool to delegate to commerce agent
-- ✅ The commerce agent has oauthConnect, getStore, setupStore, searchProducts, and addProducts tools.
+- ✅ The commerce agent has oauthConnect, store, setupIntegration, searchSkuGroups, skuGroup, sku, writeCommerceCredentials, and suggestedResponse tools.
 
 **What the commerce agent will do:**
 
@@ -43,9 +43,23 @@ The user wants to fetch their GoDaddy Commerce products. Please retrieve the pro
 
 **After handoff returns:**
 
-When commerce hands back to you with product data:
+When commerce hands back to you with product data, **check the instructions provided by the Commerce Agent**:
+
+### 1. Storefront Flow (if instructed to use `@godaddy/react`)
+
+**This is the DEFAULT flow for any full store setup, catalog browsing, or multi-product scenario.**
+
+- ✅ Install `@godaddy/react`, `@godaddy/localizations`
+- ✅ Import `@godaddy/react/styles.css` after global CSS in `layout.tsx`
+- ✅ Implement the `GoDaddyProvider`, `ProductGrid`, `ProductDetails`, and `Cart` components using the provided patterns
+- ✅ Wire the `Cart` checkout handler to the backend API
+
+**Refer to the "Commerce Checkout Implementation Guide" section in your instructions for the mandatory implementation templates for these components.**
+
+### 2. Payment Flow (if instructed to render manually)
 
 - ✅ Implement HTML product listing UI with the data
 - ✅ Create buy buttons linking to checkout
-- ✅ Follow commerce-checkout-guide.md for implementation
+- ✅ Follow commerce-checkout-guide.md for manual implementation
+
 - ❌ Don't call commerce tools yourself

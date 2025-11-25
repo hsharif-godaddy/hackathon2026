@@ -324,6 +324,28 @@ export interface MutationUpdateSkuGroupInput {
   status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
 }
 
+export interface MutationUpdateSkuInput {
+  backorderLimit?: number;
+  code?: string;
+  description?: string;
+  disableInventoryTracking?: boolean;
+  disablePriceOverrides?: boolean;
+  disableShipping?: boolean;
+  eanCode?: string;
+  gtinCode?: string;
+  htmlDescription?: string;
+  isbnCode?: string;
+  label?: string;
+  metafields?: UpsertMetafieldInput[];
+  name?: string;
+  shortLabel?: string;
+  status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+  unitCost?: SimpleMoneyInput;
+  unitOfWeight?: 'KG' | 'GR' | 'LB' | 'OZ';
+  upcCode?: string;
+  weight?: number;
+}
+
 // Response Types
 
 export interface SKUPriceResponse {
@@ -334,7 +356,7 @@ export interface SKUPriceResponse {
 
 export interface SKUResponse {
   id: string;
-  label: string;
+  label: string | null;
   name: string;
   code?: string;
   status: string;
@@ -347,7 +369,7 @@ export interface SKUResponse {
 
 export interface SKUGroupResponse {
   id: string;
-  label: string;
+  label: string | null;
   name: string;
   description?: string;
   htmlDescription?: string;
@@ -382,8 +404,140 @@ export interface UpdateSkuGroupResponse {
   updateSkuGroup: SKUGroupResponse;
 }
 
+export interface UpdateSkuResponse {
+  updateSku: SKUResponse;
+}
+
 export interface DeleteSkuGroupResponse {
   deleteSkuGroupById: {
     id: string;
+  };
+}
+
+// Inventory Types
+
+export interface InventoryCountResponse {
+  id: string;
+  quantity: number;
+  type: 'AVAILABLE' | 'COMMITTED' | 'BACKORDERED';
+  onHand?: number;
+  createdAt: string;
+  updatedAt: string;
+  sku?: {
+    id: string;
+    label: string | null;
+    name: string;
+  };
+  location?: {
+    id: string;
+    label: string | null;
+    name: string;
+  };
+}
+
+export interface InventoryAdjustmentResponse {
+  id: string;
+  delta: number;
+  type: 'AVAILABLE' | 'COMMITTED' | 'BACKORDERED';
+  createdAt: string;
+  occurredAt?: string;
+  sku?: {
+    id: string;
+    label: string | null;
+    name: string;
+  };
+  location?: {
+    id: string;
+    label: string | null;
+    name: string;
+  };
+}
+
+export interface GetInventoryCountsResponse {
+  inventoryCounts: {
+    edges: Array<{
+      node: InventoryCountResponse;
+    }>;
+    pageInfo: PageInfo;
+    totalCount: number;
+  };
+}
+
+export interface AdjustInventoryResponse {
+  adjustInventory: InventoryAdjustmentResponse[];
+}
+
+export interface StockInventoryResponse {
+  stockInventory: InventoryAdjustmentResponse[];
+}
+
+export interface MutationAdjustInventoryInput {
+  skuId: string;
+  locationId: string;
+  delta: number;
+  references?: CreateReferenceInput[];
+}
+
+export interface MutationStockInventoryInput {
+  skuId: string;
+  locationId: string;
+  quantity: number;
+  references?: CreateReferenceInput[];
+}
+
+// Location Types
+
+export interface LocationAddressResponse {
+  addressLine1: string;
+  addressLine2?: string;
+  addressLine3?: string;
+  adminArea1?: string;
+  adminArea2?: string;
+  adminArea3?: string;
+  adminArea4?: string;
+  countryCode: string;
+  postalCode?: string;
+}
+
+export interface CreateAddressInput {
+  addressLine1: string;
+  addressLine2?: string;
+  addressLine3?: string;
+  adminArea1?: string;
+  adminArea2?: string;
+  adminArea3?: string;
+  adminArea4?: string;
+  countryCode: string;
+  postalCode?: string;
+}
+
+export interface MutationCreateLocationInput {
+  address: CreateAddressInput;
+  label: string;
+  name?: string;
+  status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+}
+
+export interface CreateLocationResponse {
+  createLocation: LocationResponse;
+}
+
+export interface LocationResponse {
+  id: string;
+  label: string | null;
+  name: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  address?: LocationAddressResponse;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GetLocationsResponse {
+  locations: {
+    edges: Array<{
+      node: LocationResponse;
+    }>;
+    pageInfo: PageInfo;
+    totalCount: number;
   };
 }

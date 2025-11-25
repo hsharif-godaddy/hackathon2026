@@ -8,11 +8,25 @@
  * ```typescript
  * import { createCheckoutSession } from '@/lib/commerce-client';
  *
+ * // Single item checkout
  * const result = await createCheckoutSession({
- *   skuId: '019764de-c4bb-7fff-a81e-04c632565522',
- *   quantity: 1,
+ *   storeId: 'store-123',
+ *   lineItems: [{ skuId: '019764de-c4bb-7fff-a81e-04c632565522', quantity: 1 }],
  *   returnUrl: window.location.href,
  *   successUrl: '/checkout/success'
+ * });
+ *
+ * // Multiple items checkout
+ * const result = await createCheckoutSession({
+ *   storeId: 'store-123',
+ *   lineItems: [
+ *     { skuId: 'sku-1', quantity: 2 },
+ *     { skuId: 'sku-2', quantity: 1 }
+ *   ],
+ *   returnUrl: window.location.href,
+ *   successUrl: '/checkout/success',
+ *   storeName: 'My Store',
+ *   enableShipping: true
  * });
  *
  * if (result.success) {
@@ -22,20 +36,43 @@
  */
 
 /**
+ * Line item for checkout - represents a product and quantity
+ */
+export interface LineItem {
+	/** SKU ID of the product (from product.skus[].id) */
+	skuId: string;
+	/** Quantity to purchase */
+	quantity: number;
+}
+
+/**
  * Request parameters for creating a checkout session
  */
 export interface CreateCheckoutSessionParams {
-	/**
-	 * SKU ID of the product to purchase
-	 * MUST be the skuId field from CommerceProduct (sku.id from GraphQL)
-	 */
-	skuId: string;
-	/** Quantity of the product */
-	quantity: number;
+	/** Store ID from Commerce API */
+	storeId: string;
+	/** Array of line items (products and quantities) */
+	lineItems: LineItem[];
 	/** URL to return to if checkout is cancelled */
 	returnUrl: string;
 	/** URL to redirect to after successful payment */
 	successUrl: string;
+	/** Optional store name to display in checkout */
+	storeName?: string;
+	/** Enable shipping options */
+	enableShipping?: boolean;
+	/** Enable local pickup option */
+	enableLocalPickup?: boolean;
+	/** Enable billing address collection (default: true) */
+	enableBillingAddressCollection?: boolean;
+	/** Enable shipping address collection */
+	enableShippingAddressCollection?: boolean;
+	/** Enable phone number collection */
+	enablePhoneCollection?: boolean;
+	/** Enable tax collection */
+	enableTaxCollection?: boolean;
+	/** Enable payment method collection (default: true) */
+	enablePaymentMethodCollection?: boolean;
 }
 
 /**
@@ -67,8 +104,8 @@ export interface CreateCheckoutSessionResponse {
  * @example
  * ```typescript
  * const result = await createCheckoutSession({
- *   skuId: '019764de-c4bb-7fff-a81e-04c632565522',
- *   quantity: 1,
+ *   storeId: 'store-123',
+ *   lineItems: [{ skuId: '019764de-c4bb-7fff-a81e-04c632565522', quantity: 1 }],
  *   returnUrl: '/checkout',
  *   successUrl: '/checkout/success'
  * });

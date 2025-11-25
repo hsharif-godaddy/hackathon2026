@@ -11,7 +11,7 @@ if ! command -v license-checker &> /dev/null; then
 fi
 
 # Define allowed licenses globally
-ALLOWED_LICENSES="MIT;Apache-2.0;0BSD;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0;Python-2.0;Unlicense;CC0-1.0"
+ALLOWED_LICENSES="MIT;Apache-2.0;0BSD;BSD-3-Clause;BSD-2-Clause;ISC;BlueOak-1.0.0;Python-2.0;Unlicense;CC0-1.0;CC-BY-4.0;MPL-2.0"
 
 # Dynamically detect and exclude internal packages (@airo-ux/*, @godaddy/*, @ux/*, gd-*)
 echo "🔍 Detecting internal packages to exclude..."
@@ -46,7 +46,7 @@ elif [ "$MATRIX_PACKAGE" = "app" ]; then
   MANUAL_EXCLUSIONS="website@0.1.0;@wsb/image-manager-loader@1.3.0"
   CHECK_DEPTH=""
 elif [ "$MATRIX_PACKAGE" = "v8-template" ]; then
-  MANUAL_EXCLUSIONS="caniuse-lite@1.0.30001755"
+  MANUAL_EXCLUSIONS=""
   CHECK_DEPTH="--depth 0"  # Only check direct dependencies for v8-template
 else
   MANUAL_EXCLUSIONS="gd-auth-client@2.1.1"

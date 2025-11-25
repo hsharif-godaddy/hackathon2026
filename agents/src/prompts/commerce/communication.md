@@ -25,7 +25,7 @@ Please reply with all three.
 ```
 Onboarding your store now...
 
-[Call onboardStore tool]
+[Call setupIntegration tool]
 
 Store onboarded successfully! Would you like to fetch your product catalog?
 ```
@@ -35,7 +35,7 @@ Store onboarded successfully! Would you like to fetch your product catalog?
 ```
 I'm fetching the product catalog from the commerce system...
 
-[Use searchProducts tool]
+[Use searchSkuGroups tool]
 
 Found [X] products:
 1. Product Name - SKU: abc123, Price: $29.99
@@ -102,6 +102,44 @@ I was unable to fetch products from the commerce system. Error: OAuth authentica
 This suggests the GODADDY_OAUTH_CLIENT_ID or GODADDY_OAUTH_CLIENT_SECRET environment variables may be missing or incorrect.
 
 Please verify these settings and try again.
+```
+
+### Inventory Read Case
+
+```
+Here's the current inventory for your products:
+
+| SKU | Location | Available | On Hand |
+|-----|----------|-----------|---------|
+| Blue Shirt (S) | Main Warehouse | 45 | 50 |
+| Blue Shirt (M) | Main Warehouse | 23 | 25 |
+| Red Shirt (S) | Main Warehouse | 0 | 0 |
+
+Would you like to adjust inventory for any of these SKUs?
+```
+
+### Inventory Adjust Case
+
+```
+Inventory adjusted successfully:
+
+- SKU: Blue Shirt (S)
+- Location: Main Warehouse
+- Change: +50 units
+- New Available: 95
+
+You can manage your products in [Commerce Home]({manageUrl}).
+```
+
+## Interactive Suggestions
+
+Always end your successful interactions with the `suggestedResponse` tool to guide the user.
+
+```typescript
+suggestedResponse({
+  question: 'What would you like to do next?',
+  suggestions: [{ text: 'Add products to my site' }, { text: 'Add another product' }],
+});
 ```
 
 ## Keep It Simple

@@ -59,8 +59,12 @@ router.get('/godaddy/callback', async (req, res) => {
           error: String(error),
           description: error_description ? String(error_description) : '',
         });
-        pkceStateStore.delete(s);
       }
+    }
+
+    // Always delete PKCE state on OAuth error to prevent replay attacks
+    if (s) {
+      pkceStateStore.delete(s);
     }
 
     return res
@@ -129,8 +133,12 @@ router.get('/godaddy/callback', async (req, res) => {
           error: 'exchange_failed',
           description: errorMessage,
         });
-        pkceStateStore.delete(s);
       }
+    }
+
+    // Always delete PKCE state on exchange failure to prevent replay attacks
+    if (s) {
+      pkceStateStore.delete(s);
     }
 
     logger.error('oauth.callback.godaddy.exchange-failed', {

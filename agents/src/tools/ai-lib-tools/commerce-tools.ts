@@ -5,6 +5,7 @@ import {
   GoDaddyCommerce,
   type CreateSkuGroupInput,
   type UpdateSkuGroupInput,
+  type UpdateSkuInput,
 } from '../../lib/godaddy-commerce.js';
 import { getCustomerIdFromAccessToken } from '../../utils/oauth-claims.js';
 import { logger } from '../../logging/index.js';
@@ -13,28 +14,10 @@ import type { CommerceOnboardingApplicationResponse } from '../../lib/godaddy-co
 
 const godaddy = new GoDaddyCommerce();
 
-export interface Product {
-  id: string;
-  label: string;
-  description?: string;
-  type: string;
-  priceRange?: string;
-  compareAtPriceRange?: string;
-  skus?: {
-    id: string;
-    name: string;
-    code: string;
-  }[];
-}
-
 export const commerceStore = createTool(
   "Manage a customer's store. Supports Read operation via \"action\" parameter. Requires context.metadata.appId. Returns AUTH_REQUIRED when user authorization is needed.",
   z.object({
     action: z.enum(['read']).describe('Action to perform'),
-    responseFormat: z
-      .enum(['concise', 'detailed'])
-      .default('concise')
-      .describe('Response detail level'),
   }),
   async (input, context) => {
     const startTime = Date.now();
@@ -53,11 +36,13 @@ export const commerceStore = createTool(
 
       if (input.action === 'read') {
         const customerId = getCustomerIdFromAccessToken(accessToken);
-        const summary = await godaddy.getStoreSummary({ customerId }, accessToken);
+        const summary = await godaddy.getStoreSummary({ customerId }, accessToken) as { storeId?: string };
 
-        return ok(summary, {
+        return ok({
+          ...summary,
+          manageUrl: summary.storeId ? godaddy.getStoreManagementUrl(summary.storeId) : undefined,
+        }, {
           tookMs: Date.now() - startTime,
-          responseFormat: input.responseFormat,
         });
       }
 
@@ -80,7 +65,6 @@ export const commerceStore = createTool(
               state: err.state,
             },
           },
-          { responseFormat: input.responseFormat }
         );
       }
       throw err;
@@ -171,7 +155,10 @@ export const commerceSetupIntegration = createTool(
           accessToken
         );
 
-        return ok(onboardResult, {
+        return ok({
+          ...onboardResult,
+          manageUrl: godaddy.getStoreManagementUrl(onboardResult.metadata.storeId),
+        }, {
           tookMs: Date.now() - startTime,
         });
       } else {
@@ -180,7 +167,10 @@ export const commerceSetupIntegration = createTool(
           accessToken
         );
 
-        return ok(response, {
+        return ok({
+          ...response,
+          manageUrl: godaddy.getStoreManagementUrl(input.storeId),
+        }, {
           tookMs: Date.now() - startTime,
         });
       }
@@ -217,27 +207,20 @@ export const commerceSetupIntegration = createTool(
   }
 );
 
-/**
- * Get Products Tool for AI-Lib
- * Fetch product catalog from GoDaddy Commerce API with pagination support
- */
-export const commerceSearchStoreProducts = createTool(
-  'Search products from commerce store. Requires context.metadata.appId. Returns AUTH_REQUIRED when user authorization is needed. Supports pagination for large catalogs.',
+export const commerceSearchSkuGroups = createTool(
+  'Search SKU Groups (products) from commerce store. Requires context.metadata.appId. Returns AUTH_REQUIRED when user authorization is needed. Supports pagination for large catalogs.',
   z.object({
-    storeId: z.string().describe('The store ID to fetch products from'),
+    storeId: z.string().describe('The store ID to fetch SKU Groups from'),
+    channelId: z.string().optional().describe('The channel ID to fetch SKU Groups from'),
     first: z
       .number()
       .int()
       .min(1)
       .max(50)
       .default(20)
-      .describe('Number of products to fetch (1-50)'),
+      .describe('Number of SKU Groups to fetch (1-50)'),
     after: z.string().optional().describe('Pagination cursor from previous response'),
-    query: z.string().optional().describe('Filter products by text query'),
-    responseFormat: z
-      .enum(['concise', 'detailed'])
-      .default('concise')
-      .describe('Response detail level'),
+    query: z.string().optional().describe('Filter SKU Groups by text query'),
   }),
   async (input, context) => {
     const startTime = Date.now();
@@ -253,64 +236,33 @@ export const commerceSearchStoreProducts = createTool(
 
     try {
       const { accessToken } = await AuthService.getAccessToken({ appId });
-      const result = await godaddy.getSkuGroups({ storeId: input.storeId }, accessToken);
+      const result = await godaddy.getSkuGroups(
+        {
+          storeId: input.storeId,
+          first: input.first,
+          after: input.after,
+          query: input.query,
+        },
+        accessToken
+      );
 
       if (!result.success) {
         return fail({
           code: ErrorCodes.OPERATION_FAILED,
-          message: result.error || 'Failed to fetch products from commerce API',
+          message: result.error || 'Failed to fetch SKU Groups from commerce API',
           retryable: true,
         });
       }
 
-      const graphqlData = result.data;
-      const products: Product[] = [];
-
-      if (graphqlData?.skuGroups?.edges) {
-        for (const groupEdge of graphqlData.skuGroups.edges) {
-          const group = groupEdge.node;
-
-          const product: Product = {
-            id: group.id,
-            label: group.label,
-            ...(group.description && { description: group.description }),
-            type: group.type,
-            ...(group?.skus?.edges && {
-              skus: group.skus.edges.map((skuEdge: any) => ({
-                id: skuEdge.node.id,
-                name: skuEdge.node.name,
-                code: skuEdge.node.code,
-              })),
-            }),
-          };
-
-          if (group.priceRange) {
-            product.priceRange = `${group.priceRange.min} - ${group.priceRange.max}`;
-          }
-
-          if (group.compareAtPriceRange) {
-            product.compareAtPriceRange = `${group.compareAtPriceRange.min} - ${group.compareAtPriceRange.max}`;
-          }
-
-          products.push(product);
-        }
-      }
-
-      // Format response based on responseFormat
-      const responseData =
-        input.responseFormat === 'concise'
-          ? {
-              products: products.map((p) => ({
-                label: p.label,
-                priceRange: p.priceRange,
-                skuCount: p.skus?.length ?? 0,
-              })),
-            }
-          : { products };
+      const responseData = {
+        storeId: input.storeId,
+        channelId: input.channelId,
+        skuGroups: result.data.skuGroups,
+        manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+      };
 
       return ok(responseData, {
         tookMs: Date.now() - startTime,
-        responseFormat: input.responseFormat,
       });
     } catch (err) {
       if (err instanceof AuthRequiredError) {
@@ -327,7 +279,6 @@ export const commerceSearchStoreProducts = createTool(
               state: err.state,
             },
           },
-          { responseFormat: input.responseFormat }
         );
       }
       throw err;
@@ -335,32 +286,33 @@ export const commerceSearchStoreProducts = createTool(
   }
 );
 
-export const commerceProduct = createTool(
-  'Manage a single product in GoDaddy Commerce store. Supports Create, Read, Update, Delete operations via "action" parameter. Requires context.metadata.appId. For searching/listing multiple products, use "searchProducts" tool.',
+export const commerceSkuGroup = createTool(
+  'Manage a single SKU Group (product) in GoDaddy Commerce store. Supports Create, Read, Update, Delete operations via "action" parameter. Requires context.metadata.appId. For searching/listing multiple SKU Groups, use "searchSkuGroups" tool.',
   z.object({
     action: z.enum(['create', 'read', 'update', 'delete']).describe('Action to perform'),
     storeId: z.string().describe('The store ID'),
-    productId: z.string().optional().describe('The ID of the product (required for read, update, delete)'),
-    product: z
+    channelId: z.string().optional().describe('The channel ID'),
+    skuGroupId: z.string().optional().describe('The ID of the SKU Group (required for read, update, delete)'),
+    skuGroup: z
       .object({
-        label: z.string().optional().describe('The display name of the product (required for create)'),
+        label: z.string().nullable().optional().describe('The display name of the SKU Group (required for create)'),
         name: z
           .string()
           .optional()
-          .describe('Unique identifier/slug for the product (e.g., "burrito")'),
+          .describe('Unique identifier/slug for the SKU Group (e.g., "burrito")'),
         type: z
           .enum(['PHYSICAL', 'DIGITAL'])
           .optional()
-          .describe('Product type: "PHYSICAL" or "DIGITAL" (defaults to PHYSICAL for create)'),
+          .describe('SKU Group type: "PHYSICAL" or "DIGITAL" (defaults to PHYSICAL for create)'),
         status: z
           .enum(['DRAFT', 'ACTIVE', 'ARCHIVED'])
           .optional()
-          .describe('Product status (defaults to ACTIVE)'),
-        description: z.string().optional().describe('Short description of the product'),
+          .describe('SKU Group status (defaults to ACTIVE)'),
+        description: z.string().optional().describe('Short description of the SKU Group'),
         skus: z
           .array(
             z.object({
-              label: z.string().describe('Display name for this SKU variant'),
+              label: z.string().nullable().describe('Display name for this SKU variant'),
               name: z.string().optional().describe('Unique identifier for this SKU'),
               status: z
                 .enum(['DRAFT', 'ACTIVE', 'ARCHIVED'])
@@ -402,15 +354,10 @@ export const commerceProduct = createTool(
             })
           )
           .optional()
-          .describe('Array of SKU variants for this product (required for create)'),
+          .describe('Array of SKU variants for this SKU Group. SKUs are the purchasable unit (tshirt/black/small) vs a SKU Group, which is a presentational grouping of SKUs (T-Shirt) (required for create)'),
       })
       .optional()
-      .describe('Product details for create/update actions'),
-    responseFormat: z
-      .enum(['concise', 'detailed'])
-      .default('concise')
-      .describe('Response detail level'),
-    dryRun: z.boolean().default(false).describe('Validate inputs without creating product'),
+      .describe('SKU Group (the presentational element of a grouping of SKUs, e.g. T-Shirt) details for create/update actions'),
   }),
   async (input, context) => {
     const startTime = Date.now();
@@ -428,42 +375,27 @@ export const commerceProduct = createTool(
       const { accessToken } = await AuthService.getAccessToken({ appId });
 
       if (input.action === 'create') {
-        if (!input.product) {
+        if (!input.skuGroup) {
           return fail({
             code: ErrorCodes.INVALID_INPUT,
-            message: 'Product details are required for create action',
+            message: 'SKU Group details are required for create action',
           });
         }
-        if (!input.product.label) {
+        if (!input.skuGroup.label) {
           return fail({
             code: ErrorCodes.INVALID_INPUT,
-            message: 'Product label is required for create action',
+            message: 'SKU Group label is required for create action',
           });
         }
         
         // Prepare product input with defaults
         const productInput = {
-            ...input.product,
-            type: input.product.type || 'PHYSICAL',
-            status: input.product.status || 'ACTIVE',
-            label: input.product.label,
-            skus: input.product.skus
+            ...input.skuGroup,
+            type: input.skuGroup.type || 'PHYSICAL',
+            status: input.skuGroup.status || 'ACTIVE',
+            label: input.skuGroup.label,
+            skus: input.skuGroup.skus
         };
-
-        if (input.dryRun) {
-          return ok(
-            {
-              plan: {
-                action: 'create_product',
-                storeId: input.storeId,
-                productLabel: input.product.label,
-                skuCount: input.product.skus?.length ?? 0,
-              },
-              created: false,
-            },
-            { responseFormat: input.responseFormat }
-          );
-        }
 
         const result = await godaddy.createSkuGroup(
           { storeId: input.storeId, product: productInput as CreateSkuGroupInput },
@@ -473,83 +405,83 @@ export const commerceProduct = createTool(
         if (!result.success) {
           return fail({
             code: ErrorCodes.OPERATION_FAILED,
-            message: result.error || 'Failed to create product',
+            message: result.error || 'Failed to create SKU Group',
             retryable: true,
           });
         }
 
-        return ok(result.data, {
+        const response = {
+          storeId: input.storeId,
+          channelId: input.channelId,
+          skuGroup: result.data.createSkuGroup,
+          manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+        }
+
+        return ok(response, {
           tookMs: Date.now() - startTime,
-          responseFormat: input.responseFormat,
         });
       }
 
       if (input.action === 'read') {
-        if (!input.productId) {
+        if (!input.skuGroupId) {
           return fail({
             code: ErrorCodes.INVALID_INPUT,
-            message: 'Product ID is required for read action',
-            hint: 'Use commerceSearchStoreProducts to list or search for products',
+            message: 'SKU Group ID is required for read action',
+            hint: 'Use commerceSearchSkuGroups to list or search for products',
           });
         }
 
         const result = await godaddy.getSkuGroup(
-          { storeId: input.storeId, skuGroupId: input.productId },
+          { storeId: input.storeId, skuGroupId: input.skuGroupId },
           accessToken
         );
 
         if (!result.success) {
           return fail({
             code: ErrorCodes.OPERATION_FAILED,
-            message: result.error || 'Failed to fetch product',
+            message: result.error || 'Failed to fetch SKU Group',
             retryable: true,
           });
         }
 
-        let product = null;
-        if (result.data?.skuGroup) {
-          product = result.data.skuGroup;
-        } else {
-          return fail({
-            code: ErrorCodes.NOT_FOUND,
-            message: 'Product not found',
-          });
-        }
-
         return ok(
-          { product },
+          { 
+            storeId: input.storeId,
+            channelId: input.channelId,
+            skuGroup: result.data?.skuGroup,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+          },
           {
             tookMs: Date.now() - startTime,
-            responseFormat: input.responseFormat,
           }
         );
       }
 
       if (input.action === 'update') {
-        if (!input.productId) {
+        if (!input.skuGroupId) {
            return fail({
             code: ErrorCodes.INVALID_INPUT,
-            message: 'Product ID is required for update action',
+            message: 'SKU Group ID is required for update action',
           });
         }
-        if (!input.product) {
+        if (!input.skuGroup) {
            return fail({
             code: ErrorCodes.INVALID_INPUT,
-            message: 'Product details are required for update action',
+            message: 'SKU Group details are required for update action',
           });
         }
 
         const updateInput: UpdateSkuGroupInput = {
-          ...(input.product.label && { label: input.product.label }),
-          ...(input.product.name && { name: input.product.name }),
-          ...(input.product.description && { description: input.product.description }),
-          ...(input.product.status && { status: input.product.status }),
+          ...(input?.skuGroup?.label && { label: input.skuGroup.label }),
+          ...(input?.skuGroup?.name && { name: input.skuGroup.name }),
+          ...(input?.skuGroup?.description && { description: input.skuGroup.description }),
+          ...(input?.skuGroup?.status && { status: input.skuGroup.status }),
         };
 
         const result = await godaddy.updateSkuGroup(
           {
             storeId: input.storeId,
-            skuGroupId: input.productId,
+            skuGroupId: input.skuGroupId,
             product: updateInput,
           },
           accessToken
@@ -558,52 +490,54 @@ export const commerceProduct = createTool(
         if (!result.success) {
           return fail({
             code: ErrorCodes.OPERATION_FAILED,
-            message: result.error || 'Failed to update product',
+            message: result.error || 'Failed to update SKU Group',
             retryable: true,
           });
         }
 
         return ok(
           {
-            message: 'Successfully updated product',
-            product: result.data.updateSkuGroup,
+            storeId: input.storeId,
+            channelId: input.channelId,
+            skuGroup: result.data?.updateSkuGroup,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
           },
           {
             tookMs: Date.now() - startTime,
-            responseFormat: input.responseFormat,
           }
         );
       }
 
       if (input.action === 'delete') {
-        if (!input.productId) {
+        if (!input.skuGroupId) {
            return fail({
             code: ErrorCodes.INVALID_INPUT,
-            message: 'Product ID is required for delete action',
+            message: 'SKU Group ID is required for delete action',
           });
         }
 
         const result = await godaddy.deleteSkuGroup(
-          { storeId: input.storeId, skuGroupId: input.productId },
+          { storeId: input.storeId, skuGroupId: input.skuGroupId },
           accessToken
         );
 
         if (!result.success) {
           return fail({
             code: ErrorCodes.OPERATION_FAILED,
-            message: result.error || 'Failed to delete product',
+            message: result.error || 'Failed to delete SKU Group',
             retryable: true,
           });
         }
 
         return ok(
           {
-            message: 'Successfully deleted product',
-            productId: result.data.deleteSkuGroupById.id,
+            storeId: input.storeId,
+            channelId: input.channelId,
+            skuGroupId: result.data.deleteSkuGroupById,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
           },
           {
             tookMs: Date.now() - startTime,
-            responseFormat: input.responseFormat,
           }
         );
       }
@@ -627,8 +561,443 @@ export const commerceProduct = createTool(
               redirectUrl: err.redirectUrl,
               state: err.state,
             },
+          }
+        );
+      }
+      throw err;
+    }
+  }
+);
+
+export const commerceSku = createTool(
+  'Manage a single SKU in GoDaddy Commerce store. Supports Update operation via "action" parameter. Use this to update inventory settings like backorder limit or tracking.',
+  z.object({
+    action: z.enum(['update']).describe('Action to perform'),
+    storeId: z.string().describe('The store ID'),
+    channelId: z.string().optional().describe('The channel ID'),
+    skuId: z.string().describe('The ID of the SKU'),
+    sku: z
+      .object({
+        label: z.string().optional().describe('The display name of the SKU'),
+        name: z.string().optional().describe('Unique identifier for the SKU'),
+        status: z
+          .enum(['DRAFT', 'ACTIVE', 'ARCHIVED'])
+          .optional()
+          .describe('SKU status'),
+        code: z.string().optional().describe('SKU code/barcode'),
+        description: z.string().optional().describe('SKU description'),
+        backorderLimit: z
+          .number()
+          .int()
+          .optional()
+          .describe(
+            'The number of backorders allowed. Set to 0 to disable backorders. Set to null for unlimited.'
+          ),
+        disableInventoryTracking: z
+          .boolean()
+          .optional()
+          .describe('Flag to mark whether stock should be tracked for the SKU'),
+        disablePriceOverrides: z
+          .boolean()
+          .optional()
+          .describe('Flag to mark whether or not a custom price can be provided'),
+        disableShipping: z
+          .boolean()
+          .optional()
+          .describe('Flag to mark whether the SKU should be shipped or not'),
+        weight: z.number().optional().describe('Weight value'),
+        unitOfWeight: z.enum(['KG', 'GR', 'LB', 'OZ']).optional().describe('Weight unit'),
+        unitCost: z
+          .object({
+            currencyCode: z
+              .string()
+              .length(3)
+              .transform((v) => v.toUpperCase())
+              .describe('3-letter currency code (e.g., "USD")'),
+            value: z
+              .number()
+              .describe('Cost amount'),
+          })
+          .optional()
+          .describe('Cost of the SKU per unit'),
+      })
+      .describe('SKU details to update'),
+  }),
+  async (input, context) => {
+    const startTime = Date.now();
+    const appId = context?.metadata?.appId as string;
+
+    if (!appId) {
+      return fail({
+        code: ErrorCodes.CONTEXT_MISSING,
+        message: 'App ID is required for commerce operations',
+        hint: 'Pass context.metadata.appId',
+      });
+    }
+
+    try {
+      const { accessToken } = await AuthService.getAccessToken({ appId });
+
+      if (input.action === 'update') {
+        if (!input.sku) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'SKU details are required for update action',
+          });
+        }
+
+        const updateInput: UpdateSkuInput = {
+          ...(input?.sku?.label && { label: input.sku.label }),
+          ...(input?.sku?.name && { name: input.sku.name }),
+          ...(input?.sku?.description && { description: input.sku.description }),
+          ...(input?.sku?.status && { status: input.sku.status }),
+          ...(input?.sku?.code && { code: input.sku.code }),
+          ...(input?.sku?.backorderLimit !== undefined && {
+            backorderLimit: input.sku.backorderLimit,
+          }),
+          ...(input?.sku?.disableInventoryTracking !== undefined && {
+            disableInventoryTracking: input.sku.disableInventoryTracking,
+          }),
+          ...(input?.sku?.disablePriceOverrides !== undefined && {
+            disablePriceOverrides: input.sku.disablePriceOverrides,
+          }),
+          ...(input?.sku?.disableShipping !== undefined && {
+            disableShipping: input.sku.disableShipping,
+          }),
+          ...(input?.sku?.weight !== undefined && { weight: input.sku.weight }),
+          ...(input?.sku?.unitOfWeight && { unitOfWeight: input.sku.unitOfWeight }),
+          ...(input?.sku?.unitCost && { unitCost: input.sku.unitCost }),
+        };
+
+        const result = await godaddy.updateSku(
+          {
+            storeId: input.storeId,
+            skuId: input.skuId,
+            product: updateInput,
           },
-          { responseFormat: input.responseFormat }
+          accessToken
+        );
+
+        if (!result.success) {
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: result.error || 'Failed to update SKU',
+            retryable: true,
+          });
+        }
+
+        return ok(
+          {
+            storeId: input.storeId,
+            channelId: input.channelId,
+            sku: result.data?.updateSku,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+          },
+          {
+            tookMs: Date.now() - startTime,
+          }
+        );
+      }
+
+      return fail({
+        code: ErrorCodes.INVALID_INPUT,
+        message: 'Invalid action',
+      });
+    } catch (err) {
+      if (err instanceof AuthRequiredError) {
+        return needAuth(
+          {
+            code: ErrorCodes.AUTH_REQUIRED,
+            message: 'Authentication required to proceed.',
+          },
+          {
+            auth: {
+              provider: 'godaddy',
+              scopes: err.scopes,
+              redirectUrl: err.redirectUrl,
+              state: err.state,
+            },
+          }
+        );
+      }
+      throw err;
+    }
+  }
+);
+
+export const commerceInventory = createTool(
+  'Manage inventory levels for SKUs in GoDaddy Commerce store. Supports getLocations (discover available locations), createLocation (create new location), read (get current inventory), adjust (add/remove by delta), and stock (add new inventory) operations. Requires storeId, skuId, and locationId for most operations.',
+  z.object({
+    action: z.enum(['getLocations', 'createLocation', 'read', 'adjust', 'stock']).describe('Action to perform: getLocations lists available inventory locations, createLocation creates a new location, read gets current inventory, adjust modifies by delta (+/-), stock adds new inventory'),
+    storeId: z.string().describe('The store ID'),
+    skuId: z.string().optional().describe('The SKU ID (required for adjust and stock actions)'),
+    locationId: z.string().optional().describe('The location ID (required for adjust and stock actions)'),
+    quantity: z
+      .number()
+      .int()
+      .optional()
+      .describe('For adjust: the delta to apply (positive to add, negative to remove). For stock: the quantity to add.'),
+    location: z
+      .object({
+        label: z.string().describe('Display name for the location (e.g., "Main Warehouse")'),
+        name: z.string().optional().describe('Unique identifier for the location'),
+        status: z.enum(['ACTIVE', 'INACTIVE', 'ARCHIVED']).optional().describe('Location status (defaults to ACTIVE)'),
+        address: z.object({
+          addressLine1: z.string().describe('Street address (required)'),
+          addressLine2: z.string().optional().describe('Additional address line'),
+          addressLine3: z.string().optional().describe('Additional address line'),
+          adminArea1: z.string().optional().describe('City'),
+          adminArea2: z.string().optional().describe('State/Province'),
+          postalCode: z.string().optional().describe('Postal/ZIP code'),
+          countryCode: z.string().length(2).describe('2-letter country code (e.g., "US")'),
+        }).describe('Location address'),
+      })
+      .optional()
+      .describe('Location details (required for createLocation action)'),
+  }),
+  async (input, context) => {
+    const startTime = Date.now();
+    const appId = context?.metadata?.appId as string;
+
+    if (!appId) {
+      return fail({
+        code: ErrorCodes.CONTEXT_MISSING,
+        message: 'App ID is required for commerce operations',
+        hint: 'Pass context.metadata.appId',
+      });
+    }
+
+    try {
+      const { accessToken } = await AuthService.getAccessToken({ appId });
+
+      if (input.action === 'getLocations') {
+        const result = await godaddy.getLocations(
+          {
+            storeId: input.storeId,
+          },
+          accessToken
+        );
+
+        if (!result.success) {
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: result.error || 'Failed to fetch locations',
+            retryable: true,
+          });
+        }
+
+        return ok(
+          {
+            storeId: input.storeId,
+            locations: result.data.locations,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+          },
+          {
+            tookMs: Date.now() - startTime,
+          }
+        );
+      }
+
+      if (input.action === 'createLocation') {
+        if (!input.location) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'Location details are required for createLocation action',
+          });
+        }
+
+        const locationInput = {
+          label: input.location.label,
+          address: {
+            addressLine1: input.location.address.addressLine1,
+            countryCode: input.location.address.countryCode,
+            ...(input.location.address.addressLine2 && { addressLine2: input.location.address.addressLine2 }),
+            ...(input.location.address.addressLine3 && { addressLine3: input.location.address.addressLine3 }),
+            ...(input.location.address.adminArea1 && { adminArea1: input.location.address.adminArea1 }),
+            ...(input.location.address.adminArea2 && { adminArea2: input.location.address.adminArea2 }),
+            ...(input.location.address.postalCode && { postalCode: input.location.address.postalCode }),
+          },
+          ...(input.location.name && { name: input.location.name }),
+          ...(input.location.status && { status: input.location.status }),
+        };
+
+        const result = await godaddy.createLocation(
+          {
+            storeId: input.storeId,
+            location: locationInput,
+          },
+          accessToken
+        );
+
+        if (!result.success) {
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: result.error || 'Failed to create location',
+            retryable: true,
+          });
+        }
+
+        return ok(
+          {
+            storeId: input.storeId,
+            location: result.data.createLocation,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+          },
+          {
+            tookMs: Date.now() - startTime,
+          }
+        );
+      }
+
+      if (input.action === 'read') {
+        const result = await godaddy.getInventoryCounts(
+          {
+            storeId: input.storeId,
+            ...(input.skuId && { skuId: input.skuId }),
+            ...(input.locationId && { locationId: input.locationId }),
+          },
+          accessToken
+        );
+
+        if (!result.success) {
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: result.error || 'Failed to fetch inventory counts',
+            retryable: true,
+          });
+        }
+
+        return ok(
+          {
+            storeId: input.storeId,
+            inventoryCounts: result.data.inventoryCounts,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+          },
+          {
+            tookMs: Date.now() - startTime,
+          }
+        );
+      }
+
+      if (input.action === 'adjust') {
+        if (!input.skuId) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'SKU ID is required for adjust action',
+          });
+        }
+        if (!input.locationId) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'Location ID is required for adjust action',
+          });
+        }
+        if (input.quantity === undefined) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'Quantity (delta) is required for adjust action',
+          });
+        }
+
+        const result = await godaddy.adjustInventory(
+          {
+            storeId: input.storeId,
+            skuId: input.skuId,
+            locationId: input.locationId,
+            delta: input.quantity,
+          },
+          accessToken
+        );
+
+        if (!result.success) {
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: result.error || 'Failed to adjust inventory',
+            retryable: true,
+          });
+        }
+
+        return ok(
+          {
+            storeId: input.storeId,
+            adjustments: result.data.adjustInventory,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+          },
+          {
+            tookMs: Date.now() - startTime,
+          }
+        );
+      }
+
+      if (input.action === 'stock') {
+        if (!input.skuId) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'SKU ID is required for stock action',
+          });
+        }
+        if (!input.locationId) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'Location ID is required for stock action',
+          });
+        }
+        if (input.quantity === undefined || input.quantity < 0) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'Quantity must be a non-negative number for stock action',
+          });
+        }
+
+        const result = await godaddy.stockInventory(
+          {
+            storeId: input.storeId,
+            skuId: input.skuId,
+            locationId: input.locationId,
+            quantity: input.quantity,
+          },
+          accessToken
+        );
+
+        if (!result.success) {
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: result.error || 'Failed to stock inventory',
+            retryable: true,
+          });
+        }
+
+        return ok(
+          {
+            storeId: input.storeId,
+            adjustments: result.data.stockInventory,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+          },
+          {
+            tookMs: Date.now() - startTime,
+          }
+        );
+      }
+
+      return fail({
+        code: ErrorCodes.INVALID_INPUT,
+        message: 'Invalid action',
+      });
+    } catch (err) {
+      if (err instanceof AuthRequiredError) {
+        return needAuth(
+          {
+            code: ErrorCodes.AUTH_REQUIRED,
+            message: 'Authentication required to proceed.',
+          },
+          {
+            auth: {
+              provider: 'godaddy',
+              scopes: err.scopes,
+              redirectUrl: err.redirectUrl,
+              state: err.state,
+            },
+          }
         );
       }
       throw err;
