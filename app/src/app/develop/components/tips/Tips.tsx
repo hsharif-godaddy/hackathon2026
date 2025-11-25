@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Box from '@ux/box'
-import text from '@ux/text'
 import Alert from '@ux/alert'
 import { Loader } from '@airo-ux/loader'
 import { tips, shuffleArray } from './tips-content'
@@ -69,7 +68,7 @@ export default function Tips({ buildingMessage = 'The AI agent is building your 
                 exit={{ opacity: 0, y: 5, scale: 0.95 }}
                 transition={{ duration: 0.4 }}
               >
-                <Alert title={<text.p size={1}>{currentTip.title}</text.p>} emphasis="info">
+                <Alert title={currentTip.title} emphasis="info">
                   {currentTip.description}
                 </Alert>
               </motion.div>

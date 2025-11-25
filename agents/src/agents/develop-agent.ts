@@ -194,6 +194,8 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
   // Conditionally load backend agent handoff rules if database agent is enabled
   if (featureAgents.isEnabled('database')) {
     promptBuilder.file(paths.getAgentFile('develop', 'handoff-backend.md'))
+  } else {
+    promptBuilder.file(paths.getAgentFile('develop', 'backend.md'))
   }
 
   // Conditionally load commerce handoff rules if commerce agent is enabled
