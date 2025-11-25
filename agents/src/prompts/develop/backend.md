@@ -88,7 +88,9 @@ if (!name || !email) {
 }
 // NO .returning() - use insertId
 const result = await db.insert(users).values({ name, email });
-const newUser = await db.select().from(users).where(eq(users.id, result.insertId)).limit(1);
+// Fetch the newly created user
+const insertId = Number(result[0].insertId);
+const newUser = await db.select().from(users).where(eq(users.id, insertId)).limit(1);
 res.status(201).json(newUser[0]);
 ```
 
