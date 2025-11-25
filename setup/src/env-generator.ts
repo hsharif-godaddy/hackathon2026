@@ -2,6 +2,7 @@ import fs from "fs-extra";
 import path from "path";
 import chalk from "chalk";
 import inquirer from "inquirer";
+import { CertConfigSetup } from "./cert-config";
 import { GettyConfigSetup } from "./getty-config.js";
 import { AWSSSoSetup } from "./aws-sso.js";
 
@@ -372,7 +373,7 @@ export class EnvGenerator {
 		};
 	}
 
-	generateAppEnvContent(config: AppEnvConfig): string {
+	generateAppEnvContent(config: AppEnvConfig, certSetup?: string): string {
 		// Use airo user with enhanced privileges for Prisma migrations
 		// The MySQL container grants necessary CREATE/ALTER/DROP privileges to this user
 
@@ -437,6 +438,10 @@ NEXT_PUBLIC_USE_MOCK_LOGIN=${config.authConfig.authType === "mock" ? "true" : "f
 # Note: SSO_LOGIN_URL and SSO_LOGOUT_URL are configured per environment
 # See .env.local.dev, .env.local.test, and .env.local.prod files
 `;
+
+    if (certSetup) {
+      envContent += certSetup;
+    }
 
 		return envContent;
 	}
@@ -616,7 +621,13 @@ SSO_JWT=${config.ssoJwt}
 			httpsPort: 8443,
 		};
 
-		const envContent = this.generateAppEnvContent(config);
+    const certSetup = new CertConfigSetup();
+    const result = await certSetup.setup();
+
+		const envContent = this.generateAppEnvContent(
+			config,
+			result.success ? result.envConfig : undefined
+		);
 		const appEnvPath = path.join(this.projectRoot, "app", ".env");
 
 		// Check if .env already exists

@@ -9,6 +9,7 @@ import fs from 'fs-extra';
 import { DependencyChecker } from './deps-checker.js';
 import { EnvGenerator } from './env-generator.js';
 import { GettyConfigSetup } from './getty-config.js';
+import { CertConfigSetup } from './cert-config.js';
 import { JWTKeysGenerator } from './jwt-keys-generator.js';
 import { CASetup } from './ca-setup.js';
 
@@ -35,7 +36,7 @@ function printSeparator() {
 
 async function selectMode(): Promise<'full' | 'selective'> {
   printHeader();
-  
+
   console.log(chalk.yellow('Choose setup mode:'));
   console.log('');
   console.log('🔧 ' + chalk.cyan('Selective Configuration') + ' - Configure individual components');
@@ -62,12 +63,13 @@ async function selectiveConfiguration(): Promise<void> {
   const depChecker = new DependencyChecker();
   const envGenerator = new EnvGenerator(projectRoot);
   const gettySetup = new GettyConfigSetup();
+  const certSetup = new CertConfigSetup();
   const jwtGenerator = new JWTKeysGenerator(projectRoot);
   const caSetup = new CASetup(projectRoot);
 
   while (true) {
     printSelectiveHeader();
-    
+
     console.log(chalk.yellow('Select what to configure:'));
     console.log('');
 
@@ -78,6 +80,7 @@ async function selectiveConfiguration(): Promise<void> {
       { name: '🤖 Configure Agents Environment (.env)', value: 'agents-env' },
       { name: '🔐 Generate JWT Keys', value: 'jwt-keys' },
       { name: '🖼️  Configure Getty Images Proxy', value: 'getty-config' },
+      { name: '📜 Configure Client Certificates', value: 'cert-config' },
       { name: '🗄️  Check MySQL Container Status', value: 'mysql-check' },
       { name: '🐳 Start MySQL Container', value: 'mysql-start' },
       { name: '🔍 Check Current Configuration Status', value: 'status-check' },
@@ -122,6 +125,9 @@ async function selectiveConfiguration(): Promise<void> {
         case 'getty-config':
           await gettySetup.setup();
           break;
+        case 'cert-config':
+          await certSetup.setup();
+          break;
         case 'mysql-check':
           await envGenerator.checkMySQLConnection();
           break;
@@ -129,7 +135,7 @@ async function selectiveConfiguration(): Promise<void> {
           await startMySQLContainer();
           break;
         case 'status-check':
-          await checkCurrentStatus(envGenerator, gettySetup, jwtGenerator, caSetup);
+          await checkCurrentStatus(envGenerator, gettySetup, certSetup, jwtGenerator, caSetup);
           break;
       }
     } catch (error) {
@@ -137,7 +143,7 @@ async function selectiveConfiguration(): Promise<void> {
     }
 
     printSeparator();
-    
+
     const { continue: shouldContinue } = await inquirer.prompt([
       {
         type: 'confirm',
@@ -157,9 +163,9 @@ async function selectiveConfiguration(): Promise<void> {
 async function configureDockerDeps(depChecker: DependencyChecker): Promise<void> {
   console.log(chalk.cyan('🔍 Docker Dependencies Check'));
   console.log('');
-  
+
   const dockerOk = await depChecker.checkAllDockerDependencies();
-  
+
   if (dockerOk) {
     console.log(chalk.green('✅ All Docker dependencies are satisfied!'));
   } else {
@@ -171,12 +177,12 @@ async function configureDockerDeps(depChecker: DependencyChecker): Promise<void>
 async function startMySQLContainer(): Promise<void> {
   console.log(chalk.cyan('🐳 Starting MySQL Container'));
   console.log('');
-  
+
   try {
     console.log(chalk.blue('🚀 Starting MySQL container...'));
-    await execa('docker', ['compose', 'up', 'app-mysql', '-d'], { 
+    await execa('docker', ['compose', 'up', 'app-mysql', '-d'], {
       cwd: projectRoot,
-      stdio: 'inherit' 
+      stdio: 'inherit'
     });
     console.log(chalk.green('✅ MySQL container started successfully'));
   } catch (error) {
@@ -186,7 +192,7 @@ async function startMySQLContainer(): Promise<void> {
   }
 }
 
-async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, jwtGenerator: JWTKeysGenerator, caSetup: CASetup): Promise<void> {
+async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, certSetup: CertConfigSetup, jwtGenerator: JWTKeysGenerator, caSetup: CASetup): Promise<void> {
   console.log(chalk.cyan('🔍 Current Configuration Status'));
   console.log('');
 
@@ -197,14 +203,14 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
   // Check .env files
   const appEnvPath = path.join(projectRoot, 'app', '.env');
   const agentsEnvPath = path.join(projectRoot, 'agents', '.env');
-  
+
   console.log(chalk.blue('📄 Configuration Files:'));
   if (await fs.pathExists(appEnvPath)) {
     console.log(chalk.green('  ✅ app/.env exists'));
   } else {
     console.log(chalk.red('  ❌ app/.env missing'));
   }
-  
+
   if (await fs.pathExists(agentsEnvPath)) {
     console.log(chalk.green('  ✅ agents/.env exists'));
   } else {
@@ -212,12 +218,12 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
   }
 
   console.log('');
-  
+
   // Check JWT keys
   await jwtGenerator.displayStatus();
 
   console.log('');
-  
+
   // Check MySQL
   console.log(chalk.blue('🗄️  MySQL Container:'));
   const mysqlRunning = await envGenerator.checkMySQLConnection();
@@ -226,7 +232,7 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
   }
 
   console.log('');
-  
+
   // Check Getty configuration
   console.log(chalk.blue('🖼️  Getty Images:'));
   const gettyConfigured = await gettySetup.quickCheck();
@@ -235,7 +241,16 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
   }
 
   console.log('');
-  
+
+  // Check Certificate configuration
+  console.log(chalk.blue('📜 Client Certificates:'));
+  const certConfigured = await certSetup.quickCheck();
+  if (!certConfigured) {
+    console.log(chalk.yellow('  ⚠️  Client certificates not configured or inaccessible'));
+  }
+
+  console.log('');
+
   // Check Docker
   console.log(chalk.blue('🐳 Docker:'));
   const depChecker = new DependencyChecker();
@@ -247,7 +262,7 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
 
 async function fullSetup(): Promise<void> {
   printHeader();
-  
+
   console.log(chalk.yellow('This full setup will:'));
   console.log('• Check Docker and Docker Compose installation');
   console.log('• Verify Docker daemon is running');
@@ -256,6 +271,7 @@ async function fullSetup(): Promise<void> {
   console.log('• Configure agents/.env file with AI and MySQL settings');
   console.log('• Generate JWT keys for secure agent communication');
   console.log('• Set up Getty Images proxy with AWS Secrets Manager token');
+  console.log('• Configure client certificates for GraphQL and TestPilot APIs');
   console.log('• Generate SSO JWT tokens automatically if available');
   console.log('');
 
@@ -280,7 +296,7 @@ async function fullSetup(): Promise<void> {
   if (!dockerOk) {
     console.log(chalk.red('\n❌ Docker dependencies not satisfied.'));
     console.log('Please install missing dependencies and run this setup again.');
-    
+
     const { continueAnyway } = await inquirer.prompt([
       {
         type: 'confirm',
@@ -301,14 +317,14 @@ async function fullSetup(): Promise<void> {
   const caSetup = new CASetup(projectRoot);
   console.log(chalk.cyan('🔒 Development Certificate Authority Setup'));
   console.log('Setting up CA for trusted HTTPS certificates...\n');
-  
+
   await caSetup.setup();
 
   printSeparator();
 
   // Step 3: Environment Configuration
   const envGenerator = new EnvGenerator(projectRoot);
-  
+
   console.log(chalk.cyan('🔧 Environment Configuration'));
   console.log('Configuring .env files for the application...\n');
 
@@ -346,10 +362,10 @@ async function fullSetup(): Promise<void> {
 
   const jwtGenerator = new JWTKeysGenerator(projectRoot);
   const jwtStatus = await jwtGenerator.checkKeysConfigured();
-  
+
   if (jwtStatus.app && jwtStatus.agents) {
     console.log(chalk.green('✅ JWT keys already configured'));
-    
+
     const { regenerateKeys } = await inquirer.prompt([
       {
         type: 'confirm',
@@ -386,7 +402,7 @@ async function fullSetup(): Promise<void> {
   if (dockerOk) {
     console.log(chalk.cyan('🐳 Docker Container Status'));
     await envGenerator.checkMySQLConnection();
-    
+
     const { startMySQL } = await inquirer.prompt([
       {
         type: 'confirm',
@@ -399,9 +415,9 @@ async function fullSetup(): Promise<void> {
     if (startMySQL) {
       try {
         console.log(chalk.blue('🚀 Starting MySQL container...'));
-        await execa('docker', ['compose', 'up', 'app-mysql', '-d'], { 
+        await execa('docker', ['compose', 'up', 'app-mysql', '-d'], {
           cwd: projectRoot,
-          stdio: 'inherit' 
+          stdio: 'inherit'
         });
         console.log(chalk.green('✅ MySQL container started successfully'));
       } catch (error) {
@@ -413,7 +429,24 @@ async function fullSetup(): Promise<void> {
 
   printSeparator();
 
-  // Step 4: Getty Configuration (standalone option)
+  // Step 4: Certificate Configuration
+  const { configureCerts } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'configureCerts',
+      message: 'Configure client certificates for GraphQL and TestPilot APIs?',
+      default: true
+    }
+  ]);
+
+  if (configureCerts) {
+    const certSetup = new CertConfigSetup();
+    await certSetup.setup();
+  }
+
+  printSeparator();
+
+  // Step 5: Getty Configuration (standalone option)
   const { configureGettyStandalone } = await inquirer.prompt([
     {
       type: 'confirm',
@@ -430,7 +463,7 @@ async function fullSetup(): Promise<void> {
 
   printSeparator();
 
-  // Step 5: Next Steps
+  // Step 6: Next Steps
   console.log(chalk.green.bold('🎉 Setup Complete!'));
   console.log('');
   console.log(chalk.cyan('📋 Next Steps:'));
@@ -450,7 +483,7 @@ async function fullSetup(): Promise<void> {
   console.log('4. Access the application:');
   console.log(chalk.gray('   http://localhost:3000'));
   console.log('');
-  
+
   if (dockerOk) {
     console.log('5. MySQL is available at:');
     console.log(chalk.gray('   Host: localhost:3306'));
@@ -464,7 +497,7 @@ async function fullSetup(): Promise<void> {
 async function main() {
   try {
     const mode = await selectMode();
-    
+
     if (mode === 'selective') {
       await selectiveConfiguration();
     } else {

@@ -47,7 +47,7 @@ export function getTestPilotConfig(): TestPilotConfig {
     apiEndpoint: process.env.TESTPILOT_API_ENDPOINT || 'https://testpilotai.api.ta.dev-godaddy.com/api/tests/ai-run',
     clientCert,
     clientKey,
-    ssoEndpoint: process.env.TESTPILOT_SSO_ENDPOINT || 'https://sso.test-godaddy.com/v1/secure/api/token',
+    ssoEndpoint: process.env.TESTPILOT_SSO_ENDPOINT || 'https://sso.dev-godaddy.com/v1/secure/api/token',
     ssoRealm: 'cert',
     apiTimeout: 60000,
     polling: {
