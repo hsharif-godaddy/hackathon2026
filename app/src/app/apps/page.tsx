@@ -116,30 +116,15 @@ function SitesPageContent() {
           </div>
         )}
 
-        {totalSites === 0 ? (
-          <div className="text-center py-12">
-            <CodeBracketIcon className="w-16 h-16 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">No Apps Yet</h2>
-            <p className="mb-6">Create your first AI-powered app</p>
-            <Button
-              onClick={handleCreateNew}
-              className="px-6 py-3 rounded-lg transition-all flex items-center space-x-2 mx-auto"
-              icon={<PlusIcon className="w-5 h-5" />}
-              design="primary"
-              text="Create Your First App"
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <AppCardEmptyState />
+          {totalSites > 0 && sites.map((site) => (
+            <AppCard
+              key={site.id}
+              site={site}
             />
-          </div>
-        ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <AppCardEmptyState />
-            {sites.map((site) => (
-              <AppCard
-                key={site.id}
-                site={site}
-              />
-            ))}
-          </div>
-        )}
+          ))}
+        </div>
       </main>
     </div>
   )

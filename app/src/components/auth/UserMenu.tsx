@@ -37,19 +37,6 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[200px] p-2">
         <div className="flex flex-col gap-1">
-          { (isAuthDisabled || isAuthenticated) && (
-            <>
-              <Button
-                variant="ghost"
-                className="justify-start p-2 hover:cursor-pointer"
-                onClick={() => router.push('/apps')}
-                data-eid={generateClickEID(`${location}.user_menu.apps`)}
-              >
-                My Apps
-              </Button>
-              <Separator className="my-1" />
-            </>
-          ) }
           { isAuthDisabled && (
             <Button
               variant="ghost"

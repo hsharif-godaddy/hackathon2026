@@ -41,7 +41,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
             </Link>
             <Tag emphasis="info">{t('builder_beta', undefined, 'beta')}</Tag>
           </div>
-          <Box orientation="horizontal" gap="md">
+          <Box orientation="horizontal" gap="lg">
             {actions && actions}
             <UserMenu
               onShowMockLogin={onShowMockLogin}

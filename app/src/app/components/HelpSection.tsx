@@ -18,9 +18,11 @@ export default function HelpSection() {
           size={1}
         >Still not sure what you need? Give us a call. We&apos;re happy to help, even if you&apos;re not a customer. Call us at 1-480-366-3546 and we&apos;ll chat — or get back to you as soon as we can.</text.p>
         <Button
+          external
           text="Get help"
           design="primary"
           data-partial="dark1"
+          href="https://www.godaddy.com/help/contact-us"
         />
       </Box>
     </PageSection>

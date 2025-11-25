@@ -606,16 +606,15 @@ function DevelopPageContent() {
           <div className="flex-1 flex flex-col relative">
             {isPublishButtonEnabled && <PublishStatusAlert />}
             <div className="flex-1 overflow-hidden relative">
-              <div className="absolute inset-0">
-                {activeChatTab !== ChatTab.SETTINGS ? (
-                  <PreviewPane
-                    onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-                    showBuildingOverlay={init.ui.showPreviewLoader}
-                    buildingMessage={init.ui.previewLoaderMessage}
-                  />
-                ) : (
-                  <SettingsView />
-                )}
+              <div className={`absolute inset-0 ${activeChatTab === ChatTab.SETTINGS ? 'hidden' : ''}`}>
+                <PreviewPane
+                  onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                  showBuildingOverlay={init.ui.showPreviewLoader}
+                  buildingMessage={init.ui.previewLoaderMessage}
+                />
+              </div>
+              <div className={`absolute inset-0 ${activeChatTab !== ChatTab.SETTINGS ? 'hidden' : ''}`}>
+                <SettingsView />
               </div>
             </div>
           </div>

@@ -18,6 +18,7 @@ import { ViewMode, PreviewViewMode } from '../types'
 import PreviewError from './PreviewError'
 import PreviewHeader from './PreviewHeader'
 import PreviewCode from './PreviewCode'
+import Tips from '@/app/develop/components/tips/Tips'
 
 // Timing constants for iframe lifecycle management
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
@@ -48,7 +49,7 @@ export default function PreviewPane({
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
 
   const appId = useAppIdFromParams();
-  
+
   // Get selected commit hash from git store
   const selectedCommitHash = useGitStore((state) => appId ? state.getSelectedCommitHash(appId) : null)
 
@@ -282,24 +283,7 @@ export default function PreviewPane({
   // Priority 1: Show "Building your app" overlay during initial app creation
   // This takes precedence over server status to avoid flashing between states
   if (showBuildingOverlay) {
-    return (
-      <Box
-        className="h-full"
-        blockAlignChildren="center"
-        inlineAlignChildren="center"
-        gap="md"
-      >
-        <Loader
-          title="Building Your App"
-          description={buildingMessage}
-        />
-        <Box inlineAlignChildren="center" gap="sm">
-          <text.p size={-1} emphasis="passive">
-            Once the agent creates the first files, you&apos;ll see the preview
-          </text.p>
-        </Box>
-      </Box>
-    )
+    return <Tips buildingMessage={buildingMessage} />
   }
 
   // Priority 2: Show "Starting Server" while server is not ready

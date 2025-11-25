@@ -89,14 +89,6 @@ export default function ChatPaneLoader({
             <p>This usually takes 30-60 seconds</p>
             <p>Please don&apos;t close this page</p>
           </Box>
-
-          <Box className="mx-auto">
-            <Button
-              onClick={onCancel}
-              design="tertiary"
-              text="Cancel and go back"
-            />
-          </Box>
         </Box>
       </div>
     </div>

@@ -170,6 +170,19 @@
     background: radial-gradient(167.97% 140.89% at 100% 0%, rgba(118, 65, 237, 0.15) 0%, rgba(0, 0, 0, 0) 100%), #111;
   }
 
+  .header-orb {
+    background: conic-gradient(from -49deg at 47.65% 36.14%, #8EF9FF 75.22720277309418deg, #B375FF 193.64776611328125deg, #FF75BC 267.1905469894409deg, #C290FF 335.0133991241455deg);
+    opacity: 0.4;
+    filter: blur(200px);
+    width: 980px;
+    height: 1030px;
+    transform: rotate(-168.232deg);
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translate(-40%, -50%)
+  }
+
   .footer-bg {
     background: conic-gradient(from -49deg at 47.65% 36.14%, #8EF9FF 75deg, #B375FF 193deg, #FF75BC 267deg, #C290FF 335deg);
     opacity: .4;

@@ -135,18 +135,16 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       <text.h1
         as='heading'
         size={5}
-        className="gd-sage !font-bold"
+        className="gd-sage !font-bold max-w-screen-md"
       >
-        What would you like to
-        <br />
-        build today?
+        Share your idea and we&apos;ll handle the rest
       </text.h1>
 
       <text.p
-        size={2}
+        size={3}
         className='max-w-xl mx-auto !font-thin'
       >
-        Tell us what you want and we&apos;ll build with you from idea to live, keeping the boring bits covered and the fun parts easy.
+        We build it for you from concept to live web app
       </text.p>
 
       {/* Error Display */}
@@ -190,9 +188,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 rows={5}
                 disabled={isLoading}
                 maxLength={MAX_PROMPT_LENGTH + 1}
-                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-8 pr-24 py-7 z-10 w-full text-2xl font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
+                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-8 pr-24 pt-6 pb-5 z-10 w-full text-2xl font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
                   'h-60 rounded-2xl': isExpanded,
-                  'h-24 rounded-[3rem]': !isExpanded
+                  'h-20 rounded-[3rem]': !isExpanded
                 })}
                 placeholder={isTyping ? "" : "Describe your app idea..."}
               />
@@ -202,7 +200,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 data-eid={generateClickEID('homepage.prompt.submit')}
                 disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
                 design='primary'
-                className="group !bg-ai cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed z-10 !rounded-full aspect-square !p-5 !border-none right-4 bottom-4"
+                className="group !bg-ai cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed z-10 !rounded-full aspect-square !p-4 !border-none right-3 bottom-3"
                 icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
                 aria-label={isLoading ? "Building your app..." : "Start building"}
               />

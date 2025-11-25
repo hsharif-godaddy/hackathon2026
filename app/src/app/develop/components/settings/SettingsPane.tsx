@@ -30,7 +30,7 @@ export default function SettingsPane() {
             design="option"
             active={activeSettingsSection === item.id}
             key={item.id}
-            data-ed={generateClickEID('develop.settings.item')}
+            data-eid={generateClickEID('develop.settings.item')}
             icon={item.icon}
             text={item.label}
             disabled={item.disabled}

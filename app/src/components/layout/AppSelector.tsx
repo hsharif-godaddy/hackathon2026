@@ -67,7 +67,6 @@ export default function AppSelector({ location }: { location?: string }) {
 
   // Show only the first 5 sites
   const displayedSites = sortedSites.slice(0, 5);
-  const hasMoreSites = sites.length > 5;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -103,7 +102,7 @@ export default function AppSelector({ location }: { location?: string }) {
                 dataEid={generateClickEID(`${location}.apps_menu.app`)}
               />
             ))}
-            {hasMoreSites && <AppItemSeeAll location={location} />}
+            <AppItemSeeAll location={location} />
           </div>
         </PopoverContent>
       )}

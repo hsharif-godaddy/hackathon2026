@@ -214,14 +214,19 @@ function computeUIState(
     (subPhase === 'waiting-for-websocket' || phase === 'error') ? 'verifying-agent' :
     'initializing'
   
-  // Preview loader logic - show from when we're ready to send initial prompt until first file edit
+  // Preview loader logic - show during entire creation flow until first file edit
   // This overlay sits on top of PreviewPane's internal "Starting Server" loader
-  // Uses isActiveCreationSession (not hasInitialPrompt) because sessionStorage is cleared after prompt is sent
+  // Show during all creation phases and until first file edit is seen
   const showPreviewLoader =
-    phase === 'ready' &&
-    isActiveCreationSession &&
+    context.hasInitialPrompt &&
     !context.hasSeenFirstFileEdit &&
-    (subPhase === 'websocket-connected' || subPhase === 'waiting-for-first-edit')
+    (
+      phase === 'checking-creation' ||
+      phase === 'creating' ||
+      phase === 'initializing-page' ||
+      phase === 'loading-history' ||
+      (phase === 'ready' && (subPhase === 'waiting-for-websocket' || subPhase === 'websocket-connected' || subPhase === 'waiting-for-first-edit'))
+    )
   
   // Auto-send logic - trigger when websocket connects and we have a prompt
   const shouldAutoSendPrompt =

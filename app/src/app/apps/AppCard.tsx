@@ -222,7 +222,7 @@ export const AppCardEmptyState = () => {
 
   return (
     <div
-      className="relative flex flex-col justify-center items-center rounded-lg border gap-2 hover:cursor-pointer hover:shadow-lg transition-all group"
+      className="relative flex flex-col min-h-56 justify-center items-center rounded-lg border gap-2 hover:cursor-pointer hover:shadow-lg transition-all group"
       onClick={() => router.push(`/`)}
     >
       <PlusIcon className="size-7 text-ai group-hover:scale-110 transition-all" />

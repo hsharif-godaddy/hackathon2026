@@ -50,7 +50,7 @@ export default function AppPublish({ location }: { location?: string }) {
 
   const publishMutation = usePublishApp();
   const isDevelopPage = pathname?.includes('/develop');
-  
+
   const site = useSiteStore((state) => currentAppId ? state.getSite(currentAppId) : null);
 
   // Check if a conversation is in progress (AI is actively processing)
@@ -80,13 +80,13 @@ export default function AppPublish({ location }: { location?: string }) {
   });
 
   const mostRecentDeployment = deployments[0];
-  
+
   // Check if deployment is in progress (not in terminal state)
-  const isDeploymentInProgress = mostRecentDeployment && 
+  const isDeploymentInProgress = mostRecentDeployment &&
     ![DeploymentStatus.DEPLOYED, DeploymentStatus.FAILED].includes(mostRecentDeployment.status as DeploymentStatus);
   const currentCommitHash = gitCommits[0]?.hash;
-  const isCurrentCommitDeployed = currentCommitHash && 
-    mostRecentDeployment?.gitHash === currentCommitHash && 
+  const isCurrentCommitDeployed = currentCommitHash &&
+    mostRecentDeployment?.gitHash === currentCommitHash &&
     mostRecentDeployment?.status === DeploymentStatus.DEPLOYED;
 
   useEffect(() => {
@@ -119,7 +119,7 @@ export default function AppPublish({ location }: { location?: string }) {
 
   const handleDeploy = useCallback(async () => {
     setOpen(false);
-    
+
     if (!currentAppId || !site?.agent_url) {
       logger.error('app-publish.deploy.error', {
         appId: currentAppId,
@@ -175,10 +175,10 @@ export default function AppPublish({ location }: { location?: string }) {
    */
   const handleViewHistory = useCallback(() => {
     if (!currentAppId) return;
-    
+
     // Set active tab to history
     setActiveChatTab(ChatTab.HISTORY);
-    
+
     // Navigate to develop page with history tab
     router.push(`/develop/${currentAppId}?tab=history`, { scroll: false });
   }, [currentAppId, setActiveChatTab, router]);
@@ -187,7 +187,7 @@ export default function AppPublish({ location }: { location?: string }) {
   useEffect(() => {
     if (currentAppId) {
       setDeploymentsRefetch(currentAppId, refetch);
-      
+
       return () => {
         setDeploymentsRefetch(currentAppId, null);
       };
@@ -242,12 +242,12 @@ export default function AppPublish({ location }: { location?: string }) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          className='!bg-ai'
+          className='!bg-ai !font-normal !border-none'
           design='primary'
           data-partial='gradientAiro'
           data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
           disabled={isButtonDisabled}
-          text={isPublishing || isDeploymentInProgress 
+          text={isPublishing || isDeploymentInProgress
             ? t('builder_publish_button_publishing')
             : t('builder_publish_button')
           }
@@ -269,7 +269,7 @@ export default function AppPublish({ location }: { location?: string }) {
                         {t('builder_publish_changes_count', { count: unpublishedCount })}
                       </Button>
                       <text.p>
-                        {deployments.length > 0 
+                        {deployments.length > 0
                           ? t('builder_publish_since_current')
                           : t('builder_publish_first_publish')
                         }
@@ -277,28 +277,28 @@ export default function AppPublish({ location }: { location?: string }) {
                     </div>
                   </>
                 )}
-                
+
                 {deployments.length > 0 && (
                   <div className='space-y-2'>
                     {deployments.filter(d => d.status === DeploymentStatus.DEPLOYED).slice(0, 5).map((deployment, index) => {
                       const deploymentDate = new Date(deployment.updatedAt);
                       const isMostRecent = index === 0;
-                      
+
                       // Calculate number of commits in this deployment
                       // Find the index of this deployment's commit in the git history
                       const deploymentCommitIndex = gitCommits.findIndex(c => c.hash === deployment.gitHash);
-                      
+
                       // Find the index of the next older deployment's commit
                       const nextDeployment = deployments.filter(d => d.status === DeploymentStatus.DEPLOYED)[index + 1];
-                      const nextDeploymentCommitIndex = nextDeployment 
+                      const nextDeploymentCommitIndex = nextDeployment
                         ? gitCommits.findIndex(c => c.hash === nextDeployment.gitHash)
                         : gitCommits.length;
-                      
+
                       // Count commits between this deployment and the next older one
                       const commitCount = deploymentCommitIndex >= 0 && nextDeploymentCommitIndex >= 0
                         ? nextDeploymentCommitIndex - deploymentCommitIndex
                         : 1;
-                                          
+
                       const deploymentFormattedDate = intl.formatDate(deploymentDate, {
                         year: 'numeric',
                         month: 'long',
@@ -338,7 +338,7 @@ export default function AppPublish({ location }: { location?: string }) {
             disabled={isButtonDisabled}
             onClick={handleDeploy}
           >
-            {isPublishing || isDeploymentInProgress 
+            {isPublishing || isDeploymentInProgress
               ? t('builder_publish_button_publishing')
               : t('builder_publish_button')
             }

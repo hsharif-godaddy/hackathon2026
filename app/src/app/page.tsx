@@ -122,7 +122,7 @@ function HomeContent() {
       // Set flags for post-setup actions before redirect
       sessionStorage.setItem(`name-registration-pending-${siteData.id}`, 'true')
       sessionStorage.setItem(`initial-prompt-pending-${siteData.id}`, 'true')
-      
+
       // Immediately redirect to /develop/{siteId} - deployment polling will happen there
       // If the response includes type='job', add query param to indicate this is a temporary job ID
       // The develop page will poll until it gets the real app ID
@@ -196,6 +196,7 @@ function HomeContent() {
 
   return (
     <div className="relative w-full overflow-hidden header-bg bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
+      <div className="header-orb" />
       <div className="footer-bg" />
 
       <div className="w-full h-full relative z-1">
