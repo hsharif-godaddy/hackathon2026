@@ -40,20 +40,19 @@ describe('useInitialization', function hookTests() {
   });
 
   describe('UI state computation logic', function uiStateLogicTests() {
+    // Helper function to test loader logic with proper typing
+    function shouldShowLoaderForPhase(phase: 'idle' | 'creating' | 'completed'): boolean {
+      return phase !== 'idle' && phase !== 'completed';
+    }
+
     it('should show chat loader during creation phases', function chatLoaderCreation() {
       // When creationPhase is 'creating', showChatLoader should be true
-      const creationPhase = 'creating';
-      const shouldShowLoader = creationPhase !== 'idle' && creationPhase !== 'completed';
-      
-      expect(shouldShowLoader).toBe(true);
+      expect(shouldShowLoaderForPhase('creating')).toBe(true);
     });
 
     it('should hide chat loader when creation is complete', function chatLoaderComplete() {
       // When creationPhase is 'completed', showChatLoader should be false
-      const creationPhase = 'completed';
-      const shouldShowLoader = creationPhase !== 'idle' && creationPhase !== 'completed';
-      
-      expect(shouldShowLoader).toBe(false);
+      expect(shouldShowLoaderForPhase('completed')).toBe(false);
     });
 
     it('should show chat loader when waiting for websocket', function chatLoaderWebSocket() {
@@ -233,11 +232,13 @@ describe('useInitialization', function hookTests() {
   });
 
   describe('Backward compatibility', function compatibilityTests() {
-    it('should maintain showCreationLoader flag', function showCreationLoader() {
-      const creationPhase = 'creating';
-      const showCreationLoader = creationPhase !== 'idle' && creationPhase !== 'completed';
-      
-      expect(showCreationLoader).toBe(true);
+    // Helper function to test loader logic with proper typing
+    function shouldShowCreationLoader(phase: 'idle' | 'creating' | 'completed'): boolean {
+      return phase !== 'idle' && phase !== 'completed';
+    }
+
+    it('should maintain showCreationLoader flag', function showCreationLoaderTest() {
+      expect(shouldShowCreationLoader('creating')).toBe(true);
     });
 
     it('should maintain creationError exposure', function creationError() {

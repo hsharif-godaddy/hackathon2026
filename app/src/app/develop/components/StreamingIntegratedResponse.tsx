@@ -14,7 +14,7 @@ interface StreamingIntegratedResponseProps {
   isActiveStream?: boolean
   isLastAssistantMessage?: boolean
   startTime?: Date
-  streamingState?: 'idle' | 'streaming' | 'completing' | 'error'
+  streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
 }
 
 export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState }: StreamingIntegratedResponseProps) {
@@ -212,12 +212,21 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
           />
         )}
 
-        {/* Connection error notification (when streaming state is error but not upstream error) */}
+        {/* Connection retrying notification (yellow warning) */}
+        {!message.upstreamError && streamingState === 'retrying' && isActiveStream && !isComplete && (
+          <StreamingAlertMessage
+            type="Warning"
+            title="Connection Lost"
+            message="Retrying connection... Your request will resume automatically when reconnected."
+          />
+        )}
+
+        {/* Connection error notification (red critical - after 5 minutes or reconnect failed) */}
         {!message.upstreamError && streamingState === 'error' && isActiveStream && !isComplete && (
           <StreamingAlertMessage
             type="Critical"
             title="Connection Error"
-            message="The connection was lost while processing your request. Please try again."
+            message="The connection was lost and could not be restored. Please try again."
           />
         )}
 

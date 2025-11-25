@@ -114,7 +114,7 @@ export interface ChatMessage {
  * WebSocket message types following the normalized event schema
  */
 export interface WebSocketMessage {
-  type: 'step_start' | 'chunk' | 'tool_start' | 'tool_input_delta' | 'tool_call' | 'tool_result' | 'step_complete' | 'complete' | 'error' | 'agents_available'
+  type: 'step_start' | 'chunk' | 'tool_start' | 'tool_input_delta' | 'tool_call' | 'tool_result' | 'step_complete' | 'complete' | 'error' | 'agents_available' | 'recovery_status'
   content: string
   data: Record<string, unknown>
 }
@@ -147,6 +147,23 @@ export class WebSocketServer {
    */
   private activeToolSpans: Map<string, APMSpan> = new Map()
 
+  /**
+   * Track disconnected sockets with active streams during recovery window
+   * Allows LLM to continue working while client reconnects
+   */
+  private disconnectedStreams: Map<string, {
+    abortController: AbortController
+    timeoutId: NodeJS.Timeout
+    bufferedEvents: WebSocketMessage[]
+    conversationId: string
+  }> = new Map()
+
+  /**
+   * Recovery window for connection state recovery (5 minutes)
+   * During this time, streams continue and events are buffered
+   */
+  private readonly STREAM_RECOVERY_WINDOW = 5 * 60 * 1000
+
   constructor(httpServer: HTTPServer, config: WebSocketConfig) {
     this.config = config
 
@@ -164,6 +181,11 @@ export class WebSocketServer {
       },
       // Default buffer size for large payloads (e.g., screenshots)
       maxHttpBufferSize: 50 * 1024 * 1024, // 50MB default
+      // Enable connection state recovery to preserve socket IDs and allow reconnection
+      connectionStateRecovery: {
+        maxDisconnectionDuration: this.STREAM_RECOVERY_WINDOW,
+        skipMiddlewares: true
+      },
       ...config.socketOptions
     })
 
@@ -176,6 +198,120 @@ export class WebSocketServer {
   private setupEventHandlers(): void {
     this.io.on('connection', (socket) => {
       const socketId = socket.id
+      const auth = socket.handshake.auth || {}
+      const previousSocketId = auth.previousSocketId
+
+      // Debug logging for all connections
+      this.logger.info('Socket connection established', {
+        socketId,
+        hasAuth: !!auth,
+        authKeys: Object.keys(auth),
+        previousSocketId: previousSocketId || 'none',
+        recovered: socket.recovered
+      })
+
+      // Debug logging for recovery
+      if (previousSocketId) {
+        this.logger.info('Connection with previousSocketId detected', {
+          socketId,
+          previousSocketId,
+          hasDisconnectedStream: this.disconnectedStreams.has(previousSocketId),
+          disconnectedStreamsSize: this.disconnectedStreams.size,
+          disconnectedStreamKeys: Array.from(this.disconnectedStreams.keys())
+        })
+      }
+
+      // Check if this is a recovered connection with buffered events (automatic recovery)
+      if (socket.recovered && this.disconnectedStreams.has(socketId)) {
+        this.logger.info('Socket reconnected during recovery window (automatic), replaying buffered events', { socketId })
+        const streamData = this.disconnectedStreams.get(socketId)!
+
+        // Cancel the abort timeout
+        clearTimeout(streamData.timeoutId)
+
+        // Replay all buffered events
+        for (const event of streamData.bufferedEvents) {
+          socket.emit('message', event)
+        }
+
+        // Move back to active streams
+        this.activeStreams.set(socketId, streamData.abortController)
+        this.disconnectedStreams.delete(socketId)
+
+        this.logger.info('Replayed buffered events and resumed stream', {
+          socketId,
+          eventCount: streamData.bufferedEvents.length
+        })
+      }
+      // Check for manual recovery after page reload (client sends previousSocketId)
+      else if (previousSocketId && this.disconnectedStreams.has(previousSocketId)) {
+        this.logger.info('Manual recovery after page reload, transferring buffered events', {
+          newSocketId: socketId,
+          previousSocketId
+        })
+        const streamData = this.disconnectedStreams.get(previousSocketId)!
+
+        // Cancel the abort timeout
+        clearTimeout(streamData.timeoutId)
+
+        // Get conversation info for the client
+        const conversation = this.activeConversations.get(previousSocketId)
+        
+        // Send recovery status to client BEFORE replaying events
+        socket.emit('message', {
+          type: 'recovery_status',
+          content: '',
+          data: {
+            isRecovering: true,
+            hasBufferedEvents: streamData.bufferedEvents.length > 0,
+            bufferedEventCount: streamData.bufferedEvents.length,
+            conversationId: conversation?.conversationId,
+            agentName: conversation?.agentName
+          }
+        } as WebSocketMessage)
+
+        // Replay all buffered events to the new socket
+        for (const event of streamData.bufferedEvents) {
+          socket.emit('message', event)
+        }
+
+        // Move to active streams with NEW socket ID
+        this.activeStreams.set(socketId, streamData.abortController)
+        
+        // Update conversation tracking to new socket ID
+        if (conversation) {
+          this.activeConversations.set(socketId, conversation)
+          this.activeConversations.delete(previousSocketId)
+        }
+
+        // Clean up old socket ID
+        this.disconnectedStreams.delete(previousSocketId)
+
+        this.logger.info('Transferred buffered events to new socket after page reload', {
+          newSocketId: socketId,
+          previousSocketId,
+          eventCount: streamData.bufferedEvents.length,
+          conversationId: conversation?.conversationId
+        })
+      }
+      // Check if client is trying to recover but stream already completed/cleaned up
+      else if (previousSocketId) {
+        this.logger.info('Recovery attempted but no buffered events found', {
+          newSocketId: socketId,
+          previousSocketId
+        })
+        // Send recovery status indicating stream already completed
+        socket.emit('message', {
+          type: 'recovery_status',
+          content: '',
+          data: {
+            isRecovering: true,
+            hasBufferedEvents: false,
+            bufferedEventCount: 0,
+            streamCompleted: true
+          }
+        } as WebSocketMessage)
+      }
 
       // Call connection handler
       this.config.onConnection?.(socketId)
@@ -197,56 +333,140 @@ export class WebSocketServer {
         this.sendAvailableAgents(socket)
       })
 
-      // Handle disconnection
-      socket.on('disconnect', async () => {
-        // Cancel any active streams for this socket
+      // Handle disconnection with graceful recovery window
+      socket.on('disconnect', async (reason) => {
+        this.logger.info('Socket disconnected', { socketId, reason })
+
+        // Check if there's an active stream for this socket
         const controller = this.activeStreams.get(socketId)
-        if (controller) {
-          controller.abort()
-          this.activeStreams.delete(socketId)
-        }
-
-        // Clean up any active tool spans for this socket
-        // Note: For high-concurrency scenarios, consider using Map<socketId, Set<spanKey>>
-        // Current approach is O(n) but acceptable for typical usage (few concurrent tools per socket)
-        for (const [spanKey, span] of this.activeToolSpans.entries()) {
-          if (spanKey.startsWith(`${socketId}:`)) {
-            try {
-              span.setOutcome('unknown')
-              span.addLabels({ disconnect_cleanup: true })
-              span.end()
-            } catch {
-              // Silently fail - APM cleanup should not disrupt disconnect handling
-            }
-            this.activeToolSpans.delete(spanKey)
-          }
-        }
-
-        // Handle persistence cleanup
         const conversation = this.activeConversations.get(socketId)
-        if (conversation && this.config.messagePersistence) {
-          // Check if persistence supports cleanup
-          if ('handleDisconnection' in this.config.messagePersistence) {
-            await (this.config.messagePersistence as ConversationPersistenceWithCleanup).handleDisconnection(
-              socketId,
-              [conversation.conversationId]
-            )
+
+        if (controller && conversation) {
+          // Don't abort immediately - move to disconnected streams with timeout
+          this.logger.info('Active stream detected, starting recovery window', {
+            socketId,
+            recoveryWindow: `${this.STREAM_RECOVERY_WINDOW}ms`,
+            conversationId: conversation.conversationId
+          })
+
+          // Set timeout to abort if client doesn't reconnect
+          const timeoutId = setTimeout(() => {
+            this.logger.warn('Recovery window expired, aborting stream', { socketId })
+            controller.abort()
+            this.disconnectedStreams.delete(socketId)
+            this.activeStreams.delete(socketId)
+
+            // Clean up conversation
+            this.cleanupConversation(socketId).catch((error) => {
+              this.logger.error('Error cleaning up conversation after recovery timeout', error)
+            })
+          }, this.STREAM_RECOVERY_WINDOW)
+
+          // Move to disconnected streams with empty buffer
+          this.disconnectedStreams.set(socketId, {
+            abortController: controller,
+            timeoutId,
+            bufferedEvents: [],
+            conversationId: conversation.conversationId
+          })
+
+          // Remove from active streams (but don't abort the controller)
+          this.activeStreams.delete(socketId)
+        } else {
+          // No active stream - clean up immediately
+          if (controller) {
+            controller.abort()
+            this.activeStreams.delete(socketId)
           }
-          this.activeConversations.delete(socketId)
+
+          await this.cleanupConversation(socketId)
         }
+
+        // Clean up APM spans (these can't be recovered)
+        this.cleanupToolSpans(socketId)
 
         this.config.onDisconnection?.(socketId)
       })
 
-      // Handle stream cancellation
+      // Handle explicit stream cancellation (user clicked cancel button)
       socket.on('cancel', () => {
-        const controller = this.activeStreams.get(socketId)
+        this.logger.info('Stream explicitly cancelled by user', { socketId })
+
+        // Cancel any active or disconnected stream
+        const controller = this.activeStreams.get(socketId) ||
+                          this.disconnectedStreams.get(socketId)?.abortController
+
         if (controller) {
           controller.abort()
           this.activeStreams.delete(socketId)
+
+          // Clean up disconnected stream if exists
+          const disconnected = this.disconnectedStreams.get(socketId)
+          if (disconnected) {
+            clearTimeout(disconnected.timeoutId)
+            this.disconnectedStreams.delete(socketId)
+          }
         }
       })
     })
+  }
+
+  /**
+   * Emit message to socket with buffering support for disconnected sockets
+   * 
+   * If socket is disconnected but stream is active (recovery window),
+   * events are buffered and replayed on reconnection.
+   */
+  private emitToSocket(socket: any, event: string, message: WebSocketMessage): void {
+    const socketId = socket.id
+
+    // Check if socket is disconnected but stream is still active
+    if (this.disconnectedStreams.has(socketId)) {
+      // Buffer the event instead of emitting
+      this.disconnectedStreams.get(socketId)!.bufferedEvents.push(message)
+      this.logger.debug('Buffered event during disconnection', {
+        socketId,
+        eventType: message.type,
+        bufferSize: this.disconnectedStreams.get(socketId)!.bufferedEvents.length
+      })
+    } else {
+      // Normal emit
+      socket.emit(event, message)
+    }
+  }
+
+  /**
+   * Clean up conversation state and persistence
+   */
+  private async cleanupConversation(socketId: string): Promise<void> {
+    const conversation = this.activeConversations.get(socketId)
+    if (conversation && this.config.messagePersistence) {
+      if ('handleDisconnection' in this.config.messagePersistence) {
+        await (this.config.messagePersistence as ConversationPersistenceWithCleanup).handleDisconnection(
+          socketId,
+          [conversation.conversationId]
+        )
+      }
+      this.activeConversations.delete(socketId)
+    }
+  }
+
+  /**
+   * Clean up APM tool spans for a socket
+   */
+  private cleanupToolSpans(socketId: string): void {
+    for (const [spanKey, span] of this.activeToolSpans.entries()) {
+      if (spanKey.startsWith(`${socketId}:`)) {
+        try {
+          span.setOutcome('unknown')
+          span.addLabels({ disconnect_cleanup: true })
+          span.end()
+        } catch {
+          // Silently fail - APM cleanup should not disrupt disconnect handling
+        }
+        this.activeToolSpans.delete(spanKey)
+      }
+    }
   }
 
   /**
@@ -255,7 +475,7 @@ export class WebSocketServer {
   private sendAvailableAgents(socket: any): void {
     const agentList = this.config.agents.list()
 
-    socket.emit('message', {
+    this.emitToSocket(socket, 'message', {
       type: 'agents_available',
       content: '',
       data: {
@@ -549,7 +769,7 @@ export class WebSocketServer {
                 agentId: agentName
               }
 
-              socket.emit('message', {
+              this.emitToSocket(socket, 'message', {
                 type: 'chunk',
                 content: part.text,
                 data: textData
@@ -576,7 +796,7 @@ export class WebSocketServer {
               // Start APM span for tool execution
               this.startToolSpan(socket.id, part.id, part.toolName)
 
-              socket.emit('message', {
+              this.emitToSocket(socket, 'message', {
                 type: 'tool_start',
                 content: `Using ${part.toolName}...`,
                 data: toolStartData
@@ -592,7 +812,7 @@ export class WebSocketServer {
               accumulatedToolInput.set(part.id, currentInput + part.delta)
               
               // Emit input delta event for future use
-              socket.emit('message', {
+              this.emitToSocket(socket, 'message', {
                 type: 'tool_input_delta',
                 content: '',
                 data: {
@@ -627,7 +847,7 @@ export class WebSocketServer {
                 agentId: agentName
               }
 
-              socket.emit('message', {
+              this.emitToSocket(socket, 'message', {
                 type: 'tool_call',
                 content: `${part.toolName} input ready`,
                 data: toolCallData
@@ -664,7 +884,7 @@ export class WebSocketServer {
               // End APM span for successful tool execution
               this.endToolSpan(socket.id, toolId, true)
 
-              socket.emit('message', {
+              this.emitToSocket(socket, 'message', {
                 type: 'tool_result',
                 content: `${part.toolName} completed`,
                 data: toolResultData
@@ -696,7 +916,7 @@ export class WebSocketServer {
               // End APM span for failed tool execution
               this.endToolSpan(socket.id, toolId, false, errorMessage)
 
-              socket.emit('message', {
+              this.emitToSocket(socket, 'message', {
                 type: 'tool_result',
                 content: `${part.toolName} failed: ${errorMessage}`,
                 data: toolErrorData
@@ -736,7 +956,7 @@ export class WebSocketServer {
       } catch (fallbackError: unknown) {
         this.logger.error('Fallback to text-only streaming also failed', fallbackError)
         // Emit error to client as last resort
-        socket.emit('message', {
+        this.emitToSocket(socket, 'message', {
           type: 'error',
           content: `Stream processing failed: ${errorInfo.message}`,
           data: {
@@ -774,7 +994,7 @@ export class WebSocketServer {
           agentId: agentName
         }
 
-        socket.emit('message', {
+        this.emitToSocket(socket, 'message', {
           type: 'chunk',
           content: chunk,
           data: chunkData
@@ -1003,7 +1223,7 @@ export class WebSocketServer {
       const errorMessage = error instanceof Error ? error.message : String(error)
       const errorType = (error as any)?.errorType
 
-      socket.emit('message', {
+      this.emitToSocket(socket, 'message', {
         type: 'error',
         content: errorMessage,
         data: {
@@ -1247,7 +1467,7 @@ export class WebSocketServer {
 
     // Emit final completion event to client AFTER persistence completes
     // Always include commit hash (null if no commit was created)
-    socket.emit('message', {
+    this.emitToSocket(socket, 'message', {
       type: 'complete',
       content: '',
       data: {
@@ -1477,7 +1697,7 @@ export class WebSocketServer {
           stepType: 'reasoning',
           agentId: agentName
         }
-        socket.emit('message', {
+        this.emitToSocket(socket, 'message', {
           type: 'step_start',
           content: '',
           data: stepStartData
@@ -1496,7 +1716,7 @@ export class WebSocketServer {
           agentId: agentName
         }
 
-        socket.emit('message', {
+        this.emitToSocket(socket, 'message', {
           type: 'tool_result',
           content: 'Tool call failed - invalid JSON format',
           data: toolErrorData
@@ -1505,7 +1725,7 @@ export class WebSocketServer {
         await this.captureStreamingEvent(socket.id, 'tool_result', 'Tool call failed - invalid JSON format', toolErrorData)
 
         // Emit step complete to indicate this attempt is done
-        socket.emit('message', {
+        this.emitToSocket(socket, 'message', {
           type: 'step_complete',
           content: '',
           data: {
@@ -1571,7 +1791,7 @@ Please try again with corrected formatting.`
       stepType: 'reasoning',
       agentId: agentName
     }
-    socket.emit('message', {
+    this.emitToSocket(socket, 'message', {
       type: 'step_start',
       content: '',
       data: stepStartData
@@ -1646,7 +1866,7 @@ Please try again with corrected formatting.`
     const duration = `${Date.now() - startTime}ms`
 
     // Emit step complete
-    socket.emit('message', {
+    this.emitToSocket(socket, 'message', {
       type: 'step_complete',
       content: fullContent,
       data: {
@@ -1661,7 +1881,7 @@ Please try again with corrected formatting.`
     // Only emit completion events if this is the final agent (no handoff pending)
     if (shouldComplete) {
       // Emit final completion event
-      socket.emit('message', {
+      this.emitToSocket(socket, 'message', {
         type: 'complete',
         content: fullContent,
         data: {

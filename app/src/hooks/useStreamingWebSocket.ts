@@ -33,6 +33,7 @@ import { captureVisualContext } from '../app/develop/components/visualContextCap
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { logger } from '@/lib/request-context'
 import { setSharedSocket, getSharedSocket } from '@/lib/socketRegistry'
+import { AgentService } from '@/services/AgentService'
 
 /**
  * Get short-lived JWT token for WebSocket authentication (12 hours)
@@ -113,6 +114,7 @@ function deleteConversationIdCookie(): void {
 
 export function useStreamingWebSocket() {
   const socketRef = useRef<Socket | null>(null)
+  const wasRecoveredRef = useRef<boolean>(false)
   const createdHereRef = useRef<boolean>(false) // Track if this instance created the socket
 
   // Track retry state for APP_NOT_FOUND errors (race condition during app registration)
@@ -127,6 +129,10 @@ export function useStreamingWebSocket() {
   const initTimerRef = useRef<NodeJS.Timeout | null>(null)
   // Track if we were streaming when disconnect happened
   const wasStreamingOnDisconnectRef = useRef<boolean>(false)
+  // Track disconnect time to determine if we should show error after 5 minutes
+  const disconnectTimeRef = useRef<number | null>(null)
+  // Timer to switch from warning to error after 5 minutes
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
   const queryClient = useQueryClient()
@@ -168,6 +174,19 @@ export function useStreamingWebSocket() {
         logger.error('websocket.token.error', { message: 'Failed to get WebSocket JWT token', error: e instanceof Error ? e.message : String(e) })
       }
 
+      // Feature flag for manual recovery (disabled by default until fully tested)
+      const enableManualRecovery = process.env.NEXT_PUBLIC_ENABLE_MANUAL_RECOVERY === 'true'
+      
+      // Check if we have a previous socket ID from before page reload (only if feature enabled)
+      const previousSocketId = enableManualRecovery ? sessionStorage.getItem(`socket_id_${appId}`) : null
+      if (previousSocketId) {
+        logger.info('websocket.recovery.attempt', {
+          message: 'Found previous socket ID, will attempt recovery',
+          previousSocketId,
+          appId
+        })
+      }
+      
       const socketOptions: any = {
         transports: ['websocket', 'polling'],
         timeout: 10000,
@@ -176,10 +195,17 @@ export function useStreamingWebSocket() {
         reconnectionAttempts: 20,  // 20 attempts over ~90 seconds
         reconnectionDelay: 2000,   // Start with 2 second delay
         reconnectionDelayMax: 5000, // Max 5 second delay between attempts
-        randomizationFactor: 0.5
+        randomizationFactor: 0.5,
+        // Enable connection state recovery to preserve socket ID across reconnections
+        // This allows the server to replay buffered events after brief disconnections
+        connectionStateRecovery: {},
+        // Pass previous socket ID for manual recovery after page reload (feature flagged)
+        auth: {
+          ...(authToken && { token: authToken }),
+          ...(enableManualRecovery && previousSocketId && { previousSocketId })
+        }
       }
       if (authToken) {
-        socketOptions.auth = { token: authToken }
         socketOptions.extraHeaders = { Authorization: `Bearer ${authToken}` }
       }
       const socket = io(socketUrl, socketOptions)
@@ -189,7 +215,46 @@ export function useStreamingWebSocket() {
         // socket.onAnyOutgoing((event, ...args) => logger.debug('websocket.event.outgoing', { event, argsCount: args.length, timestamp: Date.now() }))
       }
       socket.on('connect', () => {
-        setWebSocketState({ connected: true, status: 'idle' })
+        // Check if this is a recovered connection (socket ID preserved)
+        if (socket.recovered) {
+          logger.info('websocket.connection.recovered', {
+            message: 'Connection recovered with preserved socket ID (automatic)',
+            socketId: socket.id,
+            appId
+          })
+          // Mark that this connection was recovered so message handler knows to initialize stream
+          wasRecoveredRef.current = true
+          // Connection was recovered - buffered events will be replayed by server
+          // Update UI state to show we're reconnected
+          setWebSocketState({ connected: true, status: 'idle' })
+        } else if (previousSocketId && previousSocketId !== socket.id) {
+          // Manual recovery after page reload - new socket ID but we had a previous one
+          logger.info('websocket.connection.manual_recovery', {
+            message: 'New connection after page reload, attempting manual recovery',
+            newSocketId: socket.id,
+            previousSocketId,
+            appId
+          })
+          // Mark as recovered so we initialize stream when messages arrive
+          wasRecoveredRef.current = true
+          setWebSocketState({ connected: true, status: 'idle' })
+          // Update sessionStorage with new socket ID for next potential recovery (if feature enabled)
+          if (enableManualRecovery) {
+            sessionStorage.setItem(`socket_id_${appId}`, socket.id)
+          }
+        } else {
+          logger.info('websocket.connection.new', {
+            message: 'New connection established',
+            socketId: socket.id,
+            appId
+          })
+          wasRecoveredRef.current = false
+          setWebSocketState({ connected: true, status: 'idle' })
+          // Store new socket ID in sessionStorage (if feature enabled)
+          if (enableManualRecovery) {
+            sessionStorage.setItem(`socket_id_${appId}`, socket.id)
+          }
+        }
         resolve(socket)
       })
       socket.on('connect_error', (error) => {
@@ -202,11 +267,22 @@ export function useStreamingWebSocket() {
 
         if (isStreaming) {
           // Connection dropped during active streaming - mark that we were streaming
-          // This is a connection error, not an upstream service error
           wasStreamingOnDisconnectRef.current = true
-          setWebSocketState({ connected: false, status: 'error', error: 'Connection lost during streaming' })
-          setStreamingState('error')
-          setIsLoading(false)
+          disconnectTimeRef.current = Date.now()
+          
+          // Show warning (yellow) initially - we'll retry for 5 minutes
+          setWebSocketState({ connected: false, status: 'connecting', error: 'Connection lost, retrying...' })
+          setStreamingState('retrying')
+          
+          // Set timeout to switch to error after 5 minutes (300000ms)
+          reconnectTimeoutRef.current = setTimeout(() => {
+            const state = useStreamingConversationStore.getState()
+            if (state.streamingState === 'retrying') {
+              setWebSocketState({ connected: false, status: 'error', error: 'Connection lost - retry timeout exceeded' })
+              setStreamingState('error')
+              setIsLoading(false)
+            }
+          }, 300000) // 5 minutes
         } else {
           // Normal disconnect when idle
           wasStreamingOnDisconnectRef.current = false
@@ -217,19 +293,39 @@ export function useStreamingWebSocket() {
       socket.on('reconnect', () => {
         setWebSocketState({ connected: true, status: 'idle' })
 
-        // If we were streaming when disconnect happened, set streaming state to error
-        // because the stream was interrupted and cannot be resumed
-        // This is a connection error, not an upstream service error
+        // Clear the 5-minute timeout if reconnection succeeded
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current)
+          reconnectTimeoutRef.current = null
+        }
+        disconnectTimeRef.current = null
+
+        // If we were streaming when disconnect happened, check if stream was recovered
         if (wasStreamingOnDisconnectRef.current) {
-          setStreamingState('error')
-          setIsLoading(false)
+          const state = useStreamingConversationStore.getState()
+          // If we're still in retrying state, the stream was successfully recovered
+          if (state.streamingState === 'retrying') {
+            setStreamingState('streaming')
+            setIsLoading(true)
+          } else {
+            // Otherwise, mark as error
+            setStreamingState('error')
+            setIsLoading(false)
+          }
           wasStreamingOnDisconnectRef.current = false // Reset after handling
         }
       })
       socket.on('reconnect_error', (error) => setWebSocketState({ connected: false, status: 'connecting', error: error.message }))
       socket.on('reconnect_failed', () => {
         const state = useStreamingConversationStore.getState()
-        const isStreaming = state.streamingState === 'streaming' || state.activeStream !== null
+        const isStreaming = state.streamingState === 'streaming' || state.streamingState === 'retrying' || state.activeStream !== null
+
+        // Clear the timeout since we've given up
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current)
+          reconnectTimeoutRef.current = null
+        }
+        disconnectTimeRef.current = null
 
         setWebSocketState({ connected: false, status: 'error', error: 'Failed to reconnect' })
         if (isStreaming || wasStreamingOnDisconnectRef.current) {
@@ -314,19 +410,140 @@ export function useStreamingWebSocket() {
 
   // Set up Socket.IO event handlers for streaming (defined before useEffect to satisfy dependency ordering)
   const setupEventHandlers = useCallback((socket: Socket) => {
+    // Track if we've initialized stream for replayed events
+    let hasInitializedReplayStream = false
+    
     socket.on('status', (data) => {
       if (data.data?.status === 'thinking') {
         setWebSocketState({ status: 'streaming' })
         setStreamingState('streaming')
       }
     })
-    socket.on('message', (data) => {
+    socket.on('message', async (data) => {
       switch (data.type) {
+        case 'recovery_status':
+          // Server is telling us about recovery state
+          logger.info('websocket.recovery_status', {
+            message: 'Received recovery status from server',
+            hasBufferedEvents: data.data?.hasBufferedEvents,
+            bufferedEventCount: data.data?.bufferedEventCount,
+            conversationId: data.data?.conversationId,
+            streamCompleted: data.data?.streamCompleted
+          })
+
+          if (data.data?.streamCompleted) {
+            // Stream already completed - just load history and stay idle
+            logger.info('websocket.recovery.completed', {
+              message: 'Stream already completed, loading history only'
+            })
+            // TODO: Load conversation history here if needed
+            wasRecoveredRef.current = false
+            setStreamingState('idle')
+            setIsLoading(false)
+          } else if (data.data?.hasBufferedEvents) {
+            // Stream is still active - load history then prepare for replay
+            logger.info('websocket.recovery.active', {
+              message: 'Stream still active, loading history before replay',
+              conversationId: data.data.conversationId
+            })
+            
+            // Load conversation history from API if we have conversationId
+            if (data.data.conversationId && currentAppId) {
+              try {
+                const agentService = AgentService.getInstance()
+                
+                // Load the specific conversation
+                const conversation = await agentService.getConversation(currentAppId, data.data.conversationId)
+                
+                logger.info('websocket.recovery.history_loaded', {
+                  message: 'Loaded conversation history',
+                  messageCount: conversation.messages?.length || 0
+                })
+
+                // Add messages to store if we have them
+                if (conversation.messages && conversation.messages.length > 0) {
+                  // Set messages directly in the store (they're already complete messages from DB)
+                  // Type assertion needed because conversation.messages comes from API
+                  useStreamingConversationStore.setState({ messages: conversation.messages as any[] })
+                  
+                  // Initialize an empty activeStream to receive buffered events
+                  // Don't create a new user message - we're resuming an existing conversation
+                  const streamingMessage = {
+                    id: `recovered_${Date.now()}`,
+                    role: 'assistant' as const,
+                    content: '',
+                    segments: [],
+                    toolCalls: [],
+                    timestamp: new Date(),
+                    isComplete: false
+                  }
+                  
+                  useStreamingConversationStore.setState({
+                    activeStream: streamingMessage,
+                    streamingState: 'streaming',
+                    currentStep: 1,
+                    isLoading: true
+                  })
+                  
+                  logger.info('websocket.recovery.stream_initialized', {
+                    message: 'Initialized activeStream for buffered events',
+                    streamId: streamingMessage.id
+                  })
+                }
+              } catch (error) {
+                logger.error('websocket.recovery.history_failed', {
+                  message: 'Failed to load conversation history',
+                  error: error instanceof Error ? error.message : String(error)
+                })
+              }
+            } else {
+              // No conversation history - still initialize stream for buffered events
+              const streamingMessage = {
+                id: `recovered_${Date.now()}`,
+                role: 'assistant' as const,
+                content: '',
+                segments: [],
+                toolCalls: [],
+                timestamp: new Date(),
+                isComplete: false
+              }
+              
+              useStreamingConversationStore.setState({
+                activeStream: streamingMessage,
+                streamingState: 'streaming',
+                currentStep: 1,
+                isLoading: true
+              })
+            }
+
+            setStreamingState('streaming')
+            hasInitializedReplayStream = true
+          }
+          
+          // Reset recovery flag
+          wasRecoveredRef.current = false
+          break
+
         case 'step_start':
           sendToolImpression('start')
+          // Clear any retrying state and resume streaming
           setStreamingState('streaming')
+          // Clear reconnection timeout if still active
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current)
+            reconnectTimeoutRef.current = null
+          }
           break
         case 'chunk':
+          // Ensure we're in streaming state (in case we recovered and are receiving chunks)
+          const currentState = useStreamingConversationStore.getState()
+          if (currentState.streamingState === 'retrying') {
+            setStreamingState('streaming')
+            if (reconnectTimeoutRef.current) {
+              clearTimeout(reconnectTimeoutRef.current)
+              reconnectTimeoutRef.current = null
+            }
+          }
           appendTextSegment(data.content)
           break
         case 'tool_start':

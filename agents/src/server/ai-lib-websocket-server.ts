@@ -954,6 +954,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         if (authType === AuthType.NONE) {
           // No authentication required (local development)
           socket.handshake.auth = {
+            ...socket.handshake.auth, // Keep previousSocketId!
             siteId: auth.getSiteId(AuthType.NONE)
           };
           next();
@@ -963,6 +964,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         if (authType === AuthType.MOCK) {
           // Mock authentication for testing
           socket.handshake.auth = {
+            ...socket.handshake.auth, // Keep previousSocketId!
             siteId: auth.getSiteId(AuthType.MOCK)
           };
           next();
@@ -984,6 +986,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         // Extract JWT token from handshake (check auth object and headers only)
         let token = null;
+
 
         // First try Socket.IO auth object (this should work for WebSocket transport)
         if (socket.handshake.auth && socket.handshake.auth.token) {
@@ -1056,11 +1059,22 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         });
 
         // Store validated context in socket for reuse
+        // Preserve any existing auth data (like previousSocketId for recovery)
+        const originalAuth = socket.handshake.auth;
         socket.handshake.auth = {
+          ...originalAuth, // Preserve original auth data including previousSocketId
           token,
           decoded: validationResult.claims,
           agentContext
         };
+
+        // Debug: Log final auth object
+        logger.info('websocket.auth.final', {
+          message: 'Final auth object after processing',
+          authKeys: Object.keys(socket.handshake.auth),
+          hasPreviousSocketId: !!(socket.handshake.auth as any).previousSocketId,
+          previousSocketId: (socket.handshake.auth as any).previousSocketId || 'none'
+        });
 
         // Add token refresh handler for this socket
         socket.on('tokenRefresh', async (data) => {

@@ -84,7 +84,7 @@ function UserMessage({ content }: { content: string }) {
 }
 
 // Helper function to render message content based on type and role (matching Message.tsx)
-function renderMessageContent(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean, isLastAssistantMessage?: boolean, startTime?: Date, streamingState?: 'idle' | 'streaming' | 'completing' | 'error') {
+function renderMessageContent(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean, isLastAssistantMessage?: boolean, startTime?: Date, streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error') {
   // Assistant messages - use streaming integrated response for proper content flow
   if (message.role === 'assistant') {
     // Check if we should show thinking indicator (no content yet, stream is active)

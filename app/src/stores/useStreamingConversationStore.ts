@@ -108,7 +108,7 @@ export interface StreamingConversationState {
   activeStream: StreamingMessage | null     // Current streaming message
 
   // Stream state
-  streamingState: 'idle' | 'streaming' | 'completing' | 'error'
+  streamingState: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
   currentStep: number
 
   // App context
@@ -169,7 +169,7 @@ export interface StreamingConversationState {
   // === WEBSOCKET ACTIONS ===
 
   setWebSocketState: (state: Partial<WebSocketState>) => void
-  setStreamingState: (state: 'idle' | 'streaming' | 'completing' | 'error') => void
+  setStreamingState: (state: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error') => void
 
   // === UTILITY ACTIONS ===
 
