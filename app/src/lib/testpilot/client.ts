@@ -103,6 +103,15 @@ interface TestPilotTaskPollResponse {
 }
 
 /**
+ * TestPilot runTest result interface
+ */
+export interface TestPilotRunResult {
+  results: TestPilotResponse;
+  timedOut: boolean;
+  taskId: string;
+}
+
+/**
  * TestPilot AI API Client
  */
 export class Client {
@@ -112,14 +121,14 @@ export class Client {
    *
    * @param testType - Type of test to run (Visual, Security, accessibility)
    * @param url - URL to test
-   * @returns Promise resolving to test results
+   * @returns Promise resolving to test results with timeout and task info
    *
    * @throws {Error} If API request fails or authentication is invalid
    */
   async runTest(
     testType: TestType,
     url: string
-  ): Promise<TestPilotResponse> {
+  ): Promise<TestPilotRunResult> {
     const startTime = Date.now();
 
     logger.info('testpilot.run-test.start', {
@@ -177,20 +186,40 @@ export class Client {
       });
 
       // Step 2: Poll for results
-      const result = await this.pollTaskResult(token, taskResponse.taskId, testType);
+      const pollResult = await this.pollTaskResult(token, taskResponse.taskId);
 
       const elapsed = Date.now() - startTime;
+
+      if (pollResult.timedOut) {
+        logger.warn('testpilot.run-test.timeout', {
+          testType,
+          url,
+          taskId: taskResponse.taskId,
+          elapsed,
+        });
+
+        return {
+          results: {} as TestPilotResponse, // Empty response for timeout
+          timedOut: true,
+          taskId: taskResponse.taskId,
+        };
+      }
 
       logger.info('testpilot.run-test.success', {
         testType,
         url,
-        totalTests: result.totalTests,
-        testsPassed: result.testsPassed,
-        testsFailed: result.testsFailed,
+        taskId: taskResponse.taskId,
+        totalTests: pollResult.result?.totalTests,
+        testsPassed: pollResult.result?.testsPassed,
+        testsFailed: pollResult.result?.testsFailed,
         elapsed,
       });
 
-      return result;
+      return {
+        results: pollResult.result!,
+        timedOut: false,
+        taskId: taskResponse.taskId,
+      };
     } catch (error) {
       const elapsed = Date.now() - startTime;
 
@@ -214,22 +243,20 @@ export class Client {
    * @param token - Authorization token
    * @param taskId - Task ID to poll
    * @param testType - Type of test (for logging)
-   * @returns Promise resolving to test results
+   * @returns Promise resolving to test results with timeout status
    *
-   * @throws {Error} If polling fails or times out
+   * @throws {Error} If polling fails due to network or API errors
    */
-  private async pollTaskResult(
+  async pollTaskResult(
     token: string,
-    taskId: string,
-    testType: TestType
-  ): Promise<TestPilotResponse> {
+    taskId: string
+  ): Promise<{ result: TestPilotResponse | null; timedOut: boolean }> {
     const config = getTestPilotConfig();
     const { maxAttempts, intervalMs } = config.polling;
     const baseUrl = config.apiEndpoint.replace('/ai-run', '');
     const taskUrl = `${baseUrl}/${taskId}`;
 
     logger.info('testpilot.poll.start', {
-      testType,
       taskId,
       maxAttempts,
       intervalMs,
@@ -239,7 +266,6 @@ export class Client {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         logger.debug('testpilot.poll.attempt', {
-          testType,
           taskId,
           attempt,
           maxAttempts,
@@ -255,7 +281,6 @@ export class Client {
 
         if (!response.ok) {
           logger.warn('testpilot.poll.request-failed', {
-            testType,
             taskId,
             attempt,
             status: response.status,
@@ -274,7 +299,6 @@ export class Client {
         const result: TestPilotTaskPollResponse = await response.json();
 
         logger.debug('testpilot.poll.response', {
-          testType,
           taskId,
           attempt,
           status: result.status,
@@ -283,20 +307,18 @@ export class Client {
         // Check if task is completed
         if (result.status === 'completed') {
           logger.info('testpilot.poll.completed', {
-            testType,
             taskId,
             attempt,
             totalAttempts: attempt,
           });
 
           // Return the actual result data, not the wrapper
-          return result.result ?? result;
+          return { result: result.result ?? result, timedOut: false };
         }
 
         // If still pending and we have attempts left, wait and retry
         if (result.status === 'pending' && attempt < maxAttempts) {
           logger.debug('testpilot.poll.still-pending', {
-            testType,
             taskId,
             attempt,
             remainingAttempts: maxAttempts - attempt,
@@ -309,7 +331,6 @@ export class Client {
         // If failed status
         if (result.status === 'failed') {
           logger.error('testpilot.poll.failed', {
-            testType,
             taskId,
             attempt,
           });
@@ -317,16 +338,15 @@ export class Client {
           throw new Error(`TestPilot test failed with status: ${result.status}`);
         }
 
-        // If we've exhausted attempts and still pending, throw timeout
+        // If we've exhausted attempts and still pending, return timeout
         if (attempt >= maxAttempts) {
           logger.warn('testpilot.poll.timeout', {
-            testType,
             taskId,
             totalAttempts: maxAttempts,
             lastStatus: result.status,
           });
 
-          throw new Error(`TestPilot test timed out after ${maxAttempts} attempts (${maxAttempts * intervalMs / 1000}s)`);
+          return { result: null, timedOut: true };
         }
       } catch (error) {
         // If it's the last attempt, throw the error
@@ -336,7 +356,6 @@ export class Client {
 
         // Otherwise, log and retry
         logger.warn('testpilot.poll.attempt-error', {
-          testType,
           taskId,
           attempt,
           error: error instanceof Error ? error.message : String(error),
@@ -347,7 +366,11 @@ export class Client {
     }
 
     // This shouldn't be reached, but just in case
-    throw new Error(`TestPilot polling exhausted all ${maxAttempts} attempts`);
+    logger.warn('testpilot.poll.exhausted', {
+      taskId,
+      maxAttempts,
+    });
+    return { result: null, timedOut: true };
   }
 
   /**
@@ -366,9 +389,9 @@ export class Client {
    * Run visual test
    *
    * @param url - URL to test
-   * @returns Promise resolving to visual test results
+   * @returns Promise resolving to visual test results with timeout and task info
    */
-  async runVisualTest(url: string): Promise<TestPilotResponse> {
+  async runVisualTest(url: string): Promise<TestPilotRunResult> {
     return this.runTest('Visual', url);
   }
 
@@ -376,9 +399,9 @@ export class Client {
    * Run accessibility test
    *
    * @param url - URL to test
-   * @returns Promise resolving to accessibility test results
+   * @returns Promise resolving to accessibility test results with timeout and task info
    */
-  async runAccessibilityTest(url: string): Promise<TestPilotResponse> {
+  async runAccessibilityTest(url: string): Promise<TestPilotRunResult> {
     return this.runTest('accessibility', url);
   }
 
@@ -386,9 +409,9 @@ export class Client {
    * Run security test
    *
    * @param url - URL to test
-   * @returns Promise resolving to security test results
+   * @returns Promise resolving to security test results with timeout and task info
    */
-  async runSecurityTest(url: string): Promise<TestPilotResponse> {
+  async runSecurityTest(url: string): Promise<TestPilotRunResult> {
     return this.runTest('Security', url);
   }
 
@@ -396,14 +419,14 @@ export class Client {
    * Run all tests in parallel
    *
    * @param url - URL to test
-   * @returns Promise resolving to all test results
+   * @returns Promise resolving to all test results with timeout and task info
    */
   async runAllTests(
     url: string
   ): Promise<{
-    visual: TestPilotResponse;
-    accessibility: TestPilotResponse;
-    security: TestPilotResponse;
+    visual: TestPilotRunResult;
+    accessibility: TestPilotRunResult;
+    security: TestPilotRunResult;
   }> {
     logger.info('testpilot.run-all-tests.start', { url });
 

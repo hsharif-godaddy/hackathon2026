@@ -9,5 +9,5 @@
  */
 
 export { getTestPilotConfig } from './config';
-export { testPilotClient, Client, type TestType, type TestPilotResponse, type TestPilotTaskResponse } from './client';
+export { testPilotClient, Client, type TestType, type TestPilotResponse, type TestPilotTaskResponse, type TestPilotRunResult } from './client';
 

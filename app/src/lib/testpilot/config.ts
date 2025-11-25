@@ -51,7 +51,7 @@ export function getTestPilotConfig(): TestPilotConfig {
     ssoRealm: 'cert',
     apiTimeout: 60000,
     polling: {
-      maxAttempts: 30,
+      maxAttempts: 10,
       intervalMs: 5000,
     },
   };

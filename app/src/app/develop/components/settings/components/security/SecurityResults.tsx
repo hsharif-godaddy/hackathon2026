@@ -5,11 +5,10 @@ import text from '@ux/text';
 import Tag from '@ux/tag';
 import Box from "@ux/box";
 import Card from "@ux/card";
-import XThickIcon from '@ux/icon/x-thick';
-import OkIcon from '@ux/icon/ok';
 import ShieldIcon from '@ux/icon/shield-check-filled';
 import { TodoListService } from '@/services/TodoListService';
 import { useAppIdFromParams } from '../../../utils';
+import { type TestPilotRunResult } from '@/lib/testpilot';
 
 /**
  * Security vulnerability interface based on TestPilot response
@@ -156,10 +155,16 @@ function SecurityVulnerabilityCard({
  *
  * @param results - The TestPilot API response containing security test results
  */
-export default function SecurityResults({ results }: { results: { security?: SecurityTestResult } }) {
+export default function SecurityResults({
+  results,
+}: {
+  results: { security?: TestPilotRunResult };
+}) {
   const router = useRouter();
   const appId = useAppIdFromParams();
-  const [checkedVulnerabilities, setCheckedVulnerabilities] = useState<Set<string>>(new Set());
+  const [checkedVulnerabilities, setCheckedVulnerabilities] = useState<
+    Set<string>
+  >(new Set());
   const [isCreatingTodoList, setIsCreatingTodoList] = useState(false);
   const todoListService = new TodoListService();
 
@@ -179,28 +184,48 @@ export default function SecurityResults({ results }: { results: { security?: Sec
     );
   }
 
-  const securityData: SecurityTestResult = results.security;
-  const securityReport = securityData.aiInsights?.securityReport;
-  const vulnerabilities = (securityReport?.vulnerabilities || []).slice().sort((a, b) => {
-    const getSeverityOrder = (severity: string) => {
-      switch (severity.toLowerCase()) {
-        case "critical":
-          return 1;
-        case "high":
-          return 2;
-        case "medium":
-          return 3;
-        case "low":
-          return 4;
-        default:
-          return 5; // Unknown severity goes last
-      }
-    };
+  const securityRunResult = results.security;
 
+  // Handle timeout case
+  if (securityRunResult.timedOut) {
     return (
-      getSeverityOrder(a.severity) - getSeverityOrder(b.severity)
+      <div>
+        <text.p className="font-medium">
+          <text.span emphasis="critical">Timeout:</text.span> Security Analysis
+          Timed Out
+        </text.p>
+        <text.p>
+          The security analysis took longer than expected to complete.
+        </text.p>
+        <text.p className="text-sm mt-2">
+          You can try running the analysis again.
+        </text.p>
+      </div>
     );
-  })
+  }
+
+  const securityData: SecurityTestResult = securityRunResult.results;
+  const securityReport = securityData.aiInsights?.securityReport;
+  const vulnerabilities = (securityReport?.vulnerabilities || [])
+    .slice()
+    .sort((a, b) => {
+      const getSeverityOrder = (severity: string) => {
+        switch (severity.toLowerCase()) {
+          case "critical":
+            return 1;
+          case "high":
+            return 2;
+          case "medium":
+            return 3;
+          case "low":
+            return 4;
+          default:
+            return 5; // Unknown severity goes last
+        }
+      };
+
+      return getSeverityOrder(a.severity) - getSeverityOrder(b.severity);
+    });
 
   /**
    * Toggle the checked state of a vulnerability
@@ -208,7 +233,7 @@ export default function SecurityResults({ results }: { results: { security?: Sec
    * @param vulnerabilityId - The unique ID of the vulnerability to toggle
    */
   const toggleVulnerability = (vulnerabilityId: string) => {
-    setCheckedVulnerabilities(prev => {
+    setCheckedVulnerabilities((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(vulnerabilityId)) {
         newSet.delete(vulnerabilityId);
@@ -224,7 +249,9 @@ export default function SecurityResults({ results }: { results: { security?: Sec
    */
   const getAllVulnerabilityIds = (): string[] => {
     if (!securityReport?.vulnerabilities) return [];
-    return securityReport.vulnerabilities.map((_, index) => `vulnerability-${index}`);
+    return securityReport.vulnerabilities.map(
+      (_, index) => `vulnerability-${index}`,
+    );
   };
 
   /**
@@ -232,7 +259,9 @@ export default function SecurityResults({ results }: { results: { security?: Sec
    */
   const areAllSelected = (): boolean => {
     const allIds = getAllVulnerabilityIds();
-    return allIds.length > 0 && allIds.every(id => checkedVulnerabilities.has(id));
+    return (
+      allIds.length > 0 && allIds.every((id) => checkedVulnerabilities.has(id))
+    );
   };
 
   /**
@@ -253,7 +282,11 @@ export default function SecurityResults({ results }: { results: { security?: Sec
    * Handle creating a TO-DO list from selected vulnerabilities
    */
   const handleQuickFix = async () => {
-    if (!appId || checkedVulnerabilities.size === 0 || !securityReport?.vulnerabilities) {
+    if (
+      !appId ||
+      checkedVulnerabilities.size === 0 ||
+      !securityReport?.vulnerabilities
+    ) {
       return;
     }
 
@@ -267,17 +300,17 @@ export default function SecurityResults({ results }: { results: { security?: Sec
       });
 
       // Create items from selected vulnerabilities
-      const todoItems = selectedVulnerabilities.map(vulnerability => ({
+      const todoItems = selectedVulnerabilities.map((vulnerability) => ({
         title: `Fix ${vulnerability.severity} severity: ${vulnerability.title}`,
-        description: `${vulnerability.description}${vulnerability.remediation ? `\nSuggested Remediation:\n${vulnerability.remediation.map(item => `- ${item}`).join('\n')}` : ''}`
+        description: `${vulnerability.description}${vulnerability.remediation ? `\nSuggested Remediation:\n${vulnerability.remediation.map((item) => `- ${item}`).join("\n")}` : ""}`,
       }));
 
       // Create the list
       const newTodoList = await todoListService.createList(
         appId,
-        'Selected Security Vulnerabilities',
+        "Selected Security Vulnerabilities",
         `Security vulnerabilities found during analysis on ${new Date().toLocaleDateString()}`,
-        todoItems
+        todoItems,
       );
 
       // Clear selections after successful creation
@@ -286,7 +319,7 @@ export default function SecurityResults({ results }: { results: { security?: Sec
       // Route to develop page with todoListId query parameter
       router.push(`/develop/${appId}?todoListId=${newTodoList.id}`);
     } catch (error) {
-      console.error('Failed to create TODO list:', error);
+      console.error("Failed to create TODO list:", error);
       // TODO: Show error message to user
     } finally {
       setIsCreatingTodoList(false);
@@ -294,12 +327,14 @@ export default function SecurityResults({ results }: { results: { security?: Sec
   };
 
   // Get only failed test details
-  const failedTests = securityData.details?.filter(detail =>
-    detail.status?.toLowerCase() !== "passed"
-  ) || [];
+  const failedTests =
+    securityData.details?.filter(
+      (detail) => detail.status?.toLowerCase() !== "passed",
+    ) || [];
 
   // Check if there are any issues (vulnerabilities or failed tests)
-  const hasIssues = (vulnerabilities && vulnerabilities.length > 0) || failedTests.length > 0;
+  const hasIssues =
+    (vulnerabilities && vulnerabilities.length > 0) || failedTests.length > 0;
 
   return (
     <Box gap="lg" className="p-3">
@@ -314,20 +349,18 @@ export default function SecurityResults({ results }: { results: { security?: Sec
               Vulnerabilities ({vulnerabilities.length})
             </text.h3>
             <div className="flex gap-2">
-              <Button
-                size="sm"
-                design="secondary"
-                onClick={handleSelectAll}
-              >
-                {areAllSelected() ? 'Deselect All' : 'Select All'}
+              <Button size="sm" design="secondary" onClick={handleSelectAll}>
+                {areAllSelected() ? "Deselect All" : "Select All"}
               </Button>
               <Button
                 size="sm"
                 design="primary"
                 onClick={handleQuickFix}
-                disabled={checkedVulnerabilities.size === 0 || isCreatingTodoList}
+                disabled={
+                  checkedVulnerabilities.size === 0 || isCreatingTodoList
+                }
               >
-                {isCreatingTodoList ? 'Creating...' : 'Quick Fix'}
+                {isCreatingTodoList ? "Creating..." : "Quick Fix"}
               </Button>
             </div>
           </div>

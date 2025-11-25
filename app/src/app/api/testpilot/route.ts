@@ -44,17 +44,32 @@ export async function POST(request: NextRequest) {
         if (testType === 'visual') {
           const result = await testPilotClient.runVisualTest(url);
           const elapsed = Date.now() - testStartTime;
-          logger.info('testpilot.api.test-complete', { testType, elapsed });
+          logger.info('testpilot.api.test-complete', { 
+            testType, 
+            elapsed, 
+            timedOut: result.timedOut, 
+            taskId: result.taskId 
+          });
           return { key: 'visual', result };
         } else if (testType === 'accessibility') {
           const result = await testPilotClient.runAccessibilityTest(url);
           const elapsed = Date.now() - testStartTime;
-          logger.info('testpilot.api.test-complete', { testType, elapsed });
+          logger.info('testpilot.api.test-complete', { 
+            testType, 
+            elapsed, 
+            timedOut: result.timedOut, 
+            taskId: result.taskId 
+          });
           return { key: 'accessibility', result };
         } else if (testType === 'security') {
           const result = await testPilotClient.runSecurityTest(url);
           const elapsed = Date.now() - testStartTime;
-          logger.info('testpilot.api.test-complete', { testType, elapsed });
+          logger.info('testpilot.api.test-complete', { 
+            testType, 
+            elapsed, 
+            timedOut: result.timedOut, 
+            taskId: result.taskId 
+          });
           return { key: 'security', result };
         } else if (testType === 'code') {
           // Call agents service for code security scan
