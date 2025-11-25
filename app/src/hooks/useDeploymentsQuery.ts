@@ -256,32 +256,6 @@ export function useDeploymentsQuery({
         void (async function handleGitHistoryRefetch() {
           try {
             await queryClient.refetchQueries({ queryKey: ['git-history', appId] });
-
-            const commits = queryClient.getQueryData<GitCommit[]>(['git-history', appId]) || [];
-            const publishedCommit = commits.find((commit) => commit.hash === publishedGitHash);
-
-            if (publishedCommit) {
-              logger.info('deployments-query.auto-select-commit', {
-                appId,
-                commitHash: publishedCommit.hash.substring(0, 7),
-                message: 'Auto-selecting published commit in history view',
-              });
-
-              const { selectCommit } = useGitStore.getState();
-              selectCommit(appId, publishedCommit.hash)
-                .catch(function handleSelectError(error) {
-                  logger.error('deployments-query.auto-select-commit.error', {
-                    appId,
-                    error: error instanceof Error ? error.message : String(error),
-                  });
-                });
-            } else {
-              logger.warn('deployments-query.auto-select-commit.not-found', {
-                appId,
-                publishedGitHash: publishedGitHash.substring(0, 7),
-                message: 'Published commit not found in git history',
-              });
-            }
           } catch (error) {
             logger.error('deployments-query.git-history-refetch.error', {
               appId,
