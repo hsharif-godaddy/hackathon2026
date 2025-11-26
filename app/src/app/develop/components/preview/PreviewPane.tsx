@@ -280,41 +280,12 @@ export default function PreviewPane({
     setIframeError(true)
   }
 
-  // Priority 1: Show "Building your app" overlay during initial app creation
-  // This takes precedence over server status to avoid flashing between states
   if (showBuildingOverlay) {
-    return <Tips buildingMessage={buildingMessage} />
+    return <Tips buildingMessage="Building your App" />
   }
 
-  // Priority 2: Show "Starting Server" while server is not ready
   if (!serverState || (isPollingServer(appId) && !serverState.isReady)) {
-    return (
-      <Box
-        className="h-full"
-        blockAlignChildren="center"
-        inlineAlignChildren="center"
-        gap="md"
-      >
-        <Loader
-          title="Starting Server"
-          description={
-            serverState?.status === "pending"
-              ? "Waiting for server to start..."
-              : serverState?.status === "running"
-                ? serverState.url && !serverState.healthCheckPassed
-                  ? "Server is starting, waiting for it to accept connections..."
-                  : "Server is running, verifying readiness..."
-                : "Checking server status..."
-          }
-        />
-        <Box inlineAlignChildren="center" gap="sm">
-          <text.p size={-1} emphasis="passive">This usually takes 30-60 seconds for the first load.</text.p>
-          {serverState?.url && !serverState.healthCheckPassed && (
-            <text.p size={-1} emphasis="passive">Preview URL: {serverState.url}</text.p>
-          )}
-        </Box>
-      </Box>
-    );
+    return <Tips buildingMessage="Loading your App" />
   }
 
   // Error state when server failed

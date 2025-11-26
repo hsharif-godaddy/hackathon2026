@@ -91,6 +91,7 @@
     "@ux/button": "^2500.3.2",
     "@ux/card": "^2500.3.2",
     "@ux/checkbox": "^2500.4.0",
+    "@ux/coachmark": "^2500.5.5",
     "@ux/collapsible": "^2500.3.2",
     "@ux/disrupt": "^2500.3.3",
     "@ux/flyout": "^2500.3.2",

@@ -242,6 +242,7 @@ export default function AppPublish({ location }: { location?: string }) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          id="tour-publish-button"
           className='!bg-ai !font-normal !border-none'
           design='primary'
           data-partial='gradientAiro'

@@ -38,6 +38,9 @@ interface DevelopPageStore {
   // Settings section UI
   activeSettingsSection: SettingsSection
 
+  // Tour UI
+  showIntroTour: boolean
+
   // Publish status UI (per-app state keyed by appId)
   publishStates: Record<string, {
     isPublishing: boolean
@@ -76,6 +79,10 @@ interface DevelopPageStore {
 
   // Settings section actions
   setActiveSettingsSection: (section: SettingsSection) => void
+
+  // Tour actions
+  setShowIntroTour: (show: boolean) => void
+  checkAndTriggerIntroTour: (appId: string) => void
 
   // Publish status actions (per-app)
   setIsPublishing: (appId: string, isPublishing: boolean) => void
@@ -139,6 +146,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Settings section state
     activeSettingsSection: SettingsSection.DOMAIN,
+
+    // Tour state
+    showIntroTour: false,
 
     // Publish status state (per-app, keyed by appId)
     publishStates: {},
@@ -214,6 +224,45 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Settings section actions
     setActiveSettingsSection: (section) => set((state) => { state.activeSettingsSection = section }),
+
+    // Tour actions
+    setShowIntroTour: (show: boolean) => set((state) => {
+      state.showIntroTour = show
+    }),
+
+    /**
+     * Check if intro tour should be shown for this app and trigger it if appropriate
+     * Tour is shown only once for the first site creation
+     *
+     * @param appId - The app ID to check
+     */
+    checkAndTriggerIntroTour: (appId: string) => {
+      // Check global localStorage to see if user has EVER seen the tour (safety check)
+      const globalTourKey = 'airo-intro-tour-shown'
+      const hasEverSeenTour = typeof window !== 'undefined' && localStorage.getItem(globalTourKey) === 'true'
+
+      if (hasEverSeenTour) {
+        return
+      }
+
+      // Check if user has multiple sites - only show tour for first site
+      const totalSites = useSitesStore.getState().getTotalSites()
+      if (totalSites > 1) {
+        return
+      }
+
+      // Mark globally that tour has been shown
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(globalTourKey, 'true')
+      }
+
+      // Show the tour with a small delay to ensure UI is fully rendered
+      setTimeout(() => {
+        set((state) => {
+          state.showIntroTour = true
+        })
+      }, 1000)
+    },
 
     // Publish status actions (per-app)
     getPublishState: (appId: string) => {

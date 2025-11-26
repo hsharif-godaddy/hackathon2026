@@ -35,6 +35,7 @@ import { agentFetch } from '@/lib/agent-fetch'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import ChatPaneLoader from '@/app/develop/components/chat/ChatPaneLoader'
 import { useInitialization } from '@/app/develop/hooks/useInitialization'
+import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
 
 // Delay to allow conversation history messages to load before checking if preview should be visible
 // This ensures we have accurate message count when determining initial preview visibility
@@ -75,6 +76,7 @@ function DevelopPageContent() {
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
   const site = useDevelopPageStore((state) => state.site)
   const openFeedbackId = useDevelopPageStore((state) => state.openFeedbackId)
+  const showIntroTour = useDevelopPageStore((state) => state.showIntroTour)
 
   const setChatPaneWidth = useDevelopPageStore((state) => state.setChatPaneWidth)
   const setIsSelectMode = useDevelopPageStore((state) => state.setIsSelectMode)
@@ -83,6 +85,8 @@ function DevelopPageContent() {
   const setActiveSettingsSection = useDevelopPageStore((state) => state.setActiveSettingsSection)
   const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab)
   const setIsPreviewVisible = useDevelopPageStore((state) => state.setIsPreviewVisible)
+  const setShowIntroTour = useDevelopPageStore((state) => state.setShowIntroTour)
+  const checkAndTriggerIntroTour = useDevelopPageStore((state) => state.checkAndTriggerIntroTour)
 
   useGitHistoryQuery({
     appId: appId || '',
@@ -554,6 +558,16 @@ function DevelopPageContent() {
     setChatPaneWidth(newWidth)
   }, [setChatPaneWidth])
 
+  // Check and trigger intro tour after first message completes
+  useEffect(() => {
+    if (!appId || !init.isReady) return
+
+    // Trigger tour when we have at least one message and no active stream
+    if (messages.length > 0 && !activeStream) {
+      checkAndTriggerIntroTour(appId)
+    }
+  }, [appId, init.isReady, messages.length, activeStream, checkAndTriggerIntroTour])
+
   return (
     <div className="h-screen flex flex-col">
       <Header location="develop" />
@@ -628,6 +642,11 @@ function DevelopPageContent() {
           onSubmitSuccess={closeFeedbackModal}
         />
       )}
+
+      <AppIntroTour
+        show={showIntroTour}
+        onClose={() => setShowIntroTour(false)}
+      />
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Box from '@ux/box'
 import Alert from '@ux/alert'
+import text from '@ux/text'
 import { Loader } from '@airo-ux/loader'
 import { tips, shuffleArray } from './tips-content'
 
@@ -49,9 +50,9 @@ export default function Tips({ buildingMessage = 'The AI agent is building your 
   }, [shuffledTips.length])
 
   return (
-    <Box className="h-full" blockAlignChildren="center" inlineAlignChildren="center" gap="xl">
+    <Box className="h-full mt-12" blockAlignChildren="center" inlineAlignChildren="center" gap="xl">
       {/* Loader spinner with building message */}
-      <Loader title="Building Your App" description={buildingMessage} />
+      <Loader title={buildingMessage} />
 
       {/* Tips section below loader */}
       <Box className="w-full max-w-2xl px-6" gap="md">
@@ -68,8 +69,9 @@ export default function Tips({ buildingMessage = 'The AI agent is building your 
                 exit={{ opacity: 0, y: 5, scale: 0.95 }}
                 transition={{ duration: 0.4 }}
               >
-                <Alert title={currentTip.title} emphasis="info">
-                  {currentTip.description}
+                <Alert emphasis="info">
+                  <text.p as="heading">{currentTip.title}</text.p>
+                  <text.p>{currentTip.description}</text.p>
                 </Alert>
               </motion.div>
             </AnimatePresence>

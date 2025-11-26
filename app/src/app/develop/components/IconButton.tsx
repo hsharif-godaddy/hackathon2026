@@ -12,6 +12,7 @@ interface IconButtonProps {
   className?: string
   label?: string
   tooltip?: string | React.ReactNode
+  id?: string
 }
 
 export default function IconButton({
@@ -23,7 +24,8 @@ export default function IconButton({
   dataEid,
   className,
   label,
-  tooltip = null
+  tooltip = null,
+  id
 }: IconButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false)
   const anchorRef = useRef(null)
@@ -45,6 +47,7 @@ export default function IconButton({
 
   return (
     <button
+      id={id}
       className={clsx(
         "flex gap-0 items-center relative border rounded-xl px-2 py-0.5 leading-none transition-opacity duration-700", {
           "mr-2.5 after:absolute after:-right-2 after:top-0 after:bottom-0 after:block after:content after:w-px after:bg-intents-ux-box-borderColor": separator,

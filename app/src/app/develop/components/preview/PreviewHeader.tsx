@@ -92,6 +92,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         data-eid={ generateClickEID('develop.preview.select_mode') }
         active={isSelectMode}
         tooltip="Select Mode"
+        id="tour-select-mode-button"
       />
 
       { (previewViewMode === PreviewViewMode.DESKTOP || viewMode === ViewMode.CODE) && !isMobile && <DomainButton /> }

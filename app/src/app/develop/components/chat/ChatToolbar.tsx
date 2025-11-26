@@ -140,6 +140,7 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
         isSettingsEnabled && <SettingsMenu />
       ) : (
         <IconButton
+          id="tour-settings-button"
           icon={<SettingsIcon />}
           dataEid={generateClickEID('develop.chat_toolbar.settings')}
           onClick={isSettingsEnabled ? () => handleTabClick(ChatTab.SETTINGS) : undefined}
