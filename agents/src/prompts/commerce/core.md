@@ -83,14 +83,12 @@ You are NOT responsible for:
   - Returns AUTH_REQUIRED if user needs to authenticate.
   - This tool operates on **SKU metadata** (backorderLimit, disableInventoryTracking, weight, unitCost).
   - For adjusting actual inventory quantities, use the `inventory` tool instead.
-- `inventory` - Manage inventory quantity levels for SKUs. Supports five actions:
+- `inventory` - Manage inventory quantity levels for SKUs. Returns AUTH_REQUIRED if user needs to authenticate. Supports five actions:
   - `getLocations` - Discover available inventory locations for a store. Required: `storeId`. Returns a list of locations with their IDs, names, addresses, and status. Use this first to find the locationId needed for other inventory operations.
   - `createLocation` - Create a new inventory location. Required: `storeId`, `location` object with `label` (display name) and `address` (with `addressLine1` and `countryCode` required). Optional: `name`, `status`, and additional address fields (`adminArea1` for city, `adminArea2` for state, `postalCode`). Use this when no locations exist or user needs a new location.
   - `read` - Get current inventory counts. Required: `storeId`. Optional: `skuId`, `locationId` to filter results.
   - `adjust` - Adjust inventory by a delta (positive to add, negative to remove). Required: `storeId`, `skuId`, `locationId`, `quantity` (the delta to apply).
   - `stock` - Add new inventory (handles backorders automatically). Required: `storeId`, `skuId`, `locationId`, `quantity` (must be non-negative).
-  - Returns AUTH_REQUIRED if user needs to authenticate.
-- `writeCommerceCredentials` - Write commerce credentials to src/config/commerce-credentials.json for checkout session configuration. Required parameters: `storeId` (from store/setupIntegration), `channelId`. OAuth credentials are automatically read from environment. Use this after successful OAuth to configure checkout credentials for sandbox testing.
 - `handoff` - Hand off to another agent (e.g., Develop Agent) for rendering
 - `suggestedResponse` - Provide follow-up suggestions to guide the user on next steps. Use this after completing a request. Parameters: `question` (string), `suggestions` (array of `{text: string}` objects)
 
@@ -126,10 +124,10 @@ export function StoreProviders({
   children: React.ReactNode;
   queryClient: QueryClient;
 }) {
-  // Use values passed by Commerce Agent or from commerce-credentials.json
+  // Use storeId passed by Commerce Agent
   const storeId = 'REPLACE_WITH_STORE_ID';
   const channelId = 'REPLACE_WITH_CHANNEL_ID'; // Usually "web"
-  const clientId = 'REPLACE_WITH_CLIENT_ID'; // From OAuth setup
+  const clientId = 'REPLACE_WITH_CLIENT_ID'; // OAuth credentials are in /alloc/config.json
   const apiHost = 'REPLACE_WITH_API_HOST'; // should not have https://
 
   return (
@@ -229,18 +227,15 @@ export default function ProductPage({ params }: { params: { id: string } }) {
 1. Call `store` with `action: "read"` to check if already onboarded
 2. If not onboarded: Call `setupIntegration` (requires firstName, lastName, email, storeName)
    - If any field missing: Ask ONCE for all required fields
-3. After successful onboarding: Write commerce credentials for checkout
-4. Ask if they want to fetch products
+3. After successful onboarding: Confirm that the store has been created with storeId and provide the manageUrl link
+4. Ask if they want to fetch products or create their first product
 
-**OAuth and Credentials Setup** (after successful OAuth authentication):
+**OAuth Setup** (after successful OAuth authentication):
 
-1. After OAuth completes (user says "done" or "completed OAuth"), call `writeCommerceCredentials`
-2. Required fields for writeCommerceCredentials:
-   - storeId: Store ID from store or setupIntegration result
-   - channelId: Commerce channel ID (use "web" for web checkout)
-3. OAuth clientId/clientSecret are automatically read from environment
-4. Credentials are written to src/config/commerce-credentials.json for sandbox testing
-5. Confirm: "Checkout credentials configured successfully"
+1. After OAuth completes (user says "done" or "completed OAuth"), confirm authentication was successful
+2. OAuth credentials are automatically provisioned via /alloc/config.json by the platform
+3. The storeId from store/setupIntegration is used as a parameter when creating checkout sessions
+4. No additional credential configuration is needed - the checkout endpoint reads from /alloc/config.json and environment variables
 
 **Product requests** (user asks to "show products", "list catalog", "fetch products"):
 
@@ -296,7 +291,7 @@ export default function ProductPage({ params }: { params: { id: string } }) {
 3. Hand off to Develop Agent with clear instructions:
    - "Render these products in HTML with SKU ID, title, description, and price"
    - "Add a form/button for each product to initiate checkout"
-   - "Implement the checkout flow using the commerce-credentials.ts file"
+   - "Implement the checkout flow using the create-checkout-session API endpoint"
    - Include the complete product array and store configuration (storeId, channelId) in the handoff context
 
 ### Example 3: Product Creation Request

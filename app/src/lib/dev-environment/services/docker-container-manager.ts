@@ -277,10 +277,18 @@ export class DockerContainerManager {
 			logger.info(`🗄️ Provisioning database for app ${appId} in shared MySQL`);
 			const dbConfig = await this.sharedMySQLService.provisionDatabase(appId);
 
-			// Write config.json with database credentials to alloc directory
+			// Read OAuth credentials from environment if available
+			const oauthConfig = process.env.GODADDY_OAUTH_CLIENT_ID && process.env.GODADDY_OAUTH_CLIENT_SECRET
+				? {
+						clientId: process.env.GODADDY_OAUTH_CLIENT_ID,
+						clientSecret: process.env.GODADDY_OAUTH_CLIENT_SECRET,
+				  }
+				: undefined;
+
+			// Write config.json with database and OAuth credentials to alloc directory
 			const allocPath = getAllocPath(appId);
 			const configPath = path.join(allocPath, 'config.json');
-			ConfigJsonManager.writeConfigFile(configPath, dbConfig);
+			ConfigJsonManager.writeConfigFile(configPath, dbConfig, oauthConfig);
 
 			logger.info(`✅ Database provisioned for app ${appId}`);
 

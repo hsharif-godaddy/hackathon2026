@@ -50,6 +50,7 @@ export class DockerComposeGenerator {
 	 * - Dev-supervisor communication mode (TCP or Unix socket)
 	 * - App port configuration (internal port for nginx proxy)
 	 * - Vite-specific settings (VITE_HOST, ALLOWED_ORIGINS)
+	 * - GoDaddy API configuration (GODADDY_API_BASE_URL)
 	 *
 	 * @param config - Service configuration containing app details and connection settings
 	 * @param dbConfig - Optional database configuration (reserved for future use)
@@ -83,6 +84,11 @@ export class DockerComposeGenerator {
 			"https://localhost:3000",
 			"http://localhost:3000"
 		].join(",");
+
+		// GoDaddy API base URL (if configured)
+		if (process.env.GODADDY_API_BASE_URL) {
+			env.GODADDY_API_BASE_URL = process.env.GODADDY_API_BASE_URL;
+		}
 
 		return env;
 	}

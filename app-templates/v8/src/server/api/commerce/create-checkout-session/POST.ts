@@ -19,93 +19,71 @@ export function deriveCheckoutUrl(apiBaseUrl: string): string {
 }
 
 /**
- * Load commerce credentials from JSON config files
- * Both files use identical structure with SYSTEM_MANAGED wrapper:
+ * Load commerce credentials from config files and environment
+ *
+ * OAuth credentials are read from /alloc/config.json (system-managed)
+ * API base URL is read from GODADDY_API_BASE_URL environment variable
+ *
+ * /alloc/config.json structure:
  * {
- *   "FIELD_NAME": {
- *     "SYSTEM_MANAGED": true/false,
+ *   "GODADDY_OAUTH_CLIENT_ID": {
+ *     "SYSTEM_MANAGED": true,
  *     "VALUE": "actual-value"
  *   }
  * }
  *
- * Reads from two sources with precedence:
- * 1. src/config/commerce-credentials.json (agent-managed, SYSTEM_MANAGED: false)
- * 2. /alloc/config.json (control plane managed, SYSTEM_MANAGED: true, takes precedence)
- *
  * Note: CHECKOUT_API_BASE_URL is derived from GODADDY_API_BASE_URL
  *
  * @returns Commerce credentials including derived checkoutApiBaseUrl
- * @throws Error if no config files found or credentials missing
+ * @throws Error if credentials are missing
  */
 function getCommerceConfig() {
-  const REQUIRED_FIELDS = [
-    "GODADDY_OAUTH_CLIENT_ID",
-    "GODADDY_OAUTH_CLIENT_SECRET",
-    "GODADDY_API_BASE_URL",
-  ] as const;
-
   const allocConfigPath = "/alloc/config.json";
-  const srcConfigPath = "./src/config/commerce-credentials.json";
 
-  const extractedConfig: Record<string, string> = {};
-
-  if (existsSync(srcConfigPath)) {
-    try {
-      const srcConfig = JSON.parse(readFileSync(srcConfigPath, "utf-8"));
-      for (const field of REQUIRED_FIELDS) {
-        if (srcConfig[field]?.VALUE) {
-          extractedConfig[field] = srcConfig[field].VALUE;
-        }
-      }
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error(
-          `Failed to parse ${srcConfigPath}: Invalid JSON format`,
-        );
-      }
-
-    }
+  // Read OAuth credentials from /alloc/config.json
+  if (!existsSync(allocConfigPath)) {
+    throw new Error(
+      "Commerce configuration not found. Missing /alloc/config.json with OAuth credentials.",
+    );
   }
 
-  if (existsSync(allocConfigPath)) {
-    try {
-      const allocConfig = JSON.parse(readFileSync(allocConfigPath, "utf-8"));
-      const overriddenFields: string[] = [];
+  let clientId: string | undefined;
+  let clientSecret: string | undefined;
 
-      for (const field of REQUIRED_FIELDS) {
-        if (allocConfig[field]?.VALUE) {
-          if (extractedConfig[field]) overriddenFields.push(field);
-          extractedConfig[field] = allocConfig[field].VALUE;
-        }
-      }
-
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error(
-          `Failed to parse ${allocConfigPath}: Invalid JSON format`,
-        );
-      }
-
+  try {
+    const allocConfig = JSON.parse(readFileSync(allocConfigPath, "utf-8"));
+    clientId = allocConfig.GODADDY_OAUTH_CLIENT_ID?.VALUE;
+    clientSecret = allocConfig.GODADDY_OAUTH_CLIENT_SECRET?.VALUE;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(
+        `Failed to parse ${allocConfigPath}: Invalid JSON format`,
+      );
     }
+    throw error;
   }
 
-  const missingFields = REQUIRED_FIELDS.filter(
-    (field) => !extractedConfig[field],
-  );
+  // Read API base URL from environment variable
+  const apiBaseUrl = process.env.GODADDY_API_BASE_URL;
+
+  // Validate all required credentials
+  const missingFields: string[] = [];
+  if (!clientId) missingFields.push("GODADDY_OAUTH_CLIENT_ID");
+  if (!clientSecret) missingFields.push("GODADDY_OAUTH_CLIENT_SECRET");
+  if (!apiBaseUrl) missingFields.push("GODADDY_API_BASE_URL (env var)");
+
   if (missingFields.length > 0) {
     throw new Error(
       `Missing required Commerce credentials: ${missingFields.join(", ")}`,
     );
   }
 
-  const checkoutApiBaseUrl = deriveCheckoutUrl(
-    extractedConfig.GODADDY_API_BASE_URL,
-  );
+  const checkoutApiBaseUrl = deriveCheckoutUrl(apiBaseUrl!);
 
   return {
-    clientId: extractedConfig.GODADDY_OAUTH_CLIENT_ID,
-    clientSecret: extractedConfig.GODADDY_OAUTH_CLIENT_SECRET,
-    apiBaseUrl: extractedConfig.GODADDY_API_BASE_URL,
+    clientId: clientId!,
+    clientSecret: clientSecret!,
+    apiBaseUrl: apiBaseUrl!,
     checkoutApiBaseUrl,
   };
 }

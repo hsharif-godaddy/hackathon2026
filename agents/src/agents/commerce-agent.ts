@@ -17,7 +17,6 @@ import {
 import { getModularPromptPaths } from '../utils/prompt-utils.js';
 import { Logger } from '../logging/index.js';
 import { oauthConnect } from '../tools/ai-lib-tools/oauth-tool.js';
-import { writeCommerceCredentials } from '../tools/ai-lib-tools/commerce-credentials.js';
 import { suggestedResponseAITool } from '../tools/ai-lib-tools/suggested-response.js';
 
 const logger = Logger.create({ service: 'commerce-agent' });
@@ -104,7 +103,6 @@ export async function createCommerceAgent(options?: { appPath?: string }): Promi
       skuGroup: commerceSkuGroup,
       sku: commerceSku,
       inventory: commerceInventory,
-      writeCommerceCredentials,
       suggestedResponse: suggestedResponseAITool,
     },
 

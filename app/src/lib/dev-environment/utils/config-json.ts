@@ -77,16 +77,25 @@ export class ConfigJsonManager {
 	 *
 	 * @param configPath - Absolute path to config.json file
 	 * @param dbConfig - Database configuration from provisioning
+	 * @param oauthConfig - Optional OAuth configuration for GoDaddy integration
 	 * @throws Error if file write fails
 	 */
-	static writeConfigFile(configPath: string, dbConfig: DatabaseConfig): void {
+	static writeConfigFile(
+		configPath: string,
+		dbConfig: DatabaseConfig,
+		oauthConfig?: {
+			clientId: string;
+			clientSecret: string;
+		}
+	): void {
 		logger.info('config.write.begin', {
 			configPath,
 			database: dbConfig.database,
+			includesOAuth: !!oauthConfig,
 		});
 
 		try {
-			const config = this.fromDatabaseConfig(dbConfig);
+			const config = this.fromDatabaseConfig(dbConfig, oauthConfig);
 			const jsonContent = JSON.stringify(config, null, 2);
 
 			writeFileSync(configPath, jsonContent, {
@@ -97,6 +106,7 @@ export class ConfigJsonManager {
 			logger.info('config.write.success', {
 				configPath,
 				database: dbConfig.database,
+				includesOAuth: !!oauthConfig,
 			});
 		} catch (error) {
 			logger.error('config.write.failure', {
@@ -155,10 +165,17 @@ export class ConfigJsonManager {
 	 * Convert DatabaseConfig to AppSecretsConfig format
 	 *
 	 * @param dbConfig - Database configuration from provisioning
+	 * @param oauthConfig - Optional OAuth configuration for GoDaddy integration
 	 * @returns Configuration in production format
 	 */
-	static fromDatabaseConfig(dbConfig: DatabaseConfig): AppSecretsConfig {
-		return {
+	static fromDatabaseConfig(
+		dbConfig: DatabaseConfig,
+		oauthConfig?: {
+			clientId: string;
+			clientSecret: string;
+		}
+	): AppSecretsConfig {
+		const config: AppSecretsConfig = {
 			DATABASE: {
 				SYSTEM_MANAGED: true,
 				VALUE: {
@@ -175,6 +192,21 @@ export class ConfigJsonManager {
 				},
 			},
 		};
+
+		// Add OAuth credentials if provided
+		// Marked as SYSTEM_MANAGED: true since they are provisioned by the platform
+		if (oauthConfig) {
+			config.GODADDY_OAUTH_CLIENT_ID = {
+				SYSTEM_MANAGED: true,
+				VALUE: oauthConfig.clientId,
+			};
+			config.GODADDY_OAUTH_CLIENT_SECRET = {
+				SYSTEM_MANAGED: true,
+				VALUE: oauthConfig.clientSecret,
+			};
+		}
+
+		return config;
 	}
 
 	/**

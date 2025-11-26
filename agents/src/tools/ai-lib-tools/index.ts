@@ -40,7 +40,6 @@ export {
   commerceInventory,
 } from './commerce-tools.js';
 export { oauthConnect } from './oauth-tool.js';
-export { writeCommerceCredentials } from './commerce-credentials.js';
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js';
@@ -77,7 +76,6 @@ import {
   commerceInventory,
 } from './commerce-tools.js';
 import { oauthConnect } from './oauth-tool.js';
-import { writeCommerceCredentials } from './commerce-credentials.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -153,7 +151,6 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     skuGroup: commerceSkuGroup,
     sku: commerceSku,
     inventory: commerceInventory,
-    writeCommerceCredentials: writeCommerceCredentials,
   },
 
   // Media and content tools
