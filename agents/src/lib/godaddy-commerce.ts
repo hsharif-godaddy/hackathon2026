@@ -316,8 +316,17 @@ export class GoDaddyCommerce {
                   edges {
                     node {
                       id
-                        name
-                        price
+                      name
+                      prices {
+                        edges {
+                          node {
+                            value {
+                              value
+                              currencyCode
+                            }
+                          }
+                        }
+                      }
                     }
                   }
                 }
