@@ -1,6 +1,6 @@
 'use client';
 
-import { Coachmark, ProductTour } from '@ux/coachmark';
+import { Coachmark, ProductTour, useStep } from '@ux/coachmark';
 
 /**
  * Tour step configuration interface
@@ -22,6 +22,30 @@ interface AppIntroTourProps {
   show: boolean;
   /** Callback when the tour is closed */
   onClose: () => void;
+}
+
+/**
+ * Individual coachmark step component that uses the useStep hook
+ *
+ * @param props - Step configuration
+ * @returns The coachmark component
+ */
+function TourStep({ anchorId, title, description }: TourStep) {
+  const stepState = useStep({ anchorId });
+
+  return (
+    <Coachmark
+      anchorId={anchorId}
+      title={title}
+      description={description}
+      show={stepState.show}
+      currentStep={stepState.currentStep}
+      totalSteps={stepState.totalSteps}
+      nextMessage={stepState.nextMessage || 'Next'}
+      prevMessage={stepState.prevMessage || 'Back'}
+      onClose={stepState.onClose}
+    />
+  );
 }
 
 /**
@@ -66,7 +90,7 @@ export function AppIntroTour({ show, onClose }: AppIntroTourProps) {
       exitMessage="Got it!"
     >
       {steps.map((step, index) => (
-        <Coachmark
+        <TourStep
           key={index}
           {...step}
         />
