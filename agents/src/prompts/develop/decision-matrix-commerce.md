@@ -65,15 +65,17 @@ Step 1: Add VITE_PREVIEW_URL to .env file:
 VITE_PREVIEW_URL=https://[app-id].preview.dev-godaddy.com:[port]
 ```
 
-Step 2: In the checkout preparation page, use the environment variable:
+Step 2: In the checkout preparation page, use the fallback chain:
 
 ```typescript
-const previewUrl = import.meta.env.VITE_PREVIEW_URL || 'https://dummy.godaddy.com';
+const previewUrl =
+  import.meta.env.VITE_PREVIEW_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'https://placeholder.godaddy.com');
 const returnUrl = `${previewUrl}/checkout/${skuId}`;
 const successUrl = `${previewUrl}/checkout/success`;
 ```
 
-**NEVER use** `window.location` - it will be localhost and cause **403 Forbidden** errors from the Commerce API.
+**Fallback order:** VITE_PREVIEW_URL → window.location.origin → placeholder.godaddy.com
 
 Then refer to `commerce-checkout-guide.md` for detailed implementation guidance. You must implement:
 

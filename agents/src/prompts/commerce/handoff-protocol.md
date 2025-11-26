@@ -86,8 +86,10 @@ Include store identifiers required for checkout:
 The Develop Agent must use the SKU ID and Store ID when creating checkout sessions. The API accepts a `lineItems` array for multiple products:
 
 ```typescript
-// IMPORTANT: Use VITE_PREVIEW_URL, NOT window.location (localhost causes 403 errors)
-const previewUrl = import.meta.env.VITE_PREVIEW_URL || 'https://dummy.godaddy.com';
+// IMPORTANT: Fallback chain for preview URL (Commerce API rejects localhost with 403 errors)
+const previewUrl =
+  import.meta.env.VITE_PREVIEW_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'https://placeholder.godaddy.com');
 
 // CORRECT: Use lineItems array with SKU IDs from skus array
 createCheckoutSession({

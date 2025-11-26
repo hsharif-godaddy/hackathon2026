@@ -33,17 +33,19 @@ VITE_PREVIEW_URL=http://abc123def456.preview.dev-godaddy.com:5007
 **Step 2: Use the environment variable in checkout code**
 
 ```typescript
-// Read preview URL from environment variable
-const previewUrl = import.meta.env.VITE_PREVIEW_URL || 'https://dummy.godaddy.com';
+// Read preview URL with fallback chain
+const previewUrl =
+  import.meta.env.VITE_PREVIEW_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'https://placeholder.godaddy.com');
 const returnUrl = `${previewUrl}/checkout`;
 const successUrl = `${previewUrl}/checkout/success`;
 ```
 
 **IMPORTANT:**
 
-- The `.env` file must contain the actual preview URL with app-id and port
-- DO NOT use `window.location` - it will be localhost
-- The fallback `dummy.godaddy.com` prevents 403 but won't redirect back properly
+- The `.env` file should contain the actual preview URL with app-id and port when available
+- Fallback to `window.location.origin` if VITE_PREVIEW_URL is not set
+- Final fallback to `placeholder.godaddy.com` for server-side rendering
 
 ---
 
@@ -131,9 +133,11 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   // CRITICAL: Use this exact checkout handler pattern
-  // IMPORTANT: Use VITE_PREVIEW_URL, NOT window.location (localhost causes 403 errors)
+  // IMPORTANT: Fallback chain for preview URL (Commerce API rejects localhost with 403 errors)
   const handleCheckout = async (cartItems: Array<{ skuId: string; quantity: number }>) => {
-    const previewUrl = import.meta.env.VITE_PREVIEW_URL || 'https://dummy.godaddy.com';
+    const previewUrl =
+      import.meta.env.VITE_PREVIEW_URL ||
+      (typeof window !== 'undefined' ? window.location.origin : 'https://placeholder.godaddy.com');
     const response = await fetch('/api/commerce/create-checkout-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -327,9 +331,10 @@ function CheckoutPreparationPage() {
     setLoading(true);
     setError('');
 
-    // IMPORTANT: Use preview URL from environment variable
-    // DO NOT use window.location - it will be localhost
-    const previewUrl = import.meta.env.VITE_PREVIEW_URL || 'https://dummy.godaddy.com';
+    // IMPORTANT: Fallback chain for preview URL (Commerce API rejects localhost with 403 errors)
+    const previewUrl =
+      import.meta.env.VITE_PREVIEW_URL ||
+      (typeof window !== 'undefined' ? window.location.origin : 'https://placeholder.godaddy.com');
 
     // MANDATORY: Pass lineItems array with SKU IDs
     // NO email required - customer enters email in GoDaddy checkout flow

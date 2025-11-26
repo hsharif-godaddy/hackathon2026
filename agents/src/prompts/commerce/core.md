@@ -157,9 +157,11 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   // CRITICAL: Use this exact checkout handler pattern
-  // IMPORTANT: Use VITE_PREVIEW_URL, NOT window.location (localhost causes 403 errors)
+  // IMPORTANT: Fallback chain for preview URL (Commerce API rejects localhost with 403 errors)
   const handleCheckout = async (cartItems: Array<{ skuId: string; quantity: number }>) => {
-    const previewUrl = import.meta.env.VITE_PREVIEW_URL || 'https://dummy.godaddy.com';
+    const previewUrl =
+      import.meta.env.VITE_PREVIEW_URL ||
+      (typeof window !== 'undefined' ? window.location.origin : 'https://placeholder.godaddy.com');
     const response = await fetch('/api/commerce/create-checkout-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
