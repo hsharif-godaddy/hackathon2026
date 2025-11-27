@@ -579,6 +579,12 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         icon={<EditIcon />}
                         label={secret.isEditing ? 'Cancel' : 'Edit secret'}
                         onClick={() => handleEdit(secret.name)}
+                        onMouseDown={(e: React.MouseEvent) => {
+                          // Prevent blur from firing before onClick when canceling with empty value
+                          if (secret.isEditing) {
+                            e.preventDefault();
+                          }
+                        }}
                         active={secret.isEditing}
                         disabled={secret.systemManaged || secret.markedForDeletion}
                         tooltip={secret.isEditing ? 'the editing' : true}

@@ -5,6 +5,7 @@ import Tooltip from '@ux/tooltip'
 interface IconButtonProps {
   icon: React.ReactNode
   onClick?: () => void
+  onMouseDown?: (e: React.MouseEvent) => void
   active?: boolean
   separator?: boolean
   disabled?: boolean
@@ -18,6 +19,7 @@ interface IconButtonProps {
 export default function IconButton({
   icon,
   onClick,
+  onMouseDown,
   active,
   separator,
   disabled,
@@ -58,6 +60,7 @@ export default function IconButton({
         className
       )}
       onClick={clickEvent}
+      onMouseDown={onMouseDown}
       disabled={disabled}
       data-eid={dataEid}
       aria-label={label}
