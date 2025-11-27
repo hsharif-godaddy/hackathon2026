@@ -26,6 +26,54 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
   )
 })
 
+/**
+ * Configure Monaco TypeScript/JavaScript compiler options for JSX support
+ * This prevents false error highlighting for TSX/JSX files
+ */
+function handleEditorWillMount(monaco: typeof import('monaco-editor')) {
+  // Configure TypeScript compiler options for JSX support
+  monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+    target: monaco.languages.typescript.ScriptTarget.ESNext,
+    module: monaco.languages.typescript.ModuleKind.ESNext,
+    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+    jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
+    allowJs: true,
+    allowSyntheticDefaultImports: true,
+    esModuleInterop: true,
+    strict: false,
+    skipLibCheck: true,
+    noEmit: true,
+    isolatedModules: true,
+    resolveJsonModule: true,
+    baseUrl: '.',
+    paths: {
+      '@/*': ['src/*']
+    }
+  });
+
+  // Also configure JavaScript defaults for JSX files
+  monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+    target: monaco.languages.typescript.ScriptTarget.ESNext,
+    module: monaco.languages.typescript.ModuleKind.ESNext,
+    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+    jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
+    allowJs: true,
+    allowSyntheticDefaultImports: true,
+    esModuleInterop: true,
+  });
+
+  // Disable semantic validation to prevent false errors from missing type definitions
+  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+    noSemanticValidation: true,
+    noSyntaxValidation: false,
+  });
+
+  monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+    noSemanticValidation: true,
+    noSyntaxValidation: false,
+  });
+}
+
 interface OpenFile {
   path: string
   name: string
@@ -386,6 +434,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
               language={currentFile.language}
               value={currentFile.content}
               onChange={handleEditorChange}
+              beforeMount={handleEditorWillMount}
               theme="vs-dark"
               options={{
                 minimap: { enabled: false },
