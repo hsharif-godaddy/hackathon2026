@@ -4,6 +4,8 @@ import { immer } from 'zustand/middleware/immer'
 import { appFetch } from '@/lib/gasket-config'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
+import { appService } from '@/services/AppService'
+import { useSiteStore } from './useSiteStore'
 
 export interface Site {
   id: string
@@ -60,7 +62,7 @@ interface SiteCreationStore {
   _pollSiteStatus: () => Promise<void>
   _startPolling: () => void
   _stopPolling: () => void
-  _verifyAgentEndpoint: (agentUrl: string, appId: string) => Promise<boolean>
+  _verifyAgentEndpoint: (agentUrl: string, appId: string, initialPrompt?: string) => Promise<boolean>
 }
 
 export const useSiteCreationStore = create<SiteCreationStore>()(
@@ -88,7 +90,6 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
       get()._stopPolling()
       
       // Clear the site cache to prevent stale IDs from previous creations
-      const { useSiteStore } = await import('./useSiteStore')
       try {
         useSiteStore.getState().cleanup()
         logger.info('site.creation.cache-cleared', { message: 'Cleared site cache to prevent stale ID reuse' })
@@ -135,7 +136,6 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         logger.info('site.deployment.start', { message: 'Checking site status before deployment', siteId })
         
         // First check if site exists and determine control plane type using centralized store
-        const { useSiteStore } = await import('./useSiteStore')
         const siteStore = useSiteStore.getState()
         const siteData = await siteStore.fetchSite(siteId)
         if (siteData) {
@@ -312,7 +312,6 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
         // Use centralized site store to prevent duplicate requests
         // Force refresh to get latest status (bypass cache during polling)
-        const { useSiteStore } = await import('./useSiteStore')
         const siteStore = useSiteStore.getState()
         const siteData = await siteStore.fetchSite(siteId, true)
         
@@ -471,7 +470,12 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
           // Verify the agent endpoint is actually working
           // Pass finalSiteData.id explicitly to ensure we use the real app ID, not a stale job ID from store
-          const isAgentReady = await get()._verifyAgentEndpoint(finalSiteData.agent_url, finalSiteData.id)
+          // Also pass initial_prompt so we can suggest name and register during verification
+          const isAgentReady = await get()._verifyAgentEndpoint(
+            finalSiteData.agent_url, 
+            finalSiteData.id,
+            finalSiteData.initial_prompt
+          )
           logger.info('site.verification.result', { message: 'Agent verification result', success: isAgentReady })
 
           if (isAgentReady) {
@@ -518,9 +522,8 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
       }
     },
 
-    // Verify agent endpoint is ready
-    // appId is passed explicitly to ensure we use the correct ID (not a stale job ID from store)
-    _verifyAgentEndpoint: async (agentUrl: string, appId: string): Promise<boolean> => {
+    // Verify agent endpoint is ready and optionally suggest name
+    _verifyAgentEndpoint: async (agentUrl: string, appId: string, initialPrompt?: string): Promise<boolean> => {
       try {
         if (!appId) {
           logger.error('site.verification.no_app_id', { message: 'No appId provided for agent verification' })
@@ -531,9 +534,11 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           message: 'Verifying agent endpoint',
           agentUrl,
           appId,
-          appIdLength: appId.length
+          appIdLength: appId.length,
+          willSuggestName: !!initialPrompt
         })
 
+        // Step 1: Call ensure-running endpoint (app-specific)
         const endpointUrl = `${agentUrl}/apps/${appId}/ensure-running`
         logger.info('site.verification.endpoint_url', { message: 'Constructed endpoint URL', url: endpointUrl })
 
@@ -543,23 +548,59 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           signal: AbortSignal.timeout(15000) // 15 second timeout (same as integration test)
         })
 
-        logger.info('site.verification.response', { message: 'Agent endpoint response', status: response.status, statusText: response.statusText })
+        logger.info('site.verification.ensure-running.response', { 
+          status: response.status, 
+          statusText: response.statusText 
+        })
 
-        if (response.ok) {
-          const data = await response.json()
-          logger.info('site.verification.response_data', { message: 'Agent endpoint responded', data })
-          return true
-        } else if (response.status === 404) {
-          logger.warn('site.verification.not_found', { message: 'Agent endpoint not found (404) - likely still registering with agents service' })
-          return false
-        } else {
-          logger.warn('site.verification.non_ok_status', { message: 'Agent endpoint returned non-OK status', status: response.status, statusText: response.statusText })
-          const errorText = await response.text().catch(() => 'Unable to read response')
-          logger.warn('site.verification.error_response', { message: 'Agent endpoint error response', errorText })
+        if (!response.ok) {
+          if (response.status === 404) {
+            logger.warn('site.verification.ensure-running.not_found', { 
+              message: 'Ensure-running endpoint not found (404) - likely still registering with agents service' 
+            })
+          } else {
+            logger.warn('site.verification.ensure-running.non_ok', { 
+              status: response.status,
+              statusText: response.statusText
+            })
+          }
           return false
         }
+
+        // Step 2: If initial prompt exists, call AppService to suggest name and register
+        if (initialPrompt) {
+          try {
+            await appService.updateNameAndRegister(appId)
+            // Update local store with the new name from site store
+            const updatedSite = useSiteStore.getState().sites[appId]
+            
+            if (updatedSite?.name) {
+              set((state) => {
+                if (state.site && state.site.id === appId) {
+                  state.site.name = updatedSite.name
+                }
+              })
+              logger.info('site.verification.name-update.success', { 
+                message: 'Name suggestion and registration completed during verification',
+                name: updatedSite.name
+              })
+            }
+          } catch (nameError) {
+            logger.warn('site.verification.name-update.error', {
+              message: 'Error during name suggestion - continuing with verification',
+              error: nameError instanceof Error ? nameError.message : 'Unknown error'
+            })
+            // Don't fail verification if name suggestion fails - it's optional
+          }
+        }
+
+        return true
+
       } catch (error) {
-        logger.warn('site.verification.error', { message: 'Agent endpoint verification failed with error', error: error instanceof Error ? error.message : 'Unknown error' })
+        logger.warn('site.verification.error', { 
+          message: 'Agent endpoint verification failed with error', 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        })
         return false
       }
     },

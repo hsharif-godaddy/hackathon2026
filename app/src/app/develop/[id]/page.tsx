@@ -536,23 +536,20 @@ function DevelopPageContent() {
     }
   }, [init.ui.shouldAutoSendPrompt, init.ui.autoSendPromptText, searchParams, autoSendInitialMessage, sendMessage, appId, init.actions])
 
-  // Handle async name suggestion and registration after redirect from setup
   useEffect(() => {
-    if (loadingPhase !== 'ready' || !appId || !site) return
+    if (loadingPhase !== 'ready' || !init.initialJobId) return
 
-    // Check if name registration is pending after setup
     const nameRegistrationKey = `name-registration-pending-${init.initialJobId}`
-    logger.info('app.develop.page.nameRegistrationKey:', { nameRegistrationKey, initialJobId: init.initialJobId, appId })
-    const shouldRegisterName = sessionStorage.getItem(nameRegistrationKey) === 'true'
-
-    if (!shouldRegisterName) return
-
-    // Clear the flag immediately to prevent duplicate runs
-    sessionStorage.removeItem(nameRegistrationKey)
-
-    // Run async without blocking page load
-    appService.updateNameAndRegister(appId)
-  }, [loadingPhase, appId, site, init.initialJobId])
+    const flagExists = sessionStorage.getItem(nameRegistrationKey) === 'true'
+    
+    if (flagExists) {
+      logger.info('app.develop.page.cleanup-flag', {
+        message: 'Cleaning up name registration flag (name already set during verification)',
+        initialJobId: init.initialJobId
+      })
+      sessionStorage.removeItem(nameRegistrationKey)
+    }
+  }, [loadingPhase, init.initialJobId])
 
   const handlePanelResize = useCallback((newWidth: number) => {
     setChatPaneWidth(newWidth)
