@@ -17,18 +17,98 @@ Hand off to the develop agent when the user has confirmed the product data and i
 
 ## Handoff Structure
 
-When handing off to the Develop Agent, provide:
+When handing off to the Develop Agent, you MUST use one of these explicit flow templates. The `FLOW_TYPE` header is mandatory.
 
-### 1. Clear Task Instructions
+### Flow Template 1: STOREFRONT_COMPONENTS (DEFAULT)
+
+Use this template for any catalog, store, or multi-product scenario:
+
+````
+## FLOW_TYPE: STOREFRONT_COMPONENTS
+
+**You MUST use `@godaddy/react` components. DO NOT render products manually.**
+
+### Required Setup:
+1. Install dependencies: `@godaddy/react`, `@godaddy/localizations`, `@tanstack/react-query`
+2. In layout.tsx, import styles: `import '@godaddy/react/styles-tailwind.css';` (AFTER globals.css)
+3. **CRITICAL**: Write these values to the app's `.env` file:
+   - Read `GODADDY_OAUTH_CLIENT_ID` value from `/alloc/config.json` (GODADDY_OAUTH_CLIENT_ID.VALUE field)
+   - Read `GODADDY_API_BASE_URL` value from current `.env` file
+   - Extract hostname from `GODADDY_API_BASE_URL` by stripping the protocol (`https://` or `http://`)
+   - Add these lines to `.env`:
+```bash
+# GoDaddy Commerce Storefront Configuration
+VITE_GODADDY_CLIENT_ID=<value-from-/alloc/config.json>
+VITE_GODADDY_API_HOST=<hostname-from-GODADDY_API_BASE_URL>
+````
+
+Example: if GODADDY_API_BASE_URL is `https://api.dev-godaddy.com`, write `VITE_GODADDY_API_HOST=api.dev-godaddy.com`
+
+4. Wrap app in `GoDaddyProvider` with these values:
+
+- storeId: "{storeId}" (hardcode this value)
+- channelId: "{channelId}" (hardcode this value)
+- clientId: import.meta.env.VITE_GODADDY_CLIENT_ID (read from env var)
+- apiHost: import.meta.env.VITE_GODADDY_API_HOST (read from env var, no https://)
+
+### Required Components:
+
+- `ProductGrid` - For catalog pages (fetches data automatically)
+- `ProductDetails` - For single product pages (fetches data automatically)
+- `Cart` - For shopping cart with checkout
+
+### Cart onCheckout Handler (CRITICAL):
+
+The Cart component's `onCheckout` prop receives an `orderId: string` parameter.
+You MUST call the backend with `draftOrderId: orderId`:
+
+```tsx
+const [isCheckingOut, setIsCheckingOut] = useState(false);
+const handleCheckout = async (orderId: string) => {
+  setIsCheckingOut(true);
+  const previewUrl = import.meta.env.VITE_PREVIEW_URL || 'https://dummy.godaddy.com';
+  const response = await fetch('/api/commerce/create-checkout-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storeId: '{storeId}',
+      draftOrderId: orderId,
+      returnUrl: `${previewUrl}/checkout/success`,
+      successUrl: `${previewUrl}/checkout/success`,
+    }),
+  });
+  const result = await response.json();
+  if (result.checkoutUrl) window.location.href = result.checkoutUrl;
+  setIsCheckingOut(false);
+};
+```
+
+**DO NOT render product cards manually from the products array. The components fetch their own data.**
 
 ```
+
+### Flow Template 2: PAYMENT_SIMPLE
+
+Use this template ONLY for single simple items, donations, or explicit "pay now" requests:
+
+```
+
+## FLOW_TYPE: PAYMENT_SIMPLE
+
 Render these products in an HTML interface with the following requirements:
+
 - Display label, description, and price for each product
 - Add a form or button for each product to initiate checkout
-- Use the SKU ID (skus[n].id) as the skuId parameter when initiating checkout
+- Use the SKU ID (products[i].skus[j].id) as the skuId parameter when initiating checkout
 - DO NOT use product.id (group id) for checkout - it will fail
 - Style appropriately for the application's design system
-```
+- Create checkout pages following the commerce-checkout-guide.md patterns
+
+Store Configuration:
+
+- storeId: "{storeId}"
+
+````
 
 ### 2. Complete Product Data
 
@@ -58,7 +138,7 @@ Include the full product array in structured format with SKU IDs:
     }
   ]
 }
-```
+````
 
 **IMPORTANT DATA MODEL:**
 

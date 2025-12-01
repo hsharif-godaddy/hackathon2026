@@ -13,11 +13,13 @@ import {
   commerceSkuGroup,
   commerceSku,
   commerceInventory,
+  commerceSkuGroupMedia,
 } from '../tools/ai-lib-tools/commerce-tools.js';
 import { getModularPromptPaths } from '../utils/prompt-utils.js';
 import { Logger } from '../logging/index.js';
 import { oauthConnect } from '../tools/ai-lib-tools/oauth-tool.js';
 import { suggestedResponseAITool } from '../tools/ai-lib-tools/suggested-response.js';
+import { mediaSearchAITool } from '../tools/ai-lib-tools/media-tools.js';
 
 const logger = Logger.create({ service: 'commerce-agent' });
 
@@ -103,6 +105,8 @@ export async function createCommerceAgent(options?: { appPath?: string }): Promi
       skuGroup: commerceSkuGroup,
       sku: commerceSku,
       inventory: commerceInventory,
+      skuGroupMedia: commerceSkuGroupMedia,
+      mediaSearch: mediaSearchAITool,
       suggestedResponse: suggestedResponseAITool,
     },
 
@@ -190,21 +194,101 @@ export class CommerceAgent {
 
   /**
    * Hand off to Develop Agent for HTML rendering
+   * @param params.products - Product data array
+   * @param params.instructions - Optional custom instructions
+   * @param params.flow - 'storefront' for @godaddy/react components, 'payment' for manual HTML
+   * @param params.storeConfig - Store configuration (storeId, channelId, clientId, apiHost)
    */
-  async handoffToDevelop(params: { products: any[]; instructions?: string }): Promise<any> {
+  async handoffToDevelop(params: {
+    products: any[];
+    instructions?: string;
+    flow?: 'storefront' | 'payment';
+    storeConfig?: {
+      storeId: string;
+      channelId: string;
+      clientId: string;
+      apiHost: string;
+    };
+  }): Promise<any> {
     const factory = this.getFactory();
+    const flow = params.flow || 'storefront';
 
     logger.info('commerce_agent.handoff.develop.start', {
       targetAgent: 'develop',
       productCount: params.products.length,
+      flow,
     });
 
-    const defaultInstructions = `Render these products in an HTML interface with the following requirements:
-- label, description, and price for each product
+    let defaultInstructions: string;
+
+    if (flow === 'storefront') {
+      defaultInstructions = `## FLOW_TYPE: STOREFRONT_COMPONENTS
+
+**You MUST use \`@godaddy/react\` components. DO NOT render products manually.**
+
+### Required Setup:
+1. Install dependencies: \`@godaddy/react\`, \`@godaddy/localizations\`, \`@tanstack/react-query\`
+2. In layout.tsx, import styles: \`import '@godaddy/react/styles-tailwind.css';\` (AFTER globals.css)
+3. **CRITICAL**: Write these values to the app's \`.env\` file:
+   - Read \`GODADDY_OAUTH_CLIENT_ID\` value from \`/alloc/config.json\` (GODADDY_OAUTH_CLIENT_ID.VALUE field)
+   - Read \`GODADDY_API_BASE_URL\` value from current \`.env\` file
+   - Extract hostname from \`GODADDY_API_BASE_URL\` by stripping the protocol (\`https://\` or \`http://\`)
+   - Add these lines to \`.env\`:
+   \`\`\`bash
+   # GoDaddy Commerce Storefront Configuration
+   VITE_GODADDY_CLIENT_ID=<value-from-/alloc/config.json>
+   VITE_GODADDY_API_HOST=<hostname-from-GODADDY_API_BASE_URL>
+   \`\`\`
+   Example: if GODADDY_API_BASE_URL is \`https://api.dev-godaddy.com\`, write \`VITE_GODADDY_API_HOST=api.dev-godaddy.com\`
+4. Wrap app in \`GoDaddyProvider\` with these values:
+   - storeId: "${params.storeConfig?.storeId || 'REPLACE_WITH_STORE_ID'}" (hardcode this value)
+   - channelId: "${params.storeConfig?.channelId || 'REPLACE_WITH_CHANNEL_ID'}" (hardcode this value)
+   - clientId: import.meta.env.VITE_GODADDY_CLIENT_ID (read from env var)
+   - apiHost: import.meta.env.VITE_GODADDY_API_HOST (read from env var, no https://)
+
+### Required Components:
+- \`ProductGrid\` - For catalog pages (fetches data automatically)
+- \`ProductDetails\` - For single product pages (fetches data automatically)
+- \`Cart\` - For shopping cart with checkout
+
+### Cart onCheckout Handler (CRITICAL):
+The Cart component's \`onCheckout\` prop receives an \`orderId: string\` parameter.
+You MUST call the backend with \`draftOrderId: orderId\`:
+\`\`\`tsx
+const [isCheckingOut, setIsCheckingOut] = useState(false);
+const handleCheckout = async (orderId: string) => {
+  setIsCheckingOut(true);
+  const previewUrl = import.meta.env.VITE_PREVIEW_URL || 'https://dummy.godaddy.com';
+  const response = await fetch('/api/commerce/create-checkout-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storeId: '${params.storeConfig?.storeId || 'YOUR_STORE_ID'}',
+      draftOrderId: orderId,
+      returnUrl: \`\${previewUrl}/checkout/success\`,
+      successUrl: \`\${previewUrl}/checkout/success\`,
+    }),
+  });
+  const result = await response.json();
+  if (result.checkoutUrl) window.location.href = result.checkoutUrl;
+  setIsCheckingOut(false);
+};
+\`\`\`
+
+**DO NOT render product cards manually from the products array. The components fetch their own data.**`;
+    } else {
+      defaultInstructions = `## FLOW_TYPE: PAYMENT_SIMPLE
+
+Render these products in an HTML interface with the following requirements:
+- Display label, description, and price for each product
 - Add a form or button for each product to initiate checkout
-- Use the SKU ID in the form (as hidden field or data attribute)
+- Use the SKU ID (products[i].skus[j].id) as the skuId parameter
 - Style appropriately for the application's design system
-- Note: Checkout URL will be provided in future implementation`;
+- Create checkout pages following the commerce-checkout-guide.md patterns
+
+Store Configuration:
+- storeId: "${params.storeConfig?.storeId || 'REPLACE_WITH_STORE_ID'}"`;
+    }
 
     const handoffResult = await factory.executeHandoff('commerce', 'develop', {
       task: params.instructions || defaultInstructions,
@@ -212,12 +296,17 @@ export class CommerceAgent {
         products: params.products,
         appPath: this.appPath,
         totalProducts: params.products.length,
+        flow,
+        storeConfig: params.storeConfig,
       },
       parameters: params,
       metadata: {
         sourceAgent: 'commerce',
         timestamp: new Date().toISOString(),
-        reason: 'Product catalog HTML rendering required',
+        reason:
+          flow === 'storefront'
+            ? 'Storefront implementation with @godaddy/react components'
+            : 'Manual product rendering with checkout buttons',
       },
     });
 

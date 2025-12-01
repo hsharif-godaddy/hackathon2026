@@ -414,6 +414,25 @@ export interface DeleteSkuGroupResponse {
   };
 }
 
+// Media Types
+
+export interface MediaObjectResponse {
+  id: string;
+  label: string | null;
+  name: string | null;
+  position: number | null;
+  type: string;
+  url: string;
+}
+
+export interface AddMediaObjectsToSkuGroupResponse {
+  addMediaObjectsToSkuGroup: SKUGroupResponse;
+}
+
+export interface RemoveMediaObjectsFromSkuGroupResponse {
+  removeMediaObjectsFromSkuGroup: SKUGroupResponse;
+}
+
 // Inventory Types
 
 export interface InventoryCountResponse {

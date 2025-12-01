@@ -106,7 +106,8 @@ interface CreateCheckoutSessionRequest {
   storeId: string;
   returnUrl: string;
   successUrl: string;
-  lineItems: LineItem[];
+  lineItems?: LineItem[];
+  draftOrderId?: string;
   storeName?: string;
   enableShipping?: boolean;
   enableLocalPickup?: boolean;
@@ -220,6 +221,35 @@ async function createCheckoutSession(
     throw new Error("Missing required Commerce STORE_ID");
   }
 
+  const baseInput = {
+    environment: "dev",
+    storeId: params.storeId,
+    storeName: params.storeName ?? null,
+    customerId: null,
+    returnUrl: params.returnUrl,
+    successUrl: params.successUrl,
+    enableShipping: params.enableShipping ?? false,
+    enableLocalPickup: params.enableLocalPickup ?? false,
+    enableBillingAddressCollection:
+      params.enableBillingAddressCollection ?? true,
+    enableShippingAddressCollection:
+      params.enableShippingAddressCollection ?? false,
+    enablePhoneCollection: params.enablePhoneCollection ?? false,
+    enableTaxCollection: params.enableTaxCollection ?? false,
+    enablePaymentMethodCollection:
+      params.enablePaymentMethodCollection ?? true,
+    paymentMethods: {
+      card: {
+        processor: "godaddy",
+        checkoutTypes: ["standard"],
+      },
+    },
+  };
+
+  const input = params.draftOrderId
+    ? { ...baseInput, draftOrderId: params.draftOrderId }
+    : { ...baseInput, lineItems: params.lineItems };
+
   const graphqlQuery = {
     query: `
 			mutation CreateCheckoutSession($input: MutationCreateCheckoutSessionInput!) {
@@ -231,33 +261,7 @@ async function createCheckoutSession(
 				}
 			}
 		`,
-    variables: {
-      input: {
-        environment: "dev",
-        storeId: params.storeId,
-        storeName: params.storeName ?? null,
-        customerId: null,
-        returnUrl: params.returnUrl,
-        successUrl: params.successUrl,
-        enableShipping: params.enableShipping ?? false,
-        enableLocalPickup: params.enableLocalPickup ?? false,
-        enableBillingAddressCollection:
-          params.enableBillingAddressCollection ?? true,
-        enableShippingAddressCollection:
-          params.enableShippingAddressCollection ?? false,
-        enablePhoneCollection: params.enablePhoneCollection ?? false,
-        enableTaxCollection: params.enableTaxCollection ?? false,
-        enablePaymentMethodCollection:
-          params.enablePaymentMethodCollection ?? true,
-        paymentMethods: {
-          card: {
-            processor: "godaddy",
-            checkoutTypes: ["standard"],
-          },
-        },
-        lineItems: params.lineItems,
-      },
-    },
+    variables: { input },
   };
 
   try {
@@ -301,6 +305,7 @@ export default async function handler(req: Request, res: Response) {
       returnUrl,
       successUrl,
       lineItems,
+      draftOrderId,
       storeName,
       enableShipping,
       enableLocalPickup,
@@ -311,11 +316,21 @@ export default async function handler(req: Request, res: Response) {
       enablePaymentMethodCollection,
     } = req.body as Partial<CreateCheckoutSessionRequest>;
 
-    if (!returnUrl || !successUrl || !storeId || !lineItems?.length) {
+    const hasLineItems = lineItems && lineItems.length > 0;
+    const hasDraftOrderId = !!draftOrderId;
+
+    if (!returnUrl || !successUrl || !storeId) {
       res.status(400).json({
         success: false,
-        error:
-          "Missing required fields: storeId, lineItems, returnUrl, successUrl",
+        error: "Missing required fields: storeId, returnUrl, successUrl",
+      });
+      return;
+    }
+
+    if (!hasLineItems && !hasDraftOrderId) {
+      res.status(400).json({
+        success: false,
+        error: "Must provide either lineItems or draftOrderId",
       });
       return;
     }
@@ -326,6 +341,7 @@ export default async function handler(req: Request, res: Response) {
     const checkoutSession = await createCheckoutSession(accessToken, {
       storeId,
       lineItems,
+      draftOrderId,
       returnUrl: finalReturnUrl,
       successUrl: finalSuccessUrl,
       storeName,

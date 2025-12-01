@@ -38,6 +38,7 @@ export {
   commerceSkuGroup,
   commerceSku,
   commerceInventory,
+  commerceSkuGroupMedia,
 } from './commerce-tools.js';
 export { oauthConnect } from './oauth-tool.js';
 
@@ -74,6 +75,7 @@ import {
   commerceSkuGroup,
   commerceSku,
   commerceInventory,
+  commerceSkuGroupMedia,
 } from './commerce-tools.js';
 import { oauthConnect } from './oauth-tool.js';
 
@@ -113,6 +115,7 @@ export const allAILibTools: Record<string, Tool> = {
   commerceSkuGroup: commerceSkuGroup,
   commerceSku: commerceSku,
   commerceInventory: commerceInventory,
+  commerceSkuGroupMedia: commerceSkuGroupMedia,
 };
 
 /**
@@ -151,6 +154,7 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     skuGroup: commerceSkuGroup,
     sku: commerceSku,
     inventory: commerceInventory,
+    skuGroupMedia: commerceSkuGroupMedia,
   },
 
   // Media and content tools

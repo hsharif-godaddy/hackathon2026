@@ -18,6 +18,8 @@ import type {
   StockInventoryResponse as GraphQLStockInventoryResponse,
   GetLocationsResponse as GraphQLGetLocationsResponse,
   CreateLocationResponse as GraphQLCreateLocationResponse,
+  AddMediaObjectsToSkuGroupResponse as GraphQLAddMediaObjectsToSkuGroupResponse,
+  RemoveMediaObjectsFromSkuGroupResponse as GraphQLRemoveMediaObjectsFromSkuGroupResponse,
   InventoryCountResponse,
   InventoryAdjustmentResponse,
   LocationResponse,
@@ -29,7 +31,8 @@ import type {
   PriceRange,
   CreateSKUPriceInput,
   CreateMediaObjectInput,
-  CreateSKUGroupSKUInput
+  CreateSKUGroupSKUInput,
+  MediaObjectResponse
 } from './godaddy-commerce-types.js';
 
 const logger = Logger.create({ service: 'godaddy-commerce' });
@@ -50,7 +53,8 @@ export type {
   InventoryAdjustmentResponse,
   LocationResponse,
   MutationAdjustInventoryInput,
-  MutationStockInventoryInput
+  MutationStockInventoryInput,
+  MediaObjectResponse
 };
 
 // Aliases for backward compatibility
@@ -126,6 +130,20 @@ export type GetLocationsResponse =
  */
 export type CreateLocationResponse =
   | { success: true; data: GraphQLCreateLocationResponse; error?: never }
+  | { success: false; data?: never; error: string };
+
+/**
+ * GraphQL add media objects to SKU group mutation response wrapper
+ */
+export type AddMediaObjectsToSkuGroupResponse =
+  | { success: true; data: GraphQLAddMediaObjectsToSkuGroupResponse; error?: never }
+  | { success: false; data?: never; error: string };
+
+/**
+ * GraphQL remove media objects from SKU group mutation response wrapper
+ */
+export type RemoveMediaObjectsFromSkuGroupResponse =
+  | { success: true; data: GraphQLRemoveMediaObjectsFromSkuGroupResponse; error?: never }
   | { success: false; data?: never; error: string };
 
 export class GoDaddyCommerce {
@@ -1255,6 +1273,170 @@ export class GoDaddyCommerce {
       logger.error('commerce.create-location.graphql-errors', {
         storeId: args.storeId,
         label: args.location.label,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async addMediaObjectsToSkuGroup(
+    args: { storeId: string; skuGroupId: string; mediaObjects: CreateMediaObjectInput[] },
+    accessToken: string
+  ): Promise<AddMediaObjectsToSkuGroupResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const mutation = `
+      mutation AddMediaObjectsToSkuGroup($id: String!, $input: MutationAddMediaObjectsToSkuGroupInput!) {
+        addMediaObjectsToSkuGroup(id: $id, input: $input) {
+          id
+          label
+          name
+          status
+          mediaObjects(first: 50) {
+            edges {
+              node {
+                id
+                label
+                name
+                position
+                type
+                url
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: {
+          id: args.skuGroupId,
+          input: {
+            mediaObjects: args.mediaObjects,
+          },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.add-media-objects-to-sku-group.request-failed', {
+        storeId: args.storeId,
+        skuGroupId: args.skuGroupId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.add-media-objects-to-sku-group.graphql-errors', {
+        storeId: args.storeId,
+        skuGroupId: args.skuGroupId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async removeMediaObjectsFromSkuGroup(
+    args: { storeId: string; skuGroupId: string; mediaObjectIds: string[] },
+    accessToken: string
+  ): Promise<RemoveMediaObjectsFromSkuGroupResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const mutation = `
+      mutation RemoveMediaObjectsFromSkuGroup($id: String!, $input: MutationRemoveMediaObjectsFromSkuGroupInput!) {
+        removeMediaObjectsFromSkuGroup(id: $id, input: $input) {
+          id
+          label
+          name
+          status
+          mediaObjects(first: 50) {
+            edges {
+              node {
+                id
+                label
+                name
+                position
+                type
+                url
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: {
+          id: args.skuGroupId,
+          input: {
+            mediaObjectIds: args.mediaObjectIds,
+          },
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.remove-media-objects-from-sku-group.request-failed', {
+        storeId: args.storeId,
+        skuGroupId: args.skuGroupId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.remove-media-objects-from-sku-group.graphql-errors', {
+        storeId: args.storeId,
+        skuGroupId: args.skuGroupId,
         errors: data.errors.map((e: any) => e.message),
       });
       return {

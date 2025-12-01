@@ -43,20 +43,43 @@ The user wants to fetch their GoDaddy Commerce products. Please retrieve the pro
 
 **After handoff returns:**
 
-When commerce hands back to you with product data, **check the instructions provided by the Commerce Agent**:
+When commerce hands back to you with product data, **detect the flow type from the `FLOW_TYPE` header**:
 
-### 1. Storefront Flow (if instructed to use `@godaddy/react`)
+### 1. Storefront Flow (FLOW_TYPE: STOREFRONT_COMPONENTS)
+
+**Detect by:** Look for `FLOW_TYPE: STOREFRONT_COMPONENTS` header in the handoff instructions.
 
 **This is the DEFAULT flow for any full store setup, catalog browsing, or multi-product scenario.**
 
-- ✅ Install `@godaddy/react`, `@godaddy/localizations`
-- ✅ Import `@godaddy/react/styles.css` after global CSS in `layout.tsx`
-- ✅ Implement the `GoDaddyProvider`, `ProductGrid`, `ProductDetails`, and `Cart` components using the provided patterns
-- ✅ Wire the `Cart` checkout handler to the backend API
+- ✅ Install `@godaddy/react`, `@godaddy/localizations`, `@tanstack/react-query`
+- ✅ Import `@godaddy/react/styles-tailwind.css` after global CSS in `layout.tsx`
+- ✅ Wrap app in `GoDaddyProvider` with the storeId, channelId, clientId, apiHost from context
+- ✅ Use `ProductGrid`, `ProductDetails`, and `Cart` components
+- ✅ Wire the `Cart` onCheckout handler to receive `orderId: string` and call backend with `draftOrderId: orderId`
+- ❌ **DO NOT render product cards manually from the products array** - components fetch their own data
 
-**Refer to the "Commerce Checkout Implementation Guide" section in your instructions for the mandatory implementation templates for these components.**
+**Cart onCheckout Handler (CRITICAL):**
 
-### 2. Payment Flow (if instructed to render manually)
+```tsx
+const handleCheckout = async (orderId: string) => {
+  setIsCheckingOut(true);
+  const response = await fetch('/api/commerce/create-checkout-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storeId: 'FROM_CONTEXT',
+      draftOrderId: orderId, // CRITICAL: Use orderId as draftOrderId
+      returnUrl: `${previewUrl}/checkout/success`,
+      successUrl: `${previewUrl}/checkout/success`,
+    }),
+  });
+  // ... handle response
+};
+```
+
+### 2. Payment Flow (FLOW_TYPE: PAYMENT_SIMPLE)
+
+**Detect by:** Look for `FLOW_TYPE: PAYMENT_SIMPLE` header in the handoff instructions.
 
 - ✅ Implement HTML product listing UI with the data
 - ✅ Create buy buttons linking to checkout

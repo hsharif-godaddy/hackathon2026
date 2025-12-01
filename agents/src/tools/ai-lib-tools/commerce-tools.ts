@@ -1005,3 +1005,154 @@ export const commerceInventory = createTool(
   }
 );
 
+export const commerceSkuGroupMedia = createTool(
+  'Manage media objects (images) for a SKU Group (product) in GoDaddy Commerce store. Supports add and remove operations via "action" parameter. Use the mediaSearch tool first to find images, then use this tool to attach them to products.',
+  z.object({
+    action: z.enum(['add', 'remove']).describe('Action to perform: "add" to add new images, "remove" to remove existing images'),
+    storeId: z.string().describe('The store ID'),
+    skuGroupId: z.string().describe('The ID of the SKU Group (product) to add/remove media from'),
+    mediaObjects: z
+      .array(
+        z.object({
+          type: z
+            .enum(['IMAGE', 'PHOTO', 'VIDEO'])
+            .default('IMAGE')
+            .describe('The type of media. Use "IMAGE" for most images.'),
+          url: z.string().url().describe('The URL of the media to add'),
+          label: z.string().optional().describe('Optional display label for the media'),
+          name: z.string().optional().describe('Optional unique name identifier for the media'),
+          position: z.number().int().optional().describe('Optional position/order of the media (lower numbers appear first)'),
+        })
+      )
+      .optional()
+      .describe('Array of media objects to add (required for "add" action). Get URLs from mediaSearch tool.'),
+    mediaObjectIds: z
+      .array(z.string())
+      .optional()
+      .describe('Array of media object IDs to remove (required for "remove" action). Get IDs from skuGroup read action.'),
+  }),
+  async (input, context) => {
+    const startTime = Date.now();
+    const appId = context?.metadata?.appId as string;
+
+    if (!appId) {
+      return fail({
+        code: ErrorCodes.CONTEXT_MISSING,
+        message: 'App ID is required for commerce operations',
+        hint: 'Pass context.metadata.appId',
+      });
+    }
+
+    try {
+      const { accessToken } = await AuthService.getAccessToken({ appId });
+
+      if (input.action === 'add') {
+        if (!input.mediaObjects || input.mediaObjects.length === 0) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'mediaObjects array is required for add action',
+            hint: 'Use the mediaSearch tool to find image URLs first',
+          });
+        }
+
+        const result = await godaddy.addMediaObjectsToSkuGroup(
+          {
+            storeId: input.storeId,
+            skuGroupId: input.skuGroupId,
+            mediaObjects: input.mediaObjects.map((m) => ({
+              type: m.type || 'IMAGE',
+              url: m.url,
+              ...(m.label && { label: m.label }),
+              ...(m.name && { name: m.name }),
+              ...(m.position !== undefined && { position: m.position }),
+            })),
+          },
+          accessToken
+        );
+
+        if (!result.success) {
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: result.error || 'Failed to add media objects to SKU Group',
+            retryable: true,
+          });
+        }
+
+        return ok(
+          {
+            storeId: input.storeId,
+            skuGroupId: input.skuGroupId,
+            skuGroup: result.data.addMediaObjectsToSkuGroup,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+          },
+          {
+            tookMs: Date.now() - startTime,
+          }
+        );
+      }
+
+      if (input.action === 'remove') {
+        if (!input.mediaObjectIds || input.mediaObjectIds.length === 0) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'mediaObjectIds array is required for remove action',
+            hint: 'Use the skuGroup tool with action "read" to get existing media object IDs',
+          });
+        }
+
+        const result = await godaddy.removeMediaObjectsFromSkuGroup(
+          {
+            storeId: input.storeId,
+            skuGroupId: input.skuGroupId,
+            mediaObjectIds: input.mediaObjectIds,
+          },
+          accessToken
+        );
+
+        if (!result.success) {
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: result.error || 'Failed to remove media objects from SKU Group',
+            retryable: true,
+          });
+        }
+
+        return ok(
+          {
+            storeId: input.storeId,
+            skuGroupId: input.skuGroupId,
+            skuGroup: result.data.removeMediaObjectsFromSkuGroup,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+          },
+          {
+            tookMs: Date.now() - startTime,
+          }
+        );
+      }
+
+      return fail({
+        code: ErrorCodes.INVALID_INPUT,
+        message: 'Invalid action',
+      });
+    } catch (err) {
+      if (err instanceof AuthRequiredError) {
+        return needAuth(
+          {
+            code: ErrorCodes.AUTH_REQUIRED,
+            message: 'Authentication required to proceed.',
+          },
+          {
+            auth: {
+              provider: 'godaddy',
+              scopes: err.scopes,
+              redirectUrl: err.redirectUrl,
+              state: err.state,
+            },
+          }
+        );
+      }
+      throw err;
+    }
+  }
+);
+

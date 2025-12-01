@@ -46,13 +46,11 @@ export interface LineItem {
 }
 
 /**
- * Request parameters for creating a checkout session
+ * Base parameters shared by all checkout session types
  */
-export interface CreateCheckoutSessionParams {
+interface BaseCheckoutSessionParams {
 	/** Store ID from Commerce API */
 	storeId: string;
-	/** Array of line items (products and quantities) */
-	lineItems: LineItem[];
 	/** URL to return to if checkout is cancelled */
 	returnUrl: string;
 	/** URL to redirect to after successful payment */
@@ -74,6 +72,35 @@ export interface CreateCheckoutSessionParams {
 	/** Enable payment method collection (default: true) */
 	enablePaymentMethodCollection?: boolean;
 }
+
+/**
+ * Checkout parameters using line items (for payment flows)
+ */
+interface LineItemsCheckoutParams extends BaseCheckoutSessionParams {
+	/** Array of line items (products and quantities) - used for payment flows */
+	lineItems: LineItem[];
+	draftOrderId?: never;
+}
+
+/**
+ * Checkout parameters using draft order ID (for full storefront flow)
+ */
+interface DraftOrderCheckoutParams extends BaseCheckoutSessionParams {
+	/** Draft order ID - used for full storefront flow with @godaddy/react Cart component */
+	draftOrderId: string;
+	lineItems?: never;
+}
+
+/**
+ * Request parameters for creating a checkout session
+ *
+ * Use either:
+ * - `lineItems` for payment flows (manual checkout implementation)
+ * - `draftOrderId` for storefront flows (using @godaddy/react Cart component)
+ */
+export type CreateCheckoutSessionParams =
+	| LineItemsCheckoutParams
+	| DraftOrderCheckoutParams;
 
 /**
  * Response from checkout session creation

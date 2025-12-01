@@ -87,11 +87,38 @@ You must implement the following components using these exact patterns.
 
 Wrap your application or store routes in `GoDaddyProvider`. This is typically done in `src/app/layout.tsx`.
 
+**Configuration Sources:**
+
+- `clientId` → Read from `VITE_GODADDY_CLIENT_ID` env var (UUID format, public/safe to expose)
+- `apiHost` → Read from `VITE_GODADDY_API_HOST` env var (typically `api.dev-godaddy.com`, NO `https://` prefix)
+- `storeId` → Hardcode from Commerce Agent handoff context
+- `channelId` → Hardcode from Commerce Agent handoff context
+
+**Step 1: Write Environment Variables to .env File**
+
+**CRITICAL**: You MUST add these values to the app's `.env` file before implementing the provider:
+
+1. Read `GODADDY_OAUTH_CLIENT_ID` value from `/alloc/config.json` (GODADDY_OAUTH_CLIENT_ID.VALUE field)
+2. Read `GODADDY_API_BASE_URL` value from current `.env` file
+3. Extract the hostname from `GODADDY_API_BASE_URL` by stripping the protocol (`https://` or `http://`)
+   - Example: `https://api.dev-godaddy.com` → `api.dev-godaddy.com`
+4. Add these lines to the `.env` file:
+
+```bash
+# GoDaddy Commerce Storefront Configuration
+VITE_GODADDY_CLIENT_ID=<value-from-/alloc/config.json>
+VITE_GODADDY_API_HOST=<hostname-from-GODADDY_API_BASE_URL>
+```
+
+**DO NOT create API endpoints to fetch config. Read from /alloc/config.json and .env, then write to .env with VITE\_ prefix.**
+
+**Step 2: Create Providers Component**
+
 ```tsx
 'use client';
 import { GoDaddyProvider } from '@godaddy/react';
 import { QueryClient } from '@tanstack/react-query';
-import '@godaddy/react/styles.css'; // MUST come after globals.css
+import '@godaddy/react/styles-tailwind.css'; // MUST come after globals.css
 
 export function StoreProviders({
   children,
@@ -100,11 +127,13 @@ export function StoreProviders({
   children: React.ReactNode;
   queryClient: QueryClient;
 }) {
-  // Use values passed by Commerce Agent. If not available, use process.env or placeholders.
-  const storeId = 'REPLACE_WITH_STORE_ID';
-  const channelId = 'REPLACE_WITH_CHANNEL_ID';
-  const clientId = 'REPLACE_WITH_CLIENT_ID';
-  const apiHost = 'REPLACE_WITH_API_HOST'; // e.g. api.commerce.godaddy.com (no https://)
+  // Hardcode storeId and channelId from Commerce Agent handoff
+  const storeId = 'REPLACE_WITH_STORE_ID'; // From handoff context
+  const channelId = 'REPLACE_WITH_CHANNEL_ID'; // From handoff context
+
+  // Read from VITE_ environment variables (public, safe to expose)
+  const clientId = import.meta.env.VITE_GODADDY_CLIENT_ID;
+  const apiHost = import.meta.env.VITE_GODADDY_API_HOST; // e.g. api.dev-godaddy.com (no https://)
 
   return (
     <GoDaddyProvider
@@ -122,7 +151,7 @@ export function StoreProviders({
 
 #### 2. Cart & Layout Integration
 
-The `Cart` component manages the shopping bag and checkout.
+The `Cart` component manages the shopping bag and checkout. **CRITICAL:** The `onCheckout` handler receives an `orderId: string` parameter (NOT cart items). You MUST use this as `draftOrderId` when calling the backend.
 
 ```tsx
 'use client';
@@ -131,10 +160,14 @@ import { useState } from 'react';
 
 export default function StoreLayout({ children }: { children: React.ReactNode }) {
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
 
-  // CRITICAL: Use this exact checkout handler pattern
-  // IMPORTANT: Fallback chain for preview URL (Commerce API rejects localhost with 403 errors)
-  const handleCheckout = async (cartItems: Array<{ skuId: string; quantity: number }>) => {
+  // CRITICAL: onCheckout receives orderId string, NOT cart items array
+  // ❌ WRONG: async (cartItems: Array<{ skuId: string; quantity: number }>)
+  // ✅ CORRECT: async (orderId: string)
+  const handleCheckout = async (orderId: string) => {
+    setIsCheckingOut(true);
+    // IMPORTANT: Fallback chain for preview URL (Commerce API rejects localhost with 403 errors)
     const previewUrl =
       import.meta.env.VITE_PREVIEW_URL ||
       (typeof window !== 'undefined' ? window.location.origin : 'https://placeholder.godaddy.com');
@@ -143,7 +176,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         storeId: 'YOUR_STORE_ID', // From Commerce Agent handoff
-        lineItems: cartItems,
+        draftOrderId: orderId, // CRITICAL: Use orderId as draftOrderId, NOT lineItems
         returnUrl: `${previewUrl}/checkout/success`,
         successUrl: `${previewUrl}/checkout/success`,
       }),
@@ -152,13 +185,18 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     if (result.checkoutUrl) {
       window.location.href = result.checkoutUrl;
     }
+    setIsCheckingOut(false);
   };
 
   return (
     <>
       <header className="p-4 flex justify-end">
-        <button onClick={() => setIsCartOpen(true)} className="p-2 bg-primary text-white rounded">
-          Cart
+        <button
+          onClick={() => setIsCartOpen(true)}
+          className="p-2 bg-primary text-white rounded"
+          disabled={isCheckingOut}
+        >
+          {isCheckingOut ? 'Processing...' : 'Cart'}
         </button>
       </header>
       <main>{children}</main>
