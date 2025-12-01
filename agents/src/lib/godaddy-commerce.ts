@@ -307,6 +307,58 @@ export class GoDaddyCommerce {
     return data;
   }
 
+  /**
+   * Enable Catalog V2 for a store
+   *
+   * This converts the store to use Commerce Catalog V2, which should be done
+   * immediately after store onboarding and before loading any products.
+   *
+   * @param args - Object containing storeId
+   * @param accessToken - OAuth access token
+   * @throws Error if the API request fails
+   */
+  public async enableCatalogV2(args: { storeId: string }, accessToken: string): Promise<void> {
+    if (!this.baseUrl) {
+      throw new Error('Godaddy base url not set');
+    }
+
+    const hostname = new URL(this.baseUrl).hostname;
+    const domain = hostname.replace(/^api\./, '');
+    const url = `https://catalog.commerce.${domain}/v1/commerce/catalog/internal/stores/${args.storeId}/eligibleVersion`;
+
+    logger.info('godaddy_commerce.enable_catalog_v2.start', {
+      storeId: args.storeId,
+      url,
+    });
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        ...this.baseHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        'X-Request-ID': uuid(),
+      },
+      body: JSON.stringify({
+        useCatalogV2: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('godaddy_commerce.enable_catalog_v2.failure', {
+        storeId: args.storeId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      throw new Error(`Failed to enable Catalog V2 for store ${args.storeId}: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    logger.info('godaddy_commerce.enable_catalog_v2.success', {
+      storeId: args.storeId,
+    });
+  }
+
   public async getSkuGroups(args: { storeId: string; first?: number; after?: string | undefined; query?: string | undefined }, accessToken: string): Promise<GetSkuGroupsResponse> {
     const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
 

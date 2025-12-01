@@ -150,6 +150,25 @@ export const commerceSetupIntegration = createTool(
           });
         }
 
+        // Enable Catalog V2 before loading any products
+        try {
+          await godaddy.enableCatalogV2(
+            { storeId: onboardResult.metadata.storeId },
+            accessToken
+          );
+        } catch (catalogError) {
+          logger.error('commerce.onboarding.catalog_v2.failure', {
+            appId,
+            storeId: onboardResult.metadata.storeId,
+            error: catalogError instanceof Error ? catalogError.message : String(catalogError),
+          });
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: 'Failed to enable Catalog V2 during store onboarding',
+            hint: 'The store was created but could not be upgraded to Catalog V2. Check the logs for details.',
+          });
+        }
+
         await godaddy.enableGoDaddyPaymentsApplication(
           { storeId: onboardResult?.metadata?.storeId },
           accessToken
