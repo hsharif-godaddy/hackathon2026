@@ -70,8 +70,8 @@ export class TemplateCopyService {
         // Perform the actual copy
         this.performTemplateCopy(templatePath, appPath);
 
-        // Copy dev-supervisor binary for Docker mode
-        this.copyDevSupervisorBinary(appPath, appId);
+        // Note: dev-supervisor binary is copied from pre-built image in Dockerfile
+        // No need to copy source code to app directory (saves ~168 files from bind mount)
 
         // Validate the copied template
         this.validateCopiedTemplate(appPath);
@@ -239,7 +239,9 @@ export class TemplateCopyService {
               relativePath.includes('coverage') ||
               relativePath.includes('logs') ||
               relativePath.endsWith('.log') ||
-              relativePath.includes('.dev-ports.json')) {
+              relativePath.includes('.dev-ports.json') ||
+              relativePath.startsWith('dev-supervisor') ||
+              relativePath.includes('.git/')) {
             return false;
           }
 

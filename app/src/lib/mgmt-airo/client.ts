@@ -60,6 +60,7 @@ export class AiroMgmtClient {
   private jwt: string;
   private maxRetries: number;
   private retryDelayMs: number;
+  private timeoutMs: number;
 
   /**
    * Create a new mgmt-airo API client
@@ -71,6 +72,7 @@ export class AiroMgmtClient {
     this.jwt = config.jwt;
     this.maxRetries = config.maxRetries ?? 3;
     this.retryDelayMs = config.retryDelayMs ?? 1000;
+    this.timeoutMs = config.timeoutMs ?? 10000; // 10 second default timeout
   }
 
   /**
@@ -108,6 +110,7 @@ export class AiroMgmtClient {
             'Authorization': `${MGMT_AIRO_AUTH_SCHEME} ${this.jwt}`,
             ...(body ? { 'Content-Type': 'application/json' } : {})
           },
+          signal: AbortSignal.timeout(this.timeoutMs),
           ...(noCache ? { cache: 'no-store' as RequestCache } : {}),
           ...(body ? { body: JSON.stringify(body) } : {})
         });

@@ -473,6 +473,7 @@ export interface AiroMgmtClientConfig {
   jwt: string;
   maxRetries?: number;
   retryDelayMs?: number;
+  timeoutMs?: number;
 }
 
 /**

@@ -26,8 +26,8 @@ export class DevSiteAdapter implements ISiteAdapter {
 
   private async getDevEnvManager(): Promise<DevEnvironmentManager> {
     if (!this.devEnvManager) {
-      // Create dev environment manager (now uses DatabaseManager)
-      this.devEnvManager = new DevEnvironmentManager();
+      // Use singleton instance to share state across all adapters
+      this.devEnvManager = DevEnvironmentManager.getInstance();
       await this.devEnvManager.initialize();
     }
     return this.devEnvManager;

@@ -29,19 +29,23 @@ export interface GraphQLRequest {
 export class GraphQLClient {
     private endpoint: string;
     private getAuthToken: () => Promise<string | null>;
+    private timeoutMs: number;
 
     /**
      * Create a GraphQL client instance
      *
      * @param endpoint - GraphQL API endpoint URL
      * @param getAuthToken - Function to retrieve authentication token
+     * @param timeoutMs - Request timeout in milliseconds (default: 10000)
      */
     constructor(
         endpoint: string,
-        getAuthToken: () => Promise<string | null>
+        getAuthToken: () => Promise<string | null>,
+        timeoutMs: number = 10000
     ) {
         this.endpoint = endpoint;
         this.getAuthToken = getAuthToken;
+        this.timeoutMs = timeoutMs;
     }
 
     /**
@@ -78,6 +82,7 @@ export class GraphQLClient {
             method: 'POST',
             headers,
             body: JSON.stringify(request),
+            signal: AbortSignal.timeout(this.timeoutMs),
         });
 
         if (!response.ok) {

@@ -25,6 +25,20 @@ export const GET = withCustomerAuth(
         try {
             const { user, jwt } = authContext;
 
+            // In development mode, skip venture API calls and return mock venture ID
+            // This avoids 5-15 second delays from failed authentication attempts
+            if (process.env.AUTH_TYPE === 'none') {
+                logger.info('api.venture.get.mock', {
+                    message: 'Skipping venture API call in development mode',
+                    customerId: user.customerId,
+                });
+
+                return NextResponse.json({
+                    success: true,
+                    ventureId: `mock-venture-${user.customerId}`,
+                });
+            }
+
             if (!user.customerId) {
                 return NextResponse.json(
                     { error: 'Customer ID not available' },

@@ -53,10 +53,10 @@ export class DockerComposeGenerator {
 	 * - GoDaddy API configuration (GODADDY_API_BASE_URL)
 	 *
 	 * @param config - Service configuration containing app details and connection settings
-	 * @param dbConfig - Optional database configuration (reserved for future use)
+	 * @param _dbConfig - Optional database configuration (reserved for future use)
 	 * @returns Record of environment variable key-value pairs for Docker Compose
 	 */
-	private generateAppEnvironment(config: ComposeServiceConfig, dbConfig?: DatabaseConfig): Record<string, string> {
+	private generateAppEnvironment(config: ComposeServiceConfig, _dbConfig?: DatabaseConfig): Record<string, string> {
 		const env: Record<string, string> = {
 			HOST: "0.0.0.0",
 			NODE_ENV: "development",
@@ -94,18 +94,55 @@ export class DockerComposeGenerator {
 	}
 
 	/**
-	 * Generate nginx configuration for HTTPS termination
+	 * Generate nginx configuration for HTTPS termination and reverse proxy
 	 *
-	 * Creates a production-ready nginx configuration that:
-	 * - Terminates SSL/TLS using certificates from app template
-	 * - Proxies all requests to the internal app container on HTTP
-	 * - Supports WebSocket connections for Vite HMR
-	 * - Sets appropriate proxy headers for request forwarding
-	 * - Uses fully-qualified container name to avoid DNS collisions on shared network
+	 * Creates a production-ready nginx configuration that provides:
 	 *
-	 * @param appId - Application ID for unique container naming
+	 * **SSL/TLS Termination**:
+	 * - Terminates HTTPS at nginx layer using certificates from `/app/ssl/` directory
+	 * - Supports TLS 1.2 and TLS 1.3 with secure cipher suites
+	 * - HTTP/2 enabled for improved performance
+	 * - Proxies to internal app container over HTTP (localhost-only traffic)
+	 *
+	 * **WebSocket Support**:
+	 * - Full WebSocket upgrade support for Vite HMR (Hot Module Replacement)
+	 * - Connection header mapping based on Upgrade header
+	 * - Extended read timeout (24 hours) for long-lived connections
+	 *
+	 * **Request Forwarding**:
+	 * - Preserves client IP via X-Real-IP and X-Forwarded-For headers
+	 * - Forwards protocol information via X-Forwarded-Proto
+	 * - Maintains Host header for proper routing
+	 * - 50MB client body size limit for file uploads
+	 *
+	 * **DNS Resolution**:
+	 * - Uses Docker embedded DNS (127.0.0.11) for dynamic service discovery
+	 * - Container names resolved at request time (survives restarts)
+	 * - Fully-qualified container name prevents DNS collisions on shared networks
+	 * - 10-second DNS cache validity with 5-second timeout
+	 *
+	 * @param appId - Application ID for unique container naming (used in upstream server name)
 	 * @param nginxPort - External HTTPS port for nginx to listen on (allocated by PortManager)
-	 * @returns nginx.conf file content as a string
+	 *
+	 * @returns Complete nginx.conf file content as a string ready to be written to disk
+	 *
+	 * @example
+	 * ```typescript
+	 * const config = this.generateNginxConfig('my-app-123', 5001);
+	 * writeFileSync('/tmp/nginx.conf', config);
+	 * // Nginx will listen on :5001 (HTTPS) and proxy to app container (HTTP)
+	 * ```
+	 *
+	 * @remarks
+	 * - Upstream server: `airo-app-${appId}-app-1:${APP_INTERNAL_PORT}`
+	 * - APP_INTERNAL_PORT is interpolated by Docker Compose from env var (default: 3000)
+	 * - SSL certificates must exist at `/etc/nginx/ssl/cert.pem` and `/etc/nginx/ssl/key.pem`
+	 * - DNS resolver (127.0.0.11) is Docker's internal DNS, not system DNS
+	 * - Worker connections limit: 1024 concurrent connections per worker process
+	 * - HTTP/2 enabled via `http2 on` directive (nginx 1.25.1+)
+	 *
+	 * @see {@link https://nginx.org/en/docs/http/websocket.html} nginx WebSocket proxying
+	 * @see {@link https://docs.docker.com/network/drivers/bridge/#use-the-default-bridge-network} Docker DNS
 	 */
 	private generateNginxConfig(appId: string, nginxPort: number): string {
 		const nginxConfig = `events {
@@ -177,10 +214,12 @@ http {
 		const allocPath = getAllocPath(config.appId);
 
 		const volumes = [
-			`${config.appPath}:/app`, // Mount app code directory
-			"/app/node_modules", // Anonymous volume for node_modules
+			// Mount app code directory for hot reload
+			`${config.appPath}:/app`,
+      // Anonymous volume for node_modules to improve performance
+      // Prevents the copy of host node_modules into container at startup from being overwritten by the /app bind mount
+      `/app/node_modules`,
 			`${allocPath}:/alloc:ro`, // Mount alloc directory for config and secrets
-			"/tmp/airo-npm-cache:/npm-cache", // Mount npm cache directory
 		];
 
 		// Add dev-supervisor socket directory if using Unix socket mode
@@ -189,7 +228,7 @@ http {
 			volumes.push(`${socketDir}:/tmp/supervisor`);
 		}
 
-		// v8 template doesn't require additional volumes
+		// Note: npm cache is handled by BuildKit cache mounts during build, not at runtime
 
 		return volumes;
 	}
@@ -247,6 +286,8 @@ http {
 			: '';
 
 		// Build the compose file with nginx proxy + app service
+		// Uses pre-built shared template image (aab-template-v8:latest) for all apps
+		// This eliminates per-app build time, reducing app creation from ~72s to <5s
 		const composeContent = `---
 
 services:
@@ -264,12 +305,6 @@ services:
       - app-network
 
   app:
-    build:
-      context: ${config.appPath}
-      dockerfile: Dockerfile.dev
-      args:
-        HOST_UID: ${config.uid}
-        HOST_GID: ${config.gid}
     image: ${config.imageName}
     restart: unless-stopped
 ${supervisorPortLines}    environment:

@@ -26,8 +26,8 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
     this.baseAppsDir = process.env.APPS_BASE_DIR || '/tmp/apps';
     this.templateDir = process.env.APP_TEMPLATE_DIR || path.join(process.cwd(), '..', 'app-templates', 'v8');
 
-    // Initialize dev environment manager (now uses DatabaseManager)
-    this.devEnvironmentManager = new DevEnvironmentManager();
+    // Use singleton instance to share state across all adapters
+    this.devEnvironmentManager = DevEnvironmentManager.getInstance();
 
     this.log('info', 'Docker deployment adapter initialized', {
       agentsServiceUrl: this.agentsServiceUrl,

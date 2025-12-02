@@ -8,8 +8,8 @@ import { DevEnvironmentManager } from './DevEnvironmentManager';
 async function testDevEnvironment() {
   console.log('🧪 Starting dev environment integration test...');
 
-  // Create dev environment manager (now uses DatabaseManager which handles MySQL)
-  const devManager = new DevEnvironmentManager();
+  // Use singleton instance to share state across all usages
+  const devManager = DevEnvironmentManager.getInstance();
 
   try {
     // 1. Initialize the dev environment manager

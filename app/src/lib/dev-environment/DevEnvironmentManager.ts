@@ -33,8 +33,11 @@ export interface DevAppResult {
 /**
  * Main orchestrator for the development environment
  * Coordinates all dev services without mixing concerns
+ * Singleton to ensure consistent state across all usages
  */
 export class DevEnvironmentManager {
+  private static instance: DevEnvironmentManager | null = null;
+
   private devDb: DevDatabase;
   private portManager: PortManager;
   private gitUtils: GitUtils;
@@ -42,11 +45,23 @@ export class DevEnvironmentManager {
   private adapter: IAppAdapter | null = null;
   private initialized = false;
 
-  constructor() {
-    this.devDb = new DevDatabase();
+  private constructor() {
+    // Use singleton instance to ensure all managers share the same state
+    this.devDb = DevDatabase.getInstance();
     this.portManager = new PortManager(this.devDb);
     this.gitUtils = new GitUtils();
     this.templateService = new TemplateCopyService();
+  }
+
+  /**
+   * Get singleton instance of DevEnvironmentManager
+   * Ensures all application code shares the same adapter and initialization state
+   */
+  static getInstance(): DevEnvironmentManager {
+    if (!DevEnvironmentManager.instance) {
+      DevEnvironmentManager.instance = new DevEnvironmentManager();
+    }
+    return DevEnvironmentManager.instance;
   }
 
   /**
@@ -63,7 +78,7 @@ export class DevEnvironmentManager {
       const adapterType = getAdapterType();
       // Only log adapter initialization in development to reduce noise
       if (process.env.NODE_ENV === 'development') {
-        logger.info(`🔧 Initializing ${adapterType} adapter for dev environment`);
+        logger.info('dev_environment.adapter.init', { adapterType, message: 'Initializing adapter for dev environment' });
       }
 
       this.adapter = await createAppAdapter(this.devDb);
@@ -73,7 +88,7 @@ export class DevEnvironmentManager {
     this.initialized = true;
     // Only log in development to reduce noise
     if (process.env.NODE_ENV === 'development') {
-      logger.info('✅ DevEnvironmentManager initialized');
+      logger.info('dev_environment.init.success', { message: 'DevEnvironmentManager initialized' });
     }
   }
 
@@ -93,7 +108,7 @@ export class DevEnvironmentManager {
       const existingApp = this.devDb.findDevAppById(siteId);
 
       if (existingApp && (existingApp.status === 'created' || existingApp.status === 'running')) {
-        logger.info(`✅ App ${siteId} already exists with status: ${existingApp.status}, skipping creation`);
+        logger.info('dev_app.create.exists', { siteId, status: existingApp.status, message: 'App already exists, skipping creation' });
 
         // Generate URLs for existing app
         const urls = {
@@ -160,7 +175,7 @@ export class DevEnvironmentManager {
       logger.info(`💾 Created dev app record for ${siteId}`);
 
       // 5. Set up template (only runs for new/error apps now)
-      logger.info(`🔧 Setting up template for app ${siteId}`);
+      logger.info('dev_app.template.setup.begin', { siteId, message: 'Setting up template for app' });
 
       // Set up the app using the template copy service
       await this.setupAppFromTemplate(siteId, appPath, name, templateVersion);
@@ -183,7 +198,7 @@ export class DevEnvironmentManager {
         frontend: `https://localhost:${port}`
       };
 
-      logger.info(`✅ Dev app ${siteId} created successfully`);
+      logger.info('dev_app.create.success', { siteId });
 
       return {
         success: true,
@@ -195,7 +210,7 @@ export class DevEnvironmentManager {
       };
 
     } catch (error) {
-      logger.error(`❌ Failed to create dev app ${siteId}:`, error);
+      logger.error('dev_app.create.failure', { siteId, error: error instanceof Error ? error.message : String(error), message: 'Failed to create dev app' });
 
       // Cleanup on failure
       try {
@@ -319,7 +334,7 @@ export class DevEnvironmentManager {
       // Remove from dev database
       this.devDb.deleteDevApp(appId);
 
-      logger.info(`🗑️ Dev app ${appId} deleted successfully`);
+      logger.info('dev_app.delete.success', { appId });
       return true;
 
     } catch (error) {
@@ -343,7 +358,7 @@ export class DevEnvironmentManager {
       });
 
       if (result.success) {
-        logger.info(`✅ Template setup completed for app ${appId}`);
+        logger.info('dev_app.template.setup.success', { appId });
 
         // Note: Commerce API credentials are hardcoded in generated code by Develop Agent
         // See agents/src/prompts/develop/commerce-checkout-guide.md for details
@@ -358,7 +373,7 @@ export class DevEnvironmentManager {
         throw new Error('Template copy failed');
       }
     } catch (error) {
-      logger.error(`❌ Template setup failed for app ${appId}:`, error);
+      logger.error('dev_app.template.setup.failure', { appId, error: error instanceof Error ? error.message : String(error), message: 'Template setup failed' });
       throw error;
     }
   }
@@ -398,7 +413,7 @@ export class DevEnvironmentManager {
         logger.info(`📝 Created .gitignore with dev-supervisor exclusions for app at ${appPath}`);
       }
     } catch (error) {
-      logger.warn(`⚠️ Failed to update .gitignore:`, error);
+      logger.warn('dev_app.gitignore.update.failure', { error: error instanceof Error ? error.message : String(error), message: 'Failed to update .gitignore' });
       throw error;
     }
   }
@@ -413,7 +428,7 @@ export class DevEnvironmentManager {
       const result = await SSLCertificateGenerator.ensureCertificates(appPath);
 
       if (result.success) {
-        logger.info(`✅ SSL certificates ready for ${appId} at ${result.certPath}`);
+        logger.info('dev_app.ssl.ready', { appId, certPath: result.certPath });
 
         const { CAManager } = await import('./utils/ca-manager');
         const caManager = new CAManager();
@@ -423,7 +438,7 @@ export class DevEnvironmentManager {
         logger.info(`   CA Location: ${caPath}`);
         logger.info(`   Run: ./scripts/trust-dev-ca.sh (or manually import into your browser/system)`);
       } else {
-        logger.warn(`⚠️ SSL certificate generation failed for ${appId}: ${result.error}`);
+        logger.warn('dev_app.ssl.generation.failure', { appId, error: result.error, message: 'SSL certificate generation failed' });
         logger.warn(`App will fall back to HTTP mode`);
       }
     } catch (error) {
@@ -437,7 +452,7 @@ export class DevEnvironmentManager {
    */
   private async initializeGitRepository(appId: string, appPath: string, appName: string): Promise<void> {
     try {
-      logger.info(`🔧 Initializing Git repository for ${appId}`);
+      logger.info('dev_app.git.init.begin', { appId, message: 'Initializing Git repository' });
 
       // Initialize the Git repository
       const initResult = await this.gitUtils.initRepository(appPath);
@@ -468,7 +483,7 @@ export class DevEnvironmentManager {
         );
 
         if (commitResult.success) {
-          logger.info(`✅ Initial commit created for ${appId}`);
+          logger.info('dev_app.git.commit.success', { appId, message: 'Initial commit created' });
         } else {
           logger.warn(`Initial commit failed for ${appId}:`, commitResult.stderr);
         }
@@ -485,7 +500,7 @@ export class DevEnvironmentManager {
    * Clean up a dev app (used on creation failure)
    */
   private async cleanupDevApp(appId: string): Promise<void> {
-    logger.info(`🧹 Cleaning up dev app ${appId}`);
+    logger.info('dev_app.cleanup.begin', { appId, message: 'Cleaning up dev app' });
 
     // Stop and remove via adapter
     if (this.adapter) {

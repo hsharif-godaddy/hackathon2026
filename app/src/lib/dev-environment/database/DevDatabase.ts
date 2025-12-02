@@ -24,14 +24,28 @@ export interface RunningProcess {
  * Database operations for dev environment
  * Uses in-memory storage to avoid async pollution
  * Data persists only during the dev session
+ * Singleton to ensure all instances share the same state
  */
 export class DevDatabase {
+  private static instance: DevDatabase | null = null;
+
   private devApps = new Map<string, DevAppInfo>();
   private runningProcesses = new Map<string, RunningProcess>();
   private portAllocations = new Set<number>();
 
-  constructor() {
+  private constructor() {
     // In-memory storage, no initialization needed
+  }
+
+  /**
+   * Get singleton instance of DevDatabase
+   * Ensures all DevEnvironmentManager instances share the same in-memory state
+   */
+  static getInstance(): DevDatabase {
+    if (!DevDatabase.instance) {
+      DevDatabase.instance = new DevDatabase();
+    }
+    return DevDatabase.instance;
   }
 
   /**

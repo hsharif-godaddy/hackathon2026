@@ -219,6 +219,25 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Install mkcert
+        run: |
+          echo "📜 Installing mkcert for local dev certificates..."
+          sudo apt-get update
+          sudo apt-get install -y mkcert
+          echo "✅ mkcert installed successfully"
+
+      - name: Generate local dev certificates
+        run: |
+          echo "🔐 Generating local development certificates..."
+          mkdir -p .dev-ca
+          cd .dev-ca
+          # Don't install CA system-wide (skip mkcert -install to avoid sudo)
+          # Just generate certificates - the CA will be created automatically
+          mkcert -cert-file cert.pem -key-file key.pem localhost 127.0.0.1 ::1
+          # Export the root CA certificate for Docker build context
+          mkcert -CAROOT | xargs -I {} cp {}/rootCA.pem ./ca-cert.pem
+          echo "✅ Development certificates generated"
+
       - name: Assume Role and Login to ECR
         run: |
           set -e
@@ -236,13 +255,6 @@ jobs:
 
           # Login to base image account (764525110978) - needed for Docker build
           assume_role_and_login 764525110978
-
-      - name: Build Docker Image (Dev Supervisor)
-        working-directory: ./dev-supervisor
-        run: |
-          echo "🐳 Building Docker image for dev-supervisor..."
-          docker build -t airo-dev-supervisor:latest .
-          echo "✅ Dev Supervisor Docker image built successfully"
 
       # - name: Build Docker Image (App)
       #   working-directory: ./app
@@ -273,27 +285,30 @@ jobs:
         env:
           NODE_ENV: production
         run: |
-          echo "🐳 Building Docker image for v8 template..."
-          docker build --platform linux/amd64 --build-arg DEV_SUPERVISOR_IMAGE=airo-dev-supervisor:latest -t airo-v8-template:latest app-templates/v8/
+          echo "🐳 Building Docker image for v8 template (includes dev-supervisor)..."
+          docker build --platform linux/amd64 \
+            --build-context dev-ca=.dev-ca \
+            --build-context dev-supervisor=dev-supervisor \
+            -t airo-v8-template:latest \
+            -f app-templates/v8/Dockerfile.dev \
+            app-templates/v8/
           echo "✅ V8 Template Docker image built successfully"
 
       - name: Print Success
         run: |
           echo "✅ All Docker images built successfully!"
           echo "Images built:"
-          echo "- airo-dev-supervisor:latest"
+          echo "- airo-v8-template:latest (includes dev-supervisor)"
           echo "- airo-app:latest"
           echo "- airo-proxy:latest"
           echo "- airo-agents:latest"
-          echo "- airo-v8-template:latest"
 
       - name: Clean up Docker images
         if: always()
         run: |
           echo "🧹 Cleaning up Docker images to free space..."
-          docker rmi airo-dev-supervisor:latest || true
+          docker rmi airo-v8-template:latest || true
           docker rmi airo-app:latest || true
           docker rmi airo-proxy:latest || true
           docker rmi airo-agents:latest || true
-          docker rmi airo-v8-template:latest || true
           echo "✅ Docker images cleaned up successfully"
