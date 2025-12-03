@@ -35,6 +35,9 @@ import { logger } from '@/lib/request-context'
 import { setSharedSocket, getSharedSocket } from '@/lib/socketRegistry'
 import { AgentService } from '@/services/AgentService'
 
+// Constants
+const RAF_FALLBACK_DELAY_MS = 16 // ~60fps frame duration for setTimeout fallback
+
 /**
  * Get short-lived JWT token for WebSocket authentication (12 hours)
  */
@@ -149,6 +152,119 @@ export function useStreamingWebSocket() {
   const setStreamingState = useSetStreamingState()
   const setIsLoading = useSetIsLoading()
   const sendToolImpression = (tool: string) => logImpressionEvent(`develop.tool.${tool}`)()
+  const toolDeltaBufferRef = useRef<Map<string, { name: string; delta: string; hasExplicitName: boolean }>>(new Map())
+  // hasExplicitName prevents later deltas that omit a tool name from overwriting a previously captured explicit name.
+  const toolDeltaFlushScheduledRef = useRef<boolean>(false)
+  const updateToolDeltaRef = useRef(useStreamingConversationStore.getState().updateToolDelta)
+
+  useEffect(() => {
+    const unsubscribe = useStreamingConversationStore.subscribe((state) => {
+      updateToolDeltaRef.current = state.updateToolDelta
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
+  const flushToolDeltaBuffer = useCallback(() => {
+    if (toolDeltaBufferRef.current.size === 0) {
+      return
+    }
+
+    const updateToolDeltaFn = updateToolDeltaRef.current
+    if (!updateToolDeltaFn) {
+      logger.warn('websocket.tool_delta.flush_unavailable', {
+        message: 'Tool delta buffer cleared without update function - user-facing output lost',
+        bufferedToolCount: toolDeltaBufferRef.current.size,
+        toolIds: Array.from(toolDeltaBufferRef.current.keys())
+      })
+      toolDeltaBufferRef.current.clear()
+      return
+    }
+
+    try {
+      // hasExplicitName is only needed while accumulating, so we ignore it during flush.
+      toolDeltaBufferRef.current.forEach(({ name, delta }, toolId) => {
+        if (delta.length > 0) {
+          updateToolDeltaFn(toolId, name, delta)
+        }
+      })
+
+      toolDeltaBufferRef.current.clear()
+    } catch (error) {
+      logger.error('websocket.tool_delta.flush_error', {
+        message: 'Failed to flush tool delta buffer',
+        error: error instanceof Error ? error.message : String(error),
+        bufferedToolCount: toolDeltaBufferRef.current.size,
+        toolIds: Array.from(toolDeltaBufferRef.current.keys())
+      })
+      // Clear buffer even on error to prevent permanent stuck state
+      toolDeltaBufferRef.current.clear()
+    }
+  }, [])
+
+  const flushToolDeltaBufferImmediate = useCallback(() => {
+    if (toolDeltaFlushScheduledRef.current) {
+      toolDeltaFlushScheduledRef.current = false
+    }
+    flushToolDeltaBuffer()
+  }, [flushToolDeltaBuffer])
+
+  const scheduleToolDeltaFlush = useCallback(() => {
+    if (toolDeltaFlushScheduledRef.current) {
+      return
+    }
+
+    toolDeltaFlushScheduledRef.current = true
+
+    const runFlush = () => {
+      try {
+        toolDeltaFlushScheduledRef.current = false
+        flushToolDeltaBuffer()
+      } catch (error) {
+        logger.error('websocket.tool_delta.flush_execution_error', {
+          message: 'Failed to execute scheduled flush',
+          error: error instanceof Error ? error.message : String(error)
+        })
+        // Reset flag to allow future flush attempts
+        toolDeltaFlushScheduledRef.current = false
+        // Attempt immediate fallback flush
+        try {
+          flushToolDeltaBuffer()
+        } catch (fallbackError) {
+          logger.error('websocket.tool_delta.flush_fallback_error', {
+            message: 'Fallback flush also failed',
+            error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+          })
+        }
+      }
+    }
+
+    // Try requestAnimationFrame with fallback to setTimeout
+    try {
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(runFlush)
+      } else {
+        setTimeout(runFlush, RAF_FALLBACK_DELAY_MS)
+      }
+    } catch (schedulingError) {
+      logger.error('websocket.tool_delta.flush_scheduling_error', {
+        message: 'Failed to schedule flush, attempting immediate fallback',
+        error: schedulingError instanceof Error ? schedulingError.message : String(schedulingError)
+      })
+      // Reset flag and attempt immediate flush as fallback
+      toolDeltaFlushScheduledRef.current = false
+      try {
+        flushToolDeltaBuffer()
+      } catch (fallbackError) {
+        logger.error('websocket.tool_delta.flush_immediate_fallback_error', {
+          message: 'Immediate fallback flush failed',
+          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+        })
+      }
+    }
+  }, [flushToolDeltaBuffer])
 
   // Create Socket.IO connection (stable)
   const createConnection = useCallback(async (appId: string): Promise<Socket> => {
@@ -176,7 +292,7 @@ export function useStreamingWebSocket() {
 
       // Feature flag for manual recovery (disabled by default until fully tested)
       const enableManualRecovery = process.env.NEXT_PUBLIC_ENABLE_MANUAL_RECOVERY === 'true'
-      
+
       // Check if we have a previous socket ID from before page reload (only if feature enabled)
       const previousSocketId = enableManualRecovery ? sessionStorage.getItem(`socket_id_${appId}`) : null
       if (previousSocketId) {
@@ -186,7 +302,7 @@ export function useStreamingWebSocket() {
           appId
         })
       }
-      
+
       const socketOptions: any = {
         transports: ['websocket', 'polling'],
         timeout: 10000,
@@ -269,11 +385,11 @@ export function useStreamingWebSocket() {
           // Connection dropped during active streaming - mark that we were streaming
           wasStreamingOnDisconnectRef.current = true
           disconnectTimeRef.current = Date.now()
-          
+
           // Show warning (yellow) initially - we'll retry for 5 minutes
           setWebSocketState({ connected: false, status: 'connecting', error: 'Connection lost, retrying...' })
           setStreamingState('retrying')
-          
+
           // Set timeout to switch to error after 5 minutes (300000ms)
           reconnectTimeoutRef.current = setTimeout(() => {
             const state = useStreamingConversationStore.getState()
@@ -412,7 +528,7 @@ export function useStreamingWebSocket() {
   const setupEventHandlers = useCallback((socket: Socket) => {
     // Track if we've initialized stream for replayed events
     let hasInitializedReplayStream = false
-    
+
     socket.on('status', (data) => {
       if (data.data?.status === 'thinking') {
         setWebSocketState({ status: 'streaming' })
@@ -446,15 +562,15 @@ export function useStreamingWebSocket() {
               message: 'Stream still active, loading history before replay',
               conversationId: data.data.conversationId
             })
-            
+
             // Load conversation history from API if we have conversationId
             if (data.data.conversationId && currentAppId) {
               try {
                 const agentService = AgentService.getInstance()
-                
+
                 // Load the specific conversation
                 const conversation = await agentService.getConversation(currentAppId, data.data.conversationId)
-                
+
                 logger.info('websocket.recovery.history_loaded', {
                   message: 'Loaded conversation history',
                   messageCount: conversation.messages?.length || 0
@@ -465,7 +581,7 @@ export function useStreamingWebSocket() {
                   // Set messages directly in the store (they're already complete messages from DB)
                   // Type assertion needed because conversation.messages comes from API
                   useStreamingConversationStore.setState({ messages: conversation.messages as any[] })
-                  
+
                   // Initialize an empty activeStream to receive buffered events
                   // Don't create a new user message - we're resuming an existing conversation
                   const streamingMessage = {
@@ -477,14 +593,14 @@ export function useStreamingWebSocket() {
                     timestamp: new Date(),
                     isComplete: false
                   }
-                  
+
                   useStreamingConversationStore.setState({
                     activeStream: streamingMessage,
                     streamingState: 'streaming',
                     currentStep: 1,
                     isLoading: true
                   })
-                  
+
                   logger.info('websocket.recovery.stream_initialized', {
                     message: 'Initialized activeStream for buffered events',
                     streamId: streamingMessage.id
@@ -507,7 +623,7 @@ export function useStreamingWebSocket() {
                 timestamp: new Date(),
                 isComplete: false
               }
-              
+
               useStreamingConversationStore.setState({
                 activeStream: streamingMessage,
                 streamingState: 'streaming',
@@ -519,7 +635,7 @@ export function useStreamingWebSocket() {
             setStreamingState('streaming')
             hasInitializedReplayStream = true
           }
-          
+
           // Reset recovery flag
           wasRecoveredRef.current = false
           break
@@ -563,17 +679,33 @@ export function useStreamingWebSocket() {
           // Only require toolId and delta - toolName can be looked up from existing tool calls
           // Skip empty deltas (they don't add any information)
           if (data.data?.toolId && data.data?.delta !== undefined && data.data.delta.length > 0) {
-            const updateToolDelta = useStreamingConversationStore.getState().updateToolDelta
-            if (updateToolDelta) {
-              // toolName might be undefined, but updateToolDelta can handle it
-              const toolName = data.data.toolName || 'unknown-tool'
-              updateToolDelta(data.data.toolId, toolName, data.data.delta)
+            const toolId = data.data.toolId
+            const incomingName = data.data.toolName
+            const normalizedName = incomingName || 'unknown-tool'
+            const hasExplicitName = !!incomingName && incomingName !== 'unknown-tool'
+            const existingDelta = toolDeltaBufferRef.current.get(toolId)
+
+            if (existingDelta) {
+              existingDelta.delta += data.data.delta
+              if (hasExplicitName) {
+                existingDelta.name = normalizedName
+                existingDelta.hasExplicitName = true
+              }
+            } else {
+              toolDeltaBufferRef.current.set(toolId, {
+                name: normalizedName,
+                delta: data.data.delta,
+                hasExplicitName
+              })
             }
+
+            scheduleToolDeltaFlush()
           }
           break
         case 'tool_call':
           // Tool call with complete input - update existing tool start segment
           if (data.data?.tool) {
+            flushToolDeltaBufferImmediate()
             const toolCall: ToolCall = {
               id: data.data.tool.id,
               name: data.data.tool.name,
@@ -585,6 +717,7 @@ export function useStreamingWebSocket() {
           break
         case 'tool_result':
           if (data.data?.tool) {
+            flushToolDeltaBufferImmediate()
             const hasError = data.data.tool.error || data.data.tool.is_error
 
             const toolCall: ToolCall = {
@@ -620,6 +753,7 @@ export function useStreamingWebSocket() {
           break
         case 'complete':
           // Log what we received from the WebSocket
+          flushToolDeltaBufferImmediate()
           logger.info('websocket.complete_received', {
             appId: currentAppId,
             hasCommitHash: !!data.data?.commitHash,
@@ -647,6 +781,7 @@ export function useStreamingWebSocket() {
           handleCommitComplete(data.data?.commitHash)
           break
         case 'error':
+          flushToolDeltaBufferImmediate()
           // Check if this is an APP_NOT_FOUND error that we should retry
           const errorType = data.data?.errorType
           const isAppNotFound = errorType === 'APP_NOT_FOUND'
@@ -771,6 +906,8 @@ export function useStreamingWebSocket() {
     setIsLoading,
     currentAppId,
     handleCommitComplete,
+    scheduleToolDeltaFlush,
+    flushToolDeltaBufferImmediate,
   ])
 
   useEffect(() => {
