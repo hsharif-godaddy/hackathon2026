@@ -31,7 +31,6 @@ export default function AppPublish({ location }: { location?: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
-  const getPublishState = useDevelopPageStore((state) => state.getPublishState);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
@@ -40,13 +39,11 @@ export default function AppPublish({ location }: { location?: string }) {
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
 
   // Get publish state for current app
-  const publishState = currentAppId ? getPublishState(currentAppId) : {
-    isPublishing: false,
-    publishError: false,
-    lastPublishedCommitHash: null,
-    deploymentsRefetch: null,
-  };
-  const { isPublishing } = publishState;
+  const isPublishing = useDevelopPageStore(
+    (state) => currentAppId && state.publishStates[currentAppId]
+      ? state.publishStates[currentAppId].isPublishing
+      : false
+  );
 
   const publishMutation = usePublishApp();
   const isDevelopPage = pathname?.includes('/develop');

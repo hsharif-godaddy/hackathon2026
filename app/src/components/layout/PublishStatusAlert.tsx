@@ -34,23 +34,25 @@ export default function PublishStatusAlert() {
   const t = useTranslations();
   const router = useRouter();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
-  const getPublishState = useDevelopPageStore((state) => state.getPublishState);
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
   const dismissPublishSuccess = useDevelopPageStore((state) => state.dismissPublishSuccess);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
-
-  // Get publish state for current app
-  const publishState = currentAppId ? getPublishState(currentAppId) : {
-    isPublishing: false,
-    publishError: false,
-    buildErrorDetails: null,
-    lastPublishedCommitHash: null,
-    deploymentsRefetch: null,
-    deploymentInProgressId: null,
-    showSuccessAlert: false,
-  };
-  const { isPublishing, publishError, buildErrorDetails, showSuccessAlert, lastPublishedCommitHash, deploymentsRefetch } = publishState;
+  const isPublishing = useDevelopPageStore((state) =>
+    state.publishStates[currentAppId]?.isPublishing ?? false
+  );
+  const publishError = useDevelopPageStore((state) =>
+    state.publishStates[currentAppId]?.publishError ?? false
+  );
+  const buildErrorDetails = useDevelopPageStore((state) =>
+    state.publishStates[currentAppId]?.buildErrorDetails ?? null
+  );
+  const showSuccessAlert = useDevelopPageStore((state) =>
+    state.publishStates[currentAppId]?.showSuccessAlert ?? false
+  );
+  const deploymentsRefetch = useDevelopPageStore((state) =>
+    state.publishStates[currentAppId]?.deploymentsRefetch ?? null
+  );
 
   // Get site to extract FQDN for success alert
   const site = useSiteStore((state) => currentAppId ? state.getSite(currentAppId) : null);
@@ -176,8 +178,14 @@ export default function PublishStatusAlert() {
             <FormattedMessage
               id='builder_publish_success_message'
               values={{
-                fqdn: fqdn.replace('https://', ''),
-                strong: (chunks) => <text.strong>{chunks}</text.strong>
+                fqdn: (
+                  <Button
+                    design='inline'
+                    href={fqdn}
+                    text={fqdn.replace('https://', '')}
+                    external
+                  />
+                )
               }}
             />
           </text.p>
