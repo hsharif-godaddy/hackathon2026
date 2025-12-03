@@ -23,11 +23,14 @@ import { hasBeenPublished } from '@/utils/site';
 import { ChatTab } from '@/app/develop/components/types';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import Tag from '@ux/tag';
+import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer';
+import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
 
 export default function AppPublish({ location }: { location?: string }) {
   const intl = useIntl();
   const t = useTranslations();
   const [open, setOpen] = useState(false);
+  const [showAiroPlusPaywall, setShowAiroPlusPaywall] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
@@ -37,7 +40,9 @@ export default function AppPublish({ location }: { location?: string }) {
   const setDeploymentsRefetch = useDevelopPageStore((state) => state.setDeploymentsRefetch);
   const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab);
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
+  const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall');
 
+  const { showPaywall } = usePaywallEligibility(currentAppId);
   // Get publish state for current app
   const isPublishing = useDevelopPageStore(
     (state) => currentAppId && state.publishStates[currentAppId]
@@ -235,8 +240,28 @@ export default function AppPublish({ location }: { location?: string }) {
     </>
   );
 
+  const handlePublish = async (open: boolean) => {
+    if (isAiroPlusPaywallEnabled && showPaywall && open) { // TODO: check to make sure entitlemnet is not granted already before showing the paywall
+      setShowAiroPlusPaywall(true);
+    } else {
+      setOpen(open);
+    }
+  }
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <>
+    {showAiroPlusPaywall && (
+      <SinglePlanUpgradeContainer
+        onClose={() => {
+          setShowAiroPlusPaywall(false);
+          
+          // TODO: poll for entitlement. If entitlement is granted, call handlePublish with skipPaywall: true. else hold off 
+          // TODO: While waiting, show a loading spinner and disable the publish button. For now, just call handlePublish with  showPaywall: false.
+          setOpen(true);
+        }}
+      />
+    )}
+    <Popover open={open} onOpenChange={handlePublish}>
       <PopoverTrigger asChild>
         <Button
           id="tour-publish-button"
@@ -348,6 +373,7 @@ export default function AppPublish({ location }: { location?: string }) {
         </div>
       </PopoverContent>
     </Popover>
-  );
+  </>
+  )
 }
 

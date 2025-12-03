@@ -19,6 +19,8 @@ import pluginIntl from '@gasket/plugin-intl';
 import pluginUxp from '@godaddy/gasket-plugin-uxp';
 import pluginOtel from '@godaddy/gasket-plugin-otel';
 import gasketData from './gasket-data.js';
+import pluginCds from '@venture/gasket-plugin-cds';
+
 import fs from 'fs';
 
 // Check if we should enable JWT authentication
@@ -51,7 +53,7 @@ export default makeGasket({
         ssl: {
           key: fs.readFileSync('./node_modules/@godaddy/gasket-plugin-dev-certs/certs/_.gasket.dev-godaddy.com.key'),
           cert: fs.readFileSync('./node_modules/@godaddy/gasket-plugin-dev-certs/certs/_.gasket.dev-godaddy.com.crt')
-        }
+        },
       }
     },
     'local.test': {
@@ -74,14 +76,14 @@ export default makeGasket({
         ssl: (() => {
           const keyPath = './certificates/airo-builder.test-godaddy.com.key';
           const certPath = './certificates/airo-builder.test-godaddy.com.crt';
-          
+
           if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
             return {
               key: fs.readFileSync(keyPath),
               cert: fs.readFileSync(certPath)
             };
           }
-          
+
           console.warn('No SSL certificates found for local.test environment. Generate them using pluginSelfCerts.');
           return undefined;
         })()
@@ -113,14 +115,14 @@ export default makeGasket({
         ssl: (() => {
           const keyPath = './certificates/airo-builder.godaddy.com.key';
           const certPath = './certificates/airo-builder.godaddy.com.crt';
-          
+
           if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
             return {
               key: fs.readFileSync(keyPath),
               cert: fs.readFileSync(certPath)
             };
           }
-          
+
           console.warn('No SSL certificates found for local.prod environment. Generate them using pluginSelfCerts.');
           return undefined;
         })()
@@ -153,6 +155,7 @@ export default makeGasket({
     pluginIntl,
     pluginUxp,
     pluginOtel,
+    pluginCds,
   ],
   commands: {
     docs: {
@@ -271,6 +274,19 @@ export default makeGasket({
       theme: 'godaddy:site',
       privateLabel: 1,
     }
+  },
+  cds: {
+    api: {
+      baseUrl: process.env.CDS_API_BASE_URL || 'https://cds.api.int.dev-godaddy.com',
+      logPath: '/log'
+    },
+    componentTypes: [
+      'godaddyUnifiedPlansAndPricingLibrary'
+    ],
+    appName: 'airo-app-builder',
+    enabledRoutes: ['/', '/page', '/develop', '/develop/*'],
+    proxyLogPath: '/cds-log',
+    depsPath: 'cds'
   },
   data: gasketData,
 } as GasketConfigDefinition);

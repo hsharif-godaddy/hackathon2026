@@ -208,7 +208,6 @@ function HomeContent() {
           onShowMockLogin={() => setShowMockLogin(true)}
           location='homepage'
         />
-
         <HeroSection
           ref={heroSectionRef}
           promptText={promptText}
