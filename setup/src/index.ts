@@ -9,6 +9,7 @@ import fs from 'fs-extra';
 import { DependencyChecker } from './deps-checker.js';
 import { EnvGenerator } from './env-generator.js';
 import { GettyConfigSetup } from './getty-config.js';
+import { CommerceConfigSetup } from './commerce-config.js';
 import { CertConfigSetup } from './cert-config.js';
 import { JWTKeysGenerator } from './jwt-keys-generator.js';
 import { CASetup } from './ca-setup.js';
@@ -63,6 +64,7 @@ async function selectiveConfiguration(): Promise<void> {
   const depChecker = new DependencyChecker();
   const envGenerator = new EnvGenerator(projectRoot);
   const gettySetup = new GettyConfigSetup();
+  const commerceSetup = new CommerceConfigSetup();
   const certSetup = new CertConfigSetup();
   const jwtGenerator = new JWTKeysGenerator(projectRoot);
   const caSetup = new CASetup(projectRoot);
@@ -80,6 +82,7 @@ async function selectiveConfiguration(): Promise<void> {
       { name: '🤖 Configure Agents Environment (.env)', value: 'agents-env' },
       { name: '🔐 Generate JWT Keys', value: 'jwt-keys' },
       { name: '🖼️  Configure Getty Images Proxy', value: 'getty-config' },
+      { name: '🛒 Configure GoDaddy Commerce OAuth', value: 'commerce-config' },
       { name: '📜 Configure Client Certificates', value: 'cert-config' },
       { name: '🗄️  Check MySQL Container Status', value: 'mysql-check' },
       { name: '🐳 Start MySQL Container', value: 'mysql-start' },
@@ -125,6 +128,9 @@ async function selectiveConfiguration(): Promise<void> {
         case 'getty-config':
           await gettySetup.setup();
           break;
+        case 'commerce-config':
+          await commerceSetup.setup();
+          break;
         case 'cert-config':
           await certSetup.setup();
           break;
@@ -135,7 +141,7 @@ async function selectiveConfiguration(): Promise<void> {
           await startMySQLContainer();
           break;
         case 'status-check':
-          await checkCurrentStatus(envGenerator, gettySetup, certSetup, jwtGenerator, caSetup);
+          await checkCurrentStatus(envGenerator, gettySetup, commerceSetup, certSetup, jwtGenerator, caSetup);
           break;
       }
     } catch (error) {
@@ -192,7 +198,7 @@ async function startMySQLContainer(): Promise<void> {
   }
 }
 
-async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, certSetup: CertConfigSetup, jwtGenerator: JWTKeysGenerator, caSetup: CASetup): Promise<void> {
+async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyConfigSetup, commerceSetup: CommerceConfigSetup, certSetup: CertConfigSetup, jwtGenerator: JWTKeysGenerator, caSetup: CASetup): Promise<void> {
   console.log(chalk.cyan('🔍 Current Configuration Status'));
   console.log('');
 
@@ -242,6 +248,15 @@ async function checkCurrentStatus(envGenerator: EnvGenerator, gettySetup: GettyC
 
   console.log('');
 
+  // Check Commerce configuration
+  console.log(chalk.blue('🛒 GoDaddy Commerce:'));
+  const commerceConfigured = await commerceSetup.quickCheck();
+  if (!commerceConfigured) {
+    console.log(chalk.yellow('  ⚠️  Commerce credentials not configured or inaccessible'));
+  }
+
+  console.log('');
+
   // Check Certificate configuration
   console.log(chalk.blue('📜 Client Certificates:'));
   const certConfigured = await certSetup.quickCheck();
@@ -267,12 +282,20 @@ async function fullSetup(): Promise<void> {
   console.log('• Check Docker and Docker Compose installation');
   console.log('• Verify Docker daemon is running');
   console.log('• Generate and trust development CA for SSL certificates');
-  console.log('• Configure app/.env file with AI and database settings');
-  console.log('• Configure agents/.env file with AI and MySQL settings');
+  console.log('• Configure GoDaddy Commerce OAuth credentials (optional)');
+  console.log('• Generate app/.env configuration file');
+  console.log('  - AI model provider settings');
+  console.log('  - Database connection');
+  console.log('  - Client certificates');
+  console.log('  - Commerce OAuth (if configured above)');
+  console.log('• Generate agents/.env configuration file');
+  console.log('  - AI model provider settings');
+  console.log('  - MySQL connection for created apps');
+  console.log('  - Getty Images proxy (optional)');
+  console.log('  - Commerce OAuth (if configured above)');
   console.log('• Generate JWT keys for secure agent communication');
-  console.log('• Set up Getty Images proxy with AWS Secrets Manager token');
+  console.log('• Start MySQL container (optional)');
   console.log('• Configure client certificates for GraphQL and TestPilot APIs');
-  console.log('• Generate SSO JWT tokens automatically if available');
   console.log('');
 
   const { proceed } = await inquirer.prompt([
@@ -322,7 +345,32 @@ async function fullSetup(): Promise<void> {
 
   printSeparator();
 
-  // Step 3: Environment Configuration
+  // Step 3: Commerce Configuration (ask once for full setup)
+  console.log(chalk.cyan('🛒 GoDaddy Commerce Configuration'));
+
+  const { configureCommerce } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'configureCommerce',
+      message: 'Would you like to enable and configure GoDaddy Commerce?',
+      default: true
+    }
+  ]);
+
+  let commerceResult = null;
+  if (configureCommerce) {
+    const commerceSetup = new CommerceConfigSetup();
+    commerceResult = await commerceSetup.setup();
+
+    if (!commerceResult.success) {
+      console.log(chalk.yellow('Commerce configuration failed, will skip Commerce for environment files...'));
+      commerceResult = null;
+    }
+  }
+
+  printSeparator();
+
+  // Step 4: Environment Configuration
   const envGenerator = new EnvGenerator(projectRoot);
 
   console.log(chalk.cyan('🔧 Environment Configuration'));
@@ -338,7 +386,7 @@ async function fullSetup(): Promise<void> {
   ]);
 
   if (configureApp) {
-    await envGenerator.generateAppEnv();
+    await envGenerator.generateAppEnv(false, commerceResult); // Pass Commerce result, skip prompt
   }
 
   const { configureAgents } = await inquirer.prompt([
@@ -351,7 +399,7 @@ async function fullSetup(): Promise<void> {
   ]);
 
   if (configureAgents) {
-    await envGenerator.generateAgentsEnv();
+    await envGenerator.generateAgentsEnv(false, commerceResult); // Pass Commerce result, skip prompt
   }
 
   printSeparator();
@@ -446,24 +494,7 @@ async function fullSetup(): Promise<void> {
 
   printSeparator();
 
-  // Step 5: Getty Configuration (standalone option)
-  const { configureGettyStandalone } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'configureGettyStandalone',
-      message: 'Configure Getty Images proxy separately?',
-      default: false
-    }
-  ]);
-
-  if (configureGettyStandalone) {
-    const gettySetup = new GettyConfigSetup();
-    await gettySetup.setup();
-  }
-
-  printSeparator();
-
-  // Step 6: Next Steps
+  // Step 5: Next Steps
   console.log(chalk.green.bold('🎉 Setup Complete!'));
   console.log('');
   console.log(chalk.cyan('📋 Next Steps:'));
