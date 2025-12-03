@@ -80,6 +80,7 @@ async function buildApiSystemPrompt(): Promise<string> {
     .file(paths.getAgentFile('api', 'handoff-protocol.md'))
     .file(paths.getAgentFile('api', 'workflow.md'))
     .file(paths.getAgentFile('api', 'communication.md'))
+    .file(paths.getSharedFile('security.md'))
 
   return await promptBuilder.build()
 }

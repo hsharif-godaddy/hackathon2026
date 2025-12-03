@@ -48,6 +48,9 @@ async function buildInitialSystemPrompt(options?: {
     promptBuilder.file(paths.getAgentFile('initial', 'examples.md'))
   }
 
+  // Security guidelines (always included - contains content restrictions)
+  promptBuilder.file(paths.getSharedFile('security.md'))
+
   return await promptBuilder.build()
 }
 

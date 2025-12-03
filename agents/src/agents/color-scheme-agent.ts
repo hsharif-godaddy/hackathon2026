@@ -29,6 +29,7 @@ async function buildColorSchemeSystemPrompt(): Promise<string> {
     .file(paths.getAgentFile('color-scheme', 'core.md'))
     .file(paths.getAgentFile('color-scheme', 'themes.md'))
     .file(paths.getAgentFile('color-scheme', 'handoff.md'))
+    .file(paths.getSharedFile('security.md')) // Security guidelines with content restrictions
 
   return await promptBuilder.build()
 }

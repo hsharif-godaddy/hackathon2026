@@ -80,7 +80,8 @@ async function buildCommerceSystemPrompt(): Promise<string> {
   promptBuilder
     .file(paths.getAgentFile('commerce', 'core.md'))
     .file(paths.getAgentFile('commerce', 'handoff-protocol.md'))
-    .file(paths.getAgentFile('commerce', 'communication.md'));
+    .file(paths.getAgentFile('commerce', 'communication.md'))
+    .file(paths.getSharedFile('security.md'));
 
   return await promptBuilder.build();
 }

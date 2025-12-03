@@ -21,6 +21,7 @@ async function buildMarketingSystemPrompt(): Promise<string> {
     .file(paths.getAgentFile('marketing', 'core.md'))
     .file(paths.getAgentFile('marketing', 'seo.md'))
     .file(paths.getSharedFile('communication.md'))
+    .file(paths.getSharedFile('security.md'))
 
   return await promptBuilder.build()
 }

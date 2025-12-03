@@ -81,7 +81,8 @@ async function buildDatabaseSystemPrompt(): Promise<string> {
     .file(paths.getAgentFile('database', 'workflow.md'))
     .file(paths.getAgentFile('database', 'visual-context.md'))
     .file(paths.getAgentFile('database', 'communication.md'))
-  
+    .file(paths.getSharedFile('security.md'))
+
   return await promptBuilder.build()
 }
 
