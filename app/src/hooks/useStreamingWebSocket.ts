@@ -654,11 +654,11 @@ export function useStreamingWebSocket() {
           const elapsedTime = retryState.pendingMessage
             ? Date.now() - retryState.pendingMessage.startTime
             : 0
-          const shouldRetry = isAppNotFound && elapsedTime < 10000 // Retry for up to 10 seconds
+          const shouldRetry = isAppNotFound && elapsedTime < 30000 // Retry for up to 30 seconds
 
           if (shouldRetry && retryState.pendingMessage) {
             retryState.retryCount++
-            const retryDelay = Math.min(500 * Math.pow(2, retryState.retryCount - 1), 2000) // Exponential backoff, max 2s
+            const retryDelay = Math.min(500 * Math.pow(2, retryState.retryCount - 1), 5000) // Exponential backoff, max 5s
 
             logger.warn('websocket.error.app_not_found.retry', {
               message: 'App not found, will retry',
@@ -731,9 +731,9 @@ export function useStreamingWebSocket() {
             }, retryDelay)
           } else {
             // Not retryable or exceeded retry time - show error
-            if (isAppNotFound && elapsedTime >= 10000) {
+            if (isAppNotFound && elapsedTime >= 30000) {
               logger.error('websocket.error.app_not_found.timeout', {
-                message: 'App not found after 10 seconds of retries',
+                message: 'App not found after 30 seconds of retries',
                 retryCount: retryState.retryCount,
                 elapsedTime
               })

@@ -147,6 +147,58 @@ This is a **pnpm workspace monorepo** with multiple interconnected services. All
   - Automatic recovery and orphan cleanup
   - Generated compose files in `/tmp/apps/{appId}/docker-compose.yml`
 
+**HTTP Proxy Architecture:**
+
+Dev-supervisor includes an integrated HTTP proxy with TLS termination for local development.
+
+- **Port Allocation:**
+  - Port 5000+ (dynamically allocated): HTTPS proxy to application
+  - Port 8877+ (dynamically allocated): Management API
+
+- **Features:**
+  - TLS termination using self-signed certificates from `/app/.ssl/`
+  - Reverse proxy to application on port 8080
+  - WebSocket upgrade support for Vite HMR
+  - Automatic header forwarding (X-Real-IP, X-Forwarded-For, X-Forwarded-Proto, X-Forwarded-Host)
+  - Host header preservation for host-based routing and absolute URL generation
+  - Configurable connection retry with exponential backoff (default: 10 retries, 200ms-5s backoff in dev)
+  - Smart error handling: 503 for backend not ready, 502 for proxy errors
+  - Graceful shutdown with connection draining
+  - Mutex-protected lifecycle management
+
+- **Configuration:**
+  Set via environment variables in docker-compose.yml:
+  - `DEV_SUPERVISOR_ENABLE_PROXY=true`
+  - `DEV_SUPERVISOR_PROXY_PORT=<port>` - External HTTPS port
+  - `DEV_SUPERVISOR_PROXY_TARGET_HOST=localhost` - Backend host to proxy to
+  - `DEV_SUPERVISOR_PROXY_TARGET_PORT=8080` - Backend port to proxy to
+  - `DEV_SUPERVISOR_PROXY_CERT_PATH=/app/.ssl/cert.pem`
+  - `DEV_SUPERVISOR_PROXY_KEY_PATH=/app/.ssl/key.pem`
+  - `DEV_SUPERVISOR_LOG_LEVEL=debug` (optional: debug, info, warn, error; default: info, set to debug in local dev)
+  - `DEV_SUPERVISOR_PROXY_MAX_RETRIES=10` (optional: default: 5, set to 10 in dev for slow startup)
+  - `DEV_SUPERVISOR_PROXY_INITIAL_BACKOFF_MS=200` (optional: default: 100ms, set to 200ms in dev)
+  - `DEV_SUPERVISOR_PROXY_MAX_BACKOFF_MS=5000` (optional: default: 2000ms, set to 5000ms in dev)
+
+- **API Endpoints:**
+  - `GET /proxy/status` - Get current proxy status and health
+  - `GET /proxy/config` - Get proxy configuration
+  - Available via DevSupervisorClient: `getProxyStatus()`, `getProxyConfig()`
+
+- **Implementation:**
+  - Core proxy: `dev-supervisor/http_proxy.go`
+  - Server integration: `dev-supervisor/main.go`
+  - API handlers: `dev-supervisor/api.go`
+  - Compose generation: `app/src/lib/dev-environment/services/docker-compose-generator.ts`
+
+- **Troubleshooting:**
+  - Check proxy status: `GET /proxy/status` on management API
+  - Review logs for TLS certificate errors
+  - Verify app is running on internal port 8080
+  - Ensure certificate files exist at `/app/.ssl/cert.pem` and `key.pem`
+  - Validate port allocation (5000+ for proxy, 8877+ for management)
+  - **503 Service Unavailable**: Backend is starting up or temporarily unavailable (connection refused). Proxy will retry with exponential backoff (dev: 10 retries over ~31s, prod: 5 retries over ~4s). Check debug logs for retry attempts and adjust `DEV_SUPERVISOR_PROXY_MAX_RETRIES` if needed.
+  - **502 Bad Gateway**: Actual proxy error after all retries exhausted, or non-retryable error from backend
+
 **App Directory Structure:**
 
 Apps are created with the following directory structure:

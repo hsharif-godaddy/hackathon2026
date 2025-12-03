@@ -154,6 +154,34 @@ export interface RestartStats {
   manual_restarts?: number;
 }
 
+export interface ProxyConfig {
+  /** Proxy enabled */
+  enabled: boolean;
+  /** Listen port */
+  listen_port: number;
+  /** Target host */
+  target_host: string;
+  /** Target port */
+  target_port: number;
+  /** TLS certificate path */
+  tls_cert_path: string;
+  /** TLS key path */
+  tls_key_path: string;
+}
+
+export interface ProxyStatus {
+  /** Proxy enabled */
+  enabled: boolean;
+  /** Proxy running */
+  running: boolean;
+  /** Listen address */
+  listen_addr?: string;
+  /** Target URL */
+  target_url?: string;
+  /** Uptime */
+  uptime?: string;
+}
+
 /**
  * Client for communicating with dev-supervisor over Unix domain socket or TCP
  */
@@ -441,6 +469,40 @@ export class DevSupervisorClient {
       return response;
     } catch (error) {
       this.logger.error('dev_supervisor.health_check.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get HTTP proxy configuration
+   *
+   * @returns Proxy configuration settings
+   */
+  async getProxyConfig(): Promise<ProxyConfig> {
+    try {
+      const response = await this.makeRequest('GET', '/proxy/config');
+      return response;
+    } catch (error) {
+      this.logger.error('dev_supervisor.proxy.config.failure', {
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get HTTP proxy status
+   *
+   * @returns Current proxy status and health information
+   */
+  async getProxyStatus(): Promise<ProxyStatus> {
+    try {
+      const response = await this.makeRequest('GET', '/proxy/status');
+      return response;
+    } catch (error) {
+      this.logger.error('dev_supervisor.proxy.status.failure', {
         error: getErrorMessage(error)
       });
       throw error;

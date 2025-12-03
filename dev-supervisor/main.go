@@ -32,35 +32,31 @@ type Config struct {
 	ProcessLoggingToStdout bool   // Enable/disable outputting child process logs to structured logging (stdout)
 	UseTCP                 bool   // Enable TCP mode instead of Unix socket (insecure, dev only)
 	TCPPort                string // TCP port to listen on when UseTCP is true
+	ProxyEnabled           bool   // Enable HTTP proxy mode
+	ProxyPort              int    // External HTTPS port for proxy
+	ProxyTargetHost        string // Proxy target host (backend host)
+	ProxyTargetPort        int    // Proxy target port (backend port)
+	ProxyCertPath          string // Path to TLS certificate
+	ProxyKeyPath           string // Path to TLS private key
 }
 
 func getSocketPath() string {
-	path := os.Getenv("DEV_SUPERVISOR_SOCKET_PATH")
-	if path == "" {
-		return "/tmp/dev-supervisor.sock"
-	}
-	return path
+	return getEnvStringWithDefault("DEV_SUPERVISOR_SOCKET_PATH", "/tmp/dev-supervisor.sock")
 }
 
 func getProcessLoggingToStdout() bool {
-	env := os.Getenv("DEV_SUPERVISOR_DISABLE_PROCESS_STDOUT")
 	// Default is true (enabled), only disable if explicitly set to "true"
-	return env != "true"
+	return !getEnvBoolWithDefault("DEV_SUPERVISOR_DISABLE_PROCESS_STDOUT", false)
 }
 
 func getTCPConfig() (bool, string) {
-	useTCP := os.Getenv("DEV_SUPERVISOR_USE_TCP")
-	port := os.Getenv("DEV_SUPERVISOR_TCP_PORT")
-
 	// Default to false (Unix socket mode)
-	if useTCP != "true" {
+	if !getEnvBoolWithDefault("DEV_SUPERVISOR_USE_TCP", false) {
 		return false, ""
 	}
 
 	// Default port if TCP is enabled but no port specified
-	if port == "" {
-		port = "8080"
-	}
+	port := getEnvStringWithDefault("DEV_SUPERVISOR_TCP_PORT", "8080")
 
 	return true, port
 }
@@ -73,6 +69,7 @@ type Server struct {
 	logMgr                 *LogManager
 	pid1Mgr                *PID1Manager
 	smtpProxy              *SMTPProxy
+	httpProxy              *HTTPProxy
 	startTime              time.Time
 	config                 *Config
 	processLogging         bool // Current process logging configuration
@@ -150,6 +147,11 @@ func (s *Server) setupRoutes() {
 	healthRouter.HandleFunc("", s.handleHealthConfigSet).Methods("PUT")
 	healthRouter.HandleFunc("/status", s.handleHealthStatus).Methods("GET")
 	healthRouter.HandleFunc("/restart-stats", s.handleRestartStats).Methods("GET")
+
+	// HTTP Proxy endpoints
+	proxyRouter := s.router.PathPrefix("/proxy").Subrouter()
+	proxyRouter.HandleFunc("/status", s.handleProxyStatus).Methods("GET")
+	proxyRouter.HandleFunc("/config", s.handleProxyConfig).Methods("GET")
 }
 
 func (s *Server) getConfiguredAddress() string {
@@ -216,6 +218,29 @@ func (s *Server) Start() error {
 	return s.StartWithConfig(config)
 }
 
+// startHTTPProxyIfEnabled starts the HTTP proxy if enabled in the configuration
+func (s *Server) startHTTPProxyIfEnabled() error {
+	if !s.config.ProxyEnabled {
+		return nil
+	}
+
+	proxyConfig := HTTPProxyConfig{
+		Enabled:     true,
+		ListenPort:  s.config.ProxyPort,
+		TargetHost:  s.config.ProxyTargetHost,
+		TargetPort:  s.config.ProxyTargetPort,
+		TLSCertPath: s.config.ProxyCertPath,
+		TLSKeyPath:  s.config.ProxyKeyPath,
+	}
+	s.httpProxy = NewHTTPProxy(proxyConfig)
+	if err := s.httpProxy.Start(); err != nil {
+		slog.Error("failed to start HTTP proxy", "error", err)
+		return err
+	}
+	slog.Info("HTTP proxy started", "listen_port", s.config.ProxyPort, "target", fmt.Sprintf("%s:%d", s.config.ProxyTargetHost, s.config.ProxyTargetPort))
+	return nil
+}
+
 func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duration) error {
 	// Remove existing socket file if it exists
 	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
@@ -234,6 +259,11 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 	}
 
 	slog.Info("dev-supervisor starting", "socket_path", socketPath, "pid", os.Getpid())
+
+	// Start HTTP proxy if enabled
+	if err := s.startHTTPProxyIfEnabled(); err != nil {
+		return err
+	}
 
 	// Start SMTP proxy
 	if err := s.smtpProxy.Start(); err != nil {
@@ -314,6 +344,13 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		select {}
 	}
 
+	// Stop HTTP proxy
+	if s.httpProxy != nil {
+		if err := s.httpProxy.Stop(); err != nil {
+			slog.Warn("failed to stop HTTP proxy", "error", err)
+		}
+	}
+
 	// Stop SMTP proxy
 	if err := s.smtpProxy.Stop(); err != nil {
 		slog.Warn("failed to stop SMTP proxy", "error", err)
@@ -337,6 +374,11 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 
 	slog.Warn("dev-supervisor starting in TCP mode (INSECURE - development only)", "port", port, "pid", os.Getpid())
 	slog.Warn("TCP mode exposes dev-supervisor API to network - use only in secure development environments")
+
+	// Start HTTP proxy if enabled
+	if err := s.startHTTPProxyIfEnabled(); err != nil {
+		return err
+	}
 
 	// Start SMTP proxy
 	if err := s.smtpProxy.Start(); err != nil {
@@ -415,6 +457,13 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 		// If we are PID 1, the PID1Manager handles shutdown
 		// Wait for server to be shut down (block forever until PID1Manager calls shutdown)
 		select {}
+	}
+
+	// Stop HTTP proxy
+	if s.httpProxy != nil {
+		if err := s.httpProxy.Stop(); err != nil {
+			slog.Warn("failed to stop HTTP proxy", "error", err)
+		}
 	}
 
 	// Stop SMTP proxy
@@ -504,6 +553,14 @@ func parseFlags() *Config {
 	flag.BoolVar(&config.ShowHelp, "h", false, "Show help and exit (shorthand)")
 	flag.DurationVar(&config.ShutdownTimeout, "shutdown-timeout", 10*time.Second, "Graceful shutdown timeout")
 
+	// HTTP Proxy configuration
+	flag.BoolVar(&config.ProxyEnabled, "proxy", false, "Enable HTTP proxy mode")
+	flag.IntVar(&config.ProxyPort, "proxy-port", 0, "HTTP proxy listen port")
+	flag.StringVar(&config.ProxyTargetHost, "proxy-target-host", "localhost", "HTTP proxy target host")
+	flag.IntVar(&config.ProxyTargetPort, "proxy-target-port", 8080, "HTTP proxy target port")
+	flag.StringVar(&config.ProxyCertPath, "proxy-cert", "", "Path to TLS certificate")
+	flag.StringVar(&config.ProxyKeyPath, "proxy-key", "", "Path to TLS private key")
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", AppName)
 		fmt.Fprintf(os.Stderr, "%s - A containerized service that acts as PID 1 in Docker containers,\n", AppName)
@@ -512,10 +569,17 @@ func parseFlags() *Config {
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "Environment Variables:\n")
-		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_SOCKET_PATH  Path for Unix domain socket (default: /tmp/dev-supervisor.sock)\n")
-		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_USE_TCP      Enable TCP mode instead of Unix socket (set to 'true')\n")
-		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_TCP_PORT     TCP port to listen on (default: 8080)\n")
-		fmt.Fprintf(os.Stderr, "  SMTP_DESTINATION            SMTP server destination for proxy (default: relay-hosting.secureserver.net:25)\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_SOCKET_PATH        Path for Unix domain socket (default: /tmp/dev-supervisor.sock)\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_USE_TCP            Enable TCP mode instead of Unix socket (set to 'true')\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_TCP_PORT           TCP port to listen on (default: 8080)\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_LOG_LEVEL          Log level: debug, info, warn, error (default: info)\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_ENABLE_PROXY       Enable HTTP proxy mode (set to 'true')\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_PROXY_PORT         HTTP proxy listen port\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_PROXY_TARGET_HOST  HTTP proxy target host (default: localhost)\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_PROXY_TARGET_PORT  HTTP proxy target port (default: 8080)\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_PROXY_CERT_PATH    Path to TLS certificate\n")
+		fmt.Fprintf(os.Stderr, "  DEV_SUPERVISOR_PROXY_KEY_PATH     Path to TLS private key\n")
+		fmt.Fprintf(os.Stderr, "  SMTP_DESTINATION                  SMTP server destination for proxy (default: relay-hosting.secureserver.net:25)\n")
 		fmt.Fprintf(os.Stderr, "\n")
 		fmt.Fprintf(os.Stderr, "SMTP Proxy Headers (automatically injected):\n")
 		fmt.Fprintf(os.Stderr, "  SITE_ID                     Sets X-SITE-UID header (default: unknown)\n")
@@ -564,6 +628,14 @@ func parseFlags() *Config {
 	// Set default process logging configuration
 	config.ProcessLogging = true                                // Default: enable child process logging
 	config.ProcessLoggingToStdout = getProcessLoggingToStdout() // Default: enable structured output, configurable via env
+
+	// HTTP Proxy configuration from environment variables
+	config.ProxyEnabled = getEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_PROXY", false)
+	config.ProxyPort = getEnvIntWithDefault("DEV_SUPERVISOR_PROXY_PORT", 0)
+	config.ProxyTargetHost = getEnvStringWithDefault("DEV_SUPERVISOR_PROXY_TARGET_HOST", "localhost")
+	config.ProxyTargetPort = getEnvIntWithDefault("DEV_SUPERVISOR_PROXY_TARGET_PORT", 8080)
+	config.ProxyCertPath = getEnvStringWithDefault("DEV_SUPERVISOR_PROXY_CERT_PATH", "")
+	config.ProxyKeyPath = getEnvStringWithDefault("DEV_SUPERVISOR_PROXY_KEY_PATH", "")
 
 	return config
 }

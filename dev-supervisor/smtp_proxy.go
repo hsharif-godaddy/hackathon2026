@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net"
 	"net/mail"
-	"os"
 	"sync"
 
 	"github.com/emersion/go-smtp"
@@ -24,8 +23,8 @@ type SMTPProxy struct {
 }
 
 func NewSMTPProxy() *SMTPProxy {
-	listenAddr := getEnvWithDefault("SMTP_LISTEN_ADDR", "127.0.0.1:25")
-	destinationAddr := getEnvWithDefault("SMTP_DESTINATION", "relay-hosting.secureserver.net:25")
+	listenAddr := getEnvStringWithDefault("SMTP_LISTEN_ADDR", "127.0.0.1:25")
+	destinationAddr := getEnvStringWithDefault("SMTP_DESTINATION", "relay-hosting.secureserver.net:25")
 
 	proxy := &SMTPProxy{
 		listenAddr:      listenAddr,
@@ -38,19 +37,12 @@ func NewSMTPProxy() *SMTPProxy {
 	return proxy
 }
 
-func getEnvWithDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
 func (p *SMTPProxy) loadHeaders() {
 	p.customHeaders = map[string]string{
-		"X-SITE-UID":    getEnvWithDefault("SITE_ID", "unknown"),
-		"X-PRODUCT":     getEnvWithDefault("PRODUCT", "airo-app-builder"),
-		"X-ENVIRONMENT": getEnvWithDefault("NODE_ENV", "unknown"),
-		"X-DATACENTER":  getEnvWithDefault("NOMAD_DC", "unknown"),
+		"X-SITE-UID":    getEnvStringWithDefault("SITE_ID", "unknown"),
+		"X-PRODUCT":     getEnvStringWithDefault("PRODUCT", "airo-app-builder"),
+		"X-ENVIRONMENT": getEnvStringWithDefault("NODE_ENV", "unknown"),
+		"X-DATACENTER":  getEnvStringWithDefault("NOMAD_DC", "unknown"),
 	}
 
 	slog.Info("loaded SMTP custom headers", "count", len(p.customHeaders))

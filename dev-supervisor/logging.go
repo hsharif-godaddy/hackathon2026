@@ -16,21 +16,43 @@ func newLoggerWithHandler(handler slog.Handler) *slog.Logger {
 	return slog.New(handler).With("app_id", siteID)
 }
 
+// getLogLevel returns the configured log level from environment variable
+// Defaults to Info if not set or invalid
+func getLogLevel() slog.Level {
+	levelStr := getEnvStringWithDefault("DEV_SUPERVISOR_LOG_LEVEL", "INFO")
+
+	switch levelStr {
+	case "debug", "DEBUG":
+		return slog.LevelDebug
+	case "info", "INFO":
+		return slog.LevelInfo
+	case "warn", "WARN", "warning", "WARNING":
+		return slog.LevelWarn
+	case "error", "ERROR":
+		return slog.LevelError
+	default:
+		slog.Warn("invalid DEV_SUPERVISOR_LOG_LEVEL value, defaulting to info", "value", levelStr)
+		return slog.LevelInfo
+	}
+}
+
 // initLogging sets up structured logging with slog
 // Uses JSON format when no terminal is detected, text format otherwise
+// Log level can be configured via DEV_SUPERVISOR_LOG_LEVEL environment variable (debug, info, warn, error)
 func initLogging() {
 	var handler slog.Handler
+	level := getLogLevel()
 
 	// Check if stdout is connected to a terminal
 	if isTerminal(os.Stdout) {
 		// Use text format for terminal output
 		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
+			Level: level,
 		})
 	} else {
 		// Use JSON format for non-terminal output (Docker, pipes, etc.)
 		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
+			Level: level,
 		})
 	}
 

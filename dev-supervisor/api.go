@@ -45,6 +45,8 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 		"process_logging_enabled": s.procMgr.GetProcessLogging(),
 		"child_count":             s.pid1Mgr.GetChildProcessCount(),
 		"shutting_down":           s.pid1Mgr.IsShuttingDown(),
+		"http_proxy_enabled":      s.config != nil && s.config.ProxyEnabled,
+		"http_proxy_running":      s.httpProxy != nil,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -380,6 +382,46 @@ func (s *Server) handleLogsConfigSet(w http.ResponseWriter, r *http.Request) {
 		"status":                  "configured",
 		"process_logging_enabled": req.ProcessLoggingEnabled,
 	}); err != nil {
+		slog.Error("failed to encode JSON response", "error", err)
+	}
+}
+
+func (s *Server) handleProxyStatus(w http.ResponseWriter, _ *http.Request) {
+	if s.httpProxy == nil {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"enabled": false,
+			"running": false,
+		}); err != nil {
+			slog.Error("failed to encode JSON response", "error", err)
+		}
+		return
+	}
+
+	status := s.httpProxy.GetStatus()
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		slog.Error("failed to encode JSON response", "error", err)
+	}
+}
+
+func (s *Server) handleProxyConfig(w http.ResponseWriter, _ *http.Request) {
+	if s.httpProxy == nil || s.config == nil {
+		s.sendError(w, http.StatusNotFound, "proxy_not_enabled", "HTTP proxy is not enabled")
+		return
+	}
+
+	config := map[string]interface{}{
+		"enabled":       s.config.ProxyEnabled,
+		"listen_port":   s.config.ProxyPort,
+		"target_host":   s.config.ProxyTargetHost,
+		"target_port":   s.config.ProxyTargetPort,
+		"tls_cert_path": s.config.ProxyCertPath,
+		"tls_key_path":  s.config.ProxyKeyPath,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(config); err != nil {
 		slog.Error("failed to encode JSON response", "error", err)
 	}
 }
