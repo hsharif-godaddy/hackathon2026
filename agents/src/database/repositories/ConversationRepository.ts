@@ -562,4 +562,14 @@ export class ConversationRepository {
     const stmt = this.db.prepare('DELETE FROM conversation_messages WHERE id = ?');
     stmt.run(messageId);
   }
+
+  /**
+   * Get the timestamp of the most recent message across all conversations
+   *
+   * @returns Promise resolving to ISO timestamp string of the last message, or null if no messages exist
+   */
+  async getLastMessageTimestamp(): Promise<string | null> {
+    const result = this.db.prepare('SELECT created_at FROM conversation_messages ORDER BY created_at DESC LIMIT 1').get() as { created_at: string } | undefined;
+    return result?.created_at || null;
+  }
 }
