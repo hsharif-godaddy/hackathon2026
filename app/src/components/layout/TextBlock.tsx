@@ -16,7 +16,7 @@ export default function TextBlock({ preTitle, title, children, link, linkText }:
       { preTitle && (
         <text.p size={1}>{preTitle}</text.p>
       )}
-      <text.h2 as="heading" size={2} className="!leading-12 gd-sage">{title}</text.h2>
+      <text.h2 as="heading" size={2}>{title}</text.h2>
       <text.p size={1} className="max-w-screen-sm !font-thin">{children}</text.p>
       { link && linkText && (
         <Button

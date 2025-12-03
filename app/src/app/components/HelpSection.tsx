@@ -14,9 +14,11 @@ export default function HelpSection() {
       >
         <text.h2 as="heading" size={3}>We love to help. Seriously.</text.h2>
         <text.p
-          className="max-w-screen-sm !font-thin !leading-7 mb-1"
+          className="max-w-screen-sm !font-thin mb-1"
           size={1}
-        >Still not sure what you need? Give us a call. We&apos;re happy to help, even if you&apos;re not a customer. Call us at 1-480-366-3546 and we&apos;ll chat — or get back to you as soon as we can.</text.p>
+        >
+          Still not sure what you need? Give us a call. We&apos;re happy to help, even if you&apos;re not a customer. Call us at 1-480-366-3546 and we&apos;ll chat — or get back to you as soon as we can.
+        </text.p>
         <Button
           external
           text="Get help"

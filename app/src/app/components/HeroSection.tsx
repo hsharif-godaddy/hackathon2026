@@ -135,7 +135,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       <text.h1
         as='heading'
         size={5}
-        className="gd-sage !font-bold max-w-screen-md"
+        className="max-w-screen-md"
       >
         Share your idea and we&apos;ll handle the rest
       </text.h1>
