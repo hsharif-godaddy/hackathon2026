@@ -6,6 +6,7 @@ import PlanTracker from '@/app/develop/components/PlanTracker'
 import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
+import { ChatContext } from '@/app/develop/components/chat/ChatContext'
 import { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
 import StreamingMessageList from '@/app/develop/components/StreamingMessageList'
 import VersionHistory from '@/app/develop/components/VersionHistory'
@@ -36,7 +37,7 @@ import { postMessageToIframe } from '@/utils/postMessage'
 
 interface ChatPaneProps {
   onPreviewRefresh?: () => void
-  sendMessage: (content: string, aiEditContext?: any, selectedAsset?: AssetManagerItem | null, additionalContextAttachments?: any[]) => Promise<void>
+  sendMessage: (content: string, aiEditContext?: any, selectedAsset?: AssetManagerItem | null, todoListContext?: any, isActionRequest?: boolean) => Promise<void>
 }
 
 export default function ChatPane({
@@ -145,47 +146,6 @@ export default function ChatPane({
   // Track processing state - use isLoading OR isStreaming to match original behavior
   const isProcessing = isLoading || isStreaming
 
-  // Handle sending a message
-  const handleSendMessage = () => {
-    logger.debug('chat-pane.send-message', {
-      message: 'ChatPane handleSendMessage called',
-      inputValuePreview: inputValue?.slice(0, 50) + '...',
-      hasSendMessageFunction: !!sendMessage
-    })
-
-    if (inputValue?.trim()) {
-      logAiroHQEvent({
-        category: 'click',
-        recommendation_task: 'builder_develop_prompt_submit',
-        recommendation_type: 'user_prompt'
-      })();
-
-      // Ensure we're connected to the right app
-      if (currentAppId !== appId) {
-        setCurrentAppId(appId)
-      }
-
-      // Send the message using the streaming WebSocket
-      // Screenshot is null to avoid agent to analyze
-      sendMessage(inputValue, { ...safeAiEditContext, screenshot: null }, selectedAsset)
-
-      // Clear the AI edit context after sending
-      if (safeAiEditContext) {
-        handleClearAiEditContext()
-      }
-
-      // Clear the selected asset after sending
-      if (selectedAsset) {
-        handleClearSelectedAsset()
-      }
-
-      // Clear the build error context after sending
-      if (safeBuildErrorContext) {
-        handleClearBuildErrorContext()
-      }
-    }
-  }
-
   // Handle clearing AI edit context
   const handleClearAiEditContext = useCallback(() => {
     // Send message to iframe to clear selection and highlight
@@ -199,13 +159,6 @@ export default function ChatPane({
     setAiEditContext(null)
   }, [setAiEditContext])
 
-  // Handle asset selection from AssetManager
-  const handleAssetSelect = useCallback((items: AssetManagerItem[]) => {
-    if (items && items.length > 0) {
-      setSelectedAsset(items[0])
-    }
-  }, [])
-
   // Handle clearing selected asset
   const handleClearSelectedAsset = useCallback(() => {
     setSelectedAsset(null)
@@ -215,6 +168,69 @@ export default function ChatPane({
   const handleClearBuildErrorContext = useCallback(() => {
     setBuildErrorContext(null)
   }, [setBuildErrorContext])
+
+  // Handle sending a message - accepts optional content for programmatic sends
+  const handleSendMessage = useCallback((content?: string, options?: { isActionRequest?: boolean }) => {
+    const messageToSend = content ?? inputValue
+
+    logger.debug('chat-pane.send-message', {
+      message: 'ChatPane handleSendMessage called',
+      inputValuePreview: inputValue?.slice(0, 50) + '...',
+      hasSendMessageFunction: !!sendMessage
+    })
+
+    if (messageToSend?.trim()) {
+      logAiroHQEvent({
+        category: 'click',
+        recommendation_task: 'builder_develop_prompt_submit',
+        recommendation_type: 'user_prompt'
+      })();
+
+      // Ensure we're connected to the right app
+      if (currentAppId !== appId) {
+        setCurrentAppId(appId)
+      }
+
+      // Send the message using the streaming WebSocket
+      // For programmatic sends (suggestions), don't include edit context/assets
+      // Screenshot is null to avoid agent analyzing it
+      if (content) {
+        // Programmatic send (e.g., suggestion button click)
+        // Parameters: message, aiEditContext, selectedAsset, todoListContext, isActionRequest
+        // - aiEditContext: minimal (no screenshot) since this isn't a user edit request
+        // - selectedAsset: null since programmatic sends don't have asset selections
+        // - todoListContext: undefined since todo context is managed separately
+        // - isActionRequest: signals agent to execute request immediately.
+        sendMessage(messageToSend, { screenshot: null }, null, undefined, options?.isActionRequest)
+      } else {
+        // User input send - include all context
+        sendMessage(messageToSend, { ...safeAiEditContext, screenshot: null }, selectedAsset)
+
+        // Clear contexts only for user input sends
+      if (safeAiEditContext) {
+        handleClearAiEditContext()
+      }
+      if (selectedAsset) {
+        handleClearSelectedAsset()
+      }
+      if (safeBuildErrorContext) {
+        handleClearBuildErrorContext()
+      }
+    }
+  }
+  }, [inputValue, sendMessage, currentAppId, appId, setCurrentAppId, safeAiEditContext, selectedAsset, safeBuildErrorContext, handleClearAiEditContext, handleClearSelectedAsset, handleClearBuildErrorContext])
+
+  // Create stable context value - reuses handleSendMessage
+  const chatContextValue = useMemo(() => ({
+    sendMessage: handleSendMessage
+  }), [handleSendMessage])
+
+  // Handle asset selection from AssetManager
+  const handleAssetSelect = useCallback((items: AssetManagerItem[]) => {
+    if (items && items.length > 0) {
+      setSelectedAsset(items[0])
+    }
+  }, [])
 
   // Listen for error fix requests from PreviewPaneSimple
   useEffect(() => {
@@ -285,8 +301,8 @@ export default function ChatPane({
     const transformValue = `-${tabIndex * 100}%`
 
     return (
+      <ChatContext.Provider value={chatContextValue}>
       <div className="flex-1 flex flex-col min-h-0">
-
         <PlanTracker
           developmentPlan={developmentPlan}
           expandedPlan={expandedPlan}
@@ -406,10 +422,12 @@ export default function ChatPane({
         ventureId={ventureId}
       />
     </div>
+    </ChatContext.Provider>
   )
 }
 
   return (
+    <ChatContext.Provider value={chatContextValue}>
     <div className="flex-1 flex flex-col h-full md:pt-4 gap-2 md:gap-4">
       <PlanTracker
         developmentPlan={developmentPlan}
@@ -523,5 +541,6 @@ export default function ChatPane({
         ventureId={ventureId}
       />
     </div>
+    </ChatContext.Provider>
   )
 }

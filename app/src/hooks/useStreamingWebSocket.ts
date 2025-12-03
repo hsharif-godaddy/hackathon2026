@@ -1031,7 +1031,8 @@ export function useStreamingWebSocket() {
     content: string,
     aiEditContext?: any,
     selectedAsset?: any,
-    todoListContext?: any
+    todoListContext?: any,
+    isActionRequest?: boolean
   ) => {
     if (!content.trim() || !currentAppId) return
 
@@ -1174,6 +1175,20 @@ export function useStreamingWebSocket() {
           metadata: {
             timestamp: Date.now(),
             source: 'todo-list-tool'
+          }
+        })
+      }
+
+      // Add action request context when user selects a suggested response
+      if (isActionRequest) {
+        contextAttachments.push({
+          type: 'action_request',
+          data: { instruction: '[Action Request] Execute this request immediately. Do not summarize previous work.' },
+          persistence: 'ephemeral',
+          renderStrategy: 'before_prompt',
+          metadata: {
+            timestamp: Date.now(),
+            source: 'suggested_response'
           }
         })
       }

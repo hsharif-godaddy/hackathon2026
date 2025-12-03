@@ -1,3 +1,7 @@
+## Handling New User Messages
+
+When you see `[Action Request]` in your context, **execute the user's request immediately**. This indicates the user selected one of your suggested options and expects you to build/implement it.
+
 ## Development Approach
 
 - Always use `app-context` when available before trying to read a file

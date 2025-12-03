@@ -2,7 +2,8 @@
 
 import Button from '@ux/button'
 import Box from '@ux/box'
-import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
+import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import './SuggestedResponseToolRenderer.css'
 
@@ -21,7 +22,10 @@ export default function SuggestedResponseToolRenderer({
   toolStatus,
   result
 }: DefaultToolRendererProps) {
-  const setInputValue = useStreamingConversationStore((state) => state.setInputValue)
+  const sendUserMessage = useSendUserMessage();
+  const isStreaming = useIsActivelyStreaming();
+  const isLoading = useIsLoading();
+  const isProcessing = isStreaming || isLoading;
 
   if (toolStatus !== 'completed' || !result) {
     return null
@@ -34,12 +38,10 @@ export default function SuggestedResponseToolRenderer({
     return null
   }
 
-  const handleSuggestionClick = (suggestion: Suggestion) => {
-    setInputValue(suggestion.text)
-    const inputElement = document.getElementById('chat-input-textarea')
-    if (inputElement) {
-      inputElement.focus()
-    }
+  function handleSuggestionClick(suggestion: Suggestion) {
+    if (isProcessing || !sendUserMessage) return;
+
+    sendUserMessage(suggestion.text, { isActionRequest: true });
   }
 
   return (
@@ -61,6 +63,7 @@ export default function SuggestedResponseToolRenderer({
             text={suggestion.text}
             design="secondary"
             size="sm"
+            disabled={isProcessing}
             onClick={() => handleSuggestionClick(suggestion)}
             className="suggestion-button rounded-md py-2 font-normal"
             style={{
@@ -87,7 +90,7 @@ export default function SuggestedResponseToolRenderer({
           <path d="M12 2C6.48 2 2 6.48 2 12c0 1.54.36 3 .97 4.29L2 22l5.71-.97C9 21.64 10.46 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.38 0-2.68-.3-3.86-.83l-.28-.14-2.86.49.49-2.86-.14-.28A7.95 7.95 0 014 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/>
           <path d="M7 9h10v2H7zm0 4h7v2H7z"/>
         </svg>
-        <span className="text-sm ">Or, write your response below</span>
+        <span className="text-sm ">Or, write your own response below</span>
       </Box>
     </Box>
   )

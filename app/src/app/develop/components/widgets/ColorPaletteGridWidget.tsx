@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import ColorPaletteWidget from './ColorPaletteWidget'
 import { postMessageToIframe } from '@/utils/postMessage'
 import Button from '@ux/button'
-import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
+import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 
 /**
  * Complete palette data structure (matches GeneratedPalette from backend)
@@ -59,7 +60,10 @@ export interface ColorPaletteGridWidgetProps {
  */
 export default function ColorPaletteGridWidget({ palettes, className = '' }: ColorPaletteGridWidgetProps) {
   const [previewedPalette, setPreviewedPalette] = useState<any>(null)
-  const setInputValue = useStreamingConversationStore((state) => state.setInputValue)
+  const sendUserMessage = useSendUserMessage();
+  const isStreaming = useIsActivelyStreaming();
+  const isLoading = useIsLoading();
+  const isProcessing = isStreaming || isLoading;
 
   // Listen for palette preview events from child widgets
   useEffect(() => {
@@ -89,63 +93,22 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
   }
 
   /**
-   * Save the previewed theme by injecting message into chat
+   * Save the previewed theme by sending message to chat
    */
   function handleSave() {
-    if (!previewedPalette) return
+    if (!previewedPalette || isProcessing || !sendUserMessage) return
 
-    const message = `Use color scheme: ${previewedPalette.name}`
-
-    // Find the chat input textarea by ID
-    const chatInput = document.getElementById('chat-input-textarea') as HTMLTextAreaElement
-    if (!chatInput) {
-      console.error('Could not find chat input textarea')
-      return
-    }
-
-    // Get React's internal instance to trigger onChange properly
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype,
-      'value'
-    )?.set
-
-    if (nativeInputValueSetter) {
-      nativeInputValueSetter.call(chatInput, message)
-    } else {
-      chatInput.value = message
-    }
-
-    // Trigger React's onChange with a proper input event
-    const inputEvent = new Event('input', { bubbles: true })
-    chatInput.dispatchEvent(inputEvent)
-
-    // Focus the textarea
-    chatInput.focus()
-
-    // Find the send button by ID and click it after a delay
-    const sendButton = document.getElementById('chat-send-button') as HTMLButtonElement
-    if (sendButton) {
-      setTimeout(() => {
-        if (!sendButton.disabled) {
-          sendButton.click()
-        }
-      }, 150)
-    }
-
-    // Clear preview state
+    sendUserMessage(`Use color scheme: ${previewedPalette.name}`, { isActionRequest: true })
     setPreviewedPalette(null)
-    console.log('💾 Theme save requested:', previewedPalette.name)
   }
 
   /**
    * Handle "More options" button click
    */
   function handleMoreOptions() {
-    setInputValue('Show me more color scheme options')
-    const inputElement = document.getElementById('chat-input-textarea')
-    if (inputElement) {
-      inputElement.focus()
-    }
+    if (isProcessing || !sendUserMessage) return
+
+    sendUserMessage('Show me more color scheme options', { isActionRequest: true })
   }
 
   // Check if palettes array is empty or invalid
@@ -185,6 +148,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
           text="More options"
           design="tertiary"
           size="sm"
+          disabled={isProcessing}
           onClick={handleMoreOptions}
         />
 
@@ -198,6 +162,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
           text="Save"
           design="primary"
           size="sm"
+          disabled={isProcessing}
           onClick={handleSave}
         />
       </div>

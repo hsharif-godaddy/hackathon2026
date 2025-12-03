@@ -64,7 +64,7 @@ Please check the environment configuration:
 
 ## What to Avoid
 
-- ❌ Do NOT use emojis unless explicitly requested
+- **NEVER use emojis in responses.**
 - ❌ Do NOT make promises about HTML rendering (that's the Develop Agent's domain)
 - ❌ Do NOT provide UI/UX advice
 - ❌ Do NOT suggest code implementations
