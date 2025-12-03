@@ -35,9 +35,7 @@ export interface GasketConfig {
 // Runtime configuration loader (lazy - only called when needed)
 async function loadRuntimeConfig(): Promise<GasketConfig> {
   // Server-side: access environment variables directly
-  if (typeof window === 'undefined') {
-    logger.info('🔧 Loading server-side gasket config from environment');
-    
+  if (typeof window === 'undefined') {    
     const config = {
       auth: {
         realm: 'idp',
@@ -60,16 +58,8 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
       }
     };
     
-    logger.info('🔧 Server-side config loaded:', {
-      loginUrl: config.sso.loginUrl,
-      logoutUrl: config.sso.logoutUrl
-    });
-    
     return config;
   }
-
-  // Client-side: fetch from API (lazy)
-  logger.info('🔧 Loading client-side gasket config from /api/config');
   
   try {
     const response = await fetch('/api/config');
@@ -78,10 +68,6 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
     }
     
     const config = await response.json();
-    logger.info('🔧 Client-side config loaded from API:', {
-      loginUrl: config.sso?.loginUrl,
-      logoutUrl: config.sso?.logoutUrl
-    });
     
     return config;
   } catch (error) {
@@ -94,25 +80,16 @@ async function loadRuntimeConfig(): Promise<GasketConfig> {
 export async function getGasketConfig(): Promise<GasketConfig> {
   // Return cached config if available
   if (typeof globalThis !== 'undefined' && globalThis.__gasketConfigCache) {
-    logger.info('🔧 Using cached gasket config');
     return globalThis.__gasketConfigCache;
   }
 
   // Return existing promise if already loading
   if (typeof globalThis !== 'undefined' && globalThis.__gasketConfigPromise) {
-    logger.info('🔧 Waiting for existing gasket config load');
     return globalThis.__gasketConfigPromise;
   }
 
-  logger.info('🔧 Loading fresh gasket config');
-
   // Load and cache configuration
   const configPromise = loadRuntimeConfig().then(config => {
-    logger.info('🔧 Gasket config loaded successfully:', {
-      loginUrl: config.sso.loginUrl,
-      logoutUrl: config.sso.logoutUrl
-    });
-    
     if (typeof globalThis !== 'undefined') {
       globalThis.__gasketConfigCache = config;
       globalThis.__gasketConfigPromise = undefined; // Clear promise after resolution
@@ -196,10 +173,6 @@ export async function isAuthDisabled(): Promise<boolean> {
   const { auth } = await import('./features');
   const disabled = auth.isDisabled();
   if (disabled && typeof globalThis !== 'undefined' && !globalThis.__authDisabledLogged) {
-    logger.info(`🔧 Authentication disabled (AUTH_TYPE=${auth.getType()})`);
-    logger.info('   - All protected routes are accessible');
-    logger.info('   - JWT validation returns mock success');
-    logger.info('   - No SSO calls will be made');
     globalThis.__authDisabledLogged = true;
   }
   return disabled;
@@ -227,12 +200,6 @@ export async function appFetch(url: string, options?: RequestInit): Promise<Resp
         const data = await response.clone().json();
         // Only redirect for the specific shopper ID authorization error message
         if (data.message && data.message.includes(SHOPPER_AUTH_FAILURE_MESSAGE)) {
-          logger.info('app-fetch.shopper.unauthorized', {
-            message: 'Shopper ID authorization failed, redirecting to coming-soon page',
-            url,
-            status: response.status
-          });
-          
           // Only redirect on client-side
           if (typeof window !== 'undefined') {
             window.location.href = '/coming-soon';

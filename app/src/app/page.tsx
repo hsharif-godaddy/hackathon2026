@@ -104,8 +104,6 @@ function HomeContent() {
       }
 
       // Step 2: Super fast create - only create database record, no deployment
-      logger.info('page.site.quick-create.start', 'Quick creating site record')
-
       const createSiteResponse = await appFetch('/api/sites/quick-create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

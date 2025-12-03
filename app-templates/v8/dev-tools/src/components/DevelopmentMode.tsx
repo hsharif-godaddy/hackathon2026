@@ -46,8 +46,6 @@ export default function DevelopmentMode() {
         // Single query with compound selector to reduce DOM traversal
         const sections = Array.from(new Set(document.querySelectorAll(compoundSelector)))
 
-        console.log('Visual context: Found', sections.length, 'sections for observation')
-
         if (sections.length === 0) {
           activeSection = 'main-content'
           isScriptReady = true
@@ -78,7 +76,6 @@ export default function DevelopmentMode() {
 
             if (sectionName && sectionName !== activeSection) {
               activeSection = sectionName
-              console.log('Visual context: Active section changed to:', activeSection)
             }
           }
         }, {
@@ -88,10 +85,8 @@ export default function DevelopmentMode() {
 
         sections.forEach(section => sectionsObserver?.observe(section))
         isScriptReady = true
-        console.log('Visual context: Section observer setup complete')
 
       } catch (error) {
-        console.warn('Visual context: Error setting up section observer:', error)
         activeSection = 'content'
         isScriptReady = true
       }
@@ -109,7 +104,6 @@ export default function DevelopmentMode() {
       try {
         // Validate origin for security
         if (!isOriginAllowed(event)) {
-          console.warn('Visual context: Message from unauthorized origin:', event.origin)
           return
         }
 
@@ -150,8 +144,6 @@ export default function DevelopmentMode() {
             }, 100)
           }
         } else if (event.data && event.data.type === 'REQUEST_VISUAL_CONTEXT') {
-          console.log('Visual context: Request received, script ready:', isScriptReady)
-
           const context = {
             page: window.location.pathname + window.location.search,
             scroll_position: {
@@ -167,8 +159,6 @@ export default function DevelopmentMode() {
             script_ready: isScriptReady
           }
 
-          console.log('Visual context: Sending response:', context)
-
           // Send response back to parent
           if (window.parent !== window) {
             safePostMessage(window.parent, {
@@ -177,8 +167,6 @@ export default function DevelopmentMode() {
             })
           }
         } else if (event.data && event.data.type === 'REQUEST_SCREENSHOT') {
-          console.log('Screenshot: Request received')
-
           // Capture and resize screenshot
           captureAndResizeScreenshot().then(screenshot => {
             if (screenshot && window.parent !== window) {
@@ -186,16 +174,12 @@ export default function DevelopmentMode() {
                 type: 'SCREENSHOT_RESPONSE',
                 screenshot: screenshot
               })
-              console.log('Screenshot: Sent to parent')
-            } else {
-              console.error('Screenshot: Failed to capture')
             }
-          }).catch(error => {
+          }).catch((error) => {
             console.error('Screenshot: Error capturing:', error)
           })
         }
       } catch (error) {
-        console.error('Visual context: Error handling request:', error)
 
         // Send error response
         if (window.parent !== window) {
@@ -215,7 +199,6 @@ export default function DevelopmentMode() {
     }
 
     window.addEventListener('message', handleMessage)
-    console.log('Visual context: Script loaded and ready')
 
     // Notify parent that iframe is ready for state restoration
     if (window.parent !== window) {

@@ -79,8 +79,6 @@ export function usePublishApp() {
 
       // If no commit hash provided, fetch the latest from git history
       if (!hashToPublish) {
-        logger.debug('publish.git-history.start', { appId });
-
         const historyData = await appService.getGitHistory(appId);
         const currentCommit = historyData.commits?.[0];
 
@@ -89,23 +87,10 @@ export function usePublishApp() {
         }
 
         hashToPublish = currentCommit.hash;
-
-        logger.info('publish.git-history.success', {
-          appId,
-          commitHash: hashToPublish?.substring(0, 7),
-          commitMessage: currentCommit.message
-        });
       }
 
       // Store the commit hash for retry functionality
       setLastPublishedCommitHash(appId, hashToPublish);
-
-      // Sync secrets from preview to publish before publishing
-      logger.info('publish.secrets-sync.start', {
-        appId,
-        source: 'preview',
-        destination: 'publish'
-      });
 
       if (isSecretsSyncEnabled) {
         try {
@@ -120,21 +105,16 @@ export function usePublishApp() {
             }),
           });
 
-          if (syncResponse.ok) {
-            const syncResult = await syncResponse.json();
-            logger.info('publish.secrets-sync.success', {
-              appId,
-              added: syncResult.operations?.added || 0,
-              updated: syncResult.operations?.updated || 0,
-              deleted: syncResult.operations?.deleted || 0
-            });
-          } else {
+          if (!syncResponse.ok) {
             // Log warning but don't fail publish - secrets sync is non-critical
             logger.warn('publish.secrets-sync.failed', {
               appId,
               status: syncResponse.status,
               message: 'Secrets sync failed but continuing with publish'
             });
+          } else {
+            // Consume response body to prevent connection issues
+            await syncResponse.json();
           }
         } catch (syncError) {
           // Log error but don't fail publish - secrets sync is non-critical
@@ -174,20 +154,9 @@ export function usePublishApp() {
       return { result, commitHash: hashToPublish };
     },
     onSuccess: async (data, variables) => {
-      logger.info('publish.success', {
-        appId: variables.appId,
-        commitHash: data.commitHash.substring(0, 7),
-        deploymentId: data.result.deployment?.deploymentId,
-      });
-
       // Set deployment ID in store to trigger polling in useDeploymentsQuery
       if (data.result.deployment?.deploymentId) {
         setDeploymentInProgressId(variables.appId, data.result.deployment.deploymentId);
-
-        logger.info('publish.deployment-tracking-started', {
-          appId: variables.appId,
-          deploymentId: data.result.deployment.deploymentId,
-        });
       }
 
       // Invalidate deployments queries to trigger immediate refetch with polling

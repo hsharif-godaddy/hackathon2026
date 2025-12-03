@@ -44,12 +44,6 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
       // Create "jobId" by prefixing the real appId (no storage needed!)
       const jobId = `${LegacyControlPlaneAdapter.JOB_ID_PREFIX}${site.id}`;
 
-      logger.info('legacy-control-plane.create-site.success', {
-        jobId,
-        realAppId: site.id,
-        accountId: params.accountId
-      });
-
       // Start deployment in background (non-blocking)
       this.deployInBackground(site.id, params.accountId, params.prompt);
 
@@ -66,7 +60,9 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
         type: 'job' // Marks as job to trigger polling UX
       };
     } catch (error) {
-      logger.error('legacy-control-plane.create-site.error', { error });
+      logger.error('legacy-control-plane.create-site.error', {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -110,19 +106,10 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
     // Extract real appId by stripping prefix
     const realAppId = jobId.replace(LegacyControlPlaneAdapter.JOB_ID_PREFIX, '');
 
-    logger.info('legacy-control-plane.job-id-lookup.extracting', {
-      jobId,
-      realAppId
-    });
-
     // Look up the actual site
     const site = await this.siteService.getSiteById(realAppId);
 
     if (!site) {
-      logger.info('legacy-control-plane.job-id-lookup.not-found', {
-        jobId,
-        realAppId
-      });
       return null;
     }
 
@@ -152,27 +139,19 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    */
   async deleteSite(siteId: string, _jwt: string, _systemId?: string, _subscriptionId?: string): Promise<{ success: boolean; error?: string }> {
     try {
-      logger.info('legacy-control-plane.delete-site.start', { siteId });
-
       // Destroy infrastructure
       const deploymentAdapter = getDeploymentAdapter();
-      const destroyResult = await deploymentAdapter.destroy(siteId);
-
-      if (!destroyResult.success) {
-        logger.warn('legacy-control-plane.destroy.warning', {
-          siteId,
-          error: destroyResult.error
-        });
-      }
+      await deploymentAdapter.destroy(siteId);
 
       // Delete database record
       await this.siteService.deleteSite(siteId);
 
-      logger.info('legacy-control-plane.delete-site.success', { siteId });
-
       return { success: true };
     } catch (error) {
-      logger.error('legacy-control-plane.delete-site.error', { siteId, error });
+      logger.error('legacy-control-plane.delete-site.error', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -188,10 +167,8 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    */
   async deploySite(siteId: string, jwt: string): Promise<{ success: boolean; site: SiteInfo; message: string }> {
     try {
-      logger.info('legacy-control-plane.deploy-site.start', { siteId });
-
       // Get site to validate status
-  const site = await this.getSite(siteId, jwt);
+      const site = await this.getSite(siteId, jwt);
 
       if (!site) {
         throw new Error('Site not found');
@@ -230,15 +207,16 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
         status: 'creating' as SiteInfo['status']
       };
 
-      logger.info('legacy-control-plane.deploy-site.triggered', { siteId });
-
       return {
         success: true,
         site: updatedSite,
         message: 'Deployment started'
       };
     } catch (error) {
-      logger.error('legacy-control-plane.deploy-site.error', { siteId, error });
+      logger.error('legacy-control-plane.deploy-site.error', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
       throw new Error(`Deploy failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -249,8 +227,6 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    */
   private async deployInBackground(siteId: string, accountId: string, prompt: string): Promise<void> {
     try {
-      logger.info('legacy-control-plane.deploy-background.start', { siteId });
-
       const deploymentAdapter = getDeploymentAdapter();
       const site = await this.siteService.getSiteById(siteId);
 
@@ -277,11 +253,6 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
             ceph_dir_number: deployResult.infrastructure.cephDirNumber
           })
         });
-
-        logger.info('legacy-control-plane.deploy-background.success', {
-          siteId,
-          status: deployResult.status
-        });
       } else {
         // Deployment failed
         await this.siteService.updateSite(siteId, { status: 'failed' });
@@ -291,16 +262,16 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
         });
       }
     } catch (error) {
-      logger.error('legacy-control-plane.deploy-background.error', { siteId, error });
+      logger.error('legacy-control-plane.deploy-background.error', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
 
       // Update status to failed
       try {
         await this.siteService.updateSite(siteId, { status: 'failed' });
-      } catch (updateError) {
-        logger.error('legacy-control-plane.deploy-background.update-failed', {
-          siteId,
-          error: updateError
-        });
+      } catch {
+        // Update failed - ignore
       }
     }
   }
@@ -312,8 +283,6 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    */
   async updateSite(siteId: string, updates: Partial<SiteInfo>, _jwt: string): Promise<SiteInfo | null> {
     try {
-      logger.info('legacy-control-plane.update-site.start', { siteId });
-
       // Update site in database
       const updatedSite = await this.siteService.updateSite(siteId, updates);
 
@@ -321,11 +290,12 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
         return null;
       }
 
-      logger.info('legacy-control-plane.update-site.success', { siteId });
-
       return this.mapToSiteInfo(updatedSite);
     } catch (error) {
-      logger.error('legacy-control-plane.update-site.error', { siteId, error });
+      logger.error('legacy-control-plane.update-site.error', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
       throw new Error(`Update failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -439,14 +409,6 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
 
     // Write secrets to file (which is mounted in container for preview variant)
     await this.writeSecretsFile(variantPath, currentSecrets);
-
-    logger.info('legacy-control-plane.update-secrets.success', {
-      appId,
-      variant,
-      added: addedCount,
-      updated: updatedCount,
-      deleted: deletedCount
-    });
 
     return {
       success: true,
@@ -568,15 +530,6 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
       }
     }
 
-    logger.info('legacy-control-plane.compare-secrets.success', {
-      appId,
-      sourceVariant,
-      destinationVariant,
-      added: added.length,
-      updated: updated.length,
-      deleted: deleted.length
-    });
-
     return {
       added,
       updated,
@@ -601,24 +554,18 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
     jwt: string
   ): Promise<SecretOperationsResult> {
     try {
-      logger.info('v2-control-plane.sync-secrets.start', {
-        appId,
-        sourceVariant,
-        destinationVariant
-      });
-
       const allocPath = getAllocPath(appId);
 
-    // Get config file names for each variant
-    const sourceFileName = sourceVariant === 'preview' ? 'config.json' : 'publish-config.json';
-    const destFileName = destinationVariant === 'preview' ? 'config.json' : 'publish-config.json';
+      // Get config file names for each variant
+      const sourceFileName = sourceVariant === 'preview' ? 'config.json' : 'publish-config.json';
+      const destFileName = destinationVariant === 'preview' ? 'config.json' : 'publish-config.json';
 
-    const sourcePath = join(allocPath, sourceFileName);
-    const destPath = join(allocPath, destFileName);
+      const sourcePath = join(allocPath, sourceFileName);
+      const destPath = join(allocPath, destFileName);
 
-    // Read both files
-    const sourceSecrets = await this.readSecretsFile(sourcePath);
-    const destSecrets = await this.readSecretsFile(destPath);
+      // Read both files
+      const sourceSecrets = await this.readSecretsFile(sourcePath);
+      const destSecrets = await this.readSecretsFile(destPath);
 
       // Filter to only non-system-managed secrets
       const sourceUserSecrets: Record<string, string | object> = {};
@@ -676,11 +623,9 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
       if (error.status === 401) {
         throw error;
       }
-      logger.error('v2-control-plane.sync-secrets.error', {
+      logger.error('legacy-control-plane.sync-secrets.error', {
         appId,
-        sourceVariant,
-        destinationVariant,
-        error
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
       throw error;
     }

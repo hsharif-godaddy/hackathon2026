@@ -222,7 +222,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     const assistantMsgId = generateId()
 
     if (process.env.NODE_ENV === 'development') {
-      logger.debug('streaming-store.start-stream', { message: 'startNewStream called', userMessage, userMsgId, assistantMsgId })
+      logger.debug('streaming-store.start-stream', { userMessage, userMsgId, assistantMsgId })
     }
 
     // Add user message to completed messages
@@ -244,10 +244,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       isComplete: false
     }
 
-    if (process.env.NODE_ENV === 'development') {
-      logger.debug('streaming-store.create-message', { message: 'Created streaming message', id: streamingMessage.id })
-    }
-
     set((state) => ({
       messages: [...state.messages, userChatMessage],
       activeStream: streamingMessage,
@@ -256,10 +252,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       inputValue: '', // Clear input
       isLoading: true
     }))
-
-    if (process.env.NODE_ENV === 'development') {
-      logger.debug('streaming-store.stream-started', { message: 'Stream started - activeStream set' })
-    }
   },
 
   appendToStream: (content: string) => {
@@ -288,14 +280,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   appendTextSegment: (content: string) => {
     const { activeStream } = get()
-
-
-    if (!activeStream) {
-      if (process.env.NODE_ENV === 'development') {
-        logger.warn('streaming-store.append-text.no-stream', { message: 'No activeStream - cannot append text segment' })
-      }
-      return
-    }
+    if (!activeStream) return
 
     const segment: StreamSegment = {
       id: generateId(),
@@ -329,6 +314,11 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   addToolStartSegment: (toolCall: ToolCall) => {
     const { activeStream } = get()
     if (!activeStream) return
+
+    logger.debug('streaming-store.tool.start', {
+      toolId: toolCall.id,
+      toolName: toolCall.name
+    })
 
     const segment: StreamSegment = {
       id: generateId(),
@@ -382,6 +372,13 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   addToolResultSegment: (toolCall: ToolCall) => {
     const { activeStream } = get()
     if (!activeStream) return
+
+    logger.debug('streaming-store.tool.result', {
+      toolId: toolCall.id,
+      toolName: toolCall.name,
+      status: toolCall.status,
+      duration: toolCall.duration
+    })
 
     const segment: StreamSegment = {
       id: generateId(),
@@ -525,6 +522,15 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     const { activeStream, messages } = get()
     if (!activeStream) return
 
+    logger.debug('streaming-store.stream.finalize', {
+      messageId: activeStream.id,
+      contentLength: activeStream.content.length,
+      toolCallCount: activeStream.toolCalls.length,
+      segmentCount: activeStream.segments.length,
+      maxStepsReached: activeStream.maxStepsReached,
+      upstreamError: activeStream.upstreamError
+    })
+
     // Convert streaming message to completed message
     const completedMessage: ChatMessage = {
       id: activeStream.id,
@@ -569,13 +575,10 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       // Save current app's chat history if we have one
       if (currentState.currentAppId && currentState.messages.length > 0) {
         newAppChatHistory[currentState.currentAppId] = currentState.messages
-        logger.info('streaming-store.save-messages', { message: 'Saved messages for app', count: currentState.messages.length, appId: currentState.currentAppId })
       }
 
       // Load new app's chat history (or empty array if new app)
       const newAppMessages = appId ? (newAppChatHistory[appId] || []) : []
-
-      logger.info('streaming-store.switch-app', { message: 'Switching app', fromAppId: currentState.currentAppId, toAppId: appId, messagesLoaded: newAppMessages.length })
 
       set({
         currentAppId: appId,
@@ -674,26 +677,10 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     const isNotLoading = !state.isLoading && state.streamingState === 'idle'
 
     if (hasNoMessages && isCorrectApp && isNotLoading && message.trim()) {
-      logger.info('streaming-store.auto-send', { message: 'Auto-sending initial message for new app', appId, messagePreview: message.substring(0, 50) + '...' })
-
       // Set the input value and trigger the send
       set({ inputValue: message.trim() })
-
-      // Return true to indicate auto-send was triggered
       return true
     }
-
-    logger.debug('streaming-store.auto-send-skip', {
-      message: 'Skipping auto-send',
-      hasNoMessages,
-      isCorrectApp,
-      isNotLoading,
-      hasMessage: !!message.trim(),
-      messagesCount: state.messages.length,
-      currentAppId: state.currentAppId,
-      targetAppId: appId,
-      streamingState: state.streamingState
-    })
 
     return false
   },
@@ -703,25 +690,13 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     const state = get()
 
     // Don't load if already loading
-    if (state.isLoading) {
-      logger.debug('streaming-store.load-history.skip-loading', { message: 'Skipping conversation history load - already loading' })
-      return
-    }
+    if (state.isLoading) return
 
     // Don't load if we already have messages for this app in cache AND they're not just empty
     const cachedMessages = state.appChatHistory[appId]
-    if (state.currentAppId === appId && cachedMessages && cachedMessages.length > 0) {
-      logger.debug('streaming-store.load-history.skip-cached', {
-        message: 'Skipping conversation history load - already have cached messages',
-        currentAppId: state.currentAppId,
-        targetAppId: appId,
-        cachedMessagesCount: cachedMessages.length
-      })
-      return
-    }
+    if (state.currentAppId === appId && cachedMessages && cachedMessages.length > 0) return
 
     try {
-      logger.info('streaming-store.load-history.begin', { message: 'Loading conversation history for app', appId })
       set({ isLoading: true })
 
       // Add timeout protection
@@ -734,7 +709,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
       // Build dynamic agent URL for conversations endpoint (no /apps/{appId}/ prefix)
       const conversationsUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}?limit=1&offset=0`, appId)
-      logger.debug('streaming-store.load-history.fetch', { message: 'Fetching conversations from URL', url: conversationsUrl })
 
       // Import agentFetch dynamically to avoid circular imports
       const { agentFetch } = await import('../lib/agent-fetch')
@@ -750,10 +724,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
       const data = await response.json()
       const conversations = data.conversations || []
-      logger.debug('streaming-store.load-history.found', { message: 'Found conversations', count: conversations.length })
 
       if (conversations.length === 0) {
-        logger.info('streaming-store.load-history.empty', { message: 'No conversation history found for app', appId })
         set({
           isLoading: false,
           conversationPagination: {
@@ -770,11 +742,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
       // Get the most recent conversation (conversations are ordered by updated_at DESC)
       const latestConversation = conversations[0]
-      logger.debug('streaming-store.load-history.latest', { message: 'Loading latest conversation', conversationId: latestConversation.id })
 
       // Build dynamic agent URL for messages endpoint (no /apps/{appId}/ prefix)
       const messagesUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}/${latestConversation.id}`, appId)
-      logger.debug('streaming-store.load-history.fetch-messages', { message: 'Fetching messages from URL', url: messagesUrl })
 
       // Fetch messages for the latest conversation
       const messagesResponse = await agentFetch(messagesUrl, { siteId: appId })
@@ -784,8 +754,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
       const conversationData = await messagesResponse.json()
       const messages = conversationData.messages || []
-
-      logger.debug('streaming-store.load-history.loaded-messages', { message: 'Loaded messages', count: messages.length })
 
       // Convert backend messages to frontend format (no normalization needed - backend uses correct field names)
       const convertedMessages: ChatMessage[] = messages.map((msg: any) => ({
@@ -833,19 +801,16 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         }
       })
 
-      logger.info('streaming-store.load-history.success', {
-        message: 'Conversation history loaded successfully',
+      logger.debug('streaming-store.load-history.success', {
         appId,
-        messagesCount: convertedMessages.length,
-        conversationsCount: conversations.length
+        conversationCount: convertedConversations.length,
+        messageCount: convertedMessages.length
       })
 
     } catch (error) {
       logger.error('streaming-store.load-history.failure', {
-        message: 'Failed to load conversation history',
         appId,
         error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
       })
       set({
         isLoading: false,
@@ -860,7 +825,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       })
 
       // Don't throw - just log and continue with empty history
-      logger.info('streaming-store.load-history.continue-empty', { message: 'Continuing with empty conversation history for app', appId })
+      logger.warn('streaming-store.load-history.continue-empty', { appId })
     }
   },
 
@@ -869,13 +834,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     const state = get()
 
     // Don't load if already loading or no more to load
-    if (state.conversationPagination.isLoading || !state.conversationPagination.hasMore) {
-      logger.debug('streaming-store.load-more.skip', { message: 'Skipping load more - already loading or no more to load' })
-      return
-    }
+    if (state.conversationPagination.isLoading || !state.conversationPagination.hasMore) return
 
     try {
-      logger.info('streaming-store.load-more.begin', { message: 'Loading more conversations for app', appId })
       set((state) => ({
         conversationPagination: {
           ...state.conversationPagination,
@@ -894,7 +855,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
       // Fetch older conversations
       const conversationsUrl = await buildDynamicAgentUrl(`agent/conversations/${appId}?limit=${limit}&offset=${offset}`, appId)
-      logger.debug('streaming-store.load-more.fetch', { message: 'Fetching more conversations from URL', url: conversationsUrl })
 
       const response = await agentFetch(conversationsUrl, { siteId: appId })
       if (!response.ok) {
@@ -903,7 +863,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
       const data = await response.json()
       const newConversations = data.conversations || []
-      logger.debug('streaming-store.load-more.found', { message: 'Found additional conversations', count: newConversations.length })
 
       if (newConversations.length === 0) {
         set((state) => ({
@@ -935,7 +894,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       const messagesData = await messagesResponse.json()
       const newMessages = messagesData.messages || []
 
-      logger.debug('streaming-store.load-more.loaded-messages', { message: 'Loaded messages for older conversations', count: newMessages.length })
 
       // Convert backend messages to frontend format
       const convertedNewMessages: ChatMessage[] = newMessages.map((msg: any) => ({
@@ -978,16 +936,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         }
       })
 
-      logger.info('streaming-store.load-more.success', {
-        message: 'More conversations loaded successfully',
-        appId,
-        newConversationsCount: convertedNewConversations.length,
-        newMessagesCount: convertedNewMessages.length,
-        totalLoaded: state.conversationPagination.loaded + convertedNewConversations.length
-      })
-
     } catch (error) {
-      logger.error('streaming-store.load-more.failure', { message: 'Failed to load more conversations', error: error instanceof Error ? error.message : String(error) })
+      logger.error('streaming-store.load-more.failure', { error: error instanceof Error ? error.message : String(error) })
       set((state) => ({
         conversationPagination: {
           ...state.conversationPagination,

@@ -123,12 +123,6 @@ export function useDeploymentsQuery({
       const data = await response.json();
       const deployments = Array.isArray(data) ? data : data.deployments || [];
 
-      logger.info('deployments-query.fetch.success', {
-        message: 'Deployments fetched',
-        appId,
-        count: deployments.length,
-      });
-
       return deployments;
     },
     enabled: enabled && !!appId,
@@ -240,19 +234,10 @@ export function useDeploymentsQuery({
           completedTask: true,
         })();
 
-        logger.info('deployments-query.publish-events-logged', {
-          appId,
-          wasAlreadyPublished,
-          impressionEid,
-          airoHQTask,
-        });
-
         // Invalidate git history cache to refresh commit list with deployment tag
         queryClient.invalidateQueries({ queryKey: ['git-history', appId] });
 
         // Refetch git history and select the published commit
-        const publishedGitHash = deploymentInProgress.gitHash;
-
         void (async function handleGitHistoryRefetch() {
           try {
             await queryClient.refetchQueries({ queryKey: ['git-history', appId] });
@@ -267,7 +252,6 @@ export function useDeploymentsQuery({
         // Refetch site data to get updated domains/URLs/variants, then show success
         fetchSite(appId, true)
           .then(function handleRefetchSuccess() {
-            logger.info('deployments-query.site-refetch.success', { appId });
             setPublishSuccess(appId, true);
           })
           .catch(function handleFetchError(error) {
@@ -278,12 +262,6 @@ export function useDeploymentsQuery({
             // Still show success alert even if refetch fails
             setPublishSuccess(appId, true);
           });
-      } else {
-        logger.info('deployments-query.deployment-complete', {
-          appId,
-          deploymentId: deploymentInProgressId,
-          status: DeploymentStatus.FAILED,
-        });
       }
 
       // Clear deployment tracking

@@ -1,4 +1,3 @@
-import { logger } from '../../../request-context';
 /**
  * Common types and enums used across all adapters
  */
@@ -74,7 +73,6 @@ export class AdapterConfigResolver {
       throw new Error('Docker is required but not available. Please ensure Docker is installed and running.');
     }
     
-    logger.info('adapter.config.docker', { message: 'Using Docker mode' });
     return {
       type: 'docker',
       enabled: true,

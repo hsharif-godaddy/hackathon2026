@@ -308,8 +308,6 @@ export class DevSiteAdapter implements ISiteAdapter {
 
       throw error;
     }
-
-    logger.info('✅ DevSiteAdapter: Environment validation passed - running in development mode');
   }
 
   private mapToSiteInfo(site: any): SiteInfo {

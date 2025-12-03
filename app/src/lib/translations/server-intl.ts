@@ -26,14 +26,11 @@ export async function detectLocale(): Promise<string> {
     const locale = data?.intl?.locale;
 
     if (locale && typeof locale === 'string') {
-      logger.debug('locale.detected.gasket', { locale, source: 'gasket' });
       return locale;
     }
     
     // Fallback to Gasket's default locale if detection fails
-    const defaultLocale = gasket.config.intl?.defaultLocale || 'en-US';
-    logger.debug('locale.detected.default', { locale: defaultLocale });
-    return defaultLocale;
+    return gasket.config.intl?.defaultLocale || 'en-US';
   } catch (error) {
     // Fallback to default on any error
     const defaultLocale = gasket.config.intl?.defaultLocale || 'en-US';
@@ -115,7 +112,6 @@ async function getCachedOrLoadMessages(
   // Check if cache exists and is still valid (not expired)
   if (useCache && cachedEntry && (now - cachedEntry.timestamp) < CACHE_TTL) {
     messages = cachedEntry.messages;
-    logger.debug('translations.cache.hit', { cacheKey, translationCount: Object.keys(messages).length });
   } else {
     // Cache miss or expired - load translations directly (no HTTP)
     messages = await loadTranslations(locale, packages);
@@ -127,12 +123,6 @@ async function getCachedOrLoadMessages(
       messagesCache.set(cacheKey, {
         messages,
         timestamp: now,
-      });
-      
-      logger.info('translations.cache.store', { 
-        cacheKey, 
-        translationCount,
-        message: 'Stored translations in cache'
       });
       
       // Clean up expired entries after storing new one
@@ -255,7 +245,6 @@ function cleanupExpiredCache(): void {
   }
   
   for (const key of keysToDelete) {
-    logger.info('translations.cache.delete', { key });
     messagesCache.delete(key);
   }
 }

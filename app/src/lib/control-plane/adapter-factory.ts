@@ -1,7 +1,6 @@
 import { IControlPlaneAdapter } from './types';
 import { V2ControlPlaneAdapter } from './v2-control-plane-adapter';
 import { LegacyControlPlaneAdapter } from './legacy-control-plane-adapter';
-import { logger } from '@/lib/request-context';
 
 /**
  * Control Plane Adapter Factory
@@ -14,14 +13,9 @@ import { logger } from '@/lib/request-context';
  * - false: Use LegacyControlPlaneAdapter (database + Nomad/SQS)
  */
 export function getControlPlaneAdapter(): IControlPlaneAdapter {
-  const useV2 = process.env.USE_V2_CONTROL_PLANE === 'true';
-
-  if (useV2) {
-    logger.info('control-plane.factory', { adapter: 'v2-mgmt-airo' });
+  if (process.env.USE_V2_CONTROL_PLANE === 'true') {
     return new V2ControlPlaneAdapter();
   }
-
-  logger.info('control-plane.factory', { adapter: 'legacy-database' });
   return new LegacyControlPlaneAdapter();
 }
 

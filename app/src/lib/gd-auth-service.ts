@@ -23,66 +23,23 @@ export class GdAuthService {
     try {
       const ssoUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
       this.ssoHost = new URL(ssoUrl).hostname;
-      logger.info('gd-auth.init.sso-host', {
-        message: 'Using SSO host',
-        ssoHost: this.ssoHost
-      });
-    } catch (error) {
-      logger.warn('gd-auth.init.sso-url-error', {
-        message: 'Invalid SSO URL format, using fallback',
-        providedUrl: process.env.SSO_LOGIN_URL,
-        fallbackHost: 'sso.test-godaddy.com'
-      });
+    } catch {
       this.ssoHost = 'sso.test-godaddy.com';
     }
 
-    logger.info('gd-auth.init.sso-host', {
-      message: 'Using SSO host',
-      ssoHost: this.ssoHost
-    });
-
     // Only initialize gd-auth if we're using JWT authentication
-    // Check environment variable directly to avoid module loading issues
     const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
     const isJWTMode = authType === 'jwt' || (process.env.NODE_ENV === 'production' && !authType);
 
-    logger.info('🔍 GdAuthService.constructor.auth-check', {
-      message: 'Checking authentication mode',
-      authType: authType,
-      isJWTMode: isJWTMode,
-      nodeEnv: process.env.NODE_ENV,
-      willInitializeGdAuth: isJWTMode
-    });
-
     if (isJWTMode) {
-      logger.warn('🚨 GdAuthService.constructor.initializing-gd-auth', {
-        message: 'About to initialize gd-auth library - this will cause AWS token calls',
-        authType: authType,
-        nodeEnv: process.env.NODE_ENV
-      });
       this.initializeGdAuth();
     } else {
-      logger.info('✅ GdAuthService.constructor.skipped', {
-        message: 'Skipping gd-auth initialization - no AWS calls will be made',
-        authType: authType,
-        reason: 'Not using JWT authentication'
-      });
       this.gdAuth = null;
     }
   }
 
   private initializeGdAuth() {
-    logger.warn('🚨 GdAuthService.initializeGdAuth.start', {
-      message: 'Starting gd-auth initialization - AWS token calls will begin',
-      stack: new Error().stack?.split('\n').slice(1, 4).join('\n')
-    });
-
     const { GdAuth } = require('gd-auth'); // eslint-disable-line @typescript-eslint/no-var-requires
-
-    logger.warn('🚨 GdAuthService.initializeGdAuth.required', {
-      message: 'gd-auth module loaded - AWS token manager is now active'
-    });
-
 
     // Initialize gd-auth with support for multiple auth types including impersonation
     this.gdAuth = new GdAuth({
@@ -91,10 +48,6 @@ export class GdAuthService {
       auths: authUtils.getSupportedAuthTypes(), // Support both basic and e2s (impersonation)
       allowHeartbeat: true,          // Enable automatic heartbeat
       fetchKey: require('gd-auth/src/fetch-key')
-    });
-
-    logger.info('gd-auth.init.complete', {
-      message: 'GdAuth initialized successfully'
     });
   }
 
@@ -108,12 +61,6 @@ export class GdAuthService {
       const isJWTMode = authType === 'jwt' || (process.env.NODE_ENV === 'production' && !authType);
 
       if (!isJWTMode || !this.gdAuth) {
-        logger.info('gd-auth.authenticate.bypass', {
-          message: 'Authentication bypassed',
-          authType: authType,
-          reason: 'Not using JWT authentication'
-        });
-
         return {
           valid: true,
           payload: {
@@ -126,18 +73,9 @@ export class GdAuthService {
         };
       }
 
-      logger.info('gd-auth.authenticate.start', 'Authenticating token');
-
       // Use gd-auth for authentication - it handles heartbeat automatically
       const jwt = await this.gdAuth.authenticate(this.ssoHost, token, 0);
       const isImpersonation = jwt.auth === 'e2s';
-
-      logger.info('gd-auth.authenticate.success', {
-        message: 'Authentication successful',
-        customerId: isImpersonation ? jwt.e2s.cid : jwt.cid,
-        exp: jwt.exp,
-        iat: jwt.iat
-      });
 
       return {
         valid: true,

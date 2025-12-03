@@ -67,10 +67,6 @@ export class SharedMySQLService {
 	async initialize(): Promise<void> {
 		if (this.initialized) return;
 
-		logger.info('shared_mysql.init.begin', {
-			containerName: this.containerName,
-		});
-
 		// Verify MySQL is accessible and healthy
 		const healthy = await this.healthCheck();
 		if (!healthy) {
@@ -78,10 +74,6 @@ export class SharedMySQLService {
 		}
 
 		this.initialized = true;
-
-		logger.info('shared_mysql.init.success', {
-			containerName: this.containerName,
-		});
 	}
 
 	/**
@@ -93,11 +85,6 @@ export class SharedMySQLService {
 	 * @returns true if healthy, false otherwise
 	 */
 	async healthCheck(maxAttempts: number = 30, baseInterval: number = 2000): Promise<boolean> {
-		logger.info('shared_mysql.health.begin', {
-			maxAttempts,
-			baseInterval,
-		});
-
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 			let connection: Connection | null = null;
 			try {
@@ -108,12 +95,6 @@ export class SharedMySQLService {
 					},
 				});
 				await connection.ping();
-
-				logger.info('shared_mysql.health.success', {
-					attempt,
-					maxAttempts,
-				});
-
 				return true;
 			} catch (error) {
 				const interval = attempt <= 10 ? baseInterval : baseInterval * 2.5; // Slower after 10 attempts
@@ -139,10 +120,7 @@ export class SharedMySQLService {
 			}
 		}
 
-		logger.error('shared_mysql.health.failure', {
-			maxAttempts,
-		});
-
+		logger.error('shared_mysql.health.failure', { maxAttempts });
 		return false;
 	}
 
@@ -165,12 +143,6 @@ export class SharedMySQLService {
 		const username = this.generateUsername(appId);
 		const password = generateSecurePassword();
 
-		logger.info('shared_mysql.provision.begin', {
-			appId,
-			database: dbName,
-			user: username,
-		});
-
 		let connection: Connection | null = null;
 
 		try {
@@ -183,40 +155,21 @@ export class SharedMySQLService {
 
 			// Create database using identifier escaping
 			await connection.query('CREATE DATABASE IF NOT EXISTS ??', [dbName]);
-			logger.info('shared_mysql.provision.database_created', {
-				appId,
-				database: dbName,
-			});
 
 			// Create user with parameterized query
 			await connection.query(
 				'CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?',
 				[username, '%', password]
 			);
-			logger.info('shared_mysql.provision.user_created', {
-				appId,
-				user: username,
-			});
 
 			// Grant privileges using identifier escaping for database
 			await connection.query(
 				'GRANT ALL PRIVILEGES ON ??.* TO ?@?',
 				[dbName, username, '%']
 			);
-			logger.info('shared_mysql.provision.privileges_granted', {
-				appId,
-				database: dbName,
-				user: username,
-			});
 
 			// Flush privileges to ensure they take effect
 			await connection.query('FLUSH PRIVILEGES');
-
-			logger.info('shared_mysql.provision.success', {
-				appId,
-				database: dbName,
-				user: username,
-			});
 
 			return {
 				host: this.containerName, // Container name for Docker network DNS
@@ -277,12 +230,6 @@ export class SharedMySQLService {
 		const dbName = this.generateDatabaseName(appId);
 		const username = this.generateUsername(appId);
 
-		logger.info('shared_mysql.drop.begin', {
-			appId,
-			database: dbName,
-			user: username,
-		});
-
 		let connection: Connection | null = null;
 
 		try {
@@ -295,39 +242,16 @@ export class SharedMySQLService {
 
 			// Drop database (IF EXISTS makes this idempotent) using identifier escaping
 			await connection.query('DROP DATABASE IF EXISTS ??', [dbName]);
-			logger.info('shared_mysql.drop.database_dropped', {
-				appId,
-				database: dbName,
-			});
 
 			// Drop user (IF EXISTS makes this idempotent)
 			await connection.query('DROP USER IF EXISTS ?@?', [username, '%']);
-			logger.info('shared_mysql.drop.user_dropped', {
-				appId,
-				user: username,
-			});
-
-			logger.info('shared_mysql.drop.success', {
-				appId,
-				database: dbName,
-				user: username,
-			});
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
 
-			// Check if error is because database/user already doesn't exist (expected for idempotent operation)
-			if (errorMsg.includes('Unknown database') || errorMsg.includes('Operation DROP USER failed')) {
-				logger.info('shared_mysql.drop.already_deleted', {
-					appId,
-					database: dbName,
-					user: username,
-				});
-			} else {
-				// Unexpected error - log but don't throw (best-effort cleanup)
+			// Only log unexpected errors (not "already doesn't exist")
+			if (!errorMsg.includes('Unknown database') && !errorMsg.includes('Operation DROP USER failed')) {
 				logger.error('shared_mysql.drop.failure', {
 					appId,
-					database: dbName,
-					user: username,
 					error: errorMsg,
 				});
 			}

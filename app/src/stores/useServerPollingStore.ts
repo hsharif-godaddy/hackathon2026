@@ -71,11 +71,8 @@ export const useServerPollingStore = create<ServerPollingStore>()(
 
       // Don't start if already polling
       if (existing?.isPolling) {
-        logger.debug('server-polling.already-active', { message: 'Already polling server', appId })
         return
       }
-
-      logger.info('server-polling.start', { message: 'Starting polling for server', appId })
 
       set((state) => {
         state.servers.set(appId, {
@@ -96,8 +93,6 @@ export const useServerPollingStore = create<ServerPollingStore>()(
       const pollingState = get().servers.get(appId)
 
       if (!pollingState) return
-
-      logger.info('server-polling.stop', { message: 'Stopping polling for server', appId })
 
       // Clear any pending timeout
       if (pollingState.timeoutId) {
@@ -134,8 +129,6 @@ export const useServerPollingStore = create<ServerPollingStore>()(
       set((state) => {
         state.servers.clear()
       })
-
-      logger.info('server-polling.cleanup', { message: 'Cleaned up all server polling' })
     },
 
     _pollServer: async (appId: string) => {

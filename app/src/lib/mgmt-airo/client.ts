@@ -91,13 +91,6 @@ export class AiroMgmtClient {
     const apiCallStart = Date.now();
     const apiCallId = `${method} ${path}`;
 
-    logger.info('mgmt-airo.api.start', {
-      message: `🚀 Starting API call: ${apiCallId}`,
-      url,
-      method,
-      ...(body ? { requestBody: body } : {})
-    });
-
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       const attemptStart = Date.now();
 
@@ -153,27 +146,13 @@ export class AiroMgmtClient {
         // Success - parse and return
         const result = await response.json() as T;
 
-        const attemptDuration = Date.now() - attemptStart;
-        const totalDuration = Date.now() - apiCallStart;
-
-        // Log successful API call with timing
-        logger.info('mgmt-airo.api.success', {
-          message: `✅ ${apiCallId} completed successfully`,
-          url,
-          status: response.status,
-          attempt,
-          attemptDuration,
-          totalDuration,
-          ...(method === 'PATCH' ? { responseBody: result } : {})
-        });
-
         return result;
       } catch (error) {
         const attemptDuration = Date.now() - attemptStart;
         const totalDuration = Date.now() - apiCallStart;
 
         logger.error('mgmt-airo.api.attempt-error', {
-          message: `❌ ${apiCallId} attempt ${attempt} failed`,
+          message: `${apiCallId} attempt ${attempt} failed`,
           url,
           attempt,
           attemptDuration,

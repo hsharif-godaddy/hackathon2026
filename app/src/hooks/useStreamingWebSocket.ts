@@ -67,10 +67,7 @@ const getAgentJWTToken = async (siteId: string): Promise<string | null> => {
     const token = data.token;
 
     if (!token) {
-      logger.error('websocket.token.missing_field', {
-        message: 'WebSocket agent token response missing token field',
-        responseData: data
-      });
+      logger.error('websocket.token.missing_field', {});
       return null;
     }
 
@@ -271,7 +268,6 @@ export function useStreamingWebSocket() {
     return new Promise(async (resolve, reject) => {
       // Clean up existing socket first to prevent duplicate handlers
       if (socketRef.current) {
-        logger.info('websocket.connection.cleanup', { message: 'Cleaning up existing socket before creating new one' })
         socketRef.current.removeAllListeners()
         socketRef.current.disconnect()
         socketRef.current = null
@@ -281,7 +277,6 @@ export function useStreamingWebSocket() {
       const { dynamicApiConfigService } = await import('../config/dynamic-api')
       const config = await dynamicApiConfigService.getConfigForSite(appId)
       const socketUrl = config.baseUrl
-      logger.info('websocket.connection.create', { message: 'Creating Socket.IO connection', url: socketUrl })
 
       let authToken: string | null = null
       try {
@@ -295,14 +290,7 @@ export function useStreamingWebSocket() {
 
       // Check if we have a previous socket ID from before page reload (only if feature enabled)
       const previousSocketId = enableManualRecovery ? sessionStorage.getItem(`socket_id_${appId}`) : null
-      if (previousSocketId) {
-        logger.info('websocket.recovery.attempt', {
-          message: 'Found previous socket ID, will attempt recovery',
-          previousSocketId,
-          appId
-        })
-      }
-
+      
       const socketOptions: any = {
         transports: ['websocket', 'polling'],
         timeout: 10000,
@@ -333,11 +321,6 @@ export function useStreamingWebSocket() {
       socket.on('connect', () => {
         // Check if this is a recovered connection (socket ID preserved)
         if (socket.recovered) {
-          logger.info('websocket.connection.recovered', {
-            message: 'Connection recovered with preserved socket ID (automatic)',
-            socketId: socket.id,
-            appId
-          })
           // Mark that this connection was recovered so message handler knows to initialize stream
           wasRecoveredRef.current = true
           // Connection was recovered - buffered events will be replayed by server
@@ -345,12 +328,6 @@ export function useStreamingWebSocket() {
           setWebSocketState({ connected: true, status: 'idle' })
         } else if (previousSocketId && previousSocketId !== socket.id) {
           // Manual recovery after page reload - new socket ID but we had a previous one
-          logger.info('websocket.connection.manual_recovery', {
-            message: 'New connection after page reload, attempting manual recovery',
-            newSocketId: socket.id,
-            previousSocketId,
-            appId
-          })
           // Mark as recovered so we initialize stream when messages arrive
           wasRecoveredRef.current = true
           setWebSocketState({ connected: true, status: 'idle' })
@@ -359,11 +336,6 @@ export function useStreamingWebSocket() {
             sessionStorage.setItem(`socket_id_${appId}`, socket.id)
           }
         } else {
-          logger.info('websocket.connection.new', {
-            message: 'New connection established',
-            socketId: socket.id,
-            appId
-          })
           wasRecoveredRef.current = false
           setWebSocketState({ connected: true, status: 'idle' })
           // Store new socket ID in sessionStorage (if feature enabled)
@@ -463,12 +435,6 @@ export function useStreamingWebSocket() {
    */
   const handleCommitComplete = useCallback(async (commitHash?: string) => {
     if (commitHash && currentAppId) {
-      logger.info('websocket.commit_created', {
-        appId: currentAppId,
-        commitHash: commitHash.substring(0, 7),
-        message: 'Commit created during conversation, invalidating and selecting'
-      })
-
       try {
         // Invalidate to get fresh commit list
         await queryClient.invalidateQueries({
@@ -478,12 +444,6 @@ export function useStreamingWebSocket() {
 
         // Select the new commit
         await useGitStore.getState().selectCommit(currentAppId, commitHash)
-
-        logger.info('websocket.commit_selected', {
-          appId: currentAppId,
-          commitHash: commitHash.substring(0, 7),
-          message: 'Successfully selected new commit, triggering preview refresh'
-        })
 
         // Now trigger preview refresh - files are synced
         window.postMessage({
@@ -495,7 +455,6 @@ export function useStreamingWebSocket() {
           appId: currentAppId,
           commitHash: commitHash.substring(0, 7),
           error: error instanceof Error ? error.message : String(error),
-          message: 'Failed to select commit after conversation'
         })
 
         // Still trigger preview refresh on error
@@ -504,19 +463,8 @@ export function useStreamingWebSocket() {
           source: 'websocket'
         }, window.location.origin)
       }
-    } else if (currentAppId) {
-      logger.info('websocket.no_commit', {
-        appId: currentAppId,
-        message: 'No commit created (no file changes)'
-      })
-
-      // No commit - trigger preview refresh immediately
-      window.postMessage({
-        type: 'MESSAGE_COMPLETE',
-        source: 'websocket'
-      }, window.location.origin)
     } else {
-      // No appId - still trigger preview refresh for any other listeners
+      // No commit or no appId - trigger preview refresh immediately
       window.postMessage({
         type: 'MESSAGE_COMPLETE',
         source: 'websocket'
@@ -539,30 +487,13 @@ export function useStreamingWebSocket() {
       switch (data.type) {
         case 'recovery_status':
           // Server is telling us about recovery state
-          logger.info('websocket.recovery_status', {
-            message: 'Received recovery status from server',
-            hasBufferedEvents: data.data?.hasBufferedEvents,
-            bufferedEventCount: data.data?.bufferedEventCount,
-            conversationId: data.data?.conversationId,
-            streamCompleted: data.data?.streamCompleted
-          })
-
           if (data.data?.streamCompleted) {
             // Stream already completed - just load history and stay idle
-            logger.info('websocket.recovery.completed', {
-              message: 'Stream already completed, loading history only'
-            })
-            // TODO: Load conversation history here if needed
             wasRecoveredRef.current = false
             setStreamingState('idle')
             setIsLoading(false)
           } else if (data.data?.hasBufferedEvents) {
             // Stream is still active - load history then prepare for replay
-            logger.info('websocket.recovery.active', {
-              message: 'Stream still active, loading history before replay',
-              conversationId: data.data.conversationId
-            })
-
             // Load conversation history from API if we have conversationId
             if (data.data.conversationId && currentAppId) {
               try {
@@ -570,11 +501,6 @@ export function useStreamingWebSocket() {
 
                 // Load the specific conversation
                 const conversation = await agentService.getConversation(currentAppId, data.data.conversationId)
-
-                logger.info('websocket.recovery.history_loaded', {
-                  message: 'Loaded conversation history',
-                  messageCount: conversation.messages?.length || 0
-                })
 
                 // Add messages to store if we have them
                 if (conversation.messages && conversation.messages.length > 0) {
@@ -600,15 +526,9 @@ export function useStreamingWebSocket() {
                     currentStep: 1,
                     isLoading: true
                   })
-
-                  logger.info('websocket.recovery.stream_initialized', {
-                    message: 'Initialized activeStream for buffered events',
-                    streamId: streamingMessage.id
-                  })
                 }
               } catch (error) {
                 logger.error('websocket.recovery.history_failed', {
-                  message: 'Failed to load conversation history',
                   error: error instanceof Error ? error.message : String(error)
                 })
               }
@@ -747,19 +667,13 @@ export function useStreamingWebSocket() {
           break
         case 'step_complete':
           if (data.data?.maxStepsReached === true) {
-            logger.info('websocket.steps.max-reached', { message: 'Max steps reached - marking in state' })
+            logger.warn('websocket.steps.max-reached')
             markMaxStepsReached()
           }
           break
         case 'complete':
           // Log what we received from the WebSocket
           flushToolDeltaBufferImmediate()
-          logger.info('websocket.complete_received', {
-            appId: currentAppId,
-            hasCommitHash: !!data.data?.commitHash,
-            commitHash: data.data?.commitHash ? data.data.commitHash.substring(0, 7) : null,
-            message: 'Received complete event from WebSocket'
-          })
 
           // Clear retry state on successful completion
           if (retryStateRef.current.retryTimer) {
@@ -810,10 +724,6 @@ export function useStreamingWebSocket() {
 
             // Schedule retry
             retryState.retryTimer = setTimeout(() => {
-              logger.info('websocket.error.app_not_found.retrying', {
-                message: 'Retrying message after APP_NOT_FOUND error',
-                retryCount: retryState.retryCount
-              })
 
               // Re-send the message using the stored pending message
               const { content, aiEditContext } = retryState.pendingMessage!
@@ -918,21 +828,11 @@ export function useStreamingWebSocket() {
     const initializeConnection = async () => {
       const initAppId = currentAppId
       try {
-        logger.info('websocket.connection.initialize', {
-          message: 'Initializing persistent WebSocket connection',
-          appId: initAppId
-        })
-
         const socket = await createConnection(initAppId)
 
         // Check if app changed during async initialization
         const currentState = useStreamingConversationStore.getState()
         if (currentState.currentAppId !== initAppId) {
-          logger.info('websocket.connection.abort', {
-            message: 'App changed during initialization, aborting socket setup',
-            initAppId,
-            currentAppId: currentState.currentAppId
-          })
           socket.removeAllListeners()
           socket.disconnect()
           return
@@ -946,12 +846,6 @@ export function useStreamingWebSocket() {
 
         // Set up event handlers once for the lifetime of this connection
         setupEventHandlers(socket)
-
-        logger.info('websocket.connection.ready', {
-          message: 'Persistent WebSocket connection established and ready',
-          appId: initAppId,
-          socketId: socket.id
-        })
       } catch (error) {
         logger.error('websocket.connection.init_failed', {
           message: 'Failed to initialize persistent connection',
@@ -966,11 +860,6 @@ export function useStreamingWebSocket() {
     // Reuse existing shared socket if available (prevents duplicate connections)
     const existingSocket = getSharedSocket()
     if (existingSocket && !socketRef.current) {
-      logger.info('websocket.connection.reuse', {
-        message: 'Reusing existing shared socket',
-        socketId: existingSocket.id,
-        appId: currentAppId
-      })
       socketRef.current = existingSocket
       createdHereRef.current = false // We didn't create this socket
       return;
@@ -997,22 +886,11 @@ export function useStreamingWebSocket() {
       if (socketRef.current) {
         // Only disconnect and clear shared socket if this instance created it
         if (createdHereRef.current && getSharedSocket() === socketRef.current) {
-          logger.info('websocket.cleanup', {
-            message: 'Cleaning up Socket.IO connection (created by this instance)',
-            reason: 'app change or unmount',
-            appId: currentAppId
-          })
-
           // Clear shared socket reference
           setSharedSocket(null)
 
           socketRef.current.removeAllListeners()
           socketRef.current.disconnect()
-        } else {
-          logger.info('websocket.cleanup.skip', {
-            message: 'Not cleaning up socket (reused from shared registry)',
-            appId: currentAppId
-          })
         }
 
         socketRef.current = null
@@ -1059,12 +937,6 @@ export function useStreamingWebSocket() {
       if (!socket.connected) {
         throw new Error('WebSocket not connected. Connection may be reconnecting...')
       }
-
-      logger.info('websocket.message.send', {
-        message: 'Sending Socket.IO message using existing connection',
-        appId: currentAppId,
-        socketId: socket.id
-      })
 
       // Get current state for rich context
       const state = useStreamingConversationStore.getState()
@@ -1231,22 +1103,14 @@ export function useStreamingWebSocket() {
 
       // Use Socket.IO acknowledgement for delivery confirmation
       socket.emit('chat_message', chatMessage, (response: any) => {
-        if (response?.status === 'ok') {
-          logger.info('websocket.message.acknowledged', {
-            message: 'Message delivery confirmed by server',
-            messageLength: content.length
-          })
-        } else if (response?.error) {
-          logger.error('websocket.message.ack_error', {
-            message: 'Server rejected message',
-            error: response.error
-          })
+        if (response?.error) {
+          logger.error('websocket.message.ack_error', { error: response.error })
         }
       })
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      logger.error('websocket.message.failure', { message: 'Failed to send message', error: errorMessage })
+      logger.error('websocket.message.failure', { error: errorMessage })
 
       setWebSocketState({
         status: 'error',

@@ -58,11 +58,6 @@ function getApmAgent(): ApmAgent | null {
   
   // Check if APM exists and is active
   if (!apm || !apm.isActive || !apm.isActive()) {
-    logger.debug('hooks.usePageTiming.getApmAgent.inactive', {
-      message: 'APM agent is not active',
-      has_apm: !!apm,
-      has_isActive: !!(apm && apm.isActive)
-    });
     return null;
   }
   
@@ -147,24 +142,12 @@ export function usePageTiming(
     if (transaction) {
       try {
         transaction.addLabels(labels);
-        logger.debug('hooks.usePageTiming.labels.updated', {
-          message: 'Updated transaction labels',
-          page_name: pageName,
-          labels
-        });
       } catch (error) {
         logger.error('hooks.usePageTiming.labels.error', {
-          message: 'Failed to update transaction labels',
           page_name: pageName,
           error: error instanceof Error ? error.message : String(error)
         });
       }
-    } else {
-      logger.warn('hooks.usePageTiming.labels.no-transaction', {
-        message: 'Cannot update labels - no active transaction',
-        page_name: pageName,
-        labels
-      });
     }
   }, [pageName, getGlobalKey]);
 
@@ -178,22 +161,13 @@ export function usePageTiming(
     
     if (transaction) {
       try {
-        const duration = Date.now() - startTime;
         transaction.end();
-        
-        logger.info('hooks.usePageTiming.transaction.ended.manual', {
-          message: 'Manually ended page timing transaction',
-          page_name: pageName,
-          duration_seconds: Math.round(duration / 1000),
-          duration_ms: duration
-        });
 
         // Clean up global storage
         delete window[globalKey];
         transactionRef.current = null;
       } catch (error) {
         logger.error('hooks.usePageTiming.transaction.end.error', {
-          message: 'Failed to end transaction manually',
           page_name: pageName,
           error: error instanceof Error ? error.message : String(error)
         });
@@ -211,12 +185,6 @@ export function usePageTiming(
     if (existingTransaction) {
       transactionRef.current = existingTransaction.transaction;
       startTimeRef.current = existingTransaction.startTime;
-      
-      logger.debug('hooks.usePageTiming.transaction.reused', {
-        message: 'Reusing existing transaction after remount',
-        page_name: pageName
-      });
-      
       return; // Don't create a new transaction
     }
     
@@ -228,29 +196,20 @@ export function usePageTiming(
       // Wait a bit for RUM to initialize
       setTimeout(() => {
         const apm = getApmAgent();
-        
-        if (!apm) {
-          logger.warn('hooks.usePageTiming.init.no-apm', {
-            message: 'APM agent not available for page timing',
-            page_name: pageName,
-            app_id: pageId,
-            window_defined: typeof window !== 'undefined',
-            has_apm_instance: !!window.__apmInstance
-          });
-          return;
-        }
+
+        if (!apm) return;
 
         // Start custom transaction for page timing
         const transactionName = `page-${pageName}`;
 
         startTimeRef.current = Date.now();
-        
+
         try {
           const transaction = apm.startTransaction(transactionName, 'page-timing');
 
           if (transaction) {
             transactionRef.current = transaction;
-            
+
             // Store globally to survive remounts
             window[globalKey] = {
               transaction,
@@ -264,23 +223,9 @@ export function usePageTiming(
               page_name: pageName,
               ...(pageId && { app_id: pageId })
             });
-
-            logger.info('hooks.usePageTiming.transaction.started', {
-              message: 'Started page timing transaction',
-              transaction_name: transactionName,
-              page_name: pageName,
-              app_id: pageId
-            });
-          } else {
-            logger.warn('hooks.usePageTiming.transaction.null', {
-              message: 'startTransaction returned null',
-              transaction_name: transactionName,
-              page_name: pageName
-            });
           }
         } catch (error) {
           logger.error('hooks.usePageTiming.transaction.error', {
-            message: 'Error starting transaction',
             page_name: pageName,
             error: error instanceof Error ? error.message : String(error)
           });
@@ -296,20 +241,10 @@ export function usePageTiming(
       const stored = window[globalKey];
       const storedTransaction = isApmTransactionStorage(stored) ? stored : undefined;
       const transaction = transactionRef.current || storedTransaction?.transaction;
-      const startTime = startTimeRef.current || storedTransaction?.startTime;
       
       if (transaction) {
-        const duration = Date.now() - startTime;
         transaction.end();
-        
-        logger.info('hooks.usePageTiming.transaction.ended.beforeunload', {
-          message: 'Ended page timing transaction on page unload',
-          page_name: pageName,
-          duration_seconds: Math.round(duration / 1000),
-          duration_ms: duration,
-          trigger: 'beforeunload'
-        });
-        
+
         // Clean up global storage
         delete window[globalKey];
         transactionRef.current = null;
@@ -379,12 +314,6 @@ export function usePagePhases(pageName: string) {
         ...labels
       });
     }
-
-    logger.debug('hooks.usePagePhases.phase.started', {
-      message: 'Started page phase tracking',
-      page_name: pageName,
-      phase_name: phaseName
-    });
   };
 
   const endPhase = (phaseName: string) => {
@@ -404,14 +333,6 @@ export function usePagePhases(pageName: string) {
       });
       transaction.end();
     }
-
-    logger.debug('hooks.usePagePhases.phase.ended', {
-      message: 'Ended page phase tracking',
-      page_name: pageName,
-      phase_name: phaseName,
-      duration_seconds: Math.round(duration / 1000),
-      duration_ms: duration
-    });
   };
 
   // Cleanup: End all active phases on unmount
@@ -421,14 +342,7 @@ export function usePagePhases(pageName: string) {
       activePhases.current.forEach((phase, phaseName) => {
         const duration = Date.now() - phase.startTime;
         activePhases.current.delete(phaseName);
-        
-        logger.debug('hooks.usePagePhases.phase.cleanup', {
-          message: 'Cleaning up page phase on unmount',
-          page_name: pageName,
-          phase_name: phaseName,
-          duration_ms: duration
-        });
-        
+
         // Attempt to end transaction synchronously
         const apm = getApmAgent();
         if (apm) {

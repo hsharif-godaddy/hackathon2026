@@ -70,10 +70,3 @@ export async function buildWsUrlWithSite(endpoint: string, siteId: string): Prom
   // Always use dynamic WebSocket URL based on site
   return await buildDynamicWsUrl(endpoint, siteId)
 }
-
-// Log configuration in development
-if (process.env.NODE_ENV === 'development') {
-  logger.info('api.config.dynamic-mode', { message: 'Using Dynamic URLs Only - No static configuration' })
-  logger.info('api.config.agent-urls', { message: 'All API calls use site-specific agent URLs from database' })
-  logger.info('api.config.env-vars-deprecated', { message: 'Static environment variables (NEXT_PUBLIC_API_BASE_URL, NEXT_PUBLIC_API_WS_URL) are no longer used' })
-}

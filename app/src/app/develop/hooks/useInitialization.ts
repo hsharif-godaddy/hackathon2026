@@ -390,7 +390,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   useEffect(() => {
     if (context.hasInitialPrompt && !isActiveCreationSession.current) {
       isActiveCreationSession.current = true
-      logger.info('initialization.active-creation-session.set', { appId, initialJobId })
     }
   }, [context.hasInitialPrompt, appId, initialJobId])
   
@@ -403,7 +402,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
         setInitialJobId(appId)
         // Set the creation flow flag when we first see a jobId
         sessionStorage.setItem(`in-creation-flow-${appId}`, 'true')
-        logger.info('initialization.initialJobId.set', { initialJobId: appId, isJobId })
       }
       return
     }
@@ -413,7 +411,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       const storedJobId = getInitialJobIdFromStorage(appId)
       if (storedJobId && storedJobId !== initialJobId) {
         setInitialJobId(storedJobId)
-        logger.info('initialization.initialJobId.loaded', { initialJobId: storedJobId, appId })
       }
     }
   }, [appId, isJobId, initialJobId])
@@ -439,7 +436,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // Step 2: Handle site creation flow
   useEffect(() => {
     if (phase === 'checking-creation' && appId) {
-      logger.info('initialization.site-creation.start', { appId })
       initializeSite(appId)
       setPhase('creating')
     }
@@ -451,15 +447,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       // This ensures we can retrieve the job ID after the component remounts
       const jobId = appId // appId is the job ID at this point
       sessionStorage.setItem(`initial-job-id-${realAppId}`, jobId)
-      logger.info('initialization.initialJobId.mapped-before-route-change', {
-        jobId,
-        realAppId
-      })
-
-      logger.info('initialization.url-update', {
-        jobId: appId,
-        realAppId
-      })
       router.replace(`/develop/${realAppId}`, { scroll: false })
     }
   }, [phase, realAppId, appId, router])
@@ -467,7 +454,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // Step 4: Wait for creation to complete, then initialize page
   useEffect(() => {
     if (phase === 'creating' && creationPhase === 'complete') {
-      logger.info('initialization.creation-complete', { appId })
       setPhase('initializing-page')
     }
   }, [phase, creationPhase, appId])
@@ -477,13 +463,10 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   useEffect(() => {
     if (phase === 'initializing-page' && appId && !hasInitialized.current) {
       const effectiveAppId = realAppId || appId
-      logger.info('initialization.page.start', { appId: effectiveAppId })
-
       hasInitialized.current = true
 
       initializePage(effectiveAppId)
         .then(() => {
-          logger.info('initialization.page.success', { appId: effectiveAppId })
           // Wait for page to be fully ready (loadingPhase === 'ready')
           setPhase('loading-history')
         })
@@ -499,11 +482,9 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   useEffect(() => {
     if (phase === 'loading-history' && appId && loadingPhase === 'ready') {
       const effectiveAppId = realAppId || appId
-      logger.info('initialization.history.start', { appId: effectiveAppId })
 
       loadConversationHistory(effectiveAppId)
         .then(() => {
-          logger.info('initialization.history.success', { appId: effectiveAppId })
           setPhase('ready')
           // Determine initial subPhase based on context
           if (context.hasInitialPrompt && !context.initialPromptSent) {
@@ -528,25 +509,15 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // NEW: Track WebSocket connection state transitions
   useEffect(() => {
     if (phase !== 'ready') return
-    
-    logger.debug('initialization.websocket-state-check', {
-      phase,
-      subPhase,
-      isWebSocketConnected,
-      hasInitialPrompt: context.hasInitialPrompt,
-      initialPromptSent: context.initialPromptSent
-    })
-    
+
     if (isWebSocketConnected) {
       if (subPhase === 'waiting-for-websocket') {
-        logger.info('initialization.websocket-connected', { appId })
         setSubPhase('websocket-connected')
       }
     } else {
       // Only show loader if we're in initial creation flow
       if (context.hasInitialPrompt && !context.initialPromptSent) {
         if (subPhase !== 'waiting-for-websocket') {
-          logger.info('initialization.websocket-disconnected', { appId, reason: 'initial-creation-flow' })
           setSubPhase('waiting-for-websocket')
         }
       }
@@ -556,13 +527,12 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // NEW: Track first file edit
   useEffect(() => {
     if (hasSeenFirstFileEdit) return
-    
+
     const completedFileEdit = activeStream?.toolCalls.find(
       tc => tc.name === 'fileEdit' && tc.status === 'completed' && !tc.error
     )
-    
+
     if (completedFileEdit) {
-      logger.info('initialization.first-file-edit-seen', { appId })
       setHasSeenFirstFileEdit(true)
     }
   }, [activeStream, hasSeenFirstFileEdit, appId])
@@ -570,7 +540,6 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // Transition to active after first file edit
   useEffect(() => {
     if (subPhase === 'waiting-for-first-edit' && context.hasSeenFirstFileEdit) {
-      logger.info('initialization.first-edit-transition-to-active', { appId })
       setSubPhase('active')
     }
   }, [subPhase, context.hasSeenFirstFileEdit, appId])
@@ -591,20 +560,17 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   
   const actions: InitializationActions = {
     retry: () => {
-      logger.info('initialization.retry', { appId })
       setPhase('checking-creation')
       setSubPhase(null)
       retryCreation()
     },
-    
+
     cancel: () => {
-      logger.info('initialization.cancel', { appId })
       cleanupSiteCreationStore()
       router.push('/')
     },
-    
+
     markInitialPromptSent: () => {
-      logger.info('initialization.mark-prompt-sent', { appId, initialJobId })
       setInitialPromptSent(true)
       setSubPhase('waiting-for-first-edit')
       if (initialJobId) {
@@ -613,9 +579,8 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
         sessionStorage.removeItem(`in-creation-flow-${initialJobId}`)
       }
     },
-    
+
     markFirstFileEditSeen: () => {
-      logger.info('initialization.mark-first-file-edit', { appId })
       setHasSeenFirstFileEdit(true)
     }
   }
@@ -629,7 +594,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // -------------------------------------------------------------------------
   
   useEffect(() => {
-    logger.info('initialization.state', {
+    logger.debug('initialization.state', {
       phase,
       subPhase,
       isReady: phase === 'ready' && subPhase === 'active',

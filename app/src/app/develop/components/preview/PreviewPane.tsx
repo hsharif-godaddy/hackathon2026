@@ -93,11 +93,9 @@ export default function PreviewPane({
   useEffect(() => {
     if (!appId) return
 
-    logger.info('preview-pane.polling.start', { message: 'Starting server polling', appId })
     startPollingForServer(appId)
 
     return () => {
-      logger.info('preview-pane.polling.stop', { message: 'Stopping server polling', appId })
       stopPollingForServer(appId)
     }
   }, [appId, startPollingForServer, stopPollingForServer])

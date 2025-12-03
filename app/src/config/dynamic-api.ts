@@ -58,13 +58,6 @@ export class DynamicApiConfigService {
             lastFetched: Date.now()
           })
 
-          logger.info('dynamic-api.config.use', {
-            message: 'Using dynamic API config for site',
-            siteId,
-            agentUrl: site.agent_url,
-            wsUrl: config.wsUrl
-          })
-
           return config
         } else {
           // Site exists but agent URL is not ready yet

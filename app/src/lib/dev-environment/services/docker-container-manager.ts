@@ -178,39 +178,24 @@ export class DockerContainerManager {
 	private async doInitialize(): Promise<void> {
 		const startTime = Date.now();
 
-		logger.info('docker.container_manager.init.begin', {
-			message: 'Initializing Docker Container Manager'
-		});
-
 		try {
 			// Check if Docker is available
 			await execa('docker', ['--version']);
-			logger.info('docker.availability.verified');
 
 			// Check if Docker Compose is available
 			await execa('docker', ['compose', 'version']);
-			logger.info('docker_compose.availability.verified');
 
-		// Initialize shared MySQL service (also ensures network exists and connects MySQL container)
-		await this.sharedMySQLService.initialize();
-		logger.info('shared_mysql.init.success');
+			// Initialize shared MySQL service (also ensures network exists and connects MySQL container)
+			await this.sharedMySQLService.initialize();
 
-		// Initialize database table
-		this.initializeDatabase();			// Recover any existing running containers (ONLY on first initialization)
+			// Initialize database table
+			this.initializeDatabase();			// Recover any existing running containers (ONLY on first initialization)
 			await this.recoverExistingContainers();
 
 			this.initialized = true;
-
-			const duration = Date.now() - startTime;
-
-			logger.info('docker.container_manager.init.success', {
-				duration,
-				message: `Docker Container Manager initialization completed in ${duration}ms`
-			});
 		} catch (error) {
-			logger.error('docker.container_manager.init.failure', {
-				error: error instanceof Error ? error.message : String(error),
-				message: 'Docker Container Manager initialization failed'
+			logger.error('docker-container-manager.init.failed', {
+				error: error instanceof Error ? error.message : String(error)
 			});
 
 			throw new Error("Docker or Docker Compose is not installed or not available in PATH");

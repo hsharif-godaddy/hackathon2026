@@ -84,15 +84,13 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
     // Initialize site creation flow
     initializeSite: async (siteId: string) => {
       logger.info('site.creation.begin', { message: 'Initializing site creation', siteId })
-      logger.info('site.creation.version_check', { message: 'Store version check - updated with debugging' })
 
       // Clean up any previous state first
       get()._stopPolling()
-      
+
       // Clear the site cache to prevent stale IDs from previous creations
       try {
         useSiteStore.getState().cleanup()
-        logger.info('site.creation.cache-cleared', { message: 'Cleared site cache to prevent stale ID reuse' })
       } catch (err) {
         logger.error('site.creation.cache-clear-failed', { message: 'Failed to clear site cache', error: err })
       }
@@ -127,13 +125,9 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
       }
 
       // Prevent multiple concurrent deployment attempts
-      if (phase === 'deploying') {
-        logger.info('site.deployment.duplicate', { message: 'Deployment already in progress, skipping duplicate request' })
-        return
-      }
+      if (phase === 'deploying') return
 
       try {
-        logger.info('site.deployment.start', { message: 'Checking site status before deployment', siteId })
         
         // First check if site exists and determine control plane type using centralized store
         const siteStore = useSiteStore.getState()
@@ -145,44 +139,26 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           const isV2 = siteData.controlPlane === 'v2' || siteData.system_id
           
           if (isV2) {
-            logger.info('site.deployment.v2-skip', { 
-              message: 'V2 app detected - apps deploy automatically, skipping deploy and starting polling', 
-              siteId,
-              status: siteData.status,
-              controlPlane: siteData.controlPlane,
-              hasSystemId: !!siteData.system_id
-            })
-            
             set((state) => {
               state.phase = 'polling'
               state.error = null
             })
-            
             get()._startPolling()
             return
           }
-          
+
           // Legacy: If already running/created, skip re-deploy
           if (siteData.status === 'running' || siteData.status === 'created') {
-            logger.info('site.deployment.legacy-skip', { 
-              message: 'Legacy site already active - skipping re-deploy and starting polling', 
-              siteId,
-              status: siteData.status
-            })
-            
             set((state) => {
               state.phase = 'polling'
               state.error = null
             })
-            
             get()._startPolling()
             return
           }
         }
         
         // Legacy site needs deployment - proceed
-        logger.info('site.deployment.trigger', { message: 'Triggering deployment for legacy site', siteId })
-        
         set((state) => {
           state.phase = 'deploying'
           state.error = null
@@ -197,13 +173,10 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           
           // Handle 409 Conflict (deployment already in progress) gracefully
           if (deployResponse.status === 409) {
-            logger.info('site.deployment.already_in_progress', { message: 'Deployment already in progress on server, switching to polling mode' })
             set((state) => {
               state.phase = 'polling'
               state.error = null // Clear any error since this is expected
             })
-            
-            // Start polling for the existing deployment
             get()._startPolling()
             return
           }
@@ -224,7 +197,6 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
               set((state) => {
                 state.retryCount = retryCount + 1
               })
-              
               // Wait and retry
               await new Promise(resolve => setTimeout(resolve, backoffMs))
               return get().startDeployment() // Recursive retry
@@ -241,8 +213,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           state.retryCount = 0
         })
 
-        const deployData = await deployResponse.json()
-        logger.info('site.deployment.success', { message: 'Deployment started', deployMessage: deployData.message })
+        await deployResponse.json()
 
         // Move to polling phase
         set((state) => {
@@ -268,7 +239,6 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
       // Don't start if already polling
       if (pollingInterval) return
 
-      logger.info('site.polling.start', { message: 'Starting to poll for site status' })
       set((state) => {
         state.isPolling = true
       })
@@ -292,8 +262,6 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
       if (pollingInterval) {
         clearInterval(pollingInterval)
-        logger.info('site.polling.stop', { message: 'Stopped polling for site status' })
-
         set((state) => {
           state.pollingInterval = null
           state.isPolling = false
@@ -308,7 +276,6 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
       if (!siteId || phase !== 'polling') return
 
       try {
-        logger.info('site.polling.status', { message: 'Polling site status', siteId })
 
         // Use centralized site store to prevent duplicate requests
         // Force refresh to get latest status (bypass cache during polling)
@@ -335,25 +302,12 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         // Create a new object instead of mutating to avoid "read-only property" errors
         let finalSiteData = siteData
         if (siteStatus.status !== siteData.status) {
-          logger.info('site.polling.status_update', {
-            message: 'Status updated by health check',
-            original: siteData.status,
-            updated: siteStatus.status
-          })
           finalSiteData = { ...siteData, status: siteStatus.status }
         }
 
         // Update site data and siteId (important for V2 where jobId transitions to appId)
         const previousSiteId = get().siteId
         const newSiteId = finalSiteData.id
-        
-        if (previousSiteId !== newSiteId) {
-          logger.info('site.polling.id_transition', {
-            message: 'Site ID changed (V2: jobId → appId)',
-            previousId: previousSiteId,
-            newId: newSiteId
-          })
-        }
 
         set((state) => {
           // Store both the original siteId and the real app ID
@@ -362,30 +316,13 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
             // We've detected a job ID → app ID transition
             // Keep original siteId but also store the real app ID
             state.realAppId = newSiteId
-            logger.info('site.polling.storing_real_app_id', {
-              message: 'Storing real app ID for redirect',
-              originalId: state.siteId,
-              realAppId: newSiteId
-            })
           } else {
             // No transition detected, update siteId normally
             state.siteId = newSiteId
           }
-          
+
           state.site = finalSiteData
           state.lastPollTime = Date.now()
-        })
-
-        logger.info('site.polling.result', {
-          message: 'Site status poll result',
-          siteId: finalSiteData.id,
-          status: finalSiteData.status,
-          hasAgentUrl: !!finalSiteData.agent_url,
-          agentUrl: finalSiteData.agent_url,
-          backendUrl: finalSiteData.backend_url,
-          previewUrl: finalSiteData.preview_url,
-          createdAt: finalSiteData.created_at,
-          updatedAt: finalSiteData.updated_at
         })
 
         // Check if this is still a job ID - if so, don't mark as complete yet
@@ -400,54 +337,12 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         // 3. Services are healthy (siteStatus.ready)
         // 4. Registration succeeded (siteStatus.registrationComplete)
         // 5. We have a real app ID, not a job ID (!isJobId)
-        if (finalSiteData.status === 'running' && finalSiteData.agent_url && finalSiteData.preview_url && 
+        if (finalSiteData.status === 'running' && finalSiteData.agent_url && finalSiteData.preview_url &&
             siteStatus.ready && siteStatus.registrationComplete && !isJobId) {
-          logger.info('site.ready.v2-running', {
-            message: 'V2 site is running with all URLs, registration complete, and has real app ID',
-            status: finalSiteData.status,
-            hasAgentUrl: !!finalSiteData.agent_url,
-            hasPreviewUrl: !!finalSiteData.preview_url,
-            servicesReady: siteStatus.ready,
-            registrationComplete: siteStatus.registrationComplete,
-            isRealAppId: !isJobId,
-            siteId: finalSiteData.id,
-            siteIdLength: finalSiteData.id.length
-          })
-          
           // Stop polling and mark as complete
           get()._stopPolling()
           set((state) => {
             state.phase = 'complete'
-          })
-          
-          logger.info('site.creation.complete', {
-            message: 'Site creation complete - ready for redirect',
-            siteId: finalSiteData.id,
-            status: finalSiteData.status
-          })
-        } else if (finalSiteData.status === 'running' && finalSiteData.agent_url && finalSiteData.preview_url) {
-          // Log why we're not marking complete (for debugging)
-          const reasons = [];
-          if (isJobId) reasons.push('Still on job ID (length <= 8), waiting for real app ID');
-          if (!siteStatus.ready) reasons.push('Services not all healthy yet');
-          if (!siteStatus.registrationComplete) {
-            if (siteStatus.registrationAttempted) {
-              reasons.push('Registration failed - will retry on next poll');
-            } else {
-              reasons.push('Registration not yet attempted');
-            }
-          }
-          
-          logger.info('site.ready.waiting', {
-            message: 'Site appears ready but waiting for conditions',
-            siteId: finalSiteData.id,
-            status: finalSiteData.status,
-            isJobId,
-            siteIdLength: finalSiteData.id.length,
-            servicesReady: siteStatus.ready,
-            registrationComplete: siteStatus.registrationComplete,
-            registrationAttempted: siteStatus.registrationAttempted,
-            reasons
           })
         }
         
@@ -456,13 +351,6 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         // For legacy apps, agent_url is only present when status is 'running'.
         // IMPORTANT: Don't stop polling for job IDs even if they have URLs - wait for real app ID
         if ((finalSiteData.status === 'running' || finalSiteData.status === 'creating') && finalSiteData.agent_url && !isJobId) {
-          logger.info('site.verification.begin', {
-            message: `Site has agent URL! Verifying agent endpoint. Accepting 'creating' status for V2 apps (legacy apps only provide agent_url in 'running' status).`,
-            status: finalSiteData.status,
-            controlPlane: process.env.USE_V2_CONTROL_PLANE === 'true' ? 'V2' : 'Legacy'
-          })
-          logger.info('site.verification.url', { message: 'Agent URL to verify', url: finalSiteData.agent_url })
-
           get()._stopPolling()
           set((state) => {
             state.phase = 'verifying-agent'
@@ -472,20 +360,17 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           // Pass finalSiteData.id explicitly to ensure we use the real app ID, not a stale job ID from store
           // Also pass initial_prompt so we can suggest name and register during verification
           const isAgentReady = await get()._verifyAgentEndpoint(
-            finalSiteData.agent_url, 
+            finalSiteData.agent_url,
             finalSiteData.id,
             finalSiteData.initial_prompt
           )
-          logger.info('site.verification.result', { message: 'Agent verification result', success: isAgentReady })
 
           if (isAgentReady) {
-            logger.info('site.verification.success', { message: 'Agent endpoint verified! Marking as complete' })
             set((state) => {
               state.phase = 'complete'
             })
           } else {
             // Agent not ready yet, wait longer before retrying (likely still registering)
-            logger.info('site.verification.not_ready', { message: 'Agent endpoint not ready yet, waiting 10 seconds before resuming polling' })
             set((state) => {
               state.phase = 'polling'
             })
@@ -502,15 +387,6 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
             state.phase = 'error'
           })
         }
-        // Continue polling if still pending/queued
-        logger.info('site.polling.continue', { 
-          message: 'Polling cycle complete - continuing to poll', 
-          siteId: finalSiteData.id,
-          status: finalSiteData.status,
-          phase: get().phase,
-          isPolling: get().isPolling,
-          hasPollingInterval: !!get().pollingInterval
-        })
 
       } catch (error) {
         logger.error('site.polling.failure', { message: 'Error polling for site status', error: error instanceof Error ? error.message : 'Unknown error' })
@@ -530,17 +406,8 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           return false
         }
 
-        logger.info('site.verification.start', { 
-          message: 'Verifying agent endpoint',
-          agentUrl,
-          appId,
-          appIdLength: appId.length,
-          willSuggestName: !!initialPrompt
-        })
-
         // Step 1: Call ensure-running endpoint (app-specific)
         const endpointUrl = `${agentUrl}/apps/${appId}/ensure-running`
-        logger.info('site.verification.endpoint_url', { message: 'Constructed endpoint URL', url: endpointUrl })
 
         const response = await agentFetch(endpointUrl, {
           siteId: appId,
@@ -548,22 +415,7 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           signal: AbortSignal.timeout(15000) // 15 second timeout (same as integration test)
         })
 
-        logger.info('site.verification.ensure-running.response', { 
-          status: response.status, 
-          statusText: response.statusText 
-        })
-
         if (!response.ok) {
-          if (response.status === 404) {
-            logger.warn('site.verification.ensure-running.not_found', { 
-              message: 'Ensure-running endpoint not found (404) - likely still registering with agents service' 
-            })
-          } else {
-            logger.warn('site.verification.ensure-running.non_ok', { 
-              status: response.status,
-              statusText: response.statusText
-            })
-          }
           return false
         }
 
@@ -573,23 +425,15 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
             await appService.updateNameAndRegister(appId)
             // Update local store with the new name from site store
             const updatedSite = useSiteStore.getState().sites[appId]
-            
+
             if (updatedSite?.name) {
               set((state) => {
                 if (state.site && state.site.id === appId) {
                   state.site.name = updatedSite.name
                 }
               })
-              logger.info('site.verification.name-update.success', { 
-                message: 'Name suggestion and registration completed during verification',
-                name: updatedSite.name
-              })
             }
-          } catch (nameError) {
-            logger.warn('site.verification.name-update.error', {
-              message: 'Error during name suggestion - continuing with verification',
-              error: nameError instanceof Error ? nameError.message : 'Unknown error'
-            })
+          } catch {
             // Don't fail verification if name suggestion fails - it's optional
           }
         }
@@ -597,9 +441,8 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         return true
 
       } catch (error) {
-        logger.warn('site.verification.error', { 
-          message: 'Agent endpoint verification failed with error', 
-          error: error instanceof Error ? error.message : 'Unknown error' 
+        logger.warn('site.verification.error', {
+          error: error instanceof Error ? error.message : 'Unknown error'
         })
         return false
       }
@@ -617,8 +460,6 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
         return
       }
 
-      logger.info('site.creation.retry', { message: `Retrying site creation`, attempt: retryCount + 1, maxRetries })
-
       get()._stopPolling()
 
       set((state) => {
@@ -634,13 +475,11 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
 
     // Clean up resources
     cleanup: () => {
-      logger.info('site.creation.cleanup', { message: 'Cleaning up site creation store' })
       get()._stopPolling()
     },
 
     // Reset store to initial state
     reset: () => {
-      logger.info('site.creation.reset', { message: 'Resetting site creation store' })
       get()._stopPolling()
 
       set((state) => {

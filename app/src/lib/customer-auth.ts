@@ -139,10 +139,9 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
     }
 
     // Use gd-auth for authentication (includes automatic heartbeat)
-    logger.info('auth.gdauth.validate.start', 'Using gd-auth for validation', { tags: ['security'] });
     const result = await gdAuthService.authenticate(token);
     if (!result.valid || !result.payload) {
-      logger.error('auth.gdauth.validate.failed', { message: 'gd-auth validation failed', reason: result.reason }, { tags: ['security'] });
+      logger.warn('auth.gdauth.validate.failed', { reason: result.reason }, { tags: ['security'] });
       return {
         isAuthenticated: false,
         user: null,
@@ -150,7 +149,6 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       };
     }
 
-    logger.info('auth.gdauth.validate.success', 'gd-auth validation successful', { tags: ['security'] });
 
     // Extract customer information from JWT payload
     const shopperId = result.payload.shopperId as string;
@@ -163,14 +161,6 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
         error: 'Invalid token: missing shopper ID'
       };
     }
-
-    logger.info('auth.login.success', {
-      message: 'User authenticated successfully',
-      shopperId,
-      environment: process.env.ENVIRONMENT_NAME
-    }, {
-      tags: ['security']
-    });
 
     // Get or create account for the authenticated shopper
     let account = await getAccountService().getAccountByShopperId(shopperId);
@@ -218,18 +208,6 @@ export async function authenticateCustomer(request: NextRequest): Promise<Custom
       // Still return the token, but log the warning
       // The client-side code should handle refresh
     }
-
-    // Debug: Log JWT token info for troubleshooting mgmt-airo auth issues
-    logger.info('auth.jwt.debug', {
-      message: 'JWT token extracted for mgmt-airo calls',
-      tokenLength: token?.length || 0,
-      tokenPrefix: token?.substring(0, 20) + '...',
-      tokenAge: getTokenAgeMinutes(token),
-      customerId,
-      shopperId
-    }, {
-      tags: ['security']
-    });
 
     return {
       isAuthenticated: true,

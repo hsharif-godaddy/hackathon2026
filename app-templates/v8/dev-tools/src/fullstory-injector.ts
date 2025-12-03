@@ -12,7 +12,6 @@ export function injectFullStory() {
   if (typeof window !== 'undefined' &&
       (window.location.hostname === 'localhost' ||
        window.location.hostname === '127.0.0.1')) {
-    console.log('🔍 FullStory disabled on localhost')
     return
   }
 
@@ -20,8 +19,6 @@ export function injectFullStory() {
   if ((window as any).__FULLSTORY_INJECTED__) {
     return
   }
-
-  console.log('🔍 FullStory Dev Tracking activated! Initializing...')
 
   // Mark as injected
   ;(window as any).__FULLSTORY_INJECTED__ = true
@@ -36,7 +33,6 @@ export function injectFullStory() {
   // This must be set BEFORE FullStory initializes
   if (window !== window.top) {
     ;(window as any)['_fs_run_in_iframe'] = true
-    console.log('🔍 FullStory iframe mode enabled - setting _fs_run_in_iframe = true')
   }
   
   ;(function(m: any, n: any, e: any, t: any, l: any, o: any, g: any, y: any) {
@@ -80,7 +76,6 @@ export function injectFullStory() {
       })
       
       const mode = window !== window.top ? 'iframe' : 'standalone'
-      console.log(`🔍 FullStory initialized in ${mode} mode with fs-unmask-airo-app-builder class`)
     } else {
       // Retry after short delay
       setTimeout(initializeFS, 100)

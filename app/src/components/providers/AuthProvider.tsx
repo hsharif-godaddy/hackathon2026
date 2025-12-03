@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState, useEffect, useMemo, createContext, useContext } from 'react';
+import { ReactNode, useState, useEffect, createContext, useContext } from 'react';
 import { logger } from '@/lib/request-context';
 import { auth } from '@/lib/features';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -37,10 +37,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
         if (response.ok) {
           const config = await response.json();
           setServerAuthConfig(config.auth);
-          logger.info('auth.provider.server-config', {
-            message: 'Loaded server auth config',
-            authConfig: config.auth
-          });
         }
       } catch (error) {
         logger.error('auth.provider.config-error', {
@@ -62,22 +58,14 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
     async function loadAuthProvider() {
       try {
-        const currentAuthType = auth.getType();
-        logger.info('auth.provider.loading', {
-          message: 'Loading auth provider',
-          authType: currentAuthType
-        });
-
         if (isJWTMode) {
           // Only import and initialize Gasket auth for JWT mode
           const { withAuthProvider } = await import('@godaddy/gasket-auth');
           const WrappedProvider = withAuthProvider()(AuthProviderComponent);
           setAuthProvider(() => WrappedProvider);
-          logger.info('auth.provider.gasket.loaded', 'Gasket auth provider loaded successfully');
         } else {
           // For non-JWT modes, just use the plain component
           setAuthProvider(() => AuthProviderComponent);
-          logger.info('auth.provider.plain.loaded', 'Plain auth provider loaded (no Gasket auth)');
         }
       } catch (error) {
         logger.error('auth.provider.error', {

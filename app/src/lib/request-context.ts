@@ -1,4 +1,5 @@
-import { trace, context as otelContext, SpanContext } from '@opentelemetry/api';
+import { trace, context as otelContext } from '@opentelemetry/api';
+import { ClientLogBuffer } from './logging/client-log-buffer';
 
 // Conditional import for server-only AsyncLocalStorage
 let AsyncLocalStorage: any;
@@ -15,6 +16,39 @@ if (typeof window === 'undefined') {
       return undefined;
     }
   };
+}
+
+/**
+ * Check if running in browser environment
+ */
+function isBrowser(): boolean {
+  return typeof window !== 'undefined';
+}
+
+/**
+ * Check if running in development mode
+ *
+ * On client: Only NODE_ENV is available
+ * On server: Also checks ENVIRONMENT_NAME for ECS deployments
+ */
+function isDevelopment(): boolean {
+  const nodeEnv = process.env.NODE_ENV;
+  
+  // NODE_ENV check works for browser or server
+  if (nodeEnv === 'development') {
+    return true;
+  }
+
+  // ENVIRONMENT_NAME is server-side only
+  if (!isBrowser()) {
+    const environmentName = process.env.ENVIRONMENT_NAME || '';
+    if (['development', 'pre-development'].includes(environmentName) ||
+        environmentName.startsWith('dev-')) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -255,6 +289,13 @@ export class ContextLogger {
   /**
    * Output log event to console with formatting
    * Includes OpenTelemetry trace correlation fields for APM integration
+   *
+   * Client-side behavior:
+   * - Development: outputs to console for debugging
+   * - Production: ships to /api/client-logs endpoint (no console output to customers)
+   *
+   * Server-side behavior:
+   * - Always outputs to console (picked up by FluentBit/Elasticsearch)
    */
   private output(logEvent: LogEvent): void {
     // Serialize error if present
@@ -269,10 +310,179 @@ export class ContextLogger {
       } : {})
     };
 
-    // Always use structured JSON output (production format)
-    // This ensures consistent, machine-parseable logs for FluentBit, Elastic APM, and log aggregation
-    // Includes trace.id, span.id, and transaction.id for APM log correlation
-    console.log(JSON.stringify(logOutput));
+    // Client-side: environment-aware logging
+    if (isBrowser()) {
+      const inDev = isDevelopment();
+      // Development: output to console for debugging
+      if (inDev) {
+        this.consoleOutput(logEvent.level, logOutput);
+        return;
+      }
+
+      // Production: ship logs to server, no console output
+      // Only ship warn+ to reduce volume and avoid exposing debug info
+      if (['warn', 'error', 'fatal'].includes(logEvent.level)) {
+        this.shipToServer(logOutput);
+      }
+      return;
+    }
+
+    // Server-side logging
+    if (isDevelopment()) {
+      // Development: Pretty formatted output for readability
+      this.prettyServerOutput(logEvent.level, logOutput);
+    } else {
+      // Production: Structured JSON
+      console.log(JSON.stringify(logOutput));
+    }
+  }
+
+  /**
+   * Pretty formatted server-side output for development
+   *
+   * @param level - Log level
+   * @param logOutput - Log data
+   */
+  private prettyServerOutput(level: LogLevel, logOutput: Record<string, unknown>): void {
+    const c = {
+      debug: '\x1b[90m',  // gray
+      info: '\x1b[32m',   // green
+      warn: '\x1b[33m',   // yellow
+      error: '\x1b[31m',  // red
+      fatal: '\x1b[35m',  // magenta
+      reset: '\x1b[0m',
+      dim: '\x1b[90m',    // gray/dim
+    };
+
+    // Format a value for display
+    const fmt = (val: unknown): string | null => {
+      if (val === undefined || val === null || val === '') return null;
+      if (typeof val === 'boolean') return val ? 'true' : 'false';
+      if (typeof val === 'number') return String(val);
+      if (typeof val === 'object') {
+        if (val instanceof Date) return isNaN(val.getTime()) ? null : val.toISOString().slice(0, 19);
+        if (Array.isArray(val)) return `[${val.length}]`;
+        const keys = Object.keys(val);
+        return keys.length > 0 ? `{${keys.slice(0, 2).join(',')}}` : null;
+      }
+      const s = String(val);
+      // Truncate very long strings (but keep UUIDs intact)
+      if (s.length > 80) return s.slice(0, 77) + '...';
+      return s;
+    };
+
+    const color = c[level] || c.reset;
+    const levelStr = level.toUpperCase().padEnd(5);
+    const event = logOutput.event || 'unknown';
+    const data = logOutput.data as Record<string, unknown> | undefined;
+
+    // Get message from data, skip if it matches event
+    const message = data?.message as string | undefined;
+    const displayMsg = message && !String(message).startsWith(String(event)) ? ` ${message}` : '';
+
+    // Pick only the most useful fields (skip noise)
+    const skipFields = ['timestamp', 'level', 'event', 'trace.id', 'span.id', 'transaction.id', 'url', 'endpoint', 'userAgent', 'method', 'stack'];
+    const fields: string[] = [];
+
+    if (data && typeof data === 'object') {
+      for (const [key, val] of Object.entries(data)) {
+        if (skipFields.includes(key)) continue;
+        const display = fmt(val);
+        if (display === null) continue;
+        fields.push(`${c.dim}${key}=${c.reset}${display}`);
+      }
+    }
+
+    console.log(`${color}${levelStr}${c.reset} ${event}${displayMsg}`);
+
+    // Show fields indented on next line (max 5 fields)
+    if (fields.length > 0) {
+      console.log(`      ${fields.slice(0, 5).join('  ')}`);
+    }
+
+    // Show errors on separate line
+    if (logOutput.error) {
+      const err = logOutput.error as { message?: string };
+      if (err.message) {
+        const errMsg = err.message.length > 60 ? err.message.slice(0, 57) + '...' : err.message;
+        console.log(`      ${c.error}→ ${errMsg}${c.reset}`);
+      }
+    }
+  }
+
+  /**
+   * Output to browser console using appropriate method
+   * Uses CSS styling for colors and native object expansion
+   *
+   * @param level - Log level to determine console method
+   * @param logOutput - Formatted log output object
+   */
+  private consoleOutput(level: LogLevel, logOutput: Record<string, unknown>): void {
+    const colors: Record<string, string> = {
+      debug: 'color: #888',
+      info: 'color: #2e7d32',
+      warn: 'color: #f57c00',
+      error: 'color: #d32f2f',
+      fatal: 'color: #9c27b0',
+    };
+
+    const event = logOutput.event || 'unknown';
+    const data = logOutput.data as Record<string, unknown> | undefined;
+    const message = data?.message as string | undefined;
+    const displayMsg = message && !String(message).startsWith(String(event)) ? ` ${message}` : '';
+
+    // Build clean display
+    const levelStr = level.toUpperCase().padEnd(5);
+    const style = colors[level] || '';
+
+    // Extract data fields (skip metadata)
+    const skipFields = ['timestamp', 'level', 'event', 'trace.id', 'span.id', 'transaction.id'];
+    const fields: Record<string, unknown> = {};
+    if (data && typeof data === 'object') {
+      for (const [key, val] of Object.entries(data)) {
+        if (!skipFields.includes(key) && val !== undefined && val !== null && val !== '') {
+          fields[key] = val;
+        }
+      }
+    }
+
+    // Use appropriate console method with styled output
+    const logFn = level === 'error' || level === 'fatal' ? console.error
+      : level === 'warn' ? console.warn
+      : level === 'debug' ? console.debug
+      : console.info;
+
+    // Log with CSS styling and expandable data object
+    if (Object.keys(fields).length > 0) {
+      logFn(`%c${levelStr}%c ${event}${displayMsg}`, style, 'color: inherit', fields);
+    } else {
+      logFn(`%c${levelStr}%c ${event}${displayMsg}`, style, 'color: inherit');
+    }
+
+    // Log errors separately
+    if (logOutput.error) {
+      const err = logOutput.error as { message?: string; stack?: string };
+      if (err.message) {
+        console.error(`  → ${err.message}`);
+      }
+    }
+  }
+
+  /**
+   * Ship log to server endpoint for production client-side logging
+   * Uses buffering and batching for efficiency
+   *
+   * @param logOutput - Formatted log output to ship
+   */
+  private shipToServer(logOutput: Record<string, unknown>): void {
+    // Add to buffer for batched shipping
+    ClientLogBuffer.add({
+      ...logOutput,
+      source: 'client',
+      pageUrl: window.location.href,
+      userAgent: navigator.userAgent,
+      sessionId: ClientLogBuffer.getSessionId(),
+    });
   }
 
   /**

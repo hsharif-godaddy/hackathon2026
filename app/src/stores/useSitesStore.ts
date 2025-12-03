@@ -62,21 +62,14 @@ export const useSitesStore = create<SitesStore>()(
       })
 
       try {
-        logger.debug('sites-store.fetch-all.start', { message: 'Fetching all sites' })
-
         const response = await appFetch('/api/sites')
-        
+
         if (!response.ok) {
           throw new Error(`Failed to fetch sites: ${response.status} ${response.statusText}`)
         }
-        
+
         const sitesData = await response.json()
         const sites = Array.isArray(sitesData) ? sitesData : []
-
-        logger.info('sites-store.fetch-all.success', { 
-          message: 'All sites fetched', 
-          count: sites.length 
-        })
 
         set((state) => {
           state.allSites = sites
@@ -91,9 +84,8 @@ export const useSitesStore = create<SitesStore>()(
         })
 
       } catch (error) {
-        logger.error('sites-store.fetch-all.failure', { 
-          message: 'Failed to fetch all sites',
-          error: error instanceof Error ? error.message : String(error) 
+        logger.error('sites-store.fetch-all.failure', {
+          error: error instanceof Error ? error.message : String(error)
         })
 
         set((state) => {
@@ -115,14 +107,11 @@ export const useSitesStore = create<SitesStore>()(
           state.error = null
         })
 
-        logger.debug('sites-store.delete.start', { message: 'Deleting site', siteId })
-
         const response = await appFetch(`/api/sites/${siteId}`, {
           method: 'DELETE'
         })
-        
+
         if (response.ok) {
-          logger.info('sites-store.delete.success', { message: 'Site deleted', siteId })
 
           set((state) => {
             // Remove from both collections
@@ -134,13 +123,7 @@ export const useSitesStore = create<SitesStore>()(
         } else {
           const errorData = await response.json().catch(() => ({}))
           const errorMessage = errorData.error || 'Failed to delete site'
-          
-          logger.error('sites-store.delete.failure', { 
-            message: 'Failed to delete site',
-            siteId, 
-            error: errorMessage 
-          })
-          
+          logger.error('sites-store.delete.failure', { siteId, error: errorMessage })
           set((state) => {
             state.error = errorMessage
           })
@@ -148,12 +131,7 @@ export const useSitesStore = create<SitesStore>()(
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to delete site'
-        
-        logger.error('sites-store.delete.error', { 
-          message: 'Error deleting site',
-          siteId,
-          error: errorMessage 
-        })
+        logger.error('sites-store.delete.error', { siteId, error: errorMessage })
 
         set((state) => {
           state.error = errorMessage
@@ -176,22 +154,12 @@ export const useSitesStore = create<SitesStore>()(
           state.error = null
         })
         
-        logger.debug('sites-store.stop-all.start', { 
-          message: 'Stopping all sites',
-          count: runningSites.length 
-        })
-
         // Stop all running sites in parallel
-        const stopPromises = runningSites.map(site => 
+        const stopPromises = runningSites.map(site =>
           appFetch(`/api/sites/${site.id}/stop`, { method: 'POST' })
         )
-        
-        await Promise.all(stopPromises)
 
-        logger.info('sites-store.stop-all.success', { 
-          message: 'All sites stopped',
-          count: runningSites.length 
-        })
+        await Promise.all(stopPromises)
         
         // Update site statuses to stopped
         set((state) => {
@@ -212,11 +180,7 @@ export const useSitesStore = create<SitesStore>()(
         return true
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to stop all sites'
-        
-        logger.error('sites-store.stop-all.failure', { 
-          message: 'Failed to stop all sites',
-          error: errorMessage 
-        })
+        logger.error('sites-store.stop-all.failure', { error: errorMessage })
 
         set((state) => {
           state.error = errorMessage
@@ -238,22 +202,12 @@ export const useSitesStore = create<SitesStore>()(
           state.error = null
         })
         
-        logger.debug('sites-store.delete-all.start', { 
-          message: 'Deleting all sites',
-          count: allSites.length 
-        })
-
         // Delete all sites in parallel
-        const deletePromises = allSites.map(site => 
+        const deletePromises = allSites.map(site =>
           appFetch(`/api/sites/${site.id}`, { method: 'DELETE' })
         )
-        
-        await Promise.all(deletePromises)
 
-        logger.info('sites-store.delete-all.success', { 
-          message: 'All sites deleted',
-          count: allSites.length 
-        })
+        await Promise.all(deletePromises)
         
         // Clear all sites
         set((state) => {
@@ -265,11 +219,7 @@ export const useSitesStore = create<SitesStore>()(
         return true
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to delete all sites'
-        
-        logger.error('sites-store.delete-all.failure', { 
-          message: 'Failed to delete all sites',
-          error: errorMessage 
-        })
+        logger.error('sites-store.delete-all.failure', { error: errorMessage })
 
         set((state) => {
           state.error = errorMessage
@@ -310,8 +260,6 @@ export const useSitesStore = create<SitesStore>()(
       })
 
       try {
-        logger.debug('sites-store.fetch-site.start', { message: 'Fetching site data', siteId })
-
         const response = await appFetch(`/api/sites/${siteId}`)
 
         if (!response.ok) {
@@ -319,11 +267,6 @@ export const useSitesStore = create<SitesStore>()(
         }
 
         const siteData = await response.json()
-        logger.info('sites-store.fetch-site.success', { 
-          message: 'Site data fetched', 
-          siteId,
-          siteName: siteData.name 
-        })
 
         set((state) => {
           state.sitesById[siteId] = siteData
@@ -339,10 +282,9 @@ export const useSitesStore = create<SitesStore>()(
         return siteData
 
       } catch (error) {
-        logger.error('sites-store.fetch-site.failure', { 
-          message: 'Failed to fetch site', 
-          siteId, 
-          error: error instanceof Error ? error.message : String(error) 
+        logger.error('sites-store.fetch-site.failure', {
+          siteId,
+          error: error instanceof Error ? error.message : String(error)
         })
 
         set((state) => {

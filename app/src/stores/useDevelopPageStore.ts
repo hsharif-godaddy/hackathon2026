@@ -202,11 +202,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         return
       }
 
-      logger.info('feedback.modal.opened', {
-        message: 'Feedback modal opened',
-        feedbackId
-      })
-
       logImpressionEvent('feedback.modal.opened')();
 
       // Mark as shown in localStorage with feedback ID
@@ -403,7 +398,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Page loading orchestration
     resetForNewApp: (appId: string) => {
-      logger.debug('develop-store.reset', { message: 'Resetting develop page store for new app', appId })
       set((state) => {
         state.currentAppId = appId
         state.loadingPhase = 'idle'
@@ -420,33 +414,19 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
       // Prevent duplicate initialization
       if (state.currentAppId === appId && state.loadingPhase !== 'idle') {
-        logger.debug('develop-store.skip-init', { message: 'Page already initializing/initialized', appId })
         return
       }
-
-      logger.info('develop-store.init.start', { message: 'Starting page initialization', appId })
 
       // Stop any ongoing site creation polling to prevent overlapping requests
       const { useSiteCreationStore } = await import('./useSiteCreationStore')
       const creationStore = useSiteCreationStore.getState()
       if (creationStore.siteId === appId || creationStore.realAppId === appId) {
-        logger.info('develop-store.init.cleanup-creation-polling', {
-          message: 'Stopping site creation polling to prevent overlapping requests',
-          creationSiteId: creationStore.siteId,
-          creationRealAppId: creationStore.realAppId,
-          developAppId: appId
-        })
         creationStore.cleanup()
       }
 
       // Reset streaming conversation store before mounting components
       const { useStreamingConversationStore } = await import('./useStreamingConversationStore')
       const streamingStore = useStreamingConversationStore.getState()
-      logger.debug('develop-store.init.reset-streaming', {
-        message: 'Resetting streaming store for new app',
-        oldAppId: streamingStore.currentAppId,
-        newAppId: appId
-      })
       streamingStore.setCurrentAppId(appId)
 
       get().resetForNewApp(appId)
@@ -454,7 +434,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       try {
         // Phase 1: Load app data
         set((state) => { state.loadingPhase = 'loading-app' })
-        logger.debug('develop-store.init.loading-app', { message: 'Loading app data' })
 
         const [appData] = await Promise.all([
           appService.getApp(appId),
@@ -464,11 +443,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         set((state) => {
           state.app = appData.app
         })
-        logger.info('develop-store.init.app-loaded', { message: 'App data loaded', appName: appData.app.name })
 
         // Phase 2: Load site data
         set((state) => { state.loadingPhase = 'loading-site' })
-        logger.debug('develop-store.init.loading-site', { message: 'Loading site data' })
 
         const siteStore = useSitesStore.getState()
         const site = await siteStore.fetchSite(appId)
@@ -476,24 +453,20 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         set((state) => {
           state.site = site
         })
-        logger.info('develop-store.init.site-loaded', { message: 'Site data loaded', siteName: site?.name || 'unknown' })
 
         // Phase 3: Load conversations with proper context
         set((state) => { state.loadingPhase = 'loading-conversations' })
-        logger.debug('develop-store.init.loading-conversations', { message: 'Loading conversations' })
 
         // Legacy conversation initialization removed - streaming architecture handles this differently
-        logger.debug('develop-store.init.conversations-skipped', { message: 'Legacy conversation init skipped' })
-        logger.info('develop-store.init.conversations-loaded', { message: 'Conversations loaded' })
 
         // Phase 4: Evaluate initial actions (auto-send, etc.)
         set((state) => { state.loadingPhase = 'ready' })
         await get().evaluateInitialActions()
 
-        logger.info('develop-store.init.complete', { message: 'Page initialization complete', appId })
-
       } catch (error) {
-        logger.error('develop-store.init.failure', { message: 'Page initialization failed', error: error instanceof Error ? error.message : String(error) })
+        logger.error('develop-store.init.failure', {
+          error: error instanceof Error ? error.message : String(error)
+        })
         set((state) => {
           state.loadingPhase = 'idle'
           state.loadingError = error instanceof Error ? error.message : String(error)
@@ -503,23 +476,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     },
 
     evaluateInitialActions: async () => {
-      const state = get()
-      const { app, site } = state
-
-      logger.debug('develop-store.initial-actions.evaluate', {
-        message: 'Evaluating initial actions',
-        hasApp: !!app,
-        hasSite: !!site,
-        hasInitialPrompt: !!site?.initial_prompt,
-        siteStatus: site?.status,
-        initialBuildComplete: app?.initialBuildComplete
-      })
-
       // Auto-send is now handled directly in the develop page component
       // This method is kept for future initial actions that might be needed
-      logger.info('develop-store.initial-actions.complete', {
-        message: 'Initial actions evaluation complete - auto-send handled by page component'
-      })
     },
 
     // Coordinated actions
@@ -536,7 +494,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         await new Promise(resolve => setTimeout(resolve, 5000))
 
       } catch (error) {
-        logger.error('develop-store.restart.failure', { message: 'Error restarting server', error: error instanceof Error ? error.message : String(error) })
+        logger.error('develop-store.restart.failure', {
+          error: error instanceof Error ? error.message : String(error)
+        })
         throw error
       } finally {
         set((state) => { state.isRestarting = false })
@@ -552,7 +512,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
         if (data.action === 'rebuild' || data.action === 'start') {
           set((state) => { state.isStartingApp = true })
-          logger.info('develop-store.app-action', { message: `App is being ${data.action === 'rebuild' ? 'rebuilt' : 'started'}`, action: data.action })
 
           // Wait for the action to complete
           await new Promise(resolve => setTimeout(resolve, 1000))
@@ -560,7 +519,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           set((state) => { state.isStartingApp = false })
         }
       } catch (error) {
-        logger.error('develop-store.ensure-running.failure', { message: 'Error ensuring app is running', error: error instanceof Error ? error.message : String(error) })
+        logger.error('develop-store.ensure-running.failure', {
+          error: error instanceof Error ? error.message : String(error)
+        })
       } finally {
         set((state) => {
           state.isCheckingApp = false

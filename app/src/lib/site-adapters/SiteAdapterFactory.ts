@@ -45,13 +45,7 @@ export class SiteAdapterFactory {
         this.validateDevEnvironment();
       }
 
-      if (isProduction) {
-        logger.info('🏭 Using ProdSiteAdapter for production environment');
-        this._instance = new ProdSiteAdapter();
-      } else {
-        logger.info('🔧 Using DevSiteAdapter for development environment');
-        this._instance = new DevSiteAdapter();
-      }
+      this._instance = isProduction ? new ProdSiteAdapter() : new DevSiteAdapter();
     }
 
     return this._instance;
@@ -94,24 +88,18 @@ export class SiteAdapterFactory {
 
     if (foundProductionIndicators.length > 0) {
       const error = new Error(
-        '🚨 FACTORY SAFETY ERROR: Production indicators detected but attempting to create DevSiteAdapter! ' +
+        'FACTORY SAFETY ERROR: Production indicators detected but attempting to create DevSiteAdapter! ' +
         `Found indicators: ${foundProductionIndicators.join(', ')}. ` +
         'This could indicate misconfigured environment variables.'
       );
 
-      logger.error('🚨 SITE ADAPTER FACTORY SAFETY VIOLATION:', {
-        error: error.message,
-        productionIndicators,
-        environment: {
-          NODE_ENV: process.env.NODE_ENV,
-          timestamp: new Date().toISOString()
-        }
+      logger.error('site-adapter.factory.safety-violation', {
+        message: error.message,
+        productionIndicators
       });
 
       throw error;
     }
-
-    logger.info('✅ SiteAdapterFactory: Dev environment validation passed');
   }
 
   /**

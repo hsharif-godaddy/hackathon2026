@@ -149,16 +149,8 @@ export default function AppPublish({ location }: { location?: string }) {
     setIsPublishing(currentAppId, true);
 
     try {
-      logger.info('app-publish.deploy.start', { appId: currentAppId });
-
       // Publish with latest commit (mutation will fetch git history and store commit hash internally)
-      const { result, commitHash } = await publishMutation.mutateAsync({ appId: currentAppId });
-
-      logger.info('app-publish.deploy.triggered', {
-        appId: currentAppId,
-        commitHash: commitHash.substring(0, 7),
-        result
-      });
+      await publishMutation.mutateAsync({ appId: currentAppId });
 
       // Note: usePublishApp hook polls until deployment appears and triggers refetch
     } catch (error) {

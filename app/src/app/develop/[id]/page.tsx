@@ -202,11 +202,9 @@ function DevelopPageContent() {
   useEffect(() => {
     if (!appId) return
 
-    console.log('🚀 Starting unified server polling for:', appId)
     startPollingForServer(appId)
 
     return () => {
-      console.log('⏹️ Stopping server polling for:', appId)
       stopPollingForServer(appId)
     }
   }, [appId, startPollingForServer, stopPollingForServer])

@@ -451,7 +451,7 @@ describe('LegacyControlPlaneAdapter', () => {
       expect(logger.error).toHaveBeenCalledWith(
         'legacy-control-plane.create-site.error',
         expect.objectContaining({
-          error: expect.any(Error)
+          error: 'Database error'
         })
       );
     });

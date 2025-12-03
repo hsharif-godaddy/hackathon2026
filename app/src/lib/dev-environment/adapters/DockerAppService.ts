@@ -27,15 +27,14 @@ export class DockerAppService implements IAppAdapter {
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
-    
-    logger.info('docker_app_service', '🔄 Initializing Docker Container Deployment Service...');
-    
+
     try {
       await this.containerManager.initialize();
       this.initialized = true;
-      logger.info('docker_app_service', '✅ Docker Container Deployment Service initialization completed');
     } catch (error) {
-      logger.error('docker_app_service', '❌ Docker Container Deployment Service initialization failed', { data: { error: error as Error } });
+      logger.error('docker_app_service.init.failed', {
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw new ContainerError(`Docker service initialization failed: ${(error as Error).message}`);
     }
   }
@@ -63,7 +62,6 @@ export class DockerAppService implements IAppAdapter {
       // Check if container already exists
       const existingContainer = await this.containerManager.getContainerStatus(appId);
       if (existingContainer && existingContainer.status === 'running') {
-        logger.info('docker_app_service', `🐳 Container for app ${appId} is already running`);
         return true;
       }
       
@@ -74,10 +72,12 @@ export class DockerAppService implements IAppAdapter {
         devApp.port
       );
       
-      logger.info('docker_app_service', `✅ Container started for app ${appId}: ${containerInfo.containerId}`);
       return true;
     } catch (error) {
-      logger.error('docker_app_service', `❌ Failed to start container for app ${appId}`, { data: { appId }, error: error as Error });
+      logger.error('docker_app_service.start.failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw new ContainerError(`Failed to start app: ${(error as Error).message}`, appId);
     }
   }
@@ -86,7 +86,10 @@ export class DockerAppService implements IAppAdapter {
     try {
       return await this.containerManager.stopContainer(appId);
     } catch (error) {
-      logger.error('docker_app_service', `❌ Failed to stop container for app ${appId}`, { data: { appId }, error: error as Error });
+      logger.error('docker_app_service.stop.failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw new ContainerError(`Failed to stop app: ${(error as Error).message}`, appId);
     }
   }
@@ -121,14 +124,12 @@ export class DockerAppService implements IAppAdapter {
   }
 
   async stopAllServers(): Promise<number> {
-    logger.info('docker_app_service', '🐳 Stopping all Docker containers...');
-    
     try {
-      const stoppedCount = await this.containerManager.stopAllServers();
-      logger.info('docker_app_service', `✅ Stopped ${stoppedCount} Docker container(s)`);
-      return stoppedCount;
+      return await this.containerManager.stopAllServers();
     } catch (error) {
-      logger.error('❌ Failed to stop all containers:', error);
+      logger.error('docker_app_service.stop-all.failed', {
+        error: error instanceof Error ? error.message : String(error)
+      });
       throw new ContainerError(`Failed to stop all servers: ${(error as Error).message}`);
     }
   }

@@ -41,18 +41,12 @@ export const useSiteStore = create<SiteStore>()(
       // Return cached site if we have it and it's not currently being fetched (unless force=true)
       const existingSite = state.sites[siteId]
       if (existingSite && !state.loading[siteId] && !force) {
-        logger.debug('site-store.fetch.cached', { message: 'Returning cached site data', siteId })
         return existingSite
-      }
-      
-      if (force && existingSite) {
-        logger.debug('site-store.fetch.force-refresh', { message: 'Force refreshing site data', siteId })
       }
 
       // If there's already a pending request for this siteId, return that promise
       const existingRequest = state._pendingRequests[siteId]
       if (existingRequest) {
-        logger.debug('site-store.fetch.dedup', { message: 'Request already in flight, waiting for existing request', siteId })
         return existingRequest
       }
 
@@ -64,8 +58,6 @@ export const useSiteStore = create<SiteStore>()(
         })
 
         try {
-          logger.debug('site-store.fetch.start', { message: 'Starting new site data fetch', siteId })
-
           const response = await appFetch(`/api/sites/${siteId}`)
 
           if (!response.ok) {
@@ -73,7 +65,6 @@ export const useSiteStore = create<SiteStore>()(
           }
 
           const siteData = await response.json()
-          logger.info('site-store.fetch.success', { message: 'Site data fetched successfully', siteId, siteName: siteData.name })
 
           set((state) => {
             state.sites[siteId] = siteData
@@ -85,10 +76,9 @@ export const useSiteStore = create<SiteStore>()(
           return siteData
 
         } catch (error) {
-          logger.error('site-store.fetch.failure', { 
-            message: 'Failed to fetch site data', 
-            siteId, 
-            error: error instanceof Error ? error.message : String(error) 
+          logger.error('site-store.fetch.failure', {
+            siteId,
+            error: error instanceof Error ? error.message : String(error)
           })
 
           set((state) => {

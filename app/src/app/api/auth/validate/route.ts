@@ -8,18 +8,8 @@ import { ensureTestUserExists } from '@/lib/database/seed-test-user';
 
 export async function GET(request: NextRequest) {
   try {
-    logger.debug('auth.validate.check', {
-      message: 'Auth validation called - checking feature flags',
-      NODE_ENV: process.env.NODE_ENV,
-      NEXT_PUBLIC_USE_MOCK_LOGIN: process.env.NEXT_PUBLIC_USE_MOCK_LOGIN,
-      mockLoginEnabled: isFeatureEnabled.mockLogin(),
-      authDisabled: await isAuthDisabled()
-    });
-
     // Handle mock authentication
     if (isFeatureEnabled.mockLogin()) {
-      logger.info('auth.validate.mock.enabled', { message: 'Mock auth validation - feature enabled' });
-
       try {
         // Ensure test user account exists in database
         await ensureTestUserExists();
@@ -74,15 +64,6 @@ export async function GET(request: NextRequest) {
 
     // Use gd-auth for authentication (includes automatic heartbeat)
     const result = await gdAuthService.authenticate(token);
-
-    // Log validation result
-    if (result.valid) {
-      logger.info('auth.validate.token.valid', { message: 'Token is VALID' }, { tags: ['security'] });
-    } else {
-      logger.warn('auth.validate.token.invalid', { message: 'Token is INVALID', reason: result.reason }, { tags: ['security'] });
-    }
-
-    // Since the authorization check is being removed, default to authorized.
 
     return NextResponse.json({
       valid: result.valid,

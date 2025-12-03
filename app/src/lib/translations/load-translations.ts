@@ -35,8 +35,6 @@ export async function loadTranslations(
       packages.map(async (packageName) => {
         const url = `${translationApiUrl}/package/market/${locale.toLowerCase()}/${encodeURIComponent(packageName)}`;
         
-        logger.debug('translations.load.fetch', { url, locale, packageName });
-        
         const response = await fetch(url, {
           next: { revalidate: 120 }, // Next.js Data Cache: revalidate every 2 minutes
         });
@@ -51,15 +49,7 @@ export async function loadTranslations(
           return {};
         }
         
-        const data = await response.json();
-        
-        logger.debug('translations.load.success', {
-          locale,
-          packageName,
-          translationCount: Object.keys(data).length,
-        });
-        
-        return data;
+        return response.json();
       })
     );
     
