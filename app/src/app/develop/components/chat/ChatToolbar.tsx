@@ -105,6 +105,7 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
         label="Chat"
         active={activeChatTab === ChatTab.CHAT}
       />
+      {/* disable until we are sure we'll have this feature here
       <IconButton
         icon={<PaintBucketIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.styles')}
@@ -112,15 +113,18 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
         active={activeChatTab === ChatTab.STYLES}
         tooltip="Available soon!"
       />
-      <IconButton
-        icon={<ImageIcon />}
-        dataEid={generateClickEID('develop.chat_toolbar.medias')}
-        onClick={() => { if (isAssetManagerEnabled) setIsAssetManagerOpen(true) }}
-        label="Media"
-        active={isAssetManagerOpen}
-        tooltip={!isAssetManagerEnabled ? 'Available soon!' : undefined}
-        disabled={isProcessing}
-      />
+      */}
+      {(!isMobile || (isMobile && isAssetManagerEnabled)) && (
+        <IconButton
+          icon={<ImageIcon />}
+          dataEid={generateClickEID('develop.chat_toolbar.medias')}
+          onClick={() => isAssetManagerEnabled ? setIsAssetManagerOpen(true) : undefined}
+          label="Media"
+          active={isAssetManagerOpen}
+          tooltipDescription={!isAssetManagerEnabled ? 'Available soon!' : undefined}
+          disabled={isProcessing}
+        />
+      )}
       {/* disabled for now<IconButton
         icon={<CheckboxListIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.todo')}
@@ -144,7 +148,7 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
           icon={<SettingsIcon />}
           dataEid={generateClickEID('develop.chat_toolbar.settings')}
           onClick={isSettingsEnabled ? () => handleTabClick(ChatTab.SETTINGS) : undefined}
-          tooltip={isSettingsEnabled ? undefined : "Available soon!"}
+          tooltipDescription={isSettingsEnabled ? undefined : "Available soon!"}
           className="ml-auto"
           label="Settings"
           active={activeChatTab === ChatTab.SETTINGS}

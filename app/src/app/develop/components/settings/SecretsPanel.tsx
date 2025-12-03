@@ -587,7 +587,6 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         }}
                         active={secret.isEditing}
                         disabled={secret.systemManaged || secret.markedForDeletion}
-                        tooltip={secret.isEditing ? 'the editing' : true}
                         className="!border-0"
                       />
                       <IconButton
@@ -596,7 +595,6 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         onClick={() => handleDelete(secret.name)}
                         active={secret.markedForDeletion}
                         disabled={secret.systemManaged || secret.isEditing}
-                        tooltip={secret.markedForDeletion ? 'secret deletion' : true}
                         className="!border-0"
                       />
                     </div>

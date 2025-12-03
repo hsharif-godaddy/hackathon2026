@@ -12,8 +12,9 @@ interface IconButtonProps {
   dataEid?: string
   className?: string
   label?: string
-  tooltip?: string | React.ReactNode
+  tooltipDescription?: string | React.ReactNode
   id?: string
+  showLabelWhenActive?: boolean
 }
 
 export default function IconButton({
@@ -26,19 +27,20 @@ export default function IconButton({
   dataEid,
   className,
   label,
-  tooltip = null,
-  id
+  tooltipDescription = null,
+  id,
+  showLabelWhenActive = true
 }: IconButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false)
   const anchorRef = useRef(null)
-  const tooltipComponent = tooltip ? (
+  const tooltipComponent = (
     <Tooltip className="z-50" anchorRef={anchorRef}>
       <div className="flex flex-col gap-0 p-2">
         <div className="text-sm font-bold leading-none">{label}</div>
-        <div className="text-sm font-thin">{tooltip}</div>
+        {tooltipDescription && <div className="text-sm font-thin">{tooltipDescription}</div>}
       </div>
     </Tooltip>
-  ) : null
+  )
 
   const clickEvent = () => {
     if (onClick) {
@@ -65,12 +67,12 @@ export default function IconButton({
       data-eid={dataEid}
       aria-label={label}
       ref={anchorRef}
-      onMouseEnter={() => tooltip && setShowTooltip(true)}
+      onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
       aria-haspopup={showTooltip}
     >
       {icon}
-      {label && (
+      {label && showLabelWhenActive && (
         <span className={clsx(
           "text-sm max-w-0 opacity-0 overflow-hidden whitespace-nowrap", {
             "max-w-xs opacity-100 mx-1 transition-all duration-400 ease-in-out": active,
@@ -78,7 +80,7 @@ export default function IconButton({
           }
         )}>{label}</span>
       )}
-      {tooltip && showTooltip && tooltipComponent}
+      {!active && showTooltip && tooltipComponent}
     </button>
   )
 }

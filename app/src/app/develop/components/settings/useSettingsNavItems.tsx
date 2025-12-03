@@ -85,7 +85,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       disabled: isSecretsEnabled !== true,
     },
     ...(isVisualScanEnabled ? [{
-        id: SettingsSection.VISUAL_SCAN,
+      id: SettingsSection.VISUAL_SCAN,
       label: 'Visual Scan',
       icon: <ContentIcon />,
       disabled: isVisualScanEnabled !== true,

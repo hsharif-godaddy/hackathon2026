@@ -67,7 +67,8 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
           icon={isChatPaneCollapsed ? <SidebarExpandIcon /> : <SidebarCollapseIcon />}
           onClick={toggleChatPaneCollapse}
           separator
-          tooltip={isChatPaneCollapsed ? 'Expand Chat Pane' : 'Collapse Chat Pane'}
+          label={isChatPaneCollapsed ? 'Expand Chat Pane' : 'Collapse Chat Pane'}
+          showLabelWhenActive={false}
           data-eid={ generateClickEID(`develop.preview.chat_pane_${isChatPaneCollapsed ? 'expand' : 'collapse'}`) }
         />
       )}
@@ -76,14 +77,16 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         onClick={() => handleViewModeChange(ViewMode.PREVIEW, hasUnsavedChanges)}
         data-eid={ generateClickEID('develop.preview.iframe') }
         active={viewMode === ViewMode.PREVIEW}
-        tooltip="Preview"
+        label="Preview"
+        showLabelWhenActive={false}
       />
       <IconButton
         icon={<CodeIcon />}
         onClick={() => handleViewModeChange(ViewMode.CODE, hasUnsavedChanges)}
         data-eid={ generateClickEID('develop.preview.code_editor') }
         active={viewMode === ViewMode.CODE}
-        tooltip="Code Editor"
+        label="Code Editor"
+        showLabelWhenActive={false}
       />
       <IconButton
         icon={<EditIcon />}
@@ -91,7 +94,8 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         onClick={toggleSelectMode}
         data-eid={ generateClickEID('develop.preview.select_mode') }
         active={isSelectMode}
-        tooltip="Select Mode"
+        label="Select Mode"
+        showLabelWhenActive={false}
         id="tour-select-mode-button"
       />
 
@@ -103,7 +107,8 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         onClick={onPreviewRefresh}
         dataEid={ generateClickEID('develop.preview.refresh') }
         disabled={viewMode === ViewMode.CODE}
-        tooltip="Refresh Preview"
+        label="Refresh Preview"
+        showLabelWhenActive={false}
       />
 
       { !isMobile && (
@@ -114,7 +119,8 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
             active={previewViewMode === PreviewViewMode.DESKTOP}
             dataEid={ generateClickEID('develop.preview.preview_desktop') }
             disabled={viewMode === ViewMode.CODE}
-            tooltip="Preview Desktop"
+            label="Preview Desktop"
+            showLabelWhenActive={false}
           />
           <IconButton
             icon={<MobilePhoneIcon />}
@@ -122,7 +128,8 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
             active={previewViewMode === PreviewViewMode.MOBILE}
             dataEid={ generateClickEID('develop.preview.preview_mobile') }
             disabled={viewMode === ViewMode.CODE}
-            tooltip="Preview Mobile"
+            label="Preview Mobile"
+            showLabelWhenActive={false}
             separator
           />
         </>
@@ -144,7 +151,8 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         }}
         dataEid={ generateClickEID('develop.preview.new_tab') }
         disabled={!actualPort || isCheckingApp || isRestarting || isStartingApp}
-        tooltip="Open in new tab"
+        label="Open in new tab"
+        showLabelWhenActive={false}
       />
     </header>
   )
