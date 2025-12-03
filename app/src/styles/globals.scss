@@ -167,16 +167,22 @@
   }
 
   .header-orb {
-    background: conic-gradient(from -49deg at 47.65% 36.14%, #8EF9FF 75.22720277309418deg, #B375FF 193.64776611328125deg, #FF75BC 267.1905469894409deg, #C290FF 335.0133991241455deg);
+    background: radial-gradient(ellipse at 47.65% 36.14%,
+      #8EF9FF 0%,
+      #B375FF 25%,
+      #FF75BC 50%,
+      #C290FF 75%,
+      #8EF9FF 100%);
     opacity: 0.4;
     filter: blur(200px);
     width: 980px;
     height: 1030px;
-    transform: rotate(-168.232deg);
+    border-radius: 50%;
     position: absolute;
     top: 0;
     left: 0;
-    transform: translate(-40%, -50%)
+    transform: translate(-40%, -50%) rotate(-168.232deg);
+    will-change: transform;
   }
 
   .footer-bg {
@@ -215,18 +221,12 @@
     }
   }
 
-  .glowing-input {
-    position: relative;
-  }
-
+  /* Default glow effect for non-Safari browsers */
   .glowing-input::before {
     content: '';
     position: absolute;
-    top: -4px;
-    left: -4px;
-    right: -4px;
-    bottom: -4px;
-    border-radius: 2rem;
+    inset: -4px;
+    border-radius: 3rem; // matches !isExpanded
     background: linear-gradient(45deg, #FF75BC, #C290FF, #8EF9FF, #B375FF, #FF75BC);
     background-size: 400% 400%;
     animation: gradientShift 5s ease infinite;
@@ -234,6 +234,35 @@
     opacity: 1;
     z-index: -1;
     pointer-events: none;
+  }
+
+  /* Safari fallback using box-shadow */
+  :root.is-safari .glowing-input::before {
+    inset: 0;
+    background: none;
+    background-size: unset;
+    animation: none;
+    filter: none;
+    box-shadow:
+      0 0 20px 4px rgba(179, 117, 255, 0.4),
+      0 0 40px 8px rgba(255, 117, 188, 0.3),
+      0 0 60px 12px rgba(142, 249, 255, 0.2);
+    will-change: transform;
+  }
+
+  /* Update border-radius on submit */
+  .glowing-input.glowing-input--disabled::before {
+    border-radius: 2rem; // matches isExpanded
+  }
+
+  /* Use plain background when disabled in Safari */
+  :root.is-safari .glowing-input.glowing-input--disabled::before {
+    background: rgba(179, 117, 255, 0.4);
+  }
+
+  /* Avoid patchy background around submit button in Safari */
+  :root.is-safari .glowing-input textarea {
+    will-change: transform;
   }
 
   .glowing-input textarea::placeholder {

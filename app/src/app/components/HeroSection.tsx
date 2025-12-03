@@ -162,7 +162,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
       <div className="w-full max-w-2xl mx-auto my-8">
         <Box gap="lg">
-          <div className="relative transition-all duration-300 ease-out glowing-input">
+          <div className={clsx('relative transition-all duration-300 ease-out glowing-input', {
+            'glowing-input--disabled': isLoading
+          })}>
             <Box
               className={clsx('relative transition-all duration-300 ease-out !bg-transparent outline-4 outline-solid outline-[rgba(0,0,0,0.15)]', {
                 'rounded-2xl!': isExpanded,

@@ -14,6 +14,7 @@ import HelpSection from '@/app/components/HelpSection'
 import FeaturesSection from '@/components/layout/Features'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
 import Header from '@/components/layout/Header'
+import { useSafariClass } from '@/hooks/useSafariClass'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import HeroSection from './components/HeroSection'
 import { HeroSectionRef } from './components/types'
@@ -30,6 +31,8 @@ function HomeContent() {
   const promptTextRef = useRef(promptText)
 
   const { isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth, isLoading: authIsLoading } = useAuthContext()
+  
+  useSafariClass()
 
   useEffect(() => {
     logImpressionEvent('homepage.page.view')();
