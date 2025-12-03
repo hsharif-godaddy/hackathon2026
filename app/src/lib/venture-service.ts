@@ -15,6 +15,31 @@ export interface Profile {
     logoUrl?: string;
 }
 
+export interface CustomerProjectNode {
+    group: string;
+    status: string;
+    billing: {
+        id: string;
+        plan: string;
+    };
+}
+
+export interface CustomerProjectEdge {
+    node: CustomerProjectNode;
+}
+
+export interface CustomerProjectsPageInfo {
+    hasNextPage: boolean;
+    endCursor: string;
+}
+
+export interface CustomerProjectsResponse {
+    projects: {
+        edges: CustomerProjectEdge[];
+        pageInfo: CustomerProjectsPageInfo;
+    };
+}
+
 /**
  * Service for managing venture data via mgmt-airo attributes API
  */
@@ -248,5 +273,64 @@ export class VentureService {
         }
 
         return ventureId;
+    }
+
+    /**
+     * Get customer projects with billing information
+     *
+     * @param customerId - Customer ID (required)
+     * @param after - Cursor for pagination (optional)
+     * @returns Promise resolving to customer projects with pagination info
+     *
+     * @throws {Error} If GraphQL request fails
+     */
+    async getCustomerProjects(customerId: string, after?: string): Promise<CustomerProjectsResponse> {
+        const query = `
+      query CustomerQuery($customerId: UUID!, $after: String) {
+        projects(customerId: $customerId, after: $after) {
+          edges {
+            node {
+              group
+              status
+              billing {
+                id
+                plan
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    `;
+
+        try {
+            const client = await this.ensureGraphQLClient();
+            const response = await client.request<CustomerProjectsResponse>({
+                query,
+                variables: { customerId, after },
+                operationName: 'CustomerQuery',
+            });
+
+            logger.info('venture.getCustomerProjects.success', {
+                message: 'Successfully fetched customer projects',
+                customerId,
+                after,
+                projectCount: response.data?.projects?.edges?.length || 0,
+                hasNextPage: response.data?.projects?.pageInfo?.hasNextPage,
+            });
+
+            return response.data;
+        } catch (error) {
+            logger.error('venture.getCustomerProjects.failed', {
+                message: 'Failed to get customer projects',
+                customerId,
+                after,
+                error: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+        }
     }
 }

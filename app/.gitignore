@@ -29,7 +29,9 @@
 certs/*.key
 certs/*.p12
 certs/*.pfx
+certs/*.crt
 certificates/*
+
 
 # database files
 /data/

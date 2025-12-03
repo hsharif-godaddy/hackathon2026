@@ -309,7 +309,19 @@ export class AiroMgmtClient {
 
     return response.apps || [];
   }
+  /**
+   * Get entitlement for a subscription
+   */
+  async getEntitlements(subscriptionId: string): Promise<AiroSubscription> {
+    const response = await this.request<AiroSubscription>(
+      'GET',
+      `/api/airo/v1/subscriptions/${subscriptionId}/entitlement`,
+      undefined,
+      { logEvent: 'mgmt-airo.get-entitlement' }
+    );
 
+    return response;
+  }
   /**
    * Get apps for a specific system
    */
@@ -533,6 +545,18 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domains`,
       payload,
       { logEvent: 'mgmt-airo.modify-domains' }
+    );
+  }
+
+  async updateEntitlement(
+    subscriptionId: string,
+    payload: { entitlementId: string }
+  ): Promise<AiroSubscription> {
+    return this.request<AiroSubscription>(
+      'PUT',
+      `/api/airo/v1/subscriptions/${subscriptionId}/entitlement`,
+      payload,
+      { logEvent: 'mgmt-airo.update-entitlement' }
     );
   }
 
