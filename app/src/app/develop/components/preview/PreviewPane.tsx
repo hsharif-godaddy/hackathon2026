@@ -317,13 +317,13 @@ export default function PreviewPane({
     return (
       <div className="h-full flex flex-col">
         {isViewingHistoricalCommit && (
-          <div className="bg-intents-ux-feedbackInfo-feedbackColor rounded p-2 mx-4">
+          <div className="bg-intents-ux-feedbackInfo-feedbackColor rounded pl-2 pr-4 py-2 mx-2 my-2 md:mx-4 md:my-0">
             <div className="flex items-center items-space-between w-full">
               <span className="font-mono px-2 text-sm py-1 rounded mr-2 grow">
                 This is a preview of a previous version of the app.
               </span>
               <Button
-                design="control"
+                design="secondary"
                 size="sm"
                 onClick={handleRestoreConfirm}
                 disabled={restoreMutation.isPending}

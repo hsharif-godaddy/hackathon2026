@@ -117,7 +117,7 @@ export default function DevelopmentAdminSection({
     <>
       <div className="border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start md:items-center justify-between flex-col md:flex-row gap-3">
             <div className="flex items-center space-x-3">
               <ExclamationTriangleIcon className="w-5 h-5" />
               <div>
@@ -126,26 +126,26 @@ export default function DevelopmentAdminSection({
               </div>
             </div>
 
-            <div className="flex items-center space-x-3">
-              <button
+            <div className="flex items-center gap-3">
+              <Button
                 onClick={showStopAllAlert}
+                design="secondary"
                 disabled={isStopAllLoading || isDeleteAllLoading || runningItems === 0}
                 className="px-3 py-2 rounded-lg transition-all flex items-center space-x-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 title={`Stop all running ${itemType}`}
-              >
-                <StopIcon className="w-4 h-4" />
-                <span>Stop All ({runningItems})</span>
-              </button>
+                text={`Stop All (${runningItems})`}
+                icon={<StopIcon className="w-4 h-4" />}
+              />
 
-              <button
+              <Button
                 onClick={showDeleteAllAlert}
+                design="critical"
                 disabled={isStopAllLoading || isDeleteAllLoading || totalItems === 0}
                 className="px-3 py-2 rounded-lg transition-all flex items-center space-x-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 title={`Delete all ${itemType} (DANGEROUS)`}
-              >
-                <TrashIcon className="w-4 h-4" />
-                <span>Delete All ({totalItems})</span>
-              </button>
+                text={`Delete All (${totalItems})`}
+                icon={<TrashIcon className="w-4 h-4" />}
+              />
             </div>
           </div>
         </div>

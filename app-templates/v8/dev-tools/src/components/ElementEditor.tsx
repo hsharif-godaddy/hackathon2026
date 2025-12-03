@@ -45,10 +45,10 @@ interface ElementEditorProps {
   _onStyleApply?: (styles: Record<string, string>) => void
 }
 
-export default function ElementEditor({ 
-  isOpen, 
-  onClose, 
-  position, 
+export default function ElementEditor({
+  isOpen,
+  onClose,
+  position,
   selectedElement,
   isInlineEditing,
   isTextEditable,
@@ -64,7 +64,7 @@ export default function ElementEditor({
     color: 'bottom',
     spacing: 'bottom'
   })
-  
+
   const [adjustedPosition, setAdjustedPosition] = useState<{ top: number; left: number } | null>(null)
   const [spacingDropdownOffset, setSpacingDropdownOffset] = useState(0)
   const [isCapturingScreenshot, setIsCapturingScreenshot] = useState(false)
@@ -84,14 +84,14 @@ export default function ElementEditor({
 
     while (current && current !== document.body && current !== document.documentElement) {
       let selector = current.tagName.toLowerCase()
-      
+
       // Add nth-child to make it unique
       if (current.parentElement) {
         const siblings = Array.from(current.parentElement.children)
         const index = siblings.indexOf(current) + 1
         selector += `:nth-child(${index})`
       }
-      
+
       path.unshift(selector)
       current = current.parentElement
     }
@@ -120,7 +120,7 @@ export default function ElementEditor({
       const element = document.querySelector(`[data-dev-selected="${elementInfo.dataId}"]`) as HTMLElement
       if (element) return element
     }
-    
+
     // Try precise nth-child selector (most accurate)
     if (elementInfo.selector && elementInfo.selector.includes(':nth-child')) {
       try {
@@ -130,13 +130,13 @@ export default function ElementEditor({
         console.warn('Invalid nth-child selector:', elementInfo.selector)
       }
     }
-    
+
     // Fallback to ID
     if (elementInfo.id) {
       const element = document.getElementById(elementInfo.id)
       if (element) return element
     }
-    
+
     // Fallback to basic selector
     try {
       if (elementInfo.selector) {
@@ -146,7 +146,7 @@ export default function ElementEditor({
     } catch (_e) {
       console.warn('Invalid selector:', elementInfo.selector)
     }
-    
+
     // Last resort: find by tag and clean classes
     if (elementInfo.className) {
       const cleanClasses = elementInfo.className.split(' ')
@@ -161,7 +161,7 @@ export default function ElementEditor({
         }
       }
     }
-    
+
     return null
   }, [generatePreciseSelector])
 
@@ -170,16 +170,16 @@ export default function ElementEditor({
   // Logic: Only look for a higher wrapper if the current element is itself a dev wrapper
   const findTopmostDevWrapper = useCallback((element: HTMLElement): HTMLElement | null => {
     console.log(`🔍 Finding dev wrapper for element:`, element.tagName, element.className)
-    
+
     // First, check if the element itself is a dev wrapper
     const isElementWrapper = element.getAttribute('data-dev-wrapper') === 'true'
     console.log(`🔍 Element is wrapper:`, isElementWrapper, isElementWrapper ? element.getAttribute('data-dev-component') : 'N/A')
-    
+
     if (isElementWrapper) {
       // Element is a wrapper, so we might need to find a higher one
       let currentWrapper = element
       let parentWrapper: HTMLElement | null = null
-      
+
       // Look for parent dev wrappers, but only go one level up at a time
       let parentElement = element.parentElement as HTMLElement
       while (parentElement && parentElement !== document.body) {
@@ -190,7 +190,7 @@ export default function ElementEditor({
         }
         parentElement = parentElement.parentElement as HTMLElement
       }
-      
+
       if (parentWrapper) {
         console.log(`🎯 Using outer wrapper:`, parentWrapper.getAttribute('data-dev-component'), 'instead of inner:', currentWrapper.getAttribute('data-dev-component'))
         return parentWrapper
@@ -201,7 +201,7 @@ export default function ElementEditor({
     } else {
       // Element is not a wrapper, find the closest wrapper ancestor
       const closestWrapper = element.closest('[data-dev-wrapper="true"]') as HTMLElement
-      
+
       if (closestWrapper) {
         // Check if this wrapper has a parent wrapper (nested wrapper case)
         let parentElement = closestWrapper.parentElement as HTMLElement
@@ -212,7 +212,7 @@ export default function ElementEditor({
           }
           parentElement = parentElement.parentElement as HTMLElement
         }
-        
+
         console.log(`🎯 Element not wrapper, using closest (no nesting):`, closestWrapper.getAttribute('data-dev-component'))
         return closestWrapper
       } else {
@@ -230,11 +230,11 @@ export default function ElementEditor({
       const boundaryFile = boundary.getAttribute('data-dev-file')
       const boundaryLine = boundary.getAttribute('data-dev-line')
       const boundaryComponent = boundary.getAttribute('data-dev-component')
-      
+
       if (boundaryFile && boundaryLine && boundaryComponent) {
         // Clean up the file path for display
         const fileName = boundaryFile.replace(/.*\/src\//, 'src/').replace(/.*\/app\//, 'app/')
-        
+
         return {
           fileName,
           lineNumber: parseInt(boundaryLine, 10),
@@ -242,43 +242,43 @@ export default function ElementEditor({
         }
       }
     }
-    
+
     // Fallback: check for direct dev attributes on the element itself (for HTML elements)
     const elementFile = element.getAttribute('data-dev-file')
     const elementLine = element.getAttribute('data-dev-line')
     const elementComponent = element.getAttribute('data-dev-component')
-    
+
     if (elementFile && elementLine && elementComponent) {
       // Clean up the file path for display
       const fileName = elementFile.replace(/.*\/src\//, 'src/').replace(/.*\/app\//, 'app/')
-      
+
       return {
         fileName,
         lineNumber: parseInt(elementLine, 10),
         componentName: elementComponent
       }
     }
-    
+
     // Additional fallback: check parent elements for dev attributes
     let currentElement = element.parentElement
     while (currentElement && currentElement !== document.body) {
       const parentFile = currentElement.getAttribute('data-dev-file')
       const parentLine = currentElement.getAttribute('data-dev-line')
       const parentComponent = currentElement.getAttribute('data-dev-component')
-      
+
       if (parentFile && parentLine && parentComponent) {
         const fileName = parentFile.replace(/.*\/src\//, 'src/').replace(/.*\/app\//, 'app/')
-        
+
         return {
           fileName,
           lineNumber: parseInt(parentLine, 10),
           componentName: parentComponent
         }
       }
-      
+
       currentElement = currentElement.parentElement
     }
-    
+
     return undefined
   }, [])
 
@@ -289,7 +289,7 @@ export default function ElementEditor({
       const rect = element.getBoundingClientRect()
       const scrollX = window.scrollX
       const scrollY = window.scrollY
-      
+
       // Capture the entire viewport/body to get background context
       const fullCapture = await toPng(document.body, {
         quality: 0.95,
@@ -297,21 +297,21 @@ export default function ElementEditor({
         skipAutoScale: true,
         pixelRatio: 1,
       })
-      
+
       // Load the full capture into an image
       const img = new Image()
       img.src = fullCapture
-      
+
       await new Promise((resolve) => {
         img.onload = resolve
       })
-      
+
       // Create canvas to crop to element bounds
       const canvas = document.createElement('canvas')
       canvas.width = rect.width
       canvas.height = rect.height
       const ctx = canvas.getContext('2d')
-      
+
       if (!ctx) {
         throw new Error('Failed to get canvas context')
       }
@@ -319,11 +319,11 @@ export default function ElementEditor({
  // Calculate the element's position in the capture
       // The capture is rendered as if scroll is at 0,0
       // So we need: viewport position + current scroll - how much scroll affects this element
-      
+
       // Walk up the tree to find if element is in a fixed/sticky container
       let isInFixedContainer = false
       let node: HTMLElement | null = element
-      
+
       while (node && node !== document.body) {
         const style = window.getComputedStyle(node)
         if (style.position === 'fixed' || style.position === 'sticky') {
@@ -332,9 +332,9 @@ export default function ElementEditor({
         }
         node = node.parentElement
       }
-      
+
       let sourceX, sourceY
-      
+
       if (isInFixedContainer) {
         // Fixed elements stay at their viewport position
         sourceX = rect.left
@@ -344,7 +344,7 @@ export default function ElementEditor({
         sourceX = rect.left + scrollX
         sourceY = rect.top + scrollY
       }
-          
+
       // Draw the cropped portion of the full capture
       ctx.drawImage(
         img,
@@ -357,7 +357,7 @@ export default function ElementEditor({
         rect.width,
         rect.height
       )
-      
+
       // Convert to data URL with compression
       return canvas.toDataURL('image/png')
     } catch (error) {
@@ -384,7 +384,7 @@ export default function ElementEditor({
       if (element) {
         const computedStyle = window.getComputedStyle(element)
         const classes = selectedElement.className.split(' ')
-        
+
         setCurrentStyles({
           fontSize: classes.find(c => c.startsWith('text-') && (c.includes('sm') || c.includes('base') || c.includes('lg') || c.includes('xl'))) || 'text-base',
           fontWeight: classes.find(c => c.startsWith('font-') && c.includes('bold')) ? 'font-bold' : 'font-normal',
@@ -394,7 +394,7 @@ export default function ElementEditor({
           marginBottom: classes.find(c => c.startsWith('mb-')) || '',
           padding: classes.find(c => c.startsWith('p-')) || ''
         })
-        
+
         // Extract and update dev context if not already present
         if (!selectedElement.devContext) {
           const devContext = extractDevContext(element)
@@ -458,9 +458,9 @@ export default function ElementEditor({
     // Calculate optimal vertical position (above or below element)
     const spaceAbove = elementTop
     const spaceBelow = viewportHeight - elementBottom
-    
+
     let toolbarTop: number
-    
+
     // Prefer positioning below the element
     if (spaceBelow >= toolbarHeight + elementGap + margin) {
       // Position below element
@@ -502,7 +502,7 @@ export default function ElementEditor({
       const dropdownHeight = dropdownHeights[dropdownType]
       const spaceBelow = viewportHeight - (toolbarTop + toolbarHeight)
       const spaceAbove = toolbarTop
-      
+
       // Prefer bottom if there's enough space, otherwise use top if there's more space above
       if (spaceBelow >= dropdownHeight + margin) {
         return 'bottom'
@@ -555,7 +555,7 @@ export default function ElementEditor({
       setShowFontSizeDropdown(false)
       setShowColorDropdown(false)
       setShowSpacingDropdown(false)
-      
+
       // Recalculate positions after a brief delay to allow for layout changes
       setTimeout(updatePositioning, 50)
     }
@@ -620,11 +620,11 @@ export default function ElementEditor({
   const updateStyle = (property: string, value: string) => {
     const newStyles = { ...currentStyles, [property]: value }
     setCurrentStyles(newStyles)
-    
+
     // Apply the style immediately
     if (selectedElement) {
       const element = findElement(selectedElement)
-      
+
       if (element) {
         // Apply CSS styles directly for colors, keep Tailwind for font sizes and spacing
         switch (property) {
@@ -637,27 +637,27 @@ export default function ElementEditor({
             }
             element.className = filteredClasses.join(' ')
             break
-            
+
           case 'fontWeight':
             // Apply CSS style directly
             element.style.fontWeight = value === 'font-bold' ? 'bold' : 'normal'
             break
-            
+
           case 'fontStyle':
             // Apply CSS style directly
             element.style.fontStyle = value === 'italic' ? 'italic' : 'normal'
             break
-            
+
           case 'color':
             // Apply CSS style directly
             element.style.color = value
             break
-            
+
           case 'backgroundColor':
             // Apply CSS style directly
             element.style.backgroundColor = value
             break
-            
+
           case 'marginBottom':
           case 'padding':
             // Keep using Tailwind classes for spacing
@@ -670,7 +670,7 @@ export default function ElementEditor({
             element.className = filteredSpacingClasses.join(' ')
             break
         }
-        
+
         // Send message to parent if in iframe
         if (window.parent !== window) {
           safePostMessage(window.parent, {
@@ -694,7 +694,7 @@ export default function ElementEditor({
   }
 
   return (
-    <div 
+    <div
       data-dev-tools="element-editor"
       style={{
         position: 'fixed',
@@ -704,19 +704,19 @@ export default function ElementEditor({
         pointerEvents: 'auto'
       }}
     >
-      <div 
+      <div
         ref={toolbarRef}
-        style={{ 
+        style={{
           minWidth: '400px',
           backgroundColor: 'rgba(255, 255, 255, 0.98)',
           backdropFilter: 'blur(10px)',
           border: '1px solid rgba(209, 213, 219, 0.8)',
           borderRadius: '8px',
           boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-          padding: '8px',
+          padding: '4px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '8px'
+          gap: '4px'
         }}
       >
         {/* Toolbar Controls */}
@@ -748,9 +748,9 @@ export default function ElementEditor({
             <span>{getCurrentFontSize()}</span>
             <ChevronDown style={{ width: '12px', height: '12px' }} />
           </button>
-          
+
           {showFontSizeDropdown && (
-            <div 
+            <div
               style={{
                 position: 'absolute',
                 left: '0',
@@ -803,7 +803,7 @@ export default function ElementEditor({
                     </button>
                   ))}
                 </div>
-                
+
                 {/* Fine-tune Slider */}
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>Fine-tune</label>
@@ -921,9 +921,9 @@ export default function ElementEditor({
             }}></div>
             <ChevronDown style={{ width: '12px', height: '12px' }} />
           </button>
-          
+
           {showColorDropdown && (
-            <div 
+            <div
               style={{
                 position: 'absolute',
                 [dropdownPositions.color === 'top' ? 'bottom' : 'top']: '100%',
@@ -939,10 +939,10 @@ export default function ElementEditor({
                 padding: '8px'
               }}
             >
-              <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: 'repeat(6, 1fr)', 
-                gap: '4px' 
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(6, 1fr)',
+                gap: '4px'
               }}>
                 {colors.map((colorOption) => (
                   <button
@@ -1004,9 +1004,9 @@ export default function ElementEditor({
             }}></div>
             <ChevronDown style={{ width: '12px', height: '12px' }} />
           </button>
-          
+
           {showSpacingDropdown && (
-            <div 
+            <div
               style={{
                 position: 'absolute',
                 [dropdownPositions.spacing === 'top' ? 'bottom' : 'top']: '100%',
@@ -1027,10 +1027,10 @@ export default function ElementEditor({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>Background</label>
-                  <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(8, 1fr)', 
-                    gap: '4px' 
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(8, 1fr)',
+                    gap: '4px'
                   }}>
                     {backgroundColors.map((bg) => (
                       <button
@@ -1042,8 +1042,8 @@ export default function ElementEditor({
                           borderRadius: '4px',
                           border: '1px solid #d1d5db',
                           backgroundColor: bg.value === 'transparent' ? 'white' : bg.value,
-                          backgroundImage: bg.value === 'transparent' ? 
-                            'linear-gradient(45deg, #f3f4f6 25%, transparent 25%), linear-gradient(-45deg, #f3f4f6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f3f4f6 75%), linear-gradient(-45deg, transparent 75%, #f3f4f6 75%)' : 
+                          backgroundImage: bg.value === 'transparent' ?
+                            'linear-gradient(45deg, #f3f4f6 25%, transparent 25%), linear-gradient(-45deg, #f3f4f6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f3f4f6 75%), linear-gradient(-45deg, transparent 75%, #f3f4f6 75%)' :
                             'none',
                           backgroundSize: bg.value === 'transparent' ? '8px 8px' : 'auto',
                           backgroundPosition: bg.value === 'transparent' ? '0 0, 0 4px, 4px -4px, -4px 0px' : 'auto',
@@ -1059,7 +1059,7 @@ export default function ElementEditor({
                     ))}
                   </div>
                 </div>
-                
+
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>Margin</label>
                   <select
@@ -1080,7 +1080,7 @@ export default function ElementEditor({
                     <option value="mb-6">Large (24px)</option>
                   </select>
                 </div>
-                
+
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '500', color: '#374151', marginBottom: '4px' }}>Padding</label>
                   <select
@@ -1134,7 +1134,7 @@ export default function ElementEditor({
                 e.currentTarget.style.borderColor = '#a7f3d0'
               }}
             >
-              ✏️ Edit Text
+              Edit Inline
             </button>
           )
         })()}
@@ -1145,18 +1145,18 @@ export default function ElementEditor({
             if (selectedElement?.devContext && window.parent !== window && !isCapturingScreenshot) {
               // Disable button immediately
               setIsCapturingScreenshot(true)
-              
+
               const element = findElement(selectedElement)
               let screenshot: string | null = null
               let preciseSelector = selectedElement.selector
-              
+
               // Capture screenshot and generate precise selector if element is found
               if (element) {
                 screenshot = await captureElementScreenshot(element)
                 preciseSelector = generatePreciseSelector(element)
                 console.log('🎯 Generated precise selector:', preciseSelector)
               }
-              
+
               safePostMessage(window.parent, {
                 type: 'EDIT_WITH_AI',
                 data: {
@@ -1169,7 +1169,7 @@ export default function ElementEditor({
                   screenshot
                 }
               })
-              
+
               // Hide the toolbar but keep selection visible
               setHideToolbar(true)
             }
@@ -1202,7 +1202,7 @@ export default function ElementEditor({
             }
           }}
         >
-          {isCapturingScreenshot ? '⏳ Capturing...' : '✨ Edit with AI'}
+          {isCapturingScreenshot ? 'Capturing...' : 'Edit with AI'}
         </button>
 
         {/* Divider */}

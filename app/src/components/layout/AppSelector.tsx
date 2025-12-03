@@ -13,8 +13,10 @@ import {
 } from "@/lib/shadcn/popover"
 import text from '@ux/text';
 import Box from '@ux/box';
+import AppsIcon from '@ux/icon/apps';
 import ChevronDownIcon from '@ux/icon/chevron-down';
 import { generateClickEID } from '@/utils/instrumentation';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 
 export default function AppSelector({ location }: { location?: string }) {
   const router = useRouter();
@@ -28,6 +30,8 @@ export default function AppSelector({ location }: { location?: string }) {
     sites,
     isLoading: isLoadingSites,
   } = useSites({ enabled: isAuthenticated })
+
+  const isMobile = useDevelopPageStore((state) => state.isMobile)
 
   // Auto-expand dropdown on homepage if user has apps
   const [open, setOpen] = useState(false);
@@ -75,15 +79,21 @@ export default function AppSelector({ location }: { location?: string }) {
         onClick={() => (sites.length < 1 || isLoading) ? router.push('/apps') : null}
       >
         <Box orientation="horizontal" gap="sm">
-          <text.p className="truncate max-w-[150px]">{displayTitle}</text.p>
-          {sites.length > 0 && (
-            <ChevronDownIcon
-              className={clsx(
-                "transition-transform duration-300", {
-                  "scale-y-[-1]": open,
-                }
+          { isMobile ? (
+            <AppsIcon className="size-6" />
+          ) : (
+            <>
+              <text.p className="truncate max-w-[150px]">{displayTitle}</text.p>
+              {sites.length > 0 && (
+                <ChevronDownIcon
+                  className={clsx(
+                    "transition-transform duration-300", {
+                      "scale-y-[-1]": open,
+                    }
+                  )}
+                />
               )}
-            />
+            </>
           )}
         </Box>
       </PopoverTrigger>

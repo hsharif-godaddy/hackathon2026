@@ -173,10 +173,18 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setIsMobile: (isMobile) => set((state) => {
       // Only reset tab if we're actually transitioning between mobile/desktop
       const wasTransition = state.isMobile !== isMobile
+      const wasMobileGoingToDesktop = state.isMobile === true && isMobile === false
+
       state.isMobile = isMobile
+
       // Reset activeTab when switching between mobile/desktop to ensure proper layout
       if (wasTransition && state.activeChatTab !== ChatTab.CHAT) {
         state.activeChatTab = ChatTab.CHAT
+      }
+
+      // Reset chatPaneWidth when going from mobile to desktop to prevent layout issues
+      if (wasMobileGoingToDesktop) {
+        state.chatPaneWidth = 400 // Reset to default width
       }
     }),
     setIsVersionHistoryOpen: (open) => set((state) => { state.isVersionHistoryOpen = open }),

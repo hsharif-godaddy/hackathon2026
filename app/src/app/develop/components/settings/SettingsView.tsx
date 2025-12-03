@@ -48,7 +48,7 @@ export default function SettingsView() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-y-auto p-6 max-w-5xl mx-auto">
+    <div className="h-full flex flex-col overflow-y-auto p-4 md:p-6 w-full md:max-w-5xl mx-auto">
       {renderSection()}
     </div>
   )

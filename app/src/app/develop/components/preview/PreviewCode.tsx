@@ -7,11 +7,15 @@ import clsx from 'clsx'
 import FileTree, { FileItem } from '@/app/develop/components/FileTree'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useIsMobile } from '@/hooks/use-mobile'
 import Button from '@ux/button'
 import DownloadIcon from '@ux/icon/download'
 import Spinner from '@ux/spinner'
+import Box from '@ux/box'
 import PageIcon from '@ux/icon/page'
 import XIcon from '@ux/icon/x'
+import HamburgerIcon from '@ux/icon/hamburger'
+import Text from '@ux/text'
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -95,6 +99,9 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const [saving, setSaving] = useState<string | null>(null)
   const [recentlySaved, setRecentlySaved] = useState<string | null>(null)
 
+  const isMobile = useIsMobile()
+  // On mobile, start with file tree open so users know it exists
+  const [showFileTree, setShowFileTree] = useState(isMobile)
   const setHasUnsavedChanges = useDevelopPageStore((state) => state.setHasUnsavedChanges)
 
   // Load real files from backend
@@ -232,6 +239,10 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     const existingFile = openFiles.find(f => f.path === path)
     if (existingFile) {
       setActiveFile(path)
+      // On mobile, close file tree after selection
+      if (isMobile) {
+        setShowFileTree(false)
+      }
       return
     }
 
@@ -250,7 +261,12 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
 
     setOpenFiles(prev => [...prev, newFile])
     setActiveFile(path)
-  }, [openFiles, loadFileContent])
+
+    // On mobile, close file tree after selection
+    if (isMobile) {
+      setShowFileTree(false)
+    }
+  }, [openFiles, loadFileContent, isMobile])
 
   const handleCloseFile = useCallback((path: string) => {
     setOpenFiles(prev => prev.filter(f => f.path !== path))
@@ -356,75 +372,120 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   }
 
   return (
-    <div className="h-full w-full grid grid-cols-[250px_1fr] overflow-hidden">
-      <div className="border-r overflow-y-auto min-h-0">
-        <div className="">
+    <div className="h-full w-full flex overflow-hidden relative">
+      {/* File Tree - Desktop: sidebar, Mobile: overlay */}
+      {isMobile ? (
+        // Mobile: Slide-in overlay
+        <>
+          {showFileTree && (
+            <div
+              className="absolute inset-0 bg-intents-ux-boxHighContrastOverlay-backgroundColor bg-opacity-4 z-10"
+              onClick={() => setShowFileTree(false)}
+            />
+          )}
+          <div className={clsx(
+            "absolute left-0 top-0 bottom-0 w-[280px] bg-intents-ux-boxLowContrast-backgroundColor z-20 transform transition-transform duration-300 ease-in-out overflow-y-auto",
+            showFileTree ? "translate-x-0" : "-translate-x-full"
+          )}>
+            <div className="flex items-center justify-between px-3 py-1 border-b">
+              <Text.p className="ml-2 !font-semibold">Files</Text.p>
+              <Button
+                onClick={() => setShowFileTree(false)}
+                className="!p-1"
+                design="control"
+                title="Close"
+                icon={<XIcon className="!size-4" />}
+              />
+            </div>
+            <FileTree
+              files={files}
+              selectedFile={activeFile}
+              onFileSelect={handleFileSelect}
+            />
+          </div>
+        </>
+      ) : (
+        // Desktop: Fixed sidebar
+        <div className="border-r overflow-y-auto min-h-0 w-[250px] flex-shrink-0">
           <FileTree
             files={files}
             selectedFile={activeFile}
             onFileSelect={handleFileSelect}
           />
         </div>
-      </div>
+      )}
 
       {/* Editor Area */}
-      <div className="flex flex-col w-full min-w-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* Tabs */}
-        {openFiles.length > 0 && (
-          <div className="flex items-center border-b overflow-x-auto">
-            {openFiles.map((file) => (
-              <div
-                key={file.path}
-                className={clsx(
-                  "relative flex items-center gap-1 pl-2 pr-1 py-1 border-b-4 border-r cursor-pointer text-sm whitespace-nowrap transition-opacity duration-200", {
-                    "opacity-50 border-b-transparent": activeFile !== file.path
-                  }
-                )}
-                onClick={() => setActiveFile(file.path)}
-              >
-                <PageIcon className="w-4 h-4" />
-                <span>{file.name}</span>
+        <div className="flex items-center border-b overflow-x-auto">
+          {/* Mobile: File tree toggle button */}
+          {isMobile && (
+            <Button
+              onClick={() => setShowFileTree(true)}
+              className="!px-4 !py-1 flex-shrink-0"
+              design="control"
+              title="Show files"
+              icon={<HamburgerIcon className="!size-5" />}
+              text="Files"
+            />
+          )}
 
-                {/* Save status indicators */}
-                {(saving === file.path || recentlySaved === file.path || file.isDirty) && (
-                  <div className={clsx(
-                    "absolute top-1.5 left-2 w-2 h-2 bg-intents-ux-feedbackHighContrastCritical-feedbackColor rounded-full", {
-                      "bg-intents-ux-feedbackHighContrastSuccess-feedbackColor": recentlySaved === file.path,
-                      "bg-intents-ux-feedbackHighContrastCritical-feedbackColor animate-pulse": saving === file.path,
-                      "bg-intents-ux-feedbackHighContrastCritical-feedbackColor": file.isDirty,
+          {openFiles.length > 0 && (
+            <>
+              {openFiles.map((file) => (
+                <div
+                  key={file.path}
+                  className={clsx(
+                    "relative flex items-center gap-1 pl-2 pr-1 py-1 border-b-4 border-r cursor-pointer text-sm whitespace-nowrap transition-opacity duration-200 flex-shrink-0", {
+                      "opacity-50 border-b-transparent": activeFile !== file.path
                     }
-                  )} />
-                )}
-
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleCloseFile(file.path)
-                  }}
-                  className="!p-1"
-                  title="Close file"
-                  design="control"
+                  )}
+                  onClick={() => setActiveFile(file.path)}
                 >
-                  <XIcon className="w-3 h-3" />
-                </Button>
-              </div>
-            ))}
+                  <PageIcon className="w-4 h-4" />
+                  <span className={clsx(isMobile ? "max-w-[80px] truncate" : "")}>{file.name}</span>
 
-            {/* Save all button */}
-            {openFiles.some(f => f.isDirty) && (
-              <Button
-                onClick={() => {
-                  openFiles.forEach(file => {
-                    if (file.isDirty) handleSaveFile(file.path)
-                  })
-                }}
-                icon={<DownloadIcon className="!w-4 !h-4" />}
-                text="Save All"
-                design="control"
-              />
-            )}
-          </div>
-        )}
+                  {/* Save status indicators */}
+                  {(saving === file.path || recentlySaved === file.path || file.isDirty) && (
+                    <div className={clsx(
+                      "absolute top-1.5 left-2 w-2 h-2 bg-intents-ux-feedbackHighContrastCritical-feedbackColor rounded-full", {
+                        "bg-intents-ux-feedbackHighContrastSuccess-feedbackColor": recentlySaved === file.path,
+                        "bg-intents-ux-feedbackHighContrastCritical-feedbackColor animate-pulse": saving === file.path,
+                        "bg-intents-ux-feedbackHighContrastCritical-feedbackColor": file.isDirty,
+                      }
+                    )} />
+                  )}
+
+                  <Button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleCloseFile(file.path)
+                    }}
+                    className="!p-1"
+                    title="Close file"
+                    design="control"
+                    icon={<XIcon className="!size-3" />}
+                  />
+                </div>
+              ))}
+
+              {/* Save all button - hide on mobile if space is tight */}
+              {openFiles.some(f => f.isDirty) && !isMobile && (
+                <Button
+                  onClick={() => {
+                    openFiles.forEach(file => {
+                      if (file.isDirty) handleSaveFile(file.path)
+                    })
+                  }}
+                  icon={<DownloadIcon className="!w-4 !h-4" />}
+                  text="Save All"
+                  design="control"
+                />
+              )}
+            </>
+          )}
+        </div>
 
         {/* Editor */}
         <div className="flex-1">

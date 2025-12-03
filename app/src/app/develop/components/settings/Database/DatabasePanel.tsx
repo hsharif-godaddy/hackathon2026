@@ -42,7 +42,6 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
     setSelectedTable(null);
   };
 
-
   // Show table browser when a table is selected
   if (selectedTable) {
     return (

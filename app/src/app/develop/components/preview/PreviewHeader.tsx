@@ -88,16 +88,18 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         label="Code Editor"
         showLabelWhenActive={false}
       />
-      <IconButton
-        icon={<EditIcon />}
-        disabled={viewMode === ViewMode.CODE}
-        onClick={toggleSelectMode}
-        data-eid={ generateClickEID('develop.preview.select_mode') }
-        active={isSelectMode}
-        label="Select Mode"
-        showLabelWhenActive={false}
-        id="tour-select-mode-button"
-      />
+      {!isMobile && (
+        <IconButton
+          icon={<EditIcon />}
+          disabled={viewMode === ViewMode.CODE}
+          onClick={toggleSelectMode}
+          data-eid={ generateClickEID('develop.preview.select_mode') }
+          active={isSelectMode}
+          label="Select Mode"
+          showLabelWhenActive={false}
+          id="tour-select-mode-button"
+        />
+      )}
 
       { (previewViewMode === PreviewViewMode.DESKTOP || viewMode === ViewMode.CODE) && !isMobile && <DomainButton /> }
       { ((previewViewMode === PreviewViewMode.MOBILE && viewMode === ViewMode.PREVIEW) || isMobile) && <div className="flex-1" /> }
@@ -111,7 +113,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         showLabelWhenActive={false}
       />
 
-      { !isMobile && (
+      {!isMobile && (
         <>
           <IconButton
             icon={<DesktopIcon />}

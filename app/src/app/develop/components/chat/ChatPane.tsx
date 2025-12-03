@@ -2,7 +2,6 @@
 
 import { useRef, useMemo, useEffect, useCallback, useState } from 'react'
 import { motion } from 'framer-motion'
-import Apps from '@/app/develop/components/Apps'
 import PlanTracker from '@/app/develop/components/PlanTracker'
 import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
@@ -13,7 +12,6 @@ import VersionHistory from '@/app/develop/components/VersionHistory'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import SettingsPane from '@/app/develop/components/settings/SettingsPane'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
-import SettingsMenu from '@/app/develop/components/settings/SettingsMenu'
 import {
   useInputValue,
   useIsLoading,
@@ -64,9 +62,17 @@ export default function ChatPane({
   const expandedPlan = useDevelopPageStore((state) => state.expandedPlan)
   const activeChatTab = useDevelopPageStore((state) => state.activeChatTab)
   const toggleExpandedPlan = useDevelopPageStore((state) => state.toggleExpandedPlan)
+  const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
 
   const appId = useAppIdFromParams()
+
+  // On desktop, if Preview tab is selected, fall back to Chat
+  useEffect(() => {
+    if (!isMobile && activeChatTab === ChatTab.PREVIEW) {
+      setActiveChatTab(ChatTab.CHAT)
+    }
+  }, [isMobile, activeChatTab, setActiveChatTab])
 
   // State for selected asset from AssetManager
   const [selectedAsset, setSelectedAsset] = useState<AssetManagerItem | null>(null)
@@ -412,17 +418,6 @@ export default function ChatPane({
       />
 
       {activeChatTab === ChatTab.CHAT && <PersistentTodoList />}
-
-      {activeChatTab === ChatTab.APPS && (
-        <Apps />
-      )}
-
-      {activeChatTab === ChatTab.PREVIEW && (
-        <PreviewPane
-          onPreviewRefresh={onPreviewRefresh}
-          isMobile
-        />
-      )}
 
       {activeChatTab === ChatTab.CHAT && (
         <>
