@@ -5,6 +5,19 @@
  * - Visual testing
  * - Accessibility testing
  * - Security testing
+ *
+ * TODO: Implement commit SHA-based caching for results
+ *
+ * Security scan results should be saved per commit SHA to avoid unnecessary re-runs.
+ * This will improve performance and reduce redundant scanning of unchanged code.
+ *
+ * Implementation considerations:
+ * 1. Add commit SHA detection using history
+ * 2. Cache scan results in a file using DevSupervisor with commit SHA as key
+ * 3. Check cache before running new scans
+ * 4. Invalidate cache when new commits are detected
+ *
+ * Thread: https://godaddy.slack.com/archives/C09AR7XDLDT/p1763670524558059
  */
 
 import { testPilotTokenService } from './token-service';

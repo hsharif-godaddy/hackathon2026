@@ -3,6 +3,20 @@
  *
  * Provides endpoint for running security scans on app containers.
  * Executes npm audit and ESLint security checks via dev-supervisor.
+ * 
+ * TODO: Update security scans route to return JSON format similar to TestPilot vulnerabilities
+ * 
+ * The current route returns a mixed format with message strings and structured data.
+ * It should be updated to return a JSON format similar to the TestPilot vulnerability results
+ * for consistency with the SecurityResults component expectations.
+ * 
+ * Current format: { success, message, auditSummary, eslintSummary, vulnerabilities, rawData }
+ * Target format: Should match TestPilot's SecurityTestResult interface structure
+ * 
+ * Reference:
+ * - app/src/app/develop/components/settings/components/security/SecurityResults.tsx (lines 17-62)
+ * - Current vulnerabilities array format (lines 219-228) is close but needs refinement
+ * 
  */
 
 import { Router, Request, Response, IRouter } from 'express';

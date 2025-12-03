@@ -1,3 +1,21 @@
+/**
+ * TODO: Integrate code scans into Security Scan Results page
+ *
+ * The Security Scan Results page could also run the code scans and include the results
+ * alongside the current TestPilot security scan results. This would provide a comprehensive
+ * security overview in a single interface.
+ *
+ * Implementation steps:
+ * 1. Add code scan integration to SecurityPanel.tsx to call both TestPilot and agents service
+ * 2. Update SecurityResults to handle both TestPilot and code scan result formats
+ * 3. Merge vulnerability data from both sources into unified display
+ * 4. Ensure proper error handling for both scan types
+ *
+ * Reference:
+ * - app/src/app/api/testpilot/route.ts (lines 59-79 for code scan integration)
+ * - agents/src/server/routes/security-scan.ts (current code scan implementation)
+ */
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Button from "@ux/button";
