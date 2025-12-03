@@ -42,18 +42,38 @@ export class FileEditInputCompressionStrategy implements CompressionStrategy {
 
       try {
         const args = JSON.parse(tc.function.arguments);
-        const mode = args.mode;
-        const filePath: string | undefined = args.path || args.file_path || args.filePath;
 
-        if (!filePath || !args.content) {
-          return false;
+        // Handle batch operations (new schema)
+        if (args.operations && Array.isArray(args.operations)) {
+          return args.operations.some((op: any) => {
+            const mode = op.mode;
+            const filePath: string | undefined = op.path || op.file_path || op.filePath;
+
+            if (!filePath || !op.content) {
+              return false;
+            }
+
+            if (mode !== 'create' && mode !== 'rewrite') {
+              return false;
+            }
+
+            return this.hotFileStrategy!.isHotFile(filePath);
+          });
+        } else {
+          // Handle single operation (legacy schema)
+          const mode = args.mode;
+          const filePath: string | undefined = args.path || args.file_path || args.filePath;
+
+          if (!filePath || !args.content) {
+            return false;
+          }
+
+          if (mode !== 'create' && mode !== 'rewrite') {
+            return false;
+          }
+
+          return this.hotFileStrategy!.isHotFile(filePath);
         }
-
-        if (mode !== 'create' && mode !== 'rewrite') {
-          return false;
-        }
-
-        return this.hotFileStrategy!.isHotFile(filePath);
       } catch {
         return false;
       }
@@ -77,36 +97,82 @@ export class FileEditInputCompressionStrategy implements CompressionStrategy {
 
       try {
         const args = JSON.parse(tc.function.arguments);
-        const mode = args.mode;
-        const filePath: string | undefined = args.path || args.file_path || args.filePath;
 
-        if (!filePath || !args.content) {
+        // Handle batch operations (new schema)
+        if (args.operations && Array.isArray(args.operations)) {
+          let hasSavings = false;
+          const compressedOps = args.operations.map((op: any) => {
+            const mode = op.mode;
+            const filePath: string | undefined = op.path || op.file_path || op.filePath;
+
+            if (!filePath || !op.content) {
+              return op;
+            }
+
+            if (mode !== 'create' && mode !== 'rewrite') {
+              return op;
+            }
+
+            if (!this.hotFileStrategy!.isHotFile(filePath)) {
+              return op;
+            }
+
+            const originalContentLength = op.content.length;
+            const compressedOp = { ...op };
+            delete compressedOp.content;
+            compressedOp._compressed = true;
+            compressedOp._original_content_length = originalContentLength;
+
+            totalSavings += originalContentLength;
+            hasSavings = true;
+
+            return compressedOp;
+          });
+
+          if (hasSavings) {
+            return {
+              ...tc,
+              function: {
+                ...tc.function,
+                arguments: JSON.stringify({ ...args, operations: compressedOps }),
+              },
+            };
+          }
+
           return tc;
+        } else {
+          // Handle single operation (legacy schema)
+          const mode = args.mode;
+          const filePath: string | undefined = args.path || args.file_path || args.filePath;
+
+          if (!filePath || !args.content) {
+            return tc;
+          }
+
+          if (mode !== 'create' && mode !== 'rewrite') {
+            return tc;
+          }
+
+          if (!this.hotFileStrategy!.isHotFile(filePath)) {
+            return tc;
+          }
+
+          const originalContentLength = args.content.length;
+          const compressedArgs = { ...args };
+          delete compressedArgs.content;
+          compressedArgs._compressed = true;
+          compressedArgs._original_content_length = originalContentLength;
+
+          totalSavings += originalContentLength;
+
+          return {
+            ...tc,
+            function: {
+              ...tc.function,
+              arguments: JSON.stringify(compressedArgs),
+            },
+          };
         }
-
-        if (mode !== 'create' && mode !== 'rewrite') {
-          return tc;
-        }
-
-        if (!this.hotFileStrategy!.isHotFile(filePath)) {
-          return tc;
-        }
-
-        const originalContentLength = args.content.length;
-        const compressedArgs = { ...args };
-        delete compressedArgs.content;
-        compressedArgs._compressed = true;
-        compressedArgs._original_content_length = originalContentLength;
-
-        totalSavings += originalContentLength;
-
-        return {
-          ...tc,
-          function: {
-            ...tc.function,
-            arguments: JSON.stringify(compressedArgs),
-          },
-        };
       } catch {
         return tc;
       }

@@ -19,6 +19,31 @@
 
 ### Internal Changes
 
+- **BREAKING (AI Tool Only): File Edit Tool - Multi-File Operations**: Enhanced fileEdit tool to support multiple file operations in a single tool call
+  - Added batch operation mode with `operations` array (minimum 1 operation required)
+  - Implements fail-fast execution: stops on first error, returns partial results with error details
+  - Batches git commits for all successful operations into single commit with auto-generated or custom message
+  - Proper git staging for deletions using `git add` command (works for deletions in modern git)
+  - Added `delete` mode to enum (must be explicitly specified, never auto-detected for safety)
+  - Comprehensive structured logging with batch and operation-level events (`tool.file.edit.batch.*`, `tool.file.edit.operation.*`)
+  - Breaking change for AI agents: Input schema changed from single operation to `operations` array
+  - No changes for internal callers (memory-service, REST endpoints) - backward compatible via dual interface strategy
+  - Helper methods `formatResult()` and `summarizeOperation()` support both single and batch result formats
+  - Added `FileBatchEditOptions` and `FileBatchEditResult` interfaces alongside existing single-operation interfaces
+  - Added `editFiles()` method alongside existing `editFile()` method (no breaking changes to existing method)
+  - Comprehensive test suite with 15 tests covering success scenarios, fail-fast behavior, edge cases, and git integration
+  - Updated `FileEditToolRenderer` (UI) to display batch operations with per-operation status, counts by type, commit hash, and expandable diffs
+  - Added tests for batch operation result parsing with 12 passing tests total
+  - Fixed `formatResult()` to include `diff` and `warning` data for each operation (preserves full visibility for UI and LLM)
+  - Updated compression strategies to handle `operations[]` array:
+    - `FileEditCompressionStrategy`: Compresses hot file operations in batch results
+    - `FileEditInputCompressionStrategy`: Strips `content` from hot file operations in batch inputs
+    - `HotFileInclusionStrategy`: Tracks file writes across all operations in batch calls
+  - All strategies maintain backward compatibility with single-operation schema
+  - Updated logging and rendering to surface batch operation details:
+    - `develop-agent.ts`: Logs all file paths and operation modes for batch operations
+    - `ToolCallRenderer`: Displays "Files: 2 created, 3 edited" instead of falling back to "unknown"
+
 - **Standardized Tool Response System**: Implemented shared response envelope pattern following Anthropic's tool design guidance
   - Created `tool-response.ts` with standardized `ToolResponse<T>` interface and helper functions (`ok`, `fail`, `needAuth`)
   - Consistent error structure across all tools with `code`, `message`, `hint`, and `retryable` fields

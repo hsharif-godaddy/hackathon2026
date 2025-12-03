@@ -474,6 +474,36 @@ export const toolFileEditEvents = {
   failure: (logger: ILogger, error: Error, data: { toolName: string; filePath: string; mode: 'create' | 'edit' | 'rewrite' | 'delete'; appId?: string }) => {
     log.error(logger, AppEvents.tool.fileEdit.failure, error, data);
   },
+
+  batchBegin: (logger: ILogger, data: import('./app.js').FileBatchEditEventData) => {
+    logger.info(AppEvents.tool.fileEdit.batch.begin, {
+      ...data,
+      operation: 'batch' as const,
+    });
+  },
+
+  batchSuccess: (logger: ILogger, data: import('./app.js').FileBatchEditEventData) => {
+    logger.info(AppEvents.tool.fileEdit.batch.success, data);
+  },
+
+  batchFailure: (logger: ILogger, error: Error, data: import('./app.js').FileBatchEditEventData) => {
+    log.error(logger, AppEvents.tool.fileEdit.batch.failure, error, data);
+  },
+
+  operationBegin: (logger: ILogger, data: import('./app.js').FileOperationEventData) => {
+    logger.info(AppEvents.tool.fileEdit.operation.begin, {
+      ...data,
+      operation: 'file' as const,
+    });
+  },
+
+  operationSuccess: (logger: ILogger, data: import('./app.js').FileOperationEventData) => {
+    logger.info(AppEvents.tool.fileEdit.operation.success, data);
+  },
+
+  operationFailure: (logger: ILogger, error: Error, data: import('./app.js').FileOperationEventData) => {
+    log.error(logger, AppEvents.tool.fileEdit.operation.failure, error, data);
+  },
 };
 
 /**

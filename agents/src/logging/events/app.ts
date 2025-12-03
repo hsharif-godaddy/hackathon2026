@@ -632,6 +632,21 @@ export interface ConversationTokenLimitData {
   messageDistribution: Record<string, number>;
 }
 
+export interface FileBatchEditEventData {
+  toolName: string;
+  operationCount: number;
+  completedOperations?: number;
+  appId?: string;
+}
+
+export interface FileOperationEventData {
+  toolName: string;
+  operationIndex: number;
+  filePath: string;
+  mode: string;
+  appId?: string;
+}
+
 // Event type mappings for consistent naming
 export const AppEvents = {
   // Repository lifecycle: app.repository.init.{begin|success|failure}
@@ -825,6 +840,16 @@ export const AppEvents = {
       begin: 'tool.file.edit.begin' as const,
       success: 'tool.file.edit.success' as const,
       failure: 'tool.file.edit.failure' as const,
+      batch: {
+        begin: 'tool.file.edit.batch.begin' as const,
+        success: 'tool.file.edit.batch.success' as const,
+        failure: 'tool.file.edit.batch.failure' as const,
+      },
+      operation: {
+        begin: 'tool.file.edit.operation.begin' as const,
+        success: 'tool.file.edit.operation.success' as const,
+        failure: 'tool.file.edit.operation.failure' as const,
+      },
     },
     build: {
       begin: 'tool.build.begin' as const,

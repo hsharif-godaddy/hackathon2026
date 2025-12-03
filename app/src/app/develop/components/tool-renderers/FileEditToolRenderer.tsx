@@ -7,7 +7,9 @@ import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import { completePartialJson } from './json-completion-utils'
-import { FilePen } from 'lucide-react'
+import EditIcon from '@ux/icon/edit'
+import text from '@ux/text'
+import Tag from '@ux/tag'
 
 /**
  * Extract filename from path
@@ -128,6 +130,11 @@ export default function FileEditToolRenderer({
   let warning = ''
   let isMarkdownFormat = false
   let markdownContent = ''
+  let isBatchResult = false
+  let batchOperations: any[] = []
+  let totalOperations = 0
+  let completedOperations = 0
+  let commitHash = ''
 
   // For streaming: estimate line counts from partial input if tool is running
   let streamingChanges: { additions: number; deletions: number } | null = null
@@ -182,13 +189,32 @@ export default function FileEditToolRenderer({
       }
 
       if (parsedResult) {
-        filePath = parsedResult.path || ''
-        filename = getFilename(filePath)
-        mode = parsedResult.mode || 'edit'
-        changes = parsedResult.changes || null
-        diff = parsedResult.diff || ''
-        error = parsedResult.error || ''
-        warning = parsedResult.warning || ''
+        // Check if this is a batch result (has operations array)
+        if (parsedResult.operations && Array.isArray(parsedResult.operations)) {
+          isBatchResult = true
+          batchOperations = parsedResult.operations
+          totalOperations = parsedResult.totalOperations ?? batchOperations.length
+          completedOperations = parsedResult.completedOperations || 0
+          commitHash = parsedResult.commitHash || ''
+          error = parsedResult.error || ''
+
+          // For display, use first operation's details
+          if (batchOperations.length > 0) {
+            const firstOp = batchOperations[0]
+            filePath = firstOp.path || ''
+            filename = getFilename(filePath)
+            mode = firstOp.mode || 'edit'
+          }
+        } else {
+          // Single operation result
+          filePath = parsedResult.path || ''
+          filename = getFilename(filePath)
+          mode = parsedResult.mode || 'edit'
+          changes = parsedResult.changes || null
+          diff = parsedResult.diff || ''
+          error = parsedResult.error || ''
+          warning = parsedResult.warning || ''
+        }
       }
     } catch (e) {
       console.error('Failed to parse fileEdit result:', e)
@@ -214,46 +240,84 @@ export default function FileEditToolRenderer({
 
   const verb = getModeVerb(mode)
 
-  // Build compact display message - format: "Edit: filename +5 -5"
-  let displayMessage = `${verb}: ${filename}`
+  // Build compact display message
+  let displayMessage = ''
 
-  // Use streaming changes if available (tool is running), otherwise use final changes
-  const displayChanges = streamingChanges || changes
-  if (displayChanges) {
-    if (mode === 'create') {
-      // For create mode, show only additions (new file)
-      displayMessage += ` +${displayChanges.additions}`
+  if (isBatchResult) {
+    // Batch operation: show summary
+    if (error) {
+      // Partial failure: show completed/total
+      displayMessage = `Files: ${completedOperations}/${totalOperations} completed`
     } else {
-      // For edit/rewrite modes, show additions and deletions
-      displayMessage += ` +${displayChanges.additions} -${displayChanges.deletions}`
+      // Full success: show operation counts by type
+      const created = batchOperations.filter(op => op.success && op.mode === 'create').length
+      const edited = batchOperations.filter(op => op.success && op.mode === 'edit').length
+      const rewritten = batchOperations.filter(op => op.success && op.mode === 'rewrite').length
+      const deleted = batchOperations.filter(op => op.success && op.mode === 'delete').length
+
+      const parts: string[] = []
+      if (created > 0) parts.push(`${created} created`)
+      if (edited > 0) parts.push(`${edited} edited`)
+      if (rewritten > 0) parts.push(`${rewritten} rewritten`)
+      if (deleted > 0) parts.push(`${deleted} deleted`)
+
+      displayMessage = `Files: ${parts.join(', ')}`
+    }
+  } else {
+    // Single operation: format: "Edit: filename +5 -5"
+    displayMessage = `${verb}: ${filename}`
+
+    // Use streaming changes if available (tool is running), otherwise use final changes
+    const displayChanges = streamingChanges || changes
+    if (displayChanges) {
+      if (mode === 'create') {
+        // For create mode, show only additions (new file)
+        displayMessage += ` +${displayChanges.additions}`
+      } else {
+        // For edit/rewrite modes, show additions and deletions
+        displayMessage += ` +${displayChanges.additions} -${displayChanges.deletions}`
+      }
     }
   }
 
-  // Has details if we have parsed result data (diff, metadata, etc.) OR markdown content
+  // Has details if we have parsed result data (diff, metadata, etc.) OR markdown content OR batch operations
   const hasDetails = Boolean(
-    (parsedResult && (diff || changes || error || warning || filePath)) ||
+    (parsedResult && (diff || changes || error || warning || filePath || isBatchResult)) ||
     isMarkdownFormat
   )
 
   // Build metadata for modal
   const metadata: Record<string, any> = {}
-  if (filePath) {
-    metadata['Full Path'] = filePath
+
+  if (isBatchResult) {
+    // Multi-file operation metadata
+    metadata['Total Files'] = totalOperations
+    metadata['Completed Files'] = completedOperations
+    if (commitHash) {
+      metadata['Commit Hash'] = commitHash
+    }
+  } else {
+    // Single operation metadata
+    if (filePath) {
+      metadata['Full Path'] = filePath
+    }
+    if (mode) {
+      metadata['Mode'] = mode
+    }
+    if (changes) {
+      metadata['Lines Added'] = changes.additions
+      metadata['Lines Deleted'] = changes.deletions
+      metadata['Total Lines'] = changes.totalLines
+    }
   }
-  if (mode) {
-    metadata['Mode'] = mode
-  }
-  if (changes) {
-    metadata['Lines Added'] = changes.additions
-    metadata['Lines Deleted'] = changes.deletions
-    metadata['Total Lines'] = changes.totalLines
-  }
+
+  const modalTitle = isBatchResult ? 'File Operations' : `${verb} ${filename}`
 
   const modalContent = (
     <ToolModal
       isOpen={isModalOpen}
       onClose={() => setIsModalOpen(false)}
-      title={`${verb} ${filename}`}
+      title={modalTitle}
       mounted={mounted}
     >
       {/* Markdown format (backwards compatibility) */}
@@ -265,7 +329,7 @@ export default function FileEditToolRenderer({
 
       {/* JSON format (new) */}
       {!isMarkdownFormat && (
-        <>
+        <div className="flex-1 overflow-y-auto">
           {/* Metadata */}
           {Object.keys(metadata).length > 0 && (
             <div className="mb-4">
@@ -273,34 +337,116 @@ export default function FileEditToolRenderer({
             </div>
           )}
 
+          {/* Batch operations list */}
+          {isBatchResult && batchOperations.length > 0 && (
+            <div className="mb-4">
+              <text.p className="mb-2" size={0}>
+                Operations
+              </text.p>
+              <div className="space-y-2">
+                {batchOperations.map((op, index) => (
+                  <div
+                    key={index}
+                    className={`p-3 border rounded-md ${
+                      op.success
+                        ? 'border-border bg-muted/50'
+                        : 'border-intents-ux-feedbackCritical-feedbackColor/30 bg-intents-ux-feedbackCritical-feedbackColor/10'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Tag
+                            emphasis={op.success ? 'success' : 'critical'}
+                            size="sm"
+                            className="flex-shrink-0"
+                          >
+                            {op.success ? 'Success' : 'Failed'}
+                          </Tag>
+                          <text.span className="truncate" size={0}>{op.path}</text.span>
+                        </div>
+                        <div className="mt-1">
+                          <text.span size={-1} emphasis="passive">
+                            Mode: {op.mode}
+                            {op.changes && (
+                              <span className="ml-2">
+                                +{op.changes.additions} -{op.changes.deletions}
+                              </span>
+                            )}
+                          </text.span>
+                        </div>
+                        {op.error && (
+                          <div className="mt-2">
+                            <Tag emphasis="critical" size="sm" className="mb-1">
+                              Error
+                            </Tag>
+                            <text.span size={-1}>{op.error}</text.span>
+                          </div>
+                        )}
+                        {op.warning && (
+                          <div className="mt-2">
+                            <Tag emphasis="warning" size="sm" className="mb-1">
+                              Warning
+                            </Tag>
+                            <text.span size={-1}>{op.warning}</text.span>
+                          </div>
+                        )}
+                        {op.diff && (
+                          <details className="mt-2">
+                            <summary className="cursor-pointer">
+                              <text.span size={-1} emphasis="passive" className="hover:text-foreground">
+                                View diff
+                              </text.span>
+                            </summary>
+                            <div className="mt-2 border border-border rounded-md p-2 bg-muted">
+                              <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                                {op.diff}
+                              </pre>
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Error */}
           {error && (
-            <div className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-md">
-              <div className="text-sm font-bold text-destructive mb-1">Error</div>
-              <div className="text-sm text-destructive-foreground whitespace-pre-wrap">{error}</div>
+            <div className="mb-4 p-3 bg-intents-ux-feedbackCritical-feedbackColor/10 border border-intents-ux-feedbackCritical-feedbackColor/30 rounded-md">
+              <Tag emphasis="critical" size="sm" className="mb-2">
+                Error
+              </Tag>
+              <text.p size={0} className="whitespace-pre-wrap">{error}</text.p>
             </div>
           )}
 
           {/* Warning */}
           {warning && (
             <div className="mb-4 p-3 border rounded-md">
-              <div className="text-sm font-bold mb-1">Warning</div>
-              <div className="text-sm whitespace-pre-wrap">{warning}</div>
+              <Tag emphasis="warning" size="sm" className="mb-2">
+                Warning
+              </Tag>
+              <text.p size={0} className="whitespace-pre-wrap">{warning}</text.p>
             </div>
           )}
 
           {/* Diff */}
           {diff && (
-            <div className="flex-1 overflow-y-auto">
-              <div className="text-sm font-bold mb-2">Diff</div>
-              <div className="border border-border rounded-md p-4 bg-muted">
+            <div className="mb-4">
+              <text.p size={0} className="mb-2">
+                Diff
+              </text.p>
+              <div className="border border-border rounded-md p-4 bg-muted max-h-96 overflow-y-auto">
                 <pre className="text-xs font-mono whitespace-pre-wrap break-words">
                   {diff}
                 </pre>
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </ToolModal>
   )
@@ -308,7 +454,7 @@ export default function FileEditToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<FilePen className="w-4 h-4" />}
+        icon={<EditIcon width={16} height={16} />}
         displayName={displayMessage}
         toolStatus={toolStatus}
         hasDetails={hasDetails}

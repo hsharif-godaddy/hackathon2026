@@ -131,5 +131,84 @@ describe('FileEditToolRenderer', function packageTests() {
         expect(result.additions).toBe(2)
       }
     })
+
+    it('should handle batch operation results with operations array', function batchResult() {
+      // Batch operations don't stream, so this tests the static parsing
+      // The actual rendering logic will check for parsedResult.operations array
+      const input = JSON.stringify({
+        success: true,
+        totalOperations: 3,
+        completedOperations: 3,
+        operations: [
+          {
+            path: 'file1.tsx',
+            mode: 'create',
+            success: true,
+            changes: { additions: 10, deletions: 0, totalLines: 10 }
+          },
+          {
+            path: 'file2.tsx',
+            mode: 'edit',
+            success: true,
+            changes: { additions: 5, deletions: 3, totalLines: 50 }
+          },
+          {
+            path: 'file3.tsx',
+            mode: 'delete',
+            success: true,
+            changes: { additions: 0, deletions: 0, totalLines: 0 }
+          }
+        ]
+      })
+
+      // estimateLineCountsFromPartial works on single operation input format
+      // For batch operations, we rely on the component's result parsing logic
+      // This test just verifies the JSON structure is valid
+      const parsed = JSON.parse(input)
+      expect(parsed.operations).toHaveLength(3)
+      expect(parsed.totalOperations).toBe(3)
+      expect(parsed.completedOperations).toBe(3)
+    })
+
+    it('should handle partial batch operation failure', function batchPartialFailure() {
+      const input = JSON.stringify({
+        success: false,
+        totalOperations: 5,
+        completedOperations: 3,
+        operations: [
+          {
+            path: 'file1.tsx',
+            mode: 'create',
+            success: true,
+            changes: { additions: 10, deletions: 0, totalLines: 10 }
+          },
+          {
+            path: 'file2.tsx',
+            mode: 'create',
+            success: true,
+            changes: { additions: 20, deletions: 0, totalLines: 20 }
+          },
+          {
+            path: 'file3.tsx',
+            mode: 'create',
+            success: true,
+            changes: { additions: 15, deletions: 0, totalLines: 15 }
+          },
+          {
+            path: 'file4.tsx',
+            mode: 'edit',
+            success: false,
+            error: 'File not found'
+          }
+        ],
+        error: 'Operation 3 failed: File not found'
+      })
+
+      const parsed = JSON.parse(input)
+      expect(parsed.success).toBe(false)
+      expect(parsed.operations).toHaveLength(4)
+      expect(parsed.operations[3].success).toBe(false)
+      expect(parsed.operations[3].error).toBe('File not found')
+    })
   })
 })

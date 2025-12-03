@@ -70,20 +70,50 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
         for (const toolCall of message.tool_calls) {
           try {
             const args = JSON.parse(toolCall.function.arguments);
-            const filePath = args.path || args.file_path || args.filePath;
-
-            if (!filePath) continue;
-
-            if (!fileAccess.has(filePath)) {
-              fileAccess.set(filePath, { reads: [], writes: [] });
-            }
 
             if (toolCall.function.name === 'readFile') {
+              const filePath = args.path || args.file_path || args.filePath;
+              if (!filePath) continue;
+
+              if (!fileAccess.has(filePath)) {
+                fileAccess.set(filePath, { reads: [], writes: [] });
+              }
               fileAccess.get(filePath)!.reads.push(i);
             } else if (toolCall.function.name === 'fileEdit') {
-              const mode = args.mode;
-              if (mode === 'rewrite' || mode === 'create' || !mode) {
-                fileAccess.get(filePath)!.writes.push(i);
+              // Handle batch operations (new schema)
+              if (args.operations && Array.isArray(args.operations)) {
+                // Track files already recorded for this message to prevent duplicates
+                const recordedFiles = new Set<string>();
+
+                for (const op of args.operations) {
+                  const filePath = op.path || op.file_path || op.filePath;
+                  if (!filePath) continue;
+
+                  const mode = op.mode;
+                  if (mode === 'rewrite' || mode === 'create' || !mode) {
+                    if (!fileAccess.has(filePath)) {
+                      fileAccess.set(filePath, { reads: [], writes: [] });
+                    }
+
+                    // Only record this message index once per file
+                    if (!recordedFiles.has(filePath)) {
+                      fileAccess.get(filePath)!.writes.push(i);
+                      recordedFiles.add(filePath);
+                    }
+                  }
+                }
+              } else {
+                // Handle single operation (legacy schema)
+                const filePath = args.path || args.file_path || args.filePath;
+                if (!filePath) continue;
+
+                const mode = args.mode;
+                if (mode === 'rewrite' || mode === 'create' || !mode) {
+                  if (!fileAccess.has(filePath)) {
+                    fileAccess.set(filePath, { reads: [], writes: [] });
+                  }
+                  fileAccess.get(filePath)!.writes.push(i);
+                }
               }
             }
           } catch {
@@ -98,7 +128,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
       const writeCount = access.writes.length;
       const allAccessIndices = [...access.reads, ...access.writes].filter((idx) => idx >= 0);
       if (allAccessIndices.length === 0) continue;
-      
+
       const firstReadIndex: number = access.reads.length > 0 ? access.reads[0]! : allAccessIndices[0]!;
       const lastAccessIndex = Math.max(...allAccessIndices);
       const lastAccessTime: number = now - (messages.length - lastAccessIndex) * 60000;
@@ -156,18 +186,18 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
     }
 
     const safePathBuilder = createSafePathBuilder(this.appPath);
-    
+
     const recentFiles = this.hotFiles
       .filter(f => f.lastAccessTime >= Date.now() - this.config.recencyWindowMs)
       .sort((a, b) => b.lastAccessTime - a.lastAccessTime);
-    
+
     const scoredFiles = this.hotFiles
       .filter(f => !recentFiles.includes(f))
       .sort((a, b) => b.score - a.score);
-    
+
     let recentTokens = 0;
     let scoredTokens = 0;
-    
+
     const recentFilesLoaded: string[] = [];
     for (const fileMetrics of recentFiles) {
       if (recentTokens >= this.config.recentFilesTokenBudget) {
@@ -191,7 +221,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
         });
       }
     }
-    
+
     const scoredBudget = this.config.maxTokens - this.config.recentFilesTokenBudget;
     const scoredFilesLoaded: string[] = [];
     for (const fileMetrics of scoredFiles) {

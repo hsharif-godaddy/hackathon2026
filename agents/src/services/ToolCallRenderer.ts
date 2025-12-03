@@ -100,6 +100,34 @@ export class ToolCallRenderer {
 
     const args = toolCall.tool_args as Record<string, unknown>;
     const result = toolCall.tool_result as Record<string, unknown>;
+
+    // Handle batch operations (new schema)
+    const operations = (result?.operations as any[]) || (args?.operations as any[]);
+    if (operations && Array.isArray(operations) && operations.length > 0) {
+      const totalOperations = (result?.totalOperations as number) || operations.length;
+      const completedOperations = (result?.completedOperations as number) || 0;
+
+      if (!result || !(result.success as boolean)) {
+        const error = (result?.error as string) || 'Unknown error';
+        return `Batch file operation failed after ${completedOperations}/${totalOperations} operations: ${error}`;
+      }
+
+      // Count operations by mode
+      const created = operations.filter((op: any) => op.success && op.mode === 'create').length;
+      const edited = operations.filter((op: any) => op.success && op.mode === 'edit').length;
+      const rewritten = operations.filter((op: any) => op.success && op.mode === 'rewrite').length;
+      const deleted = operations.filter((op: any) => op.success && op.mode === 'delete').length;
+
+      const parts: string[] = [];
+      if (created > 0) parts.push(`${created} created`);
+      if (edited > 0) parts.push(`${edited} edited`);
+      if (rewritten > 0) parts.push(`${rewritten} rewritten`);
+      if (deleted > 0) parts.push(`${deleted} deleted`);
+
+      return `Files: ${parts.join(', ')}`;
+    }
+
+    // Handle single operation (legacy schema)
     const filePath = (args?.path as string) || 'unknown';
     const fileName = filePath.split('/').pop() || filePath;
     const mode = (args?.mode as string) || (result?.mode as string) || 'edit';
@@ -115,18 +143,18 @@ export class ToolCallRenderer {
         const createLines = changes?.totalLines || 0;
         return `Created ${fileName} (${createLines} lines)`;
       }
-        
+
       case 'rewrite': {
         const rewriteLines = changes?.totalLines || 0;
         return `Rewrote ${fileName} (${rewriteLines} lines)`;
       }
-        
+
       case 'edit': {
         const additions = changes?.additions || 0;
         const deletions = changes?.deletions || 0;
         return `Modified ${fileName} (+${additions} -${deletions} lines)`;
       }
-        
+
       default:
         return `Updated ${fileName}`;
     }

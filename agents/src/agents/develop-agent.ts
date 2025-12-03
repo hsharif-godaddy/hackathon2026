@@ -156,10 +156,22 @@ const afterToolExecution: AfterToolExecutionHook = async (
 
   // Track specific development operations
   if (toolName === 'fileEdit' && resultObj?.success) {
-    contextLogger.info('develop_agent.tool.file_edit.success', {
-      filePath: resultObj.filePath || 'unknown',
-      operation: resultObj.operation || 'edit'
-    });
+    // Handle batch operations (new schema)
+    if (resultObj.operations && Array.isArray(resultObj.operations)) {
+      const paths = resultObj.operations.map((op: any) => op.path).filter(Boolean);
+      const modes = [...new Set(resultObj.operations.map((op: any) => op.mode).filter(Boolean))];
+      contextLogger.info('develop_agent.tool.file_edit.success', {
+        filePaths: paths,
+        operations: modes,
+        fileCount: resultObj.totalOperations || paths.length
+      });
+    } else {
+      // Handle single operation (legacy schema)
+      contextLogger.info('develop_agent.tool.file_edit.success', {
+        filePath: resultObj.filePath || resultObj.path || 'unknown',
+        operation: resultObj.operation || resultObj.mode || 'edit'
+      });
+    }
   }
 
   if (toolName === 'terminalCommand' && resultObj?.success) {
