@@ -40,12 +40,15 @@ interface MediaSearchResponse {
 export const mediaSearchAITool: Tool = createTool(
   'Search for professional stock images or videos based on text prompts. By DEFAULT, this searches for IMAGES unless you explicitly need a VIDEO. For images: supports single/multiple prompts and can return multiple results per prompt. For videos: only single prompt returning one video. Use images for most visual needs; use videos only when motion/video is specifically required.',
   z.object({
-    prompt: z.union([z.string(), z.array(z.string())]).describe('Text prompt(s) describing the media to search for. Can be a single string or array of strings (array only for images). Examples: "sunset over ocean", "business meeting", "happy family"'),
+    prompt: z.union([z.string(), z.array(z.string())]).describe('Text prompt(s) describing the media to search for. Can be a single string or array of strings (array only for images). Limit each prompt to 1-5 keywords for best results. Examples: "sunset over ocean", "business meeting", "happy family"'),
     mediaType: z.enum(['image', 'video']).default('image').describe('Type of media to search for. Defaults to "image". Only use "video" when video/motion content is explicitly requested or required.'),
-    count: z.number().min(1).max(50).optional().describe('Number of results to return per prompt (only applicable for images). Maximum is 50. Let context determine the appropriate number.')
+    count: z.number().min(1).max(50).optional().describe('Number of results to return per prompt (only applicable for images). Maximum is 50. Let context determine the appropriate number.'),
+    orientations: z.string().optional().describe('Filter by image orientation. Only the first value is used if multiple comma-separated values are provided. Valid values: "horizontal", "vertical", "square", "panoramic_horizontal", "panoramic_vertical".'),
+    compositions: z.string().optional().describe('Filter by image composition. Only the first value is used if multiple comma-separated values are provided. Valid values: "abstract", "candid", "close_up", "copy_space", "cut_out", "full_frame", "full_length", "headshot", "looking_at_camera", "macro", "medium_shot", "part_of_a_series", "portrait", "sparse", "still_life", "three_quarter_length", "waist_up", "wide_shot".'),
+    color: z.string().optional().describe('Filter by color. Can be a hex code (e.g. "#FF0000").')
   }),
   async (input, context) => {
-    const { prompt, mediaType = 'image', count } = input;
+    const { prompt, mediaType = 'image', count, orientations, compositions, color } = input;
     
     // Validate prompt
     if (Array.isArray(prompt)) {
@@ -62,7 +65,10 @@ export const mediaSearchAITool: Tool = createTool(
     const options: MediaSearchOptions = {
       prompt,
       mediaType,
-      ...(count !== undefined && { count })
+      ...(count !== undefined && { count }),
+      ...(orientations && { orientations }),
+      ...(compositions && { compositions }),
+      ...(color && { color })
     };
     
     const result = await findMedia(options);

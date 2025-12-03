@@ -96,14 +96,36 @@ bg-accent text-accent-foreground
 
 - Use the `mediaSearch` tool for finding both images and videos (defaults to images unless video is explicitly requested)
 - **For images** (default): Supports single prompts for one image, or arrays of prompts for parallel search. Each prompt can return multiple results using the `count` parameter
+  - **IMPORTANT: Always use filters to get better results!** Specify `orientations`, `compositions`, and/or `color` parameters whenever appropriate for the design context.
+  - **Optional filters**:
+    - `orientations`: single value from "horizontal", "vertical", "square", "panoramic_horizontal", "panoramic_vertical"
+    - `compositions`: single value from "abstract", "candid", "close_up", "copy_space", "cut_out", "full_frame", "full_length", "headshot", "looking_at_camera", "macro", "medium_shot", "part_of_a_series", "portrait", "sparse", "still_life", "three_quarter_length", "waist_up", "wide_shot"
+    - `color`: hex color code (e.g., "#FFD700" for gold)
+  - **Note**: Each filter accepts only ONE value. To get multiple results with different filters, make separate calls.
 - **For videos**: Set `mediaType` to "video". Only supports single prompts (no arrays), returns one high-quality video per search
 - Only use the `image_generate` tool if asked to generate or create an image specifically
 
 **Examples:**
 
 ```typescript
-await mediaSearch({ prompt: 'modern office workspace' });
-await mediaSearch({ prompt: 'sunset over ocean', count: 3 });
-await mediaSearch({ prompt: ['cats', 'dogs', 'birds'], count: 2 });
+// Basic search
+await mediaSearch({ prompt: 'modern office workspace', count: 3 });
+
+// With filters
+await mediaSearch({
+  prompt: 'professional portrait',
+  orientations: 'vertical',
+  compositions: 'headshot',
+  count: 2,
+});
+
+// With color matching
+await mediaSearch({
+  prompt: 'luxury background',
+  orientations: 'horizontal',
+  color: '#FFD700',
+});
+
+// Video search
 await mediaSearch({ prompt: 'ocean waves', mediaType: 'video' });
 ```

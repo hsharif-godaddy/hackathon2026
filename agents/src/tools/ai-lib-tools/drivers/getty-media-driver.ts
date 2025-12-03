@@ -23,6 +23,9 @@ export interface GettyMediaOptions {
   pageSize?: number;
   sortOrder?: string;
   graphicalStyles?: string;
+  orientations?: string;
+  compositions?: string;
+  color?: string;
 }
 
 /**
@@ -95,6 +98,26 @@ export class GettyMediaDriver {
   private appKey: string;
   private ssoJwt: string;
 
+  /**
+   * Convert filter values from PascalCase/mixed format to Getty API's expected lowercase snake_case
+   * 
+   * Note: Getty API only supports single values per filter parameter, not comma-separated lists.
+   * This function takes the first value if multiple are provided.
+   * 
+   * @param value - Filter value or comma-separated values (e.g., "Horizontal,Square" or "CopySpace,Candid")
+   * @returns Single lowercase snake_case value (e.g., "horizontal" or "copy_space")
+   */
+  private convertToGettyFormat(value: string): string {
+    // Getty API doesn't support multiple values - take only the first one
+    const firstValue = (value.split(',')[0] || '').trim();
+    
+    // Convert PascalCase to snake_case and lowercase
+    return firstValue
+      .replace(/([A-Z])/g, '_$1') // Add underscore before capitals
+      .toLowerCase()
+      .replace(/^_/, ''); // Remove leading underscore
+  }
+
   constructor() {
     // Extract base URL without any path components
     const baseUrl = process.env.GETTY_API_URL || 'https://getty-images-proxy.api.test-godaddy.com';
@@ -141,7 +164,7 @@ export class GettyMediaDriver {
    */
   async search(mediaType: MediaType, options: GettyMediaOptions): Promise<GettyMediaResult> {
     try {
-      const { phrase, page = 1, pageSize = 1, sortOrder = 'best_match', graphicalStyles } = options;
+      const { phrase, page = 1, pageSize = 1, sortOrder = 'best_match', graphicalStyles, orientations, compositions, color } = options;
 
       if (!phrase || typeof phrase !== 'string' || phrase.trim().length === 0) {
         return {
@@ -168,15 +191,51 @@ export class GettyMediaDriver {
         queryParams.append('graphical_styles', graphicalStyles);
       }
 
+      // Getty API expects lowercase snake_case values for filters
+      if (orientations && mediaType === 'image') {
+        const converted = this.convertToGettyFormat(orientations);
+        logger.info('getty-media.filter.conversion', { 
+          filter: 'orientations', 
+          original: orientations, 
+          converted 
+        });
+        queryParams.append('orientations', converted);
+      }
+
+      if (compositions && mediaType === 'image') {
+        const converted = this.convertToGettyFormat(compositions);
+        logger.info('getty-media.filter.conversion', { 
+          filter: 'compositions', 
+          original: compositions, 
+          converted 
+        });
+        queryParams.append('compositions', converted);
+      }
+
+      if (color && mediaType === 'image') {
+        // Color parameter expects hex format (e.g., #FF0000)
+        queryParams.append('color', color);
+      }
+
       const endpoint = mediaType === 'image' ? '/v1/search' : '/v1/videos/search';
       const url = `${this.apiBaseUrl}${endpoint}?${queryParams.toString()}`;
 
-      // Log the full URL being requested for debugging
-      logger.info('getty-media.request.url', {
+      // Log the full request with all parameters
+      logger.info('getty-media.request', {
         mediaType,
         baseUrl: this.apiBaseUrl,
         endpoint,
-        fullUrl: url
+        fullUrl: url,
+        params: {
+          phrase,
+          page,
+          pageSize,
+          sortOrder,
+          ...(graphicalStyles && { graphicalStyles }),
+          ...(orientations && { orientations }),
+          ...(compositions && { compositions }),
+          ...(color && { color })
+        }
       });
 
       const eventLogger = mediaType === 'video' ? toolVideoSearchEvents : toolImageSearchEvents;
@@ -198,13 +257,35 @@ export class GettyMediaDriver {
 
       if (!response.ok) {
         const errorText = await response.text();
+        logger.error('getty-media.request.failed', {
+          mediaType,
+          status: response.status,
+          statusText: response.statusText,
+          errorText,
+          url
+        });
         throw new Error(`Getty API request failed: ${response.status} ${errorText}`);
       }
 
       const data = await response.json() as GettyAPIResponse;
+
+      // Log the response summary
+      logger.info('getty-media.response', {
+        mediaType,
+        resultCount: data.result_count,
+        itemsReturned: mediaType === 'image' 
+          ? (data.images?.length || 0)
+          : (data.videos?.length || 0),
+        hasResults: ((mediaType === 'image' ? data.images?.length : data.videos?.length) || 0) > 0
+      });
       const items = mediaType === 'image' ? data.images : data.videos;
 
       if (!data || !items || !Array.isArray(items) || items.length === 0) {
+        logger.warn('getty-media.no-results', {
+          mediaType,
+          phrase,
+          resultCount: data?.result_count || 0
+        });
         return {
           success: false,
           error: `No ${mediaType}s found matching your search criteria`
@@ -217,6 +298,10 @@ export class GettyMediaDriver {
         const uploadUrl = await this.uploadVideo(videoId);
         
         if (!uploadUrl) {
+          logger.error('getty-media.video-upload.no-url', {
+            videoId,
+            phrase
+          });
           return {
             success: false,
             error: 'Failed to get video URL from upload response'
@@ -225,6 +310,12 @@ export class GettyMediaDriver {
 
         const processedItem = this.processItem(items[0], mediaType);
         processedItem.urls.highRes = uploadUrl;
+
+        logger.info('getty-media.video.success', {
+          videoId,
+          videoUrl: uploadUrl,
+          title: processedItem.title
+        });
 
         return {
           success: true,
@@ -235,6 +326,13 @@ export class GettyMediaDriver {
 
       // For images, process all items
       const processedItems = items.map(item => this.processItem(item, mediaType));
+
+      logger.info('getty-media.images.success', {
+        phrase,
+        itemsProcessed: processedItems.length,
+        totalResults: data.result_count,
+        imageIds: processedItems.map(item => item.id)
+      });
 
       return {
         success: true,

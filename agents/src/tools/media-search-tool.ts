@@ -41,6 +41,9 @@ export interface MediaSearchOptions {
   prompt: string | string[];
   mediaType?: MediaType;
   count?: number;
+  orientations?: string;
+  compositions?: string;
+  color?: string;
 }
 
 /**
@@ -79,12 +82,18 @@ export class MediaSearchTool {
    * @param prompt - The search prompt or array of prompts (array only for images)
    * @param mediaType - Type of media to search for ('image' or 'video', defaults to 'image')
    * @param count - Number of results per prompt (only for images)
+   * @param options - Additional search options (orientations, compositions, color)
    * @returns An object containing the media URL(s) or an error
    */
   async searchMedia(
     prompt: string | string[], 
     mediaType: MediaType = 'image',
-    count?: number
+    count?: number,
+    options?: {
+      orientations?: string;
+      compositions?: string;
+      color?: string;
+    }
   ): Promise<MediaSearchResult> {
     // Video search validation
     if (mediaType === 'video') {
@@ -102,7 +111,7 @@ export class MediaSearchTool {
         };
       }
 
-      return this.searchSingle(prompt, 'video');
+      return this.searchSingle(prompt, 'video', 1, options);
     }
 
     // Image search (default)
@@ -121,7 +130,7 @@ export class MediaSearchTool {
         };
       }
 
-      return this.searchParallel(prompt, count || 1);
+      return this.searchParallel(prompt, count || 1, options);
     }
 
     // Single image search
@@ -139,7 +148,7 @@ export class MediaSearchTool {
       };
     }
 
-    return this.searchSingle(prompt, 'image', count || 1);
+    return this.searchSingle(prompt, 'image', count || 1, options);
   }
 
   /**
@@ -148,12 +157,18 @@ export class MediaSearchTool {
    * @param prompt - The search prompt
    * @param mediaType - Type of media to search
    * @param count - Number of results (only for images)
+   * @param options - Additional search options
    * @returns Promise resolving to media search result
    */
   private async searchSingle(
     prompt: string,
     mediaType: MediaType,
-    count = 1
+    count = 1,
+    options?: {
+      orientations?: string;
+      compositions?: string;
+      color?: string;
+    }
   ): Promise<MediaSearchResult> {
     try {
       const eventLogger = mediaType === 'video' ? toolVideoSearchEvents : toolImageSearchEvents;
@@ -169,6 +184,9 @@ export class MediaSearchTool {
         page: 1,
         pageSize: Math.min(count, mediaType === 'image' ? 10 : 1),
         ...(mediaType === 'image' && { graphicalStyles: 'photography' }),
+        ...(options?.orientations && { orientations: options.orientations }),
+        ...(options?.compositions && { compositions: options.compositions }),
+        ...(options?.color && { color: options.color }),
         sortOrder: 'best_match'
       });
 
@@ -255,9 +273,18 @@ export class MediaSearchTool {
    * 
    * @param prompts - Array of search prompts
    * @param count - Number of results per prompt
+   * @param options - Additional search options
    * @returns Promise resolving to parallel search result
    */
-  private async searchParallel(prompts: string[], count = 1): Promise<MediaSearchResult> {
+  private async searchParallel(
+    prompts: string[], 
+    count = 1,
+    options?: {
+      orientations?: string;
+      compositions?: string;
+      color?: string;
+    }
+  ): Promise<MediaSearchResult> {
     try {
       toolImageSearchEvents.begin(logger, {
         toolName: 'MediaSearchTool',
@@ -266,7 +293,7 @@ export class MediaSearchTool {
         provider: 'getty',
       });
 
-      const searchPromises = prompts.map(prompt => this.searchSingle(prompt, 'image', count));
+      const searchPromises = prompts.map(prompt => this.searchSingle(prompt, 'image', count, options));
       const results = await Promise.all(searchPromises);
 
       const combinedResults = results.map((result, index) => {
@@ -331,7 +358,7 @@ export class MediaSearchTool {
  * @returns Promise resolving to media search result
  */
 export async function findMedia(options: MediaSearchOptions): Promise<MediaSearchResult> {
-  const { prompt, mediaType = 'image', count } = options;
+  const { prompt, mediaType = 'image', count, orientations, compositions, color } = options;
 
   // Validate prompt
   if (Array.isArray(prompt)) {
@@ -350,7 +377,17 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
 
   try {
     const mediaSearchTool = new MediaSearchTool();
-    return await mediaSearchTool.searchMedia(prompt, mediaType, count);
+    const searchOptions = {
+      ...(orientations !== undefined && { orientations }),
+      ...(compositions !== undefined && { compositions }),
+      ...(color !== undefined && { color })
+    };
+    return await mediaSearchTool.searchMedia(
+      prompt, 
+      mediaType, 
+      count, 
+      Object.keys(searchOptions).length > 0 ? searchOptions : undefined
+    );
   } catch (error) {
     const promptForLog = Array.isArray(prompt) ? prompt.join(', ') : prompt;
     
