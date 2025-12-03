@@ -19,6 +19,8 @@ export function getTargetOrigin(): string {
   return '*'
 }
 
+const MAX_ERROR_MESSAGE_LENGTH = 20000
+
 /**
  * Validates if the message event origin is allowed
  * 
@@ -48,5 +50,11 @@ export function isOriginAllowed(event: MessageEvent): boolean {
  */
 export function safePostMessage(targetWindow: Window, message: any) {
   const origin = getTargetOrigin()
-  targetWindow.postMessage(message, origin)
+  
+  const safeMessage = { ...message }
+  if (safeMessage.errorMessage && typeof safeMessage.errorMessage === 'string') {
+    safeMessage.errorMessage = safeMessage.errorMessage.substring(0, MAX_ERROR_MESSAGE_LENGTH)
+  }
+  
+  targetWindow.postMessage(safeMessage, origin)
 }
