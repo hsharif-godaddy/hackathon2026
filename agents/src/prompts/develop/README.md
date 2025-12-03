@@ -36,15 +36,6 @@ The complete prompt is assembled from these files in order:
 - Post-handoff behavior
 - Handoff loop prevention
 
-### 3a. `handoff-backend.md` - Backend Agent Handoffs (Conditional)
-
-**Only loaded when `ENABLE_DATABASE_AGENT=true`**
-
-- Database Agent handoff rules and examples
-- API Agent handoff rules and examples
-- Sequential backend workflow (Database → API → Frontend)
-- Post-handoff checks after Database Agent returns
-
 ### 4. `approach.md` - Development Methodology
 
 - Planning and analysis approach
@@ -103,12 +94,8 @@ promptBuilder
   .file(join(developDir, 'core.md'))
   .file(join(sharedDir, 'communication.md')) // Shared section
   .file(join(sharedDir, 'filesystem.md')) // Shared section
-  .file(join(developDir, 'handoff.md')); // Agent handoff rules (always available)
-
-// Conditionally load backend agent handoffs if database agent is enabled
-if (featureAgents.isEnabled('database')) {
-  promptBuilder.file(join(developDir, 'handoff-backend.md'));
-}
+  .file(join(developDir, 'handoff.md')) // Agent handoff rules (always available)
+  .file(join(developDir, 'backend.md'));
 
 // Conditionally load commerce handoffs if commerce agent is enabled
 if (featureAgents.isEnabled('commerce')) {

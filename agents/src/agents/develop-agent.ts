@@ -190,13 +190,7 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     .file(paths.getSharedFile('filesystem.md'))
     .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules (always available agents)
-
-  // Conditionally load backend agent handoff rules if database agent is enabled
-  if (featureAgents.isEnabled('database')) {
-    promptBuilder.file(paths.getAgentFile('develop', 'handoff-backend.md'))
-  } else {
-    promptBuilder.file(paths.getAgentFile('develop', 'backend.md'))
-  }
+    .file(paths.getAgentFile('develop', 'backend.md'))
 
   // Conditionally load commerce handoff rules if commerce agent is enabled
   if (featureAgents.isEnabled('commerce')) {
@@ -277,12 +271,8 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     beforeToolExecution,
     afterToolExecution,
 
-    // Handoff configuration (conditionally include database and commerce agents based on feature flags)
+    // Handoff configuration (conditionally include commerce agent based on feature flags)
     handoffs: [
-      {
-        agentName: 'api',
-        description: 'HTTP API route generation using vite-plugin-api-routes - creates RESTful endpoints',
-      },
       {
         agentName: 'color-scheme',
         description: 'Color palette design and visual branding for applications',
@@ -291,10 +281,6 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
         agentName: 'marketing',
         description: 'SEO optimization and marketing strategy for websites',
       },
-      ...(featureAgents.isEnabled('database') ? [{
-        agentName: 'database',
-        description: 'MySQL database schema design and deployment using Drizzle ORM',
-      }] : []),
       ...(featureAgents.isEnabled('commerce') ? [{
         agentName: 'commerce',
         description: 'GoDaddy Commerce product catalog operations - fetch products for e-commerce listings',
@@ -436,99 +422,6 @@ export class DevelopAgent {
       throw new Error('Agent not initialized. Call initialize() first.')
     }
     return this.factory.stateManager
-  }
-
-  /**
-   * Hand off to Database Agent for MySQL setup (original method)
-   */
-  async handoffToDatabase(params: { userId: string; databaseName: string }): Promise<any> {
-    const factory = this.getFactory()
-
-    logger.info('develop_agent.handoff.database.start', {
-      targetAgent: 'database',
-      userId: params.userId,
-      databaseName: params.databaseName
-    });
-
-    const handoffResult = await factory.executeHandoff(
-      'develop',
-      'database',
-      {
-        task: `Complete MySQL database setup and integration with the following requirements:
-
-**Database Configuration:**
-- Database Name: ${params.databaseName}
-- User ID: ${params.userId}
-- Create dedicated MySQL database with proper user permissions
-- Generate secure database credentials
-- Test database connectivity
-
-**Integration Tasks:**
-1. Create MySQL database: ${params.databaseName}
-2. Set up database user for application access
-3. Update .env file with database credentials
-4. Restart development server to apply changes
-5. Verify database integration is working
-
-**Required Output:**
-- Database credentials (host, port, username, password, database)
-- Connection string for application use
-- Backend server information (port, API URL)
-- Integration summary and next steps
-
-Please complete all database setup tasks and provide the integration details for frontend development.`,
-        context: {
-          userId: params.userId,
-          databaseName: params.databaseName,
-          appPath: this.appPath,
-          projectType: 'web-application',
-          requiresIntegration: true
-        },
-        parameters: params,
-        metadata: {
-          sourceAgent: 'develop',
-          timestamp: new Date().toISOString(),
-          reason: 'Database setup required for application development'
-        }
-      }
-    )
-
-    if (handoffResult.success) {
-      // Type guard: assert result shape for database handoff
-      const result = handoffResult.result as {
-        success?: boolean
-        summary?: string
-        credentials?: { host: string; port: number; database: string }
-        backendPort?: number
-      } | undefined
-
-      logger.info('develop_agent.handoff.database.success', {
-        targetAgent: 'database',
-        userId: params.userId,
-        databaseName: params.databaseName,
-        backendPort: result?.backendPort || 3000
-      });
-
-      return {
-        success: result?.success || true,
-        message: result?.summary || 'Database setup completed. Ready for frontend integration.',
-        credentials: result?.credentials || {
-          host: 'localhost',
-          port: 3306,
-          database: params.databaseName
-        },
-        backendPort: result?.backendPort || 3000,
-        handoffDetails: handoffResult.handoffDetails
-      }
-    } else {
-      logger.error('develop_agent.handoff.database.failure', {
-        targetAgent: 'database',
-        userId: params.userId,
-        databaseName: params.databaseName,
-        error: handoffResult.error
-      });
-      throw new Error(`Database handoff failed: ${handoffResult.error}`)
-    }
   }
 
   /**

@@ -34,7 +34,6 @@ graph TB
     AgentService --> SQLite[(SQLite DB)]
 
     AgentRegistry --> DevelopAgent[Develop Agent]
-    AgentRegistry --> DatabaseAgent[Database Agent]
     AgentRegistry --> ColorAgent[Color Scheme Agent]
     AgentRegistry --> ExampleAgent[Example Agent]
 
@@ -71,9 +70,6 @@ graph TB
 ```mermaid
 graph LR
     User[User] -->|Chat| Develop[Develop Agent]
-
-    Develop -->|Database Setup| Database[Database Agent]
-    Database -->|Complete| Develop
 
     Develop -->|Color Design| ColorScheme[Color Scheme Agent]
     ColorScheme -->|Complete| Develop
@@ -290,31 +286,10 @@ sequenceDiagram
 
 ### Specialized Agents
 
-#### 1. Database Agent
+#### 1. Color Scheme Agent
 
-**Name**: Database Manager  
-**ID**: `database`  
-**Purpose**: MySQL database operations, schema design, and database integration
-
-**Capabilities**:
-
-- Database creation and configuration
-- Schema design and migrations
-- User and permission management
-- Database integration with applications
-- MySQL operation execution
-
-**Model Configuration**:
-
-- Model: Full capability model
-- Max Steps: 20
-- Temperature: 0.3
-- Max Output Tokens: 2500
-
-#### 2. Color Scheme Agent
-
-**Name**: Color Scheme Designer  
-**ID**: `color-scheme`  
+**Name**: Color Scheme Designer
+**ID**: `color-scheme`
 **Purpose**: Color palette design and visual branding for applications
 
 **Capabilities**:
@@ -324,7 +299,7 @@ sequenceDiagram
 - Visual design consistency
 - Brand identity development
 
-#### 3. Example Agent
+#### 2. Example Agent
 
 **Name**: Example Agent  
 **ID**: `example`  

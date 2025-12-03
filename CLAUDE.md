@@ -233,20 +233,12 @@ Key points:
 - Base class: `agents/src/base/base-agent.ts`
 - Agent registry: `agents/src/registry/agent-registry.ts`
 - Agent factory: `agents/src/agents/ai-lib-agents/index.ts`
-- Available agents: DevelopAgent, ApiAgent (conditional), DatabaseAgent (conditional), ColorSchemeAgent, CommerceAgent (conditional), ExampleAgent
+- Available agents: DevelopAgent, ColorSchemeAgent, CommerceAgent (conditional), ExampleAgent
 - Prompts stored in: `agents/src/prompts/`
 
 **Conditional Agent Enablement:**
 
 The system supports environment-based agent enablement through feature flags in `agents/src/services/features.ts`:
-
-- **DatabaseAgent + ApiAgent**: Disabled by default, requires explicit opt-in
-  - Enable with `ENABLE_DATABASE_AGENT=true` in `agents/.env`
-  - Use in local development environments only
-  - **Both agents are enabled/disabled together** (API agent reads database schemas)
-  - DatabaseAgent: Specializes in MySQL database schema design using Drizzle ORM
-  - ApiAgent: Specializes in HTTP API route generation using vite-plugin-api-routes
-  - When disabled, neither agent will be registered or available through the WebSocket server
 
 - **CommerceAgent**: Disabled by default, requires explicit opt-in
   - Enable with `ENABLE_COMMERCE_AGENT=true` in `agents/.env`
@@ -258,10 +250,6 @@ The system supports environment-based agent enablement through feature flags in 
 
 ```typescript
 import { agents } from "./services/features.js";
-
-if (agents.isEnabled("database")) {
-  // Both Database and API agents are available
-}
 
 if (agents.isEnabled("commerce")) {
   // Commerce agent is available
