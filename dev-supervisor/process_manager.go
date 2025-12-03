@@ -28,7 +28,7 @@ const (
 )
 
 const (
-	defaultPortWaitTimeout = 5 * time.Second
+	defaultPortWaitTimeout = 10 * time.Second
 	portCheckInterval      = 50 * time.Millisecond
 )
 
@@ -146,20 +146,17 @@ func processOwnsSocket(pid int, inode string) bool {
 	return false
 }
 
-// isPortAvailable checks if a port is available for binding
+// isPortAvailable checks if a port is available for binding (i.e., not in use)
 func isPortAvailable(port int) bool {
-	// Try to bind to the port on both TCP and UDP to ensure it's fully available
-	tcpAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", port))
+	// Try to bind to 0.0.0.0 (all interfaces) to check if port is truly available
+	// This matches how servers typically bind and will fail if anything is using the port
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
+		// Can't bind - port is still in use
 		return false
 	}
-
-	tcpListener, err := net.ListenTCP("tcp", tcpAddr)
-	if err != nil {
-		return false
-	}
-	defer tcpListener.Close()
-
+	// Successfully bound - port is available, close immediately
+	listener.Close()
 	return true
 }
 
