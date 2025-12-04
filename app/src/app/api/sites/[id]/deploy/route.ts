@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
+import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
 import { logger } from '@/lib/request-context';
 import {
   withCustomerAuth,
@@ -84,12 +85,6 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       errorMessage: error instanceof Error ? error.message : 'Unknown error'
     });
 
-    return NextResponse.json(
-      {
-        error: 'Failed to start deployment',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    return handleControlPlaneError(error, 'deploy');
   }
 });

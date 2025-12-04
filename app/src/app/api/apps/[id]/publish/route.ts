@@ -1,4 +1,5 @@
 import { getControlPlaneAdapter } from '@/lib/control-plane';
+import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
 import { NextRequest, NextResponse } from 'next/server';
 import { agentFetch } from '@/lib/agent-fetch';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
@@ -219,13 +220,7 @@ export const POST = withCustomerAuth(
       logger.error('site.publish.error', {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-      return NextResponse.json(
-        {
-          error: 'Internal server error',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        },
-        { status: 500 }
-      );
+      return handleControlPlaneError(error, 'site.publish');
     }
   }
 );
