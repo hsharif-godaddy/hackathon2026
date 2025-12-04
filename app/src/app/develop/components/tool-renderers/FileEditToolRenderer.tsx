@@ -332,30 +332,30 @@ export default function FileEditToolRenderer({
         <div className="flex-1 overflow-y-auto">
           {/* Metadata */}
           {Object.keys(metadata).length > 0 && (
-            <div className="mb-4">
+            <div className="mb-2">
               <KeyValueTable data={metadata} />
             </div>
           )}
 
           {/* Batch operations list */}
           {isBatchResult && batchOperations.length > 0 && (
-            <div className="mb-4">
-              <text.p className="mb-2" size={0}>
+            <div className="mb-2">
+              <text.p className="mb-1" size={0}>
                 Operations
               </text.p>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {batchOperations.map((op, index) => (
                   <div
                     key={index}
-                    className={`p-3 border rounded-md ${
+                    className={`p-1.5 border rounded-md ${
                       op.success
                         ? 'border-border bg-muted/50'
                         : 'border-intents-ux-feedbackCritical-feedbackColor/30 bg-intents-ux-feedbackCritical-feedbackColor/10'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start justify-between gap-1">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <Tag
                             emphasis={op.success ? 'success' : 'critical'}
                             size="sm"
@@ -365,40 +365,40 @@ export default function FileEditToolRenderer({
                           </Tag>
                           <text.span className="truncate" size={0}>{op.path}</text.span>
                         </div>
-                        <div className="mt-1">
+                        <div className="mt-0.5">
                           <text.span size={-1} emphasis="passive">
                             Mode: {op.mode}
                             {op.changes && (
-                              <span className="ml-2">
+                              <span className="ml-1">
                                 +{op.changes.additions} -{op.changes.deletions}
                               </span>
                             )}
                           </text.span>
                         </div>
                         {op.error && (
-                          <div className="mt-2">
-                            <Tag emphasis="critical" size="sm" className="mb-1">
+                          <div className="mt-1">
+                            <Tag emphasis="critical" size="sm" className="mb-0.5">
                               Error
                             </Tag>
                             <text.span size={-1}>{op.error}</text.span>
                           </div>
                         )}
                         {op.warning && (
-                          <div className="mt-2">
-                            <Tag emphasis="warning" size="sm" className="mb-1">
+                          <div className="mt-1">
+                            <Tag emphasis="warning" size="sm" className="mb-0.5">
                               Warning
                             </Tag>
                             <text.span size={-1}>{op.warning}</text.span>
                           </div>
                         )}
                         {op.diff && (
-                          <details className="mt-2">
+                          <details className="mt-1">
                             <summary className="cursor-pointer">
                               <text.span size={-1} emphasis="passive" className="hover:text-foreground">
                                 View diff
                               </text.span>
                             </summary>
-                            <div className="mt-2 border border-border rounded-md p-2 bg-muted">
+                            <div className="mt-1 border border-border rounded-md p-1 bg-muted">
                               <pre className="text-xs font-mono whitespace-pre-wrap break-words">
                                 {op.diff}
                               </pre>
@@ -415,8 +415,8 @@ export default function FileEditToolRenderer({
 
           {/* Error */}
           {error && (
-            <div className="mb-4 p-3 bg-intents-ux-feedbackCritical-feedbackColor/10 border border-intents-ux-feedbackCritical-feedbackColor/30 rounded-md">
-              <Tag emphasis="critical" size="sm" className="mb-2">
+            <div className="mb-2 p-1.5 bg-intents-ux-feedbackCritical-feedbackColor/10 border border-intents-ux-feedbackCritical-feedbackColor/30 rounded-md">
+              <Tag emphasis="critical" size="sm" className="mb-1">
                 Error
               </Tag>
               <text.p size={0} className="whitespace-pre-wrap">{error}</text.p>
@@ -425,8 +425,8 @@ export default function FileEditToolRenderer({
 
           {/* Warning */}
           {warning && (
-            <div className="mb-4 p-3 border rounded-md">
-              <Tag emphasis="warning" size="sm" className="mb-2">
+            <div className="mb-2 p-1.5 border rounded-md">
+              <Tag emphasis="warning" size="sm" className="mb-1">
                 Warning
               </Tag>
               <text.p size={0} className="whitespace-pre-wrap">{warning}</text.p>
@@ -435,11 +435,11 @@ export default function FileEditToolRenderer({
 
           {/* Diff */}
           {diff && (
-            <div className="mb-4">
-              <text.p size={0} className="mb-2">
+            <div className="mb-2">
+              <text.p size={0} className="mb-1">
                 Diff
               </text.p>
-              <div className="border border-border rounded-md p-4 bg-muted max-h-96 overflow-y-auto">
+              <div className="border border-border rounded-md p-2 bg-muted max-h-48 overflow-y-auto">
                 <pre className="text-xs font-mono whitespace-pre-wrap break-words">
                   {diff}
                 </pre>

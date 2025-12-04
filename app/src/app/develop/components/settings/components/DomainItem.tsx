@@ -134,12 +134,12 @@ export default function DomainItem({
   return (
     <Box
       orientation="horizontal"
-      className="bg-intents-ux-box-backgroundColor rounded-lg px-4 py-3"
+      className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1.5"
       blockAlignChildren="spaceBetween"
       inlineAlignChildren="center"
     >
       <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
-        <StatusIcon className={`size-6 ${statusInfo.className}`} />
+        <StatusIcon className={`size-3 ${statusInfo.className}`} />
         <Box orientation="horizontal" gap="md">
         {isConnected && appDomain?.status === DomainStatus.ACTIVE ? (
             <Button
@@ -157,7 +157,7 @@ export default function DomainItem({
                 blockAlignChildren="start"
               >
                 <text.p>{domainName}</text.p>
-                <WindowNewIcon className="size-4" />
+                <WindowNewIcon className="size-2" />
               </Box>
             </Button>
           ) : (
@@ -172,9 +172,9 @@ export default function DomainItem({
       </Box>
       <Popover open={open} onOpenChange={handlePopoverOpenChange}>
         <PopoverTrigger className="hover:cursor-pointer">
-          <MenuIcon className="size-6" />
+          <MenuIcon className="size-3" />
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-[280px] p-2">
+        <PopoverContent align="end" className="w-[280px] p-1">
           {showConfirmation ? (
             <DomainConnectConfirmation
               onConfirm={handleConfirmConnect}
@@ -182,7 +182,7 @@ export default function DomainItem({
               isInternalOnly
             />
           ) : (
-            <div className="flex flex-col gap-1 items-stretch">
+            <div className="flex flex-col gap-0.5 items-stretch">
               {!isConnected ? (
                 <Button
                   icon={<OkIcon />}

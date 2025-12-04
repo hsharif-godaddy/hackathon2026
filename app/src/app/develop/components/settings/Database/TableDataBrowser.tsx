@@ -146,7 +146,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
   };
 
   const renderCellValue = (value: any, columnType?: string) => {
-    if (value === null) return <div className="text-muted-foreground italic pr-2">null</div>;
+    if (value === null) return <div className="text-muted-foreground italic pr-1">null</div>;
     if (typeof value === 'boolean') return value ? 'true' : 'false';
     if (typeof value === 'object') return JSON.stringify(value);
 
@@ -244,9 +244,9 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
       >
         {/* Empty state */}
         {data.length === 0 && (
-          <div className="text-sm bg-intents-ux-box-backgroundColor rounded-lg p-8 text-center border">
+          <div className="text-sm bg-intents-ux-box-backgroundColor rounded-lg p-4 text-center border">
             <text.p emphasis="passive">No data found in this table</text.p>
-            <text.p emphasis="passive" className="text-xs mt-2">Click &ldquo;Add Row&rdquo; to insert data</text.p>
+            <text.p emphasis="passive" className="text-xs mt-1">Click &ldquo;Add Row&rdquo; to insert data</text.p>
           </div>
         )}
 
@@ -257,11 +257,11 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
               <Table stretch size="lg">
                   <Thead>
                     <Tr>
-                      <Th className="px-4 py-3 border-r border-intents-ux-box-borderColor">
+                      <Th className="px-2 py-1.5 border-r border-intents-ux-box-borderColor">
                         <text.span as='label' className="text-xs">Actions</text.span>
                       </Th>
                       {schema.map((col) => (
-                        <Th key={col.name} className="px-6 py-3 max-w-xs">
+                        <Th key={col.name} className="px-3 py-1.5 max-w-xs">
                           <text.span as='label' className="truncate">
                             {formatColumnName(col.name)}
                           </text.span>
@@ -272,15 +272,15 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
                 <Tbody>
                   {data.map((row, rowIndex) => (
                     <Tr key={rowIndex}>
-                      <Td key={`${rowIndex}-actions`} className="px-4 py-2 border-r border-intents-ux-box-borderColor">
-                        <div className="flex items-center gap-3">
+                      <Td key={`${rowIndex}-actions`} className="px-2 py-1 border-r border-intents-ux-box-borderColor">
+                        <div className="flex items-center gap-1.5">
                           <Button
                             icon={<EditIcon />}
                             design="inline"
                             size="sm"
                             onClick={() => handleEditRow(row)}
                           />
-                          <div className="h-6 w-px bg-intents-ux-box-borderColor" />
+                          <div className="h-3 w-px bg-intents-ux-box-borderColor" />
                           <Button
                             icon={<TrashIcon />}
                             design="critical"
@@ -290,7 +290,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
                         </div>
                       </Td>
                       {schema.map((col) => (
-                        <Td key={`${rowIndex}-${col.name}`} className="font-mono text-xs px-4 py-2 max-w-xs">
+                        <Td key={`${rowIndex}-${col.name}`} className="font-mono text-xs px-2 py-1 max-w-xs">
                           <div className="truncate" title={getCellValueString(row[col.name], col.type)}>
                             {renderCellValue(row[col.name], col.type)}
                           </div>

@@ -32,7 +32,7 @@ export default function StatusIndicator({ status, className = '' }: StatusIndica
     case 'error':
       return (
         <span className={`inline-flex text-destructive ${className}`}>
-          <AlertIcon className="w-2.5 h-2.5" />
+          <AlertIcon className="w-1.5 h-1.5" />
         </span>
       )
     default:

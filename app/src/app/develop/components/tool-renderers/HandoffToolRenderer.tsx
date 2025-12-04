@@ -62,7 +62,7 @@ export default function HandoffToolRenderer({
       title={`Handoff to ${targetAgent}`}
       mounted={mounted}
     >
-      <div className="flex-1 overflow-y-auto space-y-4">
+      <div className="flex-1 overflow-y-auto space-y-2">
         {/* Arguments */}
         {input && typeof input === 'object' && (
           <KeyValueTable data={input as Record<string, any>} title="Arguments" />
@@ -81,7 +81,7 @@ export default function HandoffToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<Bot className="w-4 h-4" />}
+        icon={<Bot className="w-2 h-2" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasDetails}

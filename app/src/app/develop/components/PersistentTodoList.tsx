@@ -88,20 +88,20 @@ export default function PersistentTodoList() {
   function renderHeader() {
     return (
       <div 
-        className="px-4 py-2 cursor-pointer hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors border-b border-border"
+        className="px-2 py-1 cursor-pointer hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors border-b border-border"
         onClick={toggleViewState}
       >
         <div className="flex items-center justify-between text-sm min-w-0">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="flex items-center gap-1 min-w-0 flex-1">
             <span className="font-medium text-foreground truncate">{currentList.name}</span>
             {viewState === 'update' && (
               <span className="text-xs text-intents-info-color font-medium flex-shrink-0">Updated</span>
             )}
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0">
             {viewState === 'open' && (
               <button
-                className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
                 onClick={(e) => {
                   e.stopPropagation()
                   setViewState('closed')
@@ -109,7 +109,7 @@ export default function PersistentTodoList() {
                 title="Collapse"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-2 h-2"
                   fill="none"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -182,7 +182,7 @@ export default function PersistentTodoList() {
         
         <div 
           ref={updateContainerRef}
-          className="max-h-32 overflow-y-auto px-4 py-2 space-y-1"
+          className="max-h-16 overflow-y-auto px-2 py-1 space-y-0.5"
         >
           {itemsToShow.map((item) => {
             const isUpdated = updatedItemIds.has(item.id)
@@ -195,7 +195,7 @@ export default function PersistentTodoList() {
             )
           })}
           {remainingCount > 0 && (
-            <div className="text-xs text-muted-foreground text-center pt-1">
+            <div className="text-xs text-muted-foreground text-center pt-0.5">
               +{remainingCount} more items
             </div>
           )}
@@ -218,8 +218,8 @@ export default function PersistentTodoList() {
       >
         {renderHeader()}
         
-        <div className="px-4 py-2">
-          <div className="flex items-center justify-between mb-2">
+        <div className="px-2 py-1">
+          <div className="flex items-center justify-between mb-1">
             <div className="text-xs text-muted-foreground">
               {completedCount} of {totalItems} completed
             </div>
@@ -235,15 +235,15 @@ export default function PersistentTodoList() {
           </div>
         </div>
         
-        <div className="max-h-96 overflow-y-auto px-4 pb-4">
+        <div className="max-h-48 overflow-y-auto px-2 pb-2">
           {items.length > 0 ? (
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {items.map((item) => (
                 <TodoItemRow key={item.id} item={item} />
               ))}
             </div>
           ) : (
-            <div className="text-sm text-muted-foreground text-center py-4">
+            <div className="text-sm text-muted-foreground text-center py-2">
               No items yet
             </div>
           )}
@@ -285,7 +285,7 @@ function TodoItemRow({
     <div
       data-item-id={item.id}
       className={`
-        flex items-start gap-2 text-xs  px-2 rounded transition-all duration-300
+        flex items-start gap-1 text-xs px-1 rounded transition-all duration-300
         ${isHighlighted ? 'bg-intents-info-backgroundColor border border-intents-info-borderColor' : ''}
       `}
     >
@@ -306,9 +306,9 @@ function TodoItemRow({
  */
 function CircularCheckbox({ checked }: { checked: boolean }) {
   return (
-    <div className="relative w-5 h-5">
+    <div className="relative w-2.5 h-2.5">
       <div className={`
-        w-5 h-5 rounded-full border-2 transition-all duration-200
+        w-2.5 h-2.5 rounded-full border-2 transition-all duration-200
         ${checked ? 'border-intents-success-borderColor bg-intents-success-backgroundColor' : 'border-border bg-intents-ux-box-backgroundColor'}
       `}>
         {checked && (
@@ -366,7 +366,7 @@ function TodoListModal({
           />
           
           {/* Modal */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -375,15 +375,15 @@ function TodoListModal({
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="px-6 py-4 border-b border-border">
-                <div className="flex items-start justify-between gap-4">
+              <div className="px-3 py-2 border-b border-border">
+                <div className="flex items-start justify-between gap-2">
                   <div className="flex-1">
                     <h2 className="text-lg font-semibold text-foreground">{list.name}</h2>
                     {list.description && (
-                      <p className="text-sm text-muted-foreground mt-1">{list.description}</p>
+                      <p className="text-sm text-muted-foreground mt-0.5">{list.description}</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
                     <span className="text-sm text-muted-foreground whitespace-nowrap">
                       {completedCount}/{totalItems}
                     </span>
@@ -392,7 +392,7 @@ function TodoListModal({
                       className="text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <svg
-                        className="w-5 h-5"
+                        className="w-2.5 h-2.5"
                         fill="none"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -408,15 +408,15 @@ function TodoListModal({
               </div>
               
               {/* Content */}
-              <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="flex-1 overflow-y-auto px-3 py-2">
                 {items.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="space-y-1.5">
                     {items.map((item: any) => (
                       <div
                         key={item.id}
-                        className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3"
+                        className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-1.5"
                       >
-                        <div className="flex items-start gap-3">
+                        <div className="flex items-start gap-1.5">
                           <div className="flex-shrink-0">
                             <CircularCheckbox checked={item.completed} />
                           </div>
@@ -425,7 +425,7 @@ function TodoListModal({
                               {item.title}
                             </div>
                             {item.description && (
-                              <div className="text-xs text-muted-foreground mt-1">
+                              <div className="text-xs text-muted-foreground mt-0.5">
                                 {item.description}
                               </div>
                             )}
@@ -435,7 +435,7 @@ function TodoListModal({
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center text-muted-foreground py-8">
+                  <div className="text-center text-muted-foreground py-4">
                     No items yet
                   </div>
                 )}

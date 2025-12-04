@@ -60,7 +60,7 @@ export default function DefaultToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<Wrench className="w-4 h-4" />}
+        icon={<Wrench className="w-2 h-2" />}
         displayName={getToolDisplayName(toolName)}
         toolStatus={toolStatus}
         hasDetails={hasDetails}
@@ -73,11 +73,11 @@ export default function DefaultToolRenderer({
         title={getToolDisplayName(toolName)}
         mounted={mounted}
       >
-        <div className="flex-1 overflow-y-auto space-y-4">
+        <div className="flex-1 overflow-y-auto space-y-2">
           {/* Duration */}
           {duration && (
             <div>
-              <div className="text-sm font-bold mb-2">Duration</div>
+              <div className="text-sm font-bold mb-1">Duration</div>
               <div className="text-sm">{formatDuration(duration)}</div>
             </div>
           )}
@@ -85,8 +85,8 @@ export default function DefaultToolRenderer({
           {/* Input */}
           {input && Object.keys(input).length > 0 && (
             <div>
-              <div className="text-sm font-bold mb-2">Arguments</div>
-              <pre className="text-xs whitespace-pre-wrap font-mono bg-muted p-3 rounded border border-border max-h-64 overflow-y-auto">
+              <div className="text-sm font-bold mb-1">Arguments</div>
+              <pre className="text-xs whitespace-pre-wrap font-mono bg-muted p-1.5 rounded border border-border max-h-32 overflow-y-auto">
                 {JSON.stringify(input, null, 2)}
               </pre>
             </div>
@@ -95,8 +95,8 @@ export default function DefaultToolRenderer({
           {/* Result */}
           {result && !error && (
             <div>
-              <div className="text-sm font-bold mb-2">Output</div>
-              <div className="bg-muted p-3 rounded border border-border max-h-96 overflow-y-auto">
+              <div className="text-sm font-bold mb-1">Output</div>
+              <div className="bg-muted p-1.5 rounded border border-border max-h-48 overflow-y-auto">
                 <MarkdownRenderer
                   content={typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
                   className="text-sm leading-relaxed break-words"
@@ -108,8 +108,8 @@ export default function DefaultToolRenderer({
           {/* Error */}
           {error && (
             <div>
-              <div className="text-sm font-bold mb-2 text-destructive">Error</div>
-              <div className="bg-destructive/10 border border-destructive/30 p-3 rounded">
+              <div className="text-sm font-bold mb-1 text-destructive">Error</div>
+              <div className="bg-destructive/10 border border-destructive/30 p-1.5 rounded">
                 <pre className="text-xs whitespace-pre-wrap font-mono text-destructive-foreground">
                   {error}
                 </pre>

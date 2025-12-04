@@ -119,13 +119,13 @@ export default function ProjectQuestionnaire({
       case 'single-choice':
         const shouldUseColumns = currentQ.options.length > 4;
         return (
-          <div className={`grid gap-2 ${shouldUseColumns ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
+          <div className={`grid gap-1 ${shouldUseColumns ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
             {currentQ.options.map((option: { id: string; label: string; description?: string }) => (
               <button
                 key={option.id}
                 onClick={() => handleAnswer(option.id)}
                 className={`
-                  p-3 border-2 rounded-lg text-left transition-all hover:border-blue-300
+                  p-1.5 border-2 rounded-lg text-left transition-all hover:border-blue-300
                   ${currentAnswer === option.id
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 hover:bg-gray-50'
@@ -134,7 +134,7 @@ export default function ProjectQuestionnaire({
               >
                 <div className="font-medium text-gray-900 text-sm">{option.label}</div>
                 {option.description && (
-                  <div className="text-xs text-gray-600 mt-1">{option.description}</div>
+                  <div className="text-xs text-gray-600 mt-0.5">{option.description}</div>
                 )}
               </button>
             ))}
@@ -144,7 +144,7 @@ export default function ProjectQuestionnaire({
       case 'multi-choice':
         const shouldUseColumnsMulti = currentQ.options.length > 4;
         return (
-          <div className={`grid gap-2 ${shouldUseColumnsMulti ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
+          <div className={`grid gap-1 ${shouldUseColumnsMulti ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
             {currentQ.options.map((option: { id: string; label: string; description?: string }) => {
               const isSelected = Array.isArray(currentAnswer) && currentAnswer.includes(option.id);
               return (
@@ -152,7 +152,7 @@ export default function ProjectQuestionnaire({
                   key={option.id}
                   onClick={() => handleAnswer(option.id)}
                   className={`
-                    p-3 border-2 rounded-lg text-left transition-all hover:border-blue-300
+                    p-1.5 border-2 rounded-lg text-left transition-all hover:border-blue-300
                     ${isSelected
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:bg-gray-50'
@@ -161,7 +161,7 @@ export default function ProjectQuestionnaire({
                 >
                   <div className="font-medium text-gray-900 text-sm">{option.label}</div>
                   {option.description && (
-                    <div className="text-xs text-gray-600 mt-1">{option.description}</div>
+                    <div className="text-xs text-gray-600 mt-0.5">{option.description}</div>
                   )}
                 </button>
               );
@@ -177,23 +177,23 @@ export default function ProjectQuestionnaire({
   return (
     <div className="max-w-2xl mx-auto">
       {/* Progress Bar */}
-      <div className="mb-8">
-        <div className="flex justify-between text-sm text-gray-600 mb-2">
+      <div className="mb-4">
+        <div className="flex justify-between text-sm text-gray-600 mb-1">
           <span>Question {currentQuestion + 1} of {questions.length}</span>
           <span>{Math.round(((currentQuestion + 1) / questions.length) * 100)}% Complete</span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
+        <div className="w-full bg-gray-200 rounded-full h-1">
           <div
-            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+            className="bg-blue-600 h-1 rounded-full transition-all duration-300"
             style={{ width: `${((currentQuestion + 1) / questions.length) * 100}%` }}
           />
         </div>
       </div>
 
       {/* Question */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">{currentQ.title}</h2>
-        <p className="text-gray-600 mb-6">{currentQ.subtitle}</p>
+      <div className="mb-4">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">{currentQ.title}</h2>
+        <p className="text-gray-600 mb-3">{currentQ.subtitle}</p>
 
         {renderQuestion()}
       </div>
@@ -202,9 +202,9 @@ export default function ProjectQuestionnaire({
       <div className="flex justify-between">
         <button
           onClick={handlePrevious}
-          className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-900 transition-colors"
+          className="flex items-center space-x-1 px-2 py-1 text-gray-600 hover:text-gray-900 transition-colors"
         >
-          <ArrowLeftIcon className="w-4 h-4" />
+          <ArrowLeftIcon className="w-2 h-2" />
           <span>Previous</span>
         </button>
 
@@ -212,7 +212,7 @@ export default function ProjectQuestionnaire({
           onClick={handleNext}
           disabled={!isAnswered()}
           className={`
-            flex items-center space-x-2 px-6 py-2 rounded-lg font-medium transition-colors
+            flex items-center space-x-1 px-3 py-1 rounded-lg font-medium transition-colors
             ${isAnswered()
               ? 'bg-blue-600 text-white hover:bg-blue-700'
               : 'bg-gray-200 text-gray-400 cursor-not-allowed'
@@ -220,7 +220,7 @@ export default function ProjectQuestionnaire({
           `}
         >
           <span>{currentQuestion === questions.length - 1 ? 'Complete' : 'Next'}</span>
-          <ArrowRightIcon className="w-4 h-4" />
+          <ArrowRightIcon className="w-2 h-2" />
         </button>
       </div>
     </div>

@@ -61,8 +61,8 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
   }, [examples.length])
 
   return (
-    <div className="text-center mb-8 mt-1">
-      <div className="flex flex-wrap justify-center gap-2 max-w-4xl mx-auto">
+    <div className="text-center mb-4 mt-0.5">
+      <div className="flex flex-wrap justify-center gap-1 max-w-4xl mx-auto">
         {examples.map((example, index) => (
           <button
             key={example.title}
@@ -72,10 +72,10 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
               logClickEvent(`homepage.examples.example_${example.slug}`)();
             } }
             className={clsx(
-              'group bg-ai-dark-transparent px-4 py-1 rounded-lg hover:shadow-md transition-all duration-300 text-sm cursor-pointer transform',
+              'group bg-ai-dark-transparent px-2 py-0.5 rounded-lg hover:shadow-md transition-all duration-300 text-sm cursor-pointer transform',
               visibleItems[index]
                 ? 'translate-y-0 opacity-100 scale-100'
-                : 'translate-y-2 opacity-0 scale-98'
+                : 'translate-y-1 opacity-0 scale-98'
             )}
             style={{
               transition: visibleItems[index] ? 'all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55)' : 'none'
@@ -84,7 +84,7 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
             <span className="font-medium transition-colors">
               {example.title}
             </span>
-            <ArrowRightIcon className="w-3 h-3 ml-1 inline opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+            <ArrowRightIcon className="w-1.5 h-1.5 ml-1 inline opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
           </button>
         ))}
       </div>

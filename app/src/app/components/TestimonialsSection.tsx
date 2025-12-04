@@ -28,7 +28,7 @@ const Testimonials = [
 const Testimonial = ({ testimonial, name, title }) => {
   return (
     <Box gap="sm">
-      <text.p size={1} className="!font-thin mb-4">{testimonial}</text.p>
+      <text.p size={1} className="!font-thin mb-2">{testimonial}</text.p>
       <text.p>{name}</text.p>
       <text.p size={-2} className="!font-thin">{title}</text.p>
     </Box>
@@ -38,7 +38,7 @@ const Testimonial = ({ testimonial, name, title }) => {
 export default function TestimonialsSection() {
   return(
     <PageSection>
-      <div className="max-w-screen-sm mx-auto flex flex-col gap-12">
+      <div className="max-w-screen-sm mx-auto flex flex-col gap-6">
         {Testimonials.map((testimonial) => (
           <Testimonial key={testimonial.name} {...testimonial} />
         ))}

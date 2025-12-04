@@ -96,10 +96,10 @@ function GalleryContent() {
     return (
       <div className="min-h-screen">
         <Header />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading sites...</p>
+        <main className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 pt-4 pb-8">
+          <div className="text-center py-6">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Loading sites...</p>
           </div>
         </main>
       </div>
@@ -110,14 +110,14 @@ function GalleryContent() {
     return (
       <div className="min-h-screen">
         <Header />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
-          <div className="text-center py-12">
-            <div className="text-red-600 text-6xl mb-4">⚠️</div>
-            <h2 className="text-xl font-semibold mb-2">Error Loading Sites</h2>
-            <p className="text-gray-600 mb-4">{error}</p>
+        <main className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 pt-4 pb-8">
+          <div className="text-center py-6">
+            <div className="text-red-600 text-6xl mb-2">⚠️</div>
+            <h2 className="text-xl font-semibold mb-1">Error Loading Sites</h2>
+            <p className="text-gray-600 mb-2">{error}</p>
             <button
               onClick={fetchSites}
-              className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+              className="bg-purple-600 text-white px-2 py-1 rounded-lg hover:bg-purple-700 transition-colors"
             >
               Try Again
             </button>
@@ -131,80 +131,80 @@ function GalleryContent() {
     <div className="min-h-screen">
       <Header location='gallery' />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Gallery</h1>
+      <main className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 pt-4 pb-8">
+        <div className="mb-4">
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">Gallery</h1>
           <p className="text-gray-600">
             Browse and explore all created applications with their details and initial prompts
           </p>
         </div>
 
         {sites.length === 0 ? (
-          <div className="text-center py-12">
-            <RectangleStackIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">No Sites Found</h2>
-            <p className="text-gray-600 mb-6">No sites have been created yet.</p>
+          <div className="text-center py-6">
+            <RectangleStackIcon className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-1">No Sites Found</h2>
+            <p className="text-gray-600 mb-3">No sites have been created yet.</p>
             <button
               onClick={() => router.push('/')}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all"
+              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-3 py-1.5 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all"
             >
               Create Your First Site
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {sites.map((site) => (
               <div
                 key={site.id}
-                className="bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all duration-200 p-4 flex flex-col"
+                className="bg-white rounded-lg border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all duration-200 p-2 flex flex-col"
               >
-                <div className="flex items-start justify-between mb-3">
+                <div className="flex items-start justify-between mb-1.5">
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 truncate mb-2">
+                    <h3 className="text-lg font-semibold text-gray-900 truncate mb-1">
                       {getDisplayTitle(site)}
                     </h3>
                   </div>
                 </div>
 
-                <div className="flex items-center text-sm text-gray-500 mb-3">
-                  <CalendarIcon className="w-4 h-4 mr-1 flex-shrink-0" />
+                <div className="flex items-center text-sm text-gray-500 mb-1.5">
+                  <CalendarIcon className="w-2 h-2 mr-0.5 flex-shrink-0" />
                   <span className="truncate">Created {formatDate(site.created_at, true)}</span>
                 </div>
 
                 {site.initial_prompt && (
-                  <div className="bg-gray-50 rounded-lg p-3 mb-4 flex-1">
-                    <div className="flex items-center justify-between mb-2">
+                  <div className="bg-gray-50 rounded-lg p-1.5 mb-2 flex-1">
+                    <div className="flex items-center justify-between mb-1">
                       <h4 className="text-xs font-medium text-gray-700">Initial Prompt:</h4>
                       <button
                         onClick={() => copyPromptToClipboard(site)}
-                        className="flex items-center space-x-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                        className="flex items-center space-x-0.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
                         title="Copy prompt to clipboard"
                       >
-                        <ClipboardDocumentIcon className="w-3 h-3" />
+                        <ClipboardDocumentIcon className="w-1.5 h-1.5" />
                         <span>{copiedPromptId === site.id ? 'Copied!' : 'Copy'}</span>
                       </button>
                     </div>
-                    <div className="max-h-24 overflow-y-auto text-xs text-gray-600 leading-relaxed">
+                    <div className="max-h-12 overflow-y-auto text-xs text-gray-600 leading-relaxed">
                       {site.initial_prompt}
                     </div>
                   </div>
                 )}
 
-                <div className="mt-auto space-y-3">
+                <div className="mt-auto space-y-1.5">
                   {(site.preview_url || site.backend_url) ? (
                     <a
                       href={site.preview_url || site.backend_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center w-full px-3 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200"
+                      className="inline-flex items-center justify-center w-full px-1.5 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200"
                       title="Open preview in new tab"
                     >
-                      <ArrowTopRightOnSquareIcon className="w-4 h-4 mr-1" />
+                      <ArrowTopRightOnSquareIcon className="w-2 h-2 mr-0.5" />
                       Preview
                     </a>
                   ) : (
-                    <div className="inline-flex items-center justify-center w-full px-3 py-2 text-sm font-medium text-gray-400 rounded-lg border border-gray-200">
-                      <ArrowTopRightOnSquareIcon className="w-4 h-4 mr-1" />
+                    <div className="inline-flex items-center justify-center w-full px-1.5 py-1 text-sm font-medium text-gray-400 rounded-lg border border-gray-200">
+                      <ArrowTopRightOnSquareIcon className="w-2 h-2 mr-0.5" />
                       No Preview Available
                     </div>
                   )}

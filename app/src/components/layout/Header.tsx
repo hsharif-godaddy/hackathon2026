@@ -26,20 +26,20 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
         "header-bg bg-intents-ux-boxHighContrast-backgroundColor": location !== 'homepage',
       }
     )}>
-      <div className="mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          <div className="flex items-center space-x-3">
+      <div className="mx-auto px-2 sm:px-3 lg:px-4">
+        <div className="flex justify-between items-center h-8">
+          <div className="flex items-center space-x-1.5" data-partial="componentAiro">
             <Link
               href="https://airo.ai"
               className="flex items-center"
               data-eid={ generateClickEID(`${location}.header.airo_ai_link`) }
             >
-              <div className="flex items-center justify-center gap-4">
+              <div className="flex items-center justify-center gap-2">
                 <ChevronLeftIcon />
-                <AiroLogo className="-top-0.5 relative" design="dark" />
+                <AiroLogo className="relative" design="dark" />
               </div>
             </Link>
-            <Tag emphasis="info">{t('builder_beta', undefined, 'beta')}</Tag>
+            <Tag emphasis="highlight" highcontrast>{t('builder_beta', undefined, 'beta')}</Tag>
           </div>
           <Box orientation="horizontal" gap="lg">
             {actions && actions}
@@ -47,7 +47,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
               onShowMockLogin={onShowMockLogin}
               location={location}
             />
-            { showAuthenticatedUI && <div className="h-6 w-px bg-ai-dark self-center" /> }
+            { showAuthenticatedUI && <div className="h-3 w-px bg-ai-dark self-center" /> }
             <AppSelector location={location} />
             <AppPublish location={location} />
           </Box>

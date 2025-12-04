@@ -268,7 +268,7 @@ export default function ProjectDomain() {
           className="w-full"
         >
           {!site ? (
-            <Skeleton className="mt-5" size="lg" width="100%" lines={1} />
+            <Skeleton className="mt-2.5" size="lg" width="100%" lines={1} />
           ) : (
             <TextInput
               className="flex-1"
@@ -303,13 +303,13 @@ export default function ProjectDomain() {
                blockAlignChildren="start"
              >
                <text.p>{projectDomainDisplay}</text.p>
-               <WindowNewIcon className="size-4" />
+               <WindowNewIcon className="size-2" />
              </Box>
            </Button>
          )}
         </div>
         { showButtons && currentProjectName !== projectDomainValue && (
-          <SiblingSet gap="sm" className="mt-4">
+          <SiblingSet gap="sm" className="mt-2">
             <Button
               disabled={
                 currentProjectName.length === 0 ||

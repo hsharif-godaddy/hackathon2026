@@ -46,7 +46,7 @@ function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistan
   })
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       {blocks.map((block, index) => {
         const toolCallArray = block.type === 'tool' && block.toolCall 
           ? toolCallArraysCacheRef.current.get(block.toolCall.id) 

@@ -85,7 +85,7 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
       )}
 
       {!error && tables.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               Found {tables.length} {tables.length === 1 ? 'table' : 'tables'}
@@ -105,8 +105,8 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
                 onClick={() => handleTableClick(table)}
                 className="min-w-[200px]"
               >
-                <div className="p-4">
-                  <div className="text-xs text-muted-foreground mb-2">
+                <div className="p-2">
+                  <div className="text-xs text-muted-foreground mb-1">
                     #{index + 1}
                   </div>
                   <div className="font-mono font-medium">

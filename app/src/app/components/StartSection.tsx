@@ -11,7 +11,7 @@ export default function StartSection() {
 
   return(
     <PageSection allowOverflow={true}>
-      <div ref={ref} className="max-w-screen-lg mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-center relative overflow-visible start-section">
+      <div ref={ref} className="max-w-screen-lg mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4 items-center relative overflow-visible start-section">
         <div className="flex flex-col justify-center">
           <TextBlock
             preTitle="Get started with a prompt"

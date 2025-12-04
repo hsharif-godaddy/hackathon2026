@@ -271,7 +271,7 @@ export default makeGasket({
     params: {
       app: 'airo-builder',
       manifest: 'no-header',
-      theme: 'godaddy:site',
+      theme: 'godaddy-antares',
       privateLabel: 1,
     }
   },

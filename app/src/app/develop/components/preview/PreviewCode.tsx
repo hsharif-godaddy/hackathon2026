@@ -23,7 +23,7 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
   loading: () => (
     <div className="h-full flex items-center justify-center text-white">
       <div className="text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-2"></div>
+        <div className="animate-spin rounded-full h-4 w-4 border-b-2 mx-auto mb-1"></div>
         <div className="text-sm">Loading editor...</div>
       </div>
     </div>
@@ -346,7 +346,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
 
   if (isLoading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-2">
+      <div className="h-full flex flex-col items-center justify-center gap-1">
         <Spinner data-partial="gradientAiro" />
         <div className="text-sm">Loading project files...</div>
       </div>
@@ -357,12 +357,12 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
-          <div className="text-lg font-semibold mb-2">Project Loading</div>
-          <div className="text-sm mb-4">{error}</div>
+          <div className="text-lg font-semibold mb-1">Project Loading</div>
+          <div className="text-sm mb-2">{error}</div>
           <button
             onClick={loadFiles}
             disabled={isLoading}
-            className="px-4 py-2 rounded-md disabled:opacity-50"
+            className="px-2 py-1 rounded-md disabled:opacity-50"
           >
             {isLoading ? 'Loading...' : 'Retry Loading Files'}
           </button>
@@ -387,14 +387,14 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
             "absolute left-0 top-0 bottom-0 w-[280px] bg-intents-ux-boxLowContrast-backgroundColor z-20 transform transition-transform duration-300 ease-in-out overflow-y-auto",
             showFileTree ? "translate-x-0" : "-translate-x-full"
           )}>
-            <div className="flex items-center justify-between px-3 py-1 border-b">
+            <div className="flex items-center justify-between px-1.5 py-0.5 border-b">
               <Text.p className="ml-2 !font-semibold">Files</Text.p>
               <Button
                 onClick={() => setShowFileTree(false)}
-                className="!p-1"
+                className="!p-0.5"
                 design="control"
                 title="Close"
-                icon={<XIcon className="!size-4" />}
+                icon={<XIcon />}
               />
             </div>
             <FileTree
@@ -423,10 +423,10 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
           {isMobile && (
             <Button
               onClick={() => setShowFileTree(true)}
-              className="!px-4 !py-1 flex-shrink-0"
+              className="!px-2 !py-0.5 flex-shrink-0"
               design="control"
               title="Show files"
-              icon={<HamburgerIcon className="!size-5" />}
+              icon={<HamburgerIcon className="!size-2.5" />}
               text="Files"
             />
           )}
@@ -437,19 +437,19 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                 <div
                   key={file.path}
                   className={clsx(
-                    "relative flex items-center gap-1 pl-2 pr-1 py-1 border-b-4 border-r cursor-pointer text-sm whitespace-nowrap transition-opacity duration-200 flex-shrink-0", {
+                    "relative flex items-center gap-0.5 pl-1 pr-0.5 py-0.5 border-b-4 border-r cursor-pointer text-sm whitespace-nowrap transition-opacity duration-200 flex-shrink-0", {
                       "opacity-50 border-b-transparent": activeFile !== file.path
                     }
                   )}
                   onClick={() => setActiveFile(file.path)}
                 >
-                  <PageIcon className="w-4 h-4" />
+                  <PageIcon />
                   <span className={clsx(isMobile ? "max-w-[80px] truncate" : "")}>{file.name}</span>
 
                   {/* Save status indicators */}
                   {(saving === file.path || recentlySaved === file.path || file.isDirty) && (
                     <div className={clsx(
-                      "absolute top-1.5 left-2 w-2 h-2 bg-intents-ux-feedbackHighContrastCritical-feedbackColor rounded-full", {
+                      "absolute top-1 left-1 w-1 h-1 bg-intents-ux-feedbackHighContrastCritical-feedbackColor rounded-full", {
                         "bg-intents-ux-feedbackHighContrastSuccess-feedbackColor": recentlySaved === file.path,
                         "bg-intents-ux-feedbackHighContrastCritical-feedbackColor animate-pulse": saving === file.path,
                         "bg-intents-ux-feedbackHighContrastCritical-feedbackColor": file.isDirty,
@@ -462,10 +462,10 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                       e.stopPropagation()
                       handleCloseFile(file.path)
                     }}
-                    className="!p-1"
+                    className="!p-0.5"
                     title="Close file"
                     design="control"
-                    icon={<XIcon className="!size-3" />}
+                    icon={<XIcon className="!size-1.5" />}
                   />
                 </div>
               ))}
@@ -478,7 +478,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                       if (file.isDirty) handleSaveFile(file.path)
                     })
                   }}
-                  icon={<DownloadIcon className="!w-4 !h-4" />}
+                  icon={<DownloadIcon />}
                   text="Save All"
                   design="control"
                 />
@@ -511,7 +511,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
             />
           ) : (
             <div className="h-full flex flex-col items-center justify-center">
-              <PageIcon className="size-8 mx-auto mb-4" />
+              <PageIcon className="mx-auto mb-2" />
               <h3 className="text-lg font-medium">No file selected</h3>
               <p className="text-sm">Select a file to start editing</p>
             </div>

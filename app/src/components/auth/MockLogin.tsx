@@ -51,12 +51,12 @@ export function MockLoginDialog({
       }
     >
       <div>
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className="mb-3">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
             Test User:
           </label>
-          <div className="flex items-center px-4 py-3 border border-gray-300 rounded-lg bg-gray-50">
-            <span className="text-2xl mr-3">{MOCK_USER.avatar}</span>
+          <div className="flex items-center px-2 py-1.5 border border-gray-300 rounded-lg bg-gray-50">
+            <span className="text-2xl mr-1.5">{MOCK_USER.avatar}</span>
             <div className="text-left">
               <div className="font-medium text-gray-900">{MOCK_USER.name}</div>
               <div className="text-sm text-gray-500">{MOCK_USER.email}</div>
@@ -66,9 +66,9 @@ export function MockLoginDialog({
         </div>
 
         {/* Plan Info */}
-        <div className="bg-purple-50 rounded-lg p-3 mb-4">
+        <div className="bg-purple-50 rounded-lg p-1.5 mb-2">
           <div className="flex items-center">
-            <UserIcon className="w-4 h-4 text-purple-600 mr-2" />
+            <UserIcon className="w-2 h-2 text-purple-600 mr-1" />
             <span className="text-sm font-medium text-purple-900">
               Development User: {MOCK_USER.plan} Plan
             </span>

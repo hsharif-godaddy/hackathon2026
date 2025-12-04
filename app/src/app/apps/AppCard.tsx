@@ -103,22 +103,24 @@ export default function AppCard({site}) {
     onConfirm: () => void
     onCancel: () => void
   }) => (
-    <div className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-4 z-10">
-      <p className="text-sm mb-4 text-center">{message}</p>
+    <div className="absolute inset-0 bg-intents-ux-box-backgroundColor rounded-lg flex flex-col items-center justify-center p-2 z-10">
+      <p className="text-sm mb-2 text-center">{message}</p>
       <Box orientation="horizontal" gap="md">
         <Button
           onClick={onConfirm}
           disabled={actionLoading === siteId}
           data-eid={generateClickEID('apps.app.delete_confirm')}
-          className="text-white px-4 py-2 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          className="text-white px-2 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           text={actionLoading === siteId ? 'Deleting...' : 'Delete'}
           design="critical"
+          size="sm"
         />
         <Button
           data-eid={generateClickEID('apps.app.delete_cancel')}
           onClick={onCancel}
           text="Cancel"
           design="secondary"
+          size="sm"
         />
       </Box>
     </div>
@@ -126,7 +128,7 @@ export default function AppCard({site}) {
 
   return (
     <div
-      className="relative flex flex-col rounded-lg border hover:shadow-lg transition-all duration-200 px-6 pt-6 pb-4"
+      className="relative flex flex-col rounded-lg border hover:shadow-lg transition-all duration-200 px-3 pt-3 pb-2"
     >
       {/* Inline Alert */}
       {alertState.siteId === site.id && alertState.type && (
@@ -137,41 +139,41 @@ export default function AppCard({site}) {
           onCancel={clearAlert}
         />
       )}
-      <div className="flex gap-4 flex-1">
+      <div className="flex gap-2 flex-1">
         {/* Thumbnail */}
         <AppThumbnail siteId={site.id} siteName={site.name || 'Untitled App'} size="lg" />
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between mb-2 mt-1">
-            <div className="flex items-center space-x-2">
+          <div className="flex items-start justify-between mb-1 mt-0.5">
+            <div className="flex items-center space-x-1">
               {getStatusLabel(site.status)}
             </div>
           </div>
-          <h3 className="font-semibold mb-1">
+          <h3 className="font-semibold mb-0.5">
             {site.name || 'Untitled App'}
           </h3>
           {site.initial_prompt && (
-            <p className="text-sm mb-2 line-clamp-2">
+            <p className="text-sm mb-1 line-clamp-2">
               {site.initial_prompt}
             </p>
           )}
-          <div className="flex items-center text-xs space-x-4">
-            <div className="flex items-center space-x-1">
-              <ClockIcon className="w-3 h-3" />
+          <div className="flex items-center text-xs space-x-2">
+            <div className="flex items-center space-x-0.5">
+              <ClockIcon className="w-1.5 h-1.5" />
               <span>Created {formatDate(site.created_at)}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-4 mt-4 border-t">
-        <div className="flex space-x-2">
+      <div className="flex items-center justify-between pt-2 mt-2 border-t">
+        <div className="flex space-x-1">
           {publishedUrl && site.status === 'running' && (
             <Button
               href={publishedUrl}
               data-eid={generateClickEID('apps.app.visit_published')}
-              icon={<GlobeAltIcon className="w-3 h-3" />}
+              icon={<GlobeAltIcon />}
               size="sm"
               design="tertiary"
               text="Visit"
@@ -183,7 +185,7 @@ export default function AppCard({site}) {
             <Button
               href={site.preview_url}
               data-eid={generateClickEID('apps.app.view')}
-              icon={<EyeIcon className="w-3 h-3" />}
+              icon={<EyeIcon />}
               size="sm"
               design="tertiary"
               text="Preview"
@@ -195,8 +197,7 @@ export default function AppCard({site}) {
             <Button
               onClick={() => router.push(`/develop/${site.id}?siteId=${site.id}`)}
               data-eid={generateClickEID('apps.app.edit')}
-              className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md space-x-1"
-              icon={<PlayIcon className="w-3 h-3" />}
+              icon={<PlayIcon />}
               size="sm"
               design="tertiary"
               text="Edit"
@@ -208,7 +209,7 @@ export default function AppCard({site}) {
           onClick={() => showDeleteAlert(site.id, site.name || 'Untitled App')}
           data-eid={generateClickEID('apps.app.delete')}
           aria-label={`Delete app ${site.name || 'Untitled App'}`}
-          icon={<TrashIcon className="w-2 h-2" />}
+          icon={<TrashIcon />}
           size="sm"
           design="inline"
         />
@@ -222,10 +223,10 @@ export const AppCardEmptyState = () => {
 
   return (
     <div
-      className="relative flex flex-col min-h-56 justify-center items-center rounded-lg border gap-2 hover:cursor-pointer hover:shadow-lg transition-all group"
+      className="relative flex flex-col min-h-28 justify-center items-center rounded-lg border gap-1 hover:cursor-pointer hover:shadow-lg transition-all group"
       onClick={() => router.push(`/`)}
     >
-      <PlusIcon className="size-7 text-ai group-hover:scale-110 transition-all" />
+      <PlusIcon className="size-3 text-ai group-hover:scale-110 transition-all" />
       <text.p>Create a new app</text.p>
     </div>
   )

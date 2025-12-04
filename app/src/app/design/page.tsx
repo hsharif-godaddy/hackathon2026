@@ -17,12 +17,12 @@ export default function DesignPage() {
 
   return (
     <div className="min-h-screen">
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-2 py-4">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-3xl font-bold">Design Your App</h1>
-            <p className="mt-2">
+            <p className="mt-1">
               Customize the look and feel of your application
             </p>
           </div>
@@ -36,12 +36,12 @@ export default function DesignPage() {
         </div>
 
         {/* Design Options */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
           {/* Color Scheme Card */}
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 rounded-full" />
+              <CardTitle className="flex items-center space-x-1">
+                <div className="w-2.5 h-2.5 rounded-full" />
                 <span>Color Scheme</span>
               </CardTitle>
               <CardDescription>
@@ -50,25 +50,25 @@ export default function DesignPage() {
             </CardHeader>
             <CardContent>
               {currentPalette ? (
-                <div className="space-y-3">
+                <div className="space-y-1.5">
                   <p className="text-sm font-medium">
                     Current: {currentPalette.name}
                   </p>
-                  <div className="flex space-x-2">
+                  <div className="flex space-x-1">
                     <div 
-                      className="w-8 h-8 rounded border shadow-sm"
+                      className="w-4 h-4 rounded border shadow-sm"
                       style={{ backgroundColor: currentPalette.primary }}
                     />
                     <div 
-                      className="w-8 h-8 rounded border shadow-sm"
+                      className="w-4 h-4 rounded border shadow-sm"
                       style={{ backgroundColor: currentPalette.secondary }}
                     />
                     <div 
-                      className="w-8 h-8 rounded border shadow-sm"
+                      className="w-4 h-4 rounded border shadow-sm"
                       style={{ backgroundColor: currentPalette.accent }}
                     />
                     <div 
-                      className="w-8 h-8 rounded border shadow-sm"
+                      className="w-4 h-4 rounded border shadow-sm"
                       style={{ backgroundColor: currentPalette.surface }}
                     />
                   </div>
@@ -82,7 +82,7 @@ export default function DesignPage() {
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-1.5">
                   <p className="text-sm">
                     No color scheme selected
                   </p>
@@ -102,8 +102,8 @@ export default function DesignPage() {
           {/* Typography Card */}
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 rounded-full" />
+              <CardTitle className="flex items-center space-x-1">
+                <div className="w-2.5 h-2.5 rounded-full" />
                 <span>Typography</span>
               </CardTitle>
               <CardDescription>
@@ -111,7 +111,7 @@ export default function DesignPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm mb-3">
+              <p className="text-sm mb-1.5">
                 Coming soon
               </p>
               <Button variant="outline" size="sm" disabled className="w-full">
@@ -123,8 +123,8 @@ export default function DesignPage() {
           {/* Layout Card */}
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 rounded-full" />
+              <CardTitle className="flex items-center space-x-1">
+                <div className="w-2.5 h-2.5 rounded-full" />
                 <span>Layout</span>
               </CardTitle>
               <CardDescription>
@@ -132,7 +132,7 @@ export default function DesignPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm mb-3">
+              <p className="text-sm mb-1.5">
                 Coming soon
               </p>
               <Button variant="outline" size="sm" disabled className="w-full">
@@ -144,8 +144,8 @@ export default function DesignPage() {
           {/* Components Card */}
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 rounded-full" />
+              <CardTitle className="flex items-center space-x-1">
+                <div className="w-2.5 h-2.5 rounded-full" />
                 <span>Components</span>
               </CardTitle>
               <CardDescription>
@@ -153,7 +153,7 @@ export default function DesignPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm mb-3">
+              <p className="text-sm mb-1.5">
                 Coming soon
               </p>
               <Button variant="outline" size="sm" disabled className="w-full">
@@ -165,8 +165,8 @@ export default function DesignPage() {
           {/* Themes Card */}
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 rounded-full" />
+              <CardTitle className="flex items-center space-x-1">
+                <div className="w-2.5 h-2.5 rounded-full" />
                 <span>Themes</span>
               </CardTitle>
               <CardDescription>
@@ -174,7 +174,7 @@ export default function DesignPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm mb-3">
+              <p className="text-sm mb-1.5">
                 Coming soon
               </p>
               <Button variant="outline" size="sm" disabled className="w-full">
@@ -186,8 +186,8 @@ export default function DesignPage() {
           {/* Export Card */}
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <div className="w-5 h-5 rounded-full" />
+              <CardTitle className="flex items-center space-x-1">
+                <div className="w-2.5 h-2.5 rounded-full" />
                 <span>Export</span>
               </CardTitle>
               <CardDescription>
@@ -195,7 +195,7 @@ export default function DesignPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm mb-3">
+              <p className="text-sm mb-1.5">
                 Export CSS, Figma tokens, etc.
               </p>
               <Button variant="outline" size="sm" disabled className="w-full">
@@ -207,15 +207,15 @@ export default function DesignPage() {
 
         {/* Preview Section */}
         {currentPalette && (
-          <div className="mt-12">
-            <h2 className="text-2xl font-bold mb-6">Preview</h2>
+          <div className="mt-6">
+            <h2 className="text-2xl font-bold mb-3">Preview</h2>
             <Card>
-              <CardContent className="p-6">
+              <CardContent className="p-3">
                 <div 
-                  className="rounded-lg border p-6"
+                  className="rounded-lg border p-3"
                   style={{ backgroundColor: currentPalette.background }}
                 >
-                  <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center justify-between mb-3">
                     <h3 
                       className="text-lg font-semibold"
                       style={{ color: currentPalette.text }}
@@ -233,16 +233,16 @@ export default function DesignPage() {
                     </Button>
                   </div>
                   
-                  <div className="grid md:grid-cols-3 gap-4">
+                  <div className="grid md:grid-cols-3 gap-2">
                     <div 
-                      className="p-4 rounded border"
+                      className="p-2 rounded border"
                       style={{ 
                         backgroundColor: currentPalette.surface,
                         borderColor: currentPalette.secondary + '30'
                       }}
                     >
                       <h4 
-                        className="font-medium mb-2"
+                        className="font-medium mb-1"
                         style={{ color: currentPalette.text }}
                       >
                         Sample Card
@@ -256,18 +256,18 @@ export default function DesignPage() {
                     </div>
                     
                     <div 
-                      className="p-4 rounded border"
+                      className="p-2 rounded border"
                       style={{ 
                         backgroundColor: currentPalette.surface,
                         borderColor: currentPalette.accent + '30'
                       }}
                     >
                       <div 
-                        className="w-8 h-8 rounded mb-2"
+                        className="w-4 h-4 rounded mb-1"
                         style={{ backgroundColor: currentPalette.accent }}
                       />
                       <h4 
-                        className="font-medium mb-2"
+                        className="font-medium mb-1"
                         style={{ color: currentPalette.text }}
                       >
                         Accent Color
@@ -281,18 +281,18 @@ export default function DesignPage() {
                     </div>
                     
                     <div 
-                      className="p-4 rounded border"
+                      className="p-2 rounded border"
                       style={{ 
                         backgroundColor: currentPalette.surface,
                         borderColor: currentPalette.success + '30'
                       }}
                     >
                       <div 
-                        className="w-8 h-8 rounded mb-2"
+                        className="w-4 h-4 rounded mb-1"
                         style={{ backgroundColor: currentPalette.success }}
                       />
                       <h4 
-                        className="font-medium mb-2"
+                        className="font-medium mb-1"
                         style={{ color: currentPalette.text }}
                       >
                         Success State

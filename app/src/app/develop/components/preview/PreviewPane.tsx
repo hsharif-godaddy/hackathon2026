@@ -315,9 +315,9 @@ export default function PreviewPane({
     return (
       <div className="h-full flex flex-col">
         {isViewingHistoricalCommit && (
-          <div className="bg-intents-ux-feedbackInfo-feedbackColor rounded pl-2 pr-4 py-2 mx-2 my-2 md:mx-4 md:my-0">
+          <div className="bg-intents-ux-feedbackInfo-feedbackColor rounded pl-1 pr-2 py-1 mx-1 my-1 md:mx-2 md:my-0">
             <div className="flex items-center items-space-between w-full">
-              <span className="font-mono px-2 text-sm py-1 rounded mr-2 grow">
+              <span className="font-mono px-1 text-sm py-0.5 rounded mr-1 grow">
                 This is a preview of a previous version of the app.
               </span>
               <Button
@@ -335,7 +335,7 @@ export default function PreviewPane({
 
         <div className={clsx(
           "inset-0 relative h-full", {
-            "p-4": !isMobile
+            "p-2": !isMobile
           }
         )}>
           <div className={clsx(
@@ -345,10 +345,10 @@ export default function PreviewPane({
           )}>
             <div className={clsx(
               "flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300 ease-in-out", {
-                "w-[430px] mx-auto my-4 max-h-[980px]": previewViewMode === PreviewViewMode.MOBILE && viewMode === ViewMode.PREVIEW && !isMobile,
+                "w-[430px] mx-auto my-2 max-h-[980px]": previewViewMode === PreviewViewMode.MOBILE && viewMode === ViewMode.PREVIEW && !isMobile,
                 "w-full": previewViewMode === PreviewViewMode.DESKTOP || viewMode === ViewMode.CODE || isMobile,
                 "border shadow-lg": previewViewMode === PreviewViewMode.MOBILE && viewMode === ViewMode.PREVIEW && !isMobile,
-                "rounded-lg p-3": !isMobile,
+                "rounded-lg p-1.5": !isMobile,
                 "p-0": isMobile
               }
             )}>

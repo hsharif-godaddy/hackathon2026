@@ -64,20 +64,20 @@ export default function FontPaletteWidget({ name, fonts, className = '' }: FontP
 
   if (!hasFonts) {
     return (
-      <div className={`rounded-lg border bg-white p-4 shadow-sm max-w-2xl ${className}`}>
+      <div className={`rounded-lg border bg-white p-2 shadow-sm max-w-2xl ${className}`}>
         <p className="text-gray-500">No fonts to display</p>
       </div>
     )
   }
 
   return (
-    <div className={`rounded-lg border bg-white p-3 shadow-sm max-w-2xl ${className}`}>
+    <div className={`rounded-lg border bg-white p-1.5 shadow-sm max-w-2xl ${className}`}>
       {/* Title */}
       {name && (
-        <h3 className="text-base font-bold mb-2 text-gray-900">{name}</h3>
+        <h3 className="text-base font-bold mb-1 text-gray-900">{name}</h3>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {safeFonts.map((font, index) => {
           const fontFamily = font?.name || 'Arial'
           const fontWeight = font?.weight || '400'
@@ -87,10 +87,10 @@ export default function FontPaletteWidget({ name, fonts, className = '' }: FontP
           return (
             <div
               key={index}
-              className="rounded border bg-gray-50 p-3 space-y-1.5"
+              className="rounded border bg-gray-50 p-1.5 space-y-1"
             >
               {/* Font preview samples */}
-              <div className="space-y-1.5 pt-1">
+              <div className="space-y-1 pt-0.5">
                 {/* Heading sample */}
                 <div
                   className="text-xl leading-tight"

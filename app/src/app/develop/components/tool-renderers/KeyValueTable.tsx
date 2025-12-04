@@ -15,7 +15,7 @@ export default function KeyValueTable({ data, title }: { data: Record<string, an
 
   return (
     <div>
-      {title && <div className="text-xs font-bold mb-2">{title}</div>}
+      {title && <div className="text-xs font-bold mb-1">{title}</div>}
       <div className="border rounded-md overflow-hidden">
         <table className="w-full text-sm">
           <tbody>
@@ -24,10 +24,10 @@ export default function KeyValueTable({ data, title }: { data: Record<string, an
                 key={key}
                 className={index % 2 === 0 ? 'bg-muted/50' : 'bg-background'}
               >
-                <td className="px-3 py-2 font-medium text-foreground/70 border-r border-border w-1/3">
+                <td className="px-1.5 py-1 font-medium text-foreground/70 border-r border-border w-1/3">
                   {key}
                 </td>
-                <td className="px-3 py-2 text-foreground font-mono text-xs break-all">
+                <td className="px-1.5 py-1 text-foreground font-mono text-xs break-all">
                   {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
                 </td>
               </tr>

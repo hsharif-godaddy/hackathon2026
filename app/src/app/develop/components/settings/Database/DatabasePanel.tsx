@@ -64,7 +64,7 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
             <Box
               key={`skeleton-${i}`}
               orientation="horizontal"
-              className="bg-intents-ux-box-backgroundColor rounded-lg px-4 py-3"
+              className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1.5"
               blockAlignChildren="spaceBetween"
               inlineAlignChildren="center"
             >
@@ -117,12 +117,12 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
           <Box
             key={table}
             orientation="horizontal"
-            className="bg-intents-ux-box-backgroundColor rounded-lg px-4 py-3"
+            className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1.5"
             blockAlignChildren="spaceBetween"
             inlineAlignChildren="center"
           >
             <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
-              <DatabaseIcon className="size-6" />
+              <DatabaseIcon className="size-3" />
               <text.p title={table}>
                 {formatColumnName(table)}
               </text.p>

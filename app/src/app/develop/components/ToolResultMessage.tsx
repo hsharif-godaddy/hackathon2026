@@ -19,20 +19,20 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
   const getToolIcon = (toolName: string) => {
     switch (toolName) {
       case 'directory_listing':
-        return <FolderIcon className="w-4 h-4 text-blue-500" />
+        return <FolderIcon className="w-2 h-2 text-blue-500" />
       case 'file_read':
       case 'read_file':
-        return <DocumentTextIcon className="w-4 h-4 text-green-500" />
+        return <DocumentTextIcon className="w-2 h-2 text-green-500" />
       case 'code_search':
       case 'grep_search':
-        return <CodeBracketIcon className="w-4 h-4 text-purple-500" />
+        return <CodeBracketIcon className="w-2 h-2 text-purple-500" />
       case 'terminal':
       case 'run_command':
-        return <CommandLineIcon className="w-4 h-4 text-orange-500" />
+        return <CommandLineIcon className="w-2 h-2 text-orange-500" />
       case 'image_search':
-        return <PhotoIcon className="w-4 h-4 text-pink-500" />
+        return <PhotoIcon className="w-2 h-2 text-pink-500" />
       default:
-        return <WrenchScrewdriverIcon className="w-4 h-4 text-gray-500" />
+        return <WrenchScrewdriverIcon className="w-2 h-2 text-gray-500" />
     }
   }
 
@@ -65,24 +65,24 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
 
   return (
     <div className="bg-gray-50 border rounded-lg overflow-hidden">
-      <div className="flex items-center space-x-2 px-3 py-2 border-b">
+      <div className="flex items-center space-x-1 px-1.5 py-1 border-b">
         {getToolIcon(toolName)}
         <span className="text-sm font-medium text-gray-700">
           {getToolDisplayName(toolName)}
         </span>
       </div>
-      <div className="p-3">
+      <div className="p-1.5">
         {toolName === 'image_search' ? (
-          <div className="space-y-4">
+          <div className="space-y-2">
             {(() => {
               const images = extractImagesFromResult(toolResult)
               if (images && images.length > 0) {
                 return (
-                  <div className="space-y-4">
+                  <div className="space-y-2">
                     {/* Image grid for multiple images */}
                     <div className={`grid gap-3 ${images.length === 1 ? 'grid-cols-1' : images.length === 2 ? 'grid-cols-2' : images.length === 3 ? 'grid-cols-3' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'}`}>
                       {images.map((imageData, index) => (
-                        <div key={index} className="space-y-2">
+                        <div key={index} className="space-y-1">
                           <img // eslint-disable-line @next/next/no-img-element
                             src={imageData.url}
                             alt={imageData.alt}
@@ -94,7 +94,7 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
                               if (fallback) fallback.style.display = 'block'
                             }}
                           />
-                          <div className="text-xs text-red-600 hidden p-2 bg-red-50 rounded border border-red-200">
+                          <div className="text-xs text-red-600 hidden p-1 bg-red-50 rounded border border-red-200">
                             Failed to load image: {imageData.alt}
                           </div>
                           {imageData.alt && (
@@ -107,11 +107,11 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
                     </div>
 
                     {/* Show raw markdown for reference */}
-                    <details className="mt-4">
+                    <details className="mt-2">
                       <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
                         Show raw markdown ({images.length} image{images.length !== 1 ? 's' : ''})
                       </summary>
-                      <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono leading-relaxed mt-2 p-2 bg-gray-50 rounded border">
+                      <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono leading-relaxed mt-1 p-1 bg-gray-50 rounded border">
                         {toolResult}
                       </pre>
                     </details>
@@ -119,7 +119,7 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
                 )
               }
               return (
-                <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
+                <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono leading-relaxed max-h-48 overflow-y-auto">
                   {formatToolResult(toolResult)}
                 </pre>
               )
@@ -127,7 +127,7 @@ export default function ToolResultMessage({ toolName, toolResult }: ToolResultMe
             }
           </div>
         ) : (
-          <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
+          <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono leading-relaxed max-h-48 overflow-y-auto">
             {formatToolResult(toolResult)}
           </pre>
         )}

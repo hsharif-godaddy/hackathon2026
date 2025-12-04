@@ -87,7 +87,7 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
     <Box
       orientation="horizontal"
       gap="sm"
-      className="pt-4 md:pt-0 px-4 pb-4"
+      className="pt-2 md:pt-0 px-2 pb-2"
     >
       {isMobile && (
         <IconButton

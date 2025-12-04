@@ -4,7 +4,7 @@
  * Reusable animated spinner SVG for loading states.
  * Used across tool renderers for consistent loading indicators.
  */
-export default function SpinnerIcon({ className = 'w-2.5 h-2.5' }: { className?: string }) {
+export default function SpinnerIcon({ className = 'w-1.5 h-1.5' }: { className?: string }) {
   return (
     <svg className={`${className} animate-spin`} viewBox="0 0 24 24">
       <circle

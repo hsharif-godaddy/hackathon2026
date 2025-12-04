@@ -33,14 +33,14 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger className="hover:cursor-pointer">
-        <UserIcon className="size-6" />
+        <UserIcon />
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[200px] p-2">
-        <div className="flex flex-col gap-1">
+      <PopoverContent align="end" className="w-[200px] p-1">
+        <div className="flex flex-col gap-0.5">
           { isAuthDisabled && (
             <Button
               variant="ghost"
-              className="justify-start px-2"
+              className="justify-start px-1"
               disabled
             >
               Auth Disabled
@@ -49,7 +49,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
           { !isAuthenticated && (
             <Button
               variant="ghost"
-              className="justify-start px-2 hover:cursor-pointer"
+              className="justify-start px-1 hover:cursor-pointer"
               onClick={() => {
                 if (isMockAuth && onShowMockLogin) {
                   onShowMockLogin();
@@ -67,7 +67,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
           { isAuthenticated && !isAuthDisabled && (
             <Button
               variant="ghost"
-              className="justify-start px-2 hover:cursor-pointer"
+              className="justify-start px-1 hover:cursor-pointer"
               onClick={() => handleSignOut()}
               data-eid={generateClickEID(`${location}.user_menu.sign_out`)}
             >

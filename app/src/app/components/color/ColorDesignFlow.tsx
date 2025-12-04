@@ -212,9 +212,9 @@ export default function ColorDesignFlow({
 
       case 'palette-options':
         return (
-          <div className="space-y-8">
+          <div className="space-y-4">
             <div className="text-center">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              <h2 className="text-2xl font-bold text-gray-900 mb-1">
                 Choose Your Color Palette
               </h2>
               <p className="text-gray-600">
@@ -222,36 +222,36 @@ export default function ColorDesignFlow({
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid md:grid-cols-2 gap-3">
               {paletteOptions.map((option) => (
                 <button
                   key={option.id}
                   onClick={() => handlePaletteSelection(option.palette)}
-                  className="text-left border-2 border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-all hover:shadow-md"
+                  className="text-left border-2 border-gray-200 rounded-lg p-2 hover:border-blue-300 transition-all hover:shadow-md"
                 >
-                  <h3 className="font-semibold text-lg text-gray-900 mb-2">
+                  <h3 className="font-semibold text-lg text-gray-900 mb-1">
                     {option.name}
                   </h3>
-                  <p className="text-gray-600 text-sm mb-4">
+                  <p className="text-gray-600 text-sm mb-2">
                     {option.description}
                   </p>
 
                   {/* Color swatches */}
-                  <div className="flex space-x-2 mb-3">
+                  <div className="flex space-x-1 mb-1.5">
                     <div
-                      className="w-8 h-8 rounded border"
+                      className="w-4 h-4 rounded border"
                       style={{ backgroundColor: option.palette.primary }}
                     />
                     <div
-                      className="w-8 h-8 rounded border"
+                      className="w-4 h-4 rounded border"
                       style={{ backgroundColor: option.palette.secondary }}
                     />
                     <div
-                      className="w-8 h-8 rounded border"
+                      className="w-4 h-4 rounded border"
                       style={{ backgroundColor: option.palette.accent }}
                     />
                     <div
-                      className="w-8 h-8 rounded border"
+                      className="w-4 h-4 rounded border"
                       style={{ backgroundColor: option.palette.surface }}
                     />
                   </div>
@@ -268,9 +268,9 @@ export default function ColorDesignFlow({
 
       case 'final-review':
         return selectedPalette ? (
-          <div className="space-y-8">
+          <div className="space-y-4">
             <div className="text-center">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              <h2 className="text-2xl font-bold text-gray-900 mb-1">
                 Review Your Color Palette
               </h2>
               <p className="text-gray-600">
@@ -285,9 +285,9 @@ export default function ColorDesignFlow({
             <div className="flex justify-center">
               <button
                 onClick={handleComplete}
-                className="flex items-center space-x-2 px-8 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+                className="flex items-center space-x-1 px-4 py-1.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
               >
-                <CheckIcon className="w-5 h-5" />
+                <CheckIcon className="w-2.5 h-2.5" />
                 <span>Finalize This Palette</span>
               </button>
             </div>
@@ -300,29 +300,29 @@ export default function ColorDesignFlow({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4">
+    <div className="min-h-screen bg-gray-50 py-4">
+      <div className="max-w-6xl mx-auto px-2">
         {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">
+        <div className="text-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Color Scheme Designer
           </h1>
-          <p className="text-gray-600 mb-8">
+          <p className="text-gray-600 mb-4">
             Let&apos;s create the perfect color palette for your {projectAnswers?.projectType || 'project'}
           </p>
 
           {/* Progress Steps */}
-          <div className="flex justify-center mb-8">
-            <div className="flex space-x-8">
+          <div className="flex justify-center mb-4">
+            <div className="flex space-x-4">
               {steps.map((step, index) => (
                 <div
                   key={step.id}
-                  className={`flex items-center space-x-2 ${
+                  className={`flex items-center space-x-1 ${
                     index <= currentStepIndex ? 'text-blue-600' : 'text-gray-400'
                   }`}
                 >
                   <div className={`
-                    w-8 h-8 rounded-full border-2 flex items-center justify-center text-sm font-medium
+                    w-4 h-4 rounded-full border-2 flex items-center justify-center text-sm font-medium
                     ${index < currentStepIndex
                       ? 'bg-blue-600 border-blue-600 text-white'
                       : index === currentStepIndex
@@ -330,7 +330,7 @@ export default function ColorDesignFlow({
                       : 'border-gray-300 text-gray-400 bg-white'
                     }
                   `}>
-                    {index < currentStepIndex ? <CheckIcon className="w-4 h-4" /> : index + 1}
+                    {index < currentStepIndex ? <CheckIcon className="w-2 h-2" /> : index + 1}
                   </div>
                   <div className="text-sm font-medium hidden md:block">
                     {step.label}
@@ -342,18 +342,18 @@ export default function ColorDesignFlow({
         </div>
 
         {/* Main Content */}
-        <div className="bg-white rounded-lg shadow-sm border p-8">
+        <div className="bg-white rounded-lg shadow-sm border p-4">
           {renderStep()}
         </div>
 
         {/* Navigation Footer */}
         {currentStep !== 'questionnaire' && currentStep !== 'final-review' && (
-          <div className="mt-8 flex justify-between">
+          <div className="mt-4 flex justify-between">
             <button
               onClick={handleBack}
-              className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-900 transition-colors"
+              className="flex items-center space-x-1 px-2 py-1 text-gray-600 hover:text-gray-900 transition-colors"
             >
-              <ArrowLeftIcon className="w-4 h-4" />
+              <ArrowLeftIcon className="w-2 h-2" />
               <span>Back</span>
             </button>
 
@@ -366,10 +366,10 @@ export default function ColorDesignFlow({
                     setCurrentStep('palette-options');
                   }
                 }}
-                className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                className="flex items-center space-x-1 px-3 py-1 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
               >
                 <span>Continue</span>
-                <ArrowRightIcon className="w-4 h-4" />
+                <ArrowRightIcon className="w-2 h-2" />
               </button>
             )}
           </div>

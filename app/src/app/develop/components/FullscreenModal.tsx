@@ -65,13 +65,13 @@ export default function FullscreenModal({
 
           {/* Modal Container */}
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center p-2"
             onClick={() => setIsOpen(false)}
           >
             <motion.div
               className={clsx("max-w-7xl shadow-xl flex flex-col overflow-hidden relative", {
                 "rounded": isImage,
-                "max-h-full w-full bg-intents-ux-box-backgroundColor p-4 rounded-lg": !isImage,
+                "max-h-full w-full bg-intents-ux-box-backgroundColor p-2 rounded-lg": !isImage,
               })}
               initial={isImage ? { opacity: 0 } : { scale: 0.9, opacity: 0 }}
               animate={isImage ? { opacity: 1 } : { scale: 1, opacity: 1 }}
@@ -85,12 +85,12 @@ export default function FullscreenModal({
             >
               {/* Header */}
               <div className={clsx("absolute", {
-                "top-3 right-2": !isImage,
-                "top-6 right-6": isImage,
+                "top-1.5 right-1": !isImage,
+                "top-3 right-3": isImage,
               })}>
                 <Button
                   onClick={() => setIsOpen(false)}
-                  icon={<XThickIcon className="h-6 w-6" />}
+                  icon={<XThickIcon className="h-3 w-3" />}
                   design="control"
                   aria-label="Close"
                   size="sm"
@@ -99,7 +99,7 @@ export default function FullscreenModal({
 
               {/* Content */}
               <motion.div
-                className={clsx("flex-1 overflow-auto p-4", {
+                className={clsx("flex-1 overflow-auto p-2", {
                   "flex flex-col items-center justify-center": type === 'image'
                 })}
                 layoutId={!isImage ? layoutId : undefined}
@@ -116,7 +116,7 @@ export default function FullscreenModal({
                     className="max-w-full max-h-full object-contain"
                   />
                 ) : type === 'plain' ? (
-                  <pre className="text-sm whitespace-pre font-mono text-left overflow-auto h-full bg-intents-ux-box-backgroundColor p-4 rounded">
+                  <pre className="text-sm whitespace-pre font-mono text-left overflow-auto h-full bg-intents-ux-box-backgroundColor p-2 rounded">
                     {content}
                   </pre>
                 ) : (
@@ -140,10 +140,10 @@ export default function FullscreenModal({
     }
     return (
       <button
-        className="flex items-center justify-center w-6 h-6 rounded transition-colors"
+        className="flex items-center justify-center w-3 h-3 rounded transition-colors"
         title="Open in fullscreen"
       >
-        <WindowNewIcon className="w-4 h-4" />
+        <WindowNewIcon className="w-2 h-2" />
       </button>
     )
   }
@@ -157,10 +157,10 @@ export default function FullscreenModal({
       ) : (
         <button
           onClick={() => setIsOpen(true)}
-          className="flex items-center justify-center w-6 h-6 rounded transition-colors"
+          className="flex items-center justify-center w-3 h-3 rounded transition-colors"
           title="Open in fullscreen"
         >
-          <WindowNewIcon className="w-4 h-4" />
+          <WindowNewIcon className="w-2 h-2" />
         </button>
       )}
       {createPortal(modalContent, document.body)}

@@ -50,7 +50,7 @@ export default function EmptyStateCard(props: EmptyStateCardProps) {
       gap="lg"
       blockAlignChildren="center"
       inlineAlignChildren="center"
-      className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-6 @md:p-8 @lg:p-12"
+      className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3 @md:p-4 @lg:p-6"
     >
       {icon && (
         <Box blockAlignChildren="center" inlineAlignChildren="center">

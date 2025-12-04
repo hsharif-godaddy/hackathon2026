@@ -37,7 +37,7 @@ export default function SettingsMenu() {
       <PopoverTrigger asChild>
         <button
           className={clsx(
-            "flex gap-0 items-center relative border rounded-xl px-2 py-0.5 leading-none transition-opacity duration-700 ml-auto",
+            "flex gap-0 items-center relative border rounded-xl px-1 py-0.5 leading-none transition-opacity duration-700 ml-auto",
             {
               "bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor shadow-md border-intents-ux-boxHighContrast-borderColor": open,
               "hover:cursor-pointer": true,
@@ -49,8 +49,8 @@ export default function SettingsMenu() {
           <SettingsIcon />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[220px] p-2">
-        <div className="flex flex-col gap-1">
+      <PopoverContent align="end" className="w-[220px] p-1">
+        <div className="flex flex-col gap-0.5">
           {items.map((item) => (
             <Button
               key={item.id}

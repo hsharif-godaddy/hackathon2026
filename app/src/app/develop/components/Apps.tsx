@@ -15,7 +15,7 @@ export default function Apps() {
       {isLoadingSites ? (
         <AppItemSkeleton />
       ) : (
-        <div className="flex flex-col gap-2 h-full">
+        <div className="flex flex-col gap-1 h-full">
           {sites.map((site) => (
             <AppItem
               key={site.id}

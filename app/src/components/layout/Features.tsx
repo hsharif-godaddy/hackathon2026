@@ -38,17 +38,13 @@ function FeatureItem({
       className="feature"
     >
       <Box
-        gap="md"
+        gap="sm"
         inlineAlignChildren="start"
       >
-        <Box
-          blockPadding="md"
-          inlinePadding="md"
-          className="feature-icon rounded-md mb-2"
-        >
+        <Box className="feature-icon rounded-md p-1.5 mb-1">
           <SparklesIcon />
         </Box>
-        <text.h3 as="heading">{feature.title}</text.h3>
+        <text.h3 as="heading" size={-2}>{feature.title}</text.h3>
         <text.p size={1} className="!font-thin">{feature.description}</text.p>
       </Box>
     </motion.div>
@@ -58,7 +54,7 @@ function FeatureItem({
 export default function Features({ features }: FeaturesProps) {
   return (
     <PageSection>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-12 max-w-screen-lg mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-screen-lg mx-auto">
         {features.map((feature, index) => (
           <FeatureItem key={feature.title} feature={feature} index={index} />
         ))}

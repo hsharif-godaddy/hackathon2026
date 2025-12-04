@@ -31,7 +31,7 @@ export default function AppItem({site, dataEid}: {site: Site, dataEid?: string})
         orientation="horizontal"
         gap="md"
         inlineAlignChildren="center"
-        className="p-2 rounded-md leading-tight group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
+        className="p-1 rounded-md leading-tight group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
       >
         <AppThumbnail siteId={site.id} siteName={site.name} size="xs" />
         <div className="flex flex-wrap">{site.name}</div>
@@ -46,10 +46,10 @@ export function AppItemSkeleton() {
       orientation="horizontal"
       gap="md"
       inlineAlignChildren="center"
-      className="p-2 rounded-md w-full text-left group rounded-sm bg-intents-ux-boxLowContrast-backgroundColor animate-pulse"
+      className="p-1 rounded-md w-full text-left group rounded-sm bg-intents-ux-boxLowContrast-backgroundColor animate-pulse"
     >
-      <div className="size-12 shrink-0 rounded-md bg-intents-ux-boxLowContrast-borderColor" />
-      <div className="w-24 h-4 bg-intents-ux-boxLowContrast-borderColor animate-pulse" />
+      <div className="size-6 shrink-0 rounded-md bg-intents-ux-boxLowContrast-borderColor" />
+      <div className="w-12 h-2 bg-intents-ux-boxLowContrast-borderColor animate-pulse" />
     </Box>
   )
 }
@@ -66,10 +66,10 @@ export function AppItemNew({ location }: { location?: string }) {
         orientation="horizontal"
         gap="md"
         inlineAlignChildren="center"
-        className="p-2 rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
+        className="p-1 rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
       >
-        <div className="size-12 shrink-0 flex items-center justify-center border border-dashed border-primary rounded-md">
-          <PlusIcon className="size-7 text-ai transition-all" />
+        <div className="size-6 shrink-0 flex items-center justify-center border border-dashed border-primary rounded-md">
+          <PlusIcon className="size-3.5 text-ai transition-all" />
         </div>
         <div>
           <text.p>Create a new app</text.p>
@@ -91,10 +91,10 @@ export function AppItemSeeAll({ location }: { location?: string }) {
         orientation="horizontal"
         gap="md"
         inlineAlignChildren="center"
-        className="p-2 rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
+        className="p-1 rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
       >
-        <div className="size-12 shrink-0 flex items-center justify-center border border-primary rounded-md">
-          <text.p className="text-ai"><AppsIcon className="size-7 text-ai" /></text.p>
+        <div className="size-6 shrink-0 flex items-center justify-center border border-primary rounded-md">
+          <text.p className="text-ai"><AppsIcon className="size-3.5 text-ai" /></text.p>
         </div>
         <div>
           <text.p>See all</text.p>

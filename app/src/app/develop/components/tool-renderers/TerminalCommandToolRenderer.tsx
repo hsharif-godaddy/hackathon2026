@@ -103,23 +103,23 @@ export default function TerminalCommandToolRenderer({
 
       {/* JSON format (new) */}
       {!isMarkdownFormat && (
-        <div className="flex-1 overflow-y-auto space-y-4">
+        <div className="flex-1 overflow-y-auto space-y-2">
           {/* Command */}
           {originalCommand ? (
             <div>
-              <div className="text-sm font-bold mb-2">Original Command</div>
-              <div className="border border-border rounded-md p-3 bg-muted overflow-x-auto">
+              <div className="text-sm font-bold mb-1">Original Command</div>
+              <div className="border border-border rounded-md p-1.5 bg-muted overflow-x-auto">
                 <pre className="text-xs font-mono text-foreground/80 whitespace-pre">{originalCommand}</pre>
               </div>
-              <div className="text-sm font-bold mb-2 mt-3">Transformed Command</div>
-              <div className="border border-border rounded-md p-3 bg-muted overflow-x-auto">
+              <div className="text-sm font-bold mb-1 mt-1.5">Transformed Command</div>
+              <div className="border border-border rounded-md p-1.5 bg-muted overflow-x-auto">
                 <pre className="text-xs font-mono text-foreground/80 whitespace-pre">{command}</pre>
               </div>
             </div>
           ) : (
             <div>
-              <div className="text-sm font-bold mb-2">Command</div>
-              <div className="border border-border rounded-md p-3 bg-muted overflow-x-auto">
+              <div className="text-sm font-bold mb-1">Command</div>
+              <div className="border border-border rounded-md p-1.5 bg-muted overflow-x-auto">
                 <pre className="text-xs font-mono text-foreground/80 whitespace-pre">{command}</pre>
               </div>
             </div>
@@ -137,8 +137,8 @@ export default function TerminalCommandToolRenderer({
 
           {/* Error */}
           {error && (
-            <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-md">
-              <div className="text-sm font-bold text-destructive mb-1">Error</div>
+            <div className="p-1.5 bg-destructive/10 border border-destructive/30 rounded-md">
+              <div className="text-sm font-bold text-destructive mb-0.5">Error</div>
               <div className="text-sm text-destructive-foreground whitespace-pre-wrap">{error}</div>
             </div>
           )}
@@ -146,8 +146,8 @@ export default function TerminalCommandToolRenderer({
           {/* Standard Output */}
           {stdout && (
             <div>
-              <div className="text-sm font-bold mb-2">Standard Output</div>
-              <div className="border border-border rounded-md p-4 bg-muted">
+              <div className="text-sm font-bold mb-1">Standard Output</div>
+              <div className="border border-border rounded-md p-2 bg-muted">
                 <pre className="text-xs font-mono whitespace-pre-wrap break-words text-foreground/80">
                   {stdout}
                 </pre>
@@ -158,8 +158,8 @@ export default function TerminalCommandToolRenderer({
           {/* Standard Error */}
           {stderr && (
             <div>
-              <div className="text-sm font-bold mb-2 text-orange-700">Standard Error</div>
-              <div className="border border-orange-200 rounded-md p-4 bg-orange-50">
+              <div className="text-sm font-bold mb-1 text-orange-700">Standard Error</div>
+              <div className="border border-orange-200 rounded-md p-2 bg-orange-50">
                 <pre className="text-xs font-mono whitespace-pre-wrap break-words text-orange-900">
                   {stderr}
                 </pre>
@@ -176,7 +176,7 @@ export default function TerminalCommandToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<SquareTerminal className="w-4 h-4" />}
+        icon={<SquareTerminal className="w-2 h-2" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasDetails}

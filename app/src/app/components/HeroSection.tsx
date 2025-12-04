@@ -131,36 +131,36 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   }, [])
 
   return (
-    <Box className="text-center flex flex-col gap-6 px-4 sm:px-6 lg:px-8 pt-24 min-h-[calc(100vh-3rem)] items-center justify-center">
+    <Box className="flex flex-col gap-3 px-2 sm:px-3 lg:px-4 pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
       <text.h1
         as='heading'
-        size={5}
-        className="max-w-screen-md"
+        size={4}
+        className="text-center max-w-screen-md"
       >
         Share your idea and we&apos;ll handle the rest
       </text.h1>
 
       <text.p
-        size={3}
-        className='max-w-xl mx-auto !font-thin'
+        size={2}
+        className='max-w-xl mx-auto !font-thin text-center'
       >
         We build it for you from concept to live web app
       </text.p>
 
       {/* Error Display */}
       {error && (
-        <div className="w-full max-w-2xl mx-auto mt-12">
+        <div className="w-full max-w-2xl mx-auto mt-6">
           <Alert
             emphasis="critical"
             title="Error"
-            actions={<Button design="inline" text="Dismiss" onClick={() => setError(null)} />}
+            actions={<Button text="Dismiss" onClick={() => setError(null)} />}
           >
             {error}
           </Alert>
         </div>
       )}
 
-      <div className="w-full max-w-2xl mx-auto my-8">
+      <div className="w-full max-w-2xl mx-auto my-4">
         <Box gap="lg">
           <div className={clsx('relative transition-all duration-300 ease-out glowing-input', {
             'glowing-input--disabled': isLoading
@@ -190,9 +190,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 rows={5}
                 disabled={isLoading}
                 maxLength={MAX_PROMPT_LENGTH + 1}
-                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-8 pr-24 pt-6 pb-5 z-10 w-full text-2xl font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
-                  'h-60 rounded-2xl': isExpanded,
-                  'h-20 rounded-[3rem]': !isExpanded
+                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-4 pr-12 py-3 z-10 w-full text-2xl leading-[1.4] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
+                  'h-32 rounded-2xl': isExpanded,
+                  'h-10 rounded-[3rem]': !isExpanded
                 })}
                 placeholder={isTyping ? "" : "Describe your app idea..."}
               />
@@ -202,26 +202,25 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 data-eid={generateClickEID('homepage.prompt.submit')}
                 disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
                 design='primary'
-                className="group !bg-ai cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed z-10 !rounded-full aspect-square !p-4 !border-none right-3 bottom-3"
+                className="group cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed z-10 !rounded-full aspect-square !p-2 !border-none right-1.5 bottom-1.5"
                 icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
                 aria-label={isLoading ? "Building your app..." : "Start building"}
               />
-
-              {promptText.length >= MAX_PROMPT_LENGTH && isExpanded && (
-                <div className="mt-2 text-left px-5">
-                  <text.p
-                    size={0}
-                    className="font-medium"
-                    style={{ color: '#ef4444' }}
-                  >
-                    Character limit reached ({MAX_PROMPT_LENGTH.toLocaleString()})
-                  </text.p>
-                </div>
-              )}
             </Box>
           </div>
+          {promptText.length >= MAX_PROMPT_LENGTH && isExpanded && (
+            <div className="mt-0.5 px-4 text-left">
+              <text.p
+                size={0}
+                className="font-medium"
+                emphasis="critical"
+              >
+                Character limit reached ({MAX_PROMPT_LENGTH.toLocaleString()})
+              </text.p>
+            </div>
+          )}
 
-          <text.p size={-1} className='max-w-lg mx-auto opacity-40 mb-8'>
+          <text.p size={-1} className='max-w-lg mx-auto opacity-40 mb-4 text-center'>
             AI can make mistakes, so double check its responses. By using Airo App Builder, you agree to our <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/ai-terms-of-use" className="!text-intents-ux-boxHighContrast-foregroundColor" text="Terms" /> and <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/privacy-policy" className="!text-intents-ux-boxHighContrast-foregroundColor" text="Privacy Policy" />.
           </text.p>
 
@@ -231,12 +230,12 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
           <button
             onClick={scrollToStartSection}
-            className="mx-auto mt-4 flex items-center gap-2 text-sm opacity-60 hover:opacity-100 hover:cursor-pointer transition-opacity group"
+            className="mx-auto mt-2 flex items-center gap-1 text-sm opacity-60 hover:opacity-100 hover:cursor-pointer transition-opacity group"
             data-eid={generateClickEID('homepage.hero.see_how_it_works')}
           >
             <Box blockAlignChildren='center' inlineAlignChildren='center' gap="md">
               <text.p size={0} className='font-medium'>See how it works</text.p>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 8 37" className="w-2 group-hover:translate-y-2 transition-all duration-500">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 8 37" className="w-1 group-hover:translate-y-1 transition-all duration-500">
                 <path fill="#d3c1f7" d="M3.646 36.789a.5.5 0 0 0 .708 0l3.182-3.182a.5.5 0 1 0-.708-.707L4 35.728 1.172 32.9a.5.5 0 0 0-.708.707zM4 0h-.5v36.435h1V0z" opacity=".5" />
               </svg>
             </Box>

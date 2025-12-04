@@ -11,13 +11,13 @@ export default function StatusMessage({ status, message }: StatusMessageProps) {
   const getStatusIcon = () => {
     switch (status) {
       case 'executing_tools':
-        return <ClockIcon className="w-4 h-4 text-blue-500 animate-spin" />
+        return <ClockIcon className="w-2 h-2 text-blue-500 animate-spin" />
       case 'completed':
-        return <CheckCircleIcon className="w-4 h-4 text-green-500" />
+        return <CheckCircleIcon className="w-2 h-2 text-green-500" />
       case 'error':
-        return <ExclamationTriangleIcon className="w-4 h-4 text-red-500" />
+        return <ExclamationTriangleIcon className="w-2 h-2 text-red-500" />
       default:
-        return <ClockIcon className="w-4 h-4 text-blue-500" />
+        return <ClockIcon className="w-2 h-2 text-blue-500" />
     }
   }
 
@@ -35,7 +35,7 @@ export default function StatusMessage({ status, message }: StatusMessageProps) {
   }
 
   return (
-    <div className={`inline-flex items-center space-x-2 px-3 py-2 rounded-lg border ${getStatusColor()}`}>
+    <div className={`inline-flex items-center space-x-1 px-1.5 py-1 rounded-lg border ${getStatusColor()}`}>
       {getStatusIcon()}
       <span className="text-sm font-medium">{message}</span>
     </div>

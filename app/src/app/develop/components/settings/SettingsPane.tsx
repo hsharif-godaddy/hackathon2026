@@ -24,7 +24,7 @@ export default function SettingsPane() {
 
   return (
     <div className="flex grow flex-col overflow-y-auto">
-      <div className="flex flex-col gap-2 h-full">
+      <div className="flex flex-col gap-1 h-full">
         {items.map((item) => (
           <Button
             design="option"

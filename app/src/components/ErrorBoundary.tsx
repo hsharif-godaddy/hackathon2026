@@ -107,7 +107,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
       }
 
       return (
-        <Box gap="md" className="bg-intents-ux-boxLowContrast-backgroundColor p-6 rounded-lg">
+        <Box gap="md" className="bg-intents-ux-boxLowContrast-backgroundColor p-3 rounded-lg">
           <text.h3 as="heading" size={-1}>
             Something went wrong. Please try again.
           </text.h3>

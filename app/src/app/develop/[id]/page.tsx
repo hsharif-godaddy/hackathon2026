@@ -576,7 +576,7 @@ function DevelopPageContent() {
         </div>
       ) : (
         // Desktop layout with resizable panels
-        <div className="flex-1 min-h-0 overflow-hidden p-4 flex">
+        <div className="flex-1 min-h-0 overflow-hidden p-2 flex">
           {!isChatPaneCollapsed && (
             <div
               className="flex flex-col flex-shrink-0 relative"

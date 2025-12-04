@@ -181,9 +181,9 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
 
   return (
     <div>
-      <div className="px-2">
+      <div className="px-1">
 
-        <div className="space-y-2">
+        <div className="space-y-1">
           {/* Always use segments - extract tool calls directly if chronologicalContent is empty */}
           {hasSegments ? (
             chronologicalContent.length > 0 ? (

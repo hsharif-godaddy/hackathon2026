@@ -14,13 +14,13 @@ export default function TextBlock({ preTitle, title, children, link, linkText }:
   return (
     <Box gap="lg">
       { preTitle && (
-        <text.p size={1}>{preTitle}</text.p>
+        <text.p size={2}>{preTitle}</text.p>
       )}
       <text.h2 as="heading" size={2}>{title}</text.h2>
       <text.p size={1} className="max-w-screen-sm !font-thin">{children}</text.p>
       { link && linkText && (
         <Button
-          data-partial="dark1"
+          data-partial="inverted"
           text={linkText}
           href={link}
           design="inline"

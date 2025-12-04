@@ -257,9 +257,9 @@ export default function AppPublish({ location }: { location?: string }) {
       <PopoverTrigger asChild>
         <Button
           id="tour-publish-button"
-          className='!bg-ai !font-normal !border-none'
           design='primary'
-          data-partial='gradientAiro'
+          size='sm'
+          data-partial='componentAiro'
           data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
           disabled={isButtonDisabled}
           text={isPublishing || isDeploymentInProgress
@@ -268,18 +268,18 @@ export default function AppPublish({ location }: { location?: string }) {
           }
         />
       </PopoverTrigger>
-      <PopoverContent align='end' className='w-[400px] p-6'>
-        <div className='flex flex-col gap-4'>
+      <PopoverContent align='end' className='w-[400px] p-3'>
+        <div className='flex flex-col gap-2'>
           {/* Collapsible Changes Header */}
             <Collapsible
               id='publish-changes'
               title={changesTitle}
             >
-              <div className='mt-2 space-y-2'>
+              <div className='mt-1 space-y-1'>
                 {unpublishedCount > 0 && (
                   <>
                     <text.h5 size={0}>{t('builder_publish_unpublished_title')}</text.h5>
-                    <div className='flex items-center gap-1'>
+                    <div className='flex items-center gap-0.5'>
                       <Button design='inline' onClick={handleViewHistory}>
                         {t('builder_publish_changes_count', { count: unpublishedCount })}
                       </Button>
@@ -294,7 +294,7 @@ export default function AppPublish({ location }: { location?: string }) {
                 )}
 
                 {deployments.length > 0 && (
-                  <div className='space-y-2'>
+                  <div className='space-y-1'>
                     {deployments.filter(d => d.status === DeploymentStatus.DEPLOYED).slice(0, 5).map((deployment, index) => {
                       const deploymentDate = new Date(deployment.updatedAt);
                       const isMostRecent = index === 0;
@@ -324,7 +324,7 @@ export default function AppPublish({ location }: { location?: string }) {
                       });
 
                       return (
-                        <div key={deployment.id} className='space-y-1'>
+                        <div key={deployment.id} className='space-y-0.5'>
                           <div className='flex items-center justify-between'>
                             <text.h5 size={0} emphasis='passive'>
                               {deploymentFormattedDate}
@@ -346,9 +346,9 @@ export default function AppPublish({ location }: { location?: string }) {
 
           <Separator />
           <Button
-            className='!bg-ai w-full'
+            className='w-full'
             design='primary'
-            data-partial='gradientAiro'
+            data-partial='componentAiro'
             data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
             disabled={isButtonDisabled}
             onClick={handleDeploy}

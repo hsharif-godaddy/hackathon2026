@@ -41,7 +41,7 @@ function getMessageClasses(message: ChatMessage | StreamingMessageType, isActive
 
   switch (message.role) {
     case 'user':
-      return clsx(baseClasses, 'bg-intents-ux-boxLowContrast-backgroundColor px-4 py-3 border rounded-br-none ml-8 my-1')
+      return clsx(baseClasses, 'bg-intents-ux-boxLowContrast-backgroundColor px-2 py-1.5 border rounded-br-none ml-4 my-0.5')
 
     case 'assistant':
       return clsx(baseClasses, 'max-w-full p-0')
@@ -74,10 +74,10 @@ function UserMessage({ content }: { content: string }) {
       </p>
       <button
         onClick={handleCopyMessage}
-        className="absolute -bottom-1 -right-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600 text-xs"
+        className="absolute -bottom-0.5 -right-3 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600 text-xs"
         title="Copy message to clipboard"
       >
-        {copiedToClipboard ? <Check className="w-4 h-4" /> : <ClipboardCopy className="w-4 h-4" />}
+        {copiedToClipboard ? <Check className="w-2 h-2" /> : <ClipboardCopy className="w-2 h-2" />}
       </button>
     </div>
   )

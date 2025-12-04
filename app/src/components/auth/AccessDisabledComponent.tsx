@@ -20,7 +20,7 @@ export default function AccessDisabledComponent() {
   return (
     <>
       <div className="flex flex-col items-center justify-center relative w-full min-h-screen overflow-hidden header-bg bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
-        <Box className="p-8 max-w-md text-center" gap="lg">
+        <Box className="p-4 max-w-md text-center" gap="lg">
           <div className="text-2xl font-semibold">
             Access Restricted
           </div>

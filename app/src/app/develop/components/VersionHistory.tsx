@@ -146,7 +146,7 @@ export default function VersionHistory() {
         <button
           onClick={onClick}
           disabled={isSelectingCommit}
-          className={`relative pl-4 py-3 pr-8 text-left w-full transition-colors duration-200 ${
+          className={`relative pl-2 py-1.5 pr-4 text-left w-full transition-colors duration-200 ${
             isSelectingCommit
               ? 'opacity-50 cursor-not-allowed'
               : 'hover:bg-intents-ux-boxLowContrastOverlay-backgroundColor hover:cursor-pointer'
@@ -160,7 +160,7 @@ export default function VersionHistory() {
               {description}
             </div>
           )}
-          { isSelected && <CheckboxFilledIcon className="w-5 h-5 top-1 right-1 absolute text-intents-ux-feedbackHighContrastSuccess-feedbackColor" /> }
+          { isSelected && <CheckboxFilledIcon className="w-2.5 h-2.5 top-0.5 right-0.5 absolute text-intents-ux-feedbackHighContrastSuccess-feedbackColor" /> }
         </button>
       </div>
     </li>
@@ -169,9 +169,9 @@ export default function VersionHistory() {
   return (
     <div className="flex-1 flex flex-col h-full overflow-y-auto">
       {/* Scrollable content area */}
-      <div className="flex-1 flex flex-col gap-4 p-4">
+      <div className="flex-1 flex flex-col gap-2 p-2">
         {error && (
-          <div className="bg-intents-ux-feedbackCritical-feedbackColor p-3 text-sm">
+          <div className="bg-intents-ux-feedbackCritical-feedbackColor p-1.5 text-sm">
             Error: {error}
           </div>
         )}
@@ -182,7 +182,7 @@ export default function VersionHistory() {
             onClose={() => setCommitSelectionError(null)}
           >
             <div className="font-semibold">Failed to switch version</div>
-            <div className="text-sm mt-1">{commitSelectionError}</div>
+            <div className="text-sm mt-0.5">{commitSelectionError}</div>
           </Alert>
         )}
 
@@ -198,7 +198,7 @@ export default function VersionHistory() {
           </div>
         )}
 
-        <ul ref={commitsListRef} className="space-y-2 max-h-full">
+        <ul ref={commitsListRef} className="space-y-1 max-h-full">
           { commits.map((commit, index) => {
             // A commit is published if it's at or older than the most recent deployed commit:
             // 1. There is a deployed commit (mostRecentDeployedCommitIndex >= 0), AND
@@ -210,7 +210,7 @@ export default function VersionHistory() {
               onClick: () => handleSelectCommit(commit),
               message: commit.message,
               description: (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <Tag type="info">{commit.hash.substring(0, 7)}</Tag>
                   {isPublished && (
                     <Tag emphasis="success">PUBLISHED</Tag>

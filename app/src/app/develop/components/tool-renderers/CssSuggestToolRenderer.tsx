@@ -51,7 +51,7 @@ export default function CssSuggestToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<Palette className="w-4 h-4" />}
+        icon={<Palette className="w-2 h-2" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasPalettes}
@@ -60,13 +60,13 @@ export default function CssSuggestToolRenderer({
 
       {/* Display palette grid when completed */}
       {toolStatus === 'completed' && hasPalettes && (
-        <div className="mt-4 mb-4">
+        <div className="mt-2 mb-2">
           <ColorPaletteGridWidget palettes={palettes} />
 
           {/* Helper message */}
-          <div className="flex items-center gap-2 text-xs text-intents-ux-textSubtle-textColor mt-4">
+          <div className="flex items-center gap-2 text-xs text-intents-ux-textSubtle-textColor mt-2">
             <svg
-              className="w-6 h-6"
+              className="w-3 h-3"
               fill="currentColor"
               viewBox="0 0 24 24"
               aria-hidden="true"

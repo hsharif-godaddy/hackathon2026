@@ -207,8 +207,8 @@ export default function CreateAppStatus() {
       <div className="text-center w-full">
         { phase === 'error' && (
           <>
-            <h1 className="text-2xl font-bold mb-2">App Creation Failed</h1>
-            <p className="mb-12">
+            <h1 className="text-2xl font-bold mb-1">App Creation Failed</h1>
+            <p className="mb-6">
               {error || 'An error occurred while creating your app. Please try again.'}
             </p>
             <Box
@@ -229,7 +229,7 @@ export default function CreateAppStatus() {
                   design="primary"
                   onClick={retry}
                   text={`Retry (${retryCount}/${maxRetries})`}
-                  className="my-6"
+                  className="my-3"
                 />
               )}
             </Box>
@@ -238,8 +238,8 @@ export default function CreateAppStatus() {
 
         { phase !== 'error' && (
           <Box gap="lg">
-            <div className="h-32 w-full mb-6 flex flex-col justify-end overflow-hidden">
-              <motion.ul className="text-center space-y-1">
+            <div className="h-16 w-full mb-3 flex flex-col justify-end overflow-hidden">
+              <motion.ul className="text-center space-y-0.5">
                 <AnimatePresence mode="popLayout">
                   {seenPhases.map((phaseItem, index) => {
                     const isLatest = index === seenPhases.length - 1
@@ -263,7 +263,7 @@ export default function CreateAppStatus() {
                           opacity: { duration: 0.6, delay: isLatest ? 0.2 : 0 },
                           y: { duration: 0.6, delay: isLatest ? 0.2 : 0 }
                         }}
-                        className="flex items-center justify-center space-x-2"
+                        className="flex items-center justify-center space-x-1"
                       >
                         <span
                           className="transition-all duration-700 ease-out"
@@ -285,12 +285,12 @@ export default function CreateAppStatus() {
             <Box
               orientation="horizontal"
               gap="sm"
-              className="mb-6"
+              className="mb-3"
               blockAlignChildren="center"
             >
-              <div className="w-3 h-3 bg-ai-light rounded-full animate-bounce"></div>
-              <div className="w-3 h-3 bg-ai rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-              <div className="w-3 h-3 bg-ai-dark rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              <div className="w-1.5 h-1.5 bg-ai-light rounded-full animate-bounce"></div>
+              <div className="w-1.5 h-1.5 bg-ai rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+              <div className="w-1.5 h-1.5 bg-ai-dark rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
             </Box>
 
             {/* Estimated time */}

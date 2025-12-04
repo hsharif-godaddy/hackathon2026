@@ -76,12 +76,12 @@ export default function ColorPaletteGrid({
 
   return (
     <div className="w-full max-w-4xl mx-auto">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
+      <div className="text-center mb-4">
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">{title}</h2>
         <p className="text-gray-600">{subtitle}</p>
       </div>
 
-      <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-8 gap-3">
+      <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-8 gap-1.5">
         {categories.flatMap((category) => 
           category.colors.map((colorOption) => (
             <button
@@ -90,39 +90,39 @@ export default function ColorPaletteGrid({
               onMouseEnter={() => setHoveredColor(colorOption.color)}
               onMouseLeave={() => setHoveredColor(null)}
               className={`
-                relative p-3 rounded-lg border-2 transition-all duration-200 hover:scale-105
+                relative p-1.5 rounded-lg border-2 transition-all duration-200 hover:scale-105
                 ${selectedColor === colorOption.color 
                   ? 'border-gray-900 shadow-lg' 
                   : 'border-gray-200 hover:border-gray-300'
                 }
               `}
             >
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {/* Color Swatch */}
                 <div className="relative">
                   <div 
-                    className="w-12 h-12 rounded-full mx-auto shadow-md"
+                    className="w-6 h-6 rounded-full mx-auto shadow-md"
                     style={{ backgroundColor: colorOption.color }}
                   />
                   {selectedColor === colorOption.color && (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="bg-white rounded-full p-1">
-                        <CheckIcon className="w-3 h-3 text-gray-900" />
+                      <div className="bg-white rounded-full p-0.5">
+                        <CheckIcon className="w-1.5 h-1.5 text-gray-900" />
                       </div>
                     </div>
                   )}
                 </div>
                 
                 {/* Color Name - Fixed height to prevent jumping */}
-                <div className="h-16 flex flex-col justify-start">
+                <div className="h-8 flex flex-col justify-start">
                   <p className="font-medium text-gray-900 text-xs text-center">
                     {colorOption.name}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1 font-mono text-center">
+                  <p className="text-xs text-gray-500 mt-0.5 font-mono text-center">
                     {colorOption.color}
                   </p>
                   {/* Description with fixed space */}
-                  <div className="h-8 flex items-start justify-center mt-1">
+                  <div className="h-4 flex items-start justify-center mt-0.5">
                     {(hoveredColor === colorOption.color || selectedColor === colorOption.color) && colorOption.description && (
                       <p className="text-xs text-gray-600 text-center leading-tight">
                         {colorOption.description}
@@ -137,10 +137,10 @@ export default function ColorPaletteGrid({
       </div>
 
       {selectedColor && (
-        <div className="mt-8 p-4 bg-gray-50 rounded-lg border">
-          <div className="flex items-center space-x-3">
+        <div className="mt-4 p-2 bg-gray-50 rounded-lg border">
+          <div className="flex items-center space-x-1.5">
             <div 
-              className="w-8 h-8 rounded-full shadow"
+              className="w-4 h-4 rounded-full shadow"
               style={{ backgroundColor: selectedColor }}
             />
             <div>

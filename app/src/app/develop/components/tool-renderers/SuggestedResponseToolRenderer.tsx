@@ -45,8 +45,8 @@ export default function SuggestedResponseToolRenderer({
   }
 
   return (
-    <Box gap="sm" className="my-4">
-      <div className="text-sm leading-relaxed break-words mb-2">
+    <Box gap="sm" className="my-2">
+      <div className="text-sm leading-relaxed break-words mb-1">
         {widgetData.question}
       </div>
 
@@ -65,7 +65,7 @@ export default function SuggestedResponseToolRenderer({
             size="sm"
             disabled={isProcessing}
             onClick={() => handleSuggestionClick(suggestion)}
-            className="suggestion-button rounded-md py-2 font-normal"
+            className="suggestion-button rounded-md py-1 font-normal"
             style={{
               borderColor: 'var(--color-ai)',
               color: 'var(--color-ai)',
@@ -79,10 +79,10 @@ export default function SuggestedResponseToolRenderer({
         orientation="horizontal" 
         gap="sm" 
         inlineAlignChildren="end"
-        className="text-xs text-intents-ux-textSubtle-textColor self-end mt-2"
+        className="text-xs text-intents-ux-textSubtle-textColor self-end mt-1"
       >
         <svg 
-          className="w-6 h-6" 
+          className="w-3 h-3"
           fill="currentColor" 
           viewBox="0 0 24 24"
           aria-hidden="true"

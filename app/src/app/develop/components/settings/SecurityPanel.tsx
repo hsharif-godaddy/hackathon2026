@@ -140,19 +140,19 @@ export default function SecurityPanel() {
         }>
         <Box>
           {error && (
-            <div className="text-red-600 mb-4">
+            <div className="text-red-600 mb-2">
               <p className="font-medium">Error:</p>
               <p>{error}</p>
             </div>
           )}
 
           {(isLoading) && (
-            <div className="flex flex-col items-center justify-center py-8">
+            <div className="flex flex-col items-center justify-center py-4">
               <Spinner size="lg" />
-              <p className="mt-4 text-gray-600">
+              <p className="mt-2 text-gray-600">
                 Running security analysis...
               </p>
-              <p className="mt-2 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-gray-500">
                 This may take a few moments
               </p>
             </div>

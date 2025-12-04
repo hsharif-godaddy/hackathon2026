@@ -88,8 +88,8 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
 
   if (isLoading) {
     return (
-      <div className={`flex items-center space-x-2 text-gray-500 ${className}`}>
-        <CpuChipIcon className="w-4 h-4 animate-pulse" />
+      <div className={`flex items-center space-x-1 text-gray-500 ${className}`}>
+        <CpuChipIcon className="w-2 h-2 animate-pulse" />
         <span className="text-sm">Loading usage...</span>
       </div>
     )
@@ -97,8 +97,8 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
 
   if (error || !usage) {
     return (
-      <div className={`flex items-center space-x-2 text-gray-400 ${className}`}>
-        <CpuChipIcon className="w-4 h-4" />
+      <div className={`flex items-center space-x-1 text-gray-400 ${className}`}>
+        <CpuChipIcon className="w-2 h-2" />
         <span className="text-sm">Usage unavailable</span>
       </div>
     )
@@ -125,9 +125,9 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
       {/* Compact View */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors group"
+        className="flex items-center space-x-1 text-gray-600 hover:text-gray-800 transition-colors group"
       >
-        <CpuChipIcon className="w-4 h-4" />
+        <CpuChipIcon className="w-2 h-2" />
         <span className="text-sm font-medium">
           {formatNumber(usage.totalTokens)}
         </span>
@@ -137,31 +137,31 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
           </span>
         )}
         <ChevronDownIcon
-          className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''} group-hover:text-gray-700`}
+          className={`w-1.5 h-1.5 transition-transform ${isExpanded ? 'rotate-180' : ''} group-hover:text-gray-700`}
         />
       </button>
 
       {/* Expanded View */}
       {isExpanded && (
-        <div className="absolute top-full right-0 mt-2 p-4 bg-white rounded-lg border shadow-lg z-50 min-w-80">
-          <div className="flex items-center justify-between mb-3">
+        <div className="absolute top-full right-0 mt-1 p-2 bg-white rounded-lg border shadow-lg z-50 min-w-40">
+          <div className="flex items-center justify-between mb-1.5">
             <h4 className="text-sm font-semibold text-gray-900">Token Usage Breakdown</h4>
             <button
               onClick={() => setIsExpanded(false)}
               className="text-gray-400 hover:text-gray-600 transition-colors"
             >
-              <XMarkIcon className="w-4 h-4" />
+              <XMarkIcon className="w-2 h-2" />
             </button>
           </div>
 
           {/* Usage Stats */}
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="bg-gray-50 p-3 rounded border">
-              <div className="flex items-center space-x-2 mb-2">
-                <ChartBarIcon className="w-4 h-4 text-blue-500" />
+          <div className="grid grid-cols-2 gap-1.5 mb-2">
+            <div className="bg-gray-50 p-1.5 rounded border">
+              <div className="flex items-center space-x-1 mb-1">
+                <ChartBarIcon className="w-2 h-2 text-blue-500" />
                 <span className="text-xs font-medium text-gray-700">Total Tokens</span>
               </div>
-              <div className="text-xl font-bold text-gray-900 mb-1">
+              <div className="text-xl font-bold text-gray-900 mb-0.5">
                 {formatNumber(usage.totalTokens)}
               </div>
               <div className="text-xs text-gray-600">
@@ -169,12 +169,12 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
               </div>
             </div>
 
-            <div className="bg-gray-50 p-3 rounded border">
-              <div className="flex items-center space-x-2 mb-2">
-                <CurrencyDollarIcon className="w-4 h-4 text-green-500" />
+            <div className="bg-gray-50 p-1.5 rounded border">
+              <div className="flex items-center space-x-1 mb-1">
+                <CurrencyDollarIcon className="w-2 h-2 text-green-500" />
                 <span className="text-xs font-medium text-gray-700">Estimated Cost</span>
               </div>
-              <div className="text-xl font-bold text-gray-900 mb-1">
+              <div className="text-xl font-bold text-gray-900 mb-0.5">
                 {formatCost(usage.totalCost)}
               </div>
               <div className="text-xs text-gray-600">
@@ -184,29 +184,29 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
           </div>
 
           {/* Operation Breakdown */}
-          <div className="space-y-3">
+          <div className="space-y-1.5">
             <h5 className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Operations</h5>
 
-            <div className="space-y-2">
-              <div className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
+            <div className="space-y-1">
+              <div className="flex justify-between items-center py-1 px-1.5 bg-gray-50 rounded">
                 <span className="text-sm text-gray-700 flex items-center">
-                  <span className="mr-2">🤖</span>
+                  <span className="mr-1">🤖</span>
                   AI Requests
                 </span>
                 <span className="font-semibold text-gray-900">{usage.operationCounts.llm_request}</span>
               </div>
 
-              <div className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
+              <div className="flex justify-between items-center py-1 px-1.5 bg-gray-50 rounded">
                 <span className="text-sm text-gray-700 flex items-center">
-                  <span className="mr-2">📝</span>
+                  <span className="mr-1">📝</span>
                   File Edits
                 </span>
                 <span className="font-semibold text-gray-900">{usage.operationCounts.file_edit}</span>
               </div>
 
-              <div className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded">
+              <div className="flex justify-between items-center py-1 px-1.5 bg-gray-50 rounded">
                 <span className="text-sm text-gray-700 flex items-center">
-                  <span className="mr-2">🔧</span>
+                  <span className="mr-1">🔧</span>
                   Tool Executions
                 </span>
                 <span className="font-semibold text-gray-900">{usage.operationCounts.tool_execution}</span>
@@ -216,9 +216,9 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
 
           {/* Last Used */}
           {usage.lastUsed && (
-            <div className="mt-4 pt-3 border-t border-gray-200">
-              <div className="flex items-center space-x-2 text-xs text-gray-500">
-                <ClockIcon className="w-4 h-4" />
+            <div className="mt-2 pt-1.5 border-t border-gray-200">
+              <div className="flex items-center space-x-1 text-xs text-gray-500">
+                <ClockIcon className="w-2 h-2" />
                 <span>Last activity: {new Date(usage.lastUsed).toLocaleDateString()} at {new Date(usage.lastUsed).toLocaleTimeString()}</span>
               </div>
             </div>

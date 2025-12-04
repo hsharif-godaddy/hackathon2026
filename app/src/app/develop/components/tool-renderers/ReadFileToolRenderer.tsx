@@ -120,13 +120,13 @@ export default function ReadFileToolRenderer({
     >
       {/* Metadata */}
       {Object.keys(metadata).length > 0 && (
-        <div className="mb-4">
+        <div className="mb-2">
           <KeyValueTable data={metadata} />
         </div>
       )}
 
       {/* Content area with scroll */}
-      <div className="flex-1 overflow-y-auto border border-border rounded-md p-4 bg-muted">
+      <div className="flex-1 overflow-y-auto border border-border rounded-md p-2 bg-muted">
         {isMarkdown ? (
           <MarkdownRenderer
             content={cleanContent}
@@ -146,7 +146,7 @@ export default function ReadFileToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<File className="w-4 h-4" />}
+        icon={<File className="w-2 h-2" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasContent}

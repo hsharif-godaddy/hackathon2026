@@ -27,9 +27,9 @@ export default function ChatInput({
   }
 
   return (
-    <div className="px-4 mt-2 mt-auto">
+    <div className="px-2 mt-1 mt-auto">
       <div id="tour-chat-input" className="relative">
-        <div className="flex items-stretch space-x-2 p-3 border rounded-lg focus-within:ring-2">
+        <div className="flex items-stretch space-x-1 p-1.5 border rounded-lg focus-within:ring-2">
           <div className="flex-1">
             <textarea
               id="chat-input-textarea"
@@ -43,7 +43,7 @@ export default function ChatInput({
             />
           </div>
 
-          <Box className="flex flex-col justify-end space-y-2" gap="sm">
+          <Box className="flex flex-col justify-end" gap="sm">
             {/* Send Button */}
             <Button
               id="chat-send-button"
@@ -52,7 +52,7 @@ export default function ChatInput({
               disabled={!inputValue?.trim() || isDisabled}
               aria-label="Send message"
               design="primary"
-              icon={<SendIcon className="w-4 h-4" />}
+              icon={<SendIcon />}
               size="sm"
               data-partial="componentAiro"
             />

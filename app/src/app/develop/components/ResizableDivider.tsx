@@ -152,10 +152,10 @@ export default function ResizableDivider({
   return (
     <div
       ref={dividerRef}
-      className="relative w-2 bg-transparent cursor-col-resize flex-shrink-0 z-10 group"
+      className="relative w-1 bg-transparent cursor-col-resize flex-shrink-0 z-10 group"
       onMouseDown={handleMouseDown}
     >
-      <div className="absolute inset-y-0 left-1/2 w-px transform -translate-x-1/2 transition-colors duration-400 group-hover:bg-intents-ux-actionPrimary-backgroundColor" />
+      <div className="absolute inset-y-0 left-0.25 w-px transform -translate-x-0.25 transition-colors duration-400 group-hover:bg-intents-ux-actionPrimary-backgroundColor" />
     </div>
   )
 }

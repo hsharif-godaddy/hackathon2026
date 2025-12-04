@@ -92,46 +92,46 @@ export default function MarkdownRenderer({
                 {String(children).replace(/\n$/, '')}
               </SyntaxHighlighter>
             ) : (
-              <code className="bg-intents-ux-boxLowContrast-backgroundColor text-xs px-0.5 py-0.5 font-mono" {...props}>
+              <code className="bg-intents-ux-boxLowContrast-backgroundColor text-xs px-0.25 py-0.25 font-mono" {...props}>
                 {children}
               </code>
             )
           },
           pre({ children }) {
-            return <div className="my-2">{children}</div>
+            return <div className="my-1">{children}</div>
           },
           h1({ children }) {
-            return <h1 className={`font-bold mt-4 mb-2 text-gray-900 ${fullscreen ? 'text-2xl' : 'text-xl'}`}>{children}</h1>
+            return <h1 className={`font-bold mt-2 mb-1 text-gray-900 ${fullscreen ? 'text-2xl' : 'text-xl'}`}>{children}</h1>
           },
           h2({ children }) {
-            return <h2 className={`font-semibold mt-3 mb-2 text-gray-900 ${fullscreen ? 'text-xl' : 'text-lg'}`}>{children}</h2>
+            return <h2 className={`font-semibold mt-1.5 mb-1 text-gray-900 ${fullscreen ? 'text-xl' : 'text-lg'}`}>{children}</h2>
           },
           h3({ children }) {
-            return <h3 className={`font-semibold mt-2 mb-1 text-gray-900 ${fullscreen ? 'text-lg' : 'text-base'}`}>{children}</h3>
+            return <h3 className={`font-semibold mt-1 mb-0.5 text-gray-900 ${fullscreen ? 'text-lg' : 'text-base'}`}>{children}</h3>
           },
           p({ children }) {
-            return <p className={`mb-2 leading-relaxed ${fullscreen ? 'text-base' : ''}`}>{children}</p>
+            return <p className={`mb-1 leading-relaxed ${fullscreen ? 'text-base' : ''}`}>{children}</p>
           },
           ul({ children }) {
-            return <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>
+            return <ul className="list-disc pl-2 mb-1 space-y-0.5">{children}</ul>
           },
           ol({ children }) {
-            return <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>
+            return <ol className="list-decimal pl-2 mb-1 space-y-0.5">{children}</ol>
           },
           li({ children }) {
             return <li className="text-sm">{children}</li>
           },
           blockquote({ children }) {
-            return <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-700 my-2">{children}</blockquote>
+            return <blockquote className="border-l-4 border-gray-300 pl-2 italic text-gray-700 my-1">{children}</blockquote>
           },
           table({ children }) {
-            return <table className="border-collapse border border-gray-300 w-full my-2">{children}</table>
+            return <table className="border-collapse border border-gray-300 w-full my-1">{children}</table>
           },
           th({ children }) {
-            return <th className="border border-gray-300 px-2 py-1 bg-gray-100 font-semibold text-left">{children}</th>
+            return <th className="border border-gray-300 px-1 py-0.5 bg-gray-100 font-semibold text-left">{children}</th>
           },
           td({ children }) {
-            return <td className="border border-gray-300 px-2 py-1">{children}</td>
+            return <td className="border border-gray-300 px-1 py-0.5">{children}</td>
           },
           a({ href, children }) {
             return <a href={href} className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer">{children}</a>

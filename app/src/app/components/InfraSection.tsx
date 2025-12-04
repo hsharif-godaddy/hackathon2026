@@ -11,7 +11,7 @@ export default function InfraSection() {
 
   return(
     <PageSection allowOverflow={true}>
-      <div ref={ref} className="max-w-screen-lg mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 items-center relative overflow-visible">
+      <div ref={ref} className="max-w-screen-lg mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4 items-center relative overflow-visible">
         <div className="relative lg:min-h-[600px] overflow-visible">
           <motion.img
             src="/images/block-1-big.png"

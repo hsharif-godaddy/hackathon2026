@@ -80,7 +80,7 @@ export default function AppSelector({ location }: { location?: string }) {
       >
         <Box orientation="horizontal" gap="sm">
           { isMobile ? (
-            <AppsIcon className="size-6" />
+            <AppsIcon className="size-3" />
           ) : (
             <>
               <text.p className="truncate max-w-[150px]">{displayTitle}</text.p>
@@ -100,10 +100,10 @@ export default function AppSelector({ location }: { location?: string }) {
       {sites.length > 0 && (
         <PopoverContent
           align="end"
-          className="w-[300px] p-2"
+          className="w-[300px] p-1"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
             {location !== 'homepage' && <AppItemNew location={location} />}
             {displayedSites.map((site) => (
               <AppItem

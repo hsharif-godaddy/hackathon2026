@@ -127,11 +127,11 @@ export default function ImageSearchToolRenderer({
 
           {/* Modal Container */}
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center p-2"
             onClick={() => setIsModalOpen(false)}
           >
             <motion.div
-              className="max-w-5xl w-full bg-intents-ux-box-backgroundColor p-6 rounded-lg shadow-xl relative max-h-[90vh] flex flex-col"
+              className="max-w-5xl w-full bg-intents-ux-box-backgroundColor p-3 rounded-lg shadow-xl relative max-h-[90vh] flex flex-col"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -139,10 +139,10 @@ export default function ImageSearchToolRenderer({
               onClick={(e) => e.stopPropagation()}
             >
               {/* Close button */}
-              <div className="absolute top-3 right-3">
+              <div className="absolute top-1.5 right-1.5">
                 <Button
                   onClick={() => setIsModalOpen(false)}
-                  icon={<XThickIcon className="h-6 w-6" />}
+                  icon={<XThickIcon className="h-3 w-3" />}
                   design="control"
                   aria-label="Close"
                   size="sm"
@@ -150,7 +150,7 @@ export default function ImageSearchToolRenderer({
               </div>
 
               {/* Title */}
-              <h2 className="text-xl font-bold mb-4">Image Search Results</h2>
+              <h2 className="text-xl font-bold mb-2">Image Search Results</h2>
 
               {/* Markdown format (backwards compatibility) */}
               {isMarkdownFormat && (
@@ -164,12 +164,12 @@ export default function ImageSearchToolRenderer({
                 <>
                   {/* Image navigation */}
                   {images.length > 1 && (
-                    <div className="flex gap-2 mb-4 overflow-x-scroll pb-2 w-full max-w-full">
+                    <div className="flex gap-1 mb-2 overflow-x-scroll pb-1 w-full max-w-full">
                       {images.map((img, index) => (
                         <button
                           key={index}
                           onClick={() => setSelectedImageIndex(index)}
-                          className={`flex-shrink-0 w-20 h-20 rounded border-4 overflow-hidden transition-all hover:cursor-pointer hover:opacity-100 ${
+                          className={`flex-shrink-0 w-10 h-10 rounded border-4 overflow-hidden transition-all hover:cursor-pointer hover:opacity-100 ${
                             selectedImageIndex === index ? 'border-primary' : 'border-border opacity-70'
                           }`}
                         >
@@ -186,7 +186,7 @@ export default function ImageSearchToolRenderer({
 
                   {/* Main image display */}
                   <div className="flex-1 overflow-y-auto flex flex-col items-center">
-                    <div className="text-sm font-semibold italic mb-2 text-foreground/70">
+                    <div className="text-sm font-semibold italic mb-1 text-foreground/70">
                       {images[selectedImageIndex]?.prompt}
                     </div>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -212,7 +212,7 @@ export default function ImageSearchToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<Image className="w-4 h-4" />}
+        icon={<Image className="w-2 h-2" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasDetails}
@@ -221,8 +221,8 @@ export default function ImageSearchToolRenderer({
 
       {/* Image gallery - always showing when completed */}
       {toolStatus === 'completed' && hasImages && (
-        <div className="my-4">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="my-2">
+          <div className="grid grid-cols-2 gap-1.5">
             {displayedImages.map((img, index) => (
               <button
                 key={index}

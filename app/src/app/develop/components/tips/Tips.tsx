@@ -50,19 +50,19 @@ export default function Tips({ buildingMessage = 'The AI agent is building your 
   }, [shuffledTips.length])
 
   return (
-    <Box className="h-full mt-12" blockAlignChildren="center" inlineAlignChildren="center" gap="xl">
+    <Box className="h-full mt-6" blockAlignChildren="center" inlineAlignChildren="center" gap="xl">
       {/* Loader spinner with building message */}
       <Loader title={buildingMessage} />
 
       {/* Tips section below loader */}
-      <Box className="w-full max-w-2xl px-6" gap="md">
+      <Box className="w-full max-w-2xl px-3" gap="md">
         {/* Tip carousel */}
         <Box className="relative" gap="md">
           {/* Tip content with animation */}
-          <Box className="overflow-hidden min-h-48">
+          <Box className="overflow-hidden min-h-24">
             <AnimatePresence mode="wait">
               <motion.div
-                className="p-4"
+                className="p-2"
                 key={currentTip.id}
                 initial={{ opacity: 0, y: 5, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}

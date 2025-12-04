@@ -343,8 +343,8 @@ export default function ChatPane({
               <StreamingMessageList />
 
               {safeAiEditContext && (
-                <div className="mx-4 rounded-md overflow-hidden bg-white">
-                  <div className="p-2">
+                <div className="mx-2 rounded-md overflow-hidden bg-white">
+                  <div className="p-1">
                     {safeAiEditContext.screenshot && (
                       <div className="relative inline-block">
                         <img // eslint-disable-line @next/next/no-img-element
@@ -354,7 +354,7 @@ export default function ChatPane({
                         />
                         <button
                           onClick={handleClearAiEditContext}
-                          className="absolute -top-2 -right-2 w-6 h-6 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
+                          className="absolute -top-1 -right-1 w-3 h-3 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
                           style={{ backgroundColor: '#ffffff' }}
                           title="Clear selection"
                         >
@@ -367,8 +367,8 @@ export default function ChatPane({
               )}
 
               {selectedAsset && (
-                <div className="mx-4 rounded-md overflow-hidden bg-white">
-                  <div className="p-2">
+                <div className="mx-2 rounded-md overflow-hidden bg-white">
+                  <div className="p-1">
                     <div className="relative inline-block">
                       <img // eslint-disable-line @next/next/no-img-element
                         src={getAssetDisplayUrl(selectedAsset)}
@@ -377,7 +377,7 @@ export default function ChatPane({
                       />
                       <button
                         onClick={handleClearSelectedAsset}
-                        className="absolute -top-2 -right-2 w-6 h-6 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
+                        className="absolute -top-1 -right-1 w-3 h-3 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
                         style={{ backgroundColor: '#ffffff' }}
                         title="Clear asset"
                       >
@@ -428,7 +428,7 @@ export default function ChatPane({
 
   return (
     <ChatContext.Provider value={chatContextValue}>
-    <div className="flex-1 flex flex-col h-full md:pt-4 gap-2 md:gap-4">
+    <div className="flex-1 flex flex-col h-full md:pt-2 gap-1 md:gap-2">
       <PlanTracker
         developmentPlan={developmentPlan}
         expandedPlan={expandedPlan}
@@ -442,8 +442,8 @@ export default function ChatPane({
           <StreamingMessageList />
 
           {safeAiEditContext && (
-            <div className="mx-4 rounded-md overflow-hidden bg-white">
-              <div className="p-2">
+            <div className="mx-2 rounded-md overflow-hidden bg-white">
+              <div className="p-1">
                 {safeAiEditContext.screenshot && (
                   <div className="relative inline-block">
                     <img // eslint-disable-line @next/next/no-img-element
@@ -453,7 +453,7 @@ export default function ChatPane({
                     />
                     <button
                       onClick={handleClearAiEditContext}
-                      className="absolute -top-2 -right-2 w-6 h-6 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
+                      className="absolute -top-1 -right-1 w-3 h-3 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
                       style={{ backgroundColor: '#ffffff' }}
                       title="Clear selection"
                     >
@@ -466,8 +466,8 @@ export default function ChatPane({
           )}
 
           {selectedAsset && (
-            <div className="mx-4 rounded-md overflow-hidden bg-white">
-              <div className="p-2">
+            <div className="mx-2 rounded-md overflow-hidden bg-white">
+              <div className="p-1">
                 <div className="relative inline-block">
                   <img // eslint-disable-line @next/next/no-img-element
                     src={getAssetDisplayUrl(selectedAsset)}
@@ -476,7 +476,7 @@ export default function ChatPane({
                   />
                   <button
                     onClick={handleClearSelectedAsset}
-                    className="absolute -top-2 -right-2 w-6 h-6 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
+                    className="absolute -top-1 -right-1 w-3 h-3 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
                     style={{ backgroundColor: '#ffffff' }}
                     title="Clear asset"
                   >
@@ -488,12 +488,12 @@ export default function ChatPane({
           )}
 
           {safeBuildErrorContext && (
-            <div className="mx-4 rounded-md overflow-hidden bg-red-50 border border-red-200">
-              <div className="p-3">
-                <div className="flex items-start justify-between gap-2">
+            <div className="mx-2 rounded-md overflow-hidden bg-red-50 border border-red-200">
+              <div className="p-1.5">
+                <div className="flex items-start justify-between gap-1">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <svg className="w-2 h-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       <span className="font-semibold text-sm text-red-900">Build Error Context</span>
@@ -502,14 +502,14 @@ export default function ChatPane({
                       {safeBuildErrorContext.error}
                     </div>
                     {safeBuildErrorContext.exitCode && (
-                      <div className="text-xs text-red-700 mt-1">
+                      <div className="text-xs text-red-700 mt-0.5">
                         Exit code: {safeBuildErrorContext.exitCode}
                       </div>
                     )}
                   </div>
                   <button
                     onClick={handleClearBuildErrorContext}
-                    className="flex-shrink-0 w-6 h-6 flex items-center justify-center bg-white rounded-full shadow-sm hover:shadow-md font-bold text-lg text-red-600"
+                    className="flex-shrink-0 w-3 h-3 flex items-center justify-center bg-white rounded-full shadow-sm hover:shadow-md font-bold text-lg text-red-600"
                     title="Clear build error"
                   >
                     ×

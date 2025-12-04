@@ -333,7 +333,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
   if (isLoading) {
     return (
-      <div className='flex flex-col justify-center items-center h-[calc(100vh-40rem)] gap-4'>
+      <div className='flex flex-col justify-center items-center h-[calc(100vh-40rem)] gap-2'>
         <Spinner size='md'/>
         <text.p>Loading secrets...</text.p>
         <text.p className="text-sm text-muted-foreground">
@@ -356,11 +356,11 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
   }
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full space-y-2">
       {!error && (
-        <div className="space-y-4">
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div style={{ fontSize: '1.25rem', fontWeight: 600 }} className="mb-2">
+            <div style={{ fontSize: '1.25rem', fontWeight: 600 }} className="mb-1">
               Manage secrets
             </div>
             {hasChanges && (
@@ -375,11 +375,11 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           </div>
 
           {submitError && (
-            <div className="border rounded-lg p-4 flex items-start justify-between" style={{ backgroundColor: '#fee8e89c', borderColor: '#db1802' }}>
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5" style={{ color: '#ef4444'}}>⚠️</div>
+            <div className="border rounded-lg p-2 flex items-start justify-between" style={{ backgroundColor: '#fee8e89c', borderColor: '#db1802' }}>
+              <div className="flex items-start gap-1.5">
+                <div className="mt-0.25" style={{ color: '#ef4444'}}>⚠️</div>
                 <div>
-                  <div className="font-semibold mb-1" style={{ color: '#ef4444'}}>Failed!</div>
+                  <div className="font-semibold mb-0.5" style={{ color: '#ef4444'}}>Failed!</div>
                   <text.p className="text-sm" style={{ color: '#ef4444'}}>{submitError}</text.p>
                 </div>
               </div>
@@ -395,11 +395,11 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           )}
 
           {submitSuccess && (
-            <div className="border rounded-lg p-4 flex items-start justify-between" style={{ backgroundColor: '#f0fdf4', borderColor: '#22c55e' }}>
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5" style={{ color: '#22c55e'}}>✓</div>
+            <div className="border rounded-lg p-2 flex items-start justify-between" style={{ backgroundColor: '#f0fdf4', borderColor: '#22c55e' }}>
+              <div className="flex items-start gap-1.5">
+                <div className="mt-0.25" style={{ color: '#22c55e'}}>✓</div>
                 <div>
-                  <div className="font-semibold mb-1" style={{ color: '#16a34a'}}>Successful!</div>
+                  <div className="font-semibold mb-0.5" style={{ color: '#16a34a'}}>Successful!</div>
                   <text.p className="text-sm" style={{ color: '#15803d'}}>{submitSuccess}</text.p>
                 </div>
               </div>
@@ -415,16 +415,16 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           )}
 
           {/* New secrets section - moved to top */}
-          <div className="space-y-2">
+          <div className="space-y-1">
             <div className="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 overflow-hidden">
               {newSecrets.map((newSecret, index) => (
                 <div
                   key={index}
-                  className={`flex items-start gap-3 p-4 ${
+                  className={`flex items-start gap-1.5 p-2 ${
                     index !== newSecrets.length - 1 ? 'border-b border-gray-300' : ''
                   }`}
                 >
-                  <div className="flex-1 grid grid-cols-2 gap-3 items-start">
+                  <div className="flex-1 grid grid-cols-2 gap-1.5 items-start">
                     <div>
                       <input
                         type="text"
@@ -433,7 +433,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         onFocus={() => setFocusedSecretIndex(index)}
                         onBlur={() => setFocusedSecretIndex(null)}
                         placeholder="NEW_SECRET_KEY_NAME"
-                        className={`w-full px-3 py-2 h-[38px] border rounded-md font-mono text-sm bg-white leading-none ${
+                        className={`w-full px-1.5 py-1 h-[38px] border rounded-md font-mono text-sm bg-white leading-none ${
                           (newSecret.name && (!isValidSecretName(newSecret.name) || !isSecretNameUnique(newSecret.name, index))) ||
                           (!newSecret.name && isValueValid(newSecret.value))
                             ? 'border-red-300 focus:border-red-500'
@@ -441,12 +441,12 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         }`}
                       />
                       {!newSecret.name && isValueValid(newSecret.value) && (
-                        <text.p className="mt-1" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
+                        <text.p className="mt-0.5" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
                           Secret name is required
                         </text.p>
                       )}
                       {newSecret.name && !isValidSecretName(newSecret.name) && (
-                        <text.p className="mt-1" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
+                        <text.p className="mt-0.5" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
                           {newSecret.name.length < 2
                             ? 'Min 2 characters'
                             : !/^[A-Z_]/.test(newSecret.name)
@@ -455,12 +455,12 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         </text.p>
                       )}
                       {newSecret.name && isValidSecretName(newSecret.name) && !isSecretNameUnique(newSecret.name, index) && (
-                        <text.p className="mt-1" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
+                        <text.p className="mt-0.5" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
                           Secret name already exists
                         </text.p>
                       )}
                       {focusedSecretIndex === 0 && index === 0 && !newSecret.name && (
-                        <text.p className="mt-1" style={{ fontSize: '0.875rem', color: '#6b7280'}}>
+                        <text.p className="mt-0.5" style={{ fontSize: '0.875rem', color: '#6b7280'}}>
                           Allowed: A-Z, 0-9, / _ + = . @ - (2-128 chars, must start with letter or _)
                         </text.p>
                       )}
@@ -471,7 +471,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         onChange={(e) => handleNewSecretChange(index, 'value', e.target.value)}
                         placeholder="Enter secret value"
                         rows={calculateRows(newSecret.value)}
-                        className={`w-full px-3 py-2 border rounded-md font-mono text-sm bg-white resize-none overflow-y-auto min-h-[38px] ${
+                        className={`w-full px-1.5 py-1 border rounded-md font-mono text-sm bg-white resize-none overflow-y-auto min-h-[38px] ${
                           newSecret.name && isValidSecretName(newSecret.name) && isSecretNameUnique(newSecret.name, index) && !isValueValid(newSecret.value)
                             ? 'border-red-300 focus:border-red-500'
                             : 'border-gray-300'
@@ -479,12 +479,12 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         style={{ maxHeight: '144px' }}
                       />
                       {newSecret.name && isValidSecretName(newSecret.name) && isSecretNameUnique(newSecret.name, index) && !isValueValid(newSecret.value) && (
-                        <text.p className="mt-1" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
+                        <text.p className="mt-0.5" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
                           Secret value is required
                         </text.p>
                       )}
                       {newSecret.name && isValidSecretName(newSecret.name) && isSecretNameUnique(newSecret.name, index) && isValueValid(newSecret.value) && (
-                        <div className="mt-1 px-2 rounded inline-block" style={{ backgroundColor: '#dbeafe', borderColor: '#3b82f6' }}>
+                        <div className="mt-0.5 px-1 rounded inline-block" style={{ backgroundColor: '#dbeafe', borderColor: '#3b82f6' }}>
                           <text.p style={{ fontSize: '0.875rem', color: '#2563eb'}}>Unsaved new secret</text.p>
                         </div>
                       )}
@@ -501,47 +501,47 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                 {formSecrets.map((secret, index) => (
                   <div
                     key={secret.name}
-                    className={`flex items-start gap-3 p-4 ${
+                    className={`flex items-start gap-1.5 p-2 ${
                       index !== formSecrets.length - 1 ? 'border-b border-gray-200' : ''
                     }`} style={{ opacity: secret.markedForDeletion ? 0.8 : 1, backgroundColor: secret.markedForDeletion ? '#ef44444d' : undefined }}
                   >
-                    <div className="flex-1 grid grid-cols-2 gap-3 items-start">
+                    <div className="flex-1 grid grid-cols-2 gap-1.5 items-start">
                       <div>
                         <input
                           type="text"
                           value={secret.name}
                           disabled
-                          className="w-full px-3 py-2 h-[38px] border border-gray-300 rounded-md bg-gray-50 text-gray-600 font-mono text-sm leading-none"
+                          className="w-full px-1.5 py-1 h-[38px] border border-gray-300 rounded-md bg-gray-50 text-gray-600 font-mono text-sm leading-none"
                         />
                         {/* System managed and sync status tags */}
-                        <div className="mt-1 flex gap-1 flex-wrap">
+                        <div className="mt-0.5 flex gap-1 flex-wrap">
                           {secret.systemManaged ? (
-                            <div className="px-2 py-0.5 rounded inline-block" style={{ backgroundColor: '#f3f4f6', borderColor: '#9ca3af' }}>
+                            <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#f3f4f6', borderColor: '#9ca3af' }}>
                               <text.p style={{ fontSize: '0.75rem', color: '#6b7280'}}>System managed</text.p>
                             </div>
                           ) : (
                             <>
                               {secret.syncStatus === 'synced' && (
-                                <div className="px-2 py-0.5 rounded inline-block" style={{ backgroundColor: '#d1fae5', borderColor: '#10b981' }}>
+                                <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#d1fae5', borderColor: '#10b981' }}>
                                   <text.p style={{ fontSize: '0.75rem', color: '#059669'}}>Deployed</text.p>
                                 </div>
                               )}
                               {secret.syncStatus === 'added' && (
                                 <>
-                                  <div className="px-2 py-0.5 rounded inline-block" style={{ backgroundColor: '#dbeafe', borderColor: '#3b82f6' }}>
+                                  <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#dbeafe', borderColor: '#3b82f6' }}>
                                     <text.p style={{ fontSize: '0.75rem', color: '#2563eb'}}>Newly added</text.p>
                                   </div>
-                                  <div className="px-2 py-0.5 rounded inline-block" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
+                                  <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
                                     <text.p style={{ fontSize: '0.75rem', color: '#d97706'}}>Not deployed</text.p>
                                   </div>
                                 </>
                               )}
                               {secret.syncStatus === 'updated' && (
                                 <>
-                                  <div className="px-2 py-0.5 rounded inline-block" style={{ backgroundColor: '#e0e7ff', borderColor: '#6366f1' }}>
+                                  <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#e0e7ff', borderColor: '#6366f1' }}>
                                     <text.p style={{ fontSize: '0.75rem', color: '#4f46e5'}}>Updated</text.p>
                                   </div>
-                                  <div className="px-2 py-0.5 rounded inline-block" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
+                                  <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
                                     <text.p style={{ fontSize: '0.75rem', color: '#d97706'}}>Not deployed</text.p>
                                   </div>
                                 </>
@@ -558,23 +558,23 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                           onBlur={() => handleValueBlur(secret.name)}
                           disabled={!secret.isEditing}
                           rows={secret.isEditing ? calculateRows(secret.editedValue) : 1}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md font-mono text-sm disabled:bg-gray-50 disabled:text-gray-600 resize-none overflow-y-auto min-h-[38px]"
+                          className="w-full px-1.5 py-1 border border-gray-300 rounded-md font-mono text-sm disabled:bg-gray-50 disabled:text-gray-600 resize-none overflow-y-auto min-h-[38px]"
                           placeholder={secret.isEditing ? 'Enter the updated secret value' : '••••••••••••'}
                           style={{ maxHeight: '144px' }}
                         />
                         {secret.isEditing && secret.editedValue && isValueValid(secret.editedValue) && (
-                          <div className="mt-1 px-2 rounded inline-block" style={{ backgroundColor: '#fefce8', borderColor: '#facc15' }}>
+                          <div className="mt-0.5 px-1 rounded inline-block" style={{ backgroundColor: '#fefce8', borderColor: '#facc15' }}>
                             <text.p style={{ fontSize: '0.875rem', color: '#eab308'}}>Unsaved edit</text.p>
                           </div>
                         )}
                         {secret.markedForDeletion && (
-                          <div className="mt-1 px-2 rounded inline-block" style={{ backgroundColor: '#ef4444', borderColor: '#fda4af' }}>
+                          <div className="mt-0.5 px-1 rounded inline-block" style={{ backgroundColor: '#ef4444', borderColor: '#fda4af' }}>
                             <text.p style={{ fontSize: '0.875rem', color: 'black'}}>Unsaved delete</text.p>
                           </div>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5">
                       <IconButton
                         icon={<EditIcon />}
                         label={secret.isEditing ? 'Cancel' : 'Edit secret'}
@@ -605,7 +605,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           )}
 
           {formSecrets.length === 0 && (
-            <div className="text-center py-8">
+            <div className="text-center py-4">
               <text.p className="text-sm text-muted-foreground">
                 No secrets configured yet. Add your first secret below.
               </text.p>
@@ -614,11 +614,11 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
           {/* Not deployed secrets notice */}
           {formSecrets.some(s => s.syncStatus === 'added' || s.syncStatus === 'updated') && (
-            <div className="border-l-4 rounded-r-lg p-4 flex items-start gap-3" style={{ backgroundColor: '#fffbeb', borderColor: '#f59e0b' }}>
-              <div className="mt-0.5" style={{ color: '#f59e0b'}}>ℹ️</div>
+            <div className="border-l-4 rounded-r-lg p-2 flex items-start gap-1.5" style={{ backgroundColor: '#fffbeb', borderColor: '#f59e0b' }}>
+              <div className="mt-0.25" style={{ color: '#f59e0b'}}>ℹ️</div>
               <div>
-                <div className="font-semibold mb-1 flex items-center gap-2" style={{ color: '#d97706'}}>
-                  <span className="px-2 py-0.5 rounded text-xs" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
+                <div className="font-semibold mb-0.5 flex items-center gap-1" style={{ color: '#d97706'}}>
+                  <span className="px-1 py-0.25 rounded text-xs" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
                     Not deployed
                   </span>
                   <span>secrets</span>

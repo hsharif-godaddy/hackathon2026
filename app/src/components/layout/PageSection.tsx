@@ -6,7 +6,7 @@ export default function PageSection({
   allowOverflow?: boolean
 }) {
   return (
-    <div className={`relative mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-16 lg:py-28 ${allowOverflow ? 'overflow-visible' : ''}`}>
+    <div className={`relative mx-auto px-2 sm:px-3 lg:px-4 py-4 md:py-8 lg:py-14 ${allowOverflow ? 'overflow-visible' : ''}`}>
       {children}
     </div>
   )

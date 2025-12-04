@@ -175,9 +175,9 @@ export default function ColorSchemeDrawer({
     switch (currentStep) {
       case 'questionnaire':
         return (
-          <div className="space-y-6">
+          <div className="space-y-3">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">
                 Tell us about your project
               </h3>
               <p className="text-gray-600 text-sm">
@@ -192,9 +192,9 @@ export default function ColorSchemeDrawer({
 
       case 'color-selection':
         return (
-          <div className="space-y-6">
+          <div className="space-y-3">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">
                 Choose Primary Color
               </h3>
               <p className="text-gray-600 text-sm">
@@ -210,45 +210,45 @@ export default function ColorSchemeDrawer({
 
       case 'palette-options':
         return (
-          <div className="space-y-6">
+          <div className="space-y-3">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">
                 Choose Color Palette
               </h3>
               <p className="text-gray-600 text-sm">
                 Pick your favorite style
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-2">
               {paletteOptions.map((option) => (
                 <button
                   key={option.id}
                   onClick={() => handlePaletteSelection(option.palette)}
-                  className="text-left border-2 border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-all hover:shadow-md"
+                  className="text-left border-2 border-gray-200 rounded-lg p-2 hover:border-blue-300 transition-all hover:shadow-md"
                 >
-                  <h4 className="font-semibold text-gray-900 mb-2">
+                  <h4 className="font-semibold text-gray-900 mb-1">
                     {option.name}
                   </h4>
-                  <p className="text-gray-600 text-sm mb-3">
+                  <p className="text-gray-600 text-sm mb-1.5">
                     {option.description}
                   </p>
 
                   {/* Color swatches */}
-                  <div className="flex space-x-2">
+                  <div className="flex space-x-1">
                     <div
-                      className="w-6 h-6 rounded border"
+                      className="w-3 h-3 rounded border"
                       style={{ backgroundColor: option.palette.primary }}
                     />
                     <div
-                      className="w-6 h-6 rounded border"
+                      className="w-3 h-3 rounded border"
                       style={{ backgroundColor: option.palette.secondary }}
                     />
                     <div
-                      className="w-6 h-6 rounded border"
+                      className="w-3 h-3 rounded border"
                       style={{ backgroundColor: option.palette.accent }}
                     />
                     <div
-                      className="w-6 h-6 rounded border"
+                      className="w-3 h-3 rounded border"
                       style={{ backgroundColor: option.palette.surface }}
                     />
                   </div>
@@ -260,9 +260,9 @@ export default function ColorSchemeDrawer({
 
       case 'final-review':
         return selectedPalette ? (
-          <div className="space-y-6">
+          <div className="space-y-3">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">
                 Your Color Palette
               </h3>
               <p className="text-gray-600 text-sm">
@@ -270,8 +270,8 @@ export default function ColorSchemeDrawer({
               </p>
             </div>
             <ColorSchemePreview palette={selectedPalette} />
-            <div className="flex justify-center pt-4">
-              <Button onClick={handleComplete} className="px-8">
+            <div className="flex justify-center pt-2">
+              <Button onClick={handleComplete} className="px-4">
                 Use This Palette
               </Button>
             </div>
@@ -297,25 +297,25 @@ export default function ColorSchemeDrawer({
         ${isOpen ? 'translate-x-0' : 'translate-x-full'}
       `}>
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-3 border-b border-gray-200">
           <div>
             <h2 className="text-xl font-semibold text-gray-900">
               Color Scheme Designer
             </h2>
-            <p className="text-gray-600 text-sm mt-1">
+            <p className="text-gray-600 text-sm mt-0.5">
               Create beautiful colors for your app
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
           >
-            <XMarkIcon className="w-6 h-6" />
+            <XMarkIcon className="w-3 h-3" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="p-3">
           {renderStepContent()}
         </div>
 

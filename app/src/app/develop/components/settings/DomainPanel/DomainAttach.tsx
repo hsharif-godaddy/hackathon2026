@@ -366,7 +366,7 @@ export default function DomainAttach() {
             {[1, 2, 3].map((i) => (
               <div
                 key={`skeleton-${i}`}
-                className="bg-intents-ux-box-backgroundColor rounded-lg px-4 py-2 flex gap-2"
+                className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1 flex gap-1"
               >
                 <Skeleton rounding="full" size="sm"/>
                 <Skeleton size="md" width="30%" />

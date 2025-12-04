@@ -35,7 +35,7 @@ function renderToolCall(toolCall: ToolCall, index?: number, isActiveStream?: boo
       {isWidgetRender ? (
         <WidgetRenderer
           widgetData={(toolCall.result as any).widgetData}
-          className="my-4"
+          className="my-2"
         />
       ) : (
         <ToolRenderer toolCall={toolCall} />
@@ -56,7 +56,7 @@ function renderToolCall(toolCall: ToolCall, index?: number, isActiveStream?: boo
 function MessageToolCallsRenderer({ toolCalls, isActiveStream = false, isLastAssistantMessage = false }: MessageToolCallsRendererProps) {
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       {toolCalls.map((toolCall, index) => renderToolCall(toolCall, index, isActiveStream, isLastAssistantMessage))}
     </div>
   )

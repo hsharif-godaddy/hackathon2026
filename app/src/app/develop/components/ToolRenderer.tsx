@@ -26,7 +26,7 @@ function ToolRenderer({ toolCall, className = '' }: ToolRendererProps) {
   const ToolRendererComponent = getToolRenderer(toolCall.name)
 
   return (
-    <div className={`my-1 ${className}`}>
+    <div className={`my-0.5 ${className}`}>
       <ToolRendererComponent
         toolName={toolCall.name}
         toolStatus={toolCall.status}

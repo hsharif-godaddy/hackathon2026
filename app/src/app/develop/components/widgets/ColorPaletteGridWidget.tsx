@@ -129,7 +129,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
   return (
     <div className={className}>
       {/* Palette Grid */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-2">
         {palettes.map((paletteData, index) => (
           <ColorPaletteWidget
             key={index}
@@ -142,7 +142,7 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
       </div>
 
       {/* Button Controls - Always visible */}
-      <div className="mt-6 flex items-center gap-2 flex-wrap justify-center">
+      <div className="mt-3 flex items-center gap-1 flex-wrap justify-center">
 
         <Button
           text="More options"

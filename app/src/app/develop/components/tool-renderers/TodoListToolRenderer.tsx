@@ -49,9 +49,9 @@ function getOperationMessage(operation: string, result: any): string {
  */
 function CircularCheckbox({ checked }: { checked: boolean }) {
   return (
-    <div className="relative w-5 h-5">
+    <div className="relative w-2.5 h-2.5">
       <div className={`
-        w-5 h-5 rounded-full border-2 transition-all duration-200
+        w-2.5 h-2.5 rounded-full border-2 transition-all duration-200
         ${checked ? 'border-intents-success-borderColor bg-intents-success-backgroundColor' : 'border-border bg-intents-ux-box-backgroundColor'}
       `}>
         {checked && (
@@ -86,13 +86,13 @@ function renderTodoListHTML(list: any): React.JSX.Element {
   const completedCount = items.filter((item: any) => item.completed).length
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-2">
         <div className="flex-1">
           <h1 className="text-lg font-semibold text-foreground">{list.name}</h1>
           {list.description && (
-            <p className="text-sm text-muted-foreground mt-1">{list.description}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">{list.description}</p>
           )}
         </div>
         <span className="text-sm text-muted-foreground whitespace-nowrap">
@@ -102,13 +102,13 @@ function renderTodoListHTML(list: any): React.JSX.Element {
 
       {/* Items */}
       {items.length > 0 ? (
-        <div className="space-y-3">
+        <div className="space-y-1.5">
           {items.map((item: any) => (
             <div
               key={item.id}
-              className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3"
+              className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-1.5"
             >
-              <div className="flex items-start gap-3">
+              <div className="flex items-start gap-1.5">
                 <div className="flex-shrink-0">
                   <CircularCheckbox checked={item.completed} />
                 </div>
@@ -117,7 +117,7 @@ function renderTodoListHTML(list: any): React.JSX.Element {
                     {item.title}
                   </div>
                   {item.description && (
-                    <div className="text-xs text-muted-foreground mt-1">
+                    <div className="text-xs text-muted-foreground mt-0.5">
                       {item.description}
                     </div>
                   )}
@@ -127,7 +127,7 @@ function renderTodoListHTML(list: any): React.JSX.Element {
           ))}
         </div>
       ) : (
-        <div className="text-center text-muted-foreground py-8">
+        <div className="text-center text-muted-foreground py-4">
           No items yet
         </div>
       )}
@@ -144,21 +144,21 @@ function renderMultipleListsHTML(lists: any[]): React.JSX.Element {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <h1 className="text-lg font-semibold text-foreground">All Todo Lists ({lists.length})</h1>
 
-      <div className="space-y-3">
+      <div className="space-y-1.5">
         {lists.map((list) => {
           const totalItems = list.items?.length || 0
           const completedItems = list.items?.filter((item: any) => item.completed).length || 0
 
           return (
-            <div key={list.id} className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3">
-              <div className="flex items-start justify-between gap-4">
+            <div key={list.id} className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-1.5">
+              <div className="flex items-start justify-between gap-2">
                 <div className="flex-1">
                   <h2 className="text-sm font-medium text-foreground">{list.name}</h2>
                   {list.description && (
-                    <p className="text-xs text-muted-foreground mt-1">{list.description}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{list.description}</p>
                   )}
                 </div>
                 <span className="text-xs text-muted-foreground whitespace-nowrap">
@@ -182,19 +182,19 @@ function renderItemsHTML(items: any[], title: string, listName?: string): React.
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {listName && (
         <h1 className="text-lg font-semibold text-foreground">{listName}</h1>
       )}
       <h2 className="text-sm font-medium text-foreground">{title}</h2>
 
-      <div className="space-y-3">
+      <div className="space-y-1.5">
         {items.map((item) => (
           <div
             key={item.id}
-            className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-3"
+            className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-1.5"
           >
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-1.5">
               <div className="flex-shrink-0">
                 <CircularCheckbox checked={item.completed} />
               </div>
@@ -203,7 +203,7 @@ function renderItemsHTML(items: any[], title: string, listName?: string): React.
                   {item.title}
                 </div>
                 {item.description && (
-                  <div className="text-xs text-muted-foreground mt-1">
+                  <div className="text-xs text-muted-foreground mt-0.5">
                     {item.description}
                   </div>
                 )}
@@ -357,7 +357,7 @@ export default function TodoListToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<ListTodo className="w-4 h-4" />}
+        icon={<ListTodo className="w-2 h-2" />}
         displayName={displayMessage}
         toolStatus={toolStatus}
         hasDetails={hasDetails}

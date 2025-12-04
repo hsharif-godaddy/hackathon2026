@@ -325,14 +325,14 @@ export function EditRowDialog({
       }
     >
       <form onSubmit={handleSubmit} id="edit-row-form">
-        <div className="max-h-[60vh] overflow-y-auto pr-2">
-          <div className={`grid gap-4 ${getGridClasses(editableColumns.length)}`}>
+        <div className="max-h-[60vh] overflow-y-auto pr-1">
+          <div className={`grid gap-2 ${getGridClasses(editableColumns.length)}`}>
             {editableColumns.map(col => renderInput(col))}
           </div>
         </div>
 
         {updateRow.error && (
-          <div className="bg-destructive/10 text-destructive rounded-lg p-3 mt-4 text-sm">
+          <div className="bg-destructive/10 text-destructive rounded-lg p-1.5 mt-2 text-sm">
             {updateRow.error instanceof Error ? updateRow.error.message : String(updateRow.error)}
           </div>
         )}

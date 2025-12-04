@@ -84,15 +84,15 @@ export default function DevelopmentAdminSection({
 
   const AdminAlert = ({ type, message }: { type: 'stop-all' | 'delete-all', message: string }) => (
     <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50 bg-intents-ux-boxHighContrastOverlay-backgroundColor">
-      <div className="rounded-lg shadow-xl max-w-md w-full mx-4 p-6 bg-intents-ux-box-backgroundColor">
-        <div className="flex items-center mb-4 gap-2">
-          <ExclamationTriangleIcon className="size-6" />
+      <div className="rounded-lg shadow-xl max-w-md w-full mx-2 p-3 bg-intents-ux-box-backgroundColor">
+        <div className="flex items-center mb-2 gap-1">
+          <ExclamationTriangleIcon className="size-3" />
           <h3 className="text-lg font-semibold">
             {type === 'stop-all' ? `Stop All ${itemType}` : `Delete All ${itemType}`}
           </h3>
         </div>
-        <p className="text-sm mb-6">{message}</p>
-        <div className="flex gap-2">
+        <p className="text-sm mb-3">{message}</p>
+        <div className="flex gap-1">
           <Button
             onClick={handleConfirm}
             disabled={isStopAllLoading || isDeleteAllLoading}
@@ -116,35 +116,35 @@ export default function DevelopmentAdminSection({
   return (
     <>
       <div className="border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-start md:items-center justify-between flex-col md:flex-row gap-3">
-            <div className="flex items-center space-x-3">
-              <ExclamationTriangleIcon className="w-5 h-5" />
+        <div className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 py-2">
+          <div className="flex items-start md:items-center justify-between flex-col md:flex-row gap-1.5">
+            <div className="flex items-center space-x-1.5">
+              <ExclamationTriangleIcon className="w-2.5 h-2.5" />
               <div>
                 <h3 className="text-sm font-medium">{title}</h3>
                 <p className="text-xs">{description}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
               <Button
                 onClick={showStopAllAlert}
                 design="secondary"
                 disabled={isStopAllLoading || isDeleteAllLoading || runningItems === 0}
-                className="px-3 py-2 rounded-lg transition-all flex items-center space-x-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                size="sm"
                 title={`Stop all running ${itemType}`}
+                icon={<StopIcon />}
                 text={`Stop All (${runningItems})`}
-                icon={<StopIcon className="w-4 h-4" />}
               />
 
               <Button
                 onClick={showDeleteAllAlert}
                 design="critical"
                 disabled={isStopAllLoading || isDeleteAllLoading || totalItems === 0}
-                className="px-3 py-2 rounded-lg transition-all flex items-center space-x-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                size="sm"
                 title={`Delete all ${itemType} (DANGEROUS)`}
+                icon={<TrashIcon />}
                 text={`Delete All (${totalItems})`}
-                icon={<TrashIcon className="w-4 h-4" />}
               />
             </div>
           </div>

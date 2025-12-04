@@ -91,11 +91,11 @@ export default function ColorPaletteModal({
 
           {/* Modal Container */}
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center p-2"
             onClick={onClose}
           >
             <motion.div
-              className="max-w-2xl w-full bg-intents-ux-box-backgroundColor p-6 rounded-lg shadow-xl relative max-h-[80vh] flex flex-col"
+              className="max-w-2xl w-full bg-intents-ux-box-backgroundColor p-3 rounded-lg shadow-xl relative max-h-[80vh] flex flex-col"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -103,10 +103,10 @@ export default function ColorPaletteModal({
               onClick={(e) => e.stopPropagation()}
             >
               {/* Close button */}
-              <div className="absolute top-3 right-3">
+              <div className="absolute top-1.5 right-1.5">
                 <Button
                   onClick={onClose}
-                  icon={<XThickIcon className="h-6 w-6" />}
+                  icon={<XThickIcon className="h-3 w-3" />}
                   design="control"
                   aria-label="Close"
                   size="sm"
@@ -114,18 +114,18 @@ export default function ColorPaletteModal({
               </div>
 
               {/* Title */}
-              <h2 className="text-xl font-bold mb-4">{title}</h2>
+              <h2 className="text-xl font-bold mb-2">{title}</h2>
 
               {/* Tabs */}
               {(palettes || showDetailsTab) && (
-                <div className="flex gap-4 border-b mb-4 overflow-x-auto">
+                <div className="flex gap-2 border-b mb-2 overflow-x-auto">
                   {palettes ? (
                     // Multiple palette tabs
                     palettes.map((paletteData, index) => (
                       <button
                         key={index}
                         onClick={() => setActiveTab(index)}
-                        className={`pb-2 px-1 text-sm font-medium transition-colors whitespace-nowrap ${
+                        className={`pb-1 px-0.5 text-sm font-medium transition-colors whitespace-nowrap ${
                           activeTab === index
                             ? 'border-b-2'
                             : 'text-muted-foreground hover:text-foreground/70'
@@ -139,7 +139,7 @@ export default function ColorPaletteModal({
                     <>
                       <button
                         onClick={() => setActiveTab(0)}
-                        className={`pb-2 px-1 text-sm font-medium transition-colors ${
+                        className={`pb-1 px-0.5 text-sm font-medium transition-colors ${
                           activeTab === 0
                             ? 'border-b-2 border-blue-500 text-blue-600'
                             : 'text-muted-foreground hover:text-foreground/70'
@@ -149,7 +149,7 @@ export default function ColorPaletteModal({
                       </button>
                       <button
                         onClick={() => setActiveTab('details')}
-                        className={`pb-2 px-1 text-sm font-medium transition-colors ${
+                        className={`pb-1 px-0.5 text-sm font-medium transition-colors ${
                           activeTab === 'details'
                             ? 'border-b-2'
                             : 'text-muted-foreground hover:text-foreground/70'
@@ -167,24 +167,24 @@ export default function ColorPaletteModal({
                 {activeTab === 'details' ? (
                   /* Details tab */
                   <div className="prose prose-sm max-w-none">
-                    <pre className="text-xs whitespace-pre-wrap bg-gray-50 p-4 rounded border">
+                    <pre className="text-xs whitespace-pre-wrap bg-gray-50 p-2 rounded border">
                       {detailsContent}
                     </pre>
                   </div>
                 ) : (
                   /* Color grid */
                   hasPalette && (
-                    <div className="space-y-3">
+                    <div className="space-y-1.5">
                       {displayColors.map((color, index) => (
                         <div
                           key={index}
-                          className="flex items-center gap-4 p-3 rounded-lg border"
+                          className="flex items-center gap-2 p-1.5 rounded-lg border"
                           style={{ backgroundColor: `${color.background}15` }}
                         >
                           {/* Color swatch with foreground text */}
-                          <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-1">
                             <div
-                              className="w-24 h-24 rounded-md shadow-sm flex items-center justify-center text-sm font-mono font-semibold"
+                              className="w-12 h-12 rounded-md shadow-sm flex items-center justify-center text-sm font-mono font-semibold"
                               style={{
                                 backgroundColor: color.background,
                                 color: color.foreground
@@ -197,14 +197,14 @@ export default function ColorPaletteModal({
                           {/* Color info */}
                           <div className="flex-1">
                             <div className="font-semibold text-base">{color.name}</div>
-                            <div className="text-sm text-muted-foreground font-mono mt-1">
+                            <div className="text-sm text-muted-foreground font-mono mt-0.5">
                               Background: {color.background}
                             </div>
                             <div className="text-sm text-muted-foreground font-mono">
                               Foreground: {color.foreground}
                             </div>
                             {color.role && (
-                              <div className="text-xs text-muted-foreground/70 mt-2">{color.role}</div>
+                              <div className="text-xs text-muted-foreground/70 mt-1">{color.role}</div>
                             )}
                           </div>
                         </div>

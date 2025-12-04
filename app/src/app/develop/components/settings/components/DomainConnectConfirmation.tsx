@@ -30,7 +30,7 @@ export default function DomainConnectConfirmation({
   const t = useTranslations();
   
   return (
-    <div className="flex flex-col gap-3 p-2">
+    <div className="flex flex-col gap-1.5 p-1">
         <text.h3 as="title" size={1}>
             {t('builder_domain_connect_confirmation_title')}
         </text.h3>

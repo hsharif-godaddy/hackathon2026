@@ -32,10 +32,10 @@ export default function ColorSchemePreview({
   ];
 
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-8">
+    <div className="w-full max-w-6xl mx-auto space-y-4">
       {/* Palette Header */}
       <div className="text-center">
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">
+        <h3 className="text-2xl font-bold text-gray-900 mb-1">
           {palette.name || 'Color Palette Preview'}
         </h3>
         <p className="text-gray-600">
@@ -50,7 +50,7 @@ export default function ColorSchemePreview({
       >
         {/* Header */}
         <div 
-          className="px-6 py-4 border-b"
+          className="px-3 py-2 border-b"
           style={{ 
             backgroundColor: palette.surface,
             borderColor: palette.secondary + '20'
@@ -76,22 +76,22 @@ export default function ColorSchemePreview({
         </div>
 
         {/* Content Area */}
-        <div className="p-6 space-y-6">
+        <div className="p-3 space-y-3">
           {/* Hero Section */}
-          <div className="text-center py-8">
+          <div className="text-center py-4">
             <h1 
-              className="text-3xl font-bold mb-4"
+              className="text-3xl font-bold mb-2"
               style={{ color: palette.text }}
             >
               Welcome to Your App
             </h1>
             <p 
-              className="text-lg mb-6"
+              className="text-lg mb-3"
               style={{ color: palette.textSecondary }}
             >
               This preview shows how your chosen colors work together in a real interface.
             </p>
-            <div className="space-x-4">
+            <div className="space-x-2">
               <Button
                 style={{ 
                   backgroundColor: palette.accent,
@@ -114,7 +114,7 @@ export default function ColorSchemePreview({
           </div>
 
           {/* Cards */}
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid md:grid-cols-3 gap-2">
             {/* Success Card */}
             <Card 
               style={{ 
@@ -122,13 +122,13 @@ export default function ColorSchemePreview({
                 borderColor: palette.success + '30'
               }}
             >
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-1.5">
                 <div 
-                  className="w-12 h-12 rounded-full mb-2 flex items-center justify-center"
+                  className="w-6 h-6 rounded-full mb-1 flex items-center justify-center"
                   style={{ backgroundColor: palette.success + '20' }}
                 >
                   <CheckIcon 
-                    className="w-6 h-6" 
+                    className="w-3 h-3"
                     style={{ color: palette.success }} 
                   />
                 </div>
@@ -155,9 +155,9 @@ export default function ColorSchemePreview({
                 borderColor: palette.warning + '30'
               }}
             >
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-1.5">
                 <div 
-                  className="w-12 h-12 rounded-full mb-2 flex items-center justify-center"
+                  className="w-6 h-6 rounded-full mb-1 flex items-center justify-center"
                   style={{ backgroundColor: palette.warning + '20' }}
                 >
                   <span 
@@ -190,9 +190,9 @@ export default function ColorSchemePreview({
                 borderColor: palette.info + '30'
               }}
             >
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-1.5">
                 <div 
-                  className="w-12 h-12 rounded-full mb-2 flex items-center justify-center"
+                  className="w-6 h-6 rounded-full mb-1 flex items-center justify-center"
                   style={{ backgroundColor: palette.info + '20' }}
                 >
                   <span 
@@ -223,16 +223,16 @@ export default function ColorSchemePreview({
 
       {/* Color Palette Details */}
       <div className="w-full max-w-3xl mx-auto">
-        <h4 className="text-lg font-semibold text-gray-900 mb-4">Color Values</h4>
-        <div className="grid md:grid-cols-2 gap-2">
+        <h4 className="text-lg font-semibold text-gray-900 mb-2">Color Values</h4>
+        <div className="grid md:grid-cols-2 gap-1">
           {colorEntries.map((color) => (
             <div 
               key={color.name}
-              className="flex items-center space-x-3 p-2 rounded-lg border hover:bg-gray-50 transition-colors cursor-pointer"
+              className="flex items-center space-x-1.5 p-1 rounded-lg border hover:bg-gray-50 transition-colors cursor-pointer"
               onClick={() => copyToClipboard(color.value, color.name)}
             >
               <div 
-                className="w-6 h-6 rounded border flex-shrink-0"
+                className="w-3 h-3 rounded border flex-shrink-0"
                 style={{ backgroundColor: color.value }}
               />
               <div className="flex-1 min-w-0">
@@ -241,14 +241,14 @@ export default function ColorSchemePreview({
                     {color.name}
                   </p>
                   {copiedColor === color.name ? (
-                    <CheckIcon className="w-4 h-4 text-green-500 flex-shrink-0" />
+                    <CheckIcon className="w-2 h-2 text-green-500 flex-shrink-0" />
                   ) : (
-                    <ClipboardIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    <ClipboardIcon className="w-2 h-2 text-gray-400 flex-shrink-0" />
                   )}
                 </div>
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-gray-600 font-mono">{color.value}</p>
-                  <p className="text-xs text-gray-500 truncate ml-2">{color.description}</p>
+                  <p className="text-xs text-gray-500 truncate ml-1">{color.description}</p>
                 </div>
               </div>
             </div>

@@ -4,7 +4,7 @@ import TextBlock from '@/components/layout/TextBlock'
 export default function ExpressSection() {
   return(
     <PageSection>
-        <div className="max-w-screen-lg mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="max-w-screen-lg mx-auto grid grid-cols-1 md:grid-cols-2 gap-4">
           <TextBlock
             title="Express yourself"
             link="#"

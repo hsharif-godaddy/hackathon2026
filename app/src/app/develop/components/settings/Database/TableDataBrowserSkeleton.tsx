@@ -57,11 +57,11 @@ export function TableDataBrowserSkeleton({ tableName, onBack }: TableDataBrowser
             <Thead>
               <Tr>
                 {Array.from({ length: skeletonColumns }).map((_, index) => (
-                  <Th key={`skeleton-header-${index}`} className="text-xs px-6 py-4 max-w-xs">
+                  <Th key={`skeleton-header-${index}`} className="text-xs px-3 py-2 max-w-xs">
                     <Skeleton size="md" width="120px" />
                   </Th>
                 ))}
-                <Th className="text-xs px-4 py-3 w-24">
+                <Th className="text-xs px-2 py-1.5 w-12">
                   <Skeleton size="md" width="70px" />
                 </Th>
               </Tr>
@@ -70,14 +70,14 @@ export function TableDataBrowserSkeleton({ tableName, onBack }: TableDataBrowser
               {Array.from({ length: skeletonRows }).map((_, rowIndex) => (
                 <Tr key={`skeleton-row-${rowIndex}`}>
                   {Array.from({ length: skeletonColumns }).map((_, colIndex) => (
-                    <Td key={`skeleton-cell-${rowIndex}-${colIndex}`} className="font-mono text-xs px-4 py-2 max-w-xs">
+                    <Td key={`skeleton-cell-${rowIndex}-${colIndex}`} className="font-mono text-xs px-2 py-1 max-w-xs">
                       <Skeleton
                         size="md"
                         width={colIndex % 3 === 0 ? '100px' : colIndex % 3 === 1 ? '140px' : '120px'}
                       />
                     </Td>
                   ))}
-                  <Td key={`skeleton-cell-${rowIndex}-actions`} className="px-4 py-2 w-24">
+                  <Td key={`skeleton-cell-${rowIndex}-actions`} className="px-2 py-1 w-12">
                     <Skeleton size="md" width="60px" />
                   </Td>
                 </Tr>

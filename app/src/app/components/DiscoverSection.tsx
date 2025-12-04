@@ -32,7 +32,7 @@ const pricingData = {
 export default function DiscoverSection() {
   return(
     <PageSection>
-      <div className="max-w-screen-lg mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
+      <div className="max-w-screen-lg mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <TextBlock
           title="Discover which flavor is best for you"
         >

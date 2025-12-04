@@ -103,7 +103,7 @@ export default function CssColorToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<Palette className="w-4 h-4" />}
+        icon={<Palette className="w-2 h-2" />}
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasPalette}
@@ -112,7 +112,7 @@ export default function CssColorToolRenderer({
 
       {/* Display palette widget beneath when applied (not generate-only) */}
       {toolStatus === 'completed' && !isGenerateOnly && hasPalette && (
-        <div className="mt-4 mb-4">
+        <div className="mt-2 mb-2">
           <ColorPaletteWidget
             name={paletteName}
             theme={theme}

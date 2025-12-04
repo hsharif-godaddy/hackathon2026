@@ -57,7 +57,7 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
   }
 
   return (
-    <div className="flex items-center justify-between mt-3 text-xs text-foreground/60">
+    <div className="flex items-center justify-between mt-1.5 text-xs text-foreground/60">
       <span>
         Completed in {formatDuration(duration)}
       </span>
@@ -66,7 +66,7 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
         className="hover:text-muted-foreground transition-colors cursor-pointer"
         title="Copy response to clipboard"
       >
-        {copiedToClipboard ? <Check className="w-4 h-4" /> : <ClipboardCopy className="w-4 h-4" />}
+        {copiedToClipboard ? <Check className="w-2 h-2" /> : <ClipboardCopy className="w-2 h-2" />}
       </button>
     </div>
   )

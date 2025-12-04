@@ -31,7 +31,7 @@ export default function DomainPanel() {
 
   if (isDomainAttachLoading || isProjectDomainLoading || isSiteLoading) {
     return (
-      <div className='flex flex-col justify-center items-center h-[calc(100vh-40rem)] gap-4'>
+      <div className='flex flex-col justify-center items-center h-[calc(100vh-40rem)] gap-2'>
         <Spinner size='md'/>
         <text.p>Loading domain settings...</text.p>
       </div>

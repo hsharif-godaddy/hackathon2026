@@ -73,7 +73,7 @@ export default function GrepSearchToolRenderer({
       mounted={mounted}
     >
       <div className="flex-1 overflow-y-auto">
-        <pre className="text-sm font-mono whitespace-pre-wrap break-words bg-muted p-4 rounded border border-border">
+        <pre className="text-sm font-mono whitespace-pre-wrap break-words bg-muted p-2 rounded border border-border">
           {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
         </pre>
       </div>
@@ -83,7 +83,7 @@ export default function GrepSearchToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<TextSearch className="w-4 h-4" />}
+        icon={<TextSearch className="w-2 h-2" />}
         displayName={displayMessage}
         toolStatus={toolStatus}
         hasDetails={hasDetails}

@@ -81,13 +81,13 @@ export default function ColorPaletteWidget({ name, theme, palette, className = '
   }
 
   const renderColorCircle = (color: string) => (
-    <div className="size-8 rounded-full -ml-2" style={{ backgroundColor: color }}></div>
+    <div className="size-4 rounded-full -ml-1" style={{ backgroundColor: color }}></div>
   )
 
   return (
     <button
       className={clsx(
-        "flex flex-col w-full gap-4 p-4 rounded-md border-2 border-border transition-all duration-300 hover:shadow-md hover:cursor-pointer hover:border-intents-ux-boxHighContrast-borderColor relative",
+        "flex flex-col w-full gap-2 p-2 rounded-md border-2 border-border transition-all duration-300 hover:shadow-md hover:cursor-pointer hover:border-intents-ux-boxHighContrast-borderColor relative",
         className,
         {
           "border-intents-ux-boxHighContrast-borderColor shadow-md": isSelected,
@@ -96,19 +96,19 @@ export default function ColorPaletteWidget({ name, theme, palette, className = '
       style={{ backgroundColor: palette?.background, color: palette?.foreground }}
       onClick={handleClick}
     >
-      <div className="flex flex-row gap-2 justify-between items-center w-full">
+      <div className="flex flex-row gap-1 justify-between items-center w-full">
         <div className="flex flex-col items-start">
           <text.span size={3} className="!font-semibold !leading-none">Aa</text.span>
           <text.span size={0} className="!font-thin !leading-none">Aa</text.span>
         </div>
         <div
           style={{ backgroundColor: palette?.primary, color: palette?.primaryForeground }}
-          className="size-12 rounded-sm flex items-center justify-center"
+          className="size-6 rounded-sm flex items-center justify-center"
         >
-          <MapPinIcon className="size-6" />
+          <MapPinIcon className="size-3" />
         </div>
       </div>
-      <div className="flex flex-row pl-2">
+      <div className="flex flex-row pl-1">
         {renderColorCircle(palette?.primary)}
         {renderColorCircle(palette?.secondary)}
         {renderColorCircle(palette?.accent)}

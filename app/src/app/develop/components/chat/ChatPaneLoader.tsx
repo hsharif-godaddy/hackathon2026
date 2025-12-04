@@ -31,9 +31,9 @@ export default function ChatPaneLoader({
   if (error) {
     return (
       <div className="absolute inset-0 z-50 flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor">
-        <div className="text-center p-6 max-w-md">
-          <h2 className="text-xl font-bold mb-2">Setup Failed</h2>
-          <p className="mb-6 text-sm">{error}</p>
+        <div className="text-center p-3 max-w-md">
+          <h2 className="text-xl font-bold mb-1">Setup Failed</h2>
+          <p className="mb-3 text-sm">{error}</p>
           <Box orientation="horizontal" gap="md" blockAlignChildren="center">
             <Button
               design="secondary"
@@ -55,9 +55,9 @@ export default function ChatPaneLoader({
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor">
-      <div className="text-center w-full px-6">
+      <div className="text-center w-full px-3">
         <Box gap="lg">
-          <div className="h-32 w-full mb-6 flex flex-col justify-end overflow-hidden">
+          <div className="h-16 w-full mb-3 flex flex-col justify-end overflow-hidden">
             <motion.div className="text-center">
               <AnimatePresence mode="wait">
                 <motion.div
@@ -77,12 +77,12 @@ export default function ChatPaneLoader({
           <Box
             orientation="horizontal"
             gap="sm"
-            className="mb-6"
+            className="mb-3"
             blockAlignChildren="center"
           >
-            <div className="w-3 h-3 bg-ai-light rounded-full animate-bounce"></div>
-            <div className="w-3 h-3 bg-ai rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-            <div className="w-3 h-3 bg-ai-dark rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <div className="w-1.5 h-1.5 bg-ai-light rounded-full animate-bounce"></div>
+            <div className="w-1.5 h-1.5 bg-ai rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+            <div className="w-1.5 h-1.5 bg-ai-dark rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
           </Box>
 
           <Box className="text-sm" gap="sm">

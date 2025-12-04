@@ -83,10 +83,10 @@ interface SecurityTestResult {
  */
 function SecuritySuccessScreen() {
   return (
-    <Card className="p-8 text-center">
+    <Card className="p-4 text-center">
       <Box gap="lg" className="items-center">
         <div className="flex justify-center">
-          <div className="p-4">
+          <div className="p-2">
             <ShieldIcon color="green" height="3rem" width="3rem" />
           </div>
         </div>
@@ -135,7 +135,7 @@ function SecurityVulnerabilityCard({
   return (
     <Card
       id={vulnerabilityId}
-      className="p-5 checkbox-card"
+      className="p-2.5 checkbox-card"
       as="checkbox"
       checked={isChecked}
       onChange={() => onToggle(vulnerabilityId)}
@@ -148,7 +148,7 @@ function SecurityVulnerabilityCard({
         />
       }
       title={
-        <Box orientation="horizontal" gap="md" className="pb-3">
+        <Box orientation="horizontal" gap="md" className="pb-1.5">
             <Tag
               emphasis={getSeverityTagEmphasis(vulnerability.severity)}
               size="lg"
@@ -355,7 +355,7 @@ export default function SecurityResults({
     (vulnerabilities && vulnerabilities.length > 0) || failedTests.length > 0;
 
   return (
-    <Box gap="lg" className="p-3">
+    <Box gap="lg" className="p-1.5">
       {/* Show success screen if no issues found */}
       {!hasIssues && <SecuritySuccessScreen />}
 
@@ -366,7 +366,7 @@ export default function SecurityResults({
             <text.h3 as="title" size={2}>
               Vulnerabilities ({vulnerabilities.length})
             </text.h3>
-            <div className="flex gap-2">
+            <div className="flex gap-1">
               <Button size="sm" design="secondary" onClick={handleSelectAll}>
                 {areAllSelected() ? "Deselect All" : "Select All"}
               </Button>
@@ -382,7 +382,7 @@ export default function SecurityResults({
               </Button>
             </div>
           </div>
-          <div className="grid gap-4">
+          <div className="grid gap-2">
             {vulnerabilities.map((vulnerability, index) => {
               const vulnerabilityId = `vulnerability-${index}`;
               return (

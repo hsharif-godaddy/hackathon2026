@@ -67,11 +67,11 @@ export default function ToolModal({
 
           {/* Modal Container */}
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center p-2"
             onClick={onClose}
           >
             <motion.div
-              className="max-w-4xl w-full bg-intents-ux-box-backgroundColor p-6 rounded-lg shadow-xl relative max-h-[85vh] flex flex-col"
+              className="max-w-4xl w-full bg-intents-ux-box-backgroundColor p-3 rounded-lg shadow-xl relative max-h-[85vh] flex flex-col"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -79,10 +79,10 @@ export default function ToolModal({
               onClick={(e) => e.stopPropagation()}
             >
               {/* Close button */}
-              <div className="absolute top-3 right-3">
+              <div className="absolute top-1.5 right-1.5">
                 <Button
                   onClick={onClose}
-                  icon={<XThickIcon className="h-6 w-6" />}
+                  icon={<XThickIcon className="h-3 w-3" />}
                   design="control"
                   aria-label="Close"
                   size="sm"
@@ -90,7 +90,7 @@ export default function ToolModal({
               </div>
 
               {/* Title */}
-              <h2 className="text-xl font-bold mb-4">{title}</h2>
+              <h2 className="text-xl font-bold mb-2">{title}</h2>
 
               {/* Content */}
               {children}

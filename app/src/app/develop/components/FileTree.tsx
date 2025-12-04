@@ -61,7 +61,7 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
       <div key={item.path}>
         <div
           className={clsx(
-            "flex items-center pr-2 py-1 hover:bg-intents-ux-box-backgroundColor cursor-pointer text-sm",
+            "flex items-center pr-1 py-0.5 hover:bg-intents-ux-box-backgroundColor cursor-pointer text-sm",
             {
               "bg-intents-ux-box-backgroundColor text-intents-ux-box-foregroundColor": isSelected,
               "opacity-75": !isSelected
@@ -78,13 +78,13 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
         >
           {item.type === 'folder' && (
             <ChevronRightIcon className={clsx(
-              "w-4 h-4 mr-1 transition-transform duration-100", {
+              "w-2 h-2 mr-0.5 transition-transform duration-100", {
                 "rotate-90": isExpanded
               }
             )} />
           )}
-          {item.type === 'file' && <div className="w-4 h-4 mr-1" />}
-          <Icon className="w-4 h-4 mr-2" />
+          {item.type === 'file' && <div className="w-2 h-2 mr-0.5" />}
+          <Icon className="w-2 h-2 mr-1" />
           <span className="truncate flex-1">{item.name}</span>
         </div>
 
@@ -100,7 +100,7 @@ export default function FileTree({ files, selectedFile, onFileSelect }: FileTree
 
   return (
     <div className="h-full overflow-auto ">
-      <div className="py-2">
+      <div className="py-1">
         {sortFileItems(files).map(file => renderFileItem(file))}
       </div>
     </div>

@@ -155,8 +155,8 @@ export default function StreamingMessageList() {
 
   if (allMessages.length === 0) {
     return (
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-        <div className="flex items-center justify-center h-full flex-col gap-1">
+      <div ref={containerRef} className="flex-1 overflow-y-auto p-2 space-y-2">
+        <div className="flex items-center justify-center h-full flex-col gap-0.5">
           {isLoadingMessages ? (
             <Spinner size="md" />
           ) : (
@@ -172,10 +172,10 @@ export default function StreamingMessageList() {
   }
 
   return (
-    <div ref={containerRef} className="flex flex-1 flex-col overflow-y-auto px-4 gap-2">
+    <div ref={containerRef} className="flex flex-1 flex-col overflow-y-auto px-2 gap-1">
       {/* Load More Button */}
       {pagination.hasMore && (
-        <div className="flex justify-center mb-4">
+        <div className="flex justify-center mb-2">
           <Button
             design="tertiary"
             size="sm"

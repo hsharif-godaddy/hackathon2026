@@ -159,7 +159,7 @@ export default function PublishStatusAlert() {
     const fqdn = customDomain?.fqdn || prefixDomain?.fqdn || publishedFqdn || '';
 
     return (
-      <div className='px-4 py-4'>
+      <div className='px-2 py-2'>
         <Alert
           emphasis='success'
           onClose={() => currentAppId && dismissPublishSuccess(currentAppId)}
@@ -196,12 +196,12 @@ export default function PublishStatusAlert() {
 
   if (isPublishing) {
     return (
-      <div className='px-4 py-4'>
+      <div className='px-2 py-2'>
         <Alert
           emphasis='info'
         >
           <div className='font-semibold'>{t('builder_publish_progress_title')}</div>
-          <div className='text-sm mt-1'>
+          <div className='text-sm mt-0.5'>
             {t('builder_publish_progress_message')}
           </div>
         </Alert>
@@ -212,23 +212,23 @@ export default function PublishStatusAlert() {
   // Show build error state with detailed error and fix button
   if (publishError && buildErrorDetails) {
     return (
-      <div className='px-4 py-4'>
+      <div className='px-2 py-2'>
         <Alert
           emphasis='critical'
           onClose={handleDismiss}
           actions={
-            <div className='flex gap-2'>
+            <div className='flex gap-1'>
               <Button design='secondary' onClick={handleTryAgain}>{t('builder_publish_error_button_try_again')}</Button>
               <Button design='primary' onClick={handleFixBuildError}>{t('builder_publish_error_button_fix')}</Button>
             </div>
           }
         >
           <div className='font-semibold'>{t('builder_publish_build_failed_title')}</div>
-          <div className='text-sm mt-1'>
+          <div className='text-sm mt-0.5'>
             {buildErrorDetails.error}
           </div>
           {buildErrorDetails.exitCode && (
-            <text.p size={0} emphasis='passive' className='mt-1'>
+            <text.p size={0} emphasis='passive' className='mt-0.5'>
               {t('builder_publish_build_failed_exit_code', { exitCode: buildErrorDetails.exitCode })}
             </text.p>
           )}
@@ -240,14 +240,14 @@ export default function PublishStatusAlert() {
   // Show generic error state only when not publishing
   if (publishError) {
     return (
-      <div className='px-4 py-4'>
+      <div className='px-2 py-2'>
         <Alert
           emphasis='critical'
           onClose={handleDismiss}
           actions={<Button design='primary' onClick={handleTryAgain}>{t('builder_publish_error_button_try_again')}</Button>}
         >
           <div className='font-semibold'>{t('builder_publish_failed_title')}</div>
-          <div className='text-sm mt-1'>{t('builder_publish_failed_message')}</div>
+          <div className='text-sm mt-0.5'>{t('builder_publish_failed_message')}</div>
         </Alert>
       </div>
     );

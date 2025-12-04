@@ -118,13 +118,13 @@ export default function ChatAuthRequestMessage({
     }
 
     return (
-        <div className="max-w-2xl mx-auto my-4">
-            <div className="rounded-lg border border-intents-ux-warning-borderColor bg-intents-ux-warning-backgroundColor p-4">
+        <div className="max-w-2xl mx-auto my-2">
+            <div className="rounded-lg border border-intents-ux-warning-borderColor bg-intents-ux-warning-backgroundColor p-2">
                 {/* Header */}
-                <div className="flex items-start gap-3 mb-3">
+                <div className="flex items-start gap-1.5 mb-1.5">
                     <div className="text-2xl">🔐</div>
                     <div className="flex-1">
-                        <h3 className="text-base font-semibold text-typography-highEmphasis mb-1">
+                        <h3 className="text-base font-semibold text-typography-highEmphasis mb-0.5">
                             {title || 'Authentication Required'}
                         </h3>
                         <p className="text-sm text-typography-mediumEmphasis">
@@ -134,7 +134,7 @@ export default function ChatAuthRequestMessage({
                 </div>
 
                 {/* Action Button */}
-                <div className="ml-11 flex items-center gap-3">
+                <div className="ml-5 flex items-center gap-1.5">
                     {status === 'pending' && (
                         <Button
                             design="primary"
@@ -146,26 +146,26 @@ export default function ChatAuthRequestMessage({
                     )}
 
                     {status === 'authenticating' && (
-                        <div className="flex items-center gap-2 text-sm text-typography-mediumEmphasis">
+                        <div className="flex items-center gap-1 text-sm text-typography-mediumEmphasis">
                             <span>Please continue authenticating in the popup window...</span>
                         </div>
                     )}
 
                     {status === 'success' && (
-                        <div className="flex items-center gap-2 text-sm text-intents-ux-success-textColor">
+                        <div className="flex items-center gap-1 text-sm text-intents-ux-success-textColor">
                             <span className="text-lg">✓</span>
                             <span className="font-medium">Authentication successful</span>
                         </div>
                     )}
 
                     {status === 'failed' && (
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-sm text-intents-ux-error-textColor">
+                        <div className="space-y-1">
+                            <div className="flex items-center gap-1 text-sm text-intents-ux-error-textColor">
                                 <span className="text-lg">✕</span>
                                 <span className="font-medium">Authentication failed</span>
                             </div>
                             {error && (
-                                <p className="text-xs text-typography-mediumEmphasis ml-6">{error}</p>
+                                <p className="text-xs text-typography-mediumEmphasis ml-3">{error}</p>
                             )}
                             <Button
                                 design="secondary"
@@ -180,7 +180,7 @@ export default function ChatAuthRequestMessage({
 
                 {/* Info Text */}
                 {status === 'pending' && (
-                    <p className="ml-11 mt-3 text-xs text-typography-lowEmphasis">
+                    <p className="ml-5 mt-1.5 text-xs text-typography-lowEmphasis">
                         A popup window will open for secure authentication with {provider === 'godaddy' ? 'GoDaddy' : provider}
                     </p>
                 )}

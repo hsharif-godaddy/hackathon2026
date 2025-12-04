@@ -26,10 +26,10 @@ export default function OAuthToolRenderer({ toolStatus, result, ...rest }: Defau
       // If still streaming, show a loading state instead of the button
       if (isStreaming) {
         return (
-          <div className="-my-2">
-            <div className="max-w-2xl mx-auto my-4">
-              <div className="rounded-lg border border-intents-ux-info-borderColor bg-intents-ux-info-backgroundColor p-4">
-                <div className="flex items-center gap-3">
+          <div className="-my-1">
+            <div className="max-w-2xl mx-auto my-2">
+              <div className="rounded-lg border border-intents-ux-info-borderColor bg-intents-ux-info-backgroundColor p-2">
+                <div className="flex items-center gap-1.5">
                   <div className="text-2xl">🔐</div>
                   <div className="flex-1">
                     <p className="text-sm text-typography-mediumEmphasis">
@@ -44,7 +44,7 @@ export default function OAuthToolRenderer({ toolStatus, result, ...rest }: Defau
       }
 
       return (
-        <div className="-my-2">
+        <div className="-my-1">
           <ChatAuthRequestMessage
             payload={r.authRequest}
           />

@@ -50,32 +50,32 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
       </text.p>
 
       {/* DNS Records Table */}
-      <Box orientation="vertical" gap="sm" className="mt-2">
+      <Box orientation="vertical" gap="sm" className="mt-1">
         <Box
           orientation="horizontal"
           gap="md"
-          className="font-semibold text-sm border-b border-intents-ux-border-subtle pb-2"
+          className="font-semibold text-sm border-b border-intents-ux-border-subtle pb-1"
         >
-          <div className="w-20">{t('builder_domain_dns_table_type')}</div>
-          <div className="w-24">{t('builder_domain_dns_table_name')}</div>
+          <div className="w-10">{t('builder_domain_dns_table_type')}</div>
+          <div className="w-12">{t('builder_domain_dns_table_name')}</div>
           <div className="flex-1">{t('builder_domain_dns_table_value')}</div>
-          <div className="w-20">{t('builder_domain_dns_table_ttl')}</div>
+          <div className="w-10">{t('builder_domain_dns_table_ttl')}</div>
         </Box>
 
         {/* A Record */}
         <Box
           orientation="horizontal"
           gap="md"
-          className={dnsRecords.cnameRecord ? "text-sm py-2 border-b border-intents-ux-border-subtle" : "text-sm py-2"}
+          className={dnsRecords.cnameRecord ? "text-sm py-1 border-b border-intents-ux-border-subtle" : "text-sm py-1"}
         >
-          <div className="w-20">{dnsRecords.aRecord.type}</div>
-          <div className="w-24">{dnsRecords.aRecord.name}</div>
+          <div className="w-10">{dnsRecords.aRecord.type}</div>
+          <div className="w-12">{dnsRecords.aRecord.name}</div>
           <div className="flex-1">
-            <code className="bg-intents-ux-box-subtle rounded px-2 py-1 text-xs font-mono">
+            <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono">
               {dnsRecords.aRecord.value}
             </code>
           </div>
-          <div className="w-20">{dnsRecords.aRecord.ttl}</div>
+          <div className="w-10">{dnsRecords.aRecord.ttl}</div>
         </Box>
       </Box>
     </Box>

@@ -93,30 +93,30 @@ function SitesPageContent() {
       />
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
+      <main className="max-w-7xl mx-auto px-2 sm:px-3 lg:px-4 pt-4 pb-8">
         <AppInactivityAlert />
-        <div className="mb-8">
-          <Box orientation="horizontal" gap="md">
+        <div className="mb-4">
+          <Box orientation="horizontal" gap="md" data-partial="componentAiro">
             Manage your AI-powered websites and applications
-            <Tag emphasis="info">
+            <Tag emphasis="highlight">
               {`${totalSites} ${totalSites === 1 ? 'app' : 'apps'} total`}
             </Tag>
           </Box>
         </div>
 
         {error && (
-          <div className="mb-6 border rounded-lg p-4">
-            <p className="text-red-700">{error}</p>
-            <button
+          <div className="mb-3 border rounded-lg p-2">
+            <p className="text-red-700 mb-1">{error}</p>
+            <Button
               onClick={() => window.location.reload()}
-              className="mt-2 text-red-600 hover:text-red-500 font-medium"
+              design="secondary"
             >
               Try Again
-            </button>
+            </Button>
           </div>
         )}
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           <AppCardEmptyState />
           {totalSites > 0 && sites.map((site) => (
             <AppCard
