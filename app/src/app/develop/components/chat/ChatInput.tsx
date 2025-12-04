@@ -1,6 +1,7 @@
 'use client'
 
 import { generateClickEID } from '@/utils/instrumentation'
+import type { SendMessageOptions } from './ChatContext'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import SendIcon from '@ux/icon/send'
@@ -9,7 +10,7 @@ interface ChatInputProps {
   inputValue?: string
   isDisabled?: boolean
   onInputChange: (value: string) => void
-  onSendMessage: () => void
+  onSendMessage: (content?: string, options?: SendMessageOptions) => void
   onKeyDown?: (e: React.KeyboardEvent<Element>) => void;
 }
 
@@ -47,7 +48,7 @@ export default function ChatInput({
             {/* Send Button */}
             <Button
               id="chat-send-button"
-              onClick={onSendMessage}
+              onClick={() => onSendMessage()}
               data-eid={generateClickEID('develop.prompt.send')}
               disabled={!inputValue?.trim() || isDisabled}
               aria-label="Send message"
