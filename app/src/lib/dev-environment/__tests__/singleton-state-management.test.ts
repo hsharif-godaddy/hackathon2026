@@ -11,7 +11,65 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock dependencies
 vi.mock('execa');
-vi.mock('../adapters/DockerAppService.js');
+
+// Mock child_process to handle Docker availability check (execSync('docker info'))
+// Use importOriginal to preserve spawn and other exports needed by git.ts
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    execSync: vi.fn(() => 'Docker version 20.10.0')
+  };
+});
+
+// Mock the adapters/index to avoid Docker availability check and provide mock DockerAppService
+vi.mock('../adapters/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../adapters/index')>();
+  return {
+    ...actual,
+    createAppAdapter: vi.fn(async (devDb: any) => ({
+      initialized: false,
+      async initialize() {
+        this.initialized = true;
+      },
+      getCapabilities() {
+        return {
+          supportsContainerOperations: true,
+          supportsProcessOperations: false,
+          supportsRebuild: true,
+          supportsLogs: true
+        };
+      }
+    })),
+    getAdapterType: vi.fn(() => 'docker'),
+    isDockerMode: vi.fn(() => true)
+  };
+});
+
+// Mock DockerAppService with a proper class constructor
+vi.mock('../adapters/DockerAppService.js', () => ({
+  DockerAppService: class MockDockerAppService {
+    private devDb: any;
+    initialized = false;
+
+    constructor(devDb: any) {
+      this.devDb = devDb;
+    }
+
+    async initialize(): Promise<void> {
+      this.initialized = true;
+    }
+
+    getCapabilities() {
+      return {
+        supportsContainerOperations: true,
+        supportsProcessOperations: false,
+        supportsRebuild: true,
+        supportsLogs: true
+      };
+    }
+  }
+}));
 
 describe('Singleton State Management', () => {
   let DevDatabase: any;
@@ -257,10 +315,7 @@ describe('Singleton State Management', () => {
       const mockExeca = vi.mocked(execa);
 
       // Mock Docker commands with delay to simulate slow initialization
-      mockExeca.mockImplementation(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
-        return { stdout: 'Docker version 20.10.0', stderr: '' } as any;
-      });
+      mockExeca.mockResolvedValue({ stdout: 'Docker version 20.10.0', stderr: '' } as any);
 
       const devDb = DevDatabase.getInstance();
       const docker = DockerContainerManager.getInstance(devDb);
