@@ -1,11 +1,12 @@
 /**
- * Media Search Tool - Unified Image and Video Search
+ * Media Tool - Unified Image Search, Video Search, and Image Generation
  * 
- * This tool provides both image and video search functionality using Getty Images API.
- * By default, it searches for images unless explicitly requested to search for videos.
+ * This tool provides image search, video search, and AI image generation.
+ * By default, it searches for images. Use mediaType to specify video search or image generation.
  * 
  * Configuration:
- * - Requires SSO_JWT, GETTY_API_URL, and GETTY_APP_KEY environment variables
+ * - Image/Video Search: Requires SSO_JWT, GETTY_API_URL, and GETTY_APP_KEY environment variables
+ * - Image Generation: Uses OpenAI DALL-E via ai-lib unified provider
  * 
  * Usage:
  * ```typescript
@@ -15,27 +16,34 @@
  * // Search for a video explicitly
  * const videoResult = await findMedia({ prompt: "ocean waves", mediaType: "video" });
  * 
+ * // Generate an image with AI
+ * const generateResult = await findMedia({ 
+ *   prompt: "sunset over mountains", 
+ *   mediaType: "generate",
+ *   appId: "app123"
+ * });
+ * 
  * // Search for multiple images
  * const multipleImages = await findMedia({ prompt: "sunset", count: 5 });
- * 
- * // Parallel image search
- * const parallelResults = await findMedia({ 
- *   prompt: ["cats", "dogs"], 
- *   count: 2 
- * });
  * ```
  */
 import { GettyMediaDriver } from './ai-lib-tools/drivers/getty-media-driver.js';
+import { createOpenAIClient } from '@airo/ai-lib';
+import { AppRepository } from '../database/repositories/AppRepository.js';
+import { nanoid } from 'nanoid';
 import { logger } from '../logging/index.js';
-import { toolImageSearchEvents, toolVideoSearchEvents } from '../logging/events/index.js';
+import { toolImageSearchEvents, toolVideoSearchEvents, toolImageGenerationEvents } from '../logging/events/index.js';
+import OpenAI from 'openai';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /**
- * Media type enumeration
+ * Media type enumeration - now includes generate
  */
-export type MediaType = 'image' | 'video';
+export type MediaType = 'image' | 'video' | 'generate';
 
 /**
- * Options for media search
+ * Options for media search and generation
  */
 export interface MediaSearchOptions {
   prompt: string | string[];
@@ -44,10 +52,14 @@ export interface MediaSearchOptions {
   orientations?: string;
   compositions?: string;
   color?: string;
+  // For image generation (mediaType: 'generate')
+  appId?: string;
+  size?: '1024x1024' | '1024x1536' | '1536x1024' | 'auto';
+  filename?: string;
 }
 
 /**
- * Result from media search
+ * Result from media search or generation
  */
 export interface MediaSearchResult {
   success: boolean;
@@ -61,40 +73,81 @@ export interface MediaSearchResult {
     urls?: string[];
     error?: string;
   }>;
+  // For image generation
+  filepath?: string;
+  publicPath?: string;
+  base64Data?: string;
 }
 
 /**
  * Service for searching media (images or videos) using Getty Images API
+ * and generating images using OpenAI DALL-E
  * 
- * By default searches for images. Set mediaType to 'video' for video search.
+ * By default searches for images. Set mediaType to 'video' for video search
+ * or 'generate' for AI image generation.
  * Video search only supports single prompts (no parallel search or count).
+ * Image generation requires appId and only supports single prompts.
  */
 export class MediaSearchTool {
   private driver: GettyMediaDriver;
+  private appsBaseDir: string;
 
   constructor() {
     this.driver = new GettyMediaDriver();
+    this.appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/apps';
   }
 
   /**
-   * Search for media (image or video) based on the given prompt(s)
+   * Search for media (image or video) or generate an image based on the given prompt(s)
    * 
-   * @param prompt - The search prompt or array of prompts (array only for images)
-   * @param mediaType - Type of media to search for ('image' or 'video', defaults to 'image')
-   * @param count - Number of results per prompt (only for images)
+   * @param prompt - The search/generation prompt or array of prompts (array only for image search)
+   * @param mediaType - Type of media to search/generate ('image', 'video', or 'generate', defaults to 'image')
+   * @param count - Number of results per prompt (only for image search)
+   * @param appId - App ID for image generation (required when mediaType is 'generate')
+   * @param size - Image size for generation (only for 'generate')
+   * @param filename - Custom filename for generation (only for 'generate')
    * @param options - Additional search options (orientations, compositions, color)
-   * @returns An object containing the media URL(s) or an error
+   * @returns An object containing the media URL(s) or generation result
    */
   async searchMedia(
     prompt: string | string[], 
     mediaType: MediaType = 'image',
     count?: number,
+    appId?: string,
+    size?: '1024x1024' | '1024x1536' | '1536x1024' | 'auto',
+    filename?: string,
     options?: {
       orientations?: string;
       compositions?: string;
       color?: string;
     }
   ): Promise<MediaSearchResult> {
+    // Image generation
+    if (mediaType === 'generate') {
+      if (Array.isArray(prompt)) {
+        return {
+          success: false,
+          error: 'Image generation does not support multiple prompts. Please provide a single prompt.'
+        };
+      }
+
+      if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+        return {
+          success: false,
+          error: 'A valid prompt is required for image generation'
+        };
+      }
+
+      if (!appId) {
+        return {
+          success: false,
+          error: 'App ID is required for image generation'
+        };
+      }
+
+      return this.generateImage(prompt, appId, size, filename);
+    }
+
     // Video search validation
     if (mediaType === 'video') {
       if (Array.isArray(prompt)) {
@@ -179,7 +232,7 @@ export class MediaSearchTool {
         provider: 'getty',
       });
 
-      const result = await this.driver.search(mediaType, {
+      const result = await this.driver.search(mediaType as 'image' | 'video', {
         phrase: prompt.trim(),
         page: 1,
         pageSize: Math.min(count, mediaType === 'image' ? 10 : 1),
@@ -349,16 +402,149 @@ export class MediaSearchTool {
       };
     }
   }
+
+  /**
+   * Generate an image using OpenAI DALL-E
+   * 
+   * @param prompt - The image generation prompt
+   * @param appId - App ID for saving the generated image
+   * @param size - Image size (defaults to '1024x1024')
+   * @param filename - Optional custom filename
+   * @returns Promise resolving to generation result
+   */
+  private async generateImage(
+    prompt: string,
+    appId: string,
+    size: '1024x1024' | '1024x1536' | '1536x1024' | 'auto' = '1024x1024',
+    filename?: string
+  ): Promise<MediaSearchResult> {
+    const startTime = Date.now();
+    const logData = {
+      toolName: 'media-tool',
+      appId,
+      prompt,
+      options: { size, filename }
+    };
+
+    toolImageGenerationEvents.begin(logger, logData);
+
+    try {
+      const openaiClient = await createOpenAIClient();
+      if (!openaiClient) {
+        return {
+          success: false,
+          error: 'OpenAI client could not be created - authentication not configured properly'
+        };
+      }
+
+      const appPath = path.join(this.appsBaseDir, appId);
+      const publicDir = path.join(appPath, 'public');
+      const imagesDir = path.join(publicDir, 'images');
+
+      if (!fs.existsSync(publicDir)) {
+        fs.mkdirSync(publicDir, { recursive: true });
+      }
+      if (!fs.existsSync(imagesDir)) {
+        fs.mkdirSync(imagesDir, { recursive: true });
+      }
+
+      const result = await openaiClient.images.generate({
+        model: "gpt-image-1",
+        prompt: prompt.trim(),
+        n: 1,
+        size: size,
+      });
+
+      if (!result.data || result.data.length === 0) {
+        return {
+          success: false,
+          error: 'No image generated from the provided prompt'
+        };
+      }
+
+      const imageData = result.data[0];
+      if (!imageData || (!imageData.b64_json && !imageData.url)) {
+        return {
+          success: false,
+          error: 'No image data returned from the API'
+        };
+      }
+
+      const safeFilename = filename ||
+        prompt.trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .substring(0, 40);
+
+      const fullFilename = `${safeFilename}-${nanoid(6)}.png`;
+      const filePath = path.join(imagesDir, fullFilename);
+
+      let imageBuffer: Buffer;
+      if (imageData.b64_json) {
+        imageBuffer = Buffer.from(imageData.b64_json, 'base64');
+      } else {
+        const res = await fetch(imageData.url as string);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch image: ${res.status} ${res.statusText}`);
+        }
+        imageBuffer = Buffer.from(await res.arrayBuffer());
+      }
+
+      fs.writeFileSync(filePath, imageBuffer);
+
+      const publicPath = `/images/${fullFilename}`;
+      const executionTime = Date.now() - startTime;
+
+      toolImageGenerationEvents.success(logger, {
+        toolName: logData.toolName,
+        appId: logData.appId,
+        prompt: logData.prompt,
+        options: {
+          size: logData.options.size,
+          ...(logData.options.filename && { filename: logData.options.filename })
+        },
+        resultStats: {
+          success: true,
+          filePath,
+          publicPath,
+          fileSize: imageBuffer.length,
+          executionTime
+        }
+      });
+
+      // Get app's preview URL
+      const appRepository = new AppRepository();
+      const app = appRepository.findById(appId);
+      const imageUrl = app?.previewUrl 
+        ? `${app.previewUrl.replace(/\/+$/, '')}${publicPath}` 
+        : publicPath;
+
+      return {
+        success: true,
+        url: imageUrl,
+        filepath: filePath,
+        publicPath,
+        ...(imageData.b64_json && { base64Data: imageData.b64_json })
+      };
+    } catch (error) {
+      toolImageGenerationEvents.failure(logger, error as Error, logData);
+      return {
+        success: false,
+        error: `Image generation failed: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
 }
 
 /**
- * Tool interface for media search - maintains backward compatibility
+ * Tool interface for media search and generation - maintains backward compatibility
  * 
- * @param options - Search options with prompt, optional mediaType, and optional count
- * @returns Promise resolving to media search result
+ * @param options - Search/generation options with prompt, optional mediaType, and optional parameters
+ * @returns Promise resolving to media search or generation result
  */
 export async function findMedia(options: MediaSearchOptions): Promise<MediaSearchResult> {
-  const { prompt, mediaType = 'image', count, orientations, compositions, color } = options;
+  const { prompt, mediaType = 'image', count, orientations, compositions, color, appId, size, filename } = options;
 
   // Validate prompt
   if (Array.isArray(prompt)) {
@@ -386,12 +572,21 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
       prompt, 
       mediaType, 
       count, 
+      appId,
+      size,
+      filename,
       Object.keys(searchOptions).length > 0 ? searchOptions : undefined
     );
   } catch (error) {
     const promptForLog = Array.isArray(prompt) ? prompt.join(', ') : prompt;
     
-    if (mediaType === 'video') {
+    if (mediaType === 'generate') {
+      toolImageGenerationEvents.failure(logger, error as Error, {
+        toolName: 'media-tool',
+        appId: appId || '',
+        prompt: promptForLog
+      });
+    } else if (mediaType === 'video') {
       toolVideoSearchEvents.failure(logger, error as Error, {
         toolName: 'MediaSearchTool',
         prompt: promptForLog,
@@ -408,7 +603,7 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
 
     return {
       success: false,
-      error: `Media search failed: ${error instanceof Error ? error.message : String(error)}`
+      error: `Media operation failed: ${error instanceof Error ? error.message : String(error)}`
     };
   }
 }

@@ -12,7 +12,6 @@ export { terminalCommandAITool } from './terminal-command.js';
 export { readFileAITool } from './read-file.js';
 export { grepSearchAITool } from './grep-search.js';
 export { serverRestartAITool, serverStatusAITool } from './server-management.js';
-export { imageGenerateAITool } from './image-tools.js';
 export { mediaSearchAITool } from './media-tools.js';
 export { iconsValidatorAITool } from './icons-validator.js';
 export { viewLogsAITool } from './view-logs.js';
@@ -49,7 +48,6 @@ import { terminalCommandAITool } from './terminal-command.js';
 import { readFileAITool } from './read-file.js';
 import { grepSearchAITool } from './grep-search.js';
 import { serverRestartAITool, serverStatusAITool } from './server-management.js';
-import { imageGenerateAITool } from './image-tools.js';
 import { mediaSearchAITool } from './media-tools.js';
 import { iconsValidatorAITool } from './icons-validator.js';
 import { viewLogsAITool } from './view-logs.js';
@@ -92,7 +90,6 @@ export const allAILibTools: Record<string, Tool> = {
   serverRestart: serverRestartAITool,
   serverStatus: serverStatusAITool,
   mediaSearch: mediaSearchAITool,
-  imageGenerate: imageGenerateAITool,
   iconsValidator: iconsValidatorAITool,
   viewLogs: viewLogsAITool,
   appPlan: appPlanAITool,
@@ -160,7 +157,6 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
   // Media and content tools
   media: {
     mediaSearch: mediaSearchAITool,
-    imageGenerate: imageGenerateAITool,
     iconsValidator: iconsValidatorAITool,
     ragSearch: ragSearchAITool,
   },

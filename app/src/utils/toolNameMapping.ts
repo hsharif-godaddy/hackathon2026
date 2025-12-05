@@ -33,13 +33,16 @@ export function getToolDisplayName(toolName: string): string {
       return 'Terminal'
     case 'media_search':
     case 'mediaSearch':
-      return 'Media Search'
+      return 'Media'
     case 'image_search':
     case 'imageSearch':
       return 'Image Search'
     case 'video_search':
     case 'videoSearch':
       return 'Video Search'
+    case 'image_generate':
+    case 'imageGenerate':
+      return 'Image Generate'
     case 'view_logs':
     case 'viewLogs':
       return 'View Logs'
@@ -58,9 +61,6 @@ export function getToolDisplayName(toolName: string): string {
     case 'mysql_operation':
     case 'mysqlOperation':
       return 'MySQL Operation'
-    case 'image_generate':
-    case 'imageGenerate':
-      return 'Image Generate'
     case 'icons_validator':
     case 'iconsValidator':
       return 'Icons Validator'

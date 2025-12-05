@@ -8,7 +8,7 @@ import XThickIcon from '@ux/icon/x-thick'
 import MarkdownRenderer from '../MarkdownRenderer'
 import ToolHeader from './ToolHeader'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import { Image, SquarePlay } from 'lucide-react'
+import { Image, SquarePlay, Sparkles } from 'lucide-react'
 
 interface ImageResult {
   prompt: string
@@ -50,8 +50,9 @@ export default function MediaSearchToolRenderer({
   let parsedResult: any = null
   const images: ImageResult[] = []
   let video: VideoResult | null = null
-  let mediaType: 'image' | 'video' = 'image'
+  let mediaType: 'image' | 'video' | 'generate' = 'image'
   let isMarkdownFormat = false
+  let isGeneratedImage = false
   let markdownContent = ''
 
   if (result) {
@@ -61,6 +62,7 @@ export default function MediaSearchToolRenderer({
         try {
           parsedResult = JSON.parse(result)
           mediaType = parsedResult.mediaType || 'image'
+          isGeneratedImage = mediaType === 'generate'
         } catch {
           // If JSON parse fails, it's the old markdown format (image only)
           isMarkdownFormat = true
@@ -76,10 +78,11 @@ export default function MediaSearchToolRenderer({
       } else if (typeof result === 'object') {
         parsedResult = result
         mediaType = parsedResult.mediaType || 'image'
+        isGeneratedImage = mediaType === 'generate'
       }
 
-      if (parsedResult && mediaType === 'image') {
-        // Handle single image result
+      if (parsedResult && (mediaType === 'image' || mediaType === 'generate')) {
+        // Handle single image result (search or generation)
         if (parsedResult.url) {
           const prompt = typeof parsedResult.prompt === 'string' ? parsedResult.prompt : 'Image'
           images.push({ prompt, url: parsedResult.url })
@@ -116,6 +119,15 @@ export default function MediaSearchToolRenderer({
   const hasImages = imageCount > 0
   const hasVideo = video !== null
   const hasDetails = hasImages || hasVideo || isMarkdownFormat
+
+  // Helper function to ensure URLs have proper protocol
+  const ensureHttps = (url: string): string => {
+    if (!url) return url
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url
+    }
+    return `https://${url}`
+  }
 
   const handleImageClick = (index: number) => {
     setSelectedImageIndex(index)
@@ -204,7 +216,7 @@ export default function MediaSearchToolRenderer({
 
               {/* Title */}
               <h2 className="text-xl font-bold mb-2">
-                {mediaType === 'video' ? 'Video Search Result' : 'Image Search Results'}
+                {mediaType === 'video' ? 'Video Search Result' : isGeneratedImage ? 'AI Generated Image' : 'Image Search Results'}
               </h2>
 
               {/* Markdown format (backwards compatibility - images only) */}
@@ -231,8 +243,8 @@ export default function MediaSearchToolRenderer({
                 </div>
               )}
 
-              {/* Image display */}
-              {!isMarkdownFormat && mediaType === 'image' && hasImages && (
+              {/* Image display (for both searched and generated images) */}
+              {!isMarkdownFormat && (mediaType === 'image' || mediaType === 'generate') && hasImages && (
                 <>
                   {/* Image navigation */}
                   {images.length > 1 && (
@@ -247,7 +259,7 @@ export default function MediaSearchToolRenderer({
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={img.url}
+                            src={ensureHttps(img.url)}
                             alt={img.prompt}
                             className="w-full h-full object-cover"
                           />
@@ -263,7 +275,7 @@ export default function MediaSearchToolRenderer({
                     </div>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={images[selectedImageIndex]?.url}
+                      src={ensureHttps(images[selectedImageIndex]?.url)}
                       alt={images[selectedImageIndex]?.prompt}
                       className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
                     />
@@ -277,13 +289,16 @@ export default function MediaSearchToolRenderer({
     </AnimatePresence>
   )
 
-  let displayName = 'Media Search'
+  let displayName = 'Media'
   let icon = <Image className="w-2 h-2" />
 
   if (toolStatus === 'completed') {
     if (mediaType === 'video' && hasVideo) {
       displayName = 'Found video'
       icon = <SquarePlay className="w-2 h-2" />
+    } else if (isGeneratedImage && hasImages) {
+      displayName = 'AI Generated Image'
+      icon = <Sparkles className="w-2 h-2" />
     } else if (mediaType === 'image' && hasImages && !isMarkdownFormat) {
       displayName = `Found ${imageCount} ${imageCount === 1 ? 'image' : 'images'}`
       icon = <Image className="w-2 h-2" />
@@ -304,8 +319,8 @@ export default function MediaSearchToolRenderer({
         onOpenModal={hasDetails ? handleModalOpen : undefined}
       />
 
-      {/* Image gallery - always showing when completed */}
-      {toolStatus === 'completed' && mediaType === 'image' && hasImages && (
+      {/* Image gallery - showing for searched and generated images */}
+      {toolStatus === 'completed' && (mediaType === 'image' || mediaType === 'generate') && hasImages && (!isMarkdownFormat || isGeneratedImage) && (
         <div className="my-2">
           <div className="grid grid-cols-2 gap-1.5">
             {displayedImages.map((img, index) => (
@@ -317,7 +332,7 @@ export default function MediaSearchToolRenderer({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={img.url}
+                  src={ensureHttps(img.url)}
                   alt={img.prompt}
                   className="w-full h-full object-cover opacity-90 hover:opacity-100 transition-all hover:scale-105"
                 />

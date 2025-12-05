@@ -236,10 +236,10 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
     })
   } else {
     // Use regular OpenAI authentication
-    const fallbackApiKey = config?.openaiApiKey || process.env.OPENAI_API_KEY || ''
+    const fallbackApiKey = config?.openaiApiKey || process.env.ANTHROPIC_API_KEY || ''
 
     if (!fallbackApiKey) {
-      throw new Error('OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass openaiApiKey in config.')
+      throw new Error('Anthropic API key is required. Set ANTHROPIC_API_KEY environment variable or pass anthropicApiKey in config.')
     }
 
     const { default: OpenAI } = await import('openai')
@@ -248,7 +248,7 @@ export async function createOpenAIClient(config?: ProviderConfig): Promise<any> 
     }
 
     // Add base URL if provided (for proxy support)
-    const baseURL = config?.openaiBaseUrl || process.env.OPENAI_BASE_URL
+    const baseURL = config?.openaiBaseUrl || process.env.ANTHROPIC_BASE_URL
     if (baseURL) {
       // Ensure URL ends with /v1 for OpenAI API compatibility
       openaiConfig.baseURL = baseURL.endsWith('/v1') ? baseURL : baseURL + '/v1'
