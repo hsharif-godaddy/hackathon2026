@@ -1,3 +1,4 @@
+import { formatSubscriptionId } from '@/lib/subscription-id';
 import { appFetch } from '@/lib/gasket-config';
 import { agentFetch } from '@/lib/agent-fetch';
 import { logger } from '@/lib/request-context';
@@ -358,7 +359,7 @@ export class SitePollingService {
 
       // Register app with agent service
       try {
-        const prefixedSubscriptionId = site.subscription_id ? `airo-build:sid:${site.subscription_id}` : undefined;
+        const prefixedSubscriptionId = formatSubscriptionId(site.subscription_id);
         const registerPayload = {
           siteId: site.id,
           name: site.name || `App ${site.id}`,

@@ -1,6 +1,8 @@
 import { buildDynamicAgentUrl, buildDynamicApiUrl } from '@/config/dynamic-api'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { type ServerStatusType } from '@/stores/useServerStore'
+import { formatSubscriptionId } from '@/lib/subscription-id'
+import { type AiroDeploymentStatus } from '@/lib/mgmt-airo'
 import { type AppStatusType } from '@/stores/useAppStore'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { useSiteStore } from '@/stores/useSiteStore'
@@ -8,7 +10,6 @@ import { agentFetch } from '@/lib/agent-fetch'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { buildApiUrl } from '@/config/api'
-import { type AiroDeploymentStatus } from '@/lib/mgmt-airo'
 
 export interface App {
   id: string
@@ -570,6 +571,86 @@ export class AppService {
   }
 
   /**
+   * Ensure an app is registered with the agent backend using the latest site metadata.
+   *
+   * @param appId - The identifier of the app that should exist in the agent repository.
+   * @returns Promise that resolves to true when the registration call succeeds.
+   * @example
+   * ```ts
+   * const registered = await appService.ensureAppRegistered('app-123')
+   * ```
+   */
+  async ensureAppRegistered(appId: string): Promise<boolean> {
+    try {
+      logger.info('app-service.ensure-register.begin', {
+        message: 'Ensuring app is registered with agent service',
+        appId
+      })
+
+      const siteStore = useSiteStore.getState()
+      let site = siteStore.sites?.[appId]
+      if (!site) {
+        site = await siteStore.fetchSite(appId, true)
+      }
+
+      if (!site) {
+        logger.warn('app-service.ensure-register.no-site', {
+          message: 'Site data unavailable, cannot register app',
+          appId
+        })
+        return false
+      }
+
+      if (!site.agent_url) {
+        logger.warn('app-service.ensure-register.no-agent-url', {
+          message: 'Agent URL missing, skipping registration attempt',
+          appId
+        })
+        return false
+      }
+
+      const prefixedSubscriptionId = formatSubscriptionId(site.subscription_id)
+      const payload = {
+        siteId: appId,
+        name: site.name || `App ${appId}`,
+        initialPrompt: site.initial_prompt,
+        previewUrl: site.preview_url,
+        subscriptionId: prefixedSubscriptionId,
+        customerId: site.account_id
+      }
+
+      const registerResponse = await agentFetch(`${site.agent_url}/apps/register`, {
+        siteId: appId,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      if (!registerResponse.ok) {
+        logger.warn('app-service.ensure-register.failed', {
+          message: 'Agent registration failed',
+          status: registerResponse.status,
+          appId
+        })
+        return false
+      }
+
+      logger.info('app-service.ensure-register.success', {
+        message: 'App registered (or already registered) successfully',
+        appId
+      })
+      return true
+    } catch (error) {
+      logger.error('app-service.ensure-register.error', {
+        message: 'Unexpected error while registering app',
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return false
+    }
+  }
+
+  /**
    * Update app name with AI suggestion and register the app
    *
    * This function performs three main operations:
@@ -581,6 +662,10 @@ export class AppService {
    * @returns Promise that resolves when all operations are complete
    *
    * @throws {Error} If any of the API calls fail
+   * @example
+   * ```ts
+   * await appService.updateNameAndRegister('app-123')
+   * ```
    */
   async updateNameAndRegister(appId: string): Promise<void> {
     try {
@@ -683,7 +768,7 @@ export class AppService {
       })
 
       // Call register endpoint with updated name (in all modes)
-      const prefixedSubscriptionId = freshSite.subscription_id ? `airo-build:sid:${freshSite.subscription_id}` : undefined;
+      const prefixedSubscriptionId = formatSubscriptionId(freshSite.subscription_id);
       
       logger.info('develop-page.name-update.registering', {
         message: 'Registering app with updated name',

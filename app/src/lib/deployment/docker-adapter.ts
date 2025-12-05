@@ -3,12 +3,13 @@
  * Uses Docker containers for app deployment while maintaining local development workflow
  */
 
-import { BaseDeploymentAdapter } from './base-adapter';
-import { DeploymentConfig, DeploymentResult } from './types';
 import { DevEnvironmentManager } from '../dev-environment/DevEnvironmentManager';
+import { getAppPath } from '../dev-environment/utils/app-paths';
+import { DeploymentConfig, DeploymentResult } from './types';
+import { formatSubscriptionId } from '@/lib/subscription-id';
+import { BaseDeploymentAdapter } from './base-adapter';
 import { agentFetch } from '@/lib/agent-fetch';
 import path from 'path';
-import { getAppPath } from '../dev-environment/utils/app-paths';
 
 export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   private devEnvironmentManager: DevEnvironmentManager;
@@ -359,7 +360,7 @@ export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
    */
   private async registerWithAgents(siteId: string, name: string, initialPrompt: string, appPath: string, previewUrl?: string, socketPath?: string | null, subscriptionId?: string, customerId?: string): Promise<void> {
     try {
-      const prefixedSubscriptionId = subscriptionId ? `airo-build:sid:${subscriptionId}` : undefined;
+      const prefixedSubscriptionId = formatSubscriptionId(subscriptionId);
       this.log('info', 'Registering app with agents service', {
         siteId,
         name,

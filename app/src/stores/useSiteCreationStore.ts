@@ -406,6 +406,8 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           return false
         }
 
+        await appService.ensureAppRegistered(appId)
+
         // Step 1: Call ensure-running endpoint (app-specific)
         const endpointUrl = `${agentUrl}/apps/${appId}/ensure-running`
 
