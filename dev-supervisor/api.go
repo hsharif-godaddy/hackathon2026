@@ -132,6 +132,7 @@ func (s *Server) handleProcessStatus(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
 	var req CommandRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
@@ -146,14 +147,46 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 
 	// Sanitize command
 	req.Command = sanitizeCommand(req.Command)
+	commandPreview := commandLogPreview(req.Command)
 
 	// Always capture output for LLM usage
 	req.CaptureOutput = true
+	slog.Debug("exec.command.execution.start",
+		"command_preview", commandPreview,
+		"requested_timeout_seconds", req.Timeout,
+		"working_dir", req.WorkingDir,
+		"capture_output", req.CaptureOutput,
+	)
 
 	result, err := s.cmdExec.Execute(req)
 	if err != nil {
 		s.sendError(w, http.StatusInternalServerError, "execution_failed", err.Error())
 		return
+	}
+
+	requestDurationMs := time.Since(startTime).Milliseconds()
+
+	if result.TimedOut {
+		slog.Warn("exec.command.execution.timeout",
+			"command_preview", commandPreview,
+			"requested_timeout_seconds", req.Timeout,
+			"exit_code", result.ExitCode,
+			"executor_duration_ms", result.Duration,
+			"request_duration_ms", requestDurationMs,
+			"stdout_length", len(result.Stdout),
+			"stderr_length", len(result.Stderr),
+		)
+	} else {
+		slog.Debug("exec.command.execution.completed",
+			"command_preview", commandPreview,
+			"exit_code", result.ExitCode,
+			"timed_out", result.TimedOut,
+			"executor_duration_ms", result.Duration,
+			"request_duration_ms", requestDurationMs,
+			"stdout_length", len(result.Stdout),
+			"stderr_length", len(result.Stderr),
+			"requested_timeout_seconds", req.Timeout,
+		)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

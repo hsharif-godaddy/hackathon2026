@@ -1,7 +1,7 @@
 # =================================================================
 # Stage 0: Build dev-supervisor (CACHED - rarely changes)
 # =================================================================
-FROM golang:1.23-alpine AS dev-supervisor-builder
+FROM golang:1.25-alpine AS dev-supervisor-builder
 
 # Install build dependencies
 RUN apk add --no-cache git make ca-certificates tzdata

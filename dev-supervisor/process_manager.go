@@ -376,16 +376,27 @@ func (mp *ManagedProcess) Stop(signal string, timeout int) error {
 			// Log the exit status
 			if isExpectedSignalExit || containsSignalString {
 				slog.Info("process stopped",
-					"exit_code", exitCode,
-					"expected", true)
+					slog.GroupAttrs("process_exit",
+						slog.Int("exit_code", exitCode),
+						slog.Bool("expected", true),
+					),
+				)
 			} else {
 				if hasExitCode {
 					slog.Warn("process stopped with unexpected exit code",
-						"exit_code", exitCode,
-						"error", err.Error())
+						slog.GroupAttrs("process_exit",
+							slog.Int("exit_code", exitCode),
+							slog.Bool("expected", false),
+						),
+						slog.String("error", err.Error()),
+					)
 				} else {
 					slog.Warn("process stopped with non-exit error",
-						"error", err.Error())
+						slog.GroupAttrs("process_exit",
+							slog.Bool("expected", false),
+						),
+						slog.String("error", err.Error()),
+					)
 				}
 			}
 
@@ -398,7 +409,12 @@ func (mp *ManagedProcess) Stop(signal string, timeout int) error {
 		} else {
 			code := 0
 			mp.info.ExitCode = &code
-			slog.Info("process stopped cleanly", "exit_code", 0)
+			slog.Info("process stopped cleanly",
+				slog.GroupAttrs("process_exit",
+					slog.Int("exit_code", 0),
+					slog.Bool("expected", true),
+				),
+			)
 		}
 		return nil
 	case <-time.After(timeoutDuration):

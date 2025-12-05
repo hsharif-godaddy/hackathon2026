@@ -201,6 +201,10 @@ services:
 
 - `DEV_SUPERVISOR_SOCKET_PATH`: Path for the Unix domain socket (default: `/tmp/dev-supervisor.sock`)
 
+### Scheduler Awareness
+
+Go 1.25 gives the runtime container-aware scheduling defaults. dev-supervisor calls `runtime.SetDefaultGOMAXPROCS` during startup so the process automatically honors cgroup CPU quotas even if `GOMAXPROCS` was previously fixed. To keep the automatic adjustments enabled, avoid setting `GOMAXPROCS` manually and ensure the new `GODEBUG` toggles remain active (the defaults are `containermaxprocs=1` and `updatemaxprocs=1`). Setting either toggle to `0` disables container detection or live updates; dev-supervisor logs a warning when those overrides are present to make diagnosing throttled containers easier.
+
 ### Logging
 
 The service uses structured logging with the following behavior:

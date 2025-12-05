@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"time"
@@ -53,11 +54,14 @@ func (ce *CommandExecutor) Execute(req CommandRequest) (*CommandResult, error) {
 		return nil, fmt.Errorf("command is required")
 	}
 
+	commandPreview := commandLogPreview(req.Command)
+
 	// Set timeout
 	timeout := ce.defaultTimeout
 	if req.Timeout > 0 {
 		timeout = req.Timeout
 	}
+	timeoutDuration := time.Duration(timeout) * time.Second
 
 	// Set working directory
 	workDir := ce.defaultWorkDir
@@ -66,7 +70,7 @@ func (ce *CommandExecutor) Execute(req CommandRequest) (*CommandResult, error) {
 	}
 
 	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 	defer cancel()
 
 	// Create command
@@ -83,6 +87,13 @@ func (ce *CommandExecutor) Execute(req CommandRequest) (*CommandResult, error) {
 
 	// Record start time
 	startTime := time.Now()
+
+	slog.Debug("command_executor.execute.start",
+		"command_preview", commandPreview,
+		"timeout_seconds", timeout,
+		"working_dir", workDir,
+		"capture_output", req.CaptureOutput,
+	)
 
 	// Execute command
 	err := cmd.Run()
@@ -104,6 +115,11 @@ func (ce *CommandExecutor) Execute(req CommandRequest) (*CommandResult, error) {
 		result.TimedOut = true
 		result.Error = "command timed out"
 		result.ExitCode = -1
+		slog.Warn("command_executor.execute.timeout",
+			"command_preview", commandPreview,
+			"timeout_seconds", timeout,
+			"duration_ms", result.Duration,
+		)
 		return result, nil
 	}
 
@@ -123,6 +139,26 @@ func (ce *CommandExecutor) Execute(req CommandRequest) (*CommandResult, error) {
 	if req.CaptureOutput {
 		result.Stdout = stdout.String()
 		result.Stderr = stderr.String()
+	}
+
+	switch {
+	case err != nil:
+		slog.Error("command_executor.execute.failed",
+			"command_preview", commandPreview,
+			"exit_code", result.ExitCode,
+			"duration_ms", result.Duration,
+			"stderr_length", len(result.Stderr),
+			"stdout_length", len(result.Stdout),
+			"error", err,
+		)
+	default:
+		slog.Debug("command_executor.execute.success",
+			"command_preview", commandPreview,
+			"exit_code", result.ExitCode,
+			"duration_ms", result.Duration,
+			"stderr_length", len(result.Stderr),
+			"stdout_length", len(result.Stdout),
+		)
 	}
 
 	return result, nil

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -38,6 +39,59 @@ type Config struct {
 	ProxyTargetPort        int    // Proxy target port (backend port)
 	ProxyCertPath          string // Path to TLS certificate
 	ProxyKeyPath           string // Path to TLS private key
+}
+
+// configureSchedulerDefaults re-enables Go 1.25's automatic container-aware scheduler tuning.
+func configureSchedulerDefaults() {
+	previous := runtime.GOMAXPROCS(0)
+	runtime.SetDefaultGOMAXPROCS()
+	updated := runtime.GOMAXPROCS(0)
+
+	if updated != previous {
+		slog.Info("gomaxprocs adjusted to match container limits", "previous", previous, "current", updated)
+	} else {
+		slog.Debug("gomaxprocs already matches container limits", "current", updated)
+	}
+
+	logGodebugSchedulerSettings()
+}
+
+// logGodebugSchedulerSettings surfaces container scheduler GODEBUG overrides for easier troubleshooting.
+func logGodebugSchedulerSettings() {
+	settings := parseGodebugSettings()
+
+	if value, ok := settings["containermaxprocs"]; ok && value == "0" {
+		slog.Warn("GODEBUG disabled containermaxprocs; gomaxprocs will ignore cgroup quotas", "setting", value)
+	}
+
+	if value, ok := settings["updatemaxprocs"]; ok && value == "0" {
+		slog.Warn("GODEBUG disabled gomaxprocs updates; changes to CPU quotas will be ignored", "setting", value)
+	}
+}
+
+// parseGodebugSettings splits the GODEBUG environment variable into a map for quick lookups.
+func parseGodebugSettings() map[string]string {
+	raw := os.Getenv("GODEBUG")
+	settings := make(map[string]string)
+	if raw == "" {
+		return settings
+	}
+
+	entries := strings.Split(raw, ",")
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		parts := strings.SplitN(entry, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		settings[parts[0]] = parts[1]
+	}
+
+	return settings
 }
 
 func getSocketPath() string {
@@ -659,6 +713,7 @@ func main() {
 
 	// Initialize structured logging
 	initLogging()
+	configureSchedulerDefaults()
 
 	if config.UseTCP {
 		slog.Info("starting dev-supervisor",

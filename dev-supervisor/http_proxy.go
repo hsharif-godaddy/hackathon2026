@@ -106,14 +106,19 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			break
 		}
 
-		// Log retry attempt
+		// Log retry attempt with grouped context
 		slog.Debug("retrying request due to connection error",
-			"attempt", attempt+1,
-			"max_retries", t.maxRetries,
-			"backoff", backoff,
-			"error", err.Error(),
-			"method", req.Method,
-			"path", req.URL.Path)
+			slog.GroupAttrs("retry",
+				slog.Int("attempt", attempt+1),
+				slog.Int("max", t.maxRetries),
+				slog.Duration("backoff", backoff),
+			),
+			slog.GroupAttrs("request",
+				slog.String("method", req.Method),
+				slog.String("path", req.URL.Path),
+			),
+			slog.String("error", err.Error()),
+		)
 
 		// Wait before retry
 		time.Sleep(backoff)
@@ -127,10 +132,15 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	// All retries exhausted
 	slog.Warn("all retry attempts exhausted",
-		"max_retries", t.maxRetries,
-		"error", lastErr.Error(),
-		"method", req.Method,
-		"path", req.URL.Path)
+		slog.GroupAttrs("retry",
+			slog.Int("max", t.maxRetries),
+		),
+		slog.GroupAttrs("request",
+			slog.String("method", req.Method),
+			slog.String("path", req.URL.Path),
+		),
+		slog.String("error", lastErr.Error()),
+	)
 
 	return nil, lastErr
 }
@@ -172,9 +182,12 @@ func NewHTTPProxy(config HTTPProxyConfig) *HTTPProxy {
 	}
 
 	slog.Info("HTTP proxy retry configuration",
-		"max_retries", config.MaxRetries,
-		"initial_backoff", config.InitialBackoff,
-		"max_backoff", config.MaxBackoff)
+		slog.GroupAttrs("retry",
+			slog.Int("max", config.MaxRetries),
+			slog.Duration("initial_backoff", config.InitialBackoff),
+			slog.Duration("max_backoff", config.MaxBackoff),
+		),
+	)
 
 	return &HTTPProxy{
 		config:  config,

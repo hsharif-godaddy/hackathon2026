@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -244,6 +246,48 @@ func TestLogManager_GetLogs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLogManagerConcurrentAccess(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		lm := NewLogManager(100)
+		const workers = 4
+		const entriesPerWorker = 5
+
+		var wg sync.WaitGroup
+
+		for workerID := 0; workerID < workers; workerID++ {
+			workerID := workerID
+			wg.Go(func() {
+				for entry := 0; entry < entriesPerWorker; entry++ {
+					lm.AddLog(LogEntry{
+						Timestamp: time.Now(),
+						Source:    fmt.Sprintf("worker-%d", workerID),
+						Message:   fmt.Sprintf("log-%d", entry),
+						Level:     "info",
+					})
+					time.Sleep(5 * time.Millisecond)
+				}
+			})
+		}
+
+		wg.Wait()
+		synctest.Wait()
+
+		resp, err := lm.GetLogs(LogsGetRequest{})
+		if err != nil {
+			t.Fatalf("failed to get logs: %v", err)
+		}
+
+		expected := workers * entriesPerWorker
+		if len(resp.Logs) != expected {
+			t.Fatalf("expected %d logs, got %d", expected, len(resp.Logs))
+		}
+
+		if resp.Logs[len(resp.Logs)-1].Source == "" {
+			t.Fatalf("expected last log to have a source, got empty string")
+		}
+	})
 }
 
 func TestLogManager_GetLogsWithSince(t *testing.T) {
