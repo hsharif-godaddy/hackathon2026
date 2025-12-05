@@ -7,6 +7,8 @@ import DomainPanel from '@/app/develop/components/settings/DomainPanel'
 import BackupsPanel from '@/app/develop/components/settings/BackupsPanel'
 import SecurityPanel from '@/app/develop/components/settings/SecurityPanel'
 import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
+import LogsPanel from '@/app/develop/components/settings/LogsPanel'
+import ConversationsPanel from '@/app/develop/components/settings/ConversationsPanel'
 import { DatabasePanel } from '@/app/develop/components/settings/Database/DatabasePanel'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -23,7 +25,8 @@ export default function SettingsView() {
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
-  // const { data: isSecretsEnabled } = {data: true};
+  const { data: isLogsEnabled } = useSwitchboard('appbuilder-settings-logs');
+  const { data: isConversationsEnabled } = useSwitchboard('appbuilder-settings-conversations');
 
   const renderSection = () => {
     switch (activeSettingsSection) {
@@ -41,6 +44,10 @@ export default function SettingsView() {
         return isSecretsEnabled ? <SecretsPanel appId={appId} variant="preview" /> : null;
       case SettingsSection.VISUAL_SCAN:
         return isVisualScanEnabled ? <VisualScanPanel /> : null;
+      case SettingsSection.LOGS:
+        return isLogsEnabled ? <LogsPanel /> : null;
+      case SettingsSection.CONVERSATIONS:
+        return isConversationsEnabled ? <ConversationsPanel /> : null;
       case SettingsSection.FEEDBACK:
       default:
         return isProjectEnabled ? <ProjectPanel /> : null;

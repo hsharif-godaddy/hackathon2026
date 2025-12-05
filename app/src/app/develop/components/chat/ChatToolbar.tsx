@@ -36,7 +36,6 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
 
   const { data: isAssetManagerEnabled } = useSwitchboard('appbuilder-image-manager');
   const { data: isSettingsEnabled } = useSwitchboard('appbuilder-settings');
-  // const { data: isSettingsEnabled } = {data: true};
 
   const { isFetching: isFetchingCommits } = useGitHistoryQuery({
     appId: appId || '',

@@ -10,6 +10,8 @@ import ClipboardIcon from '@ux/icon/clipboard';
 import LinkIcon from '@ux/icon/link';
 import RevertIcon from '@ux/icon/revert';
 import ContentIcon from '@ux/icon/content';
+import HistoryIcon from '@ux/icon/history';
+import CommentsIcon from '@ux/icon/comments';
 import { ReactNode } from 'react';
 
 /**
@@ -40,7 +42,8 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
-  // const { data: isSecretsEnabled } = {data: true};
+  const { data: isLogsEnabled } = useSwitchboard('appbuilder-settings-logs');
+  const { data: isConversationsEnabled } = useSwitchboard('appbuilder-settings-conversations');
 
   const handleFeedbackClick = () => {
     localStorage.removeItem('airo-feedback-shown:airo#app-builder');
@@ -89,6 +92,18 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       label: 'Visual Scan',
       icon: <ContentIcon />,
       disabled: isVisualScanEnabled !== true,
+    }] : []),
+    ...(isLogsEnabled ? [{
+      id: SettingsSection.LOGS,
+      label: 'Logs',
+      icon: <HistoryIcon />,
+      disabled: isLogsEnabled !== true,
+    }] : []),
+    ...(isConversationsEnabled ? [{
+      id: SettingsSection.CONVERSATIONS,
+      label: 'Conversations',
+      icon: <CommentsIcon />,
+      disabled: isConversationsEnabled !== true,
     }] : []),
     ...(!isMobile ? [{
       id: SettingsSection.FEEDBACK,

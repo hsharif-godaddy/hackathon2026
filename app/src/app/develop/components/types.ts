@@ -84,6 +84,8 @@ export enum SettingsSection {
   DATABASE = 'database',
   SECRETS = 'secrets',
   VISUAL_SCAN = 'visualScan',
+  LOGS = 'logs',
+  CONVERSATIONS = 'conversations',
   FEEDBACK = 'feedback'
 }
 
