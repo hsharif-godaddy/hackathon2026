@@ -208,106 +208,49 @@ export class FileEditTool {
 
 
   /**
-   * Execute a file edit operation
+   * Execute a single file edit operation
+   * @deprecated Use editFiles() for all operations (single or batch)
+   * This method is maintained for backward compatibility with REST API and Memory Service
    */
   async editFile(appPath: string, options: FileEditOptions, context?: { appId?: string; conversationId?: string }): Promise<FileEditResult> {
-    try {
-      // Resolve the file path within the app directory
-      const filePath = this.resolveFilePath(appPath, options.path);
+    // Convert single operation to batch format
+    const batchOptions: FileBatchEditOptions = {
+      operations: [{
+        path: options.path,
+        ...(options.mode !== undefined && { mode: options.mode }),
+        ...(options.edits !== undefined && { edits: options.edits }),
+        ...(options.content !== undefined && { content: options.content }),
+      }],
+      ...(options.createDirs !== undefined && { createDirs: options.createDirs }),
+      ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
+      ...(options.fuzzyMatch !== undefined && { fuzzyMatch: options.fuzzyMatch }),
+      ...(options.autoCommit !== undefined && { autoCommit: options.autoCommit }),
+      ...(options.commitMessage !== undefined && { commitMessage: options.commitMessage }),
+    };
 
-      // Auto-detect mode if not specified
-      const mode = options.mode || await this.detectMode(filePath, options);
+    // Execute as batch operation
+    const batchResult = await this.editFiles(appPath, batchOptions, context);
 
-      // Check if file is marked as immutable (except for create mode which is for new files)
-      if (mode !== 'create') {
-        const isImmutable = await this.isFileImmutable(filePath);
-        if (isImmutable) {
-          const errorResult: FileEditResult = {
-            success: false,
-            path: options.path,
-            mode,
-            error: 'This file is marked as immutable and cannot be edited. The file contains "TREAT AS IMMUTABLE" in its first line, indicating it must be copied exactly as-is from the template without any modifications.',
-          };
+    // Extract first result for backward compatibility
+    const [firstResult] = batchResult.results;
 
-          toolFileEditEvents.failure(logger, new Error('File is immutable'), {
-            toolName: 'FileEditTool',
-            filePath: options.path,
-            mode,
-            ...(context?.appId && { appId: context.appId }),
-          });
-
-          return errorResult;
-        }
-      }
-
-      // Log the beginning of the file edit operation
-      toolFileEditEvents.begin(logger, {
-        toolName: 'FileEditTool',
-        filePath: options.path,
-        mode,
+    if (!firstResult) {
+      const errorMsg = batchResult.error || 'Internal error: operation returned no results';
+      logger.error('FileEditTool.editFile: No results from batch operation', {
+        path: options.path,
+        mode: options.mode,
+        batchError: batchResult.error,
         ...(context?.appId && { appId: context.appId }),
-        ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
       });
-
-      let result: FileEditResult;
-
-      // Route to appropriate handler
-      switch (mode) {
-        case 'create':
-          result = await this.handleCreate(filePath, options, appPath, context);
-          break;
-        case 'rewrite':
-          result = await this.handleRewrite(filePath, options, appPath, context);
-          break;
-        case 'edit':
-          result = await this.handleEdit(filePath, options, appPath, context);
-          break;
-        case 'delete':
-          result = await this.handleDelete(filePath, options, appPath, context);
-          break;
-        default:
-          throw new Error(`Unknown edit mode: ${mode}`);
-      }
-
-      // Log success or failure
-      if (result.success) {
-        toolFileEditEvents.success(logger, {
-          toolName: 'FileEditTool',
-          filePath: options.path,
-          mode,
-          ...(context?.appId && { appId: context.appId }),
-          ...(options.content?.length !== undefined && { contentLength: options.content.length }),
-          ...(options.edits?.length !== undefined && { editsCount: options.edits.length }),
-          ...(options.dryRun !== undefined && { dryRun: options.dryRun }),
-          ...(options.autoCommit !== undefined && { autoCommit: options.autoCommit }),
-        });
-      } else {
-        toolFileEditEvents.failure(logger, new Error(result.error || 'Unknown error'), {
-          toolName: 'FileEditTool',
-          filePath: options.path,
-          mode,
-          ...(context?.appId && { appId: context.appId }),
-        });
-      }
-
-      return result;
-    } catch (error) {
-      const errorResult = {
+      return {
         success: false,
         path: options.path,
-        mode: 'edit' as const,
-        error: error instanceof Error ? error.message : String(error),
-      };
-
-      toolFileEditEvents.failure(logger, error as Error, {
-        toolName: 'FileEditTool',
-        filePath: options.path,
         mode: options.mode || 'edit',
-        ...(context?.appId && { appId: context.appId }),
-      });
-
-      return errorResult;
+        error: errorMsg,
+      };
     }
+
+    return firstResult;
   }
 
   /**

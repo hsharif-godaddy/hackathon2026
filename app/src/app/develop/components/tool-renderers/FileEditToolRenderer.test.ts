@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { estimateLineCountsFromPartial } from './FileEditToolRenderer'
+import { estimateLineCountsFromPartial, parseStreamingInput } from './FileEditToolRenderer'
+import { describe, expect, it } from 'vitest'
 
 describe('FileEditToolRenderer', function packageTests() {
   describe('#estimateLineCountsFromPartial', function estimateTests() {
@@ -33,6 +33,29 @@ describe('FileEditToolRenderer', function packageTests() {
       expect(result).not.toBeNull()
       expect(result?.additions).toBe(4)
       expect(result?.deletions).toBe(0)
+    })
+
+    it('should aggregate counts from batch operations array', function batchAggregate() {
+      const input = JSON.stringify({
+        operations: [
+          {
+            path: 'file1.tsx',
+            mode: 'create',
+            content: 'line1\nline2\nline3'
+          },
+          {
+            path: 'file2.tsx',
+            mode: 'edit',
+            edits: [
+              { old: 'old1\nold2\nold3', new: 'new1\nnew2' }
+            ]
+          }
+        ]
+      })
+      const result = estimateLineCountsFromPartial(input)
+      expect(result).not.toBeNull()
+      expect(result?.additions).toBe(3) // 2 from content + 1 from edits
+      expect(result?.deletions).toBe(2) // 2 from edits
     })
 
     it('should handle streaming deltas accumulating', function streamingDeltas() {
@@ -209,6 +232,53 @@ describe('FileEditToolRenderer', function packageTests() {
       expect(parsed.operations).toHaveLength(4)
       expect(parsed.operations[3].success).toBe(false)
       expect(parsed.operations[3].error).toBe('File not found')
+    })
+  })
+
+  describe('#parseStreamingInput', function parseTests() {
+    it('should detect batch operations from parsed JSON', function detectBatch() {
+      const result = parseStreamingInput(JSON.stringify({
+        operations: [
+          { path: 'file1.ts', mode: 'edit', edits: [{ old: 'a', new: 'b' }] },
+          { path: 'file2.ts', mode: 'create', content: 'foo' }
+        ]
+      }))
+      expect(result.isBatch).toBe(true)
+      expect(result.batchCount).toBe(2)
+      expect(result.firstOp?.path).toBe('file1.ts')
+    })
+
+    it('should treat legacy single operation payloads as non-batch', function legacySingle() {
+      const result = parseStreamingInput(JSON.stringify({
+        path: 'legacy.tsx',
+        mode: 'edit',
+        edits: [{ old: 'foo', new: 'bar' }]
+      }))
+      expect(result.isBatch).toBe(false)
+      expect(result.batchCount).toBe(0)
+      expect(result.firstOp?.path).toBe('legacy.tsx')
+    })
+
+    it('should parse partial batch payloads after JSON completion', function partialWithCompletion() {
+      const partial = '{"operations": [{"path": "file1.ts", "mode": "edit"}, {"path": "file2.ts", "mode": "create"}'
+      const result = parseStreamingInput(partial)
+      expect(result.isBatch).toBe(true)
+      expect(result.batchCount).toBe(2)
+      expect(result.firstOp?.path).toBe('file1.ts')
+    })
+
+    it('should fallback to string detection when JSON completion fails', function fallbackBatch() {
+      const partial = '"operations": [{"path": "file1.ts", "mode": "edit"}, {"path": "file2.ts", "mode": "create"}'
+      const result = parseStreamingInput(partial)
+      expect(result.isBatch).toBe(true)
+      expect(result.batchCount).toBe(2)
+      expect(result.firstOp).toBeNull()
+    })
+
+    it('should return non-batch when no operations are detected', function nonBatch() {
+      const result = parseStreamingInput('{"unrelated": true}')
+      expect(result.isBatch).toBe(false)
+      expect(result.batchCount).toBe(0)
     })
   })
 })

@@ -99,7 +99,18 @@ export class ToolCallRenderer {
     }
 
     const args = toolCall.tool_args as Record<string, unknown>;
-    const result = toolCall.tool_result as Record<string, unknown>;
+    const rawResult = toolCall.tool_result;
+
+    let result: Record<string, unknown> | undefined;
+    if (typeof rawResult === 'string') {
+      try {
+        result = JSON.parse(rawResult);
+      } catch {
+        result = undefined;
+      }
+    } else if (rawResult && typeof rawResult === 'object') {
+      result = rawResult as Record<string, unknown>;
+    }
 
     // Handle batch operations (new schema)
     const operations = (result?.operations as any[]) || (args?.operations as any[]);
@@ -107,7 +118,7 @@ export class ToolCallRenderer {
       const totalOperations = (result?.totalOperations as number) || operations.length;
       const completedOperations = (result?.completedOperations as number) || 0;
 
-      if (!result || !(result.success as boolean)) {
+      if (!(result?.success)) {
         const error = (result?.error as string) || 'Unknown error';
         return `Batch file operation failed after ${completedOperations}/${totalOperations} operations: ${error}`;
       }

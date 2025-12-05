@@ -80,7 +80,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
               }
               fileAccess.get(filePath)!.reads.push(i);
             } else if (toolCall.function.name === 'fileEdit') {
-              // Handle batch operations (new schema)
+              // Handle batch operations format (new format)
               if (args.operations && Array.isArray(args.operations)) {
                 // Track files already recorded for this message to prevent duplicates
                 const recordedFiles = new Set<string>();
@@ -103,7 +103,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
                   }
                 }
               } else {
-                // Handle single operation (legacy schema)
+                // Handle single operation format (legacy format from old conversations)
                 const filePath = args.path || args.file_path || args.filePath;
                 if (!filePath) continue;
 

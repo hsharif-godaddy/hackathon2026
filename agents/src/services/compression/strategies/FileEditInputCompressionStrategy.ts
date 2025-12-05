@@ -43,7 +43,7 @@ export class FileEditInputCompressionStrategy implements CompressionStrategy {
       try {
         const args = JSON.parse(tc.function.arguments);
 
-        // Handle batch operations (new schema)
+        // Check batch operations format (new format)
         if (args.operations && Array.isArray(args.operations)) {
           return args.operations.some((op: any) => {
             const mode = op.mode;
@@ -60,7 +60,7 @@ export class FileEditInputCompressionStrategy implements CompressionStrategy {
             return this.hotFileStrategy!.isHotFile(filePath);
           });
         } else {
-          // Handle single operation (legacy schema)
+          // Check single operation format (legacy format from old conversations)
           const mode = args.mode;
           const filePath: string | undefined = args.path || args.file_path || args.filePath;
 
@@ -98,7 +98,7 @@ export class FileEditInputCompressionStrategy implements CompressionStrategy {
       try {
         const args = JSON.parse(tc.function.arguments);
 
-        // Handle batch operations (new schema)
+        // Handle batch operations format (new format)
         if (args.operations && Array.isArray(args.operations)) {
           let hasSavings = false;
           const compressedOps = args.operations.map((op: any) => {
@@ -141,7 +141,7 @@ export class FileEditInputCompressionStrategy implements CompressionStrategy {
 
           return tc;
         } else {
-          // Handle single operation (legacy schema)
+          // Handle single operation format (legacy format from old conversations)
           const mode = args.mode;
           const filePath: string | undefined = args.path || args.file_path || args.filePath;
 

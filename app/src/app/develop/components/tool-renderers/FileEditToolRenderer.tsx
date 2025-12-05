@@ -32,33 +32,57 @@ function getModeVerb(mode: string): string {
 }
 
 /**
- * Count line changes from parsed JSON object
+ * Count line changes for a single operation payload
  *
- * Extracts additions and deletions from either edits array or content field.
+ * Supports both legacy flat structure and new batch operations entries.
  *
- * @param parsed - Parsed JSON object with edits array or content field
+ * @param operation - Operation object containing edits or content
  * @returns Object with additions and deletions counts
  */
-function countLinesFromParsed(parsed: any): { additions: number; deletions: number } {
+function countLinesForOperation(operation: any): { additions: number; deletions: number } {
   let additions = 0
   let deletions = 0
 
-  if (parsed.edits && Array.isArray(parsed.edits)) {
-    // Edit mode: count lines in edits array
-    for (const edit of parsed.edits) {
-      if (edit.old && typeof edit.old === 'string') {
+  if (operation && Array.isArray(operation.edits)) {
+    for (const edit of operation.edits) {
+      if (edit?.old && typeof edit.old === 'string') {
         deletions += (edit.old.match(/\n/g) || []).length
       }
-      if (edit.new && typeof edit.new === 'string') {
+      if (edit?.new && typeof edit.new === 'string') {
         additions += (edit.new.match(/\n/g) || []).length
       }
     }
-  } else if (parsed.content && typeof parsed.content === 'string') {
-    // Rewrite/create mode: count lines in content
-    additions = (parsed.content.match(/\n/g) || []).length
+  } else if (operation?.content && typeof operation.content === 'string') {
+    additions = (operation.content.match(/\n/g) || []).length
   }
 
   return { additions, deletions }
+}
+
+/**
+ * Count line changes from parsed JSON object
+ *
+ * Supports both legacy single-operation payloads and the new batch format
+ * where operations are nested in `operations`.
+ *
+ * @param parsed - Parsed JSON object with edits/content fields or operations array
+ * @returns Object with additions and deletions counts
+ */
+function countLinesFromParsed(parsed: any): { additions: number; deletions: number } {
+  if (parsed && Array.isArray(parsed.operations)) {
+    return parsed.operations.reduce(
+      (totals: { additions: number; deletions: number }, op: any) => {
+        const { additions, deletions } = countLinesForOperation(op)
+        return {
+          additions: totals.additions + additions,
+          deletions: totals.deletions + deletions
+        }
+      },
+      { additions: 0, deletions: 0 }
+    )
+  }
+
+  return countLinesForOperation(parsed)
 }
 
 /**
@@ -98,6 +122,179 @@ export function estimateLineCountsFromPartial(partialInput: string): { additions
 }
 
 /**
+ * Operation modes recognized while parsing streaming input.
+ */
+type StreamingOperationMode = 'edit' | 'create' | 'rewrite' | 'delete'
+
+/**
+ * Result of parsing streaming file edit input
+ */
+interface ParsedStreamingInput {
+  /** Whether this is a batch operation with multiple files */
+  isBatch: boolean
+  /** Number of files in the batch operation (0 if not a batch) */
+  batchCount: number
+  /** First operation details, or null if parsing failed */
+  firstOp: {
+    /** File path being operated on */
+    path?: string
+    /** Operation mode */
+    mode?: StreamingOperationMode
+    /** Edit operations (for edit mode) */
+    edits?: Array<{ old: string; new: string }>
+    /** File content (for create/rewrite modes) */
+    content?: string
+  } | null
+}
+
+const STREAMING_OPERATION_MODES: ReadonlyArray<StreamingOperationMode> = ['edit', 'create', 'rewrite', 'delete'] as const
+
+/**
+ * Determine whether a value is a supported streaming mode.
+ *
+ * @param value - Unknown value to validate
+ * @returns True if value is a supported streaming operation mode
+ */
+function isStreamingOperationMode(value: unknown): value is StreamingOperationMode {
+  return typeof value === 'string' && STREAMING_OPERATION_MODES.includes(value as StreamingOperationMode)
+}
+
+/**
+ * Normalize an operation-like object into `firstOp` shape.
+ *
+ * @param operation - Candidate operation payload
+ * @returns Normalized operation details or null when insufficient data
+ */
+function extractOperationDetails(operation: any): ParsedStreamingInput['firstOp'] | null {
+  if (!operation || typeof operation !== 'object') {
+    return null
+  }
+
+  const path = typeof operation.path === 'string' ? operation.path : undefined
+  const mode = isStreamingOperationMode(operation.mode) ? operation.mode : undefined
+  const content = typeof operation.content === 'string' ? operation.content : undefined
+  const edits = Array.isArray(operation.edits)
+    ? operation.edits.filter(
+        (edit: any): edit is { old: string; new: string } =>
+          Boolean(edit) && typeof edit.old === 'string' && typeof edit.new === 'string'
+      )
+    : undefined
+
+  if (!path && !mode && (!edits || edits.length === 0) && !content) {
+    return null
+  }
+
+  return {
+    ...(path && { path }),
+    ...(mode && { mode }),
+    ...(edits && edits.length > 0 && { edits }),
+    ...(content && { content })
+  }
+}
+
+/**
+ * Attempt to parse complete JSON for streaming data.
+ *
+ * @param jsonString - Candidate JSON string (complete)
+ * @returns Parsed streaming input or null when parsing fails
+ */
+function tryParseStreamingJson(jsonString: string | null): ParsedStreamingInput | null {
+  if (!jsonString) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(jsonString)
+    if (!parsed || typeof parsed !== 'object') {
+      return null
+    }
+
+    if (Array.isArray(parsed.operations)) {
+      const normalizedOperations = parsed.operations
+        .map(extractOperationDetails)
+        .filter((op): op is NonNullable<ParsedStreamingInput['firstOp']> => Boolean(op))
+      const batchCount = normalizedOperations.filter(op => Boolean(op.path)).length
+      const firstOp = normalizedOperations[0] ?? null
+      return { isBatch: true, batchCount, firstOp }
+    }
+
+    const singleOperation = extractOperationDetails(parsed)
+    if (singleOperation) {
+      return { isBatch: false, batchCount: 0, firstOp: singleOperation }
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+/**
+ * Parse streaming partial input to extract batch and operation info
+ *
+ * Consolidates all parsing logic to avoid duplication and ensure consistency.
+ * Attempts to parse complete JSON first, then tries completing partial JSON,
+ * and finally falls back to string matching for batch detection.
+ *
+ * @param partialInput - Partial JSON string from streaming tool input
+ * @returns Parsed operation information with type safety
+ */
+export function parseStreamingInput(partialInput: string): ParsedStreamingInput {
+  // Try to parse the partial input directly
+  const parsedResult = tryParseStreamingJson(partialInput)
+  if (parsedResult) {
+    return parsedResult
+  }
+
+  // Attempt to complete the JSON when streaming is still in-flight
+  const completedJson = completePartialJson(partialInput)
+  const completedResult = tryParseStreamingJson(completedJson || null)
+  if (completedResult) {
+    return completedResult
+  }
+
+  // Fallback: detect batch by string matching when JSON parsing is not yet possible
+  if (partialInput.includes('"operations"')) {
+    const pathMatches = partialInput.match(/"path"\s*:\s*"/g)
+    if (pathMatches && pathMatches.length > 0) {
+      return { isBatch: true, batchCount: pathMatches.length, firstOp: null }
+    }
+  }
+
+  return { isBatch: false, batchCount: 0, firstOp: null }
+}
+
+/**
+ * Determine if batch operations should be displayed as a batch or single operation
+ *
+ * Single-file batches are displayed as single operations for better UX,
+ * while multi-file batches are displayed with batch summary UI.
+ *
+ * @param isBatch - Whether the operation format is batch (new streaming payloads default to true)
+ * @param batchCount - Number of files in the batch operation
+ * @param firstOp - First operation details (null if parsing incomplete)
+ * @returns True if should display as batch, false if should display as single operation
+ */
+function shouldDisplayAsBatch(
+  isBatch: boolean,
+  batchCount: number,
+  firstOp: ParsedStreamingInput['firstOp']
+): boolean {
+  // Single-file batch: display as single operation for cleaner UX
+  if (isBatch && batchCount === 1 && firstOp) {
+    return false
+  }
+
+  // Multi-file batch: display as batch with summary
+  if (isBatch && batchCount > 1) {
+    return true
+  }
+
+  // Default to single operation display
+  return false
+}
+
+/**
  * Custom renderer for fileEdit tool
  *
  * Shows mode-aware message: "Created {filename}", "Edit {filename} (+5 -3)", etc.
@@ -114,10 +311,42 @@ export default function FileEditToolRenderer({
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const lastSuccessfulEstimateRef = useRef<{ additions: number; deletions: number } | null>(null)
+  const [streamingEstimate, setStreamingEstimate] = useState<{ additions: number; deletions: number } | null>(null)
 
+  // Track client-side mount to prevent SSR issues with ToolModal portal
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  /**
+   * Manage streaming estimate lifecycle
+   *
+   * Handles two scenarios:
+   * 1. Tool completed/stopped: Resets estimate ref and state to prevent stale data
+   * 2. Tool running: Parses partial input to extract real-time line count estimates
+   *
+   * Consolidates reset and update logic in a single effect to avoid race conditions
+   * and simplify state management. Falls back to last successful estimate if parsing fails.
+   *
+   * @remarks Runs on every toolStatus or partialInput change for real-time updates
+   */
+  useEffect(() => {
+    if (toolStatus !== 'running') {
+      // Tool completed or stopped - reset everything
+      lastSuccessfulEstimateRef.current = null
+      setStreamingEstimate(null)
+    } else if (partialInput) {
+      // Tool running with input - update streaming estimate
+      const estimate = estimateLineCountsFromPartial(partialInput)
+      if (estimate) {
+        lastSuccessfulEstimateRef.current = estimate
+        setStreamingEstimate(estimate)
+      } else if (lastSuccessfulEstimateRef.current) {
+        // Use last successful if current parsing failed
+        setStreamingEstimate(lastSuccessfulEstimateRef.current)
+      }
+    }
+  }, [toolStatus, partialInput])
 
   // Parse result - can be JSON (new format) or Markdown (old format)
   let parsedResult: any = null
@@ -130,47 +359,31 @@ export default function FileEditToolRenderer({
   let warning = ''
   let isMarkdownFormat = false
   let markdownContent = ''
-  let isBatchResult = false
+  let normalizedToBatch = false
   let batchOperations: any[] = []
   let totalOperations = 0
   let completedOperations = 0
   let commitHash = ''
 
-  // For streaming: estimate line counts from partial input if tool is running
+  // For streaming: parse partial input to extract operation details
   let streamingChanges: { additions: number; deletions: number } | null = null
   let streamingPath: string | null = null
   let streamingMode: string | null = null
+  let displayAsBatch = false
+  let streamingBatchCount = 0
+
   if (toolStatus === 'running' && partialInput) {
-    const currentEstimate = estimateLineCountsFromPartial(partialInput)
+    const { isBatch, batchCount, firstOp } = parseStreamingInput(partialInput)
+    streamingBatchCount = batchCount
+    displayAsBatch = shouldDisplayAsBatch(isBatch, batchCount, firstOp)
 
-    // If parsing succeeded, update the last successful estimate
-    if (currentEstimate) {
-      lastSuccessfulEstimateRef.current = currentEstimate
-      streamingChanges = currentEstimate
-    } else {
-      // If parsing failed, use the last successful estimate (if available)
-      streamingChanges = lastSuccessfulEstimateRef.current
-    }
-
-    // Try to extract path using regex (works on incomplete JSON)
-    const pathMatch = partialInput.match(/"path"\s*:\s*"([^"]+)"/)
-    if (pathMatch) {
-      streamingPath = pathMatch[1]
-    }
-
-    // Try to extract mode using regex (works on incomplete JSON)
-    const modeMatch = partialInput.match(/"mode"\s*:\s*"(edit|create|rewrite|delete)"/)
-    if (modeMatch) {
-      streamingMode = modeMatch[1]
+    // Extract streaming data from first operation if available
+    if (firstOp) {
+      streamingChanges = streamingEstimate
+      streamingPath = firstOp.path || null
+      streamingMode = firstOp.mode || null
     }
   }
-
-  // Reset last successful estimate when tool completes
-  useEffect(() => {
-    if (toolStatus !== 'running') {
-      lastSuccessfulEstimateRef.current = null
-    }
-  }, [toolStatus])
 
   if (result) {
     try {
@@ -191,7 +404,7 @@ export default function FileEditToolRenderer({
       if (parsedResult) {
         // Check if this is a batch result (has operations array)
         if (parsedResult.operations && Array.isArray(parsedResult.operations)) {
-          isBatchResult = true
+          normalizedToBatch = true
           batchOperations = parsedResult.operations
           totalOperations = parsedResult.totalOperations ?? batchOperations.length
           completedOperations = parsedResult.completedOperations || 0
@@ -205,8 +418,21 @@ export default function FileEditToolRenderer({
             filename = getFilename(filePath)
             mode = firstOp.mode || 'edit'
           }
-        } else {
-          // Single operation result
+        } else if (parsedResult.path) {
+          // LEGACY single-operation format from old conversation history
+          // Wrap in batch structure for uniform display logic
+          normalizedToBatch = true
+          batchOperations = [{
+            path: parsedResult.path,
+            mode: parsedResult.mode || 'edit',
+            success: parsedResult.success ?? true,
+            changes: parsedResult.changes,
+            diff: parsedResult.diff,
+            error: parsedResult.error,
+            warning: parsedResult.warning,
+          }]
+          totalOperations = 1
+          completedOperations = parsedResult.success ? 1 : 0
           filePath = parsedResult.path || ''
           filename = getFilename(filePath)
           mode = parsedResult.mode || 'edit'
@@ -243,7 +469,7 @@ export default function FileEditToolRenderer({
   // Build compact display message
   let displayMessage = ''
 
-  if (isBatchResult) {
+  if (normalizedToBatch) {
     // Batch operation: show summary
     if (error) {
       // Partial failure: show completed/total
@@ -262,6 +488,34 @@ export default function FileEditToolRenderer({
       if (deleted > 0) parts.push(`${deleted} deleted`)
 
       displayMessage = `Files: ${parts.join(', ')}`
+    }
+  } else if (displayAsBatch) {
+    // Streaming batch operation: show individual operations with details
+    try {
+      // Try to parse all operations from streaming input
+      const parsed = partialInput ? JSON.parse(completePartialJson(partialInput) || partialInput) : null
+      if (parsed?.operations && Array.isArray(parsed.operations) && parsed.operations.length > 0) {
+        const MAX_DISPLAY_OPS = 3
+        const operations = parsed.operations.slice(0, MAX_DISPLAY_OPS)
+        const opSummaries = operations.map((op: any) => {
+          const filename = getFilename(op.path || '')
+          const opMode = op.mode || 'edit'
+          const opVerb = getModeVerb(opMode)
+          return `${opVerb}: ${filename}`
+        })
+
+        if (parsed.operations.length > MAX_DISPLAY_OPS) {
+          opSummaries.push(`+${parsed.operations.length - MAX_DISPLAY_OPS} more`)
+        }
+
+        displayMessage = opSummaries.join(', ')
+      } else {
+        // Fallback to count if parsing fails
+        displayMessage = `Files: processing ${streamingBatchCount} file${streamingBatchCount !== 1 ? 's' : ''}...`
+      }
+    } catch {
+      // Fallback to count if any error occurs
+      displayMessage = `Files: processing ${streamingBatchCount} file${streamingBatchCount !== 1 ? 's' : ''}...`
     }
   } else {
     // Single operation: format: "Edit: filename +5 -5"
@@ -282,14 +536,14 @@ export default function FileEditToolRenderer({
 
   // Has details if we have parsed result data (diff, metadata, etc.) OR markdown content OR batch operations
   const hasDetails = Boolean(
-    (parsedResult && (diff || changes || error || warning || filePath || isBatchResult)) ||
+    (parsedResult && (diff || changes || error || warning || filePath || normalizedToBatch)) ||
     isMarkdownFormat
   )
 
   // Build metadata for modal
   const metadata: Record<string, any> = {}
 
-  if (isBatchResult) {
+  if (normalizedToBatch) {
     // Multi-file operation metadata
     metadata['Total Files'] = totalOperations
     metadata['Completed Files'] = completedOperations
@@ -311,7 +565,7 @@ export default function FileEditToolRenderer({
     }
   }
 
-  const modalTitle = isBatchResult ? 'File Operations' : `${verb} ${filename}`
+  const modalTitle = normalizedToBatch ? 'File Operations' : `${verb} ${filename}`
 
   const modalContent = (
     <ToolModal
@@ -338,7 +592,7 @@ export default function FileEditToolRenderer({
           )}
 
           {/* Batch operations list */}
-          {isBatchResult && batchOperations.length > 0 && (
+          {normalizedToBatch && batchOperations.length > 0 && (
             <div className="mb-2">
               <text.p className="mb-1" size={0}>
                 Operations

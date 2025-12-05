@@ -19,6 +19,24 @@
 
 ### Internal Changes
 
+- **File Edit Tool - Universal Batch Format**: Standardized file edit system on batch operations format to eliminate dual code paths
+  - Converted `editFile()` to thin wrapper around `editFiles()` - zero code duplication, all logic flows through single implementation
+  - Backward compatibility maintained: REST API endpoints and Memory Service continue using `editFile()` wrapper
+  - Enhanced compression strategies to support both batch and legacy formats:
+    - `FileEditCompressionStrategy`: Compresses both batch operations and legacy single-operation format
+    - `HotFileInclusionStrategy`: Tracks file access patterns for both batch and legacy formats
+    - `FileEditInputCompressionStrategy`: Compresses large content for both batch and legacy formats
+    - Full compression coverage for old conversations (saves ~750-1400 tokens per file edit)
+  - Simplified `FileEditToolRenderer` (UI):
+    - `parseStreamingInput()`: Always expects batch format during streaming
+    - Result parsing: Graceful fallback wraps legacy single-operation format into batch structure
+    - Single display code path for all operations (everything treated as batch internally)
+  - Benefits: Eliminates 50+ lines of dual-mode logic in tool implementation, single source of truth, simpler maintenance
+  - Old conversations benefit from full compression: Legacy format compressed just like new format
+  - No database migration required: Format detection and compression happens at runtime
+  - All existing tests pass (26 tests in agents service, 12 tests in app service)
+  - Added deprecation notice to `editFile()` method
+
 - **BREAKING (AI Tool Only): File Edit Tool - Multi-File Operations**: Enhanced fileEdit tool to support multiple file operations in a single tool call
   - Added batch operation mode with `operations` array (minimum 1 operation required)
   - Implements fail-fast execution: stops on first error, returns partial results with error details

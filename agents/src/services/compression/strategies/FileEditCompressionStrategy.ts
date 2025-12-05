@@ -48,7 +48,7 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
 
         // Check if compression is applicable - this should not fail
         try {
-          // Handle batch operations (new schema)
+          // Check batch operations format (new format)
           if (args.operations && Array.isArray(args.operations)) {
             for (const op of args.operations) {
               const filePath: string | undefined = op.path || op.file_path || op.filePath;
@@ -57,7 +57,7 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
               }
             }
           } else {
-            // Handle single operation (legacy schema)
+            // Check single operation format (legacy format from old conversations)
             const filePath: string | undefined = args.path || args.file_path || args.filePath;
             if (filePath && this.hotFileStrategy.isHotFile(filePath)) {
               return true;
@@ -108,7 +108,7 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
 
     // Process the compression logic - this should not fail, but handle defensively
     try {
-      // Handle batch operations (new schema)
+      // Handle batch operations format (new format)
       if (args.operations && Array.isArray(args.operations)) {
         const hotFileOps = args.operations.filter((op: any) => {
           const filePath = op.path || op.file_path || op.filePath;
@@ -140,7 +140,7 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
           content: summary,
         };
       } else {
-        // Handle single operation (legacy schema)
+        // Handle single operation format (legacy format from old conversations)
         const filePath: string | undefined = args.path || args.file_path || args.filePath;
         const mode = args.mode || 'edit';
 
