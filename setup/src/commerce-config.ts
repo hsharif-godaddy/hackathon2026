@@ -36,11 +36,9 @@ export class CommerceConfigSetup {
   async checkAWSCredentials(): Promise<string | null> {
     console.log(chalk.blue("🔍 Checking AWS credentials..."));
 
-    // First, try the profile that our setup tool would create
     const setupToolProfile = await this.ssoSetup.getProfile();
 
     try {
-      // Try the setup tool profile first
       const { stdout: identity } = await execa("aws", [
         "sts",
         "get-caller-identity",
@@ -66,7 +64,6 @@ export class CommerceConfigSetup {
         ),
       );
 
-      // Fall back to checking current/default credentials
       try {
         const { stdout: identity } = await execa("aws", [
           "sts",
@@ -82,7 +79,6 @@ export class CommerceConfigSetup {
         );
         console.log(chalk.gray(`   Identity: ${identity.trim()}`));
 
-        // Get the current profile being used
         const profile = process.env.AWS_PROFILE || "default";
         return profile;
       } catch (defaultError) {
@@ -285,10 +281,8 @@ GODADDY_API_BASE_URL=${this.config.apiBaseUrl}`;
     );
     console.log("");
 
-    // Step 1: Check AWS credentials
     let awsProfile = await this.checkAWSCredentials();
 
-    // Step 2: Set up AWS credentials if needed
     if (!awsProfile) {
       awsProfile = await this.setupAWSCredentials();
 
@@ -339,7 +333,6 @@ GODADDY_API_BASE_URL=${this.config.apiBaseUrl}`;
       }
     }
 
-    // Step 3: Fetch Commerce credentials
     const credentials = await this.fetchCommerceCredentials(awsProfile);
 
     if (!credentials) {
@@ -353,7 +346,6 @@ GODADDY_API_BASE_URL=${this.config.apiBaseUrl}`;
       return { success: false };
     }
 
-    // Step 4: Generate environment configurations
     const agentsEnvConfig = await this.generateCommerceEnvConfig(credentials);
     const appEnvConfig = await this.generateCommerceAppEnvConfig(credentials);
 

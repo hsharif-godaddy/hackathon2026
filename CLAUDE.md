@@ -355,10 +355,6 @@ NODE_ENV=development
 PORT=3000
 DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app?sslaccept=accept_invalid_certs
 
-# AI Provider (match agents config)
-AI_PROVIDER=openai
-OPENAI_API_KEY=your_key_here
-
 # Authentication
 NEXT_PUBLIC_USE_MOCK_LOGIN=true
 ```

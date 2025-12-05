@@ -23,18 +23,26 @@ export class CASetup {
 
     if (await this.caExists()) {
       console.log(chalk.green('✅ CA already exists at:'), this.caCertPath);
+
+      const isTrusted = await this.isCAAlreadyTrusted();
+      if (isTrusted) {
+        console.log(chalk.green('✅ CA is already trusted in system'));
+      }
       console.log('');
+
+      const choices = [
+        { name: 'Trust the existing CA', value: 'trust' },
+        { name: 'Regenerate CA (will require re-trusting)', value: 'regenerate' },
+        { name: 'Skip', value: 'skip' }
+      ];
 
       const { action } = await inquirer.prompt([
         {
           type: 'list',
           name: 'action',
           message: 'What would you like to do?',
-          choices: [
-            { name: 'Trust the existing CA', value: 'trust' },
-            { name: 'Regenerate CA (will require re-trusting)', value: 'regenerate' },
-            { name: 'Skip', value: 'skip' }
-          ]
+          choices,
+          default: isTrusted ? 'skip' : 'trust'
         }
       ]);
 
@@ -59,6 +67,49 @@ export class CASetup {
       (await fs.pathExists(this.caCertPath)) &&
       (await fs.pathExists(this.caKeyPath))
     );
+  }
+
+  private async isCAAlreadyTrusted(): Promise<boolean> {
+    const platform = process.platform;
+
+    try {
+      if (platform === 'darwin') {
+        const { stdout } = await execa('security', [
+          'find-certificate',
+          '-c',
+          'Airo App Builder Development CA',
+          '-a',
+          '-Z',
+          '/Library/Keychains/System.keychain'
+        ]);
+
+        if (!stdout.includes('Airo App Builder Development CA')) {
+          return false;
+        }
+
+        const sha1Match = stdout.match(/SHA-1 hash:\s*([A-Fa-f0-9]+)/);
+        if (!sha1Match) {
+          return false;
+        }
+
+        try {
+          await execa('security', [
+            'verify-cert',
+            '-c',
+            this.caCertPath
+          ]);
+          return true;
+        } catch {
+          return false;
+        }
+      } else if (platform === 'linux') {
+        return await fs.pathExists('/usr/local/share/ca-certificates/airo-dev-ca.crt');
+      }
+    } catch {
+      return false;
+    }
+
+    return false;
   }
 
   private async generateCA(): Promise<void> {

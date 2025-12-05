@@ -152,11 +152,6 @@ HTTPS_PORT=8443
 # Database (MySQL via Docker)
 DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app?sslaccept=accept_invalid_certs
 
-# AI Provider (match agents config - use GoCode recommended)
-AI_PROVIDER=gocode
-GOCODE_BASE_URL=https://caas-gocode-prod.caas-prod.prod.onkatana.net
-GOCODE_API_KEY=your_api_key_here
-
 # Authentication (JWT with SSO - recommended)
 AUTH_TYPE=jwt
 SSO_LOGIN_URL=https://sso.dev-godaddy.com/login

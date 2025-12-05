@@ -95,8 +95,14 @@ main() {
     
     # Check if dependencies are installed for the setup app
     if [ ! -d "setup/node_modules" ]; then
-        echo -e "${BLUE}🔑 Authenticating with Artifactory...${NC}"
-        pnpm login --progress true --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ --auth-type web
+        # Check if already authenticated by testing package access
+        echo -e "${BLUE}🔍 Checking Artifactory authentication...${NC}"
+        if ! pnpm info @godaddy/gasket-plugin-auth &>/dev/null; then
+            echo -e "${BLUE}🔑 Authenticating with Artifactory...${NC}"
+            pnpm login --progress true --registry https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/ --auth-type web
+        else
+            echo -e "${GREEN}✅ Already authenticated with Artifactory${NC}"
+        fi
         echo -e "${BLUE}📦 Installing setup dependencies...${NC}"
         pnpm install
         echo ""
