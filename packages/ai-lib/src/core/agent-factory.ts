@@ -545,8 +545,9 @@ Please retry your tool call with corrected input formatting.`
   const finalResult: any = streamResult
 
         // Await all promises from Experimental_Agent
-        const [usage, finishReason, toolCalls, toolResults] = await Promise.all([
+        const [usage, totalUsage, finishReason, toolCalls, toolResults] = await Promise.all([
           finalResult.usage,
+          finalResult.totalUsage,
           finalResult.finishReason,
           finalResult.toolCalls,
           finalResult.toolResults
@@ -557,6 +558,7 @@ Please retry your tool call with corrected input formatting.`
 
         return {
           usage,
+          totalUsage,
           finishReason,
           toolCalls: finalToolCalls
         }

@@ -25,6 +25,28 @@ type APMSpan = any
 
 
 /**
+ * Agent execution result with usage tracking
+ */
+interface AgentExecutionResult {
+  usage?: TokenUsage
+  totalUsage?: TokenUsage
+  finishReason?: string
+  toolCalls?: any[]
+  caching?: {
+    cachedInputTokens?: number
+    cacheWriteInputTokens?: number
+  }
+}
+
+/**
+ * Processed context that may include optional application metadata
+ */
+interface ProcessedContext extends Record<string, unknown> {
+  appId?: string
+  metadata?: Record<string, unknown>
+}
+
+/**
  * WebSocket Server Configuration for AgentFactory
  */
 export interface WebSocketConfig {
@@ -256,7 +278,7 @@ export class WebSocketServer {
 
         // Get conversation info for the client
         const conversation = this.activeConversations.get(previousSocketId)
-        
+
         // Send recovery status to client BEFORE replaying events
         socket.emit('message', {
           type: 'recovery_status',
@@ -277,7 +299,7 @@ export class WebSocketServer {
 
         // Move to active streams with NEW socket ID
         this.activeStreams.set(socketId, streamData.abortController)
-        
+
         // Update conversation tracking to new socket ID
         if (conversation) {
           this.activeConversations.set(socketId, conversation)
@@ -413,7 +435,7 @@ export class WebSocketServer {
 
   /**
    * Emit message to socket with buffering support for disconnected sockets
-   * 
+   *
    * If socket is disconnected but stream is active (recovery window),
    * events are buffered and replayed on reconnection.
    */
@@ -639,7 +661,7 @@ export class WebSocketServer {
 
   /**
    * Start APM span for tool execution
-   * 
+   *
    * Creates a span as a child of the active WebSocket transaction if available,
    * otherwise creates a standalone span. Tool input is added later via the tool-call event.
    */
@@ -658,7 +680,7 @@ export class WebSocketServer {
 
       // Create span as child of transaction if available, otherwise standalone
       // In Elastic APM, transaction.startSpan() creates a child span
-      const span = transaction 
+      const span = transaction
         ? transaction.startSpan(`Tool: ${toolName}`, 'tool_execution', 'agent')
         : apmAgent.startSpan(`Tool: ${toolName}`, 'tool_execution', 'agent')
 
@@ -810,7 +832,7 @@ export class WebSocketServer {
               // Accumulate tool input - emit delta for future status updates
               const currentInput = accumulatedToolInput.get(part.id) || ''
               accumulatedToolInput.set(part.id, currentInput + part.delta)
-              
+
               // Emit input delta event for future use
               this.emitToSocket(socket, 'message', {
                 type: 'tool_input_delta',
@@ -830,7 +852,7 @@ export class WebSocketServer {
               const toolId = part.id || part.toolCallId
               const fullInput = accumulatedToolInput.get(toolId) || '{}'
               let parsedInput: Record<string, unknown> = {}
-              
+
               try {
                 parsedInput = JSON.parse(fullInput)
               } catch (error) {
@@ -854,7 +876,7 @@ export class WebSocketServer {
               } as WebSocketMessage)
 
               await this.captureStreamingEvent(socket.id, 'tool_call', `${part.toolName} input ready`, toolCallData)
-              
+
               // Update APM span with input data now that we have it
               const spanKey = `${socket.id}:${toolId}`
               const span = this.activeToolSpans.get(spanKey)
@@ -899,7 +921,7 @@ export class WebSocketServer {
               const toolId = part.id || part.toolCallId || part.toolId
 
               const errorMessage = part.error?.message || (typeof part.error === 'string' ? part.error : String(part.error)) || 'Tool execution error'
-              
+
               const toolErrorData = {
                 step: currentStep,
                 tool: {
@@ -1162,7 +1184,7 @@ export class WebSocketServer {
 
       while (iterationCount < maxHandoffs) {
         iterationCount++
-        
+
         // Get current agent
         const agent = this.config.agents.get(agentName)
         if (!agent) {
@@ -1173,7 +1195,7 @@ export class WebSocketServer {
         // This ensures todo list context and other dynamic state is current
         if (iterationCount > 1) {
           processedContext = await this.processContext(data, socketId)
-          
+
           // Reload conversation history for the new agent
           // This is critical - the new agent needs the full conversation history
           const { conversationHistory, ...dataWithoutHistory } = data
@@ -1181,9 +1203,9 @@ export class WebSocketServer {
             ...dataWithoutHistory,
             message: currentMessage
           }
-          
+
           await this.loadConversationHistory(socketId, iterationData, processedContext)
-          
+
           // Use the iteration data with fresh history
           data = iterationData
         }
@@ -1263,7 +1285,7 @@ export class WebSocketServer {
         return currentAgent
       }
     }
-    
+
     // Use agent router hook if provided (check BEFORE explicit agentId to allow override for new projects)
     // This allows routing to architect even when client sends default agentId
     if (this.config.agentRouter) {
@@ -1272,12 +1294,12 @@ export class WebSocketServer {
         return routedAgent
       }
     }
-    
+
     // Check for explicit agent selection in message (after router hook)
     if (data.agentId || data.agentName) {
       return data.agentId || data.agentName
     }
-    
+
     // Fall back to default agent
     return this.config.defaultAgent
   }
@@ -1287,7 +1309,7 @@ export class WebSocketServer {
    */
   private async processContext(data: ChatMessage, socketId: string): Promise<Record<string, unknown>> {
     let context: Record<string, unknown>
-    
+
     if (data.context && this.config.contextExtractor) {
       // contextExtractor may be async, so await it
       context = await Promise.resolve(this.config.contextExtractor(data.context))
@@ -1301,7 +1323,7 @@ export class WebSocketServer {
     if (!currentAgent) {
       throw new Error('No active agent found - agentId is required in context.metadata')
     }
-    
+
     // Ensure metadata exists and set agentId
     const metadata = context.metadata || {}
     context = {
@@ -1331,7 +1353,7 @@ export class WebSocketServer {
     if (!this.config.messagePersistence) return
 
     const metadata = (processedContext?.metadata as any) || {}
-    
+
     const persistenceContext: ConversationContext = {
       socketId,
       agentName,
@@ -1547,12 +1569,12 @@ export class WebSocketServer {
           content: msg.content,
           ...(msg.cachePoint && { cachePoint: msg.cachePoint })
         }
-        
+
         // Preserve tool calls for assistant messages
         if (msg.role === 'assistant' && msg.tool_calls) {
           converted.tool_calls = msg.tool_calls
         }
-        
+
         // Preserve tool result references for tool messages
         if (msg.role === 'tool') {
           if (msg.tool_call_id) {
@@ -1562,7 +1584,7 @@ export class WebSocketServer {
             converted.name = msg.name
           }
         }
-        
+
         return converted
       })
       messages.push(...convertedHistoryMessages)
@@ -1804,17 +1826,19 @@ Please try again with corrected formatting.`
     await this.processStreamWithToolEvents(socket, streamResult, currentStep, agentName)
 
     // Get final result with usage and tool calls
-    const finalResult = await streamResult.getFinalResult()
+    const finalResult = await streamResult.getFinalResult() as AgentExecutionResult
 
     // Log token and cache usage information
-    if (finalResult.usage) {
+    // Use totalUsage for accurate multi-step token tracking (sums all steps)
+    const usageToTrack = finalResult.totalUsage || finalResult.usage
+    if (usageToTrack) {
       // Merge usage data with caching information
       const usage: TokenUsage = {
-        ...finalResult.usage,
+        ...usageToTrack,
         // Include cache metrics from the caching object if available
-        ...((finalResult as any).caching && {
-          cachedInputTokensRead: (finalResult as any).caching.cachedInputTokens,
-          cachedInputTokensWrite: (finalResult as any).caching.cacheWriteInputTokens
+        ...(finalResult.caching && {
+          cachedInputTokensRead: finalResult.caching.cachedInputTokens,
+          cachedInputTokensWrite: finalResult.caching.cacheWriteInputTokens
         })
       }
 
@@ -1860,6 +1884,31 @@ Please try again with corrected formatting.`
       const costEstimate = calculateCostEstimate(usage, modelName)
       const costLines = formatCostEstimate(costEstimate, usage)
       this.logger.info(costLines.join('\n'))
+
+      // Call onTokenUsage callback with accurate multi-step usage
+      if (this.config.onTokenUsage) {
+        try {
+          const activeConversation = this.activeConversations.get(socket.id)
+          const processedContext = context as ProcessedContext
+          await this.config.onTokenUsage(
+            {
+              inputTokens: usage.inputTokens || 0,
+              outputTokens: usage.outputTokens || 0,
+              totalTokens: usage.totalTokens || 0,
+              ...(usage.cachedInputTokensRead !== undefined && { cachedInputTokens: usage.cachedInputTokensRead }),
+              ...(usage.cachedInputTokensWrite !== undefined && { cacheWriteInputTokens: usage.cachedInputTokensWrite })
+            },
+            {
+              agentName,
+              modelName,
+              ...(activeConversation?.conversationId && { conversationId: activeConversation.conversationId }),
+              ...(processedContext?.appId && { appId: processedContext.appId })
+            }
+          )
+        } catch (error) {
+          this.logger.error('Error in onTokenUsage callback', { error })
+        }
+      }
     }
 
     // Calculate duration
@@ -1873,7 +1922,7 @@ Please try again with corrected formatting.`
         step: currentStep,
         isFinal: true,
         toolCalls: finalResult.toolCalls || [],
-        usage: this.config.includeUsageData ? finalResult.usage : undefined,
+        usage: this.config.includeUsageData ? usageToTrack : undefined,
         agentId: agentName
       }
     } as WebSocketMessage)
@@ -1886,14 +1935,14 @@ Please try again with corrected formatting.`
         content: fullContent,
         data: {
           totalSteps: currentStep,
-          usage: this.config.includeUsageData ? finalResult.usage : undefined,
+          usage: this.config.includeUsageData ? usageToTrack : undefined,
           toolCalls: finalResult.toolCalls || [],
           agentId: agentName,
           duration
         }
       } as WebSocketMessage)
     }
-    
+
     // Note: Conversation completion is now handled by completeConversation()
     // This allows multiple agents to contribute to the same conversation during handoffs
   }
