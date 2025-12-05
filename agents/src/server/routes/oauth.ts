@@ -1,4 +1,5 @@
 import { Router, type IRouter } from 'express';
+import { randomBytes } from 'crypto';
 import { AuthService, pkceStateStore } from '../../services/auth-service.js';
 import { Logger } from '../../logging/index.js';
 import { getSocketIO } from '../ai-lib-websocket-server.js';
@@ -6,29 +7,13 @@ import { getSocketIO } from '../ai-lib-websocket-server.js';
 const logger = Logger.create({ service: 'oauth-router' });
 const router: IRouter = Router();
 
-/**
- * OAuth callback endpoint for GoDaddy OAuth PKCE flow
- *
- * Handles the redirect after user authentication with GoDaddy SSO.
- * Validates the authorization code and state, exchanges code for tokens,
- * and displays success or error page.
- *
- * @route GET /oauth/godaddy/callback
- * @queryparam {string} code - Authorization code from GoDaddy OAuth
- * @queryparam {string} state - CSRF protection state parameter
- * @queryparam {string} [error] - Error code if OAuth failed
- * @queryparam {string} [error_description] - Human-readable error description
- *
- * @example
- * // Success case:
- * // GET /oauth/godaddy/callback?code=abc123&state=uuid-state
- * // Returns HTML success page, auto-closes after 2 seconds
- *
- * @example
- * // Error case:
- * // GET /oauth/godaddy/callback?error=access_denied&error_description=User+denied
- * // Returns HTML error page with details
- */
+const AUTO_CLOSE_COUNTDOWN_SECONDS = 10;
+const FALLBACK_MESSAGE_DELAY_MS = 100; // Allow time for window.close() to complete before updating UI
+
+function generateNonce(): string {
+  return randomBytes(16).toString('base64');
+}
+
 router.get('/godaddy/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query;
 
@@ -38,7 +23,13 @@ router.get('/godaddy/callback', async (req, res) => {
     hasError: !!error,
   });
 
-  // Handle OAuth error responses
+  const nonce = generateNonce();
+
+  res.setHeader(
+    'Content-Security-Policy',
+    `script-src 'self' 'nonce-${nonce}'; script-src-attr 'none'`
+  );
+
   if (error) {
     logger.error('oauth.callback.godaddy.oauth-error', {
       error,
@@ -69,10 +60,9 @@ router.get('/godaddy/callback', async (req, res) => {
 
     return res
       .status(400)
-      .send(renderErrorPage(error as string, error_description as string | undefined));
+      .send(renderErrorPage(error as string, error_description as string | undefined, nonce));
   }
 
-  // Validate required parameters
   if (!code || !state) {
     logger.error('oauth.callback.godaddy.missing-params', {
       hasCode: !!code,
@@ -81,11 +71,10 @@ router.get('/godaddy/callback', async (req, res) => {
 
     return res
       .status(400)
-      .send(renderErrorPage('invalid_request', 'Missing required parameters: code and state'));
+      .send(renderErrorPage('invalid_request', 'Missing required parameters: code and state', nonce));
   }
 
   try {
-    // Exchange authorization code for access token
     const result = await AuthService.exchangeCode({
       code: code as string,
       state: state as string,
@@ -95,7 +84,6 @@ router.get('/godaddy/callback', async (req, res) => {
       state: state as string,
     });
 
-    // Emit success event via WebSocket to notify the agent
     const s = state as string;
     const pkce = pkceStateStore.get(s);
     if (pkce?.appId) {
@@ -110,7 +98,7 @@ router.get('/godaddy/callback', async (req, res) => {
       }
     }
 
-    const successPage = renderSuccessPage(state as string);
+    const successPage = renderSuccessPage(state as string, nonce);
 
     // Clean up PKCE state only after successful exchange
     pkceStateStore.delete(s);
@@ -146,20 +134,55 @@ router.get('/godaddy/callback', async (req, res) => {
       state: state as string,
     });
 
-    return res.status(500).send(renderErrorPage('exchange_failed', errorMessage, state as string));
+    return res.status(500).send(renderErrorPage('exchange_failed', errorMessage, nonce, state as string));
   }
 });
 
-/**
- * Generate HTML success page for OAuth callback
- *
- * Displays a success message with checkmark icon and auto-closes.
- * OAuth result is delivered via WebSocket instead of postMessage.
- *
- * @param {string} state - OAuth state parameter for correlation
- * @returns {string} HTML page content
- */
-function renderSuccessPage(state: string): string {
+function generateAutoCloseScript(nonce: string): string {
+  return `<script nonce="${nonce}">
+          (function() {
+            let countdown = ${AUTO_CLOSE_COUNTDOWN_SECONDS};
+
+            function closeWindow() {
+              try {
+                window.close();
+              } catch (e) {
+                console.error('Failed to close window:', e);
+              }
+
+              setTimeout(function() {
+                const timer = document.getElementById('timer');
+                if (timer) {
+                  timer.textContent = 'Please close this window manually.';
+                }
+              }, ${FALLBACK_MESSAGE_DELAY_MS});
+            }
+
+            const countdownEl = document.getElementById('countdown');
+            const interval = setInterval(function() {
+              countdown--;
+              if (countdownEl) {
+                countdownEl.textContent = countdown.toString();
+              }
+
+              if (countdown <= 0) {
+                clearInterval(interval);
+                closeWindow();
+              }
+            }, 1000);
+
+            const button = document.getElementById('close-button');
+            if (button) {
+              button.addEventListener('click', function() {
+                clearInterval(interval);
+                closeWindow();
+              });
+            }
+          })();
+        </script>`;
+}
+
+function renderSuccessPage(state: string, nonce: string): string {
   return `
     <!DOCTYPE html>
     <html>
@@ -193,10 +216,26 @@ function renderSuccessPage(state: string): string {
             color: #555;
             margin: 10px 0;
           }
-          a {
-            color: #2e7d32;
-            text-decoration: underline;
+          .close-button {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 12px 24px;
+            background: #4caf50;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
             cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+          }
+          .close-button:hover {
+            background: #45a049;
+          }
+          .timer {
+            color: #666;
+            font-size: 14px;
+            margin-top: 15px;
           }
         </style>
       </head>
@@ -205,30 +244,16 @@ function renderSuccessPage(state: string): string {
           <div class="checkmark">✓</div>
           <h1>Authentication Successful</h1>
           <p>You have been successfully authenticated with GoDaddy.</p>
-          <p>You can close this window now.</p>
+          <button class="close-button" id="close-button">Close Window</button>
+          <p class="timer" id="timer">This window will close automatically in <span id="countdown">${AUTO_CLOSE_COUNTDOWN_SECONDS}</span> seconds...</p>
         </div>
-        <script>
-          // Note: Automatic window closing is unreliable after OAuth redirects
-          // See: docs/oauth-window-closing-issue.md for details on attempts and why they fail
-          // The agent is already notified via WebSocket (oauth:result event)
-        </script>
+        ${generateAutoCloseScript(nonce)}
       </body>
     </html>
   `;
 }
 
-/**
- * Generate HTML error page for OAuth callback
- *
- * Displays error details with appropriate styling and auto-closes.
- * OAuth error result is delivered via WebSocket instead of postMessage.
- *
- * @param {string} error - Error code
- * @param {string} [description] - Optional error description
- * @param {string} [state] - Optional OAuth state parameter
- * @returns {string} HTML page content
- */
-function renderErrorPage(error: string, description?: string, state?: string): string {
+function renderErrorPage(error: string, description: string | undefined, nonce: string, state?: string): string {
   return `
     <!DOCTYPE html>
     <html>
@@ -240,6 +265,7 @@ function renderErrorPage(error: string, description?: string, state?: string): s
             max-width: 600px;
             margin: 50px auto;
             padding: 20px;
+            text-align: center;
           }
           h1 {
             color: #d32f2f;
@@ -254,6 +280,7 @@ function renderErrorPage(error: string, description?: string, state?: string): s
             border-radius: 4px;
             border: 1px solid #ef5350;
             margin: 20px 0;
+            text-align: left;
           }
           .error-code {
             font-family: monospace;
@@ -269,6 +296,28 @@ function renderErrorPage(error: string, description?: string, state?: string): s
             background: #e3f2fd;
             border-radius: 4px;
             border-left: 4px solid #2196f3;
+            text-align: left;
+          }
+          .close-button {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 12px 24px;
+            background: #d32f2f;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+          }
+          .close-button:hover {
+            background: #c62828;
+          }
+          .timer {
+            color: #666;
+            font-size: 14px;
+            margin-top: 15px;
           }
         </style>
       </head>
@@ -286,21 +335,14 @@ function renderErrorPage(error: string, description?: string, state?: string): s
             <li>Contact support if the problem persists</li>
           </ul>
         </div>
-        <script>
-          // Note: Automatic window closing is unreliable after OAuth redirects
-          // See: docs/oauth-window-closing-issue.md for details
-        </script>
+        <button class="close-button" id="close-button">Close Window</button>
+        <p class="timer" id="timer">This window will close automatically in <span id="countdown">${AUTO_CLOSE_COUNTDOWN_SECONDS}</span> seconds...</p>
+        ${generateAutoCloseScript(nonce)}
       </body>
     </html>
   `;
 }
 
-/**
- * Escape HTML special characters to prevent XSS
- *
- * @param {string} str - String to escape
- * @returns {string} Escaped string
- */
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
