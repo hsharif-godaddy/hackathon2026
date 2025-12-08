@@ -10,6 +10,44 @@ const ERROR_TEXT_TRUNCATION_LENGTH = 100
 const fileEditTool = new FileEditTool()
 const appRepo = new AppRepository()
 
+const fileOperationSchema = z.object({
+  path: z.string().describe('Path to the file (relative to app root)'),
+  mode: z.enum(['edit', 'rewrite', 'create', 'delete']).optional().describe('Operation mode: edit for partial changes, rewrite for full replacement, create for new files, delete to remove files. Auto-detected if not specified (except delete, which must be explicit)'),
+  edits: z.array(z.object({
+    old: z.string().describe('The EXACT text currently in the file to search for and replace. MUST match the file content exactly - read the file first if you are unsure!'),
+    new: z.string().describe('The new text to replace with')
+  })).optional().describe('Array of search-and-replace operations for partial edits. Each "old" value MUST be the exact current content from the file.'),
+  content: z.string().optional().describe('Full content for rewrite or create operations')
+})
+
+const operationsSchema = z.preprocess(value => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return value
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) {
+        return parsed
+      }
+
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.operations)) {
+        return parsed.operations
+      }
+
+      return parsed
+    } catch {
+      return value
+    }
+  }
+
+  return value
+}, z.array(fileOperationSchema).min(1).describe(
+  'Array of file operations to perform. Must contain at least one operation. If provided as a JSON string, it will be parsed automatically.'
+))
+
 /**
  * File Edit Tool for AI-Lib
  * Batch file operations: edit, create, rewrite, or delete multiple files in one call
@@ -36,15 +74,7 @@ CRITICAL RULES:
    - All successful operations before the error are preserved
    - If autoCommit is enabled, all successful operations are committed together in a single commit`,
   z.object({
-    operations: z.array(z.object({
-      path: z.string().describe('Path to the file (relative to app root)'),
-      mode: z.enum(['edit', 'rewrite', 'create', 'delete']).optional().describe('Operation mode: edit for partial changes, rewrite for full replacement, create for new files, delete to remove files. Auto-detected if not specified (except delete, which must be explicit)'),
-      edits: z.array(z.object({
-        old: z.string().describe('The EXACT text currently in the file to search for and replace. MUST match the file content exactly - read the file first if you are unsure!'),
-        new: z.string().describe('The new text to replace with')
-      })).optional().describe('Array of search-and-replace operations for partial edits. Each "old" value MUST be the exact current content from the file.'),
-      content: z.string().optional().describe('Full content for rewrite or create operations')
-    })).min(1).describe('Array of file operations to perform. Must contain at least one operation.'),
+    operations: operationsSchema,
     createDirs: z.boolean().default(true).describe('Create parent directories if they don\'t exist'),
     fuzzyMatch: z.boolean().default(true).describe('Use fuzzy matching for search text if exact match fails'),
     autoCommit: z.boolean().default(false).describe('Automatically commit all successful changes using git in a single batch commit'),
