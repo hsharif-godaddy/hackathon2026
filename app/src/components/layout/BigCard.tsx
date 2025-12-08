@@ -21,7 +21,7 @@ export default function BigCard({ children, title, description, status, button }
       <div className="flex flex-col-reverse @md:flex-row justify-between items-start gap-1 @md:gap-3">
         <Box gap="sm">
           { title && (
-            <text.h2 as="heading" size={-2}>{title}</text.h2>
+            <text.h3 as="title" size={2}>{title}</text.h3>
           )}
           { description && (
             <text.p>{description}</text.p>

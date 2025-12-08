@@ -18,10 +18,10 @@ interface EmptyStateCardProps {
 
 /**
  * EmptyStateCard component for displaying locked/unavailable features
- * 
+ *
  * Displays a clear message about why a feature is unavailable and provides
  * actionable next steps for the user to unlock it.
- * 
+ *
  * @example
  * ```tsx
  * <EmptyStateCard
@@ -61,7 +61,7 @@ export default function EmptyStateCard(props: EmptyStateCardProps) {
       <Box gap="lg" blockAlignChildren="center" className="max-w-xl">
         <text.h3
           as="title"
-          size={3}
+          size={2}
           text={title}
           className="text-center"
         />
@@ -78,6 +78,7 @@ export default function EmptyStateCard(props: EmptyStateCardProps) {
         gap="md"
       >
         <Button
+          size='sm'
           design="primary"
           text={ctaLabel}
           onClick={onCtaClick}

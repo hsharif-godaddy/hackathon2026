@@ -246,8 +246,8 @@ export default function AppPublish({ location }: { location?: string }) {
       <SinglePlanUpgradeContainer
         onClose={() => {
           setShowAiroPlusPaywall(false);
-          
-          // TODO: poll for entitlement. If entitlement is granted, call handlePublish with skipPaywall: true. else hold off 
+
+          // TODO: poll for entitlement. If entitlement is granted, call handlePublish with skipPaywall: true. else hold off
           // TODO: While waiting, show a loading spinner and disable the publish button. For now, just call handlePublish with  showPaywall: false.
           setOpen(true);
         }}
@@ -345,9 +345,11 @@ export default function AppPublish({ location }: { location?: string }) {
             </Collapsible>
 
           <Separator />
+
           <Button
             className='w-full'
             design='primary'
+            size='sm'
             data-partial='componentAiro'
             data-eid={generateClickEID(`${location}.header.${publishWidget}`)}
             disabled={isButtonDisabled}

@@ -42,6 +42,7 @@ export default function UnauthorizedComponent({
                 handleSignIn(window.location.href);
               }
             }}
+            size='sm'
             design='secondary'
             text='Sign In to Continue'
             className="w-full text-white"
