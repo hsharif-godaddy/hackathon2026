@@ -266,6 +266,36 @@ export function useStreamingWebSocket() {
   // Create Socket.IO connection (stable)
   const createConnection = useCallback(async (appId: string): Promise<Socket> => {
     return new Promise(async (resolve, reject) => {
+      // Flag to track if the promise has been resolved/rejected to prevent double resolution
+      let promiseResolved = false
+
+      // Wrapper functions to ensure promise is only resolved/rejected once
+      const safeResolve = (socket: Socket) => {
+        if (!promiseResolved) {
+          promiseResolved = true
+          resolve(socket)
+        } else {
+          logger.warn('websocket.promise.already_resolved', {
+            message: 'Attempted to resolve promise that was already resolved',
+            socketId: socket.id,
+            appId
+          })
+        }
+      }
+
+      const safeReject = (error: Error) => {
+        if (!promiseResolved) {
+          promiseResolved = true
+          reject(error)
+        } else {
+          logger.warn('websocket.promise.already_resolved', {
+            message: 'Attempted to reject promise that was already resolved',
+            error: error.message,
+            appId
+          })
+        }
+      }
+
       // Clean up existing socket first to prevent duplicate handlers
       if (socketRef.current) {
         socketRef.current.removeAllListeners()
@@ -288,141 +318,244 @@ export function useStreamingWebSocket() {
       // Feature flag for manual recovery (disabled by default until fully tested)
       const enableManualRecovery = process.env.NEXT_PUBLIC_ENABLE_MANUAL_RECOVERY === 'true'
 
+
       // Check if we have a previous socket ID from before page reload (only if feature enabled)
       const previousSocketId = enableManualRecovery ? sessionStorage.getItem(`socket_id_${appId}`) : null
-      
-      const socketOptions: any = {
-        transports: ['websocket', 'polling'],
-        timeout: 10000,
-        autoConnect: true,
-        reconnection: true,
-        reconnectionAttempts: 20,  // 20 attempts over ~90 seconds
-        reconnectionDelay: 2000,   // Start with 2 second delay
-        reconnectionDelayMax: 5000, // Max 5 second delay between attempts
-        randomizationFactor: 0.5,
-        // Enable connection state recovery to preserve socket ID across reconnections
-        // This allows the server to replay buffered events after brief disconnections
-        connectionStateRecovery: {},
-        // Pass previous socket ID for manual recovery after page reload (feature flagged)
-        auth: {
-          ...(authToken && { token: authToken }),
-          ...(enableManualRecovery && previousSocketId && { previousSocketId })
-        }
-      }
-      if (authToken) {
-        socketOptions.extraHeaders = { Authorization: `Bearer ${authToken}` }
-      }
-      const socket = io(socketUrl, socketOptions)
-      if (process.env.NODE_ENV === 'development') {
-        // Disabled noisy websocket logging
-        // socket.onAny((event, ...args) => logger.debug('websocket.event.incoming', { event, argsPreview: JSON.stringify(args).slice(0, 500), timestamp: Date.now() }))
-        // socket.onAnyOutgoing((event, ...args) => logger.debug('websocket.event.outgoing', { event, argsCount: args.length, timestamp: Date.now() }))
-      }
-      socket.on('connect', () => {
-        // Check if this is a recovered connection (socket ID preserved)
-        if (socket.recovered) {
-          // Mark that this connection was recovered so message handler knows to initialize stream
-          wasRecoveredRef.current = true
-          // Connection was recovered - buffered events will be replayed by server
-          // Update UI state to show we're reconnected
-          setWebSocketState({ connected: true, status: 'idle' })
-        } else if (previousSocketId && previousSocketId !== socket.id) {
-          // Manual recovery after page reload - new socket ID but we had a previous one
-          // Mark as recovered so we initialize stream when messages arrive
-          wasRecoveredRef.current = true
-          setWebSocketState({ connected: true, status: 'idle' })
-          // Update sessionStorage with new socket ID for next potential recovery (if feature enabled)
-          if (enableManualRecovery) {
-            sessionStorage.setItem(`socket_id_${appId}`, socket.id)
-          }
-        } else {
-          wasRecoveredRef.current = false
-          setWebSocketState({ connected: true, status: 'idle' })
-          // Store new socket ID in sessionStorage (if feature enabled)
-          if (enableManualRecovery) {
-            sessionStorage.setItem(`socket_id_${appId}`, socket.id)
+
+      // Track token refresh attempts to prevent infinite loops
+      let tokenRefreshCount = 0
+      const MAX_TOKEN_REFRESH_ATTEMPTS = 3
+
+      /**
+       * Helper function to create a socket with given token and set up event handlers
+       *
+       * IMPORTANT: This function is defined inside the Promise executor, giving it lexical
+       * access to `safeResolve` and `safeReject` via closure. This means:
+       * - When called initially, the socket's connect handler will resolve the promise
+       * - When called again during token refresh, the new socket's connect handler will
+       *   still resolve the SAME original promise (not a new one)
+       * - This closure behavior ensures the promise returned by createConnection is
+       *   properly resolved even after token refresh
+       *
+       * @param token - JWT token to use for authentication
+       * @param isRetry - Whether this is a retry after token refresh
+       * @returns The created Socket instance
+       */
+      const createSocketWithHandlers = (token: string | null, isRetry = false): Socket => {
+        const socketOptions: any = {
+          transports: ['websocket', 'polling'],
+          timeout: 10000,
+          autoConnect: true,
+          reconnection: true,
+          reconnectionAttempts: 20,  // 20 attempts over ~90 seconds
+          reconnectionDelay: 2000,   // Start with 2 second delay
+          reconnectionDelayMax: 5000, // Max 5 second delay between attempts
+          randomizationFactor: 0.5,
+          // Enable connection state recovery to preserve socket ID across reconnections
+          // This allows the server to replay buffered events after brief disconnections
+          connectionStateRecovery: {},
+          // Pass previous socket ID for manual recovery after page reload (feature flagged)
+          auth: {
+            ...(token && { token }),
+            ...(enableManualRecovery && previousSocketId && { previousSocketId })
           }
         }
-        resolve(socket)
-      })
-      socket.on('connect_error', (error) => {
-        setWebSocketState({ connected: false, status: 'error', error: error.message })
-        reject(error)
-      })
-      socket.on('disconnect', () => {
-        const state = useStreamingConversationStore.getState()
-        const isStreaming = state.streamingState === 'streaming' || state.activeStream !== null
+        if (token) {
+          socketOptions.extraHeaders = { Authorization: `Bearer ${token}` }
+        }
+        const socket = io(socketUrl, socketOptions)
+        if (process.env.NODE_ENV === 'development') {
+          // Disabled noisy websocket logging
+          // socket.onAny((event, ...args) => logger.debug('websocket.event.incoming', { event, argsPreview: JSON.stringify(args).slice(0, 500), timestamp: Date.now() }))
+          // socket.onAnyOutgoing((event, ...args) => logger.debug('websocket.event.outgoing', { event, argsCount: args.length, timestamp: Date.now() }))
+        }
+        socket.on('connect', () => {
+          // Check if this is a recovered connection (socket ID preserved)
+          if (socket.recovered) {
+            // Mark that this connection was recovered so message handler knows to initialize stream
+            wasRecoveredRef.current = true
+            // Connection was recovered - buffered events will be replayed by server
+            // Update UI state to show we're reconnected
+            setWebSocketState({ connected: true, status: 'idle' })
+          } else if (previousSocketId && previousSocketId !== socket.id) {
+            // Manual recovery after page reload - new socket ID but we had a previous one
+            // Mark as recovered so we initialize stream when messages arrive
+            wasRecoveredRef.current = true
+            setWebSocketState({ connected: true, status: 'idle' })
+            // Update sessionStorage with new socket ID for next potential recovery (if feature enabled)
+            if (enableManualRecovery) {
+              sessionStorage.setItem(`socket_id_${appId}`, socket.id)
+            }
+          } else {
+            wasRecoveredRef.current = false
+            setWebSocketState({ connected: true, status: 'idle' })
+            // Store new socket ID in sessionStorage (if feature enabled)
+            if (enableManualRecovery) {
+              sessionStorage.setItem(`socket_id_${appId}`, socket.id)
+            }
+          }
+          // Resolve the original promise (from createConnection) via closure
+          // This works for both initial connection and token refresh retries
+          safeResolve(socket)
+        })
+        socket.on('connect_error', async (error) => {
+          const errorMessage = error.message || String(error)
 
-        if (isStreaming) {
-          // Connection dropped during active streaming - mark that we were streaming
-          wasStreamingOnDisconnectRef.current = true
-          disconnectTimeRef.current = Date.now()
+          // Check if this is a JWT token expiration error
+          if (errorMessage.includes('JWT validation failed') && errorMessage.includes('Token expired')) {
+            // Prevent infinite token refresh loops
+            if (tokenRefreshCount >= MAX_TOKEN_REFRESH_ATTEMPTS) {
+              logger.error('websocket.token.refresh_limit_exceeded', {
+                message: 'Maximum token refresh attempts exceeded, rejecting connection',
+                appId,
+                attempts: tokenRefreshCount
+              })
+              setWebSocketState({ connected: false, status: 'error', error: 'Failed to establish connection after multiple token refresh attempts' })
+              safeReject(new Error('Token refresh limit exceeded'))
+              return
+            }
 
-          // Show warning (yellow) initially - we'll retry for 5 minutes
-          setWebSocketState({ connected: false, status: 'connecting', error: 'Connection lost, retrying...' })
-          setStreamingState('retrying')
+            tokenRefreshCount++
+            logger.info('websocket.token.expired', {
+              message: 'JWT token expired, refetching and retrying connection',
+              appId,
+              originalError: errorMessage,
+              attempt: tokenRefreshCount
+            })
 
-          // Set timeout to switch to error after 5 minutes (300000ms)
-          reconnectTimeoutRef.current = setTimeout(() => {
+            try {
+              // Refetch the agent token
+              const newToken = await getAgentJWTToken(appId)
+
+              if (!newToken) {
+                logger.error('websocket.token.refetch_failed', {
+                  message: 'Failed to refetch agent token after expiration',
+                  appId
+                })
+                setWebSocketState({ connected: false, status: 'error', error: 'Failed to refresh authentication token' })
+                safeReject(error instanceof Error ? error : new Error(String(error)))
+                return
+              }
+
+              logger.info('websocket.token.refetched', {
+                message: 'Successfully refetched agent token, retrying connection',
+                appId,
+                attempt: tokenRefreshCount
+              })
+
+              // Clean up the failed socket
+              socket.removeAllListeners()
+              socket.disconnect()
+
+              // Create a new socket with the fresh token
+              // IMPORTANT: createSocketWithHandlers is defined in the same scope as safeResolve/safeReject,
+              // so it has access to them via closure. When the new socket connects, its 'connect' handler
+              // will call safeResolve(socket), which resolves the ORIGINAL promise from createConnection.
+              // This ensures the caller of createConnection() gets the resolved socket even after token refresh.
+              const newSocket = createSocketWithHandlers(newToken, true)
+
+              // Store the new socket immediately so it's available even before connection completes
+              // This ensures socketRef.current is always pointing to the active socket
+              socketRef.current = newSocket
+
+              // Return early - the new socket's connect handler will call safeResolve(socket)
+              // which resolves the original promise via closure. No need to handle resolution here.
+              return
+            } catch (refreshError) {
+              logger.error('websocket.token.refresh_exception', {
+                message: 'Exception while refreshing token',
+                appId,
+                error: refreshError instanceof Error ? refreshError.message : String(refreshError)
+              })
+              setWebSocketState({ connected: false, status: 'error', error: 'Failed to refresh authentication token' })
+              safeReject(refreshError instanceof Error ? refreshError : new Error(String(refreshError)))
+              return
+            }
+          }
+
+          // For non-token-expiration errors, proceed with normal error handling
+          setWebSocketState({ connected: false, status: 'error', error: errorMessage })
+          safeReject(error instanceof Error ? error : new Error(errorMessage))
+        })
+        socket.on('disconnect', () => {
+          const state = useStreamingConversationStore.getState()
+          const isStreaming = state.streamingState === 'streaming' || state.activeStream !== null
+
+          if (isStreaming) {
+            // Connection dropped during active streaming - mark that we were streaming
+            wasStreamingOnDisconnectRef.current = true
+            disconnectTimeRef.current = Date.now()
+
+            // Show warning (yellow) initially - we'll retry for 5 minutes
+            setWebSocketState({ connected: false, status: 'connecting', error: 'Connection lost, retrying...' })
+            setStreamingState('retrying')
+
+            // Set timeout to switch to error after 5 minutes (300000ms)
+            reconnectTimeoutRef.current = setTimeout(() => {
+              const state = useStreamingConversationStore.getState()
+              if (state.streamingState === 'retrying') {
+                setWebSocketState({ connected: false, status: 'error', error: 'Connection lost - retry timeout exceeded' })
+                setStreamingState('error')
+                setIsLoading(false)
+              }
+            }, 300000) // 5 minutes
+          } else {
+            // Normal disconnect when idle
+            wasStreamingOnDisconnectRef.current = false
+            setWebSocketState({ connected: false, status: 'idle' })
+          }
+        })
+        socket.on('reconnect_attempt', () => setWebSocketState({ connected: false, status: 'connecting' }))
+        socket.on('reconnect', () => {
+          setWebSocketState({ connected: true, status: 'idle' })
+
+          // Clear the 5-minute timeout if reconnection succeeded
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current)
+            reconnectTimeoutRef.current = null
+          }
+          disconnectTimeRef.current = null
+
+          // If we were streaming when disconnect happened, check if stream was recovered
+          if (wasStreamingOnDisconnectRef.current) {
             const state = useStreamingConversationStore.getState()
+            // If we're still in retrying state, the stream was successfully recovered
             if (state.streamingState === 'retrying') {
-              setWebSocketState({ connected: false, status: 'error', error: 'Connection lost - retry timeout exceeded' })
+              setStreamingState('streaming')
+              setIsLoading(true)
+            } else {
+              // Otherwise, mark as error
               setStreamingState('error')
               setIsLoading(false)
             }
-          }, 300000) // 5 minutes
-        } else {
-          // Normal disconnect when idle
-          wasStreamingOnDisconnectRef.current = false
-          setWebSocketState({ connected: false, status: 'idle' })
-        }
-      })
-      socket.on('reconnect_attempt', () => setWebSocketState({ connected: false, status: 'connecting' }))
-      socket.on('reconnect', () => {
-        setWebSocketState({ connected: true, status: 'idle' })
-
-        // Clear the 5-minute timeout if reconnection succeeded
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current)
-          reconnectTimeoutRef.current = null
-        }
-        disconnectTimeRef.current = null
-
-        // If we were streaming when disconnect happened, check if stream was recovered
-        if (wasStreamingOnDisconnectRef.current) {
+            wasStreamingOnDisconnectRef.current = false // Reset after handling
+          }
+        })
+        socket.on('reconnect_error', (error) => setWebSocketState({ connected: false, status: 'connecting', error: error.message }))
+        socket.on('reconnect_failed', () => {
           const state = useStreamingConversationStore.getState()
-          // If we're still in retrying state, the stream was successfully recovered
-          if (state.streamingState === 'retrying') {
-            setStreamingState('streaming')
-            setIsLoading(true)
-          } else {
-            // Otherwise, mark as error
+          const isStreaming = state.streamingState === 'streaming' || state.streamingState === 'retrying' || state.activeStream !== null
+
+          // Clear the timeout since we've given up
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current)
+            reconnectTimeoutRef.current = null
+          }
+          disconnectTimeRef.current = null
+
+          setWebSocketState({ connected: false, status: 'error', error: 'Failed to reconnect' })
+          if (isStreaming || wasStreamingOnDisconnectRef.current) {
+            // This is a connection error, not an upstream service error
             setStreamingState('error')
             setIsLoading(false)
+            wasStreamingOnDisconnectRef.current = false // Reset after handling
           }
-          wasStreamingOnDisconnectRef.current = false // Reset after handling
-        }
-      })
-      socket.on('reconnect_error', (error) => setWebSocketState({ connected: false, status: 'connecting', error: error.message }))
-      socket.on('reconnect_failed', () => {
-        const state = useStreamingConversationStore.getState()
-        const isStreaming = state.streamingState === 'streaming' || state.streamingState === 'retrying' || state.activeStream !== null
+        })
+        return socket
+      }
 
-        // Clear the timeout since we've given up
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current)
-          reconnectTimeoutRef.current = null
-        }
-        disconnectTimeRef.current = null
-
-        setWebSocketState({ connected: false, status: 'error', error: 'Failed to reconnect' })
-        if (isStreaming || wasStreamingOnDisconnectRef.current) {
-          // This is a connection error, not an upstream service error
-          setStreamingState('error')
-          setIsLoading(false)
-          wasStreamingOnDisconnectRef.current = false // Reset after handling
-        }
-      })
+      // Create the initial socket
+      createSocketWithHandlers(authToken, false)
     })
   }, [setWebSocketState])
 
@@ -1038,7 +1171,7 @@ export function useStreamingWebSocket() {
         })
       }
 
-      if(todoListContext) {
+      if (todoListContext) {
         contextAttachments.push({
           type: 'todo_list_context',
           data: todoListContext,
