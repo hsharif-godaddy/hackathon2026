@@ -4,6 +4,9 @@ import { withCustomerAuth, customerHasAccount, createCustomerAuthError, type Cus
 import { agentFetch } from '@/lib/agent-fetch';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 
+// Force dynamic rendering to ensure all HTTP methods work correctly
+export const dynamic = 'force-dynamic';
+
 /**
  * POST /api/database/:appId/tables/:tableName/rows - Insert a new row
  */
