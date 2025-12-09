@@ -47,6 +47,7 @@ export default function PreviewPane({
   const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
+  const isPollingEntitlements = useDevelopPageStore((state) => state.isPollingEntitlements)
 
   const appId = useAppIdFromParams();
 
@@ -276,6 +277,9 @@ export default function PreviewPane({
   const handleIframeError = () => {
     logger.warn('preview-pane.iframe.error', { message: 'Iframe error', appId })
     setIframeError(true)
+  }
+  if (isPollingEntitlements) {
+    return <Tips buildingMessage="Updating Subscription..." />
   }
 
   if (showBuildingOverlay) {

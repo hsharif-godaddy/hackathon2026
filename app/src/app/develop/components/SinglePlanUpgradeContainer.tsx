@@ -2,7 +2,7 @@ import ComponentLoader from '@venture/cds-loader';
 import { useGasketData } from '@/hooks/useGasketData'
 import { useAuth } from '@/hooks/useAuth';
 
-const SinglePlanUpgradeContainer = ({ onClose }) => {
+const SinglePlanUpgradeContainer = ({ onClose, onSuccessClick, onErrorClick }) => {
   const gasketData = useGasketData();
   const { getUserInfo } = useAuth();
   const shopperId = getUserInfo()?.shopperId;
@@ -19,6 +19,8 @@ const SinglePlanUpgradeContainer = ({ onClose }) => {
       returnApp="airo-builder"
       source="app-builder"
       onClose={onClose}
+      onSuccessClick={onSuccessClick}
+      onErrorClick={onErrorClick}
       secondaryCTA={{
         skipDefaultBehavior: true,
         onClick: onClose

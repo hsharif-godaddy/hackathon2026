@@ -32,18 +32,6 @@ export const usePaywallEligibility = (appId: string | undefined): PaywallEligibi
   const isError = isSubscriptionError || isEntitlementsError || isMatchingProjectError || updateEntitlementMutation.isError;
   const error = subscriptionError || entitlementsError || matchingProjectError || updateEntitlementMutation.error || null;
 
-  // Log errors when they occur
-  if (isError && error && appId) {
-    logger.error('paywall-eligibility.overall.error', {
-      message: 'Error in paywall eligibility determination',
-      error: error instanceof Error ? error.message : String(error),
-      appId,
-      subscriptionError: isSubscriptionError,
-      entitlementsError: isEntitlementsError,
-      matchingProjectError: isMatchingProjectError,
-      updateEntitlementError: updateEntitlementMutation.isError
-    });
-  }
 
   // Auto-trigger entitlement update when we have a matching project and subscription
   React.useEffect(() => {

@@ -25,12 +25,14 @@ import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import Tag from '@ux/tag';
 import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
+import { entitlementPollingService } from '@/services/EntitlementPollingService';
 
 export default function AppPublish({ location }: { location?: string }) {
   const intl = useIntl();
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const [showAiroPlusPaywall, setShowAiroPlusPaywall] = useState(false);
+  const [entitlementsPollingFailed, setEntitlementsPollingFailed] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
@@ -39,10 +41,30 @@ export default function AppPublish({ location }: { location?: string }) {
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
   const setDeploymentsRefetch = useDevelopPageStore((state) => state.setDeploymentsRefetch);
   const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab);
+  const isPollingEntitlements = useDevelopPageStore((state) => state.isPollingEntitlements);
+  const setIsPollingEntitlements = useDevelopPageStore((state) => state.setIsPollingEntitlements);
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall');
 
   const { showPaywall } = usePaywallEligibility(currentAppId);
+  const handlePurchaseSuccess = async () => {
+    setShowAiroPlusPaywall(false);
+    setIsPollingEntitlements(true);
+    const result = await entitlementPollingService.pollForEntitlements(currentAppId);
+    setIsPollingEntitlements(false);
+    if (result.success) {
+      setOpen(true);
+      setEntitlementsPollingFailed(false); // Reset failure state on success
+    } else {
+      setEntitlementsPollingFailed(true); // Mark as failed to disable button
+      setOpen(false);
+      logger.error('app-publish.entitlements.polling.failed', {
+        appId: currentAppId,
+        error: result.error,
+      });
+    }
+  };
+
   // Get publish state for current app
   const isPublishing = useDevelopPageStore(
     (state) => currentAppId && state.publishStates[currentAppId]
@@ -199,7 +221,7 @@ export default function AppPublish({ location }: { location?: string }) {
   // - A conversation is in progress (AI is actively processing)
   // - Current commit is already successfully deployed (nothing new to publish)
   //   Note: Button remains enabled if deployment failed, allowing retry
-  const isButtonDisabled = isLoading || isLoadingGitHistory || isPublishing || isDeploymentInProgress || isConversationInProgress || isCurrentCommitDeployed;
+  const isButtonDisabled = isLoading || isLoadingGitHistory || isPublishing || isDeploymentInProgress || isConversationInProgress || isCurrentCommitDeployed || isPollingEntitlements || entitlementsPollingFailed;
 
   const publishWidget = isFirstTimePublishing ? 'app_first_publish' : 'app_publish';
 
@@ -233,6 +255,11 @@ export default function AppPublish({ location }: { location?: string }) {
   );
 
   const handlePublish = async (open: boolean) => {
+    // Reset polling failure state when attempting to publish
+    if (open) {
+      setEntitlementsPollingFailed(false);
+    }
+   
     if (isAiroPlusPaywallEnabled && showPaywall && open) { // TODO: check to make sure entitlemnet is not granted already before showing the paywall
       setShowAiroPlusPaywall(true);
     } else {
@@ -244,13 +271,13 @@ export default function AppPublish({ location }: { location?: string }) {
     <>
     {showAiroPlusPaywall && (
       <SinglePlanUpgradeContainer
-        onClose={() => {
+        onErrorClick={async () => {
           setShowAiroPlusPaywall(false);
-
-          // TODO: poll for entitlement. If entitlement is granted, call handlePublish with skipPaywall: true. else hold off
-          // TODO: While waiting, show a loading spinner and disable the publish button. For now, just call handlePublish with  showPaywall: false.
-          setOpen(true);
         }}
+       onClose={() => {
+          setShowAiroPlusPaywall(false);
+        }}
+        onSuccessClick={handlePurchaseSuccess}
       />
     )}
     <Popover open={open} onOpenChange={handlePublish}>

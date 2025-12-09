@@ -28,6 +28,7 @@ interface DevelopPageStore {
   hasUnsavedChanges: boolean
   isCheckingApp: boolean
   isStartingApp: boolean
+  isPollingEntitlements: boolean
 
   // Version history UI
   isVersionHistoryOpen: boolean
@@ -72,6 +73,7 @@ interface DevelopPageStore {
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
   setIsPreviewVisible: (visible: boolean) => void
+  setIsPollingEntitlements: (isPolling: boolean) => void
 
   // Feedback modal actions
   openFeedbackModal: (feedbackId: string) => void
@@ -139,6 +141,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     hasUnsavedChanges: false,
     isCheckingApp: false,
     isStartingApp: false,
+    isPollingEntitlements: false,
     isVersionHistoryOpen: false,
 
     // Feedback modal state
@@ -170,6 +173,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setChatPaneWidth: (width) => set((state) => { state.chatPaneWidth = width }),
     setIsChatPaneCollapsed: (collapsed) => set((state) => { state.isChatPaneCollapsed = collapsed }),
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
+    setIsPollingEntitlements: (isPolling) => set((state) => { state.isPollingEntitlements = isPolling }),
     setIsMobile: (isMobile) => set((state) => {
       // Only reset tab if we're actually transitioning between mobile/desktop
       const wasTransition = state.isMobile !== isMobile

@@ -34,12 +34,6 @@ export const useEntitlementsBySubscriptionId = (subscriptionId: string | undefin
 
       if (!response.ok) {
         const errorMessage = `API request failed: ${response.status} ${response.statusText} - ${JSON.stringify(data)}`;
-        logger.error('entitlements-by-subscription.query.error', {
-          subscriptionId,
-          statusCode: response.status,
-          error: errorMessage,
-          originalResponse: data
-        });
         throw new Error(errorMessage);
       }
 
@@ -55,11 +49,6 @@ export const useEntitlementsBySubscriptionId = (subscriptionId: string | undefin
         };
       } else {
         const errorMessage = `API request failed: ${response.status} ${response.statusText} - ${JSON.stringify(data)}`;
-        logger.error('entitlements-by-subscription.query.failed', {
-          subscriptionId,
-          error: errorMessage,
-          originalResponse: data
-        });
         throw new Error(errorMessage);
       }
     },
