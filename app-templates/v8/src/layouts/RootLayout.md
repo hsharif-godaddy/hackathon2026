@@ -2,66 +2,33 @@
 
 ## Overview
 
-RootLayout is the recommended way to create consistent multi-page **websites** (marketing sites, landing pages, public-facing apps). It wraps all your pages with a centralized header and footer configuration defined in `App.tsx`.
+RootLayout is the recommended way to create consistent multi-page **websites** (marketing sites, landing pages, public-facing apps). It wraps all your pages with a centralized header and footer.
 
-**Note**: RootLayout uses the Website layout. For admin panels and dashboards, use the Dashboard layout component directly instead.
+**Important**:
+
+- **For websites**: Use RootLayout (includes header and footer)
+- **For dashboards/admin panels**: Use the `Dashboard` component instead (includes sidebar navigation and top bar)
+- **For games/fullscreen apps**: Remove `<Header />` and `<Footer />` from RootLayout
 
 ## Why Use RootLayout?
 
 ### Problems It Solves
 
-1. **Consistency**: No more duplicating header/footer config across every page
-2. **Maintainability**: Update navigation in one place, applies everywhere
+1. **Consistency**: Header and footer appear on every page automatically
+2. **Maintainability**: Update navigation in Header.tsx, applies everywhere
 3. **Simplicity**: Page components focus only on content
 4. **Standard Pattern**: Follows React Router and Next.js conventions
 
-### Before RootLayout (Old Pattern)
+### RootLayout Pattern
 
 ```tsx
-// ❌ Every page had to configure its own header/footer
-// src/pages/home.tsx
-export default function HomePage() {
-  return (
-    <Website config={{
-      header: { logo: { text: 'App' }, navItems: [...] },
-      footer: { variant: 'simple' }
-    }}>
-      <div>Home content</div>
-    </Website>
-  );
-}
-
-// src/pages/about.tsx
-export default function AboutPage() {
-  return (
-    <Website config={{
-      header: { logo: { text: 'App' }, navItems: [...] }, // Duplicated!
-      footer: { variant: 'simple' }                        // Duplicated!
-    }}>
-      <div>About content</div>
-    </Website>
-  );
-}
-```
-
-### After RootLayout (New Pattern)
-
-```tsx
-// ✅ Configure once in App.tsx
+// ✅ Use RootLayout in App.tsx
 // src/App.tsx
-const headerConfig = {
-  logo: { text: "App" },
-  navItems: [
-    { href: "/", label: "Home" },
-    { href: "/about", label: "About" },
-  ],
-};
-
 const router = createBrowserRouter([
   {
     path: "/",
     element: (
-      <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
+      <RootLayout>
         <Outlet />
       </RootLayout>
     ),
@@ -80,48 +47,41 @@ export default function AboutPage() {
 }
 ```
 
+### Customizing Header and Footer
+
+To customize the header or footer, directly edit the component files:
+
+- **Header**: Edit `src/layouts/parts/Header.tsx`
+- **Footer**: Edit `src/layouts/parts/Footer.tsx`
+
+**Example - Updating navigation in Header.tsx:**
+
+```tsx
+const navItems = [
+  { href: "/", label: "Home" },
+  { href: "/about", label: "About" },
+  { href: "/services", label: "Services" },
+  { href: "/contact", label: "Contact" },
+];
+```
+
 ## Setup Guide
 
-### Step 1: Configure in App.tsx
+### Step 1: Use RootLayout in App.tsx
 
-Open `src/App.tsx` and define your header and footer configuration:
+Open `src/App.tsx` and wrap your routes with RootLayout:
 
 ```tsx
 import { createBrowserRouter, RouterProvider, Outlet } from "react-router-dom";
-import RootLayout, { RootLayoutConfig } from "./layouts/RootLayout";
+import RootLayout from "./layouts/RootLayout";
 import { routes } from "./routes";
-
-// Define header configuration
-const headerConfig: RootLayoutConfig["header"] = {
-  logo: {
-    text: "MyApp",
-    href: "/",
-  },
-  navItems: [
-    { href: "/", label: "Home" },
-    { href: "/about", label: "About" },
-    { href: "/services", label: "Services" },
-    { href: "/contact", label: "Contact" },
-  ],
-  sticky: true,
-};
-
-// Define footer configuration
-const footerConfig: RootLayoutConfig["footer"] = {
-  variant: "simple",
-  copyright: {
-    text: "MyApp",
-    showYear: true,
-    position: "center",
-  },
-};
 
 // Apply to all routes
 const router = createBrowserRouter([
   {
     path: "/",
     element: (
-      <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
+      <RootLayout>
         <Outlet />
       </RootLayout>
     ),
@@ -160,7 +120,41 @@ export default function AboutPage() {
 }
 ```
 
-### Step 3: Add Routes
+### Step 3: Customize Header and Footer
+
+Edit the header and footer components directly:
+
+**Header (`src/layouts/parts/Header.tsx`):**
+
+```tsx
+const navItems = [
+  { href: "/", label: "Home" },
+  { href: "/about", label: "About" },
+  { href: "/services", label: "Services" },
+  { href: "/contact", label: "Contact" },
+];
+```
+
+**Footer (`src/layouts/parts/Footer.tsx`):**
+
+```tsx
+const currentYear = new Date().getFullYear();
+
+return (
+  <footer className="mt-auto border-t border-border bg-background">
+    <div className="container mx-auto px-4 py-6">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="text-sm text-muted-foreground">
+          © {currentYear} MyApp. All rights reserved.
+        </div>
+        {/* Add more footer content here */}
+      </div>
+    </div>
+  </footer>
+);
+```
+
+### Step 4: Add Routes
 
 Update `src/routes.tsx` to include your pages:
 
@@ -181,244 +175,56 @@ export const routes: RouteObject[] = [
 ];
 ```
 
-## Configuration Options
-
-### Header Configuration
-
-```typescript
-interface HeaderConfig {
-  logo?: {
-    text?: string;
-    href?: string;
-    className?: string;
-  };
-  navItems?: Array<{
-    href: string;
-    label: string;
-    external?: boolean;
-  }>;
-  actions?: React.ReactNode;
-  variant?: "default" | "centered" | "split";
-  sticky?: boolean;
-  transparent?: boolean;
-  blur?: boolean;
-  border?: boolean;
-}
-```
-
-#### Header Examples
-
-**Basic Header:**
-
-```tsx
-const headerConfig = {
-  logo: { text: "MyApp", href: "/" },
-  navItems: [
-    { href: "/", label: "Home" },
-    { href: "/about", label: "About" },
-  ],
-  sticky: true,
-};
-```
-
-**Header with Actions:**
-
-```tsx
-import { Button } from "@/components/ui/button";
-
-const headerConfig = {
-  logo: { text: "MyApp" },
-  navItems: [
-    { href: "/", label: "Home" },
-    { href: "/features", label: "Features" },
-    { href: "/pricing", label: "Pricing" },
-  ],
-  actions: (
-    <>
-      <Button variant="ghost">Sign In</Button>
-      <Button>Get Started</Button>
-    </>
-  ),
-  sticky: true,
-};
-```
-
-**External Links:**
-
-```tsx
-const headerConfig = {
-  logo: { text: "MyApp" },
-  navItems: [
-    { href: "/", label: "Home" },
-    { href: "https://docs.example.com", label: "Docs", external: true },
-    { href: "/contact", label: "Contact" },
-  ],
-};
-```
-
-### Footer Configuration
-
-```typescript
-interface FooterConfig {
-  variant?: "simple" | "columns" | "centered" | "detailed";
-  copyright?: {
-    text?: string;
-    showYear?: boolean;
-    position?: "left" | "center" | "right";
-  };
-  sections?: Array<{
-    title: string;
-    links: Array<{
-      href: string;
-      label: string;
-      external?: boolean;
-    }>;
-  }>;
-  socialLinks?: Array<{
-    href: string;
-    label: string;
-    icon?: React.ReactNode;
-  }>;
-  bottomLinks?: Array<{
-    href: string;
-    label: string;
-    external?: boolean;
-  }>;
-  background?: "default" | "muted" | "dark";
-  border?: boolean;
-}
-```
-
-#### Footer Examples
-
-**Simple Footer:**
-
-```tsx
-const footerConfig = {
-  variant: "simple",
-  copyright: {
-    text: "MyApp",
-    showYear: true,
-    position: "center",
-  },
-  bottomLinks: [
-    { href: "/privacy", label: "Privacy Policy" },
-    { href: "/terms", label: "Terms of Service" },
-  ],
-};
-```
-
-**Detailed Footer:**
-
-```tsx
-const footerConfig = {
-  variant: "detailed",
-  logo: { text: "MyApp" },
-  description: "Building the future of web applications.",
-  sections: [
-    {
-      title: "Product",
-      links: [
-        { href: "/features", label: "Features" },
-        { href: "/pricing", label: "Pricing" },
-        { href: "/docs", label: "Documentation" },
-      ],
-    },
-    {
-      title: "Company",
-      links: [
-        { href: "/about", label: "About" },
-        { href: "/blog", label: "Blog" },
-        { href: "/careers", label: "Careers" },
-      ],
-    },
-  ],
-  socialLinks: [
-    { href: "https://twitter.com/myapp", label: "Twitter" },
-    { href: "https://github.com/myapp", label: "GitHub" },
-    { href: "https://linkedin.com/company/myapp", label: "LinkedIn" },
-  ],
-  copyright: {
-    text: "MyApp",
-    showYear: true,
-  },
-};
-```
-
 ## Common Use Cases
 
-### Single-Page App with Anchor Links
+### Using Dashboard Layout for Admin Panels
+
+For dashboards and admin panels, use the dedicated `Dashboard` component instead of RootLayout:
 
 ```tsx
-const headerConfig = {
-  logo: { text: "MyApp" },
-  navItems: [
-    { href: "#hero", label: "Home" },
-    { href: "#features", label: "Features" },
-    { href: "#pricing", label: "Pricing" },
-    { href: "#contact", label: "Contact" },
-  ],
-  sticky: true,
+// src/App.tsx
+import Dashboard from "./layouts/Dashboard";
+
+const dashboardConfig = {
+  sidebar: {
+    logo: { text: "Admin Panel" },
+    navigation: {
+      main: [
+        { title: "Dashboard", href: "/dashboard", icon: Home, active: true },
+        { title: "Users", href: "/users", icon: Users },
+        { title: "Settings", href: "/settings", icon: Settings },
+      ],
+    },
+  },
 };
-```
 
-### Multi-Page App with External Links
-
-```tsx
-const headerConfig = {
-  logo: { text: "MyApp" },
-  navItems: [
-    { href: "/", label: "Home" },
-    { href: "/about", label: "About" },
-    { href: "https://docs.example.com", label: "Docs", external: true },
-    { href: "/contact", label: "Contact" },
-  ],
-};
-```
-
-### App with Authentication
-
-```tsx
-import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/useAuth";
-
-function App() {
-  const { user, signOut } = useAuth();
-
-  const headerConfig = {
-    logo: { text: "MyApp" },
-    navItems: [
-      { href: "/", label: "Home" },
-      { href: "/dashboard", label: "Dashboard" },
-    ],
-    actions: user ? (
-      <Button variant="ghost" onClick={signOut}>
-        Sign Out
-      </Button>
-    ) : (
-      <Button>Sign In</Button>
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: (
+      <Dashboard config={dashboardConfig}>
+        <Outlet />
+      </Dashboard>
     ),
-  };
-
-  // ... rest of router setup
-}
+    children: dashboardRoutes,
+  },
+]);
 ```
 
-## Advanced Usage
+### Removing Header/Footer for Games or Fullscreen Apps
 
-### Conditional Header/Footer
-
-You can conditionally include header or footer:
+For games or single-page apps that need fullscreen layout:
 
 ```tsx
-const headerConfig = showHeader ? {
-  logo: { text: 'MyApp' },
-  navItems: [...]
-} : undefined;
-
-<RootLayout config={{ header: headerConfig, footer: footerConfig }}>
-  <Outlet />
-</RootLayout>
+// src/layouts/RootLayout.tsx
+export default function RootLayout({ children }: RootLayoutProps) {
+  return (
+    <Website>
+      {/* Remove Header and Footer components */}
+      {children}
+    </Website>
+  );
+}
 ```
 
 ### Per-Route Customization
@@ -428,9 +234,10 @@ For pages that need different layouts, you can create additional route groups:
 ```tsx
 const router = createBrowserRouter([
   {
+    // Pages with header/footer
     path: "/",
     element: (
-      <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
+      <RootLayout>
         <Outlet />
       </RootLayout>
     ),
@@ -440,57 +247,31 @@ const router = createBrowserRouter([
     ],
   },
   {
-    // Special page without header/footer
-    path: "/fullscreen",
-    element: <FullscreenPage />,
+    // Fullscreen page without header/footer
+    path: "/game",
+    element: <GamePage />,
   },
 ]);
 ```
 
 ## Best Practices
 
-1. **Define config once**: Keep header/footer config in `App.tsx`
+1. **Edit components directly**: Update Header.tsx and Footer.tsx instead of passing props
 2. **Keep pages simple**: Pages should only contain content
 3. **Use semantic HTML**: Structure content with proper heading hierarchy
 4. **Mobile-first**: The layout is responsive by default
-5. **Update navigation**: When adding pages, update `navItems` in `App.tsx`
+5. **Update navigation**: When adding pages, update navItems in Header.tsx
 
 ## Troubleshooting
 
 ### Navigation not updating
 
-Make sure you updated `navItems` in `App.tsx` and that the `href` matches your route path.
+Make sure you updated `navItems` in `Header.tsx` and that the `href` matches your route path.
 
 ### Header/Footer not showing
 
-Verify that `headerConfig` and `footerConfig` are passed to RootLayout in `App.tsx`.
+Verify that `<Header />` and `<Footer />` are included in RootLayout.tsx.
 
 ### Styling issues
 
 Pages should not include `min-h-screen` or full-page containers. Let RootLayout handle the layout structure.
-
-## Migration from Old Pattern
-
-If you have existing pages using the old Website component pattern:
-
-**Before:**
-
-```tsx
-export default function Page() {
-  return (
-    <Website config={{ header: {...}, footer: {...} }}>
-      <div>Content</div>
-    </Website>
-  );
-}
-```
-
-**After:**
-
-```tsx
-export default function Page() {
-  return <div>Content</div>;
-}
-```
-
-Then add the header/footer config to `App.tsx` as shown in the setup guide.

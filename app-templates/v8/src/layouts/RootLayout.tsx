@@ -1,51 +1,37 @@
+import { ReactElement } from 'react';
 import Website from '@/layouts/Website';
-import Header, { HeaderConfig } from '@/layouts/parts/Header';
-import Footer, { FooterConfig } from '@/layouts/parts/Footer';
+import Header from '@/layouts/parts/Header';
+import Footer from '@/layouts/parts/Footer';
 
 /**
  * Root layout component that wraps all pages with consistent header and footer
  *
  * This component provides a centralized layout structure for the entire application,
  * ensuring consistent navigation and footer across all pages. It uses the Website
- * layout component and includes Header and Footer with configurable options.
+ * layout component and includes Header and Footer components.
+ *
+ * To customize the header or footer, directly edit the Header.tsx and Footer.tsx files
+ * in the layouts/parts directory.
  *
  * @param children - Child routes to render (typically <Outlet /> from react-router-dom)
- * @param config - Configuration for header and footer
- * @param config.header - Header configuration (logo, navigation, actions, etc.)
- * @param config.footer - Footer configuration (variant, links, social, etc.)
  *
  * @example
  * ```tsx
- * <RootLayout config={{
- *   header: {
- *     logo: { text: 'MyApp' },
- *     navItems: [{ href: '/', label: 'Home' }]
- *   },
- *   footer: {
- *     variant: 'simple'
- *   }
- * }}>
+ * <RootLayout>
  *   <Outlet />
  * </RootLayout>
  * ```
  */
-export interface RootLayoutConfig {
-  header?: HeaderConfig;
-  footer?: FooterConfig;
-}
-
 interface RootLayoutProps {
-  children: React.ReactNode;
-  config?: RootLayoutConfig;
+  children: ReactElement;
 }
 
-export default function RootLayout({ children, config = {} }: RootLayoutProps) {
+export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <Website>
-      {config.header && <Header config={config.header} />}
+      <Header />
       {children}
-      {config.footer && <Footer config={config.footer} />}
+      <Footer />
     </Website>
   );
 }
-
