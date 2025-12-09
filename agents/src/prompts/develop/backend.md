@@ -105,3 +105,22 @@ res.status(201).json(newUser[0]);
 - **Schema changes require migrations** - Use db:generate and db:migrate
 - **Use `.js` extensions** - Backend imports require explicit extensions
 - **Migration files auto-committed** - Git tracks schema changes
+
+## Server Restarts
+
+**Server restarts are rarely needed** - Vite HMR automatically reloads code changes.
+
+**ONLY restart when:**
+
+- Applying database schema migrations that change table structure
+- Installing NEW backend dependencies (not frontend)
+- Modifying server configuration files (vite.config, env vars)
+- Server becomes truly unresponsive
+
+**DO NOT restart for:**
+
+- Code changes (Vite HMR handles this automatically)
+- Frontend dependency installations
+- Typical development work
+
+When in doubt, try without restarting first.

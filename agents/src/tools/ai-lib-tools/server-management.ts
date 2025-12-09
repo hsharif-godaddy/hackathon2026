@@ -10,7 +10,7 @@ const serverTool = new ServerManagementTool()
  * Restart the development server for the current app
  */
 export const serverRestartAITool: Tool = createTool(
-  'Restart the development server for the current app. Use this after database configuration changes, dependency installations, or when the server becomes unresponsive.',
+  'Restart the development server ONLY when absolutely necessary: database schema migrations, new backend dependencies, or server config changes. Vite HMR handles code changes automatically - restarts are rarely needed.',
   z.object({
     reason: z.string().optional().describe('Optional reason for the restart (for logging purposes)')
   }),
