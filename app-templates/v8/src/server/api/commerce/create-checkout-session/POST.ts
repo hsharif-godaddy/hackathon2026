@@ -6,6 +6,8 @@
 import type { Request, Response } from "express";
 import { existsSync, readFileSync } from "node:fs";
 
+const USER_AGENT = "GoDaddy-Airo-AppBuilder App Commerce-Checkout v1";
+
 export function deriveCheckoutUrl(apiBaseUrl: string): string {
   try {
     const apiUrl = new URL(apiBaseUrl);
@@ -192,6 +194,7 @@ async function getAccessToken(): Promise<string> {
       headers: {
         accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": USER_AGENT,
       },
       body: params.toString(),
     });
@@ -270,6 +273,7 @@ async function createCheckoutSession(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
+        "User-Agent": USER_AGENT,
       },
       body: JSON.stringify(graphqlQuery),
     });

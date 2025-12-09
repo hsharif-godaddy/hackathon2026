@@ -154,7 +154,7 @@ export class GoDaddyCommerce {
     this.baseUrl = process.env.GODADDY_API_BASE_URL;
     this.baseHeaders = {
       'Content-Type': 'application/json',
-      'User-Agent': 'GoDaddy: Airo App Builder Agent',
+      'User-Agent': 'GoDaddy-Airo-AppBuilder Agent Commerce-Tool v1',
       Accept: 'application/json',
       'X-Client-Version': '1.0.0',
     };
@@ -284,7 +284,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
@@ -416,7 +416,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -520,7 +520,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -620,7 +620,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -724,7 +724,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -808,7 +808,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -873,7 +873,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -959,7 +959,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -1040,7 +1040,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -1124,7 +1124,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -1216,7 +1216,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -1292,7 +1292,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -1371,7 +1371,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },
@@ -1453,7 +1453,7 @@ export class GoDaddyCommerce {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.baseHeaders,
         Authorization: `Bearer ${accessToken}`,
         'x-store-id': args.storeId,
       },

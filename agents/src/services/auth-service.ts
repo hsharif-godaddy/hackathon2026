@@ -370,6 +370,7 @@ export class AuthService {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           Accept: 'application/json',
+          'User-Agent': 'GoDaddy-Airo-AppBuilder Agent OAuth-Tool v1',
         },
         body: body.toString(),
       });

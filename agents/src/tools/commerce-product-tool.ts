@@ -154,6 +154,7 @@ export class CommerceProductTool {
         headers: {
           'accept': 'application/json',
           'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'GoDaddy-Airo-AppBuilder Agent Commerce-Tool v1',
         },
         body: params.toString(),
       });
