@@ -62,6 +62,7 @@ export interface StreamingMessage {
   isComplete: boolean
   maxStepsReached?: boolean        // True when agent hit max steps limit
   upstreamError?: boolean           // True if an error from upstream service, if any
+  budgetExceeded?: boolean         // True if user exceeded their usage budget
   metadata?: {
     usage?: {
       inputTokens: number
@@ -83,6 +84,7 @@ export interface ChatMessage {
   timestamp: Date
   maxStepsReached?: boolean        // True when agent hit max steps limit
   upstreamError?: boolean           // True if an error from upstream service, if any
+  budgetExceeded?: boolean         // True if user exceeded their usage budget
   metadata?: {
     usage?: {
       inputTokens: number
@@ -155,6 +157,7 @@ export interface StreamingConversationState {
   addToolResultSegment: (toolCall: ToolCall) => void
   markMaxStepsReached: () => void
   markUpstreamError: () => void
+  markBudgetExceeded: () => void
 
   // === APP CONTEXT ACTIONS ===
 
@@ -423,6 +426,18 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     set({ activeStream: updatedStream })
   },
 
+  markBudgetExceeded: () => {
+    const { activeStream } = get();
+    if (!activeStream) return;
+
+    const updatedStream = {
+      ...activeStream,
+      budgetExceeded: true
+    }
+
+    set({ activeStream: updatedStream });
+  },
+
   updateToolInStream: (toolId: string, updates: Partial<ToolCall>) => {
     const { activeStream } = get()
     if (!activeStream) return
@@ -528,7 +543,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       toolCallCount: activeStream.toolCalls.length,
       segmentCount: activeStream.segments.length,
       maxStepsReached: activeStream.maxStepsReached,
-      upstreamError: activeStream.upstreamError
+      upstreamError: activeStream.upstreamError,
+      budgetExceeded: activeStream.budgetExceeded
     })
 
     // Convert streaming message to completed message
@@ -541,6 +557,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       timestamp: new Date(), // Update timestamp to completion time
       maxStepsReached: activeStream.maxStepsReached,
       upstreamError: activeStream.upstreamError,
+      budgetExceeded: activeStream.budgetExceeded,
       metadata: {
         ...activeStream.metadata,
         ...metadata
@@ -975,6 +992,7 @@ export const useAddToolCallSegment = () => useStreamingConversationStore(state =
 export const useAddToolResultSegment = () => useStreamingConversationStore(state => state.addToolResultSegment)
 export const useMarkMaxStepsReached = () => useStreamingConversationStore(state => state.markMaxStepsReached)
 export const useMarkUpstreamError = () => useStreamingConversationStore(state => state.markUpstreamError)
+export const useMarkBudgetExceeded = () => useStreamingConversationStore(state => state.markBudgetExceeded)
 export const useFinalizeStream = () => useStreamingConversationStore(state => state.finalizeStream)
 export const useAutoSendInitialMessage = () => useStreamingConversationStore(state => state.autoSendInitialMessage)
 export const useLoadConversationHistory = () => useStreamingConversationStore(state => state.loadConversationHistory)

@@ -3,6 +3,7 @@ import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper } from '../core/agent-factory.js'
 import { createAgentFactory } from '../core/agent-factory.js'
 import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '../utils/model-pricing.js'
+import { classifyError } from '../utils/retry-with-backoff.js'
 import type { AgentsCollection } from '../core/types.js'
 import type { HandoffStateManager } from '../tools/handoff-helpers.js'
 import { createLogger } from '../utils/logger.js'
@@ -783,6 +784,22 @@ export class WebSocketServer {
           }
 
           switch (part.type) {
+            case 'error': {
+              // AI SDK surfaced an error part - re-throw to trigger our error handling
+              // For budget errors, the error should already have isBudgetExceeded flag if set in unified-provider.ts
+              const error = part.error
+
+              this.logger.error('Stream error part received', {
+                error: error?.message || String(error),
+                statusCode: error?.statusCode,
+                isBudgetExceeded: error?.isBudgetExceeded,
+                responseBody: typeof error?.responseBody === 'string' ? error.responseBody.slice(0, 200) : undefined
+              })
+
+              // Re-throw the error as-is - isBudgetExceededError() will detect budget errors
+              throw error instanceof Error ? error : new Error(String(error))
+            }
+
             case 'text-delta': {
               // Handle text chunks
               const textData = {
@@ -956,7 +973,17 @@ export class WebSocketServer {
       }
     } catch (error: unknown) {
       // Enhanced error logging with structured information
-      const errorInfo = this.analyzeStreamError(error)
+      const errorInfo = this.analyzeStreamError(error);
+      // Non-retryable errors (budget exceeded, auth, etc.) should propagate to main handler
+      const classification = classifyError(error);
+      if (!classification.retryable) {
+        this.logger.warn(`Non-retryable error during stream processing: ${classification.category || 'unknown'}`, {
+          errorMessage: errorInfo.message,
+          category: classification.category,
+          agentName
+        });
+        throw error;
+      }
 
       this.logger.error('Error processing baseStream, falling back to text-only', {
         errorType: errorInfo.type,
@@ -976,6 +1003,12 @@ export class WebSocketServer {
       try {
         await this.processTextOnlyStream(socket, streamResult, currentStep, agentName)
       } catch (fallbackError: unknown) {
+        // Non-retryable errors should propagate
+        const fallbackClassification = classifyError(fallbackError);
+        if (!fallbackClassification.retryable) {
+          throw fallbackError;
+        }
+
         this.logger.error('Fallback to text-only streaming also failed', fallbackError)
         // Emit error to client as last resort
         this.emitToSocket(socket, 'message', {
@@ -1241,9 +1274,14 @@ export class WebSocketServer {
       await this.completeConversation(socketId, socket, agentName, startTime, processedContext)
 
     } catch (error) {
-      // Handle errors
-      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorMessage = error instanceof Error ? error.message : String(error);
       const errorType = (error as any)?.errorType
+      this.logger.warn(`agent error detected`, {
+        originalMessage: errorMessage,
+        errorType,
+        socketId,
+        agentName
+      });
 
       this.emitToSocket(socket, 'message', {
         type: 'error',
@@ -1705,10 +1743,22 @@ export class WebSocketServer {
       this.logger.debug('Caught error in streamGenerate', {
         name: error?.name,
         message: error?.message,
+        statusCode: error?.statusCode,
+        responseBody: error?.responseBody?.slice?.(0, 200),
         isAPIError: error?.name === 'AI_APICallError',
         hasToolUseInvalid: error?.message?.includes('toolUse.input is invalid'),
         hasJSONParsingFailed: error?.message?.includes('JSON parsing failed')
       })
+
+      // Non-retryable errors (budget exceeded, etc.) should propagate immediately
+      const errorClassification = classifyError(error);
+      if (!errorClassification.retryable) {
+        this.logger.warn(`Non-retryable error in streamGenerate: ${errorClassification.category || 'unknown'}`, {
+          category: errorClassification.category,
+          statusCode: errorClassification.statusCode
+        });
+        throw error;
+      }
 
       if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid') || error?.message?.includes('JSON parsing failed')) {
         this.logger.error('Tool input validation error', { message: error.message })

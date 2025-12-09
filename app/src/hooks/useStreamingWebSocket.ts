@@ -19,6 +19,7 @@ import {
   useAddToolResultSegment,
   useMarkMaxStepsReached,
   useMarkUpstreamError,
+  useMarkBudgetExceeded,
   useFinalizeStream,
   useSetWebSocketState,
   useSetStreamingState,
@@ -144,6 +145,7 @@ export function useStreamingWebSocket() {
   const addToolResultSegment = useAddToolResultSegment()
   const markMaxStepsReached = useMarkMaxStepsReached()
   const markUpstreamError = useMarkUpstreamError()
+  const markBudgetExceeded = useMarkBudgetExceeded()
   const finalizeStream = useFinalizeStream()
   const setWebSocketState = useSetWebSocketState()
   const setStreamingState = useSetStreamingState()
@@ -829,13 +831,35 @@ export function useStreamingWebSocket() {
           break
         case 'error':
           flushToolDeltaBufferImmediate()
-          // Check if this is an APP_NOT_FOUND error that we should retry
+          // Check error type for specific handling
           const errorType = data.data?.errorType
+          const isBudgetError = errorType === 'BUDGET_EXCEEDED';
           const isAppNotFound = errorType === 'APP_NOT_FOUND'
           const retryState = retryStateRef.current
           const elapsedTime = retryState.pendingMessage
             ? Date.now() - retryState.pendingMessage.startTime
             : 0
+
+          // Handle budget exceeded errors - show immediately, no retry
+          if (isBudgetError) {
+            logger.warn('websocket.error.budget_exceeded', {
+              message: 'Budget exceeded error received',
+              content: data.content
+            })
+
+            if (retryState.retryTimer) {
+              clearTimeout(retryState.retryTimer);
+            }
+            retryStateRef.current = { retryCount: 0 };
+
+            markBudgetExceeded();
+            sendToolImpression('error');
+            setWebSocketState({ status: 'error', error: data.content });
+            setStreamingState('error');
+            setIsLoading(false);
+            break;
+          }
+
           const shouldRetry = isAppNotFound && elapsedTime < 30000 // Retry for up to 30 seconds
 
           if (shouldRetry && retryState.pendingMessage) {
@@ -943,6 +967,7 @@ export function useStreamingWebSocket() {
     addToolCallSegment,
     markMaxStepsReached,
     markUpstreamError,
+    markBudgetExceeded,
     finalizeStream,
     setWebSocketState,
     setStreamingState,

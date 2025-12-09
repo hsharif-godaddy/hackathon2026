@@ -26,6 +26,7 @@ function shouldRenderMessage(message: ChatMessage | StreamingMessageType): boole
     message.segments?.length ||
     message.toolCalls?.length ||
     message.upstreamError || // Show error messages
+    message.budgetExceeded || // Show budget exceeded message
     message.maxStepsReached // Show max steps warnings
   )
 
@@ -91,7 +92,7 @@ function renderMessageContent(message: ChatMessage | StreamingMessageType, isAct
     const hasNoContent = !message.content && !message.segments?.length && !message.toolCalls?.length
     const isIncomplete = 'isComplete' in message && !message.isComplete
     const isErrorState = streamingState === 'error'
-    const showThinking = isActiveStream && isIncomplete && hasNoContent && !message.upstreamError && !message.maxStepsReached && !isErrorState
+    const showThinking = isActiveStream && isIncomplete && hasNoContent && !message.upstreamError && !message.budgetExceeded && !message.maxStepsReached && !isErrorState
 
     if (showThinking) {
       return <ThinkingIndicator />

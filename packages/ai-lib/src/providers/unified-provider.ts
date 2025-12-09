@@ -5,6 +5,7 @@
  * automatic environment variable validation, and proxy support.
  */
 
+import { BudgetExceededError } from '../utils/errors.js'
 import { createLogger } from '../utils/logger.js'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
@@ -121,12 +122,12 @@ function getClaudeProxyType(modelName: string, config?: ProviderConfig): 'openai
   if (!isClaudeProxyModel) {
     return null
   }
-  
+
   // If S2S auth is enabled, prefer Anthropic proxy (since we have GoCode endpoints)
   if (isS2SAuthEnabled()) {
     return 'anthropic'
   }
-  
+
   // If AWS is available, use Bedrock directly (no proxy needed)
   const hasAWS = hasAWSCredentials(config)
   if (hasAWS) {
@@ -191,13 +192,13 @@ function getProviderType(modelName: string, config?: ProviderConfig): 'openai' |
   if (proxyType) {
     return proxyType
   }
-  
+
   // Check if AWS/Bedrock is available and prefer it when possible
   const hasAwsCredentials = !!(
     config?.awsAccessKeyId ||
     config?.awsSecretAccessKey ||
     config?.awsRegion ||
-    process.env.AWS_ACCESS_KEY_ID || 
+    process.env.AWS_ACCESS_KEY_ID ||
     process.env.AWS_PROFILE ||
     process.env.AWS_REGION
   )
@@ -306,6 +307,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
 
     // Inject litellm_metadata into request body if available
     const modifiedInit = { ...init, headers }
+
     if (cachedLitellmMetadata && init?.body) {
       try {
         const body = JSON.parse(init.body as string)
@@ -326,6 +328,33 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
 
     // Make request with Headers instance and modified body
     const response = await fetch(url, modifiedInit)
+
+    // Check for budget error (400 status) and clone response to read body
+    // Check for budget exceeded errors (GoCode returns 400 with "ExceededBudget" in body)
+    // We intercept here because the AI SDK wraps errors and loses the original statusCode/responseBody for NoOutputGeneratedError Ai error type
+    if (response.status === 400) {
+      try {
+        // Clone the response so we can read the body without consuming the original
+        const clonedResponse = response.clone();
+        const bodyText = await clonedResponse.text();
+        const bodyLower = bodyText.toLowerCase();
+
+        // Check if this is a budget exceeded error
+        if (bodyLower.includes('exceededbudget') || bodyLower.includes('over budget')) {
+          throw new BudgetExceededError(
+            'Your AI usage budget has been reached.',
+            400,
+            bodyText
+          );
+        }
+      } catch (e: unknown) {
+        // If it's BudgetExceededError, re-throw it
+        if (BudgetExceededError.isInstance(e)) {
+          throw e;
+        }
+        // Otherwise ignore read errors and let the normal flow continue
+      }
+    }
 
     // Attempt token refresh on authentication failure
     if (response.status === 401 || response.status === 403) {
@@ -373,18 +402,18 @@ async function createOpenAIProvider(config?: ProviderConfig) {
   } else {
     // Use regular OpenAI authentication
     const fallbackApiKey = config?.openaiApiKey || process.env.OPENAI_API_KEY || ''
-    
+
     const openaiConfig: any = {
       apiKey: fallbackApiKey
     }
-    
+
     // Add base URL if provided (for proxy support)
     const baseURL = config?.openaiBaseUrl || process.env.OPENAI_BASE_URL
     if (baseURL) {
       // Ensure URL ends with /v1 for OpenAI API compatibility
       openaiConfig.baseURL = baseURL.endsWith('/v1') ? baseURL : baseURL + '/v1'
     }
-    
+
     return createOpenAI(openaiConfig)
   }
 }
@@ -499,10 +528,10 @@ export async function getModel(
     if (providerType === 'openai') {
       // Validate OpenAI configuration
       validateOpenAIConfig(config)
-      
+
       // Determine the model name to use
       let modelNameToUse: string
-      
+
       if (shouldUseClaudeProxy(modelName, config)) {
         // Use Claude proxy model name
         modelNameToUse = CLAUDE_PROXY_MODELS[modelName as keyof typeof CLAUDE_PROXY_MODELS]
@@ -511,7 +540,7 @@ export async function getModel(
         // Use regular OpenAI model mapping
         modelNameToUse = MODEL_MAPPINGS[modelName as ModelShortName] || modelName
       }
-      
+
       // Create OpenAI provider
       const provider = await createOpenAIProvider(config)
       return provider(modelNameToUse)

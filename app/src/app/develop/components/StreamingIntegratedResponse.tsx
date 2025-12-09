@@ -1,6 +1,8 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useIntl } from 'react-intl'
+import text from '@ux/text'
 import ResponseMetadata from '@/app/develop/components/ResponseMetadata'
 import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
 import MessageContentRenderer, { type ContentBlock } from '@/app/develop/components/MessageContentRenderer'
@@ -8,6 +10,7 @@ import MessageToolCallsRenderer from '@/app/develop/components/MessageToolCallsR
 import { isStreamingMessage, hasValidSegments } from '@/app/develop/components/utils'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
+import { useTranslations } from '@/hooks/useTranslations'
 
 interface StreamingIntegratedResponseProps {
   message: ChatMessage | StreamingMessageType
@@ -17,9 +20,39 @@ interface StreamingIntegratedResponseProps {
   streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
 }
 
+/**
+ * Calculate the next budget reset time (00:10:00 UTC) and whether it's tomorrow
+ */
+function getNextResetInfo(): { date: Date; isTomorrow: boolean } {
+  const now = new Date();
+  const resetTime = new Date(now);
+
+  // Set to 00:10:00 UTC
+  resetTime.setUTCHours(0, 10, 0, 0);
+
+  // If we're past today's reset time, move to tomorrow
+  const isTomorrow = now >= resetTime;
+  if (isTomorrow) {
+    resetTime.setUTCDate(resetTime.getUTCDate() + 1);
+  }
+
+  return { date: resetTime, isTomorrow };
+}
+
 export default function StreamingIntegratedResponse({ message, isActiveStream = false, isLastAssistantMessage = false, startTime, streamingState }: StreamingIntegratedResponseProps) {
+  const t = useTranslations();
+  const intl = useIntl();
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
+
+  // Calculate formatted reset time as "today at [time]" or "tomorrow at [time]"
+  const resetTime = useMemo(() => {
+    const { date, isTomorrow } = getNextResetInfo();
+    const time = intl.formatDate(date, { hour: 'numeric', minute: '2-digit' });
+    return isTomorrow
+      ? t('builder_usage_limit_reset_tomorrow', { time }, `tomorrow at ${time}`)
+      : t('builder_usage_limit_reset_today', { time }, `today at ${time}`);
+  }, [intl, t]);
 
   /**
    * Extract tool calls directly from segments as a fallback when chronologicalContent is empty
@@ -203,8 +236,31 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
           />
         )}
 
+        {/* Budget exceeded error notification */}
+        {message.budgetExceeded && (
+          <StreamingAlertMessage
+            type="Critical"
+            title={t('builder_usage_limit_title')}
+            message={
+              resetTime ? (
+                <text.p
+                  size={0}
+                  dangerouslySetInnerHTML={{
+                    __html: t('builder_usage_limit_message', {
+                      resetTime,
+                      strong: (chunks: string) => `<strong>${chunks}</strong>`
+                    })
+                  }}
+                />
+              ) : (
+                t('builder_usage_limit_message_no_reset_time')
+              )
+            }
+          />
+        )}
+
         {/* Upstream service error notification */}
-        {message.upstreamError && (
+        {message.upstreamError && !message.budgetExceeded && (
           <StreamingAlertMessage
             type="Critical"
             title="Error"
@@ -213,7 +269,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
         )}
 
         {/* Connection retrying notification (yellow warning) */}
-        {!message.upstreamError && streamingState === 'retrying' && isActiveStream && !isComplete && (
+        {!message.upstreamError && !message.budgetExceeded && streamingState === 'retrying' && isActiveStream && !isComplete && (
           <StreamingAlertMessage
             type="Warning"
             title="Connection Lost"
@@ -222,7 +278,7 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
         )}
 
         {/* Connection error notification (red critical - after 5 minutes or reconnect failed) */}
-        {!message.upstreamError && streamingState === 'error' && isActiveStream && !isComplete && (
+        {!message.upstreamError && !message.budgetExceeded && streamingState === 'error' && isActiveStream && !isComplete && (
           <StreamingAlertMessage
             type="Critical"
             title="Connection Error"

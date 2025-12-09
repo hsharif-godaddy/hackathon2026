@@ -5,6 +5,8 @@
  * Only a unified logger interface is supported for structured events.
  */
 
+import { BudgetExceededError } from './errors.js'
+
 /**
  * Configuration for retry behavior
  */
@@ -43,7 +45,7 @@ export const DEFAULT_RETRY_CONFIG = DEFAULT_RETRY_OPTIONS
  */
 export interface RetryDecision {
   retryable: boolean
-  category?: 'transient' | 'rate_limit' | undefined
+  category?: 'transient' | 'rate_limit' | 'budget_exceeded' | undefined
   statusCode?: number | undefined
   message: string
 }
@@ -53,11 +55,22 @@ function isObject(val: unknown): val is Record<string, unknown> {
 }
 
 function classify(error: unknown): RetryDecision {
+  // Check for BudgetExceededError first
+  if (BudgetExceededError.isInstance(error)) {
+    return {
+      retryable: false,
+      category: 'budget_exceeded',
+      statusCode: error.statusCode,
+      message: error.responseBody || error.message
+    }
+  }
+
   // Use type guards to safely extract properties from error
   const message: string =
     isObject(error) && typeof error.message === 'string'
       ? error.message
-      : String(error)
+      : String(error);
+
   const statusCode: number | undefined =
     isObject(error) && typeof error.status === 'number'
       ? error.status
@@ -65,27 +78,30 @@ function classify(error: unknown): RetryDecision {
         ? error.statusCode
         : isObject(error) && isObject(error.response) && typeof (error.response as Record<string, unknown>).status === 'number'
           ? (error.response as Record<string, unknown>).status as number
-          : undefined
+          : undefined;
   const errorCode =
     isObject(error) && typeof error.code === 'string'
       ? error.code
-      : undefined
+      : undefined;
   const name: string =
     isObject(error) && typeof error.name === 'string'
       ? error.name
-      : ''
-  const lower = message.toLowerCase()
+      : '';
 
-  if (statusCode === 429 || lower.includes('rate limit') || lower.includes('too many requests') || /ThrottlingException/i.test(name)) {
+  const messageLower = message.toLowerCase();
+
+  if (statusCode === 429 || messageLower.includes('rate limit') || messageLower.includes('too many requests') || /ThrottlingException/i.test(name)) {
     return { retryable: true, category: 'rate_limit', statusCode, message }
   }
+
   const networkCodes = ['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET', 'EPIPE']
   const transientByName = /TimeoutError|ServiceUnavailableException|OverloadedException|GatewayTimeout|ModelTimeout/i.test(name)
   const timeoutText = /timeout|timed out|socket hang up/i.test(message)
   const statusTransient = statusCode === 408 || (statusCode !== undefined && statusCode >= 500)
-  if ((errorCode && networkCodes.includes(errorCode)) || transientByName || timeoutText || statusTransient || lower.includes('service unavailable') || lower.includes('temporarily unavailable') || lower.includes('overloaded')) {
+  if ((errorCode && networkCodes.includes(errorCode)) || transientByName || timeoutText || statusTransient || messageLower.includes('service unavailable') || messageLower.includes('temporarily unavailable') || messageLower.includes('overloaded')) {
     return { retryable: true, category: 'transient', statusCode, message }
   }
+
   if (statusCode && statusCode >= 400 && statusCode < 500) {
     return { retryable: false, statusCode, message }
   }
@@ -228,4 +244,28 @@ export function hasRetryMetadata(error: unknown): error is Error & { retryFailur
 }
 export function getRetryMetadata(error: unknown): RetryFailureMeta | null {
   return hasRetryMetadata(error) ? (error as Error & { retryFailureMeta: RetryFailureMeta }).retryFailureMeta : null
+}
+
+/**
+ * Check if an error is a budget exceeded error
+ * Budget errors are non-retryable and should be surfaced to the user
+ *
+ * @param error - The error to check
+ * @returns true if this is a BudgetExceededError
+ */
+export function isBudgetExceededError(error: unknown): error is BudgetExceededError {
+  // Fast path: direct instance check
+  if (BudgetExceededError.isInstance(error)) {
+    return true
+  }
+  // Fallback: use classify for wrapped errors
+  return classify(error).category === 'budget_exceeded'
+}
+
+/**
+ * Classify an error for handling purposes
+ * Returns category: 'transient' | 'rate_limit' | 'budget_exceeded' | undefined
+ */
+export function classifyError(error: unknown): RetryDecision {
+  return classify(error)
 }
