@@ -20,9 +20,9 @@ import {
 
 // Mock the AI SDK - using factory function
 vi.mock('ai', () => {
-  const MockExperimentalAgent = vi.fn()
+  const MockToolLoopAgent = vi.fn()
   return {
-    Experimental_Agent: MockExperimentalAgent,
+    ToolLoopAgent: MockToolLoopAgent,
     stepCountIs: vi.fn((n: number) => ({ type: 'step_count', value: n })),
     hasToolCall: vi.fn((name: string) => ({ type: 'has_tool_call', value: name }))
   }
@@ -38,13 +38,13 @@ describe('AgentWrapper Retry with Conversation History', () => {
   let mockAgent: MockAgent
   let agentWrapper: AgentWrapper
   let consoleSpy: ReturnType<typeof createConsoleSpy>
-  let MockExperimentalAgent: any
+  let MockToolLoopAgent: any
 
   beforeEach(async () => {
     consoleSpy = createConsoleSpy()
     vi.useFakeTimers()
 
-    // Create a mock Experimental_Agent instance
+    // Create a mock ToolLoopAgent instance
     mockAgent = {
       generate: vi.fn(),
       stream: vi.fn()
@@ -52,8 +52,8 @@ describe('AgentWrapper Retry with Conversation History', () => {
 
     // Get the mocked constructor and set it to return our mockAgent
     const aiModule = await import('ai')
-    MockExperimentalAgent = aiModule.Experimental_Agent as any
-    MockExperimentalAgent.mockReturnValue(mockAgent)
+    MockToolLoopAgent = aiModule.ToolLoopAgent as any
+    MockToolLoopAgent.mockReturnValue(mockAgent)
 
     // Create agent config
     const config: AgentConfig = {
