@@ -172,7 +172,7 @@ export default function StreamingMessageList() {
   }
 
   return (
-    <div ref={containerRef} className="flex flex-1 flex-col overflow-y-auto px-2 gap-1">
+    <div ref={containerRef} className="flex flex-1 flex-col overflow-y-auto px-2 sm:px-3 md:px-0 pt-1.5 md:pt-0 gap-1">
       {/* Load More Button */}
       {pagination.hasMore && (
         <div className="flex justify-center mb-2">

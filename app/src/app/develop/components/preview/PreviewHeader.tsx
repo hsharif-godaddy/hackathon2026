@@ -48,7 +48,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   const DomainButton = () => {
     return (
       <div
-        className="grow mx-4 pl-2 flex justify-between items-center border rounded-xl px-1.5 h-full leading-none text-left bg-intents-ux-box-backgroundColor"
+        className="grow mx-3 pl-2 flex justify-between items-center border rounded-xl h-full leading-none text-left bg-intents-ux-box-backgroundColor"
       >
         {site?.name && <span className="truncate max-w-[200px]">{site.name}</span>}
       </div>
@@ -59,7 +59,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
     <header className={clsx(
       "flex items-center w-full gap-0.5", {
         "pb-1.5": !isMobile,
-        "p-1": isMobile
+        "p-2": isMobile
       }
     )}>
       { !isMobile && (

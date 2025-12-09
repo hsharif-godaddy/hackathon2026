@@ -92,7 +92,7 @@ export default function MarkdownRenderer({
                 {String(children).replace(/\n$/, '')}
               </SyntaxHighlighter>
             ) : (
-              <code className="bg-intents-ux-boxLowContrast-backgroundColor text-xs px-0.25 py-0.25 font-mono" {...props}>
+              <code className="bg-intents-ux-boxLowContrast-backgroundColor text-xs px-0.5 py-0.5 font-mono" {...props}>
                 {children}
               </code>
             )

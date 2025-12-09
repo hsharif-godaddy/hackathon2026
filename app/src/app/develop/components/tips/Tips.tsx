@@ -69,9 +69,11 @@ export default function Tips({ buildingMessage = 'The AI agent is building your 
                 exit={{ opacity: 0, y: 5, scale: 0.95 }}
                 transition={{ duration: 0.4 }}
               >
-                <Alert emphasis="info">
-                  <text.p as="heading">{currentTip.title}</text.p>
-                  <text.p>{currentTip.description}</text.p>
+                <Alert
+                  emphasis="info"
+                  title={currentTip.title}
+                >
+                 {currentTip.description}
                 </Alert>
               </motion.div>
             </AnimatePresence>

@@ -9,6 +9,7 @@ import { UserMenu } from '@/components/auth'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import AppSelector from '@/components/layout/AppSelector'
 import AppPublish from '@/components/layout/AppPublish'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { generateClickEID } from '@/utils/instrumentation'
 import { HeaderProps } from './types'
 import { AiroLogo } from './AiroLogo';
@@ -18,6 +19,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
   const t = useTranslations();
   const { isAuthenticated, isAuthDisabled } = useAuthContext();
   const showAuthenticatedUI = isAuthenticated || isAuthDisabled;
+  const isMobile = useIsMobile();
 
   return (
     <header className={clsx(
@@ -34,14 +36,13 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
               className="flex items-center"
               data-eid={ generateClickEID(`${location}.header.airo_ai_link`) }
             >
-              <div className="flex items-center justify-center gap-2">
-                <ChevronLeftIcon />
+              <div className="flex items-center justify-center gap-1 md:gap-2">
                 <AiroLogo className="relative" design="dark" />
               </div>
             </Link>
             <Tag emphasis="highlight" highcontrast>{t('builder_beta', undefined, 'beta')}</Tag>
           </div>
-          <Box orientation="horizontal" gap="lg">
+          <Box orientation="horizontal" gap={isMobile ? 'md' : 'lg'}>
             {actions && actions}
             <UserMenu
               onShowMockLogin={onShowMockLogin}

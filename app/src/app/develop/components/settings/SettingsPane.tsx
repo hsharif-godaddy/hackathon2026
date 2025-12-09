@@ -28,7 +28,7 @@ export default function SettingsPane() {
         {items.map((item) => (
           <Button
             design="option"
-            size='sm'
+            size="sm"
             active={activeSettingsSection === item.id}
             key={item.id}
             data-eid={generateClickEID('develop.settings.item')}

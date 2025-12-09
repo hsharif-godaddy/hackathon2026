@@ -428,7 +428,7 @@ export default function ChatPane({
 
   return (
     <ChatContext.Provider value={chatContextValue}>
-    <div className="flex-1 flex flex-col h-full md:pt-2 gap-1 md:gap-2">
+    <div className="flex-1 flex flex-col h-full p-0 md:p-2 gap-1 md:gap-2">
       <PlanTracker
         developmentPlan={developmentPlan}
         expandedPlan={expandedPlan}

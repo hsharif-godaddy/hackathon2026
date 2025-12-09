@@ -64,7 +64,7 @@ export default function CssSuggestToolRenderer({
           <ColorPaletteGridWidget palettes={palettes} />
 
           {/* Helper message */}
-          <div className="flex items-center gap-2 text-xs text-intents-ux-textSubtle-textColor mt-2">
+          <div className="flex items-center gap-1 text-xs text-intents-ux-textSubtle-textColor mt-2">
             <svg
               className="w-3 h-3"
               fill="currentColor"

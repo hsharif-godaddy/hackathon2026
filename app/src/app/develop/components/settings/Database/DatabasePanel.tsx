@@ -130,6 +130,7 @@ export function DatabasePanel({ appId }: DatabasePanelProps) {
             <Button
               icon={<EditIcon />}
               design="tertiary"
+              size="sm"
               onClick={() => handleTableClick(table)}
               text="Edit Table"
             />

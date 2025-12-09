@@ -208,6 +208,7 @@ export function AddRowDialog({
           name={col.name}
           label={labelText}
           value="Auto-generated"
+          visualSize="sm"
           disabled
           stretch
         />
@@ -232,6 +233,7 @@ export function AddRowDialog({
           onChange={(value) => handleChange(col.name, value)}
           required={isRequired}
           helpMessage={helpText}
+          visualSize="sm"
           stretch
         >
           <option value=""></option>
@@ -262,6 +264,7 @@ export function AddRowDialog({
         onChange={(value) => handleChange(col.name, value)}
         required={isRequired}
         helpMessage={helpText}
+        visualSize="sm"
         stretch
         multiline={isMultiline}
       />

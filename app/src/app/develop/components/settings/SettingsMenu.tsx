@@ -55,6 +55,7 @@ export default function SettingsMenu() {
             <Button
               key={item.id}
               design="option"
+              size="sm"
               active={activeSettingsSection === item.id}
               icon={item.icon}
               text={item.label}

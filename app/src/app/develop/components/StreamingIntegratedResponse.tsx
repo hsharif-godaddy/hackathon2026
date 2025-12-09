@@ -214,18 +214,16 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
 
   return (
     <div>
-      <div className="px-1">
-
-        <div className="space-y-1">
-          {/* Always use segments - extract tool calls directly if chronologicalContent is empty */}
-          {hasSegments ? (
-            chronologicalContent.length > 0 ? (
-              <MessageContentRenderer blocks={chronologicalContent} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
-            ) : (
-              <MessageToolCallsRenderer toolCalls={extractToolCallsFromSegments(message.segments)} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
-            )
-          ) : null}
-        </div>
+      <div className="space-y-1">
+        {/* Always use segments - extract tool calls directly if chronologicalContent is empty */}
+        {hasSegments ? (
+          chronologicalContent.length > 0 ? (
+            <MessageContentRenderer blocks={chronologicalContent} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
+          ) : (
+            <MessageToolCallsRenderer toolCalls={extractToolCallsFromSegments(message.segments)} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
+          )
+        ) : null}
+      </div>
 
         {/* Max steps reached notification */}
         {message.maxStepsReached && (
@@ -286,14 +284,13 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
           />
         )}
 
-        {/* Response metadata - timing and copy */}
-        {isComplete && startTime && (
-          <ResponseMetadata
-            duration={message.timestamp.getTime() - startTime.getTime()}
-            content={getFullResponseText()}
-          />
-        )}
-      </div>
+      {/* Response metadata - timing and copy */}
+      {isComplete && startTime && (
+        <ResponseMetadata
+          duration={message.timestamp.getTime() - startTime.getTime()}
+          content={getFullResponseText()}
+        />
+      )}
     </div>
   )
 }

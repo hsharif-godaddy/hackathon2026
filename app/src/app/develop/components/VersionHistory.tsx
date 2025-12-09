@@ -169,7 +169,7 @@ export default function VersionHistory() {
   return (
     <div className="flex-1 flex flex-col h-full overflow-y-auto">
       {/* Scrollable content area */}
-      <div className="flex-1 flex flex-col gap-2 p-2">
+      <div className="flex-1 flex flex-col gap-2 p-2 sm:p-0">
         {error && (
           <div className="bg-intents-ux-feedbackCritical-feedbackColor p-1.5 text-sm">
             Error: {error}

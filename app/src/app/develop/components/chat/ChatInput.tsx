@@ -28,7 +28,7 @@ export default function ChatInput({
   }
 
   return (
-    <div className="px-2 mt-1 mt-auto">
+    <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto">
       <div id="tour-chat-input" className="relative">
         <div className="flex items-stretch space-x-1 p-1.5 border rounded-lg focus-within:ring-2">
           <div className="flex-1">

@@ -228,12 +228,14 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
               text="Add Row"
               icon={<PlusIcon />}
               design="primary"
+              size="sm"
               onClick={() => setIsAddDialogOpen(true)}
             />
             <Button
               text="Refresh"
               icon={<RefreshIcon className={isRefetching ? 'animate-spin' : ''} />}
               design="secondary"
+              size="sm"
               onClick={() => refetch()}
               disabled={isLoading || isRefetching}
               aria-label={isRefetching ? 'Refreshing table data' : 'Refresh table data'}
@@ -276,11 +278,10 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
                         <div className="flex items-center gap-1.5">
                           <Button
                             icon={<EditIcon />}
-                            design="inline"
+                            design="tertiary"
                             size="sm"
                             onClick={() => handleEditRow(row)}
                           />
-                          <div className="h-3 w-px bg-intents-ux-box-borderColor" />
                           <Button
                             icon={<TrashIcon />}
                             design="critical"

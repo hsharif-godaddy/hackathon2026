@@ -377,7 +377,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           {submitError && (
             <div className="border rounded-lg p-2 flex items-start justify-between" style={{ backgroundColor: '#fee8e89c', borderColor: '#db1802' }}>
               <div className="flex items-start gap-1.5">
-                <div className="mt-0.25" style={{ color: '#ef4444'}}>⚠️</div>
+                <div className="mt-0.5" style={{ color: '#ef4444'}}>⚠️</div>
                 <div>
                   <div className="font-semibold mb-0.5" style={{ color: '#ef4444'}}>Failed!</div>
                   <text.p className="text-sm" style={{ color: '#ef4444'}}>{submitError}</text.p>
@@ -397,7 +397,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           {submitSuccess && (
             <div className="border rounded-lg p-2 flex items-start justify-between" style={{ backgroundColor: '#f0fdf4', borderColor: '#22c55e' }}>
               <div className="flex items-start gap-1.5">
-                <div className="mt-0.25" style={{ color: '#22c55e'}}>✓</div>
+                <div className="mt-0.5" style={{ color: '#22c55e'}}>✓</div>
                 <div>
                   <div className="font-semibold mb-0.5" style={{ color: '#16a34a'}}>Successful!</div>
                   <text.p className="text-sm" style={{ color: '#15803d'}}>{submitSuccess}</text.p>
@@ -516,32 +516,32 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         {/* System managed and sync status tags */}
                         <div className="mt-0.5 flex gap-1 flex-wrap">
                           {secret.systemManaged ? (
-                            <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#f3f4f6', borderColor: '#9ca3af' }}>
+                            <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#f3f4f6', borderColor: '#9ca3af' }}>
                               <text.p style={{ fontSize: '0.75rem', color: '#6b7280'}}>System managed</text.p>
                             </div>
                           ) : (
                             <>
                               {secret.syncStatus === 'synced' && (
-                                <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#d1fae5', borderColor: '#10b981' }}>
+                                <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#d1fae5', borderColor: '#10b981' }}>
                                   <text.p style={{ fontSize: '0.75rem', color: '#059669'}}>Deployed</text.p>
                                 </div>
                               )}
                               {secret.syncStatus === 'added' && (
                                 <>
-                                  <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#dbeafe', borderColor: '#3b82f6' }}>
+                                  <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#dbeafe', borderColor: '#3b82f6' }}>
                                     <text.p style={{ fontSize: '0.75rem', color: '#2563eb'}}>Newly added</text.p>
                                   </div>
-                                  <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
+                                  <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
                                     <text.p style={{ fontSize: '0.75rem', color: '#d97706'}}>Not deployed</text.p>
                                   </div>
                                 </>
                               )}
                               {secret.syncStatus === 'updated' && (
                                 <>
-                                  <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#e0e7ff', borderColor: '#6366f1' }}>
+                                  <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#e0e7ff', borderColor: '#6366f1' }}>
                                     <text.p style={{ fontSize: '0.75rem', color: '#4f46e5'}}>Updated</text.p>
                                   </div>
-                                  <div className="px-1 py-0.25 rounded inline-block" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
+                                  <div className="px-1 py-0.5 rounded inline-block" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
                                     <text.p style={{ fontSize: '0.75rem', color: '#d97706'}}>Not deployed</text.p>
                                   </div>
                                 </>
@@ -615,10 +615,10 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           {/* Not deployed secrets notice */}
           {formSecrets.some(s => s.syncStatus === 'added' || s.syncStatus === 'updated') && (
             <div className="border-l-4 rounded-r-lg p-2 flex items-start gap-1.5" style={{ backgroundColor: '#fffbeb', borderColor: '#f59e0b' }}>
-              <div className="mt-0.25" style={{ color: '#f59e0b'}}>ℹ️</div>
+              <div className="mt-0.5" style={{ color: '#f59e0b'}}>ℹ️</div>
               <div>
                 <div className="font-semibold mb-0.5 flex items-center gap-1" style={{ color: '#d97706'}}>
-                  <span className="px-1 py-0.25 rounded text-xs" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
+                  <span className="px-1 py-0.5 rounded text-xs" style={{ backgroundColor: '#fef3c7', borderColor: '#f59e0b' }}>
                     Not deployed
                   </span>
                   <span>secrets</span>
