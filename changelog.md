@@ -19,6 +19,27 @@
 
 ### Internal Changes
 
+- **Event-Driven WebSocket Architecture with Connection Recovery**: Introduced pub/sub event channel system for reliable WebSocket streaming with connection recovery
+  - Added `ConversationEventChannel`: Central event bus managing per-conversation event buffers with circular buffer implementation
+    - Circular buffer with fixed capacity (1,000 events) and automatic overflow handling prevents unbounded memory growth
+    - Per-conversation isolation with monotonic sequence numbering for reliable event ordering
+    - Multi-subscriber support with event filtering and fail-fast error handling
+    - TTL-based cleanup (5 minutes) preserves conversations with active subscribers
+    - Event replay capability for connection recovery using sequence numbers
+  - Added `CircularBuffer<T>`: Memory-efficient fixed-size buffer with sequence-based filtering
+    - Automatic wrap-around and oldest event eviction on overflow
+    - Fast random access by sequence number for efficient replay
+    - Supports "get all events since sequence N" for incremental replay
+  - Added three subscriber implementations for decoupled event delivery:
+    - `WebSocketSubscriber`: Delivers events to Socket.IO clients, buffers during disconnection for replay
+    - `PersistenceSubscriber`: Writes events to database via `ConversationPersistence` interface with fail-fast behavior
+    - `APMSubscriber`: Tracks tool execution spans in Elastic APM with filtering for tool-related events only
+  - Type-safe event format conversion between `StreamingEvent`, `WebSocketMessage`, and `PersistenceStreamingEvent`
+  - Comprehensive test coverage: 88 unit tests across event channel, circular buffer, and all subscribers
+  - Critical fixes: Forced conversationId consistency in publish() to prevent data misrouting, cleanup preserves active subscribers
+  - Foundation for PR sequence implementing reliable WebSocket streaming with automatic reconnection and event replay
+  - No integration yet - infrastructure only, ready for WebSocket server integration in future PRs
+
 - **File Edit Tool - Universal Batch Format**: Standardized file edit system on batch operations format to eliminate dual code paths
   - Converted `editFile()` to thin wrapper around `editFiles()` - zero code duplication, all logic flows through single implementation
   - Backward compatibility maintained: REST API endpoints and Memory Service continue using `editFile()` wrapper

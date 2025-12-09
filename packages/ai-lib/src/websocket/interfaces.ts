@@ -210,3 +210,121 @@ export interface ConversationPersistenceWithCleanup extends ConversationPersiste
    */
   handleDisconnection(socketId: string, conversationIds: string[]): Promise<void>
 }
+
+/**
+ * Event types for streaming events
+ */
+export type StreamingEventType =
+  | 'chunk'
+  | 'tool_start'
+  | 'tool_input_delta'
+  | 'tool_call'
+  | 'tool_result'
+  | 'step_start'
+  | 'step_complete'
+  | 'complete'
+  | 'error'
+  | 'recovery_status'
+
+/**
+ * Normalized streaming event structure for event channel
+ * All events flow through the event channel with this schema
+ */
+export interface StreamingEvent {
+  /** Unique event ID */
+  id: string
+
+  /** Conversation this event belongs to */
+  conversationId: string
+
+  /** Monotonically increasing sequence number for ordering */
+  sequence: number
+
+  /** Event type classification */
+  type: StreamingEventType
+
+  /** Text content (for chunks, descriptions) */
+  content: string
+
+  /** Structured data (tool info, usage, etc.) */
+  data: Record<string, unknown>
+
+  /** Event creation timestamp */
+  timestamp: Date
+
+  /** Agent that generated this event */
+  agentName: string
+
+  /** Optional step number for multi-step reasoning */
+  step?: number
+
+  /** Subscriber IDs that have received this event */
+  deliveredTo?: Set<string>
+
+  /** Whether event has been persisted to database */
+  persisted?: boolean
+}
+
+/**
+ * Metadata about a conversation's event buffer
+ * Used for replay and diagnostics
+ */
+export interface EventMetadata {
+  /** Conversation ID */
+  conversationId: string
+
+  /** Sequence number of first event in buffer */
+  firstSequence: number
+
+  /** Sequence number of last event in buffer */
+  lastSequence: number
+
+  /** Total number of events in buffer */
+  totalEvents: number
+
+  /** Timestamp of oldest event */
+  oldestTimestamp: Date
+
+  /** Timestamp of newest event */
+  newestTimestamp: Date
+}
+
+/**
+ * Configuration for circular buffer
+ */
+export interface CircularBufferConfig {
+  /** Maximum number of events to buffer */
+  capacity: number
+
+  /** Time-to-live for events in milliseconds */
+  ttl: number
+}
+
+/**
+ * Event subscriber interface for receiving streaming events
+ * Subscribers register with the event channel to receive events
+ */
+export interface EventSubscriber {
+  /** Unique subscriber ID */
+  id: string
+
+  /**
+   * Handle a streaming event
+   * @param event - The streaming event to process
+   * @throws Error to signal subscriber failure (triggers fail-fast)
+   */
+  onEvent(event: StreamingEvent): Promise<void>
+
+  /**
+   * Handle an error that occurred during event processing
+   * @param error - The error that occurred
+   */
+  onError(error: Error): void
+
+  /**
+   * Optional filter to selectively receive events
+   * @param event - The event to filter
+   * @returns true to receive this event, false to skip
+   */
+  filter?(event: StreamingEvent): boolean
+}

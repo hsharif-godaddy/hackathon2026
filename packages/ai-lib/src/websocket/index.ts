@@ -16,3 +16,16 @@ export type {
   PersistenceStreamingEvent,
   ConversationContext
 } from './experimental-websocket-server.js'
+
+// Event Channel Infrastructure
+export {
+  ConversationEventChannel,
+  CircularBuffer
+} from './conversation-event-channel.js'
+export type {
+  StreamingEvent,
+  StreamingEventType,
+  EventSubscriber,
+  EventMetadata,
+  CircularBufferConfig
+} from './interfaces.js'
