@@ -91,6 +91,8 @@ export const useSitesStore = create<SitesStore>()(
         set((state) => {
           state.isLoadingAll = false
           state.error = error instanceof Error ? error.message : 'Failed to connect to server'
+          // Set lastFetchedAll even on error to prevent infinite retry loops
+          state.lastFetchedAll = Date.now();
         })
       }
     },

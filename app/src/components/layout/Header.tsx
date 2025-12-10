@@ -4,7 +4,6 @@ import Link from 'next/link'
 import clsx from 'clsx'
 import Box from '@ux/box'
 import Tag from '@ux/tag';
-import ChevronLeftIcon from '@ux/icon/chevron-left';
 import { UserMenu } from '@/components/auth'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import AppSelector from '@/components/layout/AppSelector'
@@ -17,9 +16,12 @@ import { useTranslations } from '@/hooks/useTranslations';
 
 export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
   const t = useTranslations();
-  const { isAuthenticated, isAuthDisabled } = useAuthContext();
-  const showAuthenticatedUI = isAuthenticated || isAuthDisabled;
+  const { isAuthenticated, isAuthDisabled, isLoading } = useAuthContext();
   const isMobile = useIsMobile();
+
+  // Only show authenticated UI components when auth is confirmed (not loading) and user is authenticated
+  // This prevents authenticated API calls from being made
+  const showAuthenticatedUI = !isLoading && (isAuthenticated || isAuthDisabled);
 
   return (
     <header className={clsx(
@@ -48,9 +50,13 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
               onShowMockLogin={onShowMockLogin}
               location={location}
             />
-            { showAuthenticatedUI && <div className="h-3 w-px bg-ai-dark self-center" /> }
-            <AppSelector location={location} />
-            <AppPublish location={location} />
+            {showAuthenticatedUI && (
+              <>
+                <div className="h-3 w-px bg-ai-dark self-center" />
+                <AppSelector location={location} />
+                <AppPublish location={location} />
+              </>
+            )}
           </Box>
         </div>
       </div>

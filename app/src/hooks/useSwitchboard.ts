@@ -36,25 +36,32 @@ async function fetchFeatureFlag(featureName: string): Promise<boolean> {
 
 /**
  * Hook to fetch and manage a single feature flag from BFF API using React Query
- * 
+ *
  * Provides automatic caching, request deduplication, and background refetching
- * 
+ *
  * @param featureName - Name of the feature flag to fetch
+ * @param options - Optional configuration
+ * @param options.enabled - Whether the query should run (default: true)
  * @returns React Query object with feature flag data
- * 
+ *
  * @example
  * ```typescript
  * const {data: isEnabled, isLoading} = useSwitchboard('appbuilder-publish-button');
  * if (isLoading) return <Spinner />;
  * if (!isEnabled) return null;
  * return <PublishButton />;
+ *
+ * // Conditionally fetch based on authentication
+ * const {data: isEnabled} = useSwitchboard('feature-name', { enabled: isAuthenticated });
  * ```
  */
-export function useSwitchboard(featureName: string) {
+export function useSwitchboard(featureName: string, options: { enabled?: boolean } = {}) {
+  const { enabled = true } = options;
+
   return useQuery({
     queryKey: ['featureFlag', featureName],
     queryFn: () => fetchFeatureFlag(featureName),
-    enabled: !!featureName,
+    enabled: enabled && !!featureName,
     staleTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,

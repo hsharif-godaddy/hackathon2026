@@ -396,6 +396,9 @@ importers:
       "@radix-ui/react-tooltip":
         specifier: ^1.2.8
         version: 1.2.8(@types/react-dom@19.1.9(@types/react@19.1.13))(@types/react@19.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      "@sso/deck":
+        specifier: ^2.0.3
+        version: 2.0.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.2))(react@19.1.0)
       "@tanstack/react-query":
         specifier: ^5.62.14
         version: 5.90.7(react@19.1.0)
@@ -5196,6 +5199,7 @@ packages:
     resolution:
       {
         integrity: sha512-KF8+j9nNbUN8vzOFDpRMsaKBHZ/mcjEjMToVMJOhTozkDonQFFrRcfdLWn6yWKCmJKmdVxSgHiYvTCef4/qcBA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-android-arm64/-/parcel-watcher-android-arm64-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [arm64]
@@ -5205,6 +5209,7 @@ packages:
     resolution:
       {
         integrity: sha512-eAzPv5osDmZyBhou8PoF4i6RQXAfeKL9tjb3QzYuccXFMQU0ruIc/POh30ePnaOyD1UXdlKguHBmsTs53tVoPw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-darwin-arm64/-/parcel-watcher-darwin-arm64-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [arm64]
@@ -5214,6 +5219,7 @@ packages:
     resolution:
       {
         integrity: sha512-1ZXDthrnNmwv10A0/3AJNZ9JGlzrF82i3gNQcWOzd7nJ8aj+ILyW1MTxVk35Db0u91oD5Nlk9MBiujMlwmeXZg==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-darwin-x64/-/parcel-watcher-darwin-x64-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [x64]
@@ -5223,6 +5229,7 @@ packages:
     resolution:
       {
         integrity: sha512-SI4eljM7Flp9yPuKi8W0ird8TI/JK6CSxju3NojVI6BjHsTyK7zxA9urjVjEKJ5MBYC+bLmMcbAWlZ+rFkLpJQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-freebsd-x64/-/parcel-watcher-freebsd-x64-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [x64]
@@ -5232,6 +5239,7 @@ packages:
     resolution:
       {
         integrity: sha512-RCdZlEyTs8geyBkkcnPWvtXLY44BCeZKmGYRtSgtwwnHR4dxfHRG3gR99XdMEdQ7KeiDdasJwwvNSF5jKtDwdA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-linux-arm-glibc/-/parcel-watcher-linux-arm-glibc-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [arm]
@@ -5241,6 +5249,7 @@ packages:
     resolution:
       {
         integrity: sha512-6E+m/Mm1t1yhB8X412stiKFG3XykmgdIOqhjWj+VL8oHkKABfu/gjFj8DvLrYVHSBNC+/u5PeNrujiSQ1zwd1Q==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-linux-arm-musl/-/parcel-watcher-linux-arm-musl-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [arm]
@@ -5250,6 +5259,7 @@ packages:
     resolution:
       {
         integrity: sha512-LrGp+f02yU3BN9A+DGuY3v3bmnFUggAITBGriZHUREfNEzZh/GO06FF5u2kx8x+GBEUYfyTGamol4j3m9ANe8w==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-linux-arm64-glibc/-/parcel-watcher-linux-arm64-glibc-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [arm64]
@@ -5259,6 +5269,7 @@ packages:
     resolution:
       {
         integrity: sha512-cFOjABi92pMYRXS7AcQv9/M1YuKRw8SZniCDw0ssQb/noPkRzA+HBDkwmyOJYp5wXcsTrhxO0zq1U11cK9jsFg==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-linux-arm64-musl/-/parcel-watcher-linux-arm64-musl-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [arm64]
@@ -5268,6 +5279,7 @@ packages:
     resolution:
       {
         integrity: sha512-GcESn8NZySmfwlTsIur+49yDqSny2IhPeZfXunQi48DMugKeZ7uy1FX83pO0X22sHntJ4Ub+9k34XQCX+oHt2A==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-linux-x64-glibc/-/parcel-watcher-linux-x64-glibc-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [x64]
@@ -5277,6 +5289,7 @@ packages:
     resolution:
       {
         integrity: sha512-n0E2EQbatQ3bXhcH2D1XIAANAcTZkQICBPVaxMeaCVBtOpBZpWJuf7LwyWPSBDITb7In8mqQgJ7gH8CILCURXg==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-linux-x64-musl/-/parcel-watcher-linux-x64-musl-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [x64]
@@ -5286,6 +5299,7 @@ packages:
     resolution:
       {
         integrity: sha512-RFzklRvmc3PkjKjry3hLF9wD7ppR4AKcWNzH7kXR7GUe0Igb3Nz8fyPwtZCSquGrhU5HhUNDr/mKBqj7tqA2Vw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-win32-arm64/-/parcel-watcher-win32-arm64-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [arm64]
@@ -5295,6 +5309,7 @@ packages:
     resolution:
       {
         integrity: sha512-c2KkcVN+NJmuA7CGlaGD1qJh1cLfDnQsHjE89E60vUEMlqduHGCdCLJCID5geFVM0dOtA3ZiIO8BoEQmzQVfpQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-win32-ia32/-/parcel-watcher-win32-ia32-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [ia32]
@@ -5304,6 +5319,7 @@ packages:
     resolution:
       {
         integrity: sha512-9lHBdJITeNR++EvSQVUcaZoWupyHfXe1jZvGZ06O/5MflPcuPLtEphScIBL+AiCWBO46tDSHzWyD0uDmmZqsgA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher-win32-x64/-/parcel-watcher-win32-x64-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
     cpu: [x64]
@@ -5313,6 +5329,7 @@ packages:
     resolution:
       {
         integrity: sha512-dfUnCxiN9H4ap84DvD2ubjw+3vUNpstxa0TneY/Paat8a3R4uQZDLSvWjmznAY/DoahqTHl9V46HF/Zs3F29pg==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@parcel/watcher/-/parcel-watcher-2.5.1.tgz,
       }
     engines: { node: ">= 10.0.0" }
 
@@ -5320,6 +5337,7 @@ packages:
     resolution:
       {
         integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@pkgjs/parseargs/-/pkgjs-parseargs-0.11.0.tgz,
       }
     engines: { node: ">=14" }
 
@@ -6899,6 +6917,42 @@ packages:
         integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==,
         tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@socket.io/component-emitter/-/socket.io-component-emitter-3.1.2.tgz,
       }
+
+  "@sso/brand-configs@2.62.0":
+    resolution:
+      {
+        integrity: sha512-MQvTQQLu8/fdPGwqtgSNqEEY5qteKHSpfnH1cBSYqUYw2nMM1GuHk9gLzYcgloAGbHo+04wnyzmY1i7ii7NxHw==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@sso/brand-configs/-/@sso/brand-configs-2.62.0.tgz,
+      }
+
+  "@sso/core-utils@1.14.3":
+    resolution:
+      {
+        integrity: sha512-UIK18Sdvcmc/lOhydFD8JQONxU4qwhC8rnqomfiIL7LaunZhf28KH2HxSvqd/W1U5EEheDnmkdE3VDSj86xG3A==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@sso/core-utils/-/@sso/core-utils-1.14.3.tgz,
+      }
+    peerDependencies:
+      react: 19.1.0
+
+  "@sso/deck@2.0.3":
+    resolution:
+      {
+        integrity: sha512-4HEWRrBom3UPiex0ri3IinG00ZSGG1RyCEC0Ew/N9nTe/A8NQZN+Jmxnng2CizFU86LWTxJzsobBo1g4SbB4lA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@sso/deck/-/@sso/deck-2.0.3.tgz,
+      }
+    peerDependencies:
+      react: 19.1.0
+      react-dom: 19.1.0
+      react-intl: ^6.5.5
+
+  "@sso/traffic@1.1.6":
+    resolution:
+      {
+        integrity: sha512-WFVVlvIzXnFirurwje6dVRbkZpSiDDgbF/9vwCmpd2QnbF+VYgipuPL5ACVSF4EcFGx1YeKGwsZTV3d7xqjNiQ==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@sso/traffic/-/@sso/traffic-1.1.6.tgz,
+      }
+    peerDependencies:
+      react: 19.1.0
 
   "@standard-schema/spec@1.0.0":
     resolution:
@@ -8634,6 +8688,18 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  "@ux/spinner@2400.18.1":
+    resolution:
+      {
+        integrity: sha512-empON8YYwT+7rZ1vnjiW0ZetlKefi+q6e0T2JDK1Z1eXbs5n34MHtchSs/nfSf3BAzYSqnxywfh5bpsn02RWDg==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/spinner/-/@ux/spinner-2400.18.1.tgz,
+      }
+    engines: { node: ">= 18" }
+    peerDependencies:
+      prop-types: ^15.7.2
+      react: 19.1.0
+      react-dom: 19.1.0
+
   "@ux/spinner@2500.3.4":
     resolution:
       {
@@ -9887,6 +9953,12 @@ packages:
     peerDependencies:
       react: 19.1.0
 
+  browser-cookies@1.2.0:
+    resolution:
+      {
+        integrity: sha512-cg2WuoOJo+F+g2XjEaP8nmeRp1vDHjt7sqpKJMsTNXKrpyIBNVslYJeehvs6FEddj8usV2+qyRSBEX244yN5/g==,
+      }
+
   browser-resolve@1.11.3:
     resolution:
       {
@@ -10676,6 +10748,12 @@ packages:
         integrity: sha512-0eW44TGN5SQXU1mWSkKwFstI/22X2bG1nYzZTYMAWjylYURhse752YgbE4Cx46AC+bAvI+/dYTPRk1LqSUnu6w==,
       }
     engines: { node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0 }
+
+  cssfilter@0.0.10:
+    resolution:
+      {
+        integrity: sha512-FAaLDaplstoRsDR8XGYH51znUN0UY7nMc6Z9/fvE8EXGwvJE9hu7W2vHwx1+bd6gCYnln9nLbzxFTrcO9YQDZw==,
+      }
 
   cssstyle@4.6.0:
     resolution:
@@ -14024,6 +14102,12 @@ packages:
         integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==,
       }
     engines: { node: ">= 0.8.0" }
+
+  libphonenumber-js@1.12.31:
+    resolution:
+      {
+        integrity: sha512-Z3IhgVgrqO1S5xPYM3K5XwbkDasU67/Vys4heW+lfSBALcUZjeIIzI8zCLifY+OCzSq+fpDdywMDa7z+4srJPQ==,
+      }
 
   light-my-request@5.14.0:
     resolution:
@@ -17793,6 +17877,14 @@ packages:
       }
     engines: { node: ">= 0.4" }
 
+  swr@2.3.7:
+    resolution:
+      {
+        integrity: sha512-ZEquQ82QvalqTxhBVv/DlAg2mbmUjF4UgpPg9wwk4ufb9rQnZXh1iKyyKBqV6bQGu1Ie7L1QwSYO07qFIa1p+g==,
+      }
+    peerDependencies:
+      react: 19.1.0
+
   symbol-observable@4.0.0:
     resolution:
       {
@@ -18128,6 +18220,13 @@ packages:
     engines: { node: ">=16" }
     peerDependencies:
       typescript: ">=4.2.0"
+
+  ts-deepmerge@6.2.1:
+    resolution:
+      {
+        integrity: sha512-8CYSLazCyj0DJDpPIxOFzJG46r93uh6EynYjuey+bxcLltBeqZL7DMfaE5ZPzZNFlav7wx+2TDa/mBl8gkTYzw==,
+      }
+    engines: { node: ">=14.13.1" }
 
   ts-invariant@0.10.3:
     resolution:
@@ -19075,6 +19174,14 @@ packages:
         integrity: sha512-TEU+nJVUUnA4CYJFLvK5X9AOeH4KvDvhIfm0vV1GaQRtchnG0hgK5p8hw/xjv8cunWYCsiPCSDzObPyhEwq3KQ==,
       }
     engines: { node: ">=0.4.0" }
+
+  xss@1.0.15:
+    resolution:
+      {
+        integrity: sha512-FVdlVVC67WOIPvfOwhoMETV72f6GbW7aOabBC3WxN/oUdoEMDyLz4OgRv5/gck2ZeNqEQu+Tb0kloovXOfpYVg==,
+      }
+    engines: { node: ">= 0.10.0" }
+    hasBin: true
 
   xtend@4.0.2:
     resolution:
@@ -24465,6 +24572,44 @@ snapshots:
 
   "@socket.io/component-emitter@3.1.2": {}
 
+  "@sso/brand-configs@2.62.0":
+    dependencies:
+      ts-deepmerge: 6.2.1
+      zod: 3.25.76
+
+  "@sso/core-utils@1.14.3(react@19.1.0)":
+    dependencies:
+      "@sso/brand-configs": 2.62.0
+      "@sso/traffic": 1.1.6(react@19.1.0)
+      browser-cookies: 1.2.0
+      gd-auth: 1.4.1
+      jwt-decode: 4.0.0
+      libphonenumber-js: 1.12.31
+      lodash: 4.17.21
+      punycode: 2.3.1
+      react: 19.1.0
+      swr: 2.3.7(react@19.1.0)
+      xss: 1.0.15
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - debug
+
+  "@sso/deck@2.0.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.2))(react@19.1.0)":
+    dependencies:
+      "@sso/core-utils": 1.14.3(react@19.1.0)
+      "@ux/spinner": 2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      browser-cookies: 1.2.0
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+      react-intl: 7.1.14(react@19.1.0)(typescript@5.9.2)
+    transitivePeerDependencies:
+      - debug
+      - prop-types
+
+  "@sso/traffic@1.1.6(react@19.1.0)":
+    dependencies:
+      react: 19.1.0
+
   "@standard-schema/spec@1.0.0": {}
 
   "@swc/counter@0.1.3": {}
@@ -25635,6 +25780,14 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
+  "@ux/spinner@2400.18.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
+    dependencies:
+      "@ux/intents": 2400.11.0
+      classnames: 2.5.1
+      prop-types: 15.8.1
+      react: 19.1.0
+      react-dom: 19.1.0(react@19.1.0)
+
   "@ux/spinner@2500.3.4(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)":
     dependencies:
       "@ux/intents": 2500.3.2
@@ -26575,6 +26728,8 @@ snapshots:
       propget: 1.1.0
       react: 19.1.0
 
+  browser-cookies@1.2.0: {}
+
   browser-resolve@1.11.3:
     dependencies:
       resolve: 1.1.7
@@ -27011,6 +27166,8 @@ snapshots:
       mdn-data: 2.12.2
       source-map-js: 1.2.1
     optional: true
+
+  cssfilter@0.0.10: {}
 
   cssstyle@4.6.0:
     dependencies:
@@ -29591,6 +29748,8 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
 
+  libphonenumber-js@1.12.31: {}
+
   light-my-request@5.14.0:
     dependencies:
       cookie: 0.7.2
@@ -32114,6 +32273,12 @@ snapshots:
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
+  swr@2.3.7(react@19.1.0):
+    dependencies:
+      dequal: 2.0.3
+      react: 19.1.0
+      use-sync-external-store: 1.5.0(react@19.1.0)
+
   symbol-observable@4.0.0: {}
 
   symbol-tree@3.2.4: {}
@@ -32287,6 +32452,8 @@ snapshots:
   ts-api-utils@1.4.3(typescript@5.9.2):
     dependencies:
       typescript: 5.9.2
+
+  ts-deepmerge@6.2.1: {}
 
   ts-invariant@0.10.3:
     dependencies:
@@ -32612,7 +32779,6 @@ snapshots:
   use-sync-external-store@1.5.0(react@19.1.0):
     dependencies:
       react: 19.1.0
-    optional: true
 
   util-deprecate@1.0.2: {}
 
@@ -32950,6 +33116,11 @@ snapshots:
   xmlchars@2.2.0: {}
 
   xmlhttprequest-ssl@2.1.2: {}
+
+  xss@1.0.15:
+    dependencies:
+      commander: 2.20.3
+      cssfilter: 0.0.10
 
   xtend@4.0.2: {}
 
