@@ -39,8 +39,11 @@
     "website/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter website lint"
     ],
-    "*.{json,md,yml,yaml}": [
+    "*.{md,yml,yaml}": [
       "prettier --write"
+    ],
+    "*.json": [
+      "bash -c 'if [[ \"$0\" != *\"pnpm-lock.json\" ]]; then prettier --write \"$0\"; fi'"
     ],
     "package.json": [
       "bash -c 'MATRIX_PACKAGE=root ./scripts/license-check.sh'"
