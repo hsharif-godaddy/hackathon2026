@@ -80,7 +80,11 @@ export class SSLCertificateGenerator {
       const cert = forge.pki.createCertificate();
 
       cert.publicKey = keys.publicKey;
-      cert.serialNumber = Math.floor(Math.random() * 100000).toString();
+      // Use static serial number to avoid x509 negative serial number errors.
+      // Random values (e.g., 50000 = 0xC350) can have the high bit set when DER-encoded,
+      // causing Go's x509 parser to interpret them as negative in two's complement.
+      // Static '01' is sufficient for sandbox/dev environments where uniqueness doesn't matter.
+      cert.serialNumber = '01';
       cert.validity.notBefore = new Date();
       cert.validity.notAfter = new Date();
       cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);
