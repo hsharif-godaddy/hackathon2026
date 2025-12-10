@@ -40,6 +40,7 @@ export {
   commerceSkuGroupMedia,
 } from './commerce-tools.js';
 export { oauthConnect } from './oauth-tool.js';
+export { skillAITool } from './skill-loader.js';
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js';
@@ -76,6 +77,7 @@ import {
   commerceSkuGroupMedia,
 } from './commerce-tools.js';
 import { oauthConnect } from './oauth-tool.js';
+import { skillAITool } from './skill-loader.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -112,6 +114,7 @@ export const allAILibTools: Record<string, Tool> = {
   commerceSkuGroup: commerceSkuGroup,
   commerceSku: commerceSku,
   commerceInventory: commerceInventory,
+  skill: skillAITool,
   commerceSkuGroupMedia: commerceSkuGroupMedia,
 };
 

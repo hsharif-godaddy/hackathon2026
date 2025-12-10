@@ -16,6 +16,7 @@ export { validateLucideIcons } from './icons-validator.js';
 export { DevSupervisorLogClient } from './dev-supervisor-log-client.js';
 export { ViewLogsTool } from './view-logs-tool.js';
 export { MemoryTool } from './memory-tool.js';
+export { SkillLoaderTool } from './skill-loader-tool.js';
 // Tool definitions and execution now handled by ai-lib agents
 export type {
   DirectoryListingOptions,
@@ -106,4 +107,13 @@ export type {
   MemorySetResult,
   MemoryReadResult
 } from './memory-tool.js';
+
+export type {
+  SkillLoaderOptions,
+  SkillLoaderResult,
+  SkillListItem,
+  InstallTemplatesOptions,
+  InstallTemplatesResult,
+  TemplateFile
+} from './skill-loader-tool.js';
 

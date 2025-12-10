@@ -55,6 +55,7 @@ describe('marketing-agent', function marketingAgentTests() {
       expect(config.tools).toHaveProperty('todoList');
       expect(config.tools).toHaveProperty('directoryListing');
       expect(config.tools).toHaveProperty('grepSearch');
+      expect(config.tools).toHaveProperty('mediaSearch');
       expect(config.tools).toHaveProperty('suggestedResponse');
     });
 
@@ -244,11 +245,11 @@ describe('marketing-agent', function marketingAgentTests() {
   });
 
   describe('#tools', function toolsTests() {
-    it('should have exactly 7 tools configured', async function toolCount() {
+    it('should have exactly 8 tools configured', async function toolCount() {
       const config = await createMarketingAgent();
       const toolNames = Object.keys(config.tools);
 
-      expect(toolNames).toHaveLength(7);
+      expect(toolNames).toHaveLength(8);
     });
 
     it('should include seoAnalysis tool', async function seoTool() {

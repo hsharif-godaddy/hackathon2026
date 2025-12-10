@@ -157,6 +157,7 @@ suggestedResponse({
 **Customize suggestions based on what was just done:**
 
 - Just built homepage → Suggest: "Add about page", "Add contact page", "Change colors"
+- Just added blog → Suggest: "Create a blog post", "Customize blog layout", "Add another page"
 - Just added feature → Suggest: "Add another feature", "Test the feature", "Improve styling"
 - Just fixed bug → Suggest: "Test the fix", "Add more features", "Review other issues"
 

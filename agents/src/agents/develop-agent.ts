@@ -200,6 +200,7 @@ async function buildDevelopSystemPrompt(_appPath?: string): Promise<string> {
   // Load all modular prompt sections in order
   promptBuilder
     .file(paths.getAgentFile('develop', 'core.md'))
+    .file(paths.getAgentFile('develop', 'skills.md')) // CRITICAL: Load skills system immediately after core
     .file(paths.getSharedFile('communication.md')) // CRITICAL: Load communication style EARLY
     .file(paths.getSharedFile('filesystem.md'))
     .file(paths.getAgentFile('develop', 'handoff.md')) // Agent handoff rules (always available agents)
@@ -260,6 +261,9 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
       // Planning tools
       todoList: allAILibTools.todoList,
+
+      // Skills system
+      skill: allAILibTools.skill,
 
       // Server management
       serverRestart: allAILibTools.serverRestart,
