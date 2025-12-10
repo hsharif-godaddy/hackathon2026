@@ -1893,6 +1893,7 @@ packages:
     resolution:
       {
         integrity: sha512-SOSkfJDddaM7mak6cPEpswyTRnuRltl429hMraQEglW+OkovnCzsiszTmsrlY//qLFjCpQDFRvjdm2wA5pPm9w==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@babel/plugin-proposal-private-property-in-object/-/babel-plugin-proposal-private-property-in-object-7.21.0-placeholder-for-preset-env.2.tgz,
       }
     engines: { node: ">=6.9.0" }
     peerDependencies:
@@ -2577,6 +2578,7 @@ packages:
     resolution:
       {
         integrity: sha512-HrcgcIESLm9aIR842yhJ5RWan/gebQUJ6E/E5+rf0y9o6oj7w0Br+sWuL6kEQ/o/AdfvR1Je9jG18/gnpwjEyA==,
+        tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@babel/preset-modules/-/babel-preset-modules-0.1.6-no-external-plugins.tgz,
       }
     peerDependencies:
       "@babel/core": ^7.0.0-0 || ^8.0.0-0 <8.0.0

@@ -1,0 +1,36 @@
+{
+  "name": "airo-app-builder-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "E2E tests for Airo App Builder",
+  "scripts": {
+    "cypress:open": "cypress open",
+    "cypress:open:dev": "CYPRESS_ENV=dev cypress open",
+    "cypress:open:test": "CYPRESS_ENV=test cypress open",
+    "cypress:open:prod": "CYPRESS_ENV=prod cypress open",
+    "cypress:run": "cypress run",
+    "cypress:run:dev": "CYPRESS_ENV=dev cypress run",
+    "cypress:run:test": "CYPRESS_ENV=test cypress run",
+    "cypress:run:prod": "CYPRESS_ENV=prod cypress run",
+    "test": "cypress run",
+    "test:dev": "npm run cypress:run:dev",
+    "test:test": "npm run cypress:run:test",
+    "test:prod": "npm run cypress:run:prod",
+    "testla": "npx testla run-tests --config-file ./testla.json --cypress-config ./cypress.config.ts",
+    "testla:dev": "CYPRESS_ENV=dev npx testla run-tests --config-file ./testla.json --cypress-config ./cypress.config.ts",
+    "testla:test": "CYPRESS_ENV=test npx testla run-tests --config-file ./testla.json --cypress-config ./cypress.config.ts",
+    "testla:prod": "CYPRESS_ENV=prod npx testla run-tests --config-file ./testla.json --cypress-config ./cypress.config.ts",
+    "testla:upload": "testla cache-and-import-local-files --config-file ./testla.json --cypress-config ./cypress.config.ts"
+  },
+  "devDependencies": {
+    "@gd-cypress/auth": "^1.0.0",
+    "@testla/testla-cli": "^5.11.3",
+    "@types/node": "^22.10.2",
+    "cypress": "^15.7.1",
+    "cypress-multi-reporters": "^2.0.4",
+    "dotenv": "^16.4.5",
+    "mocha-junit-reporter": "^2.2.1",
+    "mochawesome": "^7.1.4",
+    "typescript": "^5.7.2"
+  }
+}

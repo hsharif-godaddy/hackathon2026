@@ -1,0 +1,5 @@
+/cypress/reports
+/cypress/screenshots
+/cypress/videos
+/package.zip
+/test-report.xml

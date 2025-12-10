@@ -1,0 +1,18 @@
+{
+  "projectId": "26202",
+  "packageJson": "package.json",
+  "nodeModules": "node_modules",
+  "cypressTestDir": "cypress/tests",
+  "importTestsGlobExpression": "^.*\\.cy\\.ts$",
+  "enableTests": true,
+  "verbose": true,
+  "wait": true,
+  "writeToFile": true,
+  "paths": [
+    "cypress/support/",
+    "cypress/config/",
+    "cypress.config.ts",
+    "cypress/tsconfig.json",
+    "reporter.json"
+  ]
+}
