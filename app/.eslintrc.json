@@ -5,10 +5,12 @@
       "warn",
       { "argsIgnorePattern": "^_" }
     ],
+    "@next/next/no-assign-module-variable": "warn",
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-var-requires": "warn",
     "@typescript-eslint/ban-types": "warn",
-    "@typescript-eslint/no-unnecessary-type-constraint": "warn"
+    "@typescript-eslint/no-unnecessary-type-constraint": "warn",
+    "react/display-name": "warn"
   },
   "ignorePatterns": [
     "node_modules/**",

@@ -101,12 +101,14 @@ export default function DevelopmentAdminSection({
               (type === 'stop-all' ? 'Stopping...' : 'Deleting...') :
               (type === 'stop-all' ? 'Stop All' : 'Delete All')
             }
+            data-testid={`admin-${type}-confirm-button`}
           />
           <Button
             onClick={clearAlert}
             disabled={isStopAllLoading || isDeleteAllLoading}
             design="tertiary"
             text="Cancel"
+            data-testid={`admin-${type}-cancel-button`}
           />
         </div>
       </div>
@@ -135,6 +137,7 @@ export default function DevelopmentAdminSection({
                 title={`Stop all running ${itemType}`}
                 icon={<StopIcon />}
                 text={`Stop All (${runningItems})`}
+                data-testid="admin-stop-all-button"
               />
 
               <Button
@@ -145,6 +148,7 @@ export default function DevelopmentAdminSection({
                 title={`Delete all ${itemType} (DANGEROUS)`}
                 icon={<TrashIcon />}
                 text={`Delete All (${totalItems})`}
+                data-testid="admin-delete-all-button"
               />
             </div>
           </div>

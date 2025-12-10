@@ -1,0 +1,170 @@
+import { vi } from 'vitest';
+import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
+
+/**
+ * Mock next/navigation router with common methods
+ *
+ * @returns Mocked router object with push, replace, etc.
+ *
+ * @example
+ * vi.mock('next/navigation', () => ({
+ *   useRouter: () => mockRouter(),
+ * }));
+ */
+export function mockRouter() {
+  return {
+    push: vi.fn(),
+    replace: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    prefetch: vi.fn(),
+  };
+}
+
+/**
+ * Mock next/navigation useParams hook
+ *
+ * @param params - Key-value pairs for route parameters
+ * @returns Mocked params object
+ *
+ * @example
+ * vi.mock('next/navigation', () => ({
+ *   useParams: () => mockParams({ id: '123' }),
+ * }));
+ */
+export function mockParams(params: Record<string, string> = {}) {
+  return params;
+}
+
+/**
+ * Mock URL.createObjectURL and URL.revokeObjectURL for testing file/blob operations
+ *
+ * @example
+ * beforeEach(() => {
+ *   mockURLMethods();
+ * });
+ */
+export function mockURLMethods() {
+  global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+  global.URL.revokeObjectURL = vi.fn();
+}
+
+/**
+ * Create a mock SiteInfo object with default values
+ *
+ * @param overrides - Partial SiteInfo to override defaults
+ * @returns Complete SiteInfo mock object
+ *
+ * @example
+ * const site = createMockSite({ name: 'My App', status: 'running' });
+ */
+export function createMockSite(overrides: Partial<SiteInfo> = {}): SiteInfo {
+  return {
+    id: 'test-site-123',
+    name: 'Test Application',
+    status: 'running',
+    account_id: 'test-account-123',
+    initial_prompt: 'Build a todo app',
+    created_at: '2024-01-01T00:00:00.000Z',
+    updated_at: '2024-01-01T00:00:00.000Z',
+    preview_url: 'https://preview.test/app',
+    published_url: null,
+    variants: [],
+    ...overrides,
+  };
+}
+
+/**
+ * Mock instrumentation utilities
+ *
+ * @returns Object with mocked instrumentation functions
+ *
+ * @example
+ * vi.mock('@/utils/instrumentation', () => mockInstrumentation());
+ */
+export function mockInstrumentation() {
+  return {
+    logImpressionEvent: vi.fn(() => vi.fn()),
+    generateClickEID: vi.fn((event: string) => `${event}.click`),
+    logAiroHQEvent: vi.fn(() => vi.fn()),
+  };
+}
+
+/**
+ * Mock feature flags with configurable values
+ *
+ * @param overrides - Override specific feature flags
+ * @returns Object with mocked feature flag functions
+ *
+ * @example
+ * vi.mock('@/lib/features', () => mockFeatures({ developmentMode: true }));
+ */
+export function mockFeatures(overrides: { [key: string]: boolean } = {}) {
+  const defaults = {
+    codeEditor: false,
+    mockLogin: true,
+    developmentMode: false,
+    galleryPage: false,
+    devSupervisorTcp: false,
+  };
+
+  const config = { ...defaults, ...overrides };
+
+  return {
+    isFeatureEnabled: {
+      codeEditor: () => config.codeEditor,
+      mockLogin: () => config.mockLogin,
+      developmentMode: () => config.developmentMode,
+      galleryPage: () => config.galleryPage,
+      devSupervisorTcp: () => config.devSupervisorTcp,
+    },
+    MAX_PROMPT_LENGTH: 40000,
+    auth: { enabled: false },
+  };
+}
+
+/**
+ * Mock AuthProvider context with configurable values
+ *
+ * @param overrides - Override specific auth context values
+ * @returns Object with mocked auth context
+ *
+ * @example
+ * vi.mock('@/components/providers/AuthProvider', () => ({
+ *   useAuthContext: () => mockAuthContext({ isAuthenticated: true }),
+ * }));
+ */
+export function mockAuthContext(overrides: {
+  isAuthenticated?: boolean;
+  isAuthDisabled?: boolean;
+  gasketConfig?: any;
+  isMockAuth?: boolean;
+  isLoading?: boolean;
+} = {}) {
+  return {
+    isAuthenticated: false,
+    isAuthDisabled: true,
+    gasketConfig: null,
+    isMockAuth: false,
+    isLoading: false,
+    ...overrides,
+  };
+}
+
+/**
+ * Mock useSearchParams from next/navigation
+ *
+ * @param params - Key-value pairs for URL parameters
+ * @returns Mocked useSearchParams function
+ *
+ * @example
+ * vi.mock('next/navigation', () => ({
+ *   useSearchParams: () => mockSearchParams({ initialPrompt: 'Build a blog' }),
+ * }));
+ */
+export function mockSearchParams(params: Record<string, string | null> = {}) {
+  return {
+    get: vi.fn((key: string) => params[key] ?? null),
+  };
+}

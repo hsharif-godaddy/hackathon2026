@@ -71,7 +71,10 @@ export default function AppThumbnail({ siteId, siteName, size = 'md' }: AppThumb
 
   if (loading) {
     return (
-      <div className={`${sizeClasses} shrink-0 rounded-md bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300 flex items-center justify-center`}>
+      <div
+        data-testid="app-thumbnail-loading"
+        className={`${sizeClasses} shrink-0 rounded-md bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300 flex items-center justify-center`}
+      >
         <div className="animate-pulse">
           <CodeBracketIcon className={`${iconSize} text-gray-400`} />
         </div>
@@ -81,14 +84,20 @@ export default function AppThumbnail({ siteId, siteName, size = 'md' }: AppThumb
 
   if (error || !thumbnailUrl) {
     return (
-      <div className={`${sizeClasses} shrink-0 rounded-md bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300 flex items-center justify-center`}>
+      <div
+        data-testid="app-thumbnail-fallback"
+        className={`${sizeClasses} shrink-0 rounded-md bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300 flex items-center justify-center`}
+      >
         <CodeBracketIcon className={`${iconSize} text-gray-400`} />
       </div>
     )
   }
 
   return (
-    <div className={`${sizeClasses} shrink-0 rounded-md overflow-hidden bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300`}>
+    <div
+      data-testid="app-thumbnail"
+      className={`${sizeClasses} shrink-0 rounded-md overflow-hidden bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300`}
+    >
       <img
         src={thumbnailUrl}
         alt={`Screenshot of ${siteName}`}

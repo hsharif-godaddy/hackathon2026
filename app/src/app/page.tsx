@@ -33,7 +33,7 @@ function HomeContent() {
 
   const { isAuthenticated, isAuthDisabled, isMockAuth, isLoading: authIsLoading } = useAuthContext()
   const { openSsoLogin } = useAuthUIStore()
-  
+
   useSafariClass()
 
   useEffect(() => {

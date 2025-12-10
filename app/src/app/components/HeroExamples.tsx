@@ -47,17 +47,26 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
     // Initialize visibility array
     setVisibleItems(new Array(examples.length).fill(false))
 
+    // Store timer IDs for cleanup
+    const timerIds: NodeJS.Timeout[] = []
+
     // Stagger animations with shorter delays
     shuffled.forEach((index, orderIndex) => {
       const delay = orderIndex * 80 + Math.random() * 50
-      setTimeout(() => {
+      const timerId = setTimeout(() => {
         setVisibleItems(prev => {
           const newVisible = [...prev]
           newVisible[index] = true
           return newVisible
         })
       }, delay)
+      timerIds.push(timerId)
     })
+
+    // Cleanup function to clear all timers
+    return () => {
+      timerIds.forEach(timerId => clearTimeout(timerId))
+    }
   }, [examples.length])
 
   return (

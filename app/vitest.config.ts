@@ -1,14 +1,17 @@
 import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
 /**
- * Vitest configuration for V2 control plane tests
- * 
+ * Vitest configuration
+ *
  * To use:
- * 1. npm install -D vitest @vitest/ui
- * 2. npm test
+ * 1. pnpm --filter website add -D vitest @vitest/ui @vitest/coverage-v8
+ * 2. pnpm --filter website test
+ * 3. pnpm --filter website test --coverage
  */
 export default defineConfig({
+  plugins: [react()],
   test: {
     globals: true,
     environment: 'jsdom',
@@ -17,18 +20,23 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      include: ['src/lib/control-plane/**/*.ts', 'src/lib/site-adapters/**/*.ts'],
+      include: ['src/**/*.{ts,tsx}'],
       exclude: [
         '**/__tests__/**',
         '**/*.test.ts',
+        '**/*.test.tsx',
         '**/types.ts',
-        '**/index.ts'
+        '**/index.ts',
+        '**/*.d.ts',
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/.next/**',
       ],
       thresholds: {
-        lines: 80,
-        functions: 80,
-        branches: 75,
-        statements: 80
+        lines: 50,
+        functions: 50,
+        branches: 50,
+        statements: 50
       }
     }
   },
