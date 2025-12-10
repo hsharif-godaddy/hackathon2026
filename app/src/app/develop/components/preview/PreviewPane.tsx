@@ -279,7 +279,8 @@ export default function PreviewPane({
     setIframeError(true)
   }
   if (isPollingEntitlements) {
-    return <Tips buildingMessage="Updating Subscription..." />
+    // We don't want to show tips when polling entitlements
+    return <Tips buildingMessage="Updating Subscription..." showTips={false} />
   }
 
   if (showBuildingOverlay) {

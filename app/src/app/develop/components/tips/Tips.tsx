@@ -14,6 +14,7 @@ import { tips, shuffleArray } from './tips-content'
 interface TipsProps {
   /** Message to display in the loader description */
   buildingMessage?: string
+  showTips?: boolean
 }
 
 /**
@@ -24,7 +25,7 @@ interface TipsProps {
  * @param props - Component props
  * @returns The Tips component with loader and carousel
  */
-export default function Tips({ buildingMessage = 'The AI agent is building your app...' }: TipsProps) {
+export default function Tips({ buildingMessage = 'The AI agent is building your app...', showTips = true }: TipsProps) {
   // Randomize tips once on mount
   const shuffledTips = useMemo(() => shuffleArray(tips), [])
 
@@ -55,31 +56,33 @@ export default function Tips({ buildingMessage = 'The AI agent is building your 
       <Loader title={buildingMessage} />
 
       {/* Tips section below loader */}
-      <Box className="w-full max-w-2xl px-3" gap="md">
-        {/* Tip carousel */}
-        <Box className="relative" gap="md">
-          {/* Tip content with animation */}
-          <Box className="overflow-hidden min-h-24">
-            <AnimatePresence mode="wait">
-              <motion.div
-                className="p-2"
-                key={currentTip.id}
-                initial={{ opacity: 0, y: 5, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 5, scale: 0.95 }}
-                transition={{ duration: 0.4 }}
-              >
-                <Alert
-                  emphasis="info"
-                  title={currentTip.title}
+      {showTips && (
+        <Box className="w-full max-w-2xl px-3" gap="md">
+          {/* Tip carousel */}
+          <Box className="relative" gap="md">
+            {/* Tip content with animation */}
+            <Box className="overflow-hidden min-h-24">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  className="p-2"
+                  key={currentTip.id}
+                  initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 5, scale: 0.95 }}
+                  transition={{ duration: 0.4 }}
                 >
-                 {currentTip.description}
-                </Alert>
-              </motion.div>
-            </AnimatePresence>
+                  <Alert
+                    emphasis="info"
+                    title={currentTip.title}
+                  >
+                   {currentTip.description}
+                  </Alert>
+                </motion.div>
+              </AnimatePresence>
+            </Box>
           </Box>
         </Box>
-      </Box>
+      )}
     </Box>
   )
 }
