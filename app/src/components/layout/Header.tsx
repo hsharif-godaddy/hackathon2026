@@ -8,6 +8,7 @@ import { UserMenu } from '@/components/auth'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import AppSelector from '@/components/layout/AppSelector'
 import AppPublish from '@/components/layout/AppPublish'
+import InviteFriends from '@/components/layout/InviteFriends'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { generateClickEID } from '@/utils/instrumentation'
 import { HeaderProps } from './types'
@@ -46,6 +47,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
           </div>
           <Box orientation="horizontal" gap={isMobile ? 'md' : 'lg'}>
             {actions && actions}
+            {showAuthenticatedUI && <InviteFriends location={location} />}
             <UserMenu
               onShowMockLogin={onShowMockLogin}
               location={location}

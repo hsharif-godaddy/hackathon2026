@@ -10,6 +10,7 @@ import SubscriptionCacheProvider from "@/components/providers/SubscriptionCacheP
 import FrameBuster from "@/components/security/FrameBuster";
 import ConversationIdCookie from "@/components/security/ConversationIdCookie";
 import GlobalSsoLogin from "@/components/auth/GlobalSsoLogin";
+import ReferralTracker from "@/components/tracking/ReferralTracker";
 import { TranslationsProvider } from "@/components/providers/TranslationProvider";
 import { logger } from "@/lib/request-context";
 import { detectLocale, getServerIntl } from "@/lib/translations";
@@ -92,6 +93,7 @@ async function RootLayout({
       <FrameBuster />
       <Suspense fallback={null}>
         <ConversationIdCookie />
+        <ReferralTracker />
       </Suspense>
       <RumProvider>
         <FullStoryProvider>
