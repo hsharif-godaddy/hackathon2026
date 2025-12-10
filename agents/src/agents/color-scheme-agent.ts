@@ -7,6 +7,7 @@ import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { Logger } from '../logging/index.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
+import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 
 const logger = Logger.create({ service: 'color-scheme-agent' })
 
@@ -69,6 +70,7 @@ export async function createColorSchemeAgent(): Promise<AgentConfig> {
     maxSteps: 15,
     temperature: 0.7, // Higher temperature for creative color work
     maxOutputTokens: 3000,
+    logger: createAgentTelemetryLogger('color-scheme'),
 
     metadata: {
       contextPreferences: {

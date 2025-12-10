@@ -61,6 +61,8 @@ interface SessionState {
   lastActivityAt: Date
   /** Prompt from the last handoff (to be sent to new agent) */
   lastHandoffPrompt?: string
+  /** App ID this session is associated with (for clearing sessions when app changes) */
+  appId?: string
 }
 
 /**
@@ -338,13 +340,46 @@ export class SessionStateManager implements HandoffStateManager {
   }
 
   /**
+   * Get session metadata (e.g., appId)
+   *
+   * @param sessionId - Session identifier
+   * @returns Metadata object with appId if available
+   */
+  getSessionMetadata(sessionId: string): { appId?: string } | undefined {
+    const session = this.sessions.get(sessionId)
+    if (!session) return undefined
+
+    // Only include appId if it's defined
+    if (session.appId) {
+      return { appId: session.appId }
+    }
+    return {}
+  }
+
+  /**
+   * Set session metadata (e.g., appId)
+   *
+   * @param sessionId - Session identifier
+   * @param metadata - Metadata to set
+   */
+  setSessionMetadata(sessionId: string, metadata: { appId?: string }): void {
+    const session = this.sessions.get(sessionId)
+    if (session) {
+      if (metadata.appId) {
+        session.appId = metadata.appId
+      }
+      session.lastActivityAt = new Date()
+    }
+  }
+
+  /**
    * Clear a specific session
-   * 
+   *
    * @param sessionId - Session identifier
    */
   clearSession(sessionId: string): void {
     this.sessions.delete(sessionId)
-    
+
     if (this.config.enableLogging) {
       logger.info(`Cleared session: ${sessionId}`)
     }

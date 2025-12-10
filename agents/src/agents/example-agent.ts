@@ -9,6 +9,7 @@ import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { Logger } from '../logging/index.js'
+import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 
 const logger = Logger.create({ service: 'example-agent' })
 
@@ -75,7 +76,8 @@ export async function createExampleAgent(): Promise<AgentConfig> {
     handoffs: [],
     maxSteps: 10,
     temperature: 0.3,
-    maxOutputTokens: 2000
+    maxOutputTokens: 2000,
+    logger: createAgentTelemetryLogger('example')
   }
 }
 

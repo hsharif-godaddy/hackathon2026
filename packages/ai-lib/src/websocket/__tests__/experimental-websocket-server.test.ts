@@ -7,7 +7,10 @@ import type { ExperimentalAgentWrapper } from '../../core/agent-factory.js'
 const mockSocket = {
   id: 'test-socket-id',
   emit: vi.fn(),
-  on: vi.fn()
+  on: vi.fn(),
+  handshake: {
+    auth: {}
+  }
 }
 
 const mockIO = {
@@ -516,10 +519,8 @@ describe('WebSocketServer - Error Handling', () => {
       mockAgent.streamGenerate.mockResolvedValueOnce(mockStreamResult)
 
       let messageHandler: any
-      let socketId: string
       mockIO.on.mockImplementation((event, handler) => {
         if (event === 'connection') {
-          socketId = mockSocket.id
           handler(mockSocket)
           const onCall = mockSocket.on.mock.calls.find(call => call[0] === 'chat')
           if (onCall) messageHandler = onCall[1]

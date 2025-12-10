@@ -7,6 +7,7 @@ import {
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
+import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 
 /**
  * Initial Agent - Creates single-page preview plans for new apps
@@ -102,6 +103,7 @@ export async function createInitialAgent(
     maxSteps: 10,
     temperature: 0.5,
     maxOutputTokens: 2000,
+    logger: createAgentTelemetryLogger('initial'),
 
     metadata: {
       contextPreferences: {

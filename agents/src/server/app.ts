@@ -164,6 +164,8 @@ const port = process.env.PORT || 4000;
 
 // Create HTTP server to support both Express and WebSocket
 const server = createServer(app);
+let wsServer: Awaited<ReturnType<typeof setupAILibWebSocketServer>>['wsServer'] | null = null;
+let isShuttingDown = false;
 
 // APM middleware should be added BEFORE other middleware
 if (isApmEnabled) {
@@ -332,7 +334,8 @@ async function initialize() {
 
     // Phase 3: Setup AI-Lib WebSocket Server
     logger.info('server.websocket.init.begin', { phase: 3 });
-    await setupAILibWebSocketServer(server);
+    const websocketSetup = await setupAILibWebSocketServer(server);
+    wsServer = websocketSetup.wsServer;
     logger.info('server.websocket.init.success', { phase: 3 });
 
     // Start file cleanup service
@@ -436,12 +439,59 @@ async function initialize() {
  * Graceful shutdown
  */
 async function shutdown() {
+  if (isShuttingDown) {
+    logger.warn('server.shutdown.already_in_progress', {
+      service: serviceName,
+    });
+    return;
+  }
+
+  isShuttingDown = true;
+
   logger.info('server.shutdown.begin', {
     service: serviceName,
   });
 
   try {
-    // Phase 3: AI-Lib WebSocket server handles its own cleanup automatically
+    fileCleanupService.stop();
+
+    if (wsServer) {
+      try {
+        wsServer.close();
+        logger.info('server.websocket.shutdown.success', {
+          service: serviceName,
+        });
+      } catch (error) {
+        logger.error('server.websocket.shutdown.failure', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+      } finally {
+        wsServer = null;
+      }
+    }
+
+    const SERVER_CLOSE_TIMEOUT_MS = 20000; // 20 seconds
+    await Promise.race([
+      new Promise<void>((resolve, reject) => {
+        if (!server.listening) {
+          resolve();
+          return;
+        }
+
+        server.close((closeError) => {
+          if (closeError) {
+            reject(closeError);
+            return;
+          }
+          resolve();
+        });
+      }),
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error('server.close() timed out')), SERVER_CLOSE_TIMEOUT_MS)
+      )
+    ]);
+
     logger.info('server.shutdown.success', {
       service: serviceName,
     });

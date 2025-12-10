@@ -10,6 +10,7 @@ import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { Logger } from '../logging/index.js'
+import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 
 const logger = Logger.create({ service: 'marketing-agent' })
 
@@ -55,6 +56,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     maxSteps: 50,
     temperature: 0.4,
     maxOutputTokens: 8000,
+    logger: createAgentTelemetryLogger('marketing'),
 
     metadata: {
       contextPreferences: {

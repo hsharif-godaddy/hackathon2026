@@ -15,6 +15,7 @@ import { GitTool } from '../tools/git-tool.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js'
+import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { logger, log } from '../logging/index.js'
 import { agents as featureAgents } from '../services/features.js'
 
@@ -282,6 +283,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     // Tool execution hooks
     beforeToolExecution,
     afterToolExecution,
+    logger: createAgentTelemetryLogger('develop'),
 
     // Handoff configuration (conditionally include commerce agent based on feature flags)
     handoffs: [

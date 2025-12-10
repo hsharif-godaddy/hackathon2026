@@ -2,20 +2,19 @@
  * Tests for token-counter.ts
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   countTokens,
   countTotalTokens,
   countConversationTokens,
   estimateTokens,
   isTokenCountingSupported,
-  getModelProvider,
-  type TokenCountResult
+  getModelProvider
 } from '../token-counter.js'
 
 // Mock the external dependencies
 vi.mock('tiktoken', () => ({
-  encoding_for_model: vi.fn((model: string) => ({
+  encoding_for_model: vi.fn((_model: string) => ({
     encode: vi.fn((text: string) => new Array(Math.ceil(text.length / 4)).fill(0)),
     free: vi.fn()
   }))

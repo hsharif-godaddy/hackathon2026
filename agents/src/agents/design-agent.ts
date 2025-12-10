@@ -9,6 +9,7 @@ import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { logger, log } from '../logging/index.js'
+import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 
 /**
  * Design Agent - Creates concise design documentation for applications
@@ -115,7 +116,8 @@ export async function createDesignAgent(): Promise<AgentConfig> {
 
     maxSteps: 20,
     temperature: 0.7, // Higher temperature for creative design work
-    maxOutputTokens: 4000
+    maxOutputTokens: 4000,
+    logger: createAgentTelemetryLogger('design')
   };
 }
 
@@ -262,4 +264,3 @@ export class DesignAgent {
     logger.info('design_agent.cleanup.complete');
   }
 }
-

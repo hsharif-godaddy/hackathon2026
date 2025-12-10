@@ -1,4 +1,4 @@
-import { tool, type Tool } from 'ai'
+import { tool, zodSchema, type Tool, type ToolExecutionOptions } from 'ai'
 import type { z } from 'zod'
 import type { ToolDefinition, AgentContext } from '../core/types.js'
 
@@ -24,13 +24,11 @@ export abstract class BaseTool implements ToolDefinition {
    * Convert to AI SDK tool format
    */
   toAISDKTool() {
-    return tool({
+    return tool<unknown, unknown>({
       description: this.description,
-      // @ts-expect-error schema generic mismatch
-      inputSchema: this.inputSchema,
-      // @ts-expect-error execute generic mismatch
-      execute: async (input: unknown) => this.execute(input),
-      ...(this.providerOptions ? { providerOptions: this.providerOptions } : {})
+      inputSchema: zodSchema(this.inputSchema),
+      execute: async (input: unknown, options: ToolExecutionOptions) => this.execute(input, options?.experimental_context as AgentContext | undefined),
+      ...(this.providerOptions ? { providerOptions: this.providerOptions as NonNullable<Tool['providerOptions']> } : {})
     })
   }
 
@@ -62,21 +60,15 @@ export function createTool<T extends z.ZodSchema>(
   options?: {
     providerOptions?: Record<string, unknown>
   }
-): Tool & { executeWithContext?: (input: z.infer<T>, context?: AgentContext) => Promise<unknown> } {
-  const toolInstance = tool({
+): Tool {
+  return tool<z.infer<T>, unknown>({
     description,
-    // @ts-expect-error generic mismatch
-    inputSchema,
-    // @ts-expect-error execute generic mismatch
-    execute: async (input: z.infer<T>) => {
-      return execute(input)
+    inputSchema: zodSchema(inputSchema),
+    execute: async (input: z.infer<T>, executionOptions: ToolExecutionOptions) => {
+      return execute(input, executionOptions?.experimental_context as AgentContext | undefined)
     },
-    ...(options?.providerOptions ? { providerOptions: options.providerOptions } : {})
+    ...(options?.providerOptions ? { providerOptions: options.providerOptions as NonNullable<Tool['providerOptions']> } : {})
   })
-
-  ;(toolInstance as Tool & { executeWithContext?: typeof execute }).executeWithContext = execute
-
-  return toolInstance as Tool & { executeWithContext?: (input: z.infer<T>, context?: AgentContext) => Promise<unknown> }
 }
 
 /**
@@ -84,12 +76,10 @@ export function createTool<T extends z.ZodSchema>(
  * Convert tool definition to AI SDK tool
  */
 export function toAISDKTool(toolDef: ToolDefinition) {
-  return tool({
+  return tool<unknown, unknown>({
     description: toolDef.description,
-    // @ts-expect-error zod schema typing not yet aligned with AI SDK FlexibleSchema
-    inputSchema: toolDef.inputSchema,
-    // @ts-expect-error execute generic mismatch
-  execute: async (input: unknown) => toolDef.execute(input),
-    ...(toolDef.providerOptions ? { providerOptions: toolDef.providerOptions } : {})
+    inputSchema: zodSchema(toolDef.inputSchema),
+    execute: async (input: unknown, options: ToolExecutionOptions) => toolDef.execute(input, options?.experimental_context as AgentContext | undefined),
+    ...(toolDef.providerOptions ? { providerOptions: toolDef.providerOptions as NonNullable<Tool['providerOptions']> } : {})
   })
 }

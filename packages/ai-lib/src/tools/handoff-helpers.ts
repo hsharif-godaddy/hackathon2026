@@ -25,10 +25,16 @@ export interface HandoffStateManager {
   switchAgent: (sessionId: string, targetAgentId: string, prompt?: string) => Promise<boolean>
   /** Get the current agent for a session */
   getCurrentAgent?: (sessionId: string) => string | undefined
+  /** Set metadata on the session (e.g., appId association) */
+  setSessionMetadata?: (sessionId: string, metadata: { appId?: string }) => void
+  /** Retrieve metadata stored for the session */
+  getSessionMetadata?: (sessionId: string) => { appId?: string } | undefined
   /** Get the prompt from the last handoff (if any) */
   getLastHandoffPrompt?: (sessionId: string) => string | undefined
   /** Clear the last handoff prompt after it's been used */
   clearLastHandoffPrompt?: (sessionId: string) => void
+  /** Clear a specific session (optional - for clearing sessions when app changes) */
+  clearSession?: (sessionId: string) => void
 }
 
 /**
@@ -329,4 +335,3 @@ export function createEndConversationTool(config: EndConversationToolConfig = {}
     stopAfterExecution: true
   })
 }
-

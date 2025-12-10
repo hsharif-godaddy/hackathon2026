@@ -924,7 +924,7 @@ export function useStreamingWebSocket() {
                 const chatMessage: AgentsAppChatMessage = {
                   message: content,
                   timestamp: new Date().toISOString(),
-                  agentId: 'develop',
+                  // Don't set agentId - let backend routing logic decide based on app state
                   context: richContext
                 }
 
@@ -1255,7 +1255,7 @@ export function useStreamingWebSocket() {
       const chatMessage: AgentsAppChatMessage = {
         message: content,
         timestamp: new Date().toISOString(),
-        agentId: 'develop', // Default agent
+        // Don't set agentId - let backend routing logic decide based on app state
         context: richContext
       }
 

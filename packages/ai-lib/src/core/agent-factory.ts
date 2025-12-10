@@ -1,23 +1,24 @@
 /**
- * AgentFactory - Modern agent factory using AI SDK 5's Experimental_Agent
+ * AgentFactory - Modern agent factory using AI SDK 6's ToolLoopAgent
  *
  * Provides agentic loop control, streaming, tool management, and agent handoffs.
  */
 
-import { Experimental_Agent, stepCountIs, hasToolCall } from 'ai'
-import { AsyncLocalStorage } from 'node:async_hooks'
+import { ToolLoopAgent, stepCountIs, hasToolCall, tool, convertToModelMessages } from 'ai'
+import type {
+  PrepareStepFunction,
+  ToolLoopAgentOnFinishCallback,
+  ToolLoopAgentOnStepFinishCallback,
+  Tool,
+  ToolExecutionOptions
+} from 'ai'
 import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from './types.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
-import { retryWithBackoff, DEFAULT_RETRY_CONFIG } from '../utils/retry-with-backoff.js'
+import type { ContentBlock, TextContentBlock, ImageContentBlock } from '../utils/image-content-builder.js'
+import { DEFAULT_RETRY_CONFIG } from '../utils/retry-with-backoff.js'
 import { createLogger } from '../utils/logger.js'
 
 const logger = createLogger('agent-factory')
-
-/**
- * AsyncLocalStorage for maintaining per-request execution context
- * This ensures concurrent requests don't interfere with each other's context
- */
-const executionContextStorage = new AsyncLocalStorage<Record<string, unknown>>()
 
 /**
  * Tool execution hook function types
@@ -101,13 +102,47 @@ export interface HandoffHistoryEntry {
  */
 
 /**
- * Wrapper around Experimental_Agent to provide consistent API
+ * Wrapper around ToolLoopAgent to provide consistent API
  */
+/**
+ * Call options type for ToolLoopAgent
+ * Empty object for now - can be extended for dynamic model selection
+ */
+type AgentCallOptions = {
+  executionContext?: Record<string, unknown> | undefined
+  contextMessages?: Array<{
+    role: 'user' | 'assistant' | 'system'
+    content: string | unknown
+    cachePoint?: { type: 'default' | 'ephemeral' }
+  }>
+  conversationMessages?: Array<{
+    role: 'user' | 'assistant' | 'system'
+    content: string | unknown
+    cachePoint?: { type: 'default' | 'ephemeral' }
+    tool_calls?: unknown
+    tool_call_id?: string
+    name?: string
+    providerOptions?: Record<string, unknown>
+  }>
+  files?: ProcessedFile[]
+  basePrompt?: string
+}
+
+type NormalizedMessage = {
+  role: 'user' | 'assistant' | 'system'
+  content: string | ContentBlock[]
+  providerOptions?: Record<string, unknown>
+  cachePoint?: { type: 'default' | 'ephemeral' }
+  name?: string
+  tool_calls?: unknown
+  tool_call_id?: string
+}
+
 export class AgentWrapper {
-  // Using 'any' generics here because Experimental_Agent generics are provider-internal and
-  // strict typing would require duplicating SDK internal types. Safe wrapper boundary.
+  // Using explicit empty call options type instead of 'any' to avoid 'as never' casts
+  // The second and third generics remain 'any' as they're provider-internal types
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private agent: Experimental_Agent<any, any, any>
+  private agent: ToolLoopAgent<AgentCallOptions, any, any>
   private config: AgentConfig
 
   constructor(config: AgentConfig) {
@@ -134,14 +169,116 @@ export class AgentWrapper {
     // Wrap tools with execution hooks if provided
     const wrappedTools = this.wrapToolsWithHooks(config.tools || {})
 
-    // Create the Experimental_Agent
-    this.agent = new Experimental_Agent({
+    const configuredMaxAttempts = config.retryConfig?.maxAttempts ?? DEFAULT_RETRY_CONFIG.maxAttempts
+    const maxRetries = configuredMaxAttempts > 0 ? Math.max(0, configuredMaxAttempts - 1) : 0
+
+    const telemetryHooks = this.createTelemetryHooks(config.logger)
+
+    // Create the ToolLoopAgent
+    this.agent = new ToolLoopAgent({
       model: config.model,
-      ...(config.system && { system: config.system }),
+      ...(config.system && { instructions: config.system }),
       tools: wrappedTools,
       ...(config.temperature !== undefined && { temperature: config.temperature }),
       ...(config.maxOutputTokens !== undefined && { maxOutputTokens: config.maxOutputTokens }),
-      stopWhen: stopWhen.length > 0 ? stopWhen : [stepCountIs(10)] // Default max 10 steps
+      stopWhen: stopWhen.length > 0 ? stopWhen : [stepCountIs(10)], // Default max 10 steps
+      // Pass provider-specific options (e.g., disableParallelToolUse for Anthropic)
+      ...(config.providerOptions && { providerOptions: config.providerOptions as any }),
+      maxRetries,
+      ...(telemetryHooks.prepareStep ? { prepareStep: telemetryHooks.prepareStep } : {}),
+      ...(telemetryHooks.onStepFinish ? { onStepFinish: telemetryHooks.onStepFinish } : {}),
+      ...(telemetryHooks.onFinish ? { onFinish: telemetryHooks.onFinish } : {}),
+      prepareCall: async ({ options, ...callParameters }) => {
+        const callOptions = (options as AgentCallOptions | undefined) || {}
+
+        const { prompt: incomingPrompt, messages: incomingMessages, ...rest } = callParameters
+
+        const promptText = typeof incomingPrompt === 'string' ? incomingPrompt : undefined
+        const promptMessageList = Array.isArray(incomingPrompt) ? incomingPrompt : undefined
+        const basePrompt = callOptions.basePrompt ?? promptText ?? ''
+        const trimmedBasePrompt = basePrompt.trim()
+
+        const userMessages: Array<{
+          role: 'user' | 'assistant' | 'system'
+          content: string | unknown
+          cachePoint?: { type: 'default' | 'ephemeral' }
+          providerOptions?: Record<string, unknown>
+          name?: string
+          tool_calls?: unknown
+          tool_call_id?: string
+        }> = [
+          ...(callOptions.contextMessages ?? []),
+          ...(callOptions.conversationMessages ?? [])
+        ]
+
+        if (callOptions.files && callOptions.files.length > 0) {
+          userMessages.push(buildHybridContent(basePrompt, callOptions.files) as any)
+        } else if (trimmedBasePrompt.length > 0) {
+          userMessages.push({ role: 'user', content: trimmedBasePrompt })
+        }
+
+        const filteredMessages = userMessages.filter(msg => {
+          if (!msg?.content) return false
+          if (typeof msg.content === 'string') return msg.content.trim().length > 0
+          if (Array.isArray(msg.content)) return msg.content.length > 0
+          return true
+        })
+
+        const normalizedMessages: NormalizedMessage[] = filteredMessages.map(msg => {
+          const normalizedContent = this.normalizeContentForMessage(msg.content)
+          const providerOptions = { ...(msg.providerOptions ?? {}) }
+          if (msg.cachePoint) {
+            providerOptions.bedrock = {
+              ...(providerOptions.bedrock as Record<string, unknown> | undefined),
+              cachePoint: msg.cachePoint.type
+            }
+          }
+          return {
+            role: msg.role,
+            content: normalizedContent,
+            ...(Object.keys(providerOptions).length > 0 ? { providerOptions } : {}),
+            ...(msg.name ? { name: msg.name } : {}),
+            ...(msg.tool_calls ? { tool_calls: msg.tool_calls } : {}),
+            ...(msg.tool_call_id ? { tool_call_id: msg.tool_call_id } : {})
+          }
+        })
+
+        let convertedMessages: Array<Record<string, unknown>> | undefined
+        const canUseSDKConversion =
+          normalizedMessages.length > 0 && normalizedMessages.every(message => this.canConvertMessageForSDK(message))
+
+        if (canUseSDKConversion) {
+          const providerOptionsList = normalizedMessages.map(message => message.providerOptions)
+          const uiMessages = normalizedMessages.map(message => ({
+            role: message.role,
+            parts: this.toUIPartsFromContent(message.content)
+          }))
+          convertedMessages = convertToModelMessages(uiMessages as any).map((modelMessage, index) => {
+            const providerOptions = providerOptionsList[index]
+            return providerOptions ? { ...modelMessage, providerOptions } : modelMessage
+          })
+        }
+
+        const preparedCall = { ...rest } as typeof callParameters
+
+        if (convertedMessages && convertedMessages.length > 0) {
+          preparedCall.messages = convertedMessages as any
+        } else if (normalizedMessages.length > 0) {
+          preparedCall.messages = normalizedMessages as any
+        } else if (incomingMessages && incomingMessages.length > 0) {
+          preparedCall.messages = incomingMessages
+        } else if (promptMessageList && promptMessageList.length > 0) {
+          preparedCall.messages = promptMessageList as any
+        } else if (trimmedBasePrompt.length > 0) {
+          preparedCall.prompt = trimmedBasePrompt
+        }
+
+        if (callOptions.executionContext) {
+          ;(preparedCall as typeof preparedCall & { experimental_context?: unknown }).experimental_context = callOptions.executionContext
+        }
+
+        return preparedCall
+      }
     })
   }
 
@@ -156,120 +293,266 @@ export class AgentWrapper {
    * Wrap tools with execution hooks and context passing
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private wrapToolsWithHooks(tools: Record<string, any>): Record<string, any> {
-    // ALWAYS wrap tools to pass executionContext, even if no hooks are configured
-    // This is critical for tools like fileEdit that need context (appId, etc.)
+  private wrapToolsWithHooks(tools: Record<string, any>): Record<string, Tool> {
+    const wrappedTools: Record<string, Tool> = {}
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const wrappedTools: Record<string, any> = {}
-
-    for (const [toolName, tool] of Object.entries(tools)) {
-      // Skip undefined/null tools to prevent errors when accessing properties
-      if (!tool) {
-        logger.warn(`Skipping undefined/null tool: ${toolName}`)
+    for (const [toolName, toolDefinition] of Object.entries(tools)) {
+      if (!toolDefinition) {
+        logger.warn(`Skipping invalid tool definition: ${toolName}`)
         continue
       }
 
-      // Clone the tool to avoid modifying the original
-      const wrappedTool = { ...tool }
-
-      // Get the original execute function - prefer executeWithContext if available
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const originalExecute = (tool as any).executeWithContext || (tool as any).execute
-
-      if (originalExecute) {
-        // Wrap the execute function with hooks
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  wrappedTool.execute = async (args: any) => {
-          let processedArgs = args
-
-          // Pass execution context to tools that support it
-          // Use AsyncLocalStorage to get the current request's context
-          const context = executionContextStorage.getStore() || {}
-
-          // Call beforeToolExecution hook
-          if (this.config.beforeToolExecution) {
-            try {
-              const hookResult = await this.config.beforeToolExecution(toolName, args, context as AgentContext)
-              // If hook returns something, use it as the new args
-              if (hookResult !== undefined) {
-                processedArgs = hookResult
-              }
-            } catch (error) {
-              logger.error('Error in beforeToolExecution hook', { toolName, error })
-              // Continue with original args if hook fails
-            }
-          }
-
-          // Execute the original tool function with context
-          let toolCallResult
-          let toolCallError
-          try {
-            // CRITICAL FIX: Use executeWithContext when available to pass context to tools like fileEdit
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            if ((tool as any).executeWithContext) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              toolCallResult = await (tool as any).executeWithContext(processedArgs, context)
-            } else {
-              toolCallResult = await originalExecute(processedArgs)
-            }
-          } catch (error) {
-            // IMPROVED ERROR REPORTING: Log detailed error information for better debugging
-            // Filter out non-serializable properties from context for logging
-            let loggableContext: any = 'No context'
-            if (context?.metadata) {
-              const metadata = context.metadata as Record<string, any>
-              loggableContext = Object.keys(metadata).reduce((acc, key) => {
-                // Skip non-serializable objects like stateManager
-                if (key === 'stateManager' || typeof metadata[key] === 'function') {
-                  acc[key] = '[Non-serializable]'
-                } else {
-                  acc[key] = metadata[key]
-                }
-                return acc
-              }, {} as Record<string, any>)
-            }
-            
-            logger.error('Tool execution failed', {
-              toolName,
-              args: processedArgs,
-              error: error instanceof Error ? {
-                stack: error.stack,
-                ...error,
-              } : String(error),
-              context: loggableContext
-            })
-            toolCallError = error
-          } finally {
-            // Call afterToolExecution hook even on error
-            if (this.config.afterToolExecution) {
-              try {
-                const hookResult = await this.config.afterToolExecution(toolName, processedArgs, toolCallResult, toolCallError, context as AgentContext)
-                // If hook returns something, use it as the new result
-                if (hookResult !== undefined) {
-                  toolCallResult = hookResult
-                }
-              } catch (error) {
-                logger.error('Error in afterToolExecution hook', { toolName, error })
-                // Continue with original result if hook fails
-              }
-            }
-          }
-
-          // CRITICAL FIX: Re-throw errors so the AI SDK can emit tool-error events
-          // This ensures the LLM knows the tool failed and the frontend receives proper error info
-          if (toolCallError) {
-            throw toolCallError
-          }
-
-          return toolCallResult
-        }
-      }
-
-      wrappedTools[toolName] = wrappedTool
+      wrappedTools[toolName] = this.wrapToolWithExecutionHooks(toolName, toolDefinition as Tool)
     }
 
     return wrappedTools
+  }
+
+  private wrapToolWithExecutionHooks(toolName: string, toolDefinition: Tool): Tool {
+    const normalizedTool = tool(toolDefinition)
+    const originalExecute = normalizedTool.execute
+
+    if (typeof originalExecute !== 'function' || (!this.config.beforeToolExecution && !this.config.afterToolExecution)) {
+      return normalizedTool
+    }
+
+    return tool({
+      ...normalizedTool,
+      execute: async (args: unknown, executionOptions: ToolExecutionOptions) => {
+        let processedArgs = args
+        const context = executionOptions?.experimental_context as AgentContext | undefined
+
+        if (this.config.beforeToolExecution) {
+          try {
+            const hookResult = await this.config.beforeToolExecution(toolName, args, context)
+            if (hookResult !== undefined) {
+              processedArgs = hookResult
+            }
+          } catch (error) {
+            logger.error('Error in beforeToolExecution hook', { toolName, error })
+          }
+        }
+
+        let toolCallResult: unknown
+        let toolCallError: unknown
+
+        try {
+          toolCallResult = await originalExecute(processedArgs, executionOptions)
+        } catch (error) {
+          toolCallError = error
+          logger.error('Tool execution failed', {
+            toolName,
+            args: processedArgs,
+            error: error instanceof Error
+              ? {
+                  stack: error.stack,
+                  message: error.message,
+                  name: error.name
+                }
+              : String(error),
+            context
+          })
+          throw error
+        } finally {
+          if (this.config.afterToolExecution) {
+            try {
+              const hookResult = await this.config.afterToolExecution(
+                toolName,
+                processedArgs,
+                toolCallResult,
+                toolCallError,
+                context
+              )
+              if (hookResult !== undefined) {
+                toolCallResult = hookResult
+              }
+            } catch (error) {
+              logger.error('Error in afterToolExecution hook', { toolName, error })
+            }
+          }
+        }
+
+        return toolCallResult
+      }
+    })
+  }
+
+  private canConvertMessageForSDK(message: NormalizedMessage): boolean {
+    if (message.tool_calls || message.tool_call_id || message.name) {
+      return false
+    }
+
+    if (typeof message.content === 'string') {
+      return true
+    }
+
+    if (Array.isArray(message.content)) {
+      return message.content.every(block => this.isSupportedContentBlock(block))
+    }
+
+    return false
+  }
+
+  private normalizeContentForMessage(content: unknown): string | ContentBlock[] {
+    if (typeof content === 'string') {
+      return content
+    }
+
+    if (Array.isArray(content)) {
+      if (content.every(block => this.isSupportedContentBlock(block))) {
+        return content as ContentBlock[]
+      }
+
+      return content
+        .map(block => {
+          if (typeof block === 'string') {
+            return block
+          }
+          if (block === null || block === undefined) {
+            return ''
+          }
+          try {
+            return JSON.stringify(block)
+          } catch {
+            return String(block)
+          }
+        })
+        .join('\n')
+    }
+
+    if (content === null || content === undefined) {
+      return ''
+    }
+
+    if (typeof content === 'object') {
+      try {
+        return JSON.stringify(content)
+      } catch (error) {
+        logger.warn('agent.message.normalize_failure', {
+          error,
+          contentType: typeof content,
+          contentPreview: String(content).slice(0, 100)
+        })
+        return String(content)
+      }
+    }
+
+    return String(content)
+  }
+
+  private isSupportedContentBlock(block: unknown): block is ContentBlock {
+    if (!block || typeof block !== 'object' || !('type' in block)) {
+      return false
+    }
+
+    if ((block as TextContentBlock).type === 'text') {
+      return typeof (block as TextContentBlock).text === 'string'
+    }
+
+    if ((block as ImageContentBlock).type === 'image') {
+      return typeof (block as ImageContentBlock).mediaType === 'string' && typeof (block as ImageContentBlock).image === 'string'
+    }
+
+    return false
+  }
+
+  private toUIPartsFromContent(content: string | ContentBlock[]): Array<{ type: 'text'; text: string } | { type: 'file'; mediaType: string; url: string }> {
+    if (typeof content === 'string') {
+      return [{ type: 'text', text: content }]
+    }
+
+    return content.map(block => {
+      if (this.isTextContentBlock(block)) {
+        const textBlock = block as TextContentBlock
+        return { type: 'text', text: textBlock.text }
+      }
+
+      if (this.isImageContentBlock(block)) {
+        const imageBlock = block as ImageContentBlock
+      return {
+        type: 'file',
+          mediaType: imageBlock.mediaType,
+          url: imageBlock.image
+      }
+      }
+
+      logger.warn(`Unsupported content block type encountered in toUIPartsFromContent: ${JSON.stringify(block)}`)
+      return { type: 'text', text: '' }
+    })
+  }
+  private isTextContentBlock(block: ContentBlock): block is TextContentBlock {
+    return block.type === 'text'
+  }
+
+  private isImageContentBlock(block: ContentBlock): block is ImageContentBlock {
+    return block.type === 'image'
+  }
+
+  private createTelemetryHooks(agentLogger?: AgentConfig['logger']): {
+    prepareStep?: PrepareStepFunction
+    onStepFinish?: ToolLoopAgentOnStepFinishCallback<Record<string, any>>
+    onFinish?: ToolLoopAgentOnFinishCallback
+  } {
+    if (!agentLogger) {
+      return {}
+    }
+
+    const agentName = this.config.name
+
+    const safeLog = (level: 'info' | 'warn' | 'error', event: string, data: unknown, failureEvent: string) => {
+      try {
+        agentLogger[level](event, data)
+      } catch (error) {
+        logger.error(failureEvent, { agentName, error })
+      }
+    }
+
+    const prepareStep: PrepareStepFunction = async ({ stepNumber, messages }) => {
+      safeLog('info', 'agent.step.begin', {
+        agentName,
+        stepNumber,
+        messageCount: messages.length
+      }, 'agent.step.begin.log_failed')
+
+      return undefined
+    }
+
+    const onStepFinish: ToolLoopAgentOnStepFinishCallback<Record<string, any>> = async stepResult => {
+      const usage = stepResult?.usage
+      safeLog(
+        'info',
+        'agent.step.finish',
+        {
+          agentName,
+          finishReason: stepResult?.finishReason,
+          toolCallCount: stepResult?.toolCalls?.length ?? 0,
+          ...(usage
+            ? {
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                totalTokens: usage.totalTokens
+              }
+            : {})
+        },
+        'agent.step.finish.log_failed'
+      )
+    }
+
+    const onFinish: ToolLoopAgentOnFinishCallback = async event => {
+      safeLog(
+        'info',
+        'agent.run.finish',
+        {
+          agentName,
+          finishReason: event.finishReason,
+          steps: event.steps.length,
+          totalUsage: event.totalUsage
+        },
+        'agent.run.finish.log_failed'
+      )
+    }
+
+    return { prepareStep, onStepFinish, onFinish }
   }
 
   /**
@@ -284,8 +567,8 @@ export class AgentWrapper {
    */
   async generate(prompt: string, options?: {
     messages?: Array<{ role: 'user' | 'assistant', content: string }>
-    context?: Record<string, unknown>
     files?: ProcessedFile[]
+    executionContext?: Record<string, unknown>
   }): Promise<{
     content: string
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -295,40 +578,22 @@ export class AgentWrapper {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     toolCalls: any
   }> {
-    const messages: Array<{ role: 'user' | 'assistant', content: string }> = []
-
-    // Add context messages if provided
-    if (options?.messages) {
-      messages.push(...options.messages)
+    const callOptions: AgentCallOptions = {
+      basePrompt: prompt
     }
-
-    // Add the main prompt (with vision support if files provided)
+    if (options?.executionContext) {
+      callOptions.executionContext = options.executionContext
+    }
+    if (options?.messages && options.messages.length > 0) {
+      callOptions.conversationMessages = options.messages
+    }
     if (options?.files && options.files.length > 0) {
-      const visionMessage = buildHybridContent(prompt, options.files)
-  // visionMessage is constructed via helper which returns provider-compatible shape
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  messages.push(visionMessage as any)
-    } else {
-      messages.push({ role: 'user' as const, content: prompt })
+      callOptions.files = options.files
     }
 
-    const retryOptions = this.config.retryConfig
-      ? { ...DEFAULT_RETRY_CONFIG, ...this.config.retryConfig }
-      : DEFAULT_RETRY_CONFIG
+    const result = await this.agent.generate({ prompt, options: callOptions })
 
-    const retryContext = {
-      operation: 'generate' as const,
-      agentName: this.config.name,
-      modelName: this.config.modelName || (typeof this.config.model === 'string' ? this.config.model : 'unknown'),
-      ...(this.config.logger && { logger: this.config.logger })
-    }
-    const result = await retryWithBackoff(
-      () => this.agent.generate({ messages }),
-      retryOptions,
-      retryContext
-    )
-
-    // Await all promises from Experimental_Agent
+    // Await all promises from ToolLoopAgent
     const [usage, finishReason, toolCalls] = await Promise.all([
       result.usage,
       result.finishReason,
@@ -367,23 +632,18 @@ export class AgentWrapper {
   toolCalls: any
     }>
   }> {
-    // Store execution context for this request using AsyncLocalStorage
-    const executionContext = options?.executionContext || {}
-
-    // Wrap the entire stream execution in AsyncLocalStorage to maintain context isolation
-    return executionContextStorage.run(executionContext, async () => {
-      return this._executeStreamGenerate(prompt, options)
-    })
+    return this._executeStreamGenerate(prompt, options)
   }
 
   /**
    * Internal implementation of streamGenerate
-   * Runs within AsyncLocalStorage context set by streamGenerate
+   * Handles tool execution context propagation via ToolLoopAgent call options
    */
   private async _executeStreamGenerate(prompt: string, options?: {
     messages?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
     context?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
     files?: ProcessedFile[]
+    executionContext?: Record<string, unknown>
   }): Promise<{
     textStream: AsyncIterable<string>
     baseStream?: unknown
@@ -397,104 +657,24 @@ export class AgentWrapper {
     }>
   }> {
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const messages: Array<{ role: 'user' | 'assistant' | 'system', content: string | any, providerOptions?: any, cachePoint?: any }> = []
-
-    // Add custom context as a user message if provided
-    if (options?.context) {
-      messages.push(...options.context
-        .filter((msg: any) => {
-          if (!msg.content) return false;
-          if (typeof msg.content === 'string') return msg.content.trim().length > 0;
-          if (Array.isArray(msg.content)) return msg.content.length > 0;
-          return true;
-        })
-        .map(msg => ({
-          role: msg.role,
-          content: msg.content,
-          // Convert cachePoint to proper providerOptions format for Bedrock
-          ...(msg.cachePoint && {
-            providerOptions: {
-              bedrock: {
-                cachePoint: msg.cachePoint.type
-              }
-            }
-          })
-        }))
-      )
-    }
-
-    // Add conversation history messages if provided
-    if (options?.messages) {
-      messages.push(...options.messages
-        .filter((msg: any) => {
-          if (!msg.content) return false;
-          if (typeof msg.content === 'string') return msg.content.trim().length > 0;
-          if (Array.isArray(msg.content)) return msg.content.length > 0;
-          return true;
-        })
-        .map((msg: any) => {
-          const mappedMsg: any = {
-            role: msg.role,
-            content: msg.content,
-            // Convert cachePoint to proper providerOptions format for Bedrock
-            ...(msg.cachePoint && {
-              providerOptions: {
-                bedrock: {
-                  cachePoint: msg.cachePoint.type
-                }
-              }
-            })
-          }
-          
-          // Preserve tool calls for assistant messages
-          if (msg.tool_calls) {
-            mappedMsg.tool_calls = msg.tool_calls
-          }
-          
-          // Preserve tool result references for tool messages
-          if (msg.tool_call_id) {
-            mappedMsg.tool_call_id = msg.tool_call_id
-          }
-          if (msg.name) {
-            mappedMsg.name = msg.name
-          }
-          
-          return mappedMsg
-        })
-      )
-    }
-
-    // Add the main prompt (with vision support if files provided)
-    if (options?.files && options.files.length > 0) {
-      const visionMessage = buildHybridContent(prompt, options.files)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  messages.push(visionMessage as any)
-    } else {
-      messages.push({ role: 'user' as const, content: prompt })
-    }
-
     let streamResult
     try {
-      const retryOptions = this.config.retryConfig
-        ? { ...DEFAULT_RETRY_CONFIG, ...this.config.retryConfig }
-        : DEFAULT_RETRY_CONFIG
-
-      const retryContext = {
-        operation: 'stream' as const,
-        agentName: this.config.name,
-        modelName: this.config.modelName || (typeof this.config.model === 'string' ? this.config.model : 'unknown'),
-        ...(this.config.logger && { logger: this.config.logger })
+      const callOptions: AgentCallOptions = {
+        basePrompt: prompt
       }
-      streamResult = await retryWithBackoff(
-        () => this.agent.stream(
-          messages.length > 1 || (options?.files && options.files.length > 0)
-            ? { messages }
-            : { prompt }
-        ),
-        retryOptions,
-        retryContext
-      )
+      if (options?.executionContext) {
+        callOptions.executionContext = options.executionContext
+      }
+      if (options?.context && options.context.length > 0) {
+        callOptions.contextMessages = options.context
+      }
+      if (options?.messages && options.messages.length > 0) {
+        callOptions.conversationMessages = options.messages
+      }
+      if (options?.files && options.files.length > 0) {
+        callOptions.files = options.files
+      }
+      streamResult = await this.agent.stream({ prompt, options: callOptions })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
       // Handle API call errors (like tool input validation failures)
@@ -530,7 +710,7 @@ Please retry your tool call with corrected input formatting.`
 
     return {
       // Provide the text stream for the caller to iterate over
-  // Cast to any for streaming structure as Experimental_Agent internal types are provider-specific.
+  // Cast to any for streaming structure as ToolLoopAgent internal types are provider-specific.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   textStream: (streamResult as any).textStream,
 
@@ -540,11 +720,11 @@ Please retry your tool call with corrected input formatting.`
 
       // Function to get final result after streaming is complete
       getFinalResult: async () => {
-  // streamResult is the stream object returned from retryWithBackoff; its properties are promises to be awaited below
+  // streamResult is the object returned from ToolLoopAgent.stream; its properties are promises to be awaited below
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const finalResult: any = streamResult
 
-        // Await all promises from Experimental_Agent
+        // Await all promises from ToolLoopAgent
         const [usage, totalUsage, finishReason, toolCalls, toolResults] = await Promise.all([
           finalResult.usage,
           finalResult.totalUsage,
@@ -568,16 +748,16 @@ Please retry your tool call with corrected input formatting.`
 
 
   /**
-   * Get the underlying Experimental_Agent (for advanced usage)
+   * Get the underlying ToolLoopAgent (for advanced usage)
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getExperimentalAgent(): Experimental_Agent<any, any, any> {
+  getToolLoopAgent(): ToolLoopAgent<any, any, any> {
     return this.agent
   }
 }
 
 /**
- * Factory for creating and managing Experimental_Agent instances
+ * Factory for creating and managing ToolLoopAgent instances
  */
 export class AgentFactory {
   private agents = new Map<string, AgentWrapper>()

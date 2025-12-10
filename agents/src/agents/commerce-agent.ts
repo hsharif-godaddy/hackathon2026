@@ -20,6 +20,7 @@ import { Logger } from '../logging/index.js';
 import { oauthConnect } from '../tools/ai-lib-tools/oauth-tool.js';
 import { suggestedResponseAITool } from '../tools/ai-lib-tools/suggested-response.js';
 import { mediaSearchAITool } from '../tools/ai-lib-tools/media-tools.js';
+import { createAgentTelemetryLogger } from '../utils/agent-logger.js';
 
 const logger = Logger.create({ service: 'commerce-agent' });
 
@@ -114,6 +115,7 @@ export async function createCommerceAgent(options?: { appPath?: string }): Promi
     // Tool execution hooks
     beforeToolExecution,
     afterToolExecution,
+    logger: createAgentTelemetryLogger('commerce'),
 
     // Handoff configuration
     handoffs: [

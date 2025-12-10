@@ -48,16 +48,16 @@ describe('model-pricing', () => {
       
       // Regular input: 800 tokens * 0.003 / 1000 = 0.0024
       expect(estimate.inputCost).toBeCloseTo(0.0024, 5)
-      // Output: 500 * 0.075 / 1000 = 0.0375
-      expect(estimate.outputCost).toBe(0.0375)
+      // Output: 500 * 0.015 / 1000 = 0.0075
+      expect(estimate.outputCost).toBe(0.0075)
       // Cached read: 200 * 0.0003 / 1000 = 0.00006
       expect(estimate.cachedInputCost).toBeCloseTo(0.00006, 5)
-      // Total with caching: 0.0024 + 0.0375 + 0.00006 = 0.03996
-      expect(estimate.totalCost).toBeCloseTo(0.03996, 5)
-      // Regular cost: 1000 * 0.003 / 1000 + 500 * 0.075 / 1000 = 0.0405
-      expect(estimate.regularCost).toBeCloseTo(0.0405, 4)
+      // Total with caching: 0.0024 + 0.0075 + 0.00006 = 0.00996
+      expect(estimate.totalCost).toBeCloseTo(0.00996, 5)
+      // Regular cost: 1000 * 0.003 / 1000 + 500 * 0.015 / 1000 = 0.0105
+      expect(estimate.regularCost).toBeCloseTo(0.0105, 4)
       expect(estimate.savings).toBeCloseTo(0.00054, 3)
-      expect(estimate.savingsPercentage).toBeCloseTo(1.33, 2)
+      expect(estimate.savingsPercentage).toBeCloseTo(5.14, 2)
     })
 
     it('should calculate costs with write caching for Bedrock models', () => {
@@ -72,13 +72,13 @@ describe('model-pricing', () => {
       
       // Regular input: 700 tokens * 0.003 / 1000 = 0.0021
       expect(estimate.inputCost).toBe(0.0021)
-      // Output: 500 * 0.075 / 1000 = 0.0375
-      expect(estimate.outputCost).toBe(0.0375)
+      // Output: 500 * 0.015 / 1000 = 0.0075
+      expect(estimate.outputCost).toBe(0.0075)
       // Cached write: 300 * 0.00375 / 1000 = 0.001125
       expect(estimate.cachedInputCost).toBeCloseTo(0.001125, 5)
       // Total with caching
-      expect(estimate.totalCost).toBeCloseTo(0.040625, 3)
-      expect(estimate.regularCost).toBeCloseTo(0.0405, 4)
+      expect(estimate.totalCost).toBeCloseTo(0.010725, 5)
+      expect(estimate.regularCost).toBeCloseTo(0.0105, 4)
       expect(estimate.savings).toBeCloseTo(-0.000225, 3) // Write costs more than regular in this case
     })
 
@@ -99,7 +99,7 @@ describe('model-pricing', () => {
       // Cached write: 100 * 0.00375 / 1000 = 0.000375
       expect(estimate.cachedInputCost).toBeCloseTo(0.000435, 5)
       // Total cached input cost should be sum of read and write
-      expect(estimate.totalCost).toBeCloseTo(0.040035, 3)
+      expect(estimate.totalCost).toBeCloseTo(0.010035, 5)
     })
 
     it('should handle unsupported models gracefully', () => {

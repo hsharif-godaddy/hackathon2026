@@ -248,7 +248,7 @@ describe('model-normalization', () => {
   describe('data structure integrity', () => {
     it('should have valid MODELS structure', () => {
       expect(typeof MODELS).toBe('object')
-      Object.entries(MODELS).forEach(([key, model]) => {
+      Object.entries(MODELS).forEach(([_, model]) => {
         expect(typeof model.normalizedName).toBe('string')
         expect(model.normalizedName.length).toBeGreaterThan(0)
         // At least one provider should be defined
@@ -258,7 +258,7 @@ describe('model-normalization', () => {
 
     it('should have valid ALIASES structure', () => {
       expect(typeof ALIASES).toBe('object')
-      Object.entries(ALIASES).forEach(([alias, canonicalKey]) => {
+      Object.entries(ALIASES).forEach(([_, canonicalKey]) => {
         expect(typeof canonicalKey).toBe('string')
         expect(MODELS[canonicalKey]).toBeDefined()
       })
@@ -272,7 +272,7 @@ describe('model-normalization', () => {
     })
 
     it('should ensure all aliases point to valid models', () => {
-      Object.entries(ALIASES).forEach(([alias, canonicalKey]) => {
+      Object.entries(ALIASES).forEach(([_, canonicalKey]) => {
         const model = MODELS[canonicalKey]
         expect(model).toBeDefined()
         expect(model.normalizedName).toBeTruthy()

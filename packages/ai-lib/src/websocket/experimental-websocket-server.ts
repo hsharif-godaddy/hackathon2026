@@ -47,6 +47,10 @@ interface ProcessedContext extends Record<string, unknown> {
   metadata?: Record<string, unknown>
 }
 
+type MetadataRecord = Record<string, unknown> & {
+  appId?: string
+}
+
 /**
  * WebSocket Server Configuration for AgentFactory
  */
@@ -743,8 +747,6 @@ export class WebSocketServer {
     try {
       reader = baseStream.getReader()
       const accumulatedToolInput = new Map<string, string>() // Track tool input deltas
-      let eventCount = 0
-      let toolEventCount = 0
 
       // eslint-disable-next-line no-constant-condition
       while (true) { // Intentional infinite loop until stream is done
@@ -773,15 +775,8 @@ export class WebSocketServer {
           break
         }
 
-        eventCount++
-
         if (value?.part) {
           const part = value.part
-
-          // Log tool-related events for debugging
-          if (part.type.includes('tool')) {
-            toolEventCount++
-          }
 
           switch (part.type) {
             case 'error': {
@@ -974,16 +969,6 @@ export class WebSocketServer {
     } catch (error: unknown) {
       // Enhanced error logging with structured information
       const errorInfo = this.analyzeStreamError(error);
-      // Non-retryable errors (budget exceeded, auth, etc.) should propagate to main handler
-      const classification = classifyError(error);
-      if (!classification.retryable) {
-        this.logger.warn(`Non-retryable error during stream processing: ${classification.category || 'unknown'}`, {
-          errorMessage: errorInfo.message,
-          category: classification.category,
-          agentName
-        });
-        throw error;
-      }
 
       this.logger.error('Error processing baseStream, falling back to text-only', {
         errorType: errorInfo.type,
@@ -992,12 +977,6 @@ export class WebSocketServer {
         isAbortError: errorInfo.isAbortError,
         originalError: error
       })
-
-      // Don't attempt fallback if the stream was intentionally cancelled
-      if (errorInfo.isAbortError) {
-        this.logger.info('Stream processing was cancelled, skipping fallback')
-        return
-      }
 
       // Fallback to text-only streaming with better error handling
       try {
@@ -1260,7 +1239,18 @@ export class WebSocketServer {
           break
         }
 
-        // Handoff occurred - prepare for next iteration
+        // Handoff occurred - update session metadata with appId
+        const currentAppId = extractAppIdFromMessageContext(data.context)
+        if (
+          currentAppId &&
+          this.config.stateManager &&
+          'setSessionMetadata' in this.config.stateManager &&
+          typeof this.config.stateManager.setSessionMetadata === 'function'
+        ) {
+          this.config.stateManager.setSessionMetadata(socketId, { appId: currentAppId })
+        }
+
+        // Prepare for next iteration
         this.logger.info(`Handoff detected: ${agentName} -> ${handoffDetails.newAgentName}`)
         agentName = handoffDetails.newAgentName
         currentMessage = handoffDetails.handoffPrompt
@@ -1316,21 +1306,36 @@ export class WebSocketServer {
    * Get the active agent for this session
    */
   private getActiveAgent(socketId: string, data: ChatMessage): string | undefined {
-    // Priority: 1) State manager (for handoffs), 2) Agent router hook (for new projects), 3) Message agentId, 4) Default agent
+    // Always evaluate router first so brand new apps can start with the Initial agent
+    const routedAgent = this.config.agentRouter ? this.config.agentRouter(socketId, data) : undefined
+
     if (this.config.stateManager && this.config.stateManager.getCurrentAgent) {
       const currentAgent = this.config.stateManager.getCurrentAgent(socketId)
       if (currentAgent) {
-        return currentAgent
+        const currentAppId = extractAppIdFromMessageContext(data.context)
+        const sessionAppId = this.config.stateManager.getSessionMetadata?.(socketId)?.appId
+
+        if (sessionAppId && currentAppId && sessionAppId !== currentAppId) {
+          this.logger.debug('App ID changed, clearing state manager session', {
+            socketId,
+            oldAppId: sessionAppId,
+            newAppId: currentAppId,
+            oldAgent: currentAgent
+          })
+          this.config.stateManager.clearSession?.(socketId)
+          if (routedAgent) {
+            return routedAgent
+          }
+          // No router result - fall through so explicit agent/default logic can run
+        } else {
+          // Same app or no metadata tracking – honor the session-controlled agent
+          return currentAgent
+        }
       }
     }
 
-    // Use agent router hook if provided (check BEFORE explicit agentId to allow override for new projects)
-    // This allows routing to architect even when client sends default agentId
-    if (this.config.agentRouter) {
-      const routedAgent = this.config.agentRouter(socketId, data)
-      if (routedAgent) {
-        return routedAgent
-      }
+    if (routedAgent) {
+      return routedAgent
     }
 
     // Check for explicit agent selection in message (after router hook)
@@ -1363,13 +1368,23 @@ export class WebSocketServer {
     }
 
     // Ensure metadata exists and set agentId
-    const metadata = context.metadata || {}
+    const metadata = ((context as { metadata?: MetadataRecord }).metadata) || {}
     context = {
       ...context,
       metadata: {
         ...metadata,
         agentId: currentAgent
       }
+    }
+
+    const appId = extractAppIdFromMetadata(metadata)
+    if (
+      appId &&
+      this.config.stateManager &&
+      'setSessionMetadata' in this.config.stateManager &&
+      typeof this.config.stateManager.setSessionMetadata === 'function'
+    ) {
+      this.config.stateManager.setSessionMetadata(socketId, { appId })
     }
 
     // Add socketId so it's available to tools via executionContext
@@ -1750,17 +1765,12 @@ export class WebSocketServer {
         hasJSONParsingFailed: error?.message?.includes('JSON parsing failed')
       })
 
-      // Non-retryable errors (budget exceeded, etc.) should propagate immediately
-      const errorClassification = classifyError(error);
-      if (!errorClassification.retryable) {
-        this.logger.warn(`Non-retryable error in streamGenerate: ${errorClassification.category || 'unknown'}`, {
-          category: errorClassification.category,
-          statusCode: errorClassification.statusCode
-        });
-        throw error;
-      }
+      const isToolValidationError =
+        error?.name === 'AI_APICallError' ||
+        error?.message?.includes('toolUse.input is invalid') ||
+        error?.message?.includes('JSON parsing failed')
 
-      if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid') || error?.message?.includes('JSON parsing failed')) {
+      if (isToolValidationError) {
         this.logger.error('Tool input validation error', { message: error.message })
 
         // Emit step start for the failed tool call
@@ -1850,6 +1860,16 @@ Please try again with corrected formatting.`
           throw retryError
         }
       } else {
+        // Non-retryable errors (budget exceeded, etc.) should propagate immediately
+        const errorClassification = classifyError(error);
+        if (!errorClassification.retryable) {
+          this.logger.warn(`Non-retryable error in streamGenerate: ${errorClassification.category || 'unknown'}`, {
+            category: errorClassification.category,
+            statusCode: errorClassification.statusCode
+          });
+          throw error;
+        }
+
         // Re-throw other errors to be handled by the outer catch block
         throw error
       }
@@ -2042,6 +2062,22 @@ export function createWebSocketServer(
   config: WebSocketConfig
 ): WebSocketServer {
   return new WebSocketServer(httpServer, config)
+}
+
+function extractAppIdFromMetadata(metadata: unknown): string | undefined {
+  if (!metadata || typeof metadata !== 'object') {
+    return undefined
+  }
+  const appIdValue = (metadata as MetadataRecord).appId
+  return typeof appIdValue === 'string' ? appIdValue : undefined
+}
+
+function extractAppIdFromMessageContext(context: unknown): string | undefined {
+  if (!context || typeof context !== 'object') {
+    return undefined
+  }
+  const metadata = (context as { metadata?: MetadataRecord }).metadata
+  return extractAppIdFromMetadata(metadata)
 }
 
 // Re-export interfaces for convenience
