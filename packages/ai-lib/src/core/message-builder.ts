@@ -1,5 +1,5 @@
 import { createLogger } from '../utils/logger.js'
-import type { ModelMessage } from 'ai'
+import type { CoreMessage } from 'ai'
 import type { AgentContext, FileInputContext } from './types.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
 
@@ -12,13 +12,13 @@ export interface MessageBuilder {
   /**
    * Build messages array for AI SDK generation
    */
-  buildMessages(input: string, context?: AgentContext): ModelMessage[]
-
+  buildMessages(input: string, context?: AgentContext): CoreMessage[]
+  
   /**
    * Build messages array with file context for AI SDK generation
    */
-  buildMessagesWithFiles?(input: string, fileContext: FileInputContext, context?: AgentContext): ModelMessage[]
-
+  buildMessagesWithFiles?(input: string, fileContext: FileInputContext, context?: AgentContext): CoreMessage[]
+  
   /**
    * Get description of this message builder
    */
@@ -31,9 +31,9 @@ export interface MessageBuilder {
 export class SimpleMessageBuilder implements MessageBuilder {
   constructor(private systemPrompt: string) {}
 
-  buildMessages(input: string, context?: AgentContext): ModelMessage[] {
-    const messages: ModelMessage[] = []
-
+  buildMessages(input: string, context?: AgentContext): CoreMessage[] {
+    const messages: CoreMessage[] = []
+    
     // Add system message
     if (this.systemPrompt) {
       messages.push({
@@ -41,17 +41,17 @@ export class SimpleMessageBuilder implements MessageBuilder {
         content: this.systemPrompt
       })
     }
-
+    
     // Add initial context messages if provided
     if (context?.initialContextMessages && context.initialContextMessages.length > 0) {
-      messages.push(...context.initialContextMessages as ModelMessage[])
+      messages.push(...context.initialContextMessages as CoreMessage[])
     }
-
+    
     // Add conversation history if provided
     if (context?.messages && context.messages.length > 0) {
-      messages.push(...context.messages as ModelMessage[])
+      messages.push(...context.messages as CoreMessage[])
     }
-
+    
     // Add user input with vision support if files are provided
     if (context?.files && context.files.length > 0) {
       const visionMessage = buildHybridContent(input, context.files)
@@ -62,69 +62,69 @@ export class SimpleMessageBuilder implements MessageBuilder {
         logger.debug(`First block type: ${visionMessage.content[0]?.type}`)
         logger.debug(`Has image block: ${visionMessage.content.some((b: any) => b.type === 'image')}`)
       }
-      messages.push(visionMessage as ModelMessage)
+      messages.push(visionMessage as CoreMessage)
     } else {
       messages.push({
         role: 'user',
         content: input
       })
     }
-
+    
     return messages
   }
-
-  buildMessagesWithFiles(input: string, fileContext: FileInputContext, context?: AgentContext): ModelMessage[] {
-    const messages: ModelMessage[] = []
-
+  
+  buildMessagesWithFiles(input: string, fileContext: FileInputContext, context?: AgentContext): CoreMessage[] {
+    const messages: CoreMessage[] = []
+    
     // Add system message
     messages.push({
       role: 'system',
       content: this.systemPrompt
     })
-
+    
     // Add initial context messages if provided
     if (context?.initialContextMessages && context.initialContextMessages.length > 0) {
-      messages.push(...context.initialContextMessages as ModelMessage[])
+      messages.push(...context.initialContextMessages as CoreMessage[])
     }
-
+    
     // Add conversation history if provided
     if (context?.messages && context.messages.length > 0) {
-      messages.push(...context.messages as ModelMessage[])
+      messages.push(...context.messages as CoreMessage[])
     }
-
+    
     // Create file context message
     const fileContextParts: string[] = []
-
+    
     if (fileContext.summary) {
       fileContextParts.push(`Files provided: ${fileContext.summary}`)
     }
-
+    
     // Add individual file information
     fileContext.files.forEach((file, index) => {
       fileContextParts.push(`\n--- File ${index + 1}: ${file.metadata.filename || 'Unknown'} ---`)
-
+      
       if (file.input.description) {
         fileContextParts.push(`Description: ${file.input.description}`)
       }
-
+      
       fileContextParts.push(`Type: ${file.metadata.mimeType}`)
       fileContextParts.push(`Size: ${file.metadata.size} bytes`)
-
+      
       if (file.warnings && file.warnings.length > 0) {
         fileContextParts.push(`Warnings: ${file.warnings.join(', ')}`)
       }
-
+      
       if (file.textContent) {
         fileContextParts.push(`Content:\n${file.textContent}`)
       }
-
+      
       if (file.structuredData) {
         fileContextParts.push(`Structured Data:\n${JSON.stringify(file.structuredData, null, 2)}`)
       }
-
+      
       // Don't add base64 content to text parts - we'll handle images separately
     })
-
+    
     // Add file context as user message
     if (fileContextParts.length > 0) {
       messages.push({
@@ -132,10 +132,10 @@ export class SimpleMessageBuilder implements MessageBuilder {
         content: fileContextParts.join('\n')
       })
     }
-
+    
     // Build content for the main user message, including any images
     const messageContent: any[] = []
-
+    
     // Add text input
     if (input) {
       messageContent.push({
@@ -143,7 +143,7 @@ export class SimpleMessageBuilder implements MessageBuilder {
         text: input
       })
     }
-
+    
     // Add images with vision capabilities
     fileContext.files.forEach(file => {
       if (file.base64Content && file.metadata.mimeType?.startsWith('image/')) {
@@ -153,18 +153,18 @@ export class SimpleMessageBuilder implements MessageBuilder {
         })
       }
     })
-
+    
     // Add the main user message with text and images
     messages.push({
       role: 'user',
-      content: messageContent.length === 1 && messageContent[0].type === 'text'
+      content: messageContent.length === 1 && messageContent[0].type === 'text' 
         ? messageContent[0].text  // Simple text message
         : messageContent          // Multi-part message with images
     })
-
+    
     return messages
   }
-
+  
   getDescription(): string {
     return 'Simple system + user message pattern with file support'
   }
@@ -178,9 +178,9 @@ export class CachingMessageBuilder implements MessageBuilder {
     private systemPrompt: string,
   ) {}
 
-  buildMessages(input: string, context?: AgentContext): ModelMessage[] {
-    const messages: ModelMessage[] = []
-
+  buildMessages(input: string, context?: AgentContext): CoreMessage[] {
+    const messages: CoreMessage[] = []
+    
     // Add system message with cache control
     if (this.systemPrompt) {
       // For caching, we need to use the experimental provider metadata format
@@ -188,28 +188,28 @@ export class CachingMessageBuilder implements MessageBuilder {
         role: 'system',
         content: this.systemPrompt,
         providerOptions: { bedrock: { cachePoint: { type: 'default' } } },
-      } as ModelMessage)
+      } as CoreMessage)
     }
-
+    
     // Add conversation history if provided
     if (context?.messages && context.messages.length > 0) {
-      messages.push(...context.messages as ModelMessage[])
+      messages.push(...context.messages as CoreMessage[])
     }
-
+    
     // Add user input with vision support if files are provided
     if (context?.files && context.files.length > 0) {
       const visionMessage = buildHybridContent(input, context.files)
-      messages.push(visionMessage as ModelMessage)
+      messages.push(visionMessage as CoreMessage)
     } else {
       messages.push({
         role: 'user',
         content: input
       })
     }
-
+    
     return messages
   }
-
+  
   getDescription(): string {
     return `Caching-enabled message builder`
   }
@@ -224,9 +224,9 @@ export class ConversationMessageBuilder implements MessageBuilder {
     private enableCaching: boolean = false
   ) {}
 
-  buildMessages(input: string, context?: AgentContext): ModelMessage[] {
-    const messages: ModelMessage[] = []
-
+  buildMessages(input: string, context?: AgentContext): CoreMessage[] {
+    const messages: CoreMessage[] = []
+    
     // Add system message (with optional caching)
     if (this.systemPrompt) {
       if (this.enableCaching) {
@@ -234,7 +234,7 @@ export class ConversationMessageBuilder implements MessageBuilder {
           role: 'system',
           content: this.systemPrompt,
           providerOptions: { bedrock: { cachePoint: { type: 'default' } } },
-        } as ModelMessage)
+        } as CoreMessage)
       } else {
         messages.push({
           role: 'system',
@@ -242,26 +242,26 @@ export class ConversationMessageBuilder implements MessageBuilder {
         })
       }
     }
-
+    
     // Add full conversation history if provided
     if (context?.messages && context.messages.length > 0) {
       messages.push(...context.messages)
     }
-
+    
     // Add current user input with vision support if files are provided
     if (context?.files && context.files.length > 0) {
       const visionMessage = buildHybridContent(input, context.files)
-      messages.push(visionMessage as ModelMessage)
+      messages.push(visionMessage as CoreMessage)
     } else {
       messages.push({
         role: 'user',
         content: input
       })
     }
-
+    
     return messages
   }
-
+  
   getDescription(): string {
     return `Multi-turn conversation builder${this.enableCaching ? ' with caching' : ''}`
   }
@@ -278,7 +278,7 @@ export function createSimpleMessageBuilder(systemPrompt: string): MessageBuilder
  * Create a caching-enabled message builder
  */
 export function createCachingMessageBuilder(
-  systemPrompt: string,
+  systemPrompt: string, 
 ): MessageBuilder {
   return new CachingMessageBuilder(systemPrompt)
 }

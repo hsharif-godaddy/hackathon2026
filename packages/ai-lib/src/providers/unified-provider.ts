@@ -295,9 +295,8 @@ export function setLitellmMetadata(metadata: { user?: string; tags?: string[] } 
  * Create a fetch wrapper that injects current S2S token on every request
  * and handles token refresh on authentication errors
  * Also injects litellm_metadata for cost tracking when available
- * CRITICAL: Removes anthropic-beta header for GoCode proxy compatibility
  */
-function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { stripBetaHeaders?: boolean }): typeof fetch {
+function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig): typeof fetch {
   return async (url: RequestInfo | URL, init?: RequestInit) => {
     // Convert to Headers instance for consistent API
     const headers = new Headers(init?.headers)
@@ -305,15 +304,6 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { stripB
     // Always inject the current valid token before making the request
     const currentToken = await getS2SToken(s2sAuthConfig)
     headers.set('Authorization', `Bearer ${currentToken}`)
-
-    // CRITICAL: Remove anthropic-beta header for GoCode proxy
-    // GoCode proxy does not support Anthropic's beta headers and will return 400 error
-    if (options?.stripBetaHeaders !== false) {
-      if (headers.has('anthropic-beta')) {
-        headers.delete('anthropic-beta')
-        logger.debug('Removed anthropic-beta header for GoCode proxy compatibility')
-      }
-    }
 
     // Inject litellm_metadata into request body if available
     const modifiedInit = { ...init, headers }
@@ -323,7 +313,7 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { stripB
         const body = JSON.parse(init.body as string)
         body.litellm_metadata = cachedLitellmMetadata
         modifiedInit.body = JSON.stringify(body)
-
+        
         // Log successful injection
         logger.debug('litellm_metadata injected into API request', {
           user: cachedLitellmMetadata.user,
@@ -386,27 +376,6 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { stripB
     }
 
     return response
-  }
-}
-
-/**
- * Create a fetch wrapper that strips beta headers for GoCode proxy compatibility
- * Used for non-S2S Anthropic API calls through GoCode proxy
- */
-function createBetaHeaderStripperFetch(): typeof fetch {
-  return async (url: RequestInfo | URL, init?: RequestInit) => {
-    // Convert to Headers instance for consistent API
-    const headers = new Headers(init?.headers)
-
-    // CRITICAL: Remove anthropic-beta header for GoCode proxy
-    // GoCode proxy does not support Anthropic's beta headers and will return 400 error
-    if (headers.has('anthropic-beta')) {
-      headers.delete('anthropic-beta')
-      logger.debug('Removed anthropic-beta header for GoCode proxy compatibility')
-    }
-
-    // Make request with modified headers
-    return await fetch(url, { ...init, headers })
   }
 }
 
@@ -680,40 +649,34 @@ function validateAnthropicConfig(config?: ProviderConfig): void {
 async function createAnthropicProvider(config?: ProviderConfig) {
   // Check if S2S authentication is enabled and get config
   const s2sConfig = await getS2SProviderConfig(config?.s2sAuth)
-
+  
   if (s2sConfig) {
     // Use S2S authentication with GoCode endpoint
     const anthropicConfig: any = {
       apiKey: s2sConfig.apiKey, // Placeholder API key
       baseURL: s2sConfig.baseURL.endsWith('/v1') ? s2sConfig.baseURL : s2sConfig.baseURL + '/v1', // Ensure /v1 suffix
-      fetch: createS2SFetchWrapper(config?.s2sAuth, { stripBetaHeaders: true }) // Custom fetch with token injection, refresh, and beta header removal
+      fetch: createS2SFetchWrapper(config?.s2sAuth) // Custom fetch with token injection and refresh
     }
-
+    
     logger.info(`Using S2S authentication with GoCode endpoint (Anthropic): ${anthropicConfig.baseURL}`)
-    logger.info('Beta headers will be stripped for GoCode proxy compatibility')
     return createAnthropic(anthropicConfig)
-
+    
   } else {
     // Use regular Anthropic authentication
     const fallbackApiKey = config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY || ''
-
+    
     const anthropicConfig: any = {
       apiKey: fallbackApiKey
     }
-
+    
     // Add base URL - use GoCode Anthropic proxy endpoint if no explicit override
     const baseURL = config?.anthropicBaseUrl || process.env.ANTHROPIC_BASE_URL || getDefaultAnthropicProxyEndpoint()
     if (baseURL) {
       // Ensure URL ends with /v1 for Anthropic API compatibility
       anthropicConfig.baseURL = baseURL.endsWith('/v1') ? baseURL : baseURL + '/v1'
       logger.info(`Using Anthropic proxy endpoint: ${anthropicConfig.baseURL}`)
-
-      // CRITICAL: Use custom fetch to strip beta headers for GoCode proxy
-      // GoCode proxy does not support Anthropic's beta headers and will return 400 error
-      anthropicConfig.fetch = createBetaHeaderStripperFetch()
-      logger.info('Beta headers will be stripped for GoCode proxy compatibility')
     }
-
+    
     return createAnthropic(anthropicConfig)
   }
 }
@@ -797,11 +760,11 @@ export async function getEmbeddingModel(
   if (fullModelName.startsWith('amazon.') || fullModelName.startsWith('cohere.')) {
     validateBedrockConfig(config)
     const provider = await createBedrockProvider(config)
-    return provider.embeddingModel(fullModelName)
+    return provider.textEmbeddingModel(fullModelName)
   } else if (fullModelName.startsWith('text-embedding')) {
     validateOpenAIConfig(config)
     const provider = await createOpenAIProvider(config)
-    return provider.embeddingModel(fullModelName)
+    return provider.textEmbeddingModel(fullModelName)
   } else {
     throw new Error(`Unsupported embedding model: ${modelName}`)
   }

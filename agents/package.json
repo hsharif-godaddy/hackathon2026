@@ -30,9 +30,9 @@
     "format:check": "prettier --check src"
   },
   "dependencies": {
-    "@ai-sdk/amazon-bedrock": "^4.0.0-beta.87",
-    "@ai-sdk/anthropic": "^3.0.0-beta.77",
-    "@ai-sdk/openai": "^3.0.0-beta.88",
+    "@ai-sdk/amazon-bedrock": "^3.0.21",
+    "@ai-sdk/anthropic": "^2.0.17",
+    "@ai-sdk/openai": "^2.0.30",
     "@airo/ai-lib": "workspace:*",
     "@anthropic-ai/tokenizer": "^0.0.4",
     "@aws-sdk/credential-providers": "^3.888.0",
@@ -45,7 +45,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/socket.io": "^3.0.2",
-    "ai": "^6.0.0-beta.138",
+    "ai": "^5.0.44",
     "axios": "^1.12.0",
     "better-sqlite3": "^12.2.0",
     "compression": "^1.7.4",

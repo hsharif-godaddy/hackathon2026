@@ -1,10 +1,10 @@
 /**
- * AgentFactory - Modern agent factory using AI SDK 6's ToolLoopAgent
+ * AgentFactory - Modern agent factory using AI SDK 5's Experimental_Agent
  *
  * Provides agentic loop control, streaming, tool management, and agent handoffs.
  */
 
-import { ToolLoopAgent, stepCountIs, hasToolCall } from 'ai'
+import { Experimental_Agent, stepCountIs, hasToolCall } from 'ai'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from './types.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
@@ -101,19 +101,13 @@ export interface HandoffHistoryEntry {
  */
 
 /**
- * Wrapper around ToolLoopAgent to provide consistent API
+ * Wrapper around Experimental_Agent to provide consistent API
  */
-/**
- * Call options type for ToolLoopAgent
- * Empty object for now - can be extended for dynamic model selection
- */
-type AgentCallOptions = Record<string, never>
-
 export class AgentWrapper {
-  // Using explicit empty call options type instead of 'any' to avoid 'as never' casts
-  // The second and third generics remain 'any' as they're provider-internal types
+  // Using 'any' generics here because Experimental_Agent generics are provider-internal and
+  // strict typing would require duplicating SDK internal types. Safe wrapper boundary.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private agent: ToolLoopAgent<AgentCallOptions, any, any>
+  private agent: Experimental_Agent<any, any, any>
   private config: AgentConfig
 
   constructor(config: AgentConfig) {
@@ -140,16 +134,14 @@ export class AgentWrapper {
     // Wrap tools with execution hooks if provided
     const wrappedTools = this.wrapToolsWithHooks(config.tools || {})
 
-    // Create the ToolLoopAgent
-    this.agent = new ToolLoopAgent({
+    // Create the Experimental_Agent
+    this.agent = new Experimental_Agent({
       model: config.model,
       ...(config.system && { system: config.system }),
       tools: wrappedTools,
       ...(config.temperature !== undefined && { temperature: config.temperature }),
       ...(config.maxOutputTokens !== undefined && { maxOutputTokens: config.maxOutputTokens }),
-      stopWhen: stopWhen.length > 0 ? stopWhen : [stepCountIs(10)], // Default max 10 steps
-      // Pass provider-specific options (e.g., disableParallelToolUse for Anthropic)
-      ...(config.providerOptions && { providerOptions: config.providerOptions as any })
+      stopWhen: stopWhen.length > 0 ? stopWhen : [stepCountIs(10)] // Default max 10 steps
     })
   }
 
@@ -237,7 +229,7 @@ export class AgentWrapper {
                 return acc
               }, {} as Record<string, any>)
             }
-
+            
             logger.error('Tool execution failed', {
               toolName,
               args: processedArgs,
@@ -331,12 +323,12 @@ export class AgentWrapper {
       ...(this.config.logger && { logger: this.config.logger })
     }
     const result = await retryWithBackoff(
-      () => this.agent.generate({ messages, options: {} }),
+      () => this.agent.generate({ messages }),
       retryOptions,
       retryContext
     )
 
-    // Await all promises from ToolLoopAgent
+    // Await all promises from Experimental_Agent
     const [usage, finishReason, toolCalls] = await Promise.all([
       result.usage,
       result.finishReason,
@@ -454,12 +446,12 @@ export class AgentWrapper {
               }
             })
           }
-
+          
           // Preserve tool calls for assistant messages
           if (msg.tool_calls) {
             mappedMsg.tool_calls = msg.tool_calls
           }
-
+          
           // Preserve tool result references for tool messages
           if (msg.tool_call_id) {
             mappedMsg.tool_call_id = msg.tool_call_id
@@ -467,7 +459,7 @@ export class AgentWrapper {
           if (msg.name) {
             mappedMsg.name = msg.name
           }
-
+          
           return mappedMsg
         })
       )
@@ -497,8 +489,8 @@ export class AgentWrapper {
       streamResult = await retryWithBackoff(
         () => this.agent.stream(
           messages.length > 1 || (options?.files && options.files.length > 0)
-            ? { messages, options: {} }
-            : { prompt, options: {} }
+            ? { messages }
+            : { prompt }
         ),
         retryOptions,
         retryContext
@@ -538,7 +530,7 @@ Please retry your tool call with corrected input formatting.`
 
     return {
       // Provide the text stream for the caller to iterate over
-  // Cast to any for streaming structure as ToolLoopAgent internal types are provider-specific.
+  // Cast to any for streaming structure as Experimental_Agent internal types are provider-specific.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   textStream: (streamResult as any).textStream,
 
@@ -552,7 +544,7 @@ Please retry your tool call with corrected input formatting.`
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const finalResult: any = streamResult
 
-        // Await all promises from ToolLoopAgent
+        // Await all promises from Experimental_Agent
         const [usage, totalUsage, finishReason, toolCalls, toolResults] = await Promise.all([
           finalResult.usage,
           finalResult.totalUsage,
@@ -576,16 +568,16 @@ Please retry your tool call with corrected input formatting.`
 
 
   /**
-   * Get the underlying ToolLoopAgent (for advanced usage)
+   * Get the underlying Experimental_Agent (for advanced usage)
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getToolLoopAgent(): ToolLoopAgent<any, any, any> {
+  getExperimentalAgent(): Experimental_Agent<any, any, any> {
     return this.agent
   }
 }
 
 /**
- * Factory for creating and managing ToolLoopAgent instances
+ * Factory for creating and managing Experimental_Agent instances
  */
 export class AgentFactory {
   private agents = new Map<string, AgentWrapper>()
