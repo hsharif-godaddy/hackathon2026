@@ -1,0 +1,31 @@
+name: Claude PR Reviewer
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+concurrency: 
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@v1.0.0
+    with:
+      cicd_role_arn: ${{ vars.CICD_ROLE_ARN }}
+      runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
+      runner_labels_json: '["self-hosted", "linux"]'
+      aws_region: us-west-2
+      gocode_environment: prod
+      track_progress: "true"
+      prompt: |
+        REPO: ${{ github.repository }}
+        PR NUMBER: ${{ github.event.pull_request.number }}
+
+        Please review this pull request with a focus on:
+        - Code quality and best practices
+        - Potential bugs or issues
+        - Security implications
+        - Performance considerations
+
+        Provide detailed feedback using inline comments for specific issues.
