@@ -21,23 +21,23 @@ import gasket from '../../gasket';
 
 /**
  * Generate metadata dynamically based on user's locale
- * 
+ *
  * **Behavior by scenario:**
  * - Authenticated + translation exists: Localized metadata
  * - Unauthenticated (incognito, logged out): English defaults
- * 
+ *
  * @returns Promise resolving to Metadata object with title and description
  */
 export async function generateMetadata(): Promise<Metadata> {
   const defaultTitle = 'Airo App Builder';
-  const defaultDescription = 'Build and manage your website with AI-powered tools';
+  const defaultDescription = "Share your idea and we'll handle the rest";
   try {
     const locale = await detectLocale();
     const intl = await getServerIntl({ locale });
-    
+
     let title = defaultTitle;
     let description = defaultDescription;
-    
+
     // TODO: handle translations for unauthenticated users
     title = intl.formatMessage({ id: 'builder_title', defaultMessage: defaultTitle });
     description = intl.formatMessage({ id: 'builder_description', defaultMessage: defaultDescription });
@@ -45,11 +45,35 @@ export async function generateMetadata(): Promise<Metadata> {
     return {
       title: title || defaultTitle,
       description: description || defaultDescription,
+      openGraph: {
+        title: title || defaultTitle,
+        description: description || defaultDescription,
+        images: ['/images/share.png'],
+        type: 'website',
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: title || defaultTitle,
+        description: description || defaultDescription,
+        images: ['/images/share.png'],
+      },
     };
   } catch (error) {
     return {
       title: defaultTitle,
       description: defaultDescription,
+      openGraph: {
+        title: defaultTitle,
+        description: defaultDescription,
+        images: ['/images/share.png'],
+        type: 'website',
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: defaultTitle,
+        description: defaultDescription,
+        images: ['/images/share.png'],
+      },
     };
   }
 }
@@ -58,13 +82,13 @@ const PresentationLayout = withGasketData(gasket)(makeLayout(gasket));
 
 /**
  * Root layout component for the application
- * 
+ *
  * **Translation Handling:**
  * - Fetches translations on server-side using getServerIntl (has Map cache)
  * - Map cache only stores successful non-empty results
  * - If server fetch fails (401, network error), falls back to client-side fetch
  * - Empty results are never cached, ensuring fresh attempts on subsequent requests
- * 
+ *
  * This ensures translations load reliably regardless of initial auth state.
  */
 async function RootLayout({
@@ -73,11 +97,11 @@ async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await detectLocale();
-  
+
   let messages: Record<string, string> | undefined;
   try {
     const fetchedMessages = await loadTranslations(locale, ['@airo/app-builder']);
-    
+
     // Only use messages if they're not empty
     if (Object.keys(fetchedMessages).length > 0) {
       messages = fetchedMessages;
@@ -86,7 +110,7 @@ async function RootLayout({
     // Translation load failed - fall back to client-side fetch
     logger.error('translations.layout.load.failure', { error });
   }
-  
+
   return (
     <PresentationLayout>
       <FrameBuster />
@@ -97,7 +121,7 @@ async function RootLayout({
       <RumProvider>
         <FullStoryProvider>
         <QueryClientProvider>
-          <TranslationsProvider 
+          <TranslationsProvider
             locale={ locale }
             messages={ messages }
             packages={['@airo/app-builder']}
