@@ -194,7 +194,7 @@ describe('FileEditCompressionStrategy', () => {
           type: 'tool-result',
           toolCallId: 'call_1',
           toolName: 'readFile',
-          result: 'File content here'
+          output: { type: 'text', value: 'File content here' }
         }]
       } as ToolModelMessage,
       ];
@@ -232,7 +232,7 @@ describe('FileEditCompressionStrategy', () => {
           type: 'tool-result',
           toolCallId: 'call_1',
           toolName: 'fileEdit',
-          result: 'Error'
+          output: { type: 'text', value: 'Error' }
         }]
       } as ToolModelMessage,
       ];
@@ -304,7 +304,7 @@ describe('FileEditCompressionStrategy', () => {
           type: 'tool-result',
           toolCallId: 'call_3',
           toolName: 'fileEdit',
-          result: 'Successfully edited src/index.ts'
+          output: { type: 'text', value: 'Successfully edited src/index.ts' }
         }]
       } as ToolModelMessage,
       ];
@@ -380,7 +380,7 @@ describe('FileEditCompressionStrategy', () => {
           type: 'tool-result',
           toolCallId: 'call_3',
           toolName: 'fileEdit',
-          result: 'Edit successful'
+          output: { type: 'text', value: 'Edit successful' }
         }]
       } as ToolModelMessage,
       ];
@@ -426,7 +426,7 @@ describe('FileEditCompressionStrategy', () => {
           type: 'tool-result',
           toolCallId: 'call_1',
           toolName: 'fileEdit',
-          result: 'Error'
+          output: { type: 'text', value: 'Error' }
         }]
       } as ToolModelMessage,
       ];
