@@ -96,7 +96,7 @@ function sanitizeSensitiveData(obj: Record<string, any>): Record<string, any> {
   // Keys that should NOT be redacted even if they contain sensitive keywords
   const allowedKeys = [
     'promptTokens', 'completionTokens', 'totalTokens', 'tokens',
-    'tokenCount', 'tokenUsage', 'tokenType'
+    'tokenCount', 'tokenUsage', 'tokenType', 'inputTokens', 'outputTokens'
   ];
   
   const sanitized = { ...obj };

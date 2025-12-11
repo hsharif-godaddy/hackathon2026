@@ -1,6 +1,7 @@
 import type { CompressionStrategy, CompressionContext } from '../MessageCompressor.js';
 import type { LLMMessage } from '../../ConversationHistoryLoader.js';
 import type { HotFileInclusionStrategy } from './HotFileInclusionStrategy.js';
+import type { ToolModelMessage } from 'ai';
 
 /**
  * Compresses duplicate file reads by keeping only the most recent read of each file
@@ -25,31 +26,42 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
    * Extract file path from readFile tool call arguments
    */
   private extractFilePath(message: LLMMessage, previousMessage?: LLMMessage): string | null {
-    if (message.role !== 'tool' || message.name !== 'readFile') {
+    if (message.role !== 'tool') {
       return null;
     }
 
-    // Try to get file path from tool call arguments in previous assistant message
-    if (previousMessage?.role === 'assistant' && previousMessage.tool_calls) {
-      const matchingToolCall = previousMessage.tool_calls.find(
-        (tc) => tc.id === message.tool_call_id
-      );
-      
-      if (matchingToolCall) {
-        try {
-          const args = JSON.parse(matchingToolCall.function.arguments);
-          return args.file_path || args.path || args.filePath || null;
-        } catch {
-          // Ignore parse errors
+    // Check AI SDK v6 ModelMessage format
+    const toolMessage = message as unknown as ToolModelMessage;
+    if (Array.isArray(toolMessage.content) && toolMessage.content[0]?.type === 'tool-result') {
+      const toolResult = toolMessage.content[0];
+      if (toolResult.toolName !== 'readFile') {
+        return null;
+      }
+
+      // Try to get file path from tool call arguments in previous assistant message
+      if (previousMessage?.role === 'assistant' && previousMessage.tool_calls) {
+        const matchingToolCall = previousMessage.tool_calls.find(
+          (tc) => tc.id === toolResult.toolCallId
+        );
+        
+        if (matchingToolCall) {
+          try {
+            const args = JSON.parse(matchingToolCall.function.arguments);
+            return args.file_path || args.path || args.filePath || null;
+          } catch {
+            // Ignore parse errors
+          }
         }
       }
-    }
 
-    // Fallback: try to extract from content
-    // Look for patterns like "Read file: /path/to/file" or "File: /path/to/file"
-    const match = message.content?.match(/(?:File|Path|file_path|path):\s*([^\n]+)/i);
-    if (match && match[1]) {
-      return match[1].trim();
+      // Fallback: try to extract from output content
+      const output = toolResult.output;
+      if (output && typeof output === 'object' && 'type' in output && output.type === 'text' && 'value' in output) {
+        const match = output.value.match(/(?:File|Path|file_path|path):\s*([^\n]+)/i);
+        if (match && match[1]) {
+          return match[1].trim();
+        }
+      }
     }
 
     return null;
@@ -83,7 +95,17 @@ export class DuplicateFileReadStrategy implements CompressionStrategy {
   canCompress(context: CompressionContext): boolean {
     const { message, messageIndex, previousMessage } = context;
 
-    if (message.role !== 'tool' || message.name !== 'readFile') {
+    if (message.role !== 'tool') {
+      return false;
+    }
+
+    // Check AI SDK v6 ModelMessage format
+    const toolMessage = message as unknown as ToolModelMessage;
+    if (!Array.isArray(toolMessage.content) || toolMessage.content[0]?.type !== 'tool-result') {
+      return false;
+    }
+    
+    if (toolMessage.content[0].toolName !== 'readFile') {
       return false;
     }
 

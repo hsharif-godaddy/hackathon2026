@@ -2,6 +2,7 @@ import type { CompressionStrategy, CompressionContext } from '../MessageCompress
 import type { LLMMessage } from '../../ConversationHistoryLoader.js';
 import type { HotFileInclusionStrategy } from './HotFileInclusionStrategy.js';
 import { logger } from '../../../logging/index.js';
+import type { ToolModelMessage } from 'ai';
 
 export class FileEditCompressionStrategy implements CompressionStrategy {
   readonly name = 'file-edit-compression';
@@ -19,7 +20,17 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
   canCompress(context: CompressionContext): boolean {
     const { message, previousMessage } = context;
 
-    if (message.role !== 'tool' || message.name !== 'fileEdit') {
+    if (message.role !== 'tool') {
+      return false;
+    }
+
+    // Check AI SDK v6 ModelMessage format
+    const toolMessage = message as unknown as ToolModelMessage;
+    if (!Array.isArray(toolMessage.content) || toolMessage.content[0]?.type !== 'tool-result') {
+      return false;
+    }
+    
+    if (toolMessage.content[0].toolName !== 'fileEdit') {
       return false;
     }
 
@@ -28,8 +39,10 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
     }
 
     if (previousMessage?.role === 'assistant' && previousMessage.tool_calls) {
+      // Get tool call ID from AI SDK v6 format
+      const toolCallId = toolMessage.content[0].toolCallId;
       const matchingToolCall = previousMessage.tool_calls.find(
-        (tc) => tc.id === message.tool_call_id
+        (tc) => tc.id === toolCallId
       );
 
       if (matchingToolCall) {
@@ -85,8 +98,15 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
       return null;
     }
 
+    // Get tool call ID from AI SDK v6 format
+    const toolMessage = message as unknown as ToolModelMessage;
+    if (!Array.isArray(toolMessage.content) || toolMessage.content[0]?.type !== 'tool-result') {
+      return null;
+    }
+    
+    const toolCallId = toolMessage.content[0].toolCallId;
     const matchingToolCall = previousMessage.tool_calls.find(
-      (tc) => tc.id === message.tool_call_id
+      (tc) => tc.id === toolCallId
     );
 
     if (!matchingToolCall) {
@@ -129,9 +149,15 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
           `\n\n[Full file content available in hot files context]\n` +
           `[Edit details compressed - files are included in hot files]`;
 
+        // Calculate original length from AI SDK v6 format
+        const output = toolMessage.content[0].output;
+        const originalLength = output && typeof output === 'object' && 'type' in output && output.type === 'text' && 'value' in output
+          ? output.value.length
+          : 0;
+        
         logger.debug('compression.file.edit.compressed', {
           fileCount: hotFileOps.length,
-          originalLength: message.content?.length || 0,
+          originalLength,
           compressedLength: summary.length,
         });
 
@@ -148,25 +174,37 @@ export class FileEditCompressionStrategy implements CompressionStrategy {
           return null;
         }
 
+        // Only compress if file is hot
+        if (!this.hotFileStrategy?.isHotFile(filePath)) {
+          return null;
+        }
+
         let linesChanged = 0;
-        const content = message.content || '';
-        const linesMatch = content.match(/(\d+)\s+lines?\s+changed/i);
-        if (linesMatch && linesMatch[1]) {
-          linesChanged = parseInt(linesMatch[1], 10);
+        // Extract output content from AI SDK v6 format
+        const output = toolMessage.content[0].output;
+        if (output && typeof output === 'object' && 'type' in output && output.type === 'text' && 'value' in output) {
+          const linesMatch = output.value.match(/(\d+)\s+lines?\s+changed/i);
+          if (linesMatch && linesMatch[1]) {
+            linesChanged = parseInt(linesMatch[1], 10);
+          }
         }
 
         const summary =
-          `✅ File edited: ${filePath}\n` +
+          `File edited: ${filePath}\n` +
           `Mode: ${mode}\n` +
           `Lines changed: ${linesChanged > 0 ? linesChanged : 'unknown'}\n\n` +
           `[Full file content available in hot files context]\n` +
           `[Edit details compressed - file is included in hot files]`;
 
+        const outputLength = output && typeof output === 'object' && 'type' in output && output.type === 'text' && 'value' in output
+          ? output.value.length
+          : 0;
+        
         logger.debug('compression.file.edit.compressed', {
           filePath,
           mode,
           linesChanged,
-          originalLength: message.content?.length || 0,
+          originalLength: outputLength,
           compressedLength: summary.length,
         });
 

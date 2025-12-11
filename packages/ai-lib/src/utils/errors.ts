@@ -13,6 +13,75 @@ function isObject(val: unknown): val is Record<string, unknown> {
 }
 
 /**
+ * Safely serialize an error for logging, avoiding circular references
+ * and extracting only serializable properties
+ *
+ * @param error - The error to serialize
+ * @returns A plain object with error details that can be safely JSON.stringify'd
+ *
+ * @example
+ * try {
+ *   await someOperation();
+ * } catch (error) {
+ *   logger.error('Operation failed', { error: serializeError(error) });
+ * }
+ */
+export function serializeError(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    const serialized: Record<string, unknown> = {
+      name: error.name,
+      message: error.message,
+    };
+    
+    if (error.stack) {
+      serialized.stack = error.stack;
+    }
+    
+    // Include any additional enumerable properties (like statusCode, etc.)
+    // but avoid circular references
+    for (const key of Object.keys(error)) {
+      if (key !== 'stack' && key !== 'message' && key !== 'name') {
+        try {
+          const value = (error as any)[key];
+          // Only include primitives and simple objects
+          if (value !== undefined && value !== null) {
+            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+              serialized[key] = value;
+            } else if (typeof value === 'object') {
+              // Try to stringify to detect circular references
+              JSON.stringify(value);
+              serialized[key] = value;
+            }
+          }
+        } catch {
+          // Skip properties that can't be serialized
+          serialized[key] = '[Non-serializable]';
+        }
+      }
+    }
+    
+    return serialized;
+  }
+  
+  if (typeof error === 'string') {
+    return { message: error };
+  }
+  
+  if (isObject(error)) {
+    try {
+      // Try to serialize the object
+      JSON.stringify(error);
+      return error;
+    } catch {
+      // If serialization fails, extract what we can
+      return { message: String(error) };
+    }
+  }
+  
+  return { message: String(error) };
+}
+
+/**
  * Error thrown when a user exceeds their AI usage budget
  *
  * This error is thrown at the fetch level (in unified-provider.ts) when the

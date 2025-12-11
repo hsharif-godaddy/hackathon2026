@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { DuplicateFileReadStrategy } from '../compression/strategies/DuplicateFileReadStrategy.js';
 import { MessageCompressor } from '../compression/MessageCompressor.js';
 import type { LLMMessage } from '../ConversationHistoryLoader.js';
+import type { ToolModelMessage } from 'ai';
 
 describe('DuplicateFileReadStrategy', () => {
   let strategy: DuplicateFileReadStrategy;
@@ -26,22 +27,25 @@ describe('DuplicateFileReadStrategy', () => {
       },
       {
         role: 'tool',
-        content: 'export function main() { ... }',
-        tool_call_id: 'tool1',
-        name: 'readFile'
-      },
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'tool1',
+          toolName: 'readFile',
+          output: { type: 'text', value: 'export function main() { ... }' }
+        }]
+      } as ToolModelMessage,
     ];
 
     const result = compressor.compressMessages(messages);
 
     expect(result.messages).toHaveLength(2);
-    expect(result.messages[1].content).toBe('export function main() { ... }');
+    const toolMessage = result.messages[1] as ToolModelMessage;
+    expect(Array.isArray(toolMessage.content) && toolMessage.content[0]?.type === 'tool-result').toBe(true);
     expect(result.stats.compressedMessages).toBe(0);
   });
 
   it('should compress duplicate file reads', () => {
     const messages: LLMMessage[] = [
-      // First read
       {
         role: 'assistant',
         content: 'Let me read the file',
@@ -53,13 +57,14 @@ describe('DuplicateFileReadStrategy', () => {
       },
       {
         role: 'tool',
-        content: 'export function main() { console.log("v1"); }',
-        tool_call_id: 'tool1',
-        name: 'readFile'
-      },
-      // Some other messages
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'tool1',
+          toolName: 'readFile',
+          output: { type: 'text', value: 'export function main() { console.log("v1"); }' }
+        }]
+      } as ToolModelMessage,
       { role: 'user', content: 'Update it' },
-      // Second read of same file
       {
         role: 'assistant',
         content: 'Let me read it again',
@@ -71,24 +76,32 @@ describe('DuplicateFileReadStrategy', () => {
       },
       {
         role: 'tool',
-        content: 'export function main() { console.log("v2"); }',
-        tool_call_id: 'tool2',
-        name: 'readFile'
-      },
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'tool2',
+          toolName: 'readFile',
+          output: { type: 'text', value: 'export function main() { console.log("v2"); }' }
+        }]
+      } as ToolModelMessage,
     ];
 
     const result = compressor.compressMessages(messages);
 
     expect(result.messages).toHaveLength(5);
-    expect(result.messages[1].content).toContain('[Duplicate file read removed');
-    expect(result.messages[1].content).toContain('/app/src/index.ts');
-    expect(result.messages[4].content).toBe('export function main() { console.log("v2"); }');
+    const compressedMessage = result.messages[1] as ToolModelMessage;
+    expect(Array.isArray(compressedMessage.content) && compressedMessage.content[0]?.type === 'tool-result').toBe(true);
+    const output = compressedMessage.content[0]?.output;
+    const compressedResult = output && typeof output === 'object' && 'type' in output && output.type === 'text' && 'value' in output ? output.value : '';
+    expect(compressedResult).toContain('[Duplicate file read removed');
+    expect(compressedResult).toContain('/app/src/index.ts');
+    const finalMessage = result.messages[4] as ToolModelMessage;
+    const finalOutput = finalMessage.content[0]?.output;
+    expect(finalOutput && typeof finalOutput === 'object' && 'type' in finalOutput && finalOutput.type === 'text' && 'value' in finalOutput ? finalOutput.value : '').toBe('export function main() { console.log("v2"); }');
     expect(result.stats.compressedMessages).toBe(1);
   });
 
   it('should handle multiple different files', () => {
     const messages: LLMMessage[] = [
-      // Read file 1
       {
         role: 'assistant',
         content: 'Read file 1',
@@ -100,11 +113,13 @@ describe('DuplicateFileReadStrategy', () => {
       },
       {
         role: 'tool',
-        content: 'file1 content v1',
-        tool_call_id: 'tool1',
-        name: 'readFile'
-      },
-      // Read file 2
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'tool1',
+          toolName: 'readFile',
+          output: { type: 'text', value: 'file1 content v1' }
+        }]
+      } as ToolModelMessage,
       {
         role: 'assistant',
         content: 'Read file 2',
@@ -116,11 +131,13 @@ describe('DuplicateFileReadStrategy', () => {
       },
       {
         role: 'tool',
-        content: 'file2 content',
-        tool_call_id: 'tool2',
-        name: 'readFile'
-      },
-      // Re-read file 1
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'tool2',
+          toolName: 'readFile',
+          output: { type: 'text', value: 'file2 content' }
+        }]
+      } as ToolModelMessage,
       {
         role: 'assistant',
         content: 'Read file 1 again',
@@ -132,24 +149,32 @@ describe('DuplicateFileReadStrategy', () => {
       },
       {
         role: 'tool',
-        content: 'file1 content v2',
-        tool_call_id: 'tool3',
-        name: 'readFile'
-      },
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'tool3',
+          toolName: 'readFile',
+          output: { type: 'text', value: 'file1 content v2' }
+        }]
+      } as ToolModelMessage,
     ];
 
     const result = compressor.compressMessages(messages);
 
-    // First read of file1 should be compressed, file2 unchanged, second read of file1 kept
-    expect(result.messages[1].content).toContain('[Duplicate file read removed');
-    expect(result.messages[3].content).toBe('file2 content');
-    expect(result.messages[5].content).toBe('file1 content v2');
+    const compressed1 = result.messages[1] as ToolModelMessage;
+    const output1 = compressed1.content[0]?.output;
+    const compressedResult1 = output1 && typeof output1 === 'object' && 'type' in output1 && output1.type === 'text' && 'value' in output1 ? output1.value : '';
+    expect(compressedResult1).toContain('[Duplicate file read removed');
+    const file2Message = result.messages[3] as ToolModelMessage;
+    const file2Output = file2Message.content[0]?.output;
+    expect(file2Output && typeof file2Output === 'object' && 'type' in file2Output && file2Output.type === 'text' && 'value' in file2Output ? file2Output.value : '').toBe('file2 content');
+    const final1 = result.messages[5] as ToolModelMessage;
+    const final1Output = final1.content[0]?.output;
+    expect(final1Output && typeof final1Output === 'object' && 'type' in final1Output && final1Output.type === 'text' && 'value' in final1Output ? final1Output.value : '').toBe('file1 content v2');
     expect(result.stats.compressedMessages).toBe(1);
   });
 
   it('should handle three reads of the same file', () => {
     const messages: LLMMessage[] = [
-      // Read 1
       {
         role: 'assistant',
         content: 'Read 1',
@@ -161,11 +186,13 @@ describe('DuplicateFileReadStrategy', () => {
       },
       {
         role: 'tool',
-        content: 'content v1',
-        tool_call_id: 'tool1',
-        name: 'readFile'
-      },
-      // Read 2
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'tool1',
+          toolName: 'readFile',
+          output: { type: 'text', value: 'content v1' }
+        }]
+      } as ToolModelMessage,
       {
         role: 'assistant',
         content: 'Read 2',
@@ -177,11 +204,13 @@ describe('DuplicateFileReadStrategy', () => {
       },
       {
         role: 'tool',
-        content: 'content v2',
-        tool_call_id: 'tool2',
-        name: 'readFile'
-      },
-      // Read 3
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'tool2',
+          toolName: 'readFile',
+          output: { type: 'text', value: 'content v2' }
+        }]
+      } as ToolModelMessage,
       {
         role: 'assistant',
         content: 'Read 3',
@@ -193,24 +222,33 @@ describe('DuplicateFileReadStrategy', () => {
       },
       {
         role: 'tool',
-        content: 'content v3',
-        tool_call_id: 'tool3',
-        name: 'readFile'
-      },
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'tool3',
+          toolName: 'readFile',
+          output: { type: 'text', value: 'content v3' }
+        }]
+      } as ToolModelMessage,
     ];
 
     const result = compressor.compressMessages(messages);
 
-    // First two reads should be compressed, third kept
-    expect(result.messages[1].content).toContain('[Duplicate file read removed');
-    expect(result.messages[3].content).toContain('[Duplicate file read removed');
-    expect(result.messages[5].content).toBe('content v3');
+    const compressed1st = result.messages[1] as ToolModelMessage;
+    const output1st = compressed1st.content[0]?.output;
+    const compressedResult1st = output1st && typeof output1st === 'object' && 'type' in output1st && output1st.type === 'text' && 'value' in output1st ? output1st.value : '';
+    expect(compressedResult1st).toContain('[Duplicate file read removed');
+    const compressed2nd = result.messages[3] as ToolModelMessage;
+    const output2nd = compressed2nd.content[0]?.output;
+    const compressedResult2nd = output2nd && typeof output2nd === 'object' && 'type' in output2nd && output2nd.type === 'text' && 'value' in output2nd ? output2nd.value : '';
+    expect(compressedResult2nd).toContain('[Duplicate file read removed');
+    const final3rd = result.messages[5] as ToolModelMessage;
+    const final3rdOutput = final3rd.content[0]?.output;
+    expect(final3rdOutput && typeof final3rdOutput === 'object' && 'type' in final3rdOutput && final3rdOutput.type === 'text' && 'value' in final3rdOutput ? final3rdOutput.value : '').toBe('content v3');
     expect(result.stats.compressedMessages).toBe(2);
   });
 
   it('should extract file path from different argument formats', () => {
     const messages: LLMMessage[] = [
-      // Using file_path
       {
         role: 'assistant',
         content: 'Read with file_path',
@@ -222,11 +260,13 @@ describe('DuplicateFileReadStrategy', () => {
       },
       {
         role: 'tool',
-        content: 'content v1',
-        tool_call_id: 'tool1',
-        name: 'readFile'
-      },
-      // Using path
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'tool1',
+          toolName: 'readFile',
+          output: { type: 'text', value: 'content v1' }
+        }]
+      } as ToolModelMessage,
       {
         role: 'assistant',
         content: 'Read with path',
@@ -238,23 +278,29 @@ describe('DuplicateFileReadStrategy', () => {
       },
       {
         role: 'tool',
-        content: 'content v2',
-        tool_call_id: 'tool2',
-        name: 'readFile'
-      },
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'tool2',
+          toolName: 'readFile',
+          output: { type: 'text', value: 'content v2' }
+        }]
+      } as ToolModelMessage,
     ];
 
     const result = compressor.compressMessages(messages);
 
-    // Both should be recognized as the same file
-    expect(result.messages[1].content).toContain('[Duplicate file read removed');
-    expect(result.messages[3].content).toBe('content v2');
+    const compressedPath = result.messages[1] as ToolModelMessage;
+    const outputPath = compressedPath.content[0]?.output;
+    const compressedResultPath = outputPath && typeof outputPath === 'object' && 'type' in outputPath && outputPath.type === 'text' && 'value' in outputPath ? outputPath.value : '';
+    expect(compressedResultPath).toContain('[Duplicate file read removed');
+    const finalPath = result.messages[3] as ToolModelMessage;
+    const finalPathOutput = finalPath.content[0]?.output;
+    expect(finalPathOutput && typeof finalPathOutput === 'object' && 'type' in finalPathOutput && finalPathOutput.type === 'text' && 'value' in finalPathOutput ? finalPathOutput.value : '').toBe('content v2');
     expect(result.stats.compressedMessages).toBe(1);
   });
 
   it('should provide stats about duplicates', () => {
     const messages: LLMMessage[] = [
-      // File 1 - read 3 times
       {
         role: 'assistant',
         content: 'Read file1',
@@ -264,7 +310,7 @@ describe('DuplicateFileReadStrategy', () => {
           function: { name: 'readFile', arguments: JSON.stringify({ file_path: '/app/file1.ts' }) }
         }]
       },
-      { role: 'tool', content: 'content1', tool_call_id: 'tool1', name: 'readFile' },
+      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'tool1', toolName: 'readFile', output: { type: 'text', value: 'content1' } }] } as ToolModelMessage,
       {
         role: 'assistant',
         content: 'Read file1 again',
@@ -274,7 +320,7 @@ describe('DuplicateFileReadStrategy', () => {
           function: { name: 'readFile', arguments: JSON.stringify({ file_path: '/app/file1.ts' }) }
         }]
       },
-      { role: 'tool', content: 'content2', tool_call_id: 'tool2', name: 'readFile' },
+      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'tool2', toolName: 'readFile', output: { type: 'text', value: 'content2' } }] } as ToolModelMessage,
       {
         role: 'assistant',
         content: 'Read file1 third time',
@@ -284,8 +330,7 @@ describe('DuplicateFileReadStrategy', () => {
           function: { name: 'readFile', arguments: JSON.stringify({ file_path: '/app/file1.ts' }) }
         }]
       },
-      { role: 'tool', content: 'content3', tool_call_id: 'tool3', name: 'readFile' },
-      // File 2 - read 2 times
+      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'tool3', toolName: 'readFile', output: { type: 'text', value: 'content3' } }] } as ToolModelMessage,
       {
         role: 'assistant',
         content: 'Read file2',
@@ -295,7 +340,7 @@ describe('DuplicateFileReadStrategy', () => {
           function: { name: 'readFile', arguments: JSON.stringify({ file_path: '/app/file2.ts' }) }
         }]
       },
-      { role: 'tool', content: 'content4', tool_call_id: 'tool4', name: 'readFile' },
+      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'tool4', toolName: 'readFile', output: { type: 'text', value: 'content4' } }] } as ToolModelMessage,
       {
         role: 'assistant',
         content: 'Read file2 again',
@@ -305,7 +350,7 @@ describe('DuplicateFileReadStrategy', () => {
           function: { name: 'readFile', arguments: JSON.stringify({ file_path: '/app/file2.ts' }) }
         }]
       },
-      { role: 'tool', content: 'content5', tool_call_id: 'tool5', name: 'readFile' },
+      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'tool5', toolName: 'readFile', output: { type: 'text', value: 'content5' } }] } as ToolModelMessage,
     ];
 
     compressor.compressMessages(messages);
@@ -314,6 +359,6 @@ describe('DuplicateFileReadStrategy', () => {
     expect(stats.totalFiles).toBe(2);
     expect(stats.filesWithDuplicates).toBe(2);
     expect(stats.totalReads).toBe(5);
-    expect(stats.duplicateReads).toBe(3); // 2 duplicates from file1, 1 from file2
+    expect(stats.duplicateReads).toBe(3);
   });
 });

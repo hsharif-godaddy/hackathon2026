@@ -63,9 +63,8 @@ export class ConversationContextManager {
     const duplicateFileReadStrategy = new DuplicateFileReadStrategy(hotFileStrategy);
 
     this.historyLoader.registerCompressionStrategy(hotFileStrategy);
-    // TEMPORARILY DISABLED: Tool message compression strategies need to be updated for AI SDK v6 format
-    // this.historyLoader.registerCompressionStrategy(duplicateFileReadStrategy);
-    // this.historyLoader.registerCompressionStrategy(fileEditStrategy);
+    this.historyLoader.registerCompressionStrategy(duplicateFileReadStrategy);
+    this.historyLoader.registerCompressionStrategy(fileEditStrategy);
     this.historyLoader.registerCompressionStrategy(fileEditInputStrategy);
     // Remove all app context entries from history - fresh context is injected before history on every turn
     this.historyLoader.registerCompressionStrategy(new AppContextRemovalStrategy());

@@ -139,7 +139,7 @@ export class HotFileInclusionStrategy implements CompressionStrategy {
       score += readCount;
       score += writeCount * 2;
 
-      const meetsHotCriteria = hasAnyAccess;
+      const meetsHotCriteria = readCount >= this.config.minReadCount || writeCount >= this.config.minWriteCount;
 
       if (meetsHotCriteria) {
         this.fileMetrics.set(filePath, {

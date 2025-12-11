@@ -18,6 +18,7 @@ import { buildHybridContent } from '../utils/image-content-builder.js'
 import type { ContentBlock, TextContentBlock, ImageContentBlock } from '../utils/image-content-builder.js'
 import { DEFAULT_RETRY_CONFIG } from '../utils/retry-with-backoff.js'
 import { createLogger } from '../utils/logger.js'
+import { serializeError } from '../utils/errors.js'
 
 const logger = createLogger('agent-factory')
 
@@ -401,19 +402,22 @@ export class AgentWrapper {
           toolCallResult = await originalExecute(processedArgs, executionOptions)
         } catch (error) {
           toolCallError = error
+          const serializedError = serializeError(error)
           logger.error('Tool execution failed', {
             toolName,
             args: processedArgs,
-            error: error instanceof Error
-              ? {
-                  stack: error.stack,
-                  message: error.message,
-                  name: error.name
-                }
-              : String(error),
+            error: serializedError,
             context
           })
-          throw error
+          // Re-throw a clean error to avoid circular reference issues in AI SDK serialization
+          const errorMessage = typeof serializedError.message === 'string' 
+            ? serializedError.message 
+            : String(error)
+          const cleanError = new Error(errorMessage)
+          cleanError.name = typeof serializedError.name === 'string' 
+            ? serializedError.name 
+            : 'ToolExecutionError'
+          throw cleanError
         } finally {
           if (this.config.afterToolExecution) {
             try {

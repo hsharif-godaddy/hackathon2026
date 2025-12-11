@@ -3,6 +3,7 @@ import { FileEditCompressionStrategy } from '../FileEditCompressionStrategy.js';
 import { HotFileInclusionStrategy } from '../HotFileInclusionStrategy.js';
 import type { CompressionContext } from '../../MessageCompressor.js';
 import type { LLMMessage } from '../../../../types/llm.js';
+import type { ToolModelMessage } from 'ai';
 
 describe('FileEditCompressionStrategy', () => {
   let hotFileStrategy: HotFileInclusionStrategy;
@@ -10,8 +11,8 @@ describe('FileEditCompressionStrategy', () => {
 
   beforeEach(() => {
     hotFileStrategy = new HotFileInclusionStrategy('/test/app', {
-      minReadCount: 1,
-      minWriteCount: 1,
+      minReadCount: 2,
+      minWriteCount: 2,
       recencyWindowMs: 10 * 60 * 1000,
     });
     fileEditStrategy = new FileEditCompressionStrategy(hotFileStrategy);
@@ -35,6 +36,15 @@ describe('FileEditCompressionStrategy', () => {
           ],
         },
         {
+          role: 'tool',
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'call_1',
+            toolName: 'readFile',
+            output: { type: 'text', value: 'file content' }
+          }]
+        } as ToolModelMessage,
+        {
           role: 'assistant',
           content: '',
           tool_calls: [
@@ -48,6 +58,15 @@ describe('FileEditCompressionStrategy', () => {
             },
           ],
         },
+        {
+          role: 'tool',
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'call_2',
+            toolName: 'readFile',
+            output: { type: 'text', value: 'file content' }
+          }]
+        } as ToolModelMessage,
         {
           role: 'assistant',
           content: '',
@@ -67,20 +86,23 @@ describe('FileEditCompressionStrategy', () => {
           ],
         },
         {
-          role: 'tool',
-          name: 'fileEdit',
-          tool_call_id: 'call_3',
-          content: 'File edited successfully',
-        },
+        role: 'tool',
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call_3',
+          toolName: 'fileEdit',
+          output: { type: 'text', value: 'File edited successfully' }
+        }]
+      } as ToolModelMessage,
       ];
 
       hotFileStrategy.analyzeMessages(messages);
 
       const context: CompressionContext = {
-        messageIndex: 3,
-        totalMessages: 4,
-        message: messages[3]!,
-        previousMessage: messages[2],
+        messageIndex: 5,
+        totalMessages: 6,
+        message: messages[5]!,
+        previousMessage: messages[4],
         nextMessage: undefined,
       };
 
@@ -108,11 +130,14 @@ describe('FileEditCompressionStrategy', () => {
           ],
         },
         {
-          role: 'tool',
-          name: 'fileEdit',
-          tool_call_id: 'call_1',
-          content: 'File edited successfully',
-        },
+        role: 'tool',
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call_1',
+          toolName: 'fileEdit',
+          output: { type: 'text', value: 'File edited successfully' }
+        }]
+      } as ToolModelMessage,
       ];
 
       hotFileStrategy.analyzeMessages(messages);
@@ -164,11 +189,14 @@ describe('FileEditCompressionStrategy', () => {
           ],
         },
         {
-          role: 'tool',
-          name: 'readFile',
-          tool_call_id: 'call_1',
-          content: 'File content here',
-        },
+        role: 'tool',
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call_1',
+          toolName: 'readFile',
+          result: 'File content here'
+        }]
+      } as ToolModelMessage,
       ];
 
       const context: CompressionContext = {
@@ -199,11 +227,14 @@ describe('FileEditCompressionStrategy', () => {
           ],
         },
         {
-          role: 'tool',
-          name: 'fileEdit',
-          tool_call_id: 'call_1',
-          content: 'Error',
-        },
+        role: 'tool',
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call_1',
+          toolName: 'fileEdit',
+          result: 'Error'
+        }]
+      } as ToolModelMessage,
       ];
 
       const context: CompressionContext = {
@@ -268,11 +299,14 @@ describe('FileEditCompressionStrategy', () => {
           ],
         },
         {
-          role: 'tool',
-          name: 'fileEdit',
-          tool_call_id: 'call_3',
-          content: 'Successfully edited src/index.ts',
-        },
+        role: 'tool',
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call_3',
+          toolName: 'fileEdit',
+          result: 'Successfully edited src/index.ts'
+        }]
+      } as ToolModelMessage,
       ];
 
       hotFileStrategy.analyzeMessages(messages);
@@ -288,7 +322,7 @@ describe('FileEditCompressionStrategy', () => {
       const compressed = fileEditStrategy.compress(context);
 
       expect(compressed).not.toBeNull();
-      expect(compressed?.content).toContain('✅ File edited: src/index.ts');
+      expect(compressed?.content).toContain('File edited: src/index.ts');
       expect(compressed?.content).toContain('[Full file content available in hot files context]');
     });
 
@@ -341,11 +375,14 @@ describe('FileEditCompressionStrategy', () => {
           ],
         },
         {
-          role: 'tool',
-          name: 'fileEdit',
-          tool_call_id: 'call_3',
-          content: 'Edit successful',
-        },
+        role: 'tool',
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call_3',
+          toolName: 'fileEdit',
+          result: 'Edit successful'
+        }]
+      } as ToolModelMessage,
       ];
 
       hotFileStrategy.analyzeMessages(messages);
@@ -384,11 +421,14 @@ describe('FileEditCompressionStrategy', () => {
           ],
         },
         {
-          role: 'tool',
-          name: 'fileEdit',
-          tool_call_id: 'call_1',
-          content: 'Error',
-        },
+        role: 'tool',
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call_1',
+          toolName: 'fileEdit',
+          result: 'Error'
+        }]
+      } as ToolModelMessage,
       ];
 
       const context: CompressionContext = {
@@ -423,6 +463,15 @@ describe('FileEditCompressionStrategy', () => {
           ],
         },
         {
+          role: 'tool',
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'call_1',
+            toolName: 'readFile',
+            output: { type: 'text', value: 'file content' }
+          }]
+        } as ToolModelMessage,
+        {
           role: 'assistant',
           content: '',
           tool_calls: [
@@ -436,6 +485,15 @@ describe('FileEditCompressionStrategy', () => {
             },
           ],
         },
+        {
+          role: 'tool',
+          content: [{
+            type: 'tool-result',
+            toolCallId: 'call_2',
+            toolName: 'readFile',
+            output: { type: 'text', value: 'file content' }
+          }]
+        } as ToolModelMessage,
         {
           role: 'assistant',
           content: '',
@@ -455,11 +513,14 @@ describe('FileEditCompressionStrategy', () => {
           ],
         },
         {
-          role: 'tool',
-          name: 'fileEdit',
-          tool_call_id: 'call_3',
-          content: 'Edit successful',
-        },
+        role: 'tool',
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call_3',
+          toolName: 'fileEdit',
+          output: { type: 'text', value: 'Edit successful' }
+        }]
+      } as ToolModelMessage,
         {
           role: 'assistant',
           content: '',
@@ -479,28 +540,31 @@ describe('FileEditCompressionStrategy', () => {
           ],
         },
         {
-          role: 'tool',
-          name: 'fileEdit',
-          tool_call_id: 'call_4',
-          content: 'Edit successful',
-        },
+        role: 'tool',
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call_4',
+          toolName: 'fileEdit',
+          output: { type: 'text', value: 'Edit successful' }
+        }]
+      } as ToolModelMessage,
       ];
 
       hotFileStrategy.analyzeMessages(messages);
 
       const hotEditContext: CompressionContext = {
-        messageIndex: 3,
-        totalMessages: 6,
-        message: messages[3]!,
-        previousMessage: messages[2],
-        nextMessage: messages[4],
+        messageIndex: 5,
+        totalMessages: 8,
+        message: messages[5]!,
+        previousMessage: messages[4],
+        nextMessage: messages[6],
       };
 
       const coldEditContext: CompressionContext = {
-        messageIndex: 5,
-        totalMessages: 6,
-        message: messages[5]!,
-        previousMessage: messages[4],
+        messageIndex: 7,
+        totalMessages: 8,
+        message: messages[7]!,
+        previousMessage: messages[6],
         nextMessage: undefined,
       };
 
