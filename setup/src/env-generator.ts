@@ -678,6 +678,9 @@ SSO_JWT=${config.ssoJwt}
 # GODADDY_API_BASE_URL=https://api.dev-godaddy.com
 # AGENT_URL=http://localhost:4000
 ENABLE_COMMERCE_AGENT=false
+
+# Social Posts Feature Enablement
+ENABLE_SOCIAL_POSTS=false
 `;
 		}
 

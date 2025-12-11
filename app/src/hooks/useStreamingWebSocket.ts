@@ -1068,7 +1068,8 @@ export function useStreamingWebSocket() {
     aiEditContext?: any,
     selectedAsset?: any,
     todoListContext?: any,
-    isActionRequest?: boolean
+    isActionRequest?: boolean,
+    customContext?: any
   ) => {
     if (!content.trim() || !currentAppId) return
 
@@ -1221,6 +1222,23 @@ export function useStreamingWebSocket() {
             source: 'suggested_response'
           }
         })
+      }
+
+      if (customContext) {
+        if (customContext.customAttachments && Array.isArray(customContext.customAttachments)) {
+          contextAttachments.push(...customContext.customAttachments)
+        } else if (customContext.type && customContext.data) {
+          contextAttachments.push({
+            type: customContext.type,
+            data: customContext.data,
+            persistence: customContext.persistence || 'ephemeral',
+            renderStrategy: 'before_prompt',
+            metadata: {
+              timestamp: Date.now(),
+              source: customContext.source || 'custom-context'
+            }
+          })
+        }
       }
 
       // Build rich context object with proper typing

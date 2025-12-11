@@ -1,9 +1,15 @@
 import { z } from 'zod';
+import { SocialPost, SocialPostSchema } from '../types/social-posts.js';
+
+export interface MarketingData {
+  socialPosts?: SocialPost[];
+}
 
 export interface AppPlanData {
   appId: string;
   appName?: string | undefined;
   colorPalette?: ColorPalette | undefined;
+  marketing?: MarketingData;              // Structured marketing data
   planData?: Record<string, any> | undefined; // Flexible storage for any additional plan data
   createdAt: Date;
   updatedAt: Date;
@@ -41,6 +47,7 @@ export interface AppPlanToolOptions {
   operation: 'create' | 'update' | 'get' | 'delete';
   appName?: string | undefined;
   colorPalette?: Partial<ColorPalette> | undefined;
+  marketing?: MarketingData | undefined;
   planData?: Record<string, any> | undefined;
 }
 
@@ -78,11 +85,16 @@ const ColorPaletteSchema = z.object({
   theme: z.enum(['light', 'dark']).optional(),
 });
 
+const MarketingDataSchema = z.object({
+  socialPosts: z.array(SocialPostSchema).optional()
+});
+
 export const AppPlanToolOptionsSchema = z.object({
   appId: z.string().min(1, 'App ID is required'),
   operation: z.enum(['create', 'update', 'get', 'delete']),
   appName: z.string().optional(),
   colorPalette: ColorPaletteSchema.optional(),
+  marketing: MarketingDataSchema.optional(),
   planData: z.record(z.any()).optional(),
 });
 
@@ -118,7 +130,7 @@ export class AppPlanTool {
   }
 
   private async createPlan(options: AppPlanToolOptions): Promise<AppPlanToolResult> {
-    const { appId, appName, colorPalette, planData } = options;
+    const { appId, appName, colorPalette, marketing, planData } = options;
 
     if (this.plans.has(appId)) {
       return {
@@ -157,6 +169,7 @@ export class AppPlanTool {
       appId,
       ...(appName !== undefined && { appName }),
       colorPalette: colorPalette ? { ...defaultColorPalette, ...colorPalette } : defaultColorPalette,
+      ...(marketing && { marketing }),
       planData: planData || {},
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -172,7 +185,7 @@ export class AppPlanTool {
   }
 
   private async updatePlan(options: AppPlanToolOptions): Promise<AppPlanToolResult> {
-    const { appId, appName, colorPalette, planData } = options;
+    const { appId, appName, colorPalette, marketing, planData } = options;
 
     const existingPlan = this.plans.get(appId);
     if (!existingPlan) {
@@ -186,6 +199,7 @@ export class AppPlanTool {
       ...existingPlan,
       ...(appName !== undefined && { appName }),
       ...(colorPalette && { colorPalette: { ...existingPlan.colorPalette, ...colorPalette } as ColorPalette }),
+      ...(marketing && { marketing }),
       ...(planData && { planData: { ...existingPlan.planData, ...planData } }),
       updatedAt: new Date(),
     };

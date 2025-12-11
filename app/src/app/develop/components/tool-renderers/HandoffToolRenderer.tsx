@@ -16,7 +16,8 @@ function getAgentDisplayName(agentId: string): string {
     'develop': 'Developer',
     'database': 'Database Designer',
     'color-scheme': 'Color Scheme Designer',
-    'colorScheme': 'Color Scheme Designer'
+    'colorScheme': 'Color Scheme Designer',
+    'marketing': 'Marketing Agent'
   }
   return nameMap[agentId] || agentId
 }

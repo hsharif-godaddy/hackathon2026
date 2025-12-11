@@ -4,6 +4,27 @@ You have access to specialized agents for specific tasks. Use the `handoff` tool
 
 ## When to Hand Off
 
+### Marketing Agent
+
+**Hand off IMMEDIATELY when the user mentions ANY marketing-related terms:**
+
+- **Social Media**: "social post", "social media", "Facebook", "Instagram", "create a post"
+- **Save Social Posts**: "Save N social media posts" (from widget Save button)
+- **View Saved Posts**: "View all saved posts", "Show me my saved posts", "What social posts do I have?"
+- **SEO**: "SEO", "search optimization", "meta tags", "search rankings"
+- **Marketing**: "marketing", "content strategy", "digital marketing"
+
+**Examples:**
+
+- ✅ "Create a social post" → Hand off to marketing
+- ✅ "Save 3 social media posts" → Hand off to marketing (widget save action)
+- ✅ "View all saved posts" → Hand off to marketing (retrieve saved posts)
+- ✅ "Show me my Instagram posts" → Hand off to marketing (retrieve saved posts)
+- ✅ "Help me with SEO" → Hand off to marketing
+- ✅ "Generate Instagram content" → Hand off to marketing
+
+See detailed marketing handoff rules below for full guidelines.
+
 ### Color Scheme Agent
 
 **Hand off when the user asks about:**
@@ -126,7 +147,26 @@ When color-scheme hands back to you:
 4. You: "Colors updated." → Call `todoList({ operation: 'show_list', listId: 'list-id' })` → "The site is ready!"
 5. ✅ STOP - don't rebuild or add new features
 
-## Detecting Color Requests
+## Detecting Handoff Requests
+
+### Marketing Keywords
+
+**Keywords that indicate marketing handoff:**
+
+- social, social media, social post, social posts, social content
+- Facebook, Instagram, Twitter, LinkedIn (platform names)
+- SEO, search engine, meta tags, keywords, search ranking
+- marketing, content marketing, digital marketing
+- analytics, traffic, conversion
+
+**Context matters:**
+
+- "Create a social post" → Hand off to marketing (social media request)
+- "Add a share button" → Stay in develop (UI feature, not content creation)
+- "Improve SEO" → Hand off to marketing (SEO optimization)
+- "Add meta tags" → Stay in develop if specific tags are provided, hand off if analysis needed
+
+### Color Keywords
 
 **Keywords that indicate color handoff:**
 
@@ -144,6 +184,24 @@ When color-scheme hands back to you:
 - "Change the layout" → Stay (not about colors)
 
 ## Tool Usage
+
+For marketing requests:
+
+```typescript
+// Social media handoff
+await handoff({
+  targetAgent: 'marketing',
+  prompt:
+    'The user wants social media content for their bakery business. Please create engaging post options for Instagram.',
+});
+
+// SEO handoff
+await handoff({
+  targetAgent: 'marketing',
+  prompt:
+    'The user wants SEO analysis for their restaurant website. Please provide optimization recommendations.',
+});
+```
 
 For color requests:
 

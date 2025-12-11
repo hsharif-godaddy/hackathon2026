@@ -3,6 +3,7 @@
 @import "@ux/icon/apps/index.css";
 @import "@ux/icon/arrow-left/index.css";
 @import "@ux/icon/arrow-right/index.css";
+@import "@ux/icon/chat/index.css";
 @import "@ux/icon/checkbox-filled/index.css";
 @import "@ux/icon/checkbox-list/index.css";
 @import "@ux/icon/checkmark/index.css";
@@ -22,11 +23,17 @@
 @import "@ux/icon/desktop/index.css";
 @import "@ux/icon/download/index.css";
 @import "@ux/icon/edit/index.css";
+@import "@ux/icon/editor-larger/index.css";
+@import "@ux/icon/facebook/index.css";
 @import "@ux/icon/folder/index.css";
 @import "@ux/icon/folder-open/index.css";
+@import "@ux/icon/forward/index.css";
+@import "@ux/icon/google/index.css";
 @import "@ux/icon/hamburger/index.css";
 @import "@ux/icon/history/index.css";
+@import "@ux/icon/instagram/index.css";
 @import "@ux/icon/image/index.css";
+@import "@ux/icon/lightbulb/index.css";
 @import "@ux/icon/link/index.css";
 @import "@ux/icon/locked/index.css";
 @import "@ux/icon/map-pin/index.css";
@@ -44,6 +51,7 @@
 @import "@ux/icon/sidebar-collapse/index.css";
 @import "@ux/icon/sidebar-expand/index.css";
 @import "@ux/icon/sparkles/index.css";
+@import "@ux/icon/thumbs-up/index.css";
 @import "@ux/icon/trash/index.css";
 @import "@ux/icon/user/index.css";
 @import "@ux/icon/wand/index.css";

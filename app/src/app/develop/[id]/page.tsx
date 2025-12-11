@@ -35,6 +35,7 @@ import { agentFetch } from '@/lib/agent-fetch'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import ChatPaneLoader from '@/app/develop/components/chat/ChatPaneLoader'
 import { useInitialization } from '@/app/develop/hooks/useInitialization'
+import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
 import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
 
 // Delay to allow conversation history messages to load before checking if preview should be visible
@@ -112,6 +113,8 @@ function DevelopPageContent() {
       recommendation_task: 'builder_develop_page_view',
       recommendation_type: 'navigation'
     })();
+
+    clearExpiredWidgetStates();
   }, [])
 
   // Initialize mobile detection
@@ -222,9 +225,16 @@ function DevelopPageContent() {
         ...styleData,
         elementInfo: selectedElement
       })
-      console.log('Style update sent to API:', result)
+      logger.info('develop-page.style-update.success', {
+        appId,
+        selector: styleData.selector,
+        property: styleData.property
+      })
     } catch (error) {
-      console.error('Error sending style update to API:', error)
+      logger.error('develop-page.style-update.error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      })
     }
   }, [appId, selectedElement])
 
@@ -268,11 +278,11 @@ function DevelopPageContent() {
   const sendTextUpdate = useCallback(async (textData: { selector: string; oldText: string; newText: string; devContext: Record<string, unknown> }) => {
     if (!appId) return
 
-    console.log('📤 Sending text update to API:', {
+    logger.info('develop-page.text-update.begin', {
+      appId,
       selector: textData.selector,
-      oldText: textData.oldText?.substring(0, 50) + (textData.oldText?.length > 50 ? '...' : ''),
-      newText: textData.newText?.substring(0, 50) + (textData.newText?.length > 50 ? '...' : ''),
-      devContext: textData.devContext,
+      oldTextLength: textData.oldText?.length || 0,
+      newTextLength: textData.newText?.length || 0,
       hasDevContext: !!textData.devContext,
       hasFileName: !!(textData.devContext && textData.devContext.fileName),
       hasComponentName: !!(textData.devContext && textData.devContext.componentName)
@@ -280,9 +290,12 @@ function DevelopPageContent() {
 
     try {
       const result = await appService.updateText(appId, textData)
-      console.log('✅ Text update sent to API successfully:', result)
+      logger.info('develop-page.text-update.success', { appId })
     } catch (error) {
-      console.error('❌ Error sending text update to API:', error)
+      logger.error('develop-page.text-update.error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      })
     }
   }, [appId])
 
@@ -349,20 +362,23 @@ function DevelopPageContent() {
       switch (event.data.type) {
         case 'ELEMENT_SELECTED':
           setSelectedElement(event.data.data)
-          setIsSelectMode(false) // Auto-disable select mode after selection
-          console.log('Element selected in iframe:', event.data.data)
+          setIsSelectMode(false)
+          logger.info('develop-page.element-selected', {
+            appId,
+            selector: event.data.data?.selector
+          })
           break
         case 'STYLE_UPDATED':
-          console.log('Style updated in iframe:', event.data.data)
+          logger.info('develop-page.style-updated-from-iframe', { appId })
           handleStyleUpdate(event.data.data)
           break
         case 'TEXT_UPDATED':
-          console.log('Text updated in iframe:', event.data.data)
+          logger.info('develop-page.text-updated-from-iframe', { appId })
           sendTextUpdate(event.data.data)
           break
         case 'EDIT_WITH_AI':
           setAiEditContext(event.data.data)
-          console.log('AI edit requested for element:', event.data.data)
+          logger.info('develop-page.ai-edit-requested', { appId })
           break
         case 'SCROLL_POSITION_UPDATE':
           // Handle real-time scroll position updates from iframe and store for restoration
@@ -390,23 +406,25 @@ function DevelopPageContent() {
           }, 500) // Small delay to ensure any file changes are processed
           break
         case 'error-fix-request':
-          // Handle error fix requests from the iframe error boundary
           if (event.data.errorMessage) {
-            console.log('Error fix request received:', event.data.errorMessage)
+            logger.info('develop-page.error-fix-request', {
+              appId,
+              errorMessage: event.data.errorMessage
+            })
             setInputValue(`Please fix this error: ${event.data.errorMessage}`)
-            // Auto-send the error fix request
             setTimeout(() => {
               sendMessage(`Please fix this error: ${event.data.errorMessage}`, null)
             }, 500)
           }
           break
         case 'build-page-request':
-          // Handle build page requests from the 404 page
           if (event.data.pathToBuild) {
-            console.log('Build page request received:', event.data.pathToBuild)
+            logger.info('develop-page.build-page-request', {
+              appId,
+              pathToBuild: event.data.pathToBuild
+            })
             const messageContent = `The page at path ${event.data.pathToBuild} doesn't exist yet, please build it with appropriate content.`;
             setInputValue(messageContent);
-            // Auto-send the build page request
             setTimeout(() => {
               sendMessage(messageContent, null)
             }, 500)
@@ -539,7 +557,7 @@ function DevelopPageContent() {
 
     const nameRegistrationKey = `name-registration-pending-${init.initialJobId}`
     const flagExists = sessionStorage.getItem(nameRegistrationKey) === 'true'
-    
+
     if (flagExists) {
       logger.info('app.develop.page.cleanup-flag', {
         message: 'Cleaning up name registration flag (name already set during verification)',

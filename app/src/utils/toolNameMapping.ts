@@ -67,6 +67,9 @@ export function getToolDisplayName(toolName: string): string {
     case 'todo_list':
     case 'todoList':
       return 'Todo List'
+    case 'social_post_create':
+    case 'socialPostCreate':
+      return 'Social Post Create'
     case 'websiteScraper':
       return 'Website Details'
     default:

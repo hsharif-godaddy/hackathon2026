@@ -1,17 +1,17 @@
 /**
  * Session state manager
- * 
+ *
  * Manages session state including:
  * - Current agent handling the session (handoff support)
  * - Selected todo list for the session
  * - Session history and activity tracking
- * 
+ *
  * This is useful for:
  * - Agent handoff functionality
  * - Todo list context management
  * - Simple single-process applications
  * - Development and debugging
- * 
+ *
  * For production multi-process/distributed systems, implement a custom
  * state manager backed by Redis, database, or other shared storage.
  */
@@ -83,9 +83,9 @@ export interface SessionStateManagerConfig {
 
 /**
  * In-memory implementation of session state manager
- * 
+ *
  * Tracks agent handoffs and selected todo lists for each session.
- * 
+ *
  * @example
  * ```typescript
  * const stateManager = createSessionStateManager({
@@ -98,7 +98,7 @@ export interface SessionStateManagerConfig {
  *     console.log(`Session ${sessionId} selected todo list: ${todoListId}`)
  *   }
  * })
- * 
+ *
  * // Use with handoff tool
  * const handoffTool = createHandoffTool({
  *   agents,
@@ -128,7 +128,7 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Switch the active agent for a session
-   * 
+   *
    * @param sessionId - Session identifier
    * @param targetAgentId - Agent to switch to
    * @param reason - Optional reason for the switch
@@ -188,7 +188,7 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Get the current agent for a session
-   * 
+   *
    * @param sessionId - Session identifier
    * @returns Current agent ID or undefined if session doesn't exist
    */
@@ -199,7 +199,7 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Get the prompt from the last handoff
-   * 
+   *
    * @param sessionId - Session identifier
    * @returns Prompt from last handoff or undefined
    */
@@ -210,7 +210,7 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Clear the last handoff prompt after it's been used
-   * 
+   *
    * @param sessionId - Session identifier
    */
   clearLastHandoffPrompt(sessionId: string): void {
@@ -222,7 +222,7 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Set the selected todo list for a session
-   * 
+   *
    * @param sessionId - Session identifier
    * @param todoListId - Todo list ID to select
    */
@@ -231,11 +231,11 @@ export class SessionStateManager implements HandoffStateManager {
     if (session) {
       session.selectedTodoListId = todoListId
       session.lastActivityAt = new Date()
-      
+
       if (this.config.enableLogging) {
         logger.info(`Session ${sessionId} selected todo list: ${todoListId}`)
       }
-      
+
       this.config.onTodoListSelect(sessionId, todoListId)
     } else {
       // Create session if it doesn't exist
@@ -243,11 +243,11 @@ export class SessionStateManager implements HandoffStateManager {
       const newSession = this.sessions.get(sessionId)
       if (newSession) {
         newSession.selectedTodoListId = todoListId
-        
+
         if (this.config.enableLogging) {
           logger.info(`Created session ${sessionId} with todo list: ${todoListId}`)
         }
-        
+
         this.config.onTodoListSelect(sessionId, todoListId)
       }
     }
@@ -255,7 +255,7 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Get the selected todo list for a session
-   * 
+   *
    * @param sessionId - Session identifier
    * @returns Selected todo list ID or undefined
    */
@@ -266,14 +266,14 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Clear the selected todo list for a session
-   * 
+   *
    * @param sessionId - Session identifier
    */
   clearSelectedTodoList(sessionId: string): void {
     const session = this.sessions.get(sessionId)
     if (session) {
       delete session.selectedTodoListId
-      
+
       if (this.config.enableLogging) {
         logger.info(`Cleared selected todo list for session: ${sessionId}`)
       }
@@ -282,14 +282,14 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Get or create a session with default agent
-   * 
+   *
    * @param sessionId - Session identifier
    * @param agentId - Initial agent ID (defaults to config.defaultAgentId)
    * @returns Current agent ID for the session
    */
   getOrCreateSession(sessionId: string, agentId?: string): string {
     let session = this.sessions.get(sessionId)
-    
+
     if (!session) {
       const initialAgentId = agentId || this.config.defaultAgentId
       session = {
@@ -299,7 +299,7 @@ export class SessionStateManager implements HandoffStateManager {
         lastActivityAt: new Date()
       }
       this.sessions.set(sessionId, session)
-      
+
       if (this.config.enableLogging) {
         logger.info(`Created new session ${sessionId} with agent: ${initialAgentId}`)
       }
@@ -307,13 +307,13 @@ export class SessionStateManager implements HandoffStateManager {
       // Update last activity
       session.lastActivityAt = new Date()
     }
-    
+
     return session.currentAgentId
   }
 
   /**
    * Get handoff history for a session
-   * 
+   *
    * @param sessionId - Session identifier
    * @returns Array of handoff history entries
    */
@@ -323,7 +323,7 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Get all active sessions
-   * 
+   *
    * @returns Array of session IDs
    */
   getActiveSessions(): string[] {
@@ -332,7 +332,7 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Get session count
-   * 
+   *
    * @returns Number of active sessions
    */
   getSessionCount(): number {
@@ -391,7 +391,7 @@ export class SessionStateManager implements HandoffStateManager {
   clearAllSessions(): void {
     const count = this.sessions.size
     this.sessions.clear()
-    
+
     if (this.config.enableLogging) {
       logger.info(`Cleared ${count} sessions`)
     }
@@ -415,7 +415,7 @@ export class SessionStateManager implements HandoffStateManager {
       for (const sessionId of expiredSessions) {
         this.sessions.delete(sessionId)
       }
-      
+
       if (this.config.enableLogging) {
         logger.info(`Cleaned up ${expiredSessions.length} expired sessions`)
       }
@@ -439,13 +439,13 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Get or create a session state object (internal helper)
-   * 
+   *
    * @param sessionId - Session identifier
    * @returns SessionState object
    */
   private getOrCreateSessionState(sessionId: string): SessionState {
     let session = this.sessions.get(sessionId)
-    
+
     if (!session) {
       session = {
         currentAgentId: this.config.defaultAgentId,
@@ -454,7 +454,7 @@ export class SessionStateManager implements HandoffStateManager {
         lastActivityAt: new Date()
       }
       this.sessions.set(sessionId, session)
-      
+
       if (this.config.enableLogging) {
         logger.info(`Created new session ${sessionId} with agent: ${this.config.defaultAgentId}`)
       }
@@ -462,19 +462,19 @@ export class SessionStateManager implements HandoffStateManager {
       // Update last activity
       session.lastActivityAt = new Date()
     }
-    
+
     return session
   }
 
   /**
    * Store suggested color palettes for a session
-   * 
+   *
    * @param sessionId - Session identifier
    * @param palettes - Array of palette suggestions to store
    */
   storeSuggestedPalettes(sessionId: string, palettes: SuggestedPalette[]): void {
     const session = this.getOrCreateSessionState(sessionId)
-    
+
     if (!session.suggestedPalettes) {
       session.suggestedPalettes = new Map()
     }
@@ -492,7 +492,7 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Get a suggested palette by name for a session
-   * 
+   *
    * @param sessionId - Session identifier
    * @param paletteName - Name of the palette to retrieve
    * @returns Palette data if found, undefined otherwise
@@ -508,7 +508,7 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Get all suggested palettes for a session
-   * 
+   *
    * @param sessionId - Session identifier
    * @returns Array of all suggested palettes
    */
@@ -523,7 +523,7 @@ export class SessionStateManager implements HandoffStateManager {
 
   /**
    * Clear suggested palettes for a session
-   * 
+   *
    * @param sessionId - Session identifier
    */
   clearSuggestedPalettes(sessionId: string): void {
@@ -582,10 +582,10 @@ export class SessionStateManager implements HandoffStateManager {
 
 /**
  * Create a session state manager
- * 
+ *
  * @param config - Configuration options
  * @returns SessionStateManager instance
- * 
+ *
  * @example
  * ```typescript
  * const stateManager = createSessionStateManager({

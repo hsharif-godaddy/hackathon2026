@@ -40,6 +40,8 @@ export {
   commerceSkuGroupMedia,
 } from './commerce-tools.js';
 export { oauthConnect } from './oauth-tool.js';
+export { socialPostCreateAITool } from './social-post-create.js';
+
 export { skillAITool } from './skill-loader.js';
 export { websiteScraperAITool } from './website-scraper.js';
 
@@ -78,6 +80,7 @@ import {
   commerceSkuGroupMedia,
 } from './commerce-tools.js';
 import { oauthConnect } from './oauth-tool.js';
+import { socialPostCreateAITool } from './social-post-create.js';
 import { skillAITool } from './skill-loader.js';
 import { websiteScraperAITool } from './website-scraper.js';
 
@@ -116,6 +119,7 @@ export const allAILibTools: Record<string, Tool> = {
   commerceSkuGroup: commerceSkuGroup,
   commerceSku: commerceSku,
   commerceInventory: commerceInventory,
+  socialPostCreate: socialPostCreateAITool,
   skill: skillAITool,
   commerceSkuGroupMedia: commerceSkuGroupMedia,
   websiteScraper: websiteScraperAITool,
@@ -184,6 +188,7 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
   // Marketing tools
   marketing: {
     seoAnalysis: seoAnalyze,
+    socialPostCreate: socialPostCreateAITool,
   },
 };
 

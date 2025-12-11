@@ -10,6 +10,7 @@ import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { Logger } from '../logging/index.js'
+import { agents as featureAgents } from '../services/features.js'
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 
 const logger = Logger.create({ service: 'marketing-agent' })
@@ -17,6 +18,7 @@ const logger = Logger.create({ service: 'marketing-agent' })
 async function buildMarketingSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()
   const paths = getModularPromptPaths(import.meta.url)
+  const isSocialPostsEnabled = featureAgents.isEnabled('socialPosts')
 
   promptBuilder
     .file(paths.getAgentFile('marketing', 'core.md'))
@@ -24,12 +26,34 @@ async function buildMarketingSystemPrompt(): Promise<string> {
     .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('security.md'))
 
+  // Conditionally include social posts prompt if feature is enabled
+  if (isSocialPostsEnabled) {
+    promptBuilder.file(paths.getAgentFile('marketing', 'social-posts.md'))
+  }
+
   return await promptBuilder.build()
 }
 
 export async function createMarketingAgent(): Promise<AgentConfig> {
   const systemPrompt = await buildMarketingSystemPrompt()
   const { model, modelName } = await getAgentModelWithName('full')
+  const isSocialPostsEnabled = featureAgents.isEnabled('socialPosts')
+
+  const baseTools = {
+    seoAnalysis: allAILibTools.seoAnalysis,
+    readFile: allAILibTools.readFile,
+    fileEdit: allAILibTools.fileEdit,
+    todoList: allAILibTools.todoList,
+    directoryListing: allAILibTools.directoryListing,
+    grepSearch: allAILibTools.grepSearch,
+    suggestedResponse: allAILibTools.suggestedResponse,
+  }
+
+  const socialPostTools = isSocialPostsEnabled
+    ? {
+        socialPostCreate: allAILibTools.socialPostCreate,
+      }
+    : {}
 
   return {
     name: 'Marketing Manager',
@@ -37,13 +61,8 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     model,
     modelName,
     tools: {
-      seoAnalysis: allAILibTools.seoAnalysis,
-      readFile: allAILibTools.readFile,
-      fileEdit: allAILibTools.fileEdit,
-      todoList: allAILibTools.todoList,
-      directoryListing: allAILibTools.directoryListing,
-      grepSearch: allAILibTools.grepSearch,
-      suggestedResponse: allAILibTools.suggestedResponse,
+      ...baseTools,
+      ...socialPostTools,
     },
 
     handoffs: [
