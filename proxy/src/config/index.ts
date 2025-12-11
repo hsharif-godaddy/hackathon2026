@@ -24,6 +24,12 @@ const config: AppConfig = {
     }
   },
   
+  webScraper: {
+    upstream: env.WEB_SCRAPER_UPSTREAM ?? 'https://web-scraper.api.int.gdcorp.tools',
+    appKey: env.WEB_SCRAPER_APP_KEY ?? 'airo-app-builder',
+    userAgent: env.USER_AGENT ?? 'airo-proxy/2.0'
+  },
+  
   sso: {
     endpoint: env.SSO_ENDPOINT ?? 'https://sso.godaddy.com/v1/secure/api/token',
     realm: env.SSO_REALM ?? 'cert',

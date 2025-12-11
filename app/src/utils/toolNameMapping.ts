@@ -67,6 +67,8 @@ export function getToolDisplayName(toolName: string): string {
     case 'todo_list':
     case 'todoList':
       return 'Todo List'
+    case 'websiteScraper':
+      return 'Website Details'
     default:
       return toolName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }

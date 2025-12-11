@@ -41,6 +41,7 @@ export {
 } from './commerce-tools.js';
 export { oauthConnect } from './oauth-tool.js';
 export { skillAITool } from './skill-loader.js';
+export { websiteScraperAITool } from './website-scraper.js';
 
 // Re-import for registry
 import { fileEditAITool } from './file-edit.js';
@@ -78,6 +79,7 @@ import {
 } from './commerce-tools.js';
 import { oauthConnect } from './oauth-tool.js';
 import { skillAITool } from './skill-loader.js';
+import { websiteScraperAITool } from './website-scraper.js';
 
 /**
  * Complete registry of all AI-Lib converted tools
@@ -116,6 +118,7 @@ export const allAILibTools: Record<string, Tool> = {
   commerceInventory: commerceInventory,
   skill: skillAITool,
   commerceSkuGroupMedia: commerceSkuGroupMedia,
+  websiteScraper: websiteScraperAITool,
 };
 
 /**

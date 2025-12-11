@@ -273,6 +273,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       // Specialized development tools
       mediaSearch: allAILibTools.mediaSearch,
       imageGenerate: allAILibTools.imageGenerate,
+      websiteScraper: allAILibTools.websiteScraper,
 
       // Widget rendering
       //widgetRender: allAILibTools.widgetRender,

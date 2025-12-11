@@ -20,6 +20,12 @@ export interface GettyConfig {
   };
 }
 
+export interface WebScraperConfig {
+  upstream: string;
+  appKey: string;
+  userAgent: string;
+}
+
 export interface SSOConfig {
   endpoint: string;
   realm: string;
@@ -39,6 +45,7 @@ export interface LoggingConfig {
 export interface AppConfig {
   server: ServerConfig;
   getty: GettyConfig;
+  webScraper: WebScraperConfig;
   sso: SSOConfig;
   auth: AuthConfig;
   logging: LoggingConfig;
@@ -96,6 +103,18 @@ export interface GettyAPIResponse {
   duration?: number;
 }
 
+export interface WebScraperParams {
+  url: string;
+  [key: string]: unknown;
+}
+
+export interface WebScraperAPIResponse {
+  statusCode: number;
+  headers: Record<string, string | string[]>;
+  data: string;
+  duration?: number;
+}
+
 // Health check types
 export interface HealthStatus {
   status: 'healthy' | 'unhealthy' | 'degraded';
@@ -141,6 +160,8 @@ export interface EnvironmentVariables {
   LOG_FORMAT?: 'json' | 'text';
   GETTY_IMAGES_UPSTREAM?: string;
   GETTY_APP_KEY?: string;
+  WEB_SCRAPER_UPSTREAM?: string;
+  WEB_SCRAPER_APP_KEY?: string;
   SSO_ENDPOINT?: string;
   SSO_REALM?: string;
   SSO_TIMEOUT?: string;
