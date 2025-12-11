@@ -37,6 +37,7 @@ COPY --chown=agent:agent ./agents /workspace/agents
 RUN cd /workspace/agents && pnpm build
 
 RUN cp -r /workspace/agents/src/prompts /workspace/agents/dist/
+RUN cp -r /workspace/agents/src/skills /workspace/agents/dist/
 RUN cp -r /workspace/agents/src/utils/lucide-icons-map.js /workspace/agents/dist/utils/lucide-icons-map.js
 
 USER root
