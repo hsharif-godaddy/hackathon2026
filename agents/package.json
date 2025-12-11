@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/server/app.ts",
+    "dev": "pnpm run prebuild && tsx watch --env-file=.env src/server/app.ts",
     "prebuild": "cd ../packages/ai-lib && pnpm run build",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
