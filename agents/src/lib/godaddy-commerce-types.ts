@@ -560,3 +560,97 @@ export interface GetLocationsResponse {
     totalCount: number;
   };
 }
+
+export type OrderStatus = 'OPEN' | 'COMPLETED' | 'CANCELED' | 'ARCHIVED';
+export type PaymentStatus = 'PENDING' | 'AUTHORIZED' | 'PAID' | 'PARTIALLY_PAID' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'VOIDED' | 'EXPIRED' | 'FAILED';
+export type FulfillmentStatus = 'UNFULFILLED' | 'IN_PROGRESS' | 'FULFILLED' | 'PARTIALLY_FULFILLED' | 'SCHEDULED' | 'ON_HOLD';
+export type FulfillmentMode = 'SHIP' | 'PICKUP' | 'DELIVERY';
+
+export interface OrderContext {
+  owner?: string;
+  channelId: string;
+  storeId: string;
+  businessId?: string;
+  ventureId?: string;
+}
+
+export interface OrderStatuses {
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  fulfillmentStatus: FulfillmentStatus;
+}
+
+export interface OrderTotal {
+  subtotal: SimpleMoney;
+  total: SimpleMoney;
+  tax: SimpleMoney;
+  shipping: SimpleMoney;
+  discount: SimpleMoney;
+}
+
+export interface OrderLineItem {
+  id: string;
+  type: string;
+  title: string;
+  quantity: number;
+  price: SimpleMoney;
+  total: SimpleMoney;
+  sku?: string;
+  productId?: string;
+  variantId?: string;
+}
+
+export interface OrderBilling {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: CommerceAddress;
+}
+
+export interface OrderShipping {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: CommerceAddress;
+  method?: string;
+}
+
+export interface Order {
+  id: string;
+  externalId?: string;
+  number: string;
+  numberDisplay?: string;
+  context: OrderContext;
+  statuses: OrderStatuses;
+  totals: OrderTotal;
+  customerId?: string;
+  cartId?: string;
+  billing?: OrderBilling;
+  shipping?: OrderShipping;
+  lineItems: OrderLineItem[];
+  fulfillmentModes?: FulfillmentMode[];
+  tags?: string[];
+  processedAt: string;
+  archivedAt?: string;
+  canceledAt?: string;
+  completedAt?: string;
+  paidAt?: string;
+  fulfilledAt?: string;
+  refundedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GetOrdersResponse {
+  status: string;
+  orders: Order[];
+  links?: Array<{
+    rel: string;
+    href: string;
+  }>;
+}
+
+export interface GetOrderResponse {
+  status: string;
+  order: Order;
+}

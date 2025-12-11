@@ -10,7 +10,7 @@ import { AuthService, AuthRequiredError, OAuthScopes } from '../../services/auth
  * Returns authRequest payload if authentication is needed (successful flow, not error).
  */
 export const oauthConnect: Tool = createTool(
-  'Ensure OAuth token is available for GoDaddy API actions. If this tool returns authRequired=true, present the OAuth UI and wait for the user to finish authenticating in the popup window. Ask the user to tell you when they have completed authentication. The available scopes are predefined and cannot be customized through this tool. Current scopes: commerce.store:read, commerce.product:read, commerce.product:write, commerce.onboarding-application:write, commerce.onboarding-application:read.',
+  'Ensure OAuth token is available for GoDaddy API actions. If this tool returns authRequired=true, present the OAuth UI and wait for the user to finish authenticating in the popup window. Ask the user to tell you when they have completed authentication. The available scopes are predefined and cannot be customized through this tool. Current scopes: commerce.store:read, commerce.product:read, commerce.product:write, commerce.order:read, commerce.onboarding-application:write, commerce.onboarding-application:read.',
   z.object({}),
   async (input, context) => {
     const appId = context?.metadata?.appId as string;

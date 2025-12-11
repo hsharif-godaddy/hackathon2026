@@ -28,6 +28,8 @@ import type {
   SKUPriceResponse,
   SimpleMoneyInput,
   SimpleMoney,
+  GetOrdersResponse,
+  GetOrderResponse,
   PriceRange,
   CreateSKUPriceInput,
   CreateMediaObjectInput,
@@ -1500,6 +1502,123 @@ export class GoDaddyCommerce {
     return {
       success: true,
       data: data.data,
+    };
+  }
+
+  public async getOrders(
+    args: {
+      storeId: string;
+      status?: string;
+      paymentStatus?: string;
+      fulfillmentStatus?: string;
+      processedAtStart?: string;
+      processedAtEnd?: string;
+      email?: string;
+      name?: string;
+      pageSize?: number;
+    },
+    accessToken: string
+  ): Promise<{ success: true; data: GetOrdersResponse } | { success: false; error: string }> {
+    const queryParams = new URLSearchParams();
+
+    if (args.status) queryParams.append('status', args.status);
+    if (args.paymentStatus) queryParams.append('paymentStatus', args.paymentStatus);
+    if (args.fulfillmentStatus) queryParams.append('fulfillmentStatus', args.fulfillmentStatus);
+    if (args.processedAtStart) queryParams.append('processedAtStart', args.processedAtStart);
+    if (args.processedAtEnd) queryParams.append('processedAtEnd', args.processedAtEnd);
+    if (args.email) queryParams.append('email', args.email);
+    if (args.name) queryParams.append('name', args.name);
+    if (args.pageSize) queryParams.append('pageSize', args.pageSize.toString());
+
+    const url = `${this.baseUrl}/v1/commerce/stores/${args.storeId}/orders${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+
+    logger.info('commerce.get-orders.request', {
+      storeId: args.storeId,
+      filters: Object.keys(args).filter(k => k !== 'storeId' && args[k as keyof typeof args]),
+    });
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...this.baseHeaders,
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.get-orders.request-failed', {
+        storeId: args.storeId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `REST API request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    logger.info('commerce.get-orders.success', {
+      storeId: args.storeId,
+      orderCount: data.orders?.length || 0,
+    });
+
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  public async getOrder(
+    args: {
+      storeId: string;
+      orderId: string;
+    },
+    accessToken: string
+  ): Promise<{ success: true; data: GetOrderResponse } | { success: false; error: string }> {
+    const url = `${this.baseUrl}/v1/commerce/stores/${args.storeId}/orders/${args.orderId}`;
+
+    logger.info('commerce.get-order.request', {
+      storeId: args.storeId,
+      orderId: args.orderId,
+    });
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...this.baseHeaders,
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.get-order.request-failed', {
+        storeId: args.storeId,
+        orderId: args.orderId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `REST API request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    logger.info('commerce.get-order.success', {
+      storeId: args.storeId,
+      orderId: args.orderId,
+    });
+
+    return {
+      success: true,
+      data,
     };
   }
 }

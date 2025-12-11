@@ -1175,3 +1175,143 @@ export const commerceSkuGroupMedia = createTool(
   }
 );
 
+
+export const commerceOrders = createTool(
+  'Retrieve order information from GoDaddy Commerce. Supports listing orders with filters (list action) or getting a specific order by ID (get action). Returns order details including status, payment info, line items, customer details, and totals. Requires context.metadata.appId. Returns AUTH_REQUIRED when user authorization is needed.',
+  z.object({
+    action: z.enum(['list', 'get']).describe('Action to perform: "list" to query orders with filters, "get" to retrieve a specific order by ID'),
+    storeId: z.string().describe('The store ID to query orders from'),
+    orderId: z.string().optional().describe('Order ID (required for "get" action)'),
+    status: z.string().optional().describe('Filter by order status (comma-separated): OPEN, COMPLETED, CANCELED, ARCHIVED'),
+    paymentStatus: z.string().optional().describe('Filter by payment status (comma-separated): PENDING, PAID, PARTIALLY_PAID, REFUNDED, etc.'),
+    fulfillmentStatus: z.string().optional().describe('Filter by fulfillment status (comma-separated): UNFULFILLED, IN_PROGRESS, FULFILLED, etc.'),
+    processedAtStart: z.string().optional().describe('Filter orders processed after this datetime (ISO 8601 format)'),
+    processedAtEnd: z.string().optional().describe('Filter orders processed before this datetime (ISO 8601 format)'),
+    email: z.string().optional().describe('Filter by customer email address'),
+    name: z.string().optional().describe('Filter by customer name'),
+    pageSize: z.number().optional().describe('Number of orders to return (1-100, default: 25)'),
+  }),
+  async (input, context) => {
+    const startTime = Date.now();
+    const appId = context?.metadata?.appId as string;
+
+    if (!appId) {
+      return fail({
+        code: ErrorCodes.CONTEXT_MISSING,
+        message: 'App ID is required for commerce operations',
+        hint: 'Pass context.metadata.appId',
+      });
+    }
+
+    try {
+      const { accessToken } = await AuthService.getAccessToken({ appId });
+
+      if (input.action === 'list') {
+        const args: {
+          storeId: string;
+          status?: string;
+          paymentStatus?: string;
+          fulfillmentStatus?: string;
+          processedAtStart?: string;
+          processedAtEnd?: string;
+          email?: string;
+          name?: string;
+          pageSize?: number;
+        } = { storeId: input.storeId };
+
+        if (input.status) args.status = input.status;
+        if (input.paymentStatus) args.paymentStatus = input.paymentStatus;
+        if (input.fulfillmentStatus) args.fulfillmentStatus = input.fulfillmentStatus;
+        if (input.processedAtStart) args.processedAtStart = input.processedAtStart;
+        if (input.processedAtEnd) args.processedAtEnd = input.processedAtEnd;
+        if (input.email) args.email = input.email;
+        if (input.name) args.name = input.name;
+        if (input.pageSize) args.pageSize = input.pageSize;
+
+        const result = await godaddy.getOrders(args, accessToken);
+
+        if (!result.success) {
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: result.error,
+          });
+        }
+
+        return ok(
+          {
+            storeId: input.storeId,
+            orders: result.data.orders || [],
+            totalCount: result.data.orders?.length || 0,
+            filters: {
+              status: input.status,
+              paymentStatus: input.paymentStatus,
+              fulfillmentStatus: input.fulfillmentStatus,
+              email: input.email,
+              name: input.name,
+            },
+          },
+          {
+            tookMs: Date.now() - startTime,
+          }
+        );
+      }
+
+      if (input.action === 'get') {
+        if (!input.orderId) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'orderId is required for "get" action',
+          });
+        }
+
+        const result = await godaddy.getOrder(
+          {
+            storeId: input.storeId,
+            orderId: input.orderId,
+          },
+          accessToken
+        );
+
+        if (!result.success) {
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: result.error,
+          });
+        }
+
+        return ok(
+          {
+            storeId: input.storeId,
+            order: result.data.order,
+          },
+          {
+            tookMs: Date.now() - startTime,
+          }
+        );
+      }
+
+      return fail({
+        code: ErrorCodes.INVALID_INPUT,
+        message: 'Invalid action',
+      });
+    } catch (err) {
+      if (err instanceof AuthRequiredError) {
+        return needAuth(
+          {
+            code: ErrorCodes.AUTH_REQUIRED,
+            message: 'Authentication required to proceed.',
+          },
+          {
+            auth: {
+              provider: 'godaddy',
+              scopes: err.scopes,
+              redirectUrl: err.redirectUrl,
+              state: err.state,
+            },
+          }
+        );
+      }
+      throw err;
+    }
+  }
+);

@@ -14,6 +14,7 @@ import {
   commerceSku,
   commerceInventory,
   commerceSkuGroupMedia,
+  commerceOrders,
 } from '../tools/ai-lib-tools/commerce-tools.js';
 import { getModularPromptPaths } from '../utils/prompt-utils.js';
 import { Logger } from '../logging/index.js';
@@ -108,6 +109,7 @@ export async function createCommerceAgent(options?: { appPath?: string }): Promi
       sku: commerceSku,
       inventory: commerceInventory,
       skuGroupMedia: commerceSkuGroupMedia,
+      orders: commerceOrders,
       mediaSearch: mediaSearchAITool,
       suggestedResponse: suggestedResponseAITool,
     },

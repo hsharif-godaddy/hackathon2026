@@ -11,6 +11,7 @@ export const OAuthScopes = [
   'commerce.store:read',
   'commerce.product:read',
   'commerce.product:write',
+  'commerce.order:read',
   'commerce.onboarding-application:write',
   'commerce.onboarding-application:read',
   'apps.app-registry:read',
