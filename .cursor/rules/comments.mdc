@@ -1,0 +1,59 @@
+---
+description: Minimal commenting - prefer self-documenting code
+globs: **/*.{ts,js,tsx,jsx}
+alwaysApply: true
+---
+
+# Minimal Commenting Philosophy
+
+**Core Principle**: Prefer refactoring over commenting. If code needs a comment to explain what it does, extract it into a well-named function, class, or module instead.
+
+**Audience**: AI assistants (Claude, Cursor, Copilot) are the primary consumers. Write comments that help your future AI collaborator understand important context.
+
+## When to Comment
+
+Only add comments for these specific reasons:
+
+1. **Important context** - WHY something is done this way (not WHAT it does)
+2. **"WTF" moments** - Surprising, counterintuitive, or non-obvious behavior
+3. **Complex regex** - Explain pattern logic and capture groups
+4. **External constraints** - API requirements, security policies, compliance
+
+## When NOT to Comment
+
+- ❌ Explaining what code does → Extract to well-named function
+- ❌ Documenting function signatures → TypeScript types handle this
+- ❌ Section headers in functions → Extract into separate functions
+- ❌ Obvious declarations → Names should be self-explanatory
+- ❌ TODOs/FIXMEs → Create issues instead
+
+## Modifying Existing Code
+
+- Remove unnecessary comments (obvious behavior, duplicate types)
+- Update valuable comments to stay accurate
+- Don't add new comments unless they meet criteria above
+
+## Examples
+
+```typescript
+// ✅ Good: Explains WHY (important context)
+// Use static serial '01' to avoid x509 negative serial errors.
+// Random values can have high bit set in DER encoding, causing
+// Go's x509 parser to interpret as negative.
+cert.serialNumber = '01';
+
+// ✅ Good: WTF moment
+// setTimeout(0) required because React batches state updates.
+// Without this, DOM ref won't be available yet.
+setTimeout(() => inputRef.current?.focus(), 0);
+
+// ❌ Bad: Explains WHAT code does
+// Set the serial number to '01'
+cert.serialNumber = '01';
+
+// ❌ Bad: Should be extracted to function
+// Calculate total price including tax and shipping
+const total = subtotal + (subtotal * taxRate) + shippingCost;
+```
+
+**Remember**: "Code tells you how, comments tell you why. If you need comments to explain how, rewrite the code."

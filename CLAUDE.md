@@ -654,12 +654,12 @@ console.log('Agent feature flags and configuration:', { ... })
 - Apply to both ES6 imports and CommonJS requires
 - See `.cursor/rules/import-sorting.mdc` for details
 
-**JSDoc Documentation:**
+**Code Comments:**
 
-- All functions, classes, interfaces, and exports MUST have comprehensive JSDoc
-- Required tags: `@param` for every parameter, `@returns` for non-void functions, `@throws` for error cases
-- Include `@example` for public APIs and complex functions
-- See `.cursor/rules/jsdoc-mandatory.mdc` for full standards
+- Prefer self-documenting code over comments (clear naming, proper encapsulation)
+- Only comment for: important context (WHY), WTF moments, complex regex, external constraints
+- When modifying code: remove unnecessary comments, update valuable ones
+- See `.cursor/rules/comments.mdc` for details
 
 **Dependency Validation:**
 
