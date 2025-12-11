@@ -1,3 +1,4 @@
+import type { ModelMessage, ToolModelMessage, UserModelMessage, AssistantModelMessage, SystemModelMessage } from 'ai';
 import type { ToolCall } from '../database/schema.js';
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
 import { logger } from '../logging/index.js';
@@ -281,7 +282,7 @@ export class ConversationHistoryLoader {
         const toolCall = this.convertSingleToolCall(segment.tool_call);
         messages.push({
           role: 'assistant',
-          content: '',
+          content: ' ',  // Use space instead of empty string to avoid empty text blocks
           tool_calls: [toolCall]
         });
 
@@ -700,75 +701,344 @@ export class ConversationHistoryLoader {
 
   /**
    * Format LLM messages for AI SDK ConversationMessage format
-   * AI SDK uses OpenAI format internally and converts to provider format
-   * Injects tool results inline as user messages with summaries
+   * AI SDK v6 supports ModelMessage union type including ToolModelMessage
+   * Converts tool results to AI SDK v6 format with tool-result parts
    * @param llmMessages - Array of LLM messages from loadMessagesWithTokenLimit
    * @param appId - App ID for logging
    * @param agentId - Agent ID for logging
-   * @returns Array formatted for AI SDK
+   * @returns Array formatted for AI SDK with tool messages in v6 ModelMessage format
    */
   formatMessagesForAISDK(
     llmMessages: LLMMessage[],
     appId: string,
     agentId: string
-  ): Array<{
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-    tool_calls?: Array<{
-      id: string;
-      type: string;
-      function: {
-        name: string;
-        arguments: string;
-      };
-    }>;
-  }> {
-    const formattedMessages: any[] = [];
+  ): Array<ModelMessage> {
+    let formattedMessages: ModelMessage[] = [];
     
     for (let i = 0; i < llmMessages.length; i++) {
       const msg = llmMessages[i];
       if (!msg) continue;
       
+      // Convert tool messages to AI SDK v6 ToolModelMessage format
       if (msg.role === 'tool') {
-        const toolResult = msg.content || '';
-        const isSuccess = !toolResult.toLowerCase().includes('error') && 
-                         !toolResult.toLowerCase().includes('failed');
-        const status = isSuccess ? '✅' : '❌';
-        const preview = toolResult.length > 200 ? toolResult.substring(0, 200) + '...' : toolResult;
+        // Skip tool messages with empty content
+        if (!msg.content || msg.content.trim() === '') {
+          logger.warn('conversation.history.loader.skipping_empty_tool_message', {
+            appId,
+            agentId,
+            toolCallId: msg.tool_call_id,
+            toolName: msg.name
+          });
+          continue;
+        }
         
-        formattedMessages.push({
-          role: 'user',
-          content: `[Tool Result: ${msg.name}] ${status}\n${preview}`
-        });
+        // Skip tool messages without required IDs
+        if (!msg.tool_call_id || !msg.name) {
+          logger.warn('conversation.history.loader.skipping_tool_message_missing_ids', {
+            appId,
+            agentId,
+            toolCallId: msg.tool_call_id,
+            toolName: msg.name,
+            reason: 'Tool message missing required tool_call_id or name'
+          });
+          continue;
+        }
+        
+        const toolMessage: ToolModelMessage = {
+          role: 'tool',
+          content: [{
+            type: 'tool-result',
+            toolCallId: msg.tool_call_id,
+            toolName: msg.name,
+            output: {
+              type: 'text',
+              value: msg.content
+            }
+          }]
+        };
+        formattedMessages.push(toolMessage);
         continue;
       }
       
-      const result: any = {
-        role: msg.role as 'user' | 'assistant' | 'system',
-        content: msg.content || ''
-      };
-      
-      if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-        result.tool_calls = msg.tool_calls;
+      // Handle system messages
+      if (msg.role === 'system') {
+        // Skip empty system messages
+        if (!msg.content || msg.content.trim() === '') {
+          continue;
+        }
+        const systemMessage: SystemModelMessage = {
+          role: 'system',
+          content: msg.content
+        };
+        formattedMessages.push(systemMessage);
+        continue;
       }
       
-      formattedMessages.push(result);
+      // Handle assistant messages with tool calls
+      if (msg.role === 'assistant') {
+        // Skip empty assistant messages without tool calls
+        if ((!msg.content || msg.content.trim() === '') && (!msg.tool_calls || msg.tool_calls.length === 0)) {
+          continue;
+        }
+        
+        // Convert tool_calls to content array format (AI SDK v6)
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          const contentParts: any[] = [];
+          
+          // Add text content if present
+          if (msg.content && msg.content.trim()) {
+            contentParts.push({
+              type: 'text',
+              text: msg.content
+            });
+          }
+          
+          // Add tool calls as ToolCallPart objects
+          for (const toolCall of msg.tool_calls) {
+            let parsedArgs;
+            try {
+              parsedArgs = JSON.parse(toolCall.function.arguments);
+            } catch (error) {
+              logger.warn('conversation.history.loader.tool_call_parse_error', {
+                appId,
+                agentId,
+                toolCallId: toolCall.id,
+                toolName: toolCall.function.name,
+                arguments: toolCall.function.arguments,
+                error: error instanceof Error ? error.message : String(error)
+              });
+              parsedArgs = {};
+            }
+            
+            contentParts.push({
+              type: 'tool-call',
+              toolCallId: toolCall.id,
+              toolName: toolCall.function.name,
+              input: parsedArgs  // ← Must be 'input', not 'args' (per AI SDK v6 ToolCallPart specification)
+            });
+          }
+          
+          const assistantMessage: AssistantModelMessage = {
+            role: 'assistant',
+            content: contentParts
+          };
+          formattedMessages.push(assistantMessage);
+          continue;
+        }
+        
+        // Assistant message without tool calls - just text
+        const content = (msg.content && msg.content.trim()) ? msg.content : ' ';
+        const assistantMessage: AssistantModelMessage = {
+          role: 'assistant',
+          content
+        };
+        formattedMessages.push(assistantMessage);
+        continue;
+      }
+      
+      // Handle user messages
+      if (msg.role === 'user') {
+        // Skip empty user messages
+        if (!msg.content || msg.content.trim() === '') {
+          continue;
+        }
+        const userMessage: UserModelMessage = {
+          role: 'user',
+          content: msg.content
+        };
+        formattedMessages.push(userMessage);
+        continue;
+      }
     }
     
-    const messagesWithToolCalls = formattedMessages.filter(msg => msg.tool_calls);
-    const toolResultCount = formattedMessages.filter(msg => 
-      msg.role === 'user' && msg.content.startsWith('[Tool Result:')
-    ).length;
+    // Strip out tool calls that don't have corresponding tool results
+    // This handles failed tool calls that never got a result saved
+    const toolResultIds = new Set<string>();
+    for (const msg of formattedMessages) {
+      if (msg.role === 'tool') {
+        const content = (msg as ToolModelMessage).content;
+        if (Array.isArray(content) && content[0]) {
+          const firstPart = content[0];
+          if ('toolCallId' in firstPart) {
+            toolResultIds.add(firstPart.toolCallId);
+          }
+        }
+      }
+    }
     
-    if (messagesWithToolCalls.length > 0) {
+    // Filter out tool calls without matching results
+    let strippedToolCallCount = 0;
+    for (let i = 0; i < formattedMessages.length; i++) {
+      const msg = formattedMessages[i];
+      if (!msg || msg.role !== 'assistant') continue;
+      
+      const content = (msg as AssistantModelMessage).content;
+      if (Array.isArray(content)) {
+        const originalLength = content.length;
+        const filteredContent = content.filter((part: any) => {
+          if (part.type === 'tool-call') {
+            const hasResult = toolResultIds.has(part.toolCallId);
+            if (!hasResult) {
+              strippedToolCallCount++;
+              logger.warn('conversation.history.loader.stripping_tool_call_without_result', {
+                appId,
+                agentId,
+                toolCallId: part.toolCallId,
+                toolName: part.toolName,
+                reason: 'Tool call has no corresponding tool result (likely failed execution)'
+              });
+            }
+            return hasResult;
+          }
+          return true;
+        });
+        
+        // Update the message content if we filtered out any tool calls
+        if (filteredContent.length !== originalLength) {
+          (msg as AssistantModelMessage).content = filteredContent;
+        }
+      }
+    }
+    
+    if (strippedToolCallCount > 0) {
+      logger.info('conversation.history.loader.stripped_orphaned_tool_calls', {
+        appId,
+        agentId,
+        count: strippedToolCallCount,
+        reason: 'Removed tool calls without matching results to maintain message validity'
+      });
+    }
+
+    // Filter out assistant messages with empty content arrays (can happen after stripping orphaned tool calls)
+    formattedMessages = formattedMessages.filter(msg => {
+      if (msg.role !== 'assistant') return true;
+      const content = (msg as AssistantModelMessage).content;
+      if (Array.isArray(content) && content.length === 0) {
+        logger.warn('conversation.history.loader.skipping_empty_assistant_message', {
+          appId,
+          agentId,
+          reason: 'Assistant message has empty content array after stripping orphaned tool calls'
+        });
+        return false;
+      }
+      return true;
+    });
+
+    // Strip out tool results that don't have corresponding tool calls
+    // This handles cases where token limiting dropped the assistant tool-call message
+    // but kept the tool result message (because token limiting processes backwards)
+    const toolCallIds = new Set<string>();
+    for (const msg of formattedMessages) {
+      if (msg.role === 'assistant') {
+        const content = (msg as AssistantModelMessage).content;
+        if (Array.isArray(content)) {
+          content.forEach((part: any) => {
+            if (part.type === 'tool-call') {
+              toolCallIds.add(part.toolCallId);
+            }
+          });
+        }
+      }
+    }
+
+    // Filter out orphaned tool results
+    const validMessages = formattedMessages.filter(msg => {
+      if (msg.role !== 'tool') return true;
+      const content = (msg as ToolModelMessage).content;
+      if (Array.isArray(content) && content[0]) {
+        const firstPart = content[0];
+        if ('toolCallId' in firstPart) {
+          const hasToolCall = toolCallIds.has(firstPart.toolCallId);
+          if (!hasToolCall) {
+            logger.warn('conversation.history.loader.stripping_orphaned_tool_result', {
+              appId,
+              agentId,
+              toolCallId: firstPart.toolCallId,
+              toolName: 'toolName' in firstPart ? firstPart.toolName : 'unknown',
+              reason: 'Tool result has no corresponding tool call (likely dropped during token limiting)'
+            });
+          }
+          return hasToolCall;
+        }
+      }
+      return true;
+    });
+
+    const strippedToolResultCount = formattedMessages.length - validMessages.length;
+    if (strippedToolResultCount > 0) {
+      logger.info('conversation.history.loader.stripped_orphaned_tool_results', {
+        appId,
+        agentId,
+        count: strippedToolResultCount,
+        reason: 'Removed tool results without matching tool calls to prevent AI SDK errors'
+      });
+    }
+
+    // Replace formattedMessages with validMessages
+    formattedMessages = validMessages;
+
+    // Count messages with tool calls by checking content array for ToolCallPart objects
+    const messagesWithToolCalls = formattedMessages.filter(msg => {
+      if (msg.role !== 'assistant') return false;
+      const content = (msg as AssistantModelMessage).content;
+      if (Array.isArray(content)) {
+        return content.some((part: any) => part.type === 'tool-call');
+      }
+      return false;
+    });
+    
+    // Count total tool calls from content arrays
+    const totalToolCalls = messagesWithToolCalls.reduce((sum, msg) => {
+      const content = (msg as AssistantModelMessage).content;
+      if (Array.isArray(content)) {
+        return sum + content.filter((part: any) => part.type === 'tool-call').length;
+      }
+      return sum;
+    }, 0);
+    
+    const toolResultCount = formattedMessages.filter(msg => msg.role === 'tool').length;
+    
+    if (messagesWithToolCalls.length > 0 || toolResultCount > 0) {
       logger.info('conversation.history.loader.formatted_for_ai_sdk', {
         appId,
         agentId,
         totalMessages: formattedMessages.length,
         messagesWithToolCalls: messagesWithToolCalls.length,
-        totalToolCalls: messagesWithToolCalls.reduce((sum, msg) => sum + (msg.tool_calls?.length || 0), 0),
+        totalToolCalls,
         toolResultMessages: toolResultCount
       });
+      
+      // Debug: Log tool call and result IDs to verify matching
+      if (messagesWithToolCalls.length > 0 || toolResultCount > 0) {
+        const assistantToolCallIds = messagesWithToolCalls.flatMap(msg => {
+          const content = (msg as AssistantModelMessage).content;
+          if (Array.isArray(content)) {
+            return content
+              .filter((part: any) => part.type === 'tool-call')
+              .map((part: any) => part.toolCallId);
+          }
+          return [];
+        });
+        
+        const toolResultIds = formattedMessages
+          .filter(msg => msg.role === 'tool')
+          .map((msg: any) => {
+            if (Array.isArray(msg.content) && msg.content[0]) {
+              return msg.content[0].toolCallId;
+            }
+            return undefined;
+          })
+          .filter(Boolean);
+        
+        logger.info('conversation.history.loader.tool_messages_summary', {
+          appId,
+          agentId,
+          assistantWithToolCalls: messagesWithToolCalls.length,
+          toolMessages: toolResultCount,
+          assistantToolCallIds,
+          toolResultIds
+        });
+      }
     }
     
     return formattedMessages;

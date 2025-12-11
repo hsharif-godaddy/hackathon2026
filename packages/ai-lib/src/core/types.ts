@@ -1,4 +1,4 @@
-import type { LanguageModel, Tool } from 'ai'
+import type { LanguageModel, Tool, ModelMessage } from 'ai'
 import type { z } from 'zod'
 // Retry types (optional import to avoid hard dependency cycles)
 import type { RetryConfig } from '../utils/retry-with-backoff.js'
@@ -91,11 +91,8 @@ export interface AgentConfig {
  * Runtime context passed to agents during execution
  */
 export interface AgentContext {
-  /** Conversation history messages */
-  messages?: Array<{
-    role: 'user' | 'assistant' | 'system'
-    content: string
-  }>
+  /** Conversation history messages in AI SDK v6 ModelMessage format */
+  messages?: ModelMessage[]
   /** Initial context messages to include before conversation history */
   initialContextMessages?: Array<{
     role: 'user' | 'assistant' | 'system'

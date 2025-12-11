@@ -63,15 +63,16 @@ export class ConversationContextManager {
     const duplicateFileReadStrategy = new DuplicateFileReadStrategy(hotFileStrategy);
 
     this.historyLoader.registerCompressionStrategy(hotFileStrategy);
-    this.historyLoader.registerCompressionStrategy(duplicateFileReadStrategy);
-    this.historyLoader.registerCompressionStrategy(fileEditStrategy);
+    // TEMPORARILY DISABLED: Tool message compression strategies need to be updated for AI SDK v6 format
+    // this.historyLoader.registerCompressionStrategy(duplicateFileReadStrategy);
+    // this.historyLoader.registerCompressionStrategy(fileEditStrategy);
     this.historyLoader.registerCompressionStrategy(fileEditInputStrategy);
     // Remove all app context entries from history - fresh context is injected before history on every turn
     this.historyLoader.registerCompressionStrategy(new AppContextRemovalStrategy());
     // Remove all todoList entries from history - persistent [Current Todo List] section is the single source of truth
     this.historyLoader.registerCompressionStrategy(new TodoListRemovalStrategy());
-    // Compress cssSuggest results to only show palette names
-    this.historyLoader.registerCompressionStrategy(new CssSuggestCompressionStrategy());
+    // TEMPORARILY DISABLED: Tool message compression strategies need to be updated for AI SDK v6 format
+    // this.historyLoader.registerCompressionStrategy(new CssSuggestCompressionStrategy());
   }
 
   /**

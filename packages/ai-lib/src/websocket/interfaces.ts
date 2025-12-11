@@ -3,6 +3,8 @@
  * These interfaces allow for flexible, testable, and generic message injection
  */
 
+import type { ModelMessage } from 'ai'
+
 /**
  * Tool call structure for assistant messages
  */
@@ -17,22 +19,13 @@ export interface ToolCall {
 
 /**
  * Represents a message that can be injected into the conversation stream
- * Supports full LLM message format including tool calls
- * AI SDK uses OpenAI format internally (tool_calls) and converts to provider format
+ * Uses AI SDK v6 ModelMessage format with optional extensions
  */
-export interface ConversationMessage {
-  /** Message role */
-  role: 'user' | 'assistant' | 'system' | 'tool'
-  /** Message content - must be string (AI SDK requirement) */
-  content: string
+export type ConversationMessage = ModelMessage & {
   /** Optional cache point for cost optimization */
   cachePoint?: { type: 'ephemeral' }
-  /** Tool calls made by assistant (for role='assistant', OpenAI format) */
+  /** Tool calls made by assistant (for role='assistant', OpenAI format) - legacy support */
   tool_calls?: ToolCall[]
-  /** Tool call ID this message responds to (for role='tool') */
-  tool_call_id?: string
-  /** Tool name (for role='tool') */
-  name?: string
 }
 
 /**

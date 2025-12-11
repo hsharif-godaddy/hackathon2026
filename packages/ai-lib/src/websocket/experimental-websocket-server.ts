@@ -1,3 +1,4 @@
+import type { ModelMessage } from 'ai'
 import { Server as SocketIOServer } from 'socket.io'
 import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper } from '../core/agent-factory.js'
@@ -1571,10 +1572,10 @@ export class WebSocketServer {
     data: ChatMessage,
     context: Record<string, unknown> | undefined
   ): Promise<{
-    messages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }>
+    messages: ModelMessage[]
     contextMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }>
   }> {
-    const messages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }> = []
+    const messages: ModelMessage[] = []
     const contextMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }> = []
     const beforeHistoryMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }> = []
     const afterHistoryMessages: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'ephemeral' } }> = []
@@ -1628,15 +1629,7 @@ export class WebSocketServer {
           converted.tool_calls = msg.tool_calls
         }
 
-        // Preserve tool result references for tool messages
-        if (msg.role === 'tool') {
-          if (msg.tool_call_id) {
-            converted.tool_call_id = msg.tool_call_id
-          }
-          if (msg.name) {
-            converted.name = msg.name
-          }
-        }
+        // Tool messages already have content in the correct format (array of tool-result parts)
 
         return converted
       })
@@ -1646,10 +1639,23 @@ export class WebSocketServer {
     // 3. Context messages marked "after_history" go to messages (after conversation history, before user message)
     messages.push(...afterHistoryMessages)
 
+    // 4. Strip leading tool messages that appear before any assistant message
+    // This prevents orphaned tool results from being placed at the start of conversation
+    // which can happen when context messages are prepended to history
+    while (messages.length > 0 && messages[0] && messages[0].role === 'tool') {
+      const removedMessage = messages.shift()
+      if (removedMessage) {
+        this.logger.warn('Stripped leading tool message without preceding assistant message', {
+          toolCallId: (removedMessage as any).tool_call_id,
+          reason: 'Tool results must follow assistant tool calls, cannot be first message'
+        })
+      }
+    }
+
     this.logger.info('Message assembly complete', {
       contextMessages: contextMessages.length,
       messages: messages.length,
-      cachePoints: contextMessages.filter(m => m.cachePoint).length + messages.filter(m => m.cachePoint).length
+      cachePoints: contextMessages.filter(m => m.cachePoint).length + messages.filter(m => (m as any).cachePoint).length
     })
 
     return { messages, contextMessages }

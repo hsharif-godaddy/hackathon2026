@@ -245,7 +245,7 @@ export class ConversationMessageBuilder implements MessageBuilder {
 
     // Add full conversation history if provided
     if (context?.messages && context.messages.length > 0) {
-      messages.push(...context.messages)
+      messages.push(...context.messages as ModelMessage[])
     }
 
     // Add current user input with vision support if files are provided

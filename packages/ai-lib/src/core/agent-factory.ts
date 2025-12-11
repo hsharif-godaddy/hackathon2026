@@ -10,7 +10,8 @@ import type {
   ToolLoopAgentOnFinishCallback,
   ToolLoopAgentOnStepFinishCallback,
   Tool,
-  ToolExecutionOptions
+  ToolExecutionOptions,
+  ModelMessage
 } from 'ai'
 import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from './types.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
@@ -115,21 +116,13 @@ type AgentCallOptions = {
     content: string | unknown
     cachePoint?: { type: 'default' | 'ephemeral' }
   }>
-  conversationMessages?: Array<{
-    role: 'user' | 'assistant' | 'system'
-    content: string | unknown
-    cachePoint?: { type: 'default' | 'ephemeral' }
-    tool_calls?: unknown
-    tool_call_id?: string
-    name?: string
-    providerOptions?: Record<string, unknown>
-  }>
+  conversationMessages?: ModelMessage[]
   files?: ProcessedFile[]
   basePrompt?: string
 }
 
 type NormalizedMessage = {
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   content: string | ContentBlock[]
   providerOptions?: Record<string, unknown>
   cachePoint?: { type: 'default' | 'ephemeral' }
@@ -198,8 +191,77 @@ export class AgentWrapper {
         const basePrompt = callOptions.basePrompt ?? promptText ?? ''
         const trimmedBasePrompt = basePrompt.trim()
 
+        // If we have conversationMessages (ModelMessage[]), use them directly without normalization
+        if (callOptions.conversationMessages && callOptions.conversationMessages.length > 0) {
+          const preparedCall = { ...rest } as typeof callParameters
+          
+          // Add context messages first (these need normalization)
+          const contextNormalized: ModelMessage[] = []
+          if (callOptions.contextMessages && callOptions.contextMessages.length > 0) {
+            for (const msg of callOptions.contextMessages) {
+              const normalizedContent = this.normalizeContentForMessage(msg.content)
+              const providerOptions: Record<string, unknown> = {}
+              if (msg.cachePoint) {
+                providerOptions.bedrock = {
+                  cachePoint: msg.cachePoint.type
+                }
+              }
+              contextNormalized.push({
+                role: msg.role,
+                content: normalizedContent,
+                ...(Object.keys(providerOptions).length > 0 ? { providerOptions } : {})
+              } as ModelMessage)
+            }
+          }
+          
+          // Normalize conversation messages to preserve cachePoint metadata
+          const conversationNormalized: ModelMessage[] = []
+          for (const msg of callOptions.conversationMessages) {
+            // Check if this message has cachePoint metadata (ConversationMessage type)
+            const msgWithCache = msg as any
+            if (msgWithCache.cachePoint) {
+              // Extract cachePoint and convert to providerOptions
+              const providerOptions: Record<string, unknown> = {
+                bedrock: {
+                  cachePoint: msgWithCache.cachePoint.type
+                }
+              }
+              // Create normalized message without cachePoint property
+              const { cachePoint, ...messageWithoutCache } = msgWithCache
+              conversationNormalized.push({
+                ...messageWithoutCache,
+                providerOptions
+              } as ModelMessage)
+            } else {
+              // No cachePoint, pass through as-is
+              conversationNormalized.push(msg)
+            }
+          }
+
+          const allMessages: ModelMessage[] = [
+            ...contextNormalized,
+            ...conversationNormalized
+          ]
+          
+          // Add current user message
+          if (callOptions.files && callOptions.files.length > 0) {
+            allMessages.push(buildHybridContent(basePrompt, callOptions.files) as any)
+          } else if (trimmedBasePrompt.length > 0) {
+            allMessages.push({ role: 'user', content: trimmedBasePrompt })
+          }
+          
+          preparedCall.messages = allMessages as any
+          
+          if (callOptions.executionContext) {
+            ;(preparedCall as typeof preparedCall & { experimental_context?: unknown }).experimental_context = callOptions.executionContext
+          }
+          
+          return preparedCall
+        }
+
+        // Legacy path: normalize messages that aren't already ModelMessage[]
         const userMessages: Array<{
-          role: 'user' | 'assistant' | 'system'
+          role: 'user' | 'assistant' | 'system' | 'tool'
           content: string | unknown
           cachePoint?: { type: 'default' | 'ephemeral' }
           providerOptions?: Record<string, unknown>
@@ -207,8 +269,7 @@ export class AgentWrapper {
           tool_calls?: unknown
           tool_call_id?: string
         }> = [
-          ...(callOptions.contextMessages ?? []),
-          ...(callOptions.conversationMessages ?? [])
+          ...(callOptions.contextMessages ?? [])
         ]
 
         if (callOptions.files && callOptions.files.length > 0) {
@@ -378,7 +439,7 @@ export class AgentWrapper {
   }
 
   private canConvertMessageForSDK(message: NormalizedMessage): boolean {
-    if (message.tool_calls || message.tool_call_id || message.name) {
+    if (message.role === 'tool' || message.tool_calls || message.tool_call_id || message.name) {
       return false
     }
 
@@ -612,8 +673,8 @@ export class AgentWrapper {
    * Generate a streaming response with flexible context injection
    */
   async streamGenerate(prompt: string, options?: {
-    /** Previous conversation messages */
-    messages?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
+    /** Previous conversation messages in AI SDK v6 ModelMessage format */
+    messages?: ModelMessage[]
     /** Custom context messages to be injected before previous conversation messages */
     context?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
     /** Execution context for tools (appId, userId, etc.) */
@@ -640,7 +701,7 @@ export class AgentWrapper {
    * Handles tool execution context propagation via ToolLoopAgent call options
    */
   private async _executeStreamGenerate(prompt: string, options?: {
-    messages?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
+    messages?: ModelMessage[]
     context?: Array<{ role: 'user' | 'assistant' | 'system', content: string, cachePoint?: { type: 'default' | 'ephemeral' } }>
     files?: ProcessedFile[]
     executionContext?: Record<string, unknown>
