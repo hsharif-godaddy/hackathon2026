@@ -1,7 +1,7 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { generateClickEID } from '@/utils/instrumentation';
 import {
@@ -12,6 +12,8 @@ import {
 import { Button } from "@/lib/shadcn/button"
 import { Separator } from "@/lib/shadcn/separator"
 import UserIcon from '@ux/icon/user';
+import InviteFriends, { InviteFriendsVariant } from '@/components/layout/InviteFriends';
+import clsx from 'clsx';
 
 interface UserMenuProps {
   onShowMockLogin?: () => void;
@@ -19,8 +21,9 @@ interface UserMenuProps {
 }
 
 export default function UserMenu({ onShowMockLogin, location = 'unknown' }: UserMenuProps = {}) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const isDevelopPage = pathname?.includes('/develop');
 
   const {
     isAuthenticated,
@@ -35,7 +38,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
       <PopoverTrigger className="hover:cursor-pointer">
         <UserIcon />
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[200px] p-1">
+      <PopoverContent align="end" className={clsx('p-1', isDevelopPage && isAuthenticated ? 'w-[280px]' : 'w-[200px]')}>
         <div className="flex flex-col gap-0.5">
           { isAuthDisabled && (
             <Button
@@ -64,6 +67,12 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
               Sign In
             </Button>
           ) }
+          {isDevelopPage && isAuthenticated && (
+            <>
+              <InviteFriends location={location} variant={InviteFriendsVariant.MenuItem} />
+              <Separator className="my-0.5" />
+            </>
+          )}
           { isAuthenticated && !isAuthDisabled && (
             <Button
               variant="ghost"

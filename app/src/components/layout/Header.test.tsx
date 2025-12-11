@@ -45,7 +45,7 @@ describe('Header', () => {
     renderWithProviders(<Header />);
 
     const link = screen.getByRole('link');
-    expect(link).toHaveAttribute('href', 'https://airo.ai');
+    expect(link).toHaveAttribute('href', '/');
   });
 
   it('should render beta tag', () => {

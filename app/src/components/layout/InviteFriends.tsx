@@ -15,9 +15,14 @@ import LinkIcon from '@ux/icon/link';
 import ClipboardIcon from '@ux/icon/clipboard';
 import CheckmarkIcon from '@ux/icon/checkmark';
 
+export enum InviteFriendsVariant {
+  Button = 'button',
+  MenuItem = 'menu-item',
+}
+
 interface InviteFriendsProps {
-  /** Location identifier for analytics tracking */
   location?: string;
+  variant?: InviteFriendsVariant;
 }
 
 /**
@@ -34,19 +39,16 @@ interface InviteFriendsProps {
  * <InviteFriends location='header' />
  * ```
  */
-export default function InviteFriends({ location = 'unknown' }: InviteFriendsProps) {
+export default function InviteFriends({ location = 'unknown', variant = InviteFriendsVariant.Button }: InviteFriendsProps) {
   const { isAuthenticated } = useAuthContext();
   const isMobile = useIsMobile();
+  const isMenuItem = variant === InviteFriendsVariant.MenuItem;
 
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Fetch referral link - only when popover is open
   const { referralLink, isLoading, error } = useReferralLink();
 
-  /**
-   * Copy the referral link to clipboard
-   */
   const handleCopy = async () => {
     if (!referralLink) return;
 
@@ -63,11 +65,54 @@ export default function InviteFriends({ location = 'unknown' }: InviteFriendsPro
     }
   };
 
+  const referralContent = (
+    <Box orientation='vertical' gap='sm'>
+      <text.p size={0}>
+        Share your referral link with friends and let them experience the magic of Airo App Builder!
+      </text.p>
+      <Box orientation='horizontal' gap='sm' className='w-full' blockAlignChildren='center'>
+        <TextInput
+          visualSize='sm'
+          className='flex-1 [&_input]:[direction:rtl] [&_input]:text-left'
+          id='referral-link-input'
+          label={null}
+          value={isLoading ? 'Generating...' : (referralLink || '')}
+          errorMessage={error ? 'Failed to generate link, please try again.' : undefined}
+          disabled
+          readOnly
+        />
+        <Button
+          design='secondary'
+          size='sm'
+          icon={copied ? (
+            <CheckmarkIcon className='text-intents-ux-feedbackHighContrastSuccess-feedbackColor' />
+          ) : (
+            <ClipboardIcon />
+          )}
+          onClick={handleCopy}
+          disabled={!referralLink || isLoading || copied}
+          data-eid={generateClickEID(`${location}.${isMenuItem ? 'user_menu' : 'header'}.invite_friends.copy`)}
+        />
+      </Box>
+    </Box>
+  );
+
   // Only show for authenticated users
   if (!isAuthenticated) {
     return null;
   }
 
+  // Menu item variant: inline content (no popover)
+  if (isMenuItem) {
+    return (
+      <Box orientation='vertical' gap='sm' className='p-1'>
+        <text.h3 as='title' size={-1}>Invite Friends</text.h3>
+        {referralContent}
+      </Box>
+    );
+  }
+
+  // Button variant: popover with sharing UI
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -81,35 +126,7 @@ export default function InviteFriends({ location = 'unknown' }: InviteFriendsPro
         />
       </PopoverTrigger>
       <PopoverContent align='end' className='w-[280px] p-2'>
-        <Box orientation='vertical' gap='sm'>
-          <text.p size={0}>
-            Share your referral link with friends and let them experience the magic of Airo App Builder!
-          </text.p>
-          <Box orientation='horizontal' gap='sm' className='w-full' blockAlignChildren='center'>
-            <TextInput
-              visualSize='sm'
-              className='flex-1 [&_input]:[direction:rtl] [&_input]:text-left'
-              id='referral-link-input'
-              label={null}
-              value={isLoading ? 'Generating...' : (referralLink || '')}
-              errorMessage={error ? 'Failed to generate link, please try again.' : undefined}
-              disabled
-              readOnly
-            />
-            <Button
-              design='secondary'
-              size='sm'
-              icon={copied ? (
-                <CheckmarkIcon className='text-intents-ux-feedbackHighContrastSuccess-feedbackColor' />
-              ) : (
-                <ClipboardIcon />
-              )}
-              onClick={handleCopy}
-              disabled={!referralLink || isLoading || copied}
-              data-eid={generateClickEID(`${location}.header.invite_friends.copy`)}
-            />
-          </Box>
-        </Box>
+        {referralContent}
       </PopoverContent>
     </Popover>
   );

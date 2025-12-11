@@ -1,10 +1,10 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import Link from 'next/link'
 import clsx from 'clsx'
 import Box from '@ux/box'
 import Tag from '@ux/tag';
-import ChevronLeftIcon from '@ux/icon/chevron-left';
 import { UserMenu } from '@/components/auth'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import AppSelector from '@/components/layout/AppSelector'
@@ -21,6 +21,8 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
   const { isAuthenticated, isAuthDisabled } = useAuthContext();
   const showAuthenticatedUI = isAuthenticated || isAuthDisabled;
   const isMobile = useIsMobile();
+  const pathname = usePathname();
+  const isDevelopPage = pathname?.includes('/develop');
 
   return (
     <header className={clsx(
@@ -33,7 +35,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
         <div className="flex justify-between items-center h-8">
           <div className="flex items-center space-x-1.5" data-partial="componentAiro">
             <Link
-              href="https://airo.ai"
+              href="/"
               className="flex items-center"
               data-eid={ generateClickEID(`${location}.header.airo_ai_link`) }
             >
@@ -45,7 +47,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
           </div>
           <Box orientation="horizontal" gap={isMobile ? 'md' : 'lg'}>
             {actions && actions}
-            {showAuthenticatedUI && <InviteFriends location={location} />}
+            {showAuthenticatedUI && !isDevelopPage && <InviteFriends location={location} />}
             <UserMenu
               onShowMockLogin={onShowMockLogin}
               location={location}
