@@ -9,7 +9,6 @@ import RumProvider from "@/components/providers/RumProvider";
 import SubscriptionCacheProvider from "@/components/providers/SubscriptionCacheProvider";
 import FrameBuster from "@/components/security/FrameBuster";
 import ConversationIdCookie from "@/components/security/ConversationIdCookie";
-import GlobalSsoLogin from "@/components/auth/GlobalSsoLogin";
 import ReferralTracker from "@/components/tracking/ReferralTracker";
 import { TranslationsProvider } from "@/components/providers/TranslationProvider";
 import { logger } from "@/lib/request-context";
@@ -108,7 +107,6 @@ async function RootLayout({
                 <main className="flex-1 min-h-screen">
                   {children}
                 </main>
-                <GlobalSsoLogin />
               </SubscriptionCacheProvider>
             </AuthProvider>
           </TranslationsProvider>

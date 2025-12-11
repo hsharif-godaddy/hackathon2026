@@ -1,7 +1,6 @@
 'use client';
 
 import { ReactNode, useState, useEffect, createContext, useContext } from 'react';
-import { usePathname } from 'next/navigation';
 import { logger } from '@/lib/request-context';
 import { auth } from '@/lib/features';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -25,19 +24,10 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthProviderLoading, setIsAuthProviderLoading] = useState(true);
   const [serverAuthConfig, setServerAuthConfig] = useState<any>(null);
 
-  const pathname = usePathname();
+  const authData = useAuth()
+  const {isAuthenticated, isAuthDisabled, isLoading} = authData
 
-  // Homepage should be accessible to everyone - both authenticated and unauthenticated users
-  const isHomepage = pathname === '/' || pathname === '';
-
-  // On homepage: allow unauthenticated access (disables heartbeat that could cause 401 redirects)
-  // Auth validation still runs, but users can view the page regardless of auth state
-  const authData = useAuth({ allowUnauthenticated: isHomepage });
-  const {isAuthenticated, isAuthDisabled, isLoading} = authData;
-
-  // Only check switchboard access when user is authenticated AND not on homepage
-  const shouldCheckAccess = !isHomepage && !isLoading && !isAuthDisabled && isAuthenticated;
-  const { data: isAppbuilderAccessEnabled, isLoading: isSwitchboardFeatureFlagsLoading } = useSwitchboard('appbuilder-access', { enabled: shouldCheckAccess });
+  const { data: isAppbuilderAccessEnabled, isLoading: isSwitchboardFeatureFlagsLoading } = useSwitchboard('appbuilder-access');
 
   // Load server-side auth configuration
   useEffect(() => {
@@ -62,23 +52,19 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const isJWTMode = serverAuthConfig?.isJWT || auth.isJWT();
 
   // Load auth provider conditionally (wait for server config)
-  // On homepage, skip Gasket's withAuthProvider to avoid 401 redirect interceptors
   useEffect(() => {
     // Don't load auth provider until we have server config or confirmed it failed
     if (serverAuthConfig === null) return;
 
     async function loadAuthProvider() {
       try {
-        // On homepage: use plain provider even in JWT mode to avoid 401 redirect behavior
-        // The homepage should work for both authenticated and unauthenticated users
-        if (isJWTMode && !isHomepage) {
-          // Only import and initialize Gasket auth for JWT mode on non-homepage routes
+        if (isJWTMode) {
+          // Only import and initialize Gasket auth for JWT mode
           const { withAuthProvider } = await import('@godaddy/gasket-auth');
           const WrappedProvider = withAuthProvider()(AuthProviderComponent);
           setAuthProvider(() => WrappedProvider);
         } else {
-          // For non-JWT modes OR homepage, just use the plain component
-          // Homepage uses our own auth validation via /api/auth/validate (no redirects)
+          // For non-JWT modes, just use the plain component
           setAuthProvider(() => AuthProviderComponent);
         }
       } catch (error) {
@@ -94,17 +80,15 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     loadAuthProvider();
-  }, [serverAuthConfig, isJWTMode, isHomepage]);
+  }, [serverAuthConfig, isJWTMode]);
 
-  // Show loading while auth provider or auth validation are loading
-  // Skip switchboard loading check on homepage (homepage is accessible to everyone)
-  const shouldWaitForSwitchboard = !isHomepage && isSwitchboardFeatureFlagsLoading;
-  if (shouldWaitForSwitchboard || isAuthProviderLoading || isLoading) {
+  // Show loading while feature flags, auth provider, or auth validation are loading
+  if (isSwitchboardFeatureFlagsLoading || isAuthProviderLoading || isLoading) {
     return <LoadingComponent />
   }
 
-  // User is authenticated but does not have access to App Builder (skip check on homepage)
-  if (!isHomepage && !isAuthDisabled && isAuthenticated && !isAppbuilderAccessEnabled) {
+  // User is authenticated but does not have access to App Builder
+  if (!isAuthDisabled && isAuthenticated && !isAppbuilderAccessEnabled) {
     return (
       <AuthContext.Provider value={authData}>
         <AccessDisabledComponent />
@@ -150,7 +134,6 @@ export function useAuthContext() {
       handleSignIn: () => {},
       handleSignOut: () => {},
       authenticatedFetch: fetch,
-      refreshAuth: () => {},
       isAuthDisabled: actualIsDisabled,
       authType: actualAuthType,
       isMockAuth: actualIsMock,

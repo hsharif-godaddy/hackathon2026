@@ -1,5 +1,5 @@
 import { useAuthState, AuthRealmType, AuthRiskType, AuthIdpType, authFetch } from '@godaddy/gasket-auth';
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { auth, authUtils } from '@/lib/features';
 import { useMockAuth } from '@/hooks/useMockAuth';
 import { logger } from '@/lib/request-context';
@@ -24,40 +24,17 @@ interface AppConfig {
   };
 }
 
-interface UseAuthOptions {
-  onShowMockLogin?: () => void;
-  /**
-   * Allow unauthenticated access - for pages that work for both authed and unauthed users (e.g., homepage)
-   * This option is passed through but primarily used by AuthProvider to decide whether to use
-   * Gasket's withAuthProvider (which sets up 401 redirect interceptors)
-   */
-  allowUnauthenticated?: boolean;
-}
-
 /**
  * Auth hook supporting multiple authentication modes
  *
  * Supports JWT (production), MOCK (development), and NONE (local dev) authentication.
  * Uses Gasket Auth for JWT mode and custom mock auth for development.
- *
- * @param options.allowUnauthenticated - When true, allows page to work for unauthed users (no redirect on 401)
  */
-export function useAuth(options: UseAuthOptions = {}) {
-  // allowUnauthenticated is destructured but not used here - it's used by AuthProvider
-  // to decide whether to use withAuthProvider (which sets up 401 redirect interceptors)
-  //
-  // @deprecated The old `useAuth(callback)` signature is deprecated.
-  // Use `useAuth({ onShowMockLogin: callback })` instead. This backward
-  // compatibility will be removed in a future release.
-  const { onShowMockLogin } = typeof options === 'function'
-    ? { onShowMockLogin: options }
-    : options;
-
+export function useAuth(onShowMockLogin?: () => void) {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
   const [jwtAuthValid, setJwtAuthValid] = useState<boolean | null>(null);
-  const [authRefreshTrigger, setAuthRefreshTrigger] = useState(0);
   const isValidatingRef = useRef(false);
 
   // Memoize auth configuration to prevent unnecessary re-renders
@@ -70,8 +47,6 @@ export function useAuth(options: UseAuthOptions = {}) {
   const mockAuth = useMockAuth();
 
   // Always call useAuthState to maintain hook order, but only use result for JWT mode
-  // Heartbeat is always enabled - on pages that allow unauthenticated access, we don't use
-  // withAuthProvider so 401s from heartbeat won't trigger redirects
   const supportedAuthTypes = useMemo(() => config?.auth?.type || authUtils.getSupportedAuthTypes(), [config?.auth?.type]);
 
   const authState = useAuthState({
@@ -109,7 +84,6 @@ export function useAuth(options: UseAuthOptions = {}) {
   }, []);
 
   // Check JWT authentication and authorization
-  // Uses our own /api/auth/validate endpoint which doesn't trigger SSO redirects on 401
   useEffect(() => {
     async function checkJwtAuth() {
       if (!shouldUseJWT || isMockAuth || isAuthDisabled) {
@@ -131,9 +105,6 @@ export function useAuth(options: UseAuthOptions = {}) {
           const data = await response.json();
           setJwtAuthValid(data.valid);
         } else {
-          // Auth validation failed - user is not authenticated
-          // On pages that allow unauthenticated access, this is fine - just show unauthed UI
-          // On other pages, the ProtectedRoute component will handle the redirect
           setJwtAuthValid(false);
         }
       } catch (error) {
@@ -148,14 +119,7 @@ export function useAuth(options: UseAuthOptions = {}) {
     }
 
     checkJwtAuth();
-  }, [shouldUseJWT, isMockAuth, isAuthDisabled, configLoading, authRefreshTrigger]);
-
-  // Function to refresh auth state (call after SSO login)
-  const refreshAuth = useCallback(() => {
-    isValidatingRef.current = false;
-    setJwtAuthValid(null);
-    setAuthRefreshTrigger(prev => prev + 1);
-  }, []);
+  }, [shouldUseJWT, isMockAuth, isAuthDisabled, configLoading]);
 
   // Helper function to get user email from auth details
   const getUserEmail = () => {
@@ -313,7 +277,6 @@ export function useAuth(options: UseAuthOptions = {}) {
     handleSignIn,
     handleSignOut,
     authenticatedFetch,
-    refreshAuth,
 
     // Auth status and mode
     isAuthDisabled,

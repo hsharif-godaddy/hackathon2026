@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useAuthContext } from '@/components/providers/AuthProvider'
-import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import { text } from '@ux/text';
@@ -16,8 +15,10 @@ export default function UnauthorizedComponent({
 }: UnauthorizedComponentProps) {
   const [showMockLogin, setShowMockLogin] = useState(false);
 
-  const { isMockAuth } = useAuthContext();
-  const { openSsoLogin } = useAuthUIStore();
+  const {
+    isMockAuth,
+    handleSignIn
+  } = useAuthContext();
 
   useEffect(() => {
     logImpressionEvent('auth.unauthorized.view')();
@@ -38,7 +39,7 @@ export default function UnauthorizedComponent({
               if (isMockAuth) {
                 setShowMockLogin(true);
               } else {
-                openSsoLogin();
+                handleSignIn(window.location.href);
               }
             }}
             size='sm'

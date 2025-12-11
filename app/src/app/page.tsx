@@ -8,7 +8,6 @@ import { isFeatureEnabled } from '@/lib/features'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { useAuthContext } from '@/components/providers/AuthProvider'
-import { useAuthUIStore } from '@/stores/useAuthUIStore'
 import StartSection from '@/app/components/StartSection'
 import InfraSection from '@/app/components/InfraSection'
 import HelpSection from '@/app/components/HelpSection'
@@ -31,9 +30,8 @@ function HomeContent() {
   const heroSectionRef = useRef<HeroSectionRef>(null)
   const promptTextRef = useRef(promptText)
 
-  const { isAuthenticated, isAuthDisabled, isMockAuth, isLoading: authIsLoading } = useAuthContext()
-  const { openSsoLogin } = useAuthUIStore()
-
+  const { isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth, isLoading: authIsLoading } = useAuthContext()
+  
   useSafariClass()
 
   useEffect(() => {
@@ -81,14 +79,14 @@ function HomeContent() {
     })();
 
     try {
-      // Step 1: Quick auth check - show in-app SSO login if needed
+      // Step 1: Quick auth check - only redirect to login if needed
       // Ensure consistent timing for async and sync auth checks
       if (!isAuthDisabled && !isAuthenticated) {
-        logger.info('page.auth.sso-login', 'User not authenticated, showing SSO login')
+        logger.info('page.auth.redirect', 'User not authenticated, redirecting to login')
 
-        // Save the prompt to localStorage before showing login
+        // Save the prompt to localStorage before redirecting to login
         localStorage.setItem('airo-pending-prompt', promptTextRef.current.trim())
-        logger.info('homepage.prompt.save', { message: 'Saved prompt to localStorage before login' })
+        logger.info('homepage.prompt.save', { message: 'Saved prompt to localStorage before login redirect' })
 
         if (isMockAuth) {
           setShowMockLogin(true);
@@ -96,11 +94,13 @@ function HomeContent() {
           setIsRedirecting(false);
           return;
         }
-
-        openSsoLogin();
-        setIsLoading(false);
-        setIsRedirecting(false);
-        return;
+        if (gasketConfig) {
+          const url = new URL(gasketConfig.sso.loginUrl);
+          url.searchParams.set('app', 'airo-builder');
+          url.searchParams.set('redirect', gasketConfig.redirects.loginRedirectUrl);
+          window.location.href = url.toString();
+        }
+        return
       }
 
       // Step 2: Super fast create - only create database record, no deployment
@@ -167,7 +167,7 @@ function HomeContent() {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, isMockAuth, openSsoLogin])
+  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth])
 
   // Restore prompt from localStorage after login and clear it
   useEffect(() => {
@@ -196,84 +196,84 @@ function HomeContent() {
   }
 
   return (
-      <div className="relative w-full overflow-hidden header-bg bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
-        <div className="header-orb" />
-        <div className="footer-bg" />
+    <div className="relative w-full overflow-hidden header-bg bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
+      <div className="header-orb" />
+      <div className="footer-bg" />
 
-      <div className="w-full h-full relative">
-          <Header
-            className="absolute top-0 left-0 w-full border-0! z-20"
-            onShowMockLogin={() => setShowMockLogin(true)}
-            location='homepage'
-          />
-          <HeroSection
-            ref={heroSectionRef}
-            promptText={promptText}
-            setPromptText={setPromptText}
-            onStartBuilding={handleStartBuilding}
-            isLoading={isLoading}
-            error={error}
-            setError={setError}
-            onExampleClick={handleExampleClick}
-          />
+      <div className="w-full h-full relative z-1">
+        <Header
+          className="absolute top-0 left-0 w-full border-0! z-20"
+          onShowMockLogin={() => setShowMockLogin(true)}
+          location='homepage'
+        />
+        <HeroSection
+          ref={heroSectionRef}
+          promptText={promptText}
+          setPromptText={setPromptText}
+          onStartBuilding={handleStartBuilding}
+          isLoading={isLoading}
+          error={error}
+          setError={setError}
+          onExampleClick={handleExampleClick}
+        />
 
-          { /* <BuiltWithSection /> */ }
+        { /* <BuiltWithSection /> */ }
 
-          <InfraSection />
+        <InfraSection />
 
-          <FeaturesSection
-            features={[
-              {
-                title: "Pro-grade hosting",
-                description: "Global edge, fast caching, and sensible defaults for speed and reliability. Hit publish and serve worldwide without extra setup.",
-              },
-              {
-                title: "Security by default",
-                description: "Automatic SSL, DDoS protection, backups, and best-practice hardening—quietly working so you can focus on the build.",
-              },
-              {
-                title: "Future-proof",
+        <FeaturesSection
+          features={[
+            {
+              title: "Pro-grade hosting",
+              description: "Global edge, fast caching, and sensible defaults for speed and reliability. Hit publish and serve worldwide without extra setup.",
+            },
+            {
+              title: "Security by default",
+              description: "Automatic SSL, DDoS protection, backups, and best-practice hardening—quietly working so you can focus on the build.",
+            },
+            {
+              title: "Future-proof",
               description: "Keep control of your code and content, plug in the tools you love, and scale from “hello world” to high-traffic without switching stacks.",
-              }
-            ]}
-          />
+            }
+          ]}
+        />
 
-          <StartSection />
+        <StartSection />
 
-          <FeaturesSection
-            features={[
-              {
-                title: "Idea to first draft",
-                description: "Describe it and skip the blank canvas—Airo lays out pages, sections, and starter copy in seconds.",
-              },
-              {
-                title: "Guided editing",
-                description: "Tune layout, tone, and visuals with friendly controls. Code when you want, not when you have to.",
-              },
-              {
-                title: "Publish and done",
-                description: "One-click deploy on GoDaddy with SSL, forms, and analytics baked in. Export your code anytime.",
-              }
-            ]}
-          />
+        <FeaturesSection
+          features={[
+            {
+              title: "Idea to first draft",
+              description: "Describe it and skip the blank canvas—Airo lays out pages, sections, and starter copy in seconds.",
+            },
+            {
+              title: "Guided editing",
+              description: "Tune layout, tone, and visuals with friendly controls. Code when you want, not when you have to.",
+            },
+            {
+              title: "Publish and done",
+              description: "One-click deploy on GoDaddy with SSL, forms, and analytics baked in. Export your code anytime.",
+            }
+          ]}
+        />
 
-          { /*
-          <ExpressSection />
+        { /*
+        <ExpressSection />
 
-          <DiscoverSection />
+        <DiscoverSection />
 
-          <TestimonialsSection />
-          */ }
+        <TestimonialsSection />
+        */ }
 
-          <HelpSection />
+        <HelpSection />
 
         {/* Mock Login Modal - available throughout the entire page */}
-      {isFeatureEnabled.mockLogin() && (
-        <MockLoginDialog
-          isOpen={showMockLogin}
-          onClose={() => setShowMockLogin(false)}
-        />
-      )}
+        {isFeatureEnabled.mockLogin() && (
+          <MockLoginDialog
+            isOpen={showMockLogin}
+            onClose={() => setShowMockLogin(false)}
+          />
+        )}
       </div>
     </div>
   )
