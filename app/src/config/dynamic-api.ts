@@ -5,6 +5,7 @@
  * Fallbacks to static configuration when no site context is available
  */
 import { logger } from '@/lib/request-context'
+import { AppErrorCode } from '@/types/error-codes'
 
 export interface DynamicApiConfig {
   baseUrl: string
@@ -75,10 +76,16 @@ export class DynamicApiConfigService {
           throw new Error(`Site ${siteId} agent is not ready yet. Status: ${status}, Has agent URL: ${hasAgentUrl}. Please wait for deployment to complete.`)
         }
       } else {
-        throw new Error(`Failed to fetch site ${siteId}: Site not found`)
+        throw new Error(AppErrorCode.SITE_NOT_FOUND)
       }
     } catch (error) {
-      logger.warn('dynamic-api.config.fetch-failure', { message: 'Failed to fetch dynamic config for site', siteId, error: error instanceof Error ? error.message : String(error) })
+      const errorMessage = error instanceof Error ? error.message : String(error)
+
+      // Don't log SITE_NOT_FOUND as a warning - it's expected for invalid URLs
+      if (errorMessage !== AppErrorCode.SITE_NOT_FOUND) {
+        logger.warn('dynamic-api.config.fetch-failure', { message: 'Failed to fetch dynamic config for site', siteId, error: errorMessage })
+      }
+
       throw error
     }
   }

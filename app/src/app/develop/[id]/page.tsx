@@ -37,6 +37,7 @@ import ChatPaneLoader from '@/app/develop/components/chat/ChatPaneLoader'
 import { useInitialization } from '@/app/develop/hooks/useInitialization'
 import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
 import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
+import AppNotFound from '@/app/develop/components/AppNotFound'
 
 // Delay to allow conversation history messages to load before checking if preview should be visible
 // This ensures we have accurate message count when determining initial preview visibility
@@ -579,6 +580,15 @@ function DevelopPageContent() {
       checkAndTriggerIntroTour(appId)
     }
   }, [appId, init.isReady, messages.length, activeStream, checkAndTriggerIntroTour])
+
+  if (init.siteNotFound) {
+    return (
+      <div className="h-screen flex flex-col">
+        <Header location="develop" />
+        <AppNotFound />
+      </div>
+    )
+  }
 
   return (
     <div className="h-screen flex flex-col">

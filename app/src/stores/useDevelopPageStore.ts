@@ -468,12 +468,13 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         await get().evaluateInitialActions()
 
       } catch (error) {
-        logger.error('develop-store.init.failure', {
-          error: error instanceof Error ? error.message : String(error)
-        })
+        const errorMessage = error instanceof Error ? error.message : String(error)
+
+        logger.error('develop-store.init.failure', { error: errorMessage })
+
         set((state) => {
           state.loadingPhase = 'idle'
-          state.loadingError = error instanceof Error ? error.message : String(error)
+          state.loadingError = errorMessage
         })
         throw error
       }

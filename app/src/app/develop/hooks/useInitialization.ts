@@ -8,6 +8,7 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import { logger } from '@/lib/request-context'
 import type { Site } from '@/stores/useSitesStore'
+import { AppErrorCode } from '@/types/error-codes'
 
 /**
  * Helper to get initialJobId from sessionStorage
@@ -153,6 +154,9 @@ export interface UseInitializationReturn {
   phase: InitializationPhase
   subPhase: InitializationSubPhase | null
   isReady: boolean
+
+  // Error states
+  siteNotFound: boolean
 
   // Context (raw state)
   context: InitializationContext
@@ -310,6 +314,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // Track initial creation flow state
   const [initialPromptSent, setInitialPromptSent] = useState(false)
   const [hasSeenFirstFileEdit, setHasSeenFirstFileEdit] = useState(false)
+  const [siteNotFound, setSiteNotFound] = useState(false);
 
   // Track if we're in an active creation flow for THIS page session
   // This is set to true when we detect hasInitialPrompt on mount, and persists in memory
@@ -336,6 +341,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
   // Streaming/WebSocket
   const isWebSocketConnected = useStreamingConversationStore((state) => state.websocket.connected)
+  const webSocketError = useStreamingConversationStore((state) => state.websocket.error)
   const isStreamingMessage = useStreamingConversationStore((state) => state.isLoading)
   const messages = useStreamingConversationStore((state) => state.messages)
   const activeStream = useStreamingConversationStore((state) => state.activeStream)
@@ -368,12 +374,12 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       phase,
       subPhase,
       creationError,
-      // Individual context properties instead of the whole object
+      context,
       appId,
       initialJobId,
       isJobId,
       site,
-      messages.length, // hasConversationHistory
+      messages.length,
       isWebSocketConnected,
       isStreamingMessage,
       hasSeenFirstFileEdit,
@@ -471,12 +477,19 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
           setPhase('loading-history')
         })
         .catch(error => {
-          logger.error('initialization.page.error', { appId: effectiveAppId, error })
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          logger.error('initialization.page.error', { appId: effectiveAppId, error: errorMessage })
+
+          if (errorMessage === AppErrorCode.SITE_NOT_FOUND) {
+            setSiteNotFound(true);
+            return
+          }
+
           setPhase('error')
           setSubPhase(null)
         })
     }
-  }, [phase, appId, realAppId, initializePage])
+  }, [phase, appId, realAppId, initializePage, router])
 
   // Step 6: Wait for page loading to complete, then load conversation history
   useEffect(() => {
@@ -523,6 +536,13 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       }
     }
   }, [phase, subPhase, isWebSocketConnected, context.hasInitialPrompt, context.initialPromptSent, appId])
+
+  // Handle WebSocket errors - set siteNotFound for inline error display
+  useEffect(() => {
+    if (webSocketError === AppErrorCode.SITE_NOT_FOUND) {
+      setSiteNotFound(true)
+    }
+  }, [webSocketError, appId])
 
   // NEW: Track first file edit
   useEffect(() => {
@@ -657,6 +677,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     phase,
     subPhase,
     isReady: phase === 'ready' && subPhase === 'active',
+    siteNotFound,
     context,
     ui,
     actions,

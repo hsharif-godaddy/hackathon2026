@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
+import { AppErrorCode } from '@/types/error-codes'
 
 // Use SiteInfo from the existing interface for consistency
 export type Site = SiteInfo
@@ -39,7 +40,7 @@ interface SitesStore {
   cleanup: () => void
 }
 
-export const useSitesStore = create<SitesStore>()( 
+export const useSitesStore = create<SitesStore>()(
   immer((set, get) => ({
     // Initial state
     allSites: [],
@@ -75,7 +76,7 @@ export const useSitesStore = create<SitesStore>()(
           state.allSites = sites
           state.isLoadingAll = false
           state.lastFetchedAll = Date.now()
-          
+
           // Update sitesById for consistency
           state.sitesById = {}
           sites.forEach(site => {
@@ -146,7 +147,7 @@ export const useSitesStore = create<SitesStore>()(
     stopAllSites: async (): Promise<boolean> => {
       const { allSites } = get()
       const runningSites = allSites.filter(site => site.status === 'running')
-      
+
       if (runningSites.length === 0) {
         return true
       }
@@ -155,14 +156,14 @@ export const useSitesStore = create<SitesStore>()(
         set((state) => {
           state.error = null
         })
-        
+
         // Stop all running sites in parallel
         const stopPromises = runningSites.map(site =>
           appFetch(`/api/sites/${site.id}/stop`, { method: 'POST' })
         )
 
         await Promise.all(stopPromises)
-        
+
         // Update site statuses to stopped
         set((state) => {
           state.allSites.forEach(site => {
@@ -170,7 +171,7 @@ export const useSitesStore = create<SitesStore>()(
               site.status = 'stopped'
             }
           })
-          
+
           // Update sitesById as well
           Object.values(state.sitesById).forEach(site => {
             if (site.status === 'running') {
@@ -178,7 +179,7 @@ export const useSitesStore = create<SitesStore>()(
             }
           })
         })
-        
+
         return true
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to stop all sites'
@@ -194,7 +195,7 @@ export const useSitesStore = create<SitesStore>()(
     // Delete all sites
     deleteAllSites: async (): Promise<boolean> => {
       const { allSites } = get()
-      
+
       if (allSites.length === 0) {
         return true
       }
@@ -203,21 +204,21 @@ export const useSitesStore = create<SitesStore>()(
         set((state) => {
           state.error = null
         })
-        
+
         // Delete all sites in parallel
         const deletePromises = allSites.map(site =>
           appFetch(`/api/sites/${site.id}`, { method: 'DELETE' })
         )
 
         await Promise.all(deletePromises)
-        
+
         // Clear all sites
         set((state) => {
           state.allSites = []
           state.sitesById = {}
           state.loadingById = {}
         })
-        
+
         return true
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to delete all sites'
@@ -243,11 +244,18 @@ export const useSitesStore = create<SitesStore>()(
       // Prevent duplicate requests
       if (loadingById[siteId]) {
         // Wait for existing request to complete
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
           const checkForSite = () => {
             const currentState = get()
             if (!currentState.loadingById[siteId]) {
-              resolve(currentState.sitesById[siteId] || null)
+              const site = currentState.sitesById[siteId]
+              if (site) {
+                resolve(site)
+              } else if (currentState.error) {
+                reject(new Error(currentState.error))
+              } else {
+                resolve(null)
+              }
             } else {
               setTimeout(checkForSite, 100)
             }
@@ -265,6 +273,9 @@ export const useSitesStore = create<SitesStore>()(
         const response = await appFetch(`/api/sites/${siteId}`)
 
         if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error(AppErrorCode.SITE_NOT_FOUND)
+          }
           throw new Error(`Failed to fetch site: ${response.status} ${response.statusText}`)
         }
 
@@ -273,7 +284,7 @@ export const useSitesStore = create<SitesStore>()(
         set((state) => {
           state.sitesById[siteId] = siteData
           state.loadingById[siteId] = false
-          
+
           // Update allSites if it exists there
           const existingIndex = state.allSites.findIndex(site => site.id === siteId)
           if (existingIndex >= 0) {
@@ -284,15 +295,18 @@ export const useSitesStore = create<SitesStore>()(
         return siteData
 
       } catch (error) {
-        logger.error('sites-store.fetch-site.failure', {
-          siteId,
-          error: error instanceof Error ? error.message : String(error)
-        })
+        const errorMessage = error instanceof Error ? error.message : String(error)
+
+        logger.error('sites-store.fetch-site.failure', { siteId, error: errorMessage })
 
         set((state) => {
           state.loadingById[siteId] = false
-          state.error = error instanceof Error ? error.message : 'Failed to fetch site'
+          state.error = errorMessage
         })
+
+        if (errorMessage === AppErrorCode.SITE_NOT_FOUND) {
+          throw error
+        }
 
         return null
       }
@@ -310,7 +324,7 @@ export const useSitesStore = create<SitesStore>()(
         if (state.sitesById[siteId]) {
           Object.assign(state.sitesById[siteId], updates)
         }
-        
+
         // Update in allSites
         const siteIndex = state.allSites.findIndex(site => site.id === siteId)
         if (siteIndex >= 0) {
@@ -382,13 +396,13 @@ export const useSites = (options?: { enabled?: boolean }) => {
     sites: allSites,
     isLoading: isLoadingAll,
     error,
-    
+
     // Actions
     refreshSites,
     deleteSite,
     stopAllSites,
     deleteAllSites,
-    
+
     // Computed values
     runningSites: getRunningSites(),
     totalSites: getTotalSites(),

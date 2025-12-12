@@ -306,8 +306,17 @@ export function useStreamingWebSocket() {
       }
 
       // Get the dynamic config to extract the baseUrl
-      const { dynamicApiConfigService } = await import('../config/dynamic-api')
-      const config = await dynamicApiConfigService.getConfigForSite(appId)
+      let config
+      try {
+        const { dynamicApiConfigService } = await import('../config/dynamic-api')
+        config = await dynamicApiConfigService.getConfigForSite(appId)
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : String(e)
+        logger.error('websocket.config.error', { message: 'Failed to get dynamic config', error: errorMessage, appId })
+        safeReject(e instanceof Error ? e : new Error(errorMessage))
+        return
+      }
+
       const socketUrl = config.baseUrl
 
       let authToken: string | null = null
@@ -1001,10 +1010,19 @@ export function useStreamingWebSocket() {
         // Set up event handlers once for the lifetime of this connection
         setupEventHandlers(socket)
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+
         logger.error('websocket.connection.init_failed', {
           message: 'Failed to initialize persistent connection',
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage,
           appId: initAppId
+        })
+
+        // Set WebSocket error state so parent components can react
+        setWebSocketState({
+          connected: false,
+          status: 'error',
+          error: errorMessage
         })
       } finally {
         initializingRef.current = false

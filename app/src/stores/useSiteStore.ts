@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
+import { AppErrorCode } from '@/types/error-codes'
 
 // Use SiteInfo from the existing interface for consistency
 export type Site = SiteInfo
@@ -13,7 +14,7 @@ interface SiteStore {
   sites: Record<string, Site> // Keyed by site ID for efficient lookups
   loading: Record<string, boolean> // Loading state per site
   error: string | null
-  
+
   // Internal promise tracking for deduplication
   _pendingRequests: Record<string, Promise<Site | null>>
 
@@ -61,6 +62,9 @@ export const useSiteStore = create<SiteStore>()(
           const response = await appFetch(`/api/sites/${siteId}`)
 
           if (!response.ok) {
+            if (response.status === 404) {
+              throw new Error(AppErrorCode.SITE_NOT_FOUND)
+            }
             throw new Error(`Failed to fetch site: ${response.status} ${response.statusText}`)
           }
 
@@ -76,17 +80,19 @@ export const useSiteStore = create<SiteStore>()(
           return siteData
 
         } catch (error) {
-          logger.error('site-store.fetch.failure', {
-            siteId,
-            error: error instanceof Error ? error.message : String(error)
-          })
+          const errorMessage = error instanceof Error ? error.message : String(error)
+
+          logger.error('site-store.fetch.failure', { siteId, error: errorMessage })
 
           set((state) => {
             state.loading[siteId] = false
-            state.error = error instanceof Error ? error.message : 'Failed to fetch site'
-            // Clean up the pending request even on error
+            state.error = errorMessage
             delete state._pendingRequests[siteId]
           })
+
+          if (errorMessage === AppErrorCode.SITE_NOT_FOUND) {
+            throw error
+          }
 
           return null
         }
