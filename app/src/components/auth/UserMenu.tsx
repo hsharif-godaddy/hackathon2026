@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { useAuthContext } from '@/components/providers/AuthProvider';
+import { useSsoSignIn } from '@/hooks/useSsoSignIn';
 import { generateClickEID } from '@/utils/instrumentation';
 import {
   Popover,
@@ -29,9 +30,14 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
     isAuthenticated,
     isAuthDisabled,
     handleSignOut,
-    handleSignIn,
-    isMockAuth
   } = useAuthContext();
+
+  const { signIn } = useSsoSignIn();
+
+  const handleSignInClick = () => {
+    setOpen(false); // Close the popover
+    signIn({ onShowMockLogin });
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -40,7 +46,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
       </PopoverTrigger>
       <PopoverContent align="end" className={clsx('p-1', isDevelopPage && isAuthenticated ? 'w-[280px]' : 'w-[200px]')}>
         <div className="flex flex-col gap-0.5">
-          { isAuthDisabled && (
+          {isAuthDisabled && (
             <Button
               variant="ghost"
               className="justify-start px-1"
@@ -48,20 +54,12 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
             >
               Auth Disabled
             </Button>
-          ) }
-          { !isAuthenticated && (
+          )}
+          {!isAuthenticated && (
             <Button
               variant="ghost"
               className="justify-start px-1 hover:cursor-pointer"
-              onClick={() => {
-                if (isMockAuth && onShowMockLogin) {
-                  onShowMockLogin();
-                } else {
-                  // For production JWT mode, redirect back to current page after login
-                  const currentUrl = window.location.href;
-                  handleSignIn(currentUrl);
-                }
-              }}
+              onClick={handleSignInClick}
               data-eid={generateClickEID(`${location}.user_menu.sign_in`)}
             >
               Sign In
@@ -82,9 +80,9 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
             >
               Sign Out
             </Button>
-          ) }
+          )}
         </div>
       </PopoverContent>
     </Popover>
-  )
+  );
 }

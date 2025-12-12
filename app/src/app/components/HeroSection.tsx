@@ -193,7 +193,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 rows={5}
                 disabled={isLoading}
                 maxLength={MAX_PROMPT_LENGTH + 1}
-                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-4 pr-12 py-3 z-10 w-full text-2xl leading-[1.4] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
+                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-4 pr-12 py-3 w-full text-2xl leading-[1.4] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
                   'h-32 rounded-2xl': isExpanded,
                   'h-10 rounded-[3rem]': !isExpanded
                 })}
@@ -205,7 +205,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 data-eid={generateClickEID('homepage.prompt.submit')}
                 disabled={!promptText.trim() || isLoading || isTyping || promptText.length >= MAX_PROMPT_LENGTH}
                 design='primary'
-                className="group cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed z-10 !rounded-full aspect-square !p-2 !border-none right-1.5 bottom-1.5"
+                className="group cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed !rounded-full aspect-square !p-2 !border-none right-1.5 bottom-1.5"
                 icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
                 aria-label={isLoading ? t('builder_homepage_hero_prompt_button_loading') : t('builder_homepage_hero_prompt_button')}
               />

@@ -8,6 +8,7 @@ import { isFeatureEnabled } from '@/lib/features'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 import { useAuthContext } from '@/components/providers/AuthProvider'
+import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import StartSection from '@/app/components/StartSection'
 import InfraSection from '@/app/components/InfraSection'
 import HelpSection from '@/app/components/HelpSection'
@@ -32,7 +33,8 @@ function HomeContent() {
   const heroSectionRef = useRef<HeroSectionRef>(null)
   const promptTextRef = useRef(promptText)
 
-  const { isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth, isLoading: authIsLoading } = useAuthContext()
+  const { isAuthenticated, isAuthDisabled, isLoading: authIsLoading } = useAuthContext()
+  const { signIn } = useSsoSignIn();
 
   useSafariClass()
 
@@ -81,28 +83,19 @@ function HomeContent() {
     })();
 
     try {
-      // Step 1: Quick auth check - only redirect to login if needed
+      // Step 1: Quick auth check - show in-app SSO login if needed
       // Ensure consistent timing for async and sync auth checks
       if (!isAuthDisabled && !isAuthenticated) {
-        logger.info('page.auth.redirect', 'User not authenticated, redirecting to login')
+        logger.info('page.auth.sso-login', 'User not authenticated, showing SSO login')
 
-        // Save the prompt to localStorage before redirecting to login
+        // Save the prompt to localStorage before showing login
         localStorage.setItem('airo-pending-prompt', promptTextRef.current.trim())
-        logger.info('homepage.prompt.save', { message: 'Saved prompt to localStorage before login redirect' })
+        logger.info('homepage.prompt.save', { message: 'Saved prompt to localStorage before login' })
 
-        if (isMockAuth) {
-          setShowMockLogin(true);
-          setIsLoading(false);
-          setIsRedirecting(false);
-          return;
-        }
-        if (gasketConfig) {
-          const url = new URL(gasketConfig.sso.loginUrl);
-          url.searchParams.set('app', 'airo-builder');
-          url.searchParams.set('redirect', gasketConfig.redirects.loginRedirectUrl);
-          window.location.href = url.toString();
-        }
-        return
+        signIn({ onShowMockLogin: () => setShowMockLogin(true) });
+        setIsLoading(false);
+        setIsRedirecting(false);
+        return;
       }
 
       // Step 2: Super fast create - only create database record, no deployment
@@ -169,7 +162,7 @@ function HomeContent() {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth, t])
+  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, signIn])
 
   // Restore prompt from localStorage after login and clear it
   useEffect(() => {
@@ -198,26 +191,26 @@ function HomeContent() {
   }
 
   return (
-    <div className="relative w-full overflow-hidden header-bg bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
-      <div className="header-orb" />
-      <div className="footer-bg" />
+      <div className="relative w-full overflow-hidden header-bg bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
+        <div className="header-orb" />
+        <div className="footer-bg" />
 
-      <div className="w-full h-full relative z-1">
-        <Header
-          className="absolute top-0 left-0 w-full border-0! z-20"
-          onShowMockLogin={() => setShowMockLogin(true)}
-          location='homepage'
-        />
-        <HeroSection
-          ref={heroSectionRef}
-          promptText={promptText}
-          setPromptText={setPromptText}
-          onStartBuilding={handleStartBuilding}
-          isLoading={isLoading}
-          error={error}
-          setError={setError}
-          onExampleClick={handleExampleClick}
-        />
+      <div className="w-full h-full relative">
+          <Header
+            className="absolute top-0 left-0 w-full border-0! z-20"
+            onShowMockLogin={() => setShowMockLogin(true)}
+            location='homepage'
+          />
+          <HeroSection
+            ref={heroSectionRef}
+            promptText={promptText}
+            setPromptText={setPromptText}
+            onStartBuilding={handleStartBuilding}
+            isLoading={isLoading}
+            error={error}
+            setError={setError}
+            onExampleClick={handleExampleClick}
+          />
 
         <InfraSection />
 
@@ -238,7 +231,7 @@ function HomeContent() {
           ]}
         />
 
-        <StartSection />
+          <StartSection />
 
         <FeaturesSection
           features={[
@@ -260,12 +253,12 @@ function HomeContent() {
         <HelpSection />
 
         {/* Mock Login Modal - available throughout the entire page */}
-        {isFeatureEnabled.mockLogin() && (
-          <MockLoginDialog
-            isOpen={showMockLogin}
-            onClose={() => setShowMockLogin(false)}
-          />
-        )}
+      {isFeatureEnabled.mockLogin() && (
+        <MockLoginDialog
+          isOpen={showMockLogin}
+          onClose={() => setShowMockLogin(false)}
+        />
+      )}
       </div>
     </div>
   )

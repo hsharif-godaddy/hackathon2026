@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuthContext } from '@/components/providers/AuthProvider'
+import { useSsoSignIn } from '@/hooks/useSsoSignIn';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import { text } from '@ux/text';
@@ -15,10 +16,8 @@ export default function UnauthorizedComponent({
 }: UnauthorizedComponentProps) {
   const [showMockLogin, setShowMockLogin] = useState(false);
 
-  const {
-    isMockAuth,
-    handleSignIn
-  } = useAuthContext();
+  const { isMockAuth } = useAuthContext();
+  const { signIn } = useSsoSignIn();
 
   useEffect(() => {
     logImpressionEvent('auth.unauthorized.view')();
@@ -36,11 +35,7 @@ export default function UnauthorizedComponent({
           )}
           <Button
             onClick={() => {
-              if (isMockAuth) {
-                setShowMockLogin(true);
-              } else {
-                handleSignIn(window.location.href);
-              }
+              signIn({ onShowMockLogin: () => setShowMockLogin(true) });
             }}
             size='sm'
             design='secondary'

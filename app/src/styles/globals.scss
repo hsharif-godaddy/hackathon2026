@@ -273,6 +273,18 @@
     position: relative;
     z-index: 1;
   }
+
+  /* Ensure SSO login modal backdrop appears above all page content.
+   * The backdrop gets position: fixed from inline styles when strategy='fixed'.
+   * Using :has() to scope this only to the SSO modal, not all modals. */
+  .ux-disrupt-backdrop[data-version]:has(.sso-login-modal) {
+    z-index: 9999;
+  }
+
+  /* SSO login modal styling to account for iframe padding */
+  .sso-login-modal.ux-modal {
+    gap: 0 !important;
+  }
 }
 
 @layer utilities {

@@ -18,11 +18,14 @@ import { useTranslations } from '@/hooks/useTranslations';
 
 export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
   const t = useTranslations();
-  const { isAuthenticated, isAuthDisabled } = useAuthContext();
-  const showAuthenticatedUI = isAuthenticated || isAuthDisabled;
+  const { isAuthenticated, isAuthDisabled, isLoading } = useAuthContext();
   const isMobile = useIsMobile();
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
+
+  // Only show authenticated UI components when auth is confirmed (not loading) and user is authenticated
+  // This prevents authenticated API calls from being made
+  const showAuthenticatedUI = !isLoading && (isAuthenticated || isAuthDisabled);
 
   return (
     <header className={clsx(
@@ -52,9 +55,13 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown' 
               onShowMockLogin={onShowMockLogin}
               location={location}
             />
-            { showAuthenticatedUI && <div className="h-3 w-px bg-ai-dark self-center" /> }
-            <AppSelector location={location} />
-            <AppPublish location={location} />
+            {showAuthenticatedUI && (
+              <>
+                <div className="h-3 w-px bg-ai-dark self-center" />
+                <AppSelector location={location} />
+                <AppPublish location={location} />
+              </>
+            )}
           </Box>
         </div>
       </div>
