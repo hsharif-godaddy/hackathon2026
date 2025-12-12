@@ -12,6 +12,7 @@ import RevertIcon from '@ux/icon/revert';
 import ContentIcon from '@ux/icon/content';
 import HistoryIcon from '@ux/icon/history';
 import CommentsIcon from '@ux/icon/comments';
+import SocialIcon from '@ux/icon/social';
 import { ReactNode } from 'react';
 
 /**
@@ -42,6 +43,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
+  const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social');
   const { data: isLogsEnabled } = useSwitchboard('appbuilder-settings-logs');
   const { data: isConversationsEnabled } = useSwitchboard('appbuilder-settings-conversations');
 
@@ -87,6 +89,12 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <LockedIcon />,
       disabled: isSecretsEnabled !== true,
     },
+    ...(isSocialEnabled ? [{
+      id: SettingsSection.SOCIAL,
+      label: 'Social',
+      icon: <SocialIcon />,
+      disabled: isSocialEnabled !== true,
+    }] : []),
     ...(isVisualScanEnabled ? [{
       id: SettingsSection.VISUAL_SCAN,
       label: 'Visual Scan',

@@ -26,6 +26,7 @@
 @import "@ux/icon/editor-larger/index.css";
 @import "@ux/icon/facebook/index.css";
 @import "@ux/icon/folder/index.css";
+@import "@ux/icon/google/index.css";
 @import "@ux/icon/folder-open/index.css";
 @import "@ux/icon/forward/index.css";
 @import "@ux/icon/google/index.css";
@@ -33,6 +34,7 @@
 @import "@ux/icon/history/index.css";
 @import "@ux/icon/instagram/index.css";
 @import "@ux/icon/image/index.css";
+@import "@ux/icon/instagram/index.css";
 @import "@ux/icon/lightbulb/index.css";
 @import "@ux/icon/link/index.css";
 @import "@ux/icon/locked/index.css";
@@ -47,10 +49,13 @@
 @import "@ux/icon/revert/index.css";
 @import "@ux/icon/send/index.css";
 @import "@ux/icon/settings/index.css";
+@import "@ux/icon/shield-check/index.css";
 @import "@ux/icon/shield-check-filled/index.css";
 @import "@ux/icon/sidebar-collapse/index.css";
 @import "@ux/icon/sidebar-expand/index.css";
+@import "@ux/icon/social/index.css";
 @import "@ux/icon/sparkles/index.css";
+@import "@ux/icon/tiktok/index.css";
 @import "@ux/icon/thumbs-up/index.css";
 @import "@ux/icon/trash/index.css";
 @import "@ux/icon/user/index.css";
@@ -59,4 +64,6 @@
 @import "@ux/icon/website/index.css";
 @import "@ux/icon/website-filled/index.css";
 @import "@ux/icon/window-new/index.css";
+@import "@ux/icon/whatsapp/index.css";
 @import "@ux/icon/x-thick/index.css";
+@import "@ux/icon/yelp/index.css";

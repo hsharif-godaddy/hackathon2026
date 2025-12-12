@@ -13,6 +13,7 @@ import { DatabasePanel } from '@/app/develop/components/settings/Database/Databa
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { SecretsPanel } from './SecretsPanel'
+import SocialPanel from '@/app/develop/components/settings/SocialPanel'
 
 export default function SettingsView() {
   const activeSettingsSection = useDevelopPageStore((state) => state.activeSettingsSection)
@@ -25,6 +26,7 @@ export default function SettingsView() {
   const { data: isDatabaseEnabled } = useSwitchboard('appbuilder-settings-database');
   const { data: isVisualScanEnabled } = useSwitchboard('appbuilder-settings-visualscan');
   const { data: isSecretsEnabled } = useSwitchboard('appbuilder-settings-secrets');
+  const { data: isSocialEnabled } = useSwitchboard('appbuilder-settings-social');
   const { data: isLogsEnabled } = useSwitchboard('appbuilder-settings-logs');
   const { data: isConversationsEnabled } = useSwitchboard('appbuilder-settings-conversations');
 
@@ -42,6 +44,8 @@ export default function SettingsView() {
         return isDatabaseEnabled ? <DatabasePanel appId={appId} /> : null;
       case SettingsSection.SECRETS:
         return isSecretsEnabled ? <SecretsPanel appId={appId} variant="preview" /> : null;
+      case SettingsSection.SOCIAL:
+        return isSocialEnabled ? <SocialPanel /> : null;
       case SettingsSection.VISUAL_SCAN:
         return isVisualScanEnabled ? <VisualScanPanel /> : null;
       case SettingsSection.LOGS:

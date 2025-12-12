@@ -57,6 +57,7 @@ interface AgentFeatureConfig {
   // Agent enablement configuration
   enabledAgents: {
     commerce: boolean
+    social: boolean
     socialPosts: boolean
   }
 }
@@ -72,12 +73,12 @@ export const MAX_PROMPT_LENGTH = 40000
 function determineAuthType(): AuthType {
   const nodeEnv = process.env.NODE_ENV
   const explicitAuthType = process.env.AUTH_TYPE?.toLowerCase() as AuthType
-  
+
   // Explicit AUTH_TYPE override (for testing/debugging)
   if (explicitAuthType && Object.values(AuthType).includes(explicitAuthType)) {
     return explicitAuthType
   }
-  
+
   // Default behavior based on NODE_ENV
   switch (nodeEnv) {
     case 'production':
@@ -103,29 +104,29 @@ function parseEnvironmentFeatures(): AgentFeatureConfig {
   return {
     // Price and usage limits
     dailyPriceLimit: parseFloat(process.env.DAILY_PRICE_LIMIT || '10'),
-    
+
     // Server configuration
     nodeEnv: process.env.NODE_ENV || 'development',
     authType: determineAuthType(),
-    
+
     // JWT configuration
     jwksUrl: process.env.JWKS_URL || 'https://airo-builder.test-godaddy.com/.well-known/jwks.json',
     siteId: process.env.SITE_ID || 'default-site',
-        
+
     // OpenAI configuration
     openaiApiKey: process.env.OPENAI_API_KEY,
     openaiBaseUrl: process.env.OPENAI_BASE_URL,
     openaiModel: process.env.OPENAI_MODEL || 'gpt-4',
-    
+
     // MySQL configuration
     mysqlRootHost: process.env.MYSQL_ROOT_HOST || 'localhost',
     mysqlRootPort: parseInt(process.env.MYSQL_ROOT_PORT || '3306', 10),
     mysqlRootUser: process.env.MYSQL_ROOT_USER || 'root',
     mysqlRootPass: process.env.MYSQL_ROOT_PASS || 'airo',
-    
+
     // File upload configuration
     uploadDir: process.env.UPLOAD_DIR || 'data/uploads',
-    
+
     // Context logging configuration
     contextLogging: {
       detailed: process.env.DEBUG_CONTEXT_DETAILED === 'true',
@@ -138,6 +139,7 @@ function parseEnvironmentFeatures(): AgentFeatureConfig {
     // Agent enablement configuration
     enabledAgents: {
       commerce: process.env.ENABLE_COMMERCE_AGENT === 'true',
+      social: process.env.ENABLE_SOCIAL_PLATFORM === 'true',
       socialPosts: process.env.ENABLE_SOCIAL_POSTS === 'true'
     }
   }
@@ -197,7 +199,7 @@ export const auth = {
   isJWT: () => getAgentFeatures().authType === AuthType.JWT,
   /** Check if authentication is required (not NONE) */
   isRequired: () => getAgentFeatures().authType !== AuthType.NONE,
-  
+
   /** Get JWKS URL (undefined if not set or empty) */
   getJWKSUrl: () => {
     const url = getAgentFeatures().jwksUrl;
@@ -212,7 +214,7 @@ export const auth = {
   getSiteId: (authType?: AuthType) => {
     const features = getAgentFeatures();
     const currentAuthType = authType || features.authType;
-    
+
     switch (currentAuthType) {
       case AuthType.NONE:
         return features.siteId || 'local-dev-site';
@@ -231,7 +233,7 @@ export const auth = {
  */
 export const agents = {
   /** Check if a specific agent is enabled */
-  isEnabled: (agentId: 'commerce' | 'socialPosts'): boolean => {
+  isEnabled: (agentId: 'commerce' | 'social' | 'socialPosts'): boolean => {
     const features = getAgentFeatures();
     return features.enabledAgents[agentId] ?? false;
   }

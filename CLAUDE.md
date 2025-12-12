@@ -246,6 +246,13 @@ The system supports environment-based agent enablement through feature flags in 
   - Specializes in GoDaddy Commerce product catalog operations and checkout flows
   - When disabled, the agent will not be registered or available through the WebSocket server
 
+- **Social Platform Tools**: Disabled by default, requires explicit opt-in
+  - Enable with `ENABLE_SOCIAL_PLATFORM=true` in `agents/.env`
+  - Use in development/testing environments only
+  - Adds social platform integration tools to MarketingAgent: socialConnect, socialStatus
+  - Allows connecting to Facebook, Instagram, Google Business Profile, TikTok, Yelp, and WhatsApp
+  - When disabled, social platform tools will not be available in the MarketingAgent
+
 **Checking Agent Availability:**
 
 ```typescript
@@ -253,6 +260,10 @@ import { agents } from "./services/features.js";
 
 if (agents.isEnabled("commerce")) {
   // Commerce agent is available
+}
+
+if (agents.isEnabled("social")) {
+  // Social platform tools are available
 }
 ```
 
@@ -346,6 +357,10 @@ LOG_OPT_IN_DOMAINS=compression.hot_files # Override defaults for opt-in domains
 
 # Screenshot Storage (optional)
 SCREENSHOT_DIR=/tmp/screenshots          # Directory to store app screenshots (defaults to app.path)
+
+# Feature Flags (optional)
+ENABLE_COMMERCE_AGENT=true               # Enable Commerce agent (default: false)
+ENABLE_SOCIAL_PLATFORM=false             # Enable social platform tools in Marketing agent (default: false)
 ```
 
 **app/.env:**

@@ -18,6 +18,7 @@ const logger = Logger.create({ service: 'marketing-agent' })
 async function buildMarketingSystemPrompt(): Promise<string> {
   const promptBuilder = createPromptBuilder()
   const paths = getModularPromptPaths(import.meta.url)
+  const isSocialPlatformEnabled = featureAgents.isEnabled('social')
   const isSocialPostsEnabled = featureAgents.isEnabled('socialPosts')
 
   promptBuilder
@@ -26,6 +27,10 @@ async function buildMarketingSystemPrompt(): Promise<string> {
     .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('security.md'))
 
+    // Conditionally include social platform prompt if feature is enabled
+  if (isSocialPlatformEnabled) {
+    promptBuilder.file(paths.getAgentFile('marketing', 'social-platform.md'))
+  }
   // Conditionally include social posts prompt if feature is enabled
   if (isSocialPostsEnabled) {
     promptBuilder.file(paths.getAgentFile('marketing', 'social-posts.md'))
@@ -38,6 +43,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
   const systemPrompt = await buildMarketingSystemPrompt()
   const { model, modelName } = await getAgentModelWithName('full')
   const isSocialPostsEnabled = featureAgents.isEnabled('socialPosts')
+  const isSocialPlatformEnabled = featureAgents.isEnabled('social')
 
   const baseTools = {
     seoAnalysis: allAILibTools.seoAnalysis,
@@ -49,11 +55,14 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     suggestedResponse: allAILibTools.suggestedResponse,
   }
 
-  const socialPostTools = isSocialPostsEnabled
-    ? {
-        socialPostCreate: allAILibTools.socialPostCreate,
-      }
-    : {}
+  const socialPostTools = isSocialPostsEnabled ? {
+      socialPostCreate: allAILibTools.socialPostCreate,
+    }
+  : {}
+  const socialTools = isSocialPlatformEnabled ? {
+    socialConnect: allAILibTools.socialConnect,
+    socialStatus: allAILibTools.socialStatus,
+  } : {}
 
   return {
     name: 'Marketing Manager',
@@ -62,6 +71,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     modelName,
     tools: {
       ...baseTools,
+      ...socialTools,
       ...socialPostTools,
     },
 
