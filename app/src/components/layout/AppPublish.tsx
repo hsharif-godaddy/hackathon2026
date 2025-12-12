@@ -45,6 +45,7 @@ export default function AppPublish({ location }: { location?: string }) {
   const setIsPollingEntitlements = useDevelopPageStore((state) => state.setIsPollingEntitlements);
   const { data: isPublishButtonEnabled } = useSwitchboard('appbuilder-publish-button');
   const { data: isAiroPlusPaywallEnabled } = useSwitchboard('appbuilder-airoplus-paywall');
+  const { data: isPaywallEnabledInMarket } = useSwitchboard('appbuilder-airoplus-markets');
 
   const { showPaywall } = usePaywallEligibility(currentAppId);
   const handlePurchaseSuccess = async () => {
@@ -260,7 +261,7 @@ export default function AppPublish({ location }: { location?: string }) {
       setEntitlementsPollingFailed(false);
     }
    
-    if (isAiroPlusPaywallEnabled && showPaywall && open) { // TODO: check to make sure entitlemnet is not granted already before showing the paywall
+    if (isAiroPlusPaywallEnabled && isPaywallEnabledInMarket && showPaywall && open) { // TODO: check to make sure entitlemnet is not granted already before showing the paywall
       setShowAiroPlusPaywall(true);
     } else {
       setOpen(open);
