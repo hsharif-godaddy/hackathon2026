@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSecrets, type Secret } from '@/hooks/useSecrets';
 import { useSecretOperations } from '@/hooks/useSecretOperations';
 import IconButton from '@/app/develop/components/IconButton';
@@ -77,7 +77,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
     }
 
     // Only update if the secrets have actually changed
-    setFormSecrets((prevFormSecrets) => {
+    setFormSecrets(() => {
       // sort secrets with system-managed first
       return secrets
         .map((secret) => ({
@@ -94,7 +94,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           return a.name.localeCompare(b.name);
         });
     });
-  }, [secrets.length, dataUpdatedAt]);
+  }, [secrets.length, dataUpdatedAt]); /* eslint-disable-line react-hooks/exhaustive-deps */
 
   const handleEdit = (secretName: string) => {
     setFormSecrets((prev) => {

@@ -29,7 +29,7 @@ export class EntitlementPollingService {
     appId: string,
     onStatusUpdate?: (attempt: number, maxAttempts: number) => void
   ): Promise<EntitlementPollingResult> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => { /* eslint-disable-line @typescript-eslint/no-unused-vars */
       let attempts = 0;
       const startTime = Date.now();
 

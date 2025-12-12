@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Box from '@ux/box'
 import Alert from '@ux/alert'
-import text from '@ux/text'
 import { Loader } from '@airo-ux/loader'
 import { tips, shuffleArray } from './tips-content'
 

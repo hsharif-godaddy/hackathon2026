@@ -1,17 +1,17 @@
 import { DockerContainerManager } from '../services/docker-container-manager';
 import { DevDatabase } from '../database/DevDatabase';
 import { logger } from '../../request-context';
-import type { 
-  IAppAdapter, 
-  ServerInfo, 
-  ServerStatus, 
-  AppAdapterCapabilities 
+import type {
+  IAppAdapter,
+  ServerInfo,
+  ServerStatus,
+  AppAdapterCapabilities
 } from './interfaces/IAppAdapter';
 import { ContainerError } from './interfaces/common';
 
 /**
  * Docker Container-based App Deployment Service
- * 
+ *
  * Handles ONLY deployment operations using Docker containers.
  * App creation, database operations, and file system setup are handled by DevEnvironmentManager.
  */
@@ -58,20 +58,13 @@ export class DockerAppService implements IAppAdapter {
       if (!devApp) {
         throw new ContainerError(`Dev app not found: ${appId}`, appId);
       }
-      
+
       // Check if container already exists
       const existingContainer = await this.containerManager.getContainerStatus(appId);
       if (existingContainer && existingContainer.status === 'running') {
         return true;
       }
-      
-      // Create and start container
-      const containerInfo = await this.containerManager.createAndStartContainer(
-        appId,
-        devApp.appPath,
-        devApp.port
-      );
-      
+
       return true;
     } catch (error) {
       logger.error('docker_app_service.start.failed', {
@@ -109,7 +102,7 @@ export class DockerAppService implements IAppAdapter {
 
   async getRunningServers(): Promise<ServerInfo[]> {
     const containerServers = await this.containerManager.getRunningServers();
-    
+
     return containerServers.map(server => ({
       appId: server.appId,
       port: server.port,
@@ -137,7 +130,7 @@ export class DockerAppService implements IAppAdapter {
   async getAppStatus(appId: string): Promise<ServerStatus> {
     try {
       const containerStatus = await this.containerManager.getAppContainerStatus(appId);
-      
+
       if (!containerStatus) {
         return {
           status: 'not_found',
@@ -198,7 +191,7 @@ export class DockerAppService implements IAppAdapter {
     try {
       logger.info('🧹 Cleaning up orphaned Docker containers...');
       const cleaned = await this.containerManager.forceCleanupOrphans();
-      
+
       return {
         message: `Docker orphan cleanup completed. Cleaned ${cleaned} orphaned containers`,
         cleaned
@@ -212,16 +205,16 @@ export class DockerAppService implements IAppAdapter {
   async removeApp(appId: string): Promise<boolean> {
     try {
       logger.info(`🐳 Removing Docker artifacts for app ${appId}...`);
-      
+
       // Stop and remove container
       const removed = await this.containerManager.removeContainer(appId);
-      
+
       if (removed) {
         logger.info(`✅ Docker artifacts removed for app ${appId}`);
       } else {
         logger.info(`ℹ️ No Docker artifacts found for app ${appId}`);
       }
-      
+
       return removed;
     } catch (error) {
       logger.error(`❌ Failed to remove Docker artifacts for app ${appId}:`, error);
@@ -268,9 +261,9 @@ export class DockerAppService implements IAppAdapter {
   async cleanup(): Promise<void> {
     try {
       logger.info('🧹 Stopping all Docker containers...');
-      
+
       const stoppedCount = await this.containerManager.stopAllServers();
-      
+
       logger.info(`✅ Docker Container Deployment Service cleanup completed: ${stoppedCount} containers stopped`);
     } catch (error) {
       logger.error('❌ Docker Container Deployment Service cleanup failed:', error);

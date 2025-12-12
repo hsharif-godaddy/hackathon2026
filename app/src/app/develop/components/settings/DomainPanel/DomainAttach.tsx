@@ -54,14 +54,12 @@ function getErrorMessage(error: unknown, t: ReturnType<typeof useTranslations>):
 export default function DomainAttach() {
   const t = useTranslations();
   const currentAppId = useAppIdFromParams()
-  const { isAuthenticated, isLoading: authLoading, getUserInfo } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [customDomain, setCustomDomain] = useState(null);
   const [customDomainError, setCustomDomainError] = useState<string | null>(null);
   const [debouncedDomain, setDebouncedDomain] = useState('');
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const userInfo = getUserInfo();
 
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
@@ -103,7 +101,7 @@ export default function DomainAttach() {
     refetchInterval: (data) => {
       const hasPendingDomain = data?.domains?.some(d => {
         if (d.domainType === 'prefix') return false;
-        
+
         return (
           d.status === DomainStatus.PENDING ||
           d.cdnStatus === CdnStatus.INIT ||
@@ -112,7 +110,7 @@ export default function DomainAttach() {
           (d.status !== DomainStatus.ACTIVE && d.status !== DomainStatus.DELETING && !d.anycastIp)
         );
       });
-      
+
       return hasPendingDomain ? 5000 : false;
     },
     includeCdn: true,
@@ -124,7 +122,7 @@ export default function DomainAttach() {
 
   /**
    * Find CUSTOM domains (not prefix domains, not customer domains) that are pending
-   * 
+   *
    * We don't show DNS instructions for prefix/project domains or customer GoDaddy domains.
    */
   const pendingDomain = useMemo(() => {
@@ -160,7 +158,7 @@ export default function DomainAttach() {
 
   /**
    * Handle custom domain input change with debouncing
-   * 
+   *
    * Debounces the domain validation to avoid excessive API calls
    * while the user is typing.
    */
@@ -185,7 +183,7 @@ export default function DomainAttach() {
 
   /**
    * Get validation error message for custom domain
-   * 
+   *
    * Returns error message from domain validation or undefined if valid
    */
   function getValidationErrorMessage(): string | undefined {
@@ -323,7 +321,7 @@ export default function DomainAttach() {
   const shouldDisableAddingDomain =
               hasActiveOrPendingCustomDomain ||
               hasActiveOrPendingDomain ||
-              !isPublished || 
+              !isPublished ||
               modifyDomainsMutation.isPending;
 
   const getCustomDomainStatus = () => {
@@ -376,7 +374,7 @@ export default function DomainAttach() {
         )}
         {error && (
           <text.p className="text-intents-ux-text-destructive">
-            {getErrorMessage(error, t)} 
+            {getErrorMessage(error, t)}
           </text.p>
         )}
         {!isLoading && !error && domains.length === 0 && (
@@ -447,7 +445,7 @@ export default function DomainAttach() {
       { customDomain && (
         <div>
           <Button
-            text={isValidatingDomain || (customDomain !== debouncedDomain) 
+            text={isValidatingDomain || (customDomain !== debouncedDomain)
               ? t('builder_custom_domain_button_checking')
               : t('builder_custom_domain_button_add')
             }

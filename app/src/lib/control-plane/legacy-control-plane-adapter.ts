@@ -326,7 +326,7 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    * For preview variant: reads from /tmp/apps/{appId}/alloc/config.json
    * For publish variant: reads from /tmp/apps/{appId}/alloc/publish-config.json
    */
-  async getSecrets(appId: string, variant: 'preview' | 'publish', jwt: string): Promise<SecretsResponse> {
+  async getSecrets(appId: string, variant: 'preview' | 'publish'): Promise<SecretsResponse> {
     const allocPath = getAllocPath(appId);
     const configFileName = variant === 'preview' ? 'config.json' : 'publish-config.json';
     const configPath = join(allocPath, configFileName);
@@ -355,8 +355,7 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   async updateSecrets(
     appId: string,
     variant: 'preview' | 'publish',
-    operations: SecretOperations,
-    jwt: string
+    operations: SecretOperations
   ): Promise<SecretOperationsResult> {
     const { additions = [], updates = [], deletions = [] } = operations;
 
@@ -470,8 +469,7 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
   async compareSecrets(
     appId: string,
     sourceVariant: 'preview' | 'publish',
-    destinationVariant: 'preview' | 'publish',
-    jwt: string
+    destinationVariant: 'preview' | 'publish'
   ): Promise<SecretsDiffResult> {
     const allocPath = getAllocPath(appId);
 
@@ -617,7 +615,7 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
         deletions: deleted
       };
 
-      return await this.updateSecrets(appId, destinationVariant, secretOperations, jwt);
+      return await this.updateSecrets(appId, destinationVariant, secretOperations);
     } catch (error: any) {
       // Re-throw 401 for auth redirect
       if (error.status === 401) {

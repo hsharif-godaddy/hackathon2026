@@ -22,8 +22,6 @@
  */
 export function openOAuthPopup(
   redirectUrl: string,
-  state: string,
-  appId: string
 ): void {
   // Calculate centered popup position
   const width = 480;

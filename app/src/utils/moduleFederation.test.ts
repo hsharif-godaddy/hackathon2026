@@ -4,7 +4,6 @@ import {
   loadRemoteComponentConfig,
   setLocalOverride,
   clearLocalOverride,
-  type ModuleConfig,
 } from './moduleFederation';
 
 // Mock getRootDomain

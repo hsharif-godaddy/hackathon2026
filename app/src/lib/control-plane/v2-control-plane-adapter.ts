@@ -1,5 +1,5 @@
 import { IControlPlaneAdapter, CreateSiteParams, CreateSiteResult, SiteInfo, SiteStatus, SecretsResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretUpdate } from './types';
-import { extractCustomerId, decodeJWT } from '@/lib/utils/jwt-utils';
+import { extractCustomerId } from '@/lib/utils/jwt-utils';
 import { hasBeenPublished } from '@/utils/site';
 import { logger } from '@/lib/request-context';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
@@ -185,7 +185,6 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     jwt: string
   ): Promise<SiteInfo | null> {
     const client = this.createClient(jwt);
-    const startTime = Date.now();
 
     try {
       // SINGLE API CALL - Direct app fetch with CDN info for domains

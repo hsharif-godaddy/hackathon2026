@@ -11,6 +11,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import RefreshIcon from "@ux/icon/refresh";
 import Spinner from "@ux/spinner";
 import Button from "@ux/button";
+import { useTranslations } from '@/hooks/useTranslations'
 
 /**
  * Props for the RemoteModulePage component
@@ -51,6 +52,7 @@ export default function RemoteModulePage({
   version,
   componentProps = {},
 }: RemoteModulePageProps) {
+  const t = useTranslations();
   const [moduleConfig, setModuleConfig] = useState<ModuleConfig | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
@@ -81,14 +83,13 @@ export default function RemoteModulePage({
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
         <div className="text-center space-y-2">
           <h3 className="text-lg font-semibold">
-            Something went wrong. Please try again.
+            {t('builder_common_something_went_wrong')}
           </h3>
           <Button
             onClick={() => window.location.reload()}
             icon={<RefreshIcon />}
-          >
-            Reload Page
-          </Button>
+            text={t('builder_common_reload_page')}
+          />
         </div>
       </div>
     );
@@ -108,14 +109,13 @@ export default function RemoteModulePage({
         <div className="flex flex-col items-center justify-center min-h-screen p-4">
           <div className="text-center space-y-2">
             <h3 className="text-lg font-semibold">
-              Something went wrong. Please try again.
+              {t('builder_common_something_went_wrong')}
             </h3>
             <Button
               onClick={() => window.location.reload()}
               icon={<RefreshIcon />}
-            >
-              Reload Page
-            </Button>
+              text={t('builder_common_reload_page')}
+            />
           </div>
         </div>
       }

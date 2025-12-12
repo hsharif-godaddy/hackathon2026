@@ -5,8 +5,6 @@ import {
   validateDomain,
   isCustomerDomain,
   getDnsRecords,
-  type ParsedDomain,
-  type DomainValidationResult,
 } from './domain';
 
 describe('sanitizeDomainInput', () => {

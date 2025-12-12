@@ -103,7 +103,7 @@ describe('DeleteRowModal', () => {
   });
 
   it('should have critical design for delete button', () => {
-    const { container } = renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} />);
+    renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} />);
 
     const deleteButton = screen.getByRole('button', { name: /Delete/i });
     // Critical button should have specific styling
@@ -111,7 +111,7 @@ describe('DeleteRowModal', () => {
   });
 
   it('should have secondary design for cancel button', () => {
-    const { container } = renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} />);
+    renderWithProviders(<DeleteRowModal {...defaultProps} isOpen={true} />);
 
     const cancelButton = screen.getByRole('button', { name: /Cancel/i });
     // Secondary button should have specific styling

@@ -9,7 +9,7 @@ import { logger } from '@/lib/request-context'
 
 /**
  * Persistent Todo List Component
- * 
+ *
  * Displays a compact, persistent todo list at the top of the chat interface
  * with three states: closed, update, and open
  */
@@ -21,7 +21,7 @@ export default function PersistentTodoList() {
   const setCurrentList = useTodoListStore((state) => state.setCurrentList)
   const setViewState = useTodoListStore((state) => state.setViewState)
   const toggleViewState = useTodoListStore((state) => state.toggleViewState)
-  
+
   const [isLoading, setIsLoading] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const updateContainerRef = useRef<HTMLDivElement>(null)
@@ -32,7 +32,7 @@ export default function PersistentTodoList() {
   useEffect(() => {
     async function load() {
       if (!appId) return
-      
+
       setIsLoading(true)
       try {
         const list = await todoListService.getCurrentList(appId)
@@ -51,7 +51,7 @@ export default function PersistentTodoList() {
         setIsLoading(false)
       }
     }
-    
+
     load()
   }, [appId, setCurrentList])
 
@@ -62,7 +62,7 @@ export default function PersistentTodoList() {
     if (viewState === 'update' && updateContainerRef.current && updatedItemIds.size > 0) {
       const firstUpdatedId = Array.from(updatedItemIds)[0]
       const element = updateContainerRef.current.querySelector(`[data-item-id="${firstUpdatedId}"]`)
-      
+
       if (element) {
         setTimeout(() => {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -77,7 +77,6 @@ export default function PersistentTodoList() {
   }
 
   const items = currentList.items || []
-  const pendingItems = items.filter(item => !item.completed)
   const completedItems = items.filter(item => item.completed)
   const totalItems = items.length
   const completedCount = completedItems.length
@@ -87,7 +86,7 @@ export default function PersistentTodoList() {
    */
   function renderHeader() {
     return (
-      <div 
+      <div
         className="px-2 py-1 cursor-pointer hover:bg-intents-ux-boxLowContrast-backgroundColor transition-colors border-b border-border"
         onClick={toggleViewState}
       >
@@ -154,10 +153,10 @@ export default function PersistentTodoList() {
   function renderUpdateState() {
     // Find the first updated item
     const firstUpdatedIndex = items.findIndex(item => updatedItemIds.has(item.id))
-    
+
     let itemsToShow = items
     let remainingCount = 0
-    
+
     if (firstUpdatedIndex !== -1) {
       // Show 1 item before, the updated item, and 2 items after (total 4 items)
       const startIndex = Math.max(0, firstUpdatedIndex - 1)
@@ -169,7 +168,7 @@ export default function PersistentTodoList() {
       itemsToShow = items.slice(0, 4)
       remainingCount = items.length - 4
     }
-    
+
     return (
       <motion.div
         initial={{ opacity: 0, height: 0 }}
@@ -179,8 +178,8 @@ export default function PersistentTodoList() {
         className="bg-intents-ux-box-backgroundColor border-b border-border"
       >
         {renderHeader()}
-        
-        <div 
+
+        <div
           ref={updateContainerRef}
           className="max-h-16 overflow-y-auto px-2 py-1 space-y-0.5"
         >
@@ -217,7 +216,7 @@ export default function PersistentTodoList() {
         className="bg-intents-ux-box-backgroundColor border-b border-border"
       >
         {renderHeader()}
-        
+
         <div className="px-2 py-1">
           <div className="flex items-center justify-between mb-1">
             <div className="text-xs text-muted-foreground">
@@ -234,7 +233,7 @@ export default function PersistentTodoList() {
             </button>
           </div>
         </div>
-        
+
         <div className="max-h-48 overflow-y-auto px-2 pb-2">
           {items.length > 0 ? (
             <div className="space-y-0.5">
@@ -259,7 +258,7 @@ export default function PersistentTodoList() {
         {viewState === 'update' && renderUpdateState()}
         {viewState === 'open' && renderOpenState()}
       </AnimatePresence>
-      
+
       <TodoListModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -271,15 +270,15 @@ export default function PersistentTodoList() {
 
 /**
  * Todo Item Row Component
- * 
+ *
  * Renders a single todo item with circular checkbox
  */
-function TodoItemRow({ 
-  item, 
-  isHighlighted = false 
-}: { 
+function TodoItemRow({
+  item,
+  isHighlighted = false
+}: {
   item: any
-  isHighlighted?: boolean 
+  isHighlighted?: boolean
 }) {
   return (
     <div
@@ -301,7 +300,7 @@ function TodoItemRow({
 
 /**
  * Circular Checkbox Component
- * 
+ *
  * Modern circular checkbox with smooth animation
  */
 function CircularCheckbox({ checked }: { checked: boolean }) {
@@ -334,7 +333,7 @@ function CircularCheckbox({ checked }: { checked: boolean }) {
 
 /**
  * Todo List Modal Component
- * 
+ *
  * Full-screen modal showing complete todo list with descriptions
  */
 function TodoListModal({
@@ -364,7 +363,7 @@ function TodoListModal({
             className="fixed inset-0 bg-intents-ux-boxHighContrastOverlay-backgroundColor z-50"
             onClick={onClose}
           />
-          
+
           {/* Modal */}
           <div className="fixed inset-0 z-50 flex items-center justify-center p-2">
             <motion.div
@@ -406,7 +405,7 @@ function TodoListModal({
                   </div>
                 </div>
               </div>
-              
+
               {/* Content */}
               <div className="flex-1 overflow-y-auto px-3 py-2">
                 {items.length > 0 ? (

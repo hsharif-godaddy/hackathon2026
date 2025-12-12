@@ -50,9 +50,7 @@ describe('IconButton', () => {
   });
 
   it('should apply active styling when active', () => {
-    const { container } = renderWithProviders(
-      <IconButton icon={<MockIcon />} active />
-    );
+    renderWithProviders( <IconButton icon={<MockIcon />} active />);
 
     const button = screen.getByRole('button');
     expect(button).toHaveClass('bg-intents-ux-boxHighContrast-backgroundColor');

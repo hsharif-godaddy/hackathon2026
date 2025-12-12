@@ -43,10 +43,10 @@ function isApmTransactionStorage(value: any): value is ApmTransactionStorage {
 
 /**
  * Get the APM agent instance with proper typing
- * 
+ *
  * The APM RUM agent is a singleton initialized by RumProvider
  * and stored globally on the window object for access by custom hooks.
- * 
+ *
  * @returns APM agent instance or null if unavailable
  */
 function getApmAgent(): ApmAgent | null {
@@ -55,67 +55,66 @@ function getApmAgent(): ApmAgent | null {
   }
 
   const apm = window.__apmInstance;
-  
+
   // Check if APM exists and is active
   if (!apm || !apm.isActive || !apm.isActive()) {
     return null;
   }
-  
+
   return apm;
 }
 
 /**
  * Custom hook to track time spent on a page using Elastic APM RUM
- * 
+ *
  * Automatically starts a custom transaction when the component mounts
  * and ends it when the component unmounts, measuring total page visit duration.
- * 
+ *
  * This hook creates custom RUM transactions separate from the automatic
  * page-load and route-change transactions. These transactions measure
  * user engagement time (how long they stay on the page) rather than
  * technical performance metrics.
- * 
+ *
  * IMPORTANT: The transaction survives component remounts by storing it globally.
  * This ensures a single continuous transaction even if the URL changes via
  * router.replace() (e.g., job ID → real app ID transition).
- * 
+ *
  * The hook handles multiple types of navigation:
  * - Client-side Next.js navigation (via manual endTransaction call)
  * - SSO redirects (via beforeunload event)
  * - Tab closes and browser navigation (via beforeunload event)
  * - Component remounts (reuses existing transaction)
- * 
+ *
  * @param pageName - Name of the page (e.g., 'create-page', 'develop-page')
  * @param pageId - Optional app ID to add as app_id label (can be updated later via updateLabels)
- * @param additionalLabels - DEPRECATED: Not used due to React dependency limitations.
  *   Adding object parameters to useEffect dependencies causes infinite re-renders.
  *   Labels are captured at component mount time only.
  * @returns Object with endTransaction and updateLabels functions
- * 
+ *
  * Transaction name format: `page-{pageName}` (e.g., 'page-create-page', 'page-develop-page')
- * 
+ *
  * Labels added to transaction:
  * - page_name: The pageName parameter
  * - app_id: The pageId parameter (if provided, can be updated dynamically)
- * 
+ *
  * @example
  * ```tsx
  * function CreatePage() {
  *   const { endTransaction, updateLabels } = usePageTiming('create-page', jobId);
  *   // Creates transaction: "page-create-page" with labels: { page_name: 'create-page', app_id: jobId }
- *   
+ *
  *   // Update labels when real app ID becomes available
  *   useEffect(() => {
  *     if (realAppId) {
  *       updateLabels({ app_id: realAppId, updated_from_job_id: true });
  *     }
  *   }, [realAppId, updateLabels]);
- *   
+ *
  *   const handleRedirect = () => {
  *     endTransaction(); // End transaction before navigating away
  *     router.push('/other-page');
  *   };
- *   
+ *
  *   return <div>...</div>;
  * }
  * ```
@@ -123,12 +122,11 @@ function getApmAgent(): ApmAgent | null {
 export function usePageTiming(
   pageName: string,
   pageId?: string,
-  additionalLabels?: Record<string, string | number | boolean>
 ): { endTransaction: () => void; updateLabels: (labels: Record<string, string | number | boolean>) => void } {
   const transactionRef = useRef<ApmTransaction | null>(null);
   const startTimeRef = useRef<number>(0);
   const initAttemptedRef = useRef<boolean>(false);
-  
+
   // Helper to get consistent global storage key
   const getGlobalKey = useCallback(() => `__apm_page_timing_${pageName}`, [pageName]);
 
@@ -138,7 +136,7 @@ export function usePageTiming(
     const stored = window[globalKey];
     const storedTransaction = isApmTransactionStorage(stored) ? stored : undefined;
     const transaction = transactionRef.current || storedTransaction?.transaction;
-    
+
     if (transaction) {
       try {
         transaction.addLabels(labels);
@@ -157,8 +155,7 @@ export function usePageTiming(
     const stored = window[globalKey];
     const storedTransaction = isApmTransactionStorage(stored) ? stored : undefined;
     const transaction = transactionRef.current || storedTransaction?.transaction;
-    const startTime = startTimeRef.current || storedTransaction?.startTime;
-    
+
     if (transaction) {
       try {
         transaction.end();
@@ -180,14 +177,14 @@ export function usePageTiming(
     const globalKey = getGlobalKey();
     const stored = window[globalKey];
     const existingTransaction = isApmTransactionStorage(stored) ? stored : undefined;
-    
+
     // If transaction already exists (from previous mount), reuse it
     if (existingTransaction) {
       transactionRef.current = existingTransaction.transaction;
       startTimeRef.current = existingTransaction.startTime;
       return; // Don't create a new transaction
     }
-    
+
     // Only attempt initialization once (check ref as backup)
     if (initAttemptedRef.current) return;
     initAttemptedRef.current = true;
@@ -241,7 +238,7 @@ export function usePageTiming(
       const stored = window[globalKey];
       const storedTransaction = isApmTransactionStorage(stored) ? stored : undefined;
       const transaction = transactionRef.current || storedTransaction?.transaction;
-      
+
       if (transaction) {
         transaction.end();
 
@@ -250,7 +247,7 @@ export function usePageTiming(
         transactionRef.current = null;
       }
     };
-    
+
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     // Cleanup: Don't end transaction on unmount (might be a remount!)
@@ -263,28 +260,28 @@ export function usePageTiming(
       // 2. beforeunload event, or
       // 3. Navigation to a different page
     };
-  }, []); // Empty array - only run once per page visit
+  }, []); /* eslint-disable-line react-hooks/exhaustive-deps */
 
   return { endTransaction, updateLabels };
 }
 
 /**
  * Custom hook to track specific phases or sections within a page
- * 
+ *
  * Useful for tracking time spent in specific states or sections
  * (e.g., time in chat vs preview pane)
- * 
+ *
  * @param pageName - Name of the page for context
  * @returns Object with startPhase and endPhase functions
- * 
+ *
  * @example
  * ```tsx
  * function DevelopPage() {
  *   const { startPhase, endPhase } = usePagePhases('develop-page');
- *   
+ *
  *   const handleChatFocus = () => startPhase('chat-interaction');
  *   const handleChatBlur = () => endPhase('chat-interaction');
- *   
+ *
  *   return <ChatPane onFocus={handleChatFocus} onBlur={handleChatBlur} />;
  * }
  * ```
@@ -341,7 +338,7 @@ export function usePagePhases(pageName: string) {
       // Synchronously end all phases during cleanup
       activePhases.current.forEach((phase, phaseName) => {
         const duration = Date.now() - phase.startTime;
-        activePhases.current.delete(phaseName);
+        activePhases.current.delete(phaseName); /* eslint-disable-line react-hooks/exhaustive-deps */
 
         // Attempt to end transaction synchronously
         const apm = getApmAgent();

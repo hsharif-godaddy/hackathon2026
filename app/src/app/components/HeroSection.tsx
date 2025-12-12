@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react'
+import { FormattedMessage } from 'react-intl'
 import clsx from 'clsx'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
@@ -10,6 +11,7 @@ import { HeroSectionProps, HeroSectionRef } from './types'
 import { generateClickEID } from '@/utils/instrumentation'
 import { MAX_PROMPT_LENGTH } from '@/lib/features'
 import ExamplesSection from '@/app/components/HeroExamples'
+import { useTranslations } from '@/hooks/useTranslations'
 
 const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   promptText,
@@ -20,6 +22,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   setError,
   onExampleClick
 }, ref) => {
+  const t = useTranslations();
   const [isTyping, setIsTyping] = useState(false)
   const [displayText, setDisplayText] = useState(promptText)
   const [isFocused, setIsFocused] = useState(false)
@@ -137,14 +140,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         size={4}
         className="text-center max-w-screen-md"
       >
-        Share your idea and we&apos;ll handle the rest
+        {t('builder_homepage_hero_title')}
       </text.h1>
 
       <text.p
         size={2}
         className='max-w-xl mx-auto !font-thin text-center'
       >
-        We build it for you from concept to live web app
+        {t('builder_homepage_hero_text')}
       </text.p>
 
       {/* Error Display */}
@@ -152,8 +155,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         <div className="w-full max-w-2xl mx-auto mt-6">
           <Alert
             emphasis="critical"
-            title="Error"
-            actions={<Button text="Dismiss" onClick={() => setError(null)} />}
+            title={t('builder_status_error')}
+            actions={<Button text={t('builder_common_dismiss')} onClick={() => setError(null)} />}
           >
             {error}
           </Alert>
@@ -194,7 +197,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                   'h-32 rounded-2xl': isExpanded,
                   'h-10 rounded-[3rem]': !isExpanded
                 })}
-                placeholder={isTyping ? "" : "Describe your app idea..."}
+                placeholder={isTyping ? "" : t('builder_homepage_hero_placeholder')}
               />
               <Button
                 onClick={onStartBuilding}
@@ -204,7 +207,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 design='primary'
                 className="group cursor-pointer absolute transition-all duration-300 flex items-center disabled:opacity-50 disabled:cursor-not-allowed z-10 !rounded-full aspect-square !p-2 !border-none right-1.5 bottom-1.5"
                 icon={isLoading ? <Spinner size='sm' /> : <SendIcon />}
-                aria-label={isLoading ? "Building your app..." : "Start building"}
+                aria-label={isLoading ? t('builder_homepage_hero_prompt_button_loading') : t('builder_homepage_hero_prompt_button')}
               />
             </Box>
           </div>
@@ -215,13 +218,37 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 className="font-medium"
                 emphasis="critical"
               >
-                Character limit reached ({MAX_PROMPT_LENGTH.toLocaleString()})
+                {t('builder_homepage_hero_limit')} ({MAX_PROMPT_LENGTH.toLocaleString()})
               </text.p>
             </div>
           )}
 
           <text.p size={-1} className='max-w-lg mx-auto opacity-40 mb-4 text-center'>
-            AI can make mistakes, so double check its responses. By using Airo App Builder, you agree to our <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/ai-terms-of-use" className="!text-intents-ux-boxHighContrast-foregroundColor" text="Terms" /> and <Button design="inline" size="sm" external href="https://www.godaddy.com/legal/agreements/privacy-policy" className="!text-intents-ux-boxHighContrast-foregroundColor" text="Privacy Policy" />.
+            <FormattedMessage
+              id='builder_homepage_hero_disclaimer'
+              values={{
+                terms: (
+                  <Button
+                    design="inline"
+                    size="sm"
+                    external
+                    href="https://www.godaddy.com/legal/agreements/ai-terms-of-use"
+                    className="!text-intents-ux-boxHighContrast-foregroundColor"
+                    text={t('builder_homepage_hero_disclaimer_terms')}
+                  />
+                ),
+                privacy_policy: (
+                  <Button
+                    design="inline"
+                    size="sm"
+                    external
+                    href="https://www.godaddy.com/legal/agreements/privacy-policy"
+                    className="!text-intents-ux-boxHighContrast-foregroundColor"
+                    text={t('builder_homepage_hero_disclaimer_privacy')}
+                  />
+                )
+              }}
+            />
           </text.p>
 
           <ExamplesSection
@@ -234,7 +261,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
             data-eid={generateClickEID('homepage.hero.see_how_it_works')}
           >
             <Box blockAlignChildren='center' inlineAlignChildren='center' gap="md">
-              <text.p size={0} className='font-medium'>See how it works</text.p>
+              <text.p size={0} className='font-medium'>{t('builder_homepage_hero_scroll')}</text.p>
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 8 37" className="w-1 group-hover:translate-y-1 transition-all duration-500">
                 <path fill="#d3c1f7" d="M3.646 36.789a.5.5 0 0 0 .708 0l3.182-3.182a.5.5 0 1 0-.708-.707L4 35.728 1.172 32.9a.5.5 0 0 0-.708.707zM4 0h-.5v36.435h1V0z" opacity=".5" />
               </svg>

@@ -6,7 +6,6 @@
  */
 
 import { buildDynamicApiUrl, buildDynamicWsUrl } from './dynamic-api'
-import { logger } from '@/lib/request-context'
 
 export interface ApiConfig {
   baseUrl: string
@@ -38,7 +37,7 @@ export function buildApiUrl(endpoint: string): string {
 }
 
 /**
- * DEPRECATED: Static WebSocket URL builder - no longer supported  
+ * DEPRECATED: Static WebSocket URL builder - no longer supported
  * Use buildDynamicWsUrl() with a siteId instead
  */
 export function buildWsUrl(endpoint: string): string {

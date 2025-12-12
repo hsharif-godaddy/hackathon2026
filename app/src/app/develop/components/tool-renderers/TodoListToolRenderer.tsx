@@ -290,7 +290,7 @@ export default function TodoListToolRenderer({
         clearTimeout(timer)
       }
     }
-  }, [operation, toolStatus])
+  }, [operation, toolStatus, isVisible]) /* eslint-disable-line react-hooks/exhaustive-deps */
 
   // Don't render anything for mark_done/mark_undone/show_list operations
   // The persistent todo list UI handles these updates

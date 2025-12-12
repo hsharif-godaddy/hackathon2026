@@ -212,7 +212,7 @@ export default function ImageSearchToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<Image className="w-2 h-2" />}
+        icon={<Image className="w-2 h-2" />} /* eslint-disable-line jsx-a11y/alt-text */
         displayName={displayName}
         toolStatus={toolStatus}
         hasDetails={hasDetails}

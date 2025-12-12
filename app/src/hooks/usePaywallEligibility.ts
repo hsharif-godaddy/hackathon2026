@@ -5,10 +5,6 @@ import { useMatchingProject } from './useMatchingProject';
 import { useUpdateEntitlement } from './useUpdateEntitlement';
 import { logger } from '@/lib/request-context';
 
-interface PaywallEligibilityParams {
-  appId: string;
-}
-
 interface PaywallEligibilityResult {
   showPaywall: boolean;
   isError: boolean;
@@ -27,7 +23,6 @@ export const usePaywallEligibility = (appId: string | undefined): PaywallEligibi
 
   const updateEntitlementMutation = useUpdateEntitlement();
 
-  
   // Determine overall error state
   const isError = isSubscriptionError || isEntitlementsError || isMatchingProjectError || updateEntitlementMutation.isError;
   const error = subscriptionError || entitlementsError || matchingProjectError || updateEntitlementMutation.error || null;
@@ -48,7 +43,7 @@ export const usePaywallEligibility = (appId: string | undefined): PaywallEligibi
         });
       }
     }
-  }, [matchingProjectData?.billingId, subscriptionId, hasEntitlements, isError, appId]);
+  }, [matchingProjectData?.billingId, subscriptionId, hasEntitlements, isError, appId]); /* eslint-disable-line react-hooks/exhaustive-deps */
 
   // Determine paywall state based on data
   let showPaywall = true; // Default to showing paywall for security

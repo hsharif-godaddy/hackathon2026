@@ -34,7 +34,7 @@ function shouldRenderMessage(message: ChatMessage | StreamingMessageType): boole
 }
 
 // Helper function to get message styling classes (matching Message.tsx)
-function getMessageClasses(message: ChatMessage | StreamingMessageType, isActiveStream?: boolean): string {
+function getMessageClasses(message: ChatMessage | StreamingMessageType): string {
   const baseClasses = 'rounded-md'
 
   // Don't hide messages - we'll show ThinkingIndicator when there's no content
@@ -131,7 +131,7 @@ export default function StreamingMessage({ message, isActiveStream = false, isLa
         'order-2 max-w-sm max-w-full': message.role === 'user',
         'order-1 w-full': message.role !== 'user'
       })}>
-        <div className={getMessageClasses(message, isActiveStream)}>
+        <div className={getMessageClasses(message)}>
           <div className="overflow-hidden">
             {renderMessageContent(message, isActiveStream, isLastAssistantMessage, startTime, streamingState)}
           </div>

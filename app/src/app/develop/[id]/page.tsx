@@ -221,7 +221,7 @@ function DevelopPageContent() {
     if (!appId) return
 
     try {
-      const result = await appService.updateStyles(appId, {
+      const result = await appService.updateStyles(appId, { /* eslint-disable-line @typescript-eslint/no-unused-vars */
         ...styleData,
         elementInfo: selectedElement
       })
@@ -289,7 +289,7 @@ function DevelopPageContent() {
     })
 
     try {
-      const result = await appService.updateText(appId, textData)
+      const result = await appService.updateText(appId, textData) /* eslint-disable-line @typescript-eslint/no-unused-vars */
       logger.info('develop-page.text-update.success', { appId })
     } catch (error) {
       logger.error('develop-page.text-update.error', {
@@ -460,8 +460,7 @@ function DevelopPageContent() {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setBuildErrorContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload])
-
+  }, [handleStyleUpdate, sendTextUpdate, setAiEditContext, setBuildErrorContext, setIsSelectMode, sendMessage, setInputValue, handleScreenshotUpload, appId])
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -637,7 +636,6 @@ function DevelopPageContent() {
                 <PreviewPane
                   onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                   showBuildingOverlay={init.ui.showPreviewLoader}
-                  buildingMessage={init.ui.previewLoaderMessage}
                 />
               </div>
               <div className={`absolute inset-0 ${activeChatTab !== ChatTab.SETTINGS ? 'hidden' : ''}`}>

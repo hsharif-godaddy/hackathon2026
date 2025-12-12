@@ -115,7 +115,6 @@ export default function CssColorToolRenderer({
         <div className="mt-2 mb-2">
           <ColorPaletteWidget
             name={paletteName}
-            theme={theme}
             palette={palette}
           />
         </div>

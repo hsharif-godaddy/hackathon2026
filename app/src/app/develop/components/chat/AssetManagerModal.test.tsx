@@ -5,9 +5,9 @@ import AssetManagerModal from './AssetManagerModal';
 
 // Mock the dynamic import
 vi.mock('next/dynamic', () => ({
-  default: (loader: any, options: any) => {
+  default: () => {
     // Return a mock component
-    const MockComponent = (props: any) => (
+    const MockComponent = () => (
       <div data-testid="image-manager-loader">
         Mocked ImageManagerLoader
       </div>

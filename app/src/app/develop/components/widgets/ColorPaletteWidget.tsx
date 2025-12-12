@@ -38,7 +38,6 @@ export interface CompletePalette {
  */
 export interface ColorPaletteWidgetProps {
   name?: string
-  theme?: 'light' | 'dark'
   palette: CompletePalette
   className?: string
   isSelected?: boolean
@@ -47,7 +46,7 @@ export interface ColorPaletteWidgetProps {
 /**
  * Color Palette Widget
  */
-export default function ColorPaletteWidget({ name, theme, palette, className = '', isSelected = false }: ColorPaletteWidgetProps) {
+export default function ColorPaletteWidget({ name, palette, className = '', isSelected = false }: ColorPaletteWidgetProps) {
 
   /**
    * Handle click on palette - send preview message to iframe

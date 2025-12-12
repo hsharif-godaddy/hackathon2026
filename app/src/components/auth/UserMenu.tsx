@@ -10,7 +10,7 @@ import {
   PopoverTrigger,
 } from "@/lib/shadcn/popover"
 import { Button } from "@/lib/shadcn/button"
-import { Separator } from "@/lib/shadcn/separator"
+import { Separator } from "@/lib/shadcn/separator";
 import UserIcon from '@ux/icon/user';
 import InviteFriends, { InviteFriendsVariant } from '@/components/layout/InviteFriends';
 import clsx from 'clsx';

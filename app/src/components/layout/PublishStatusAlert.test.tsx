@@ -21,7 +21,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => mockRouter,
 }));
 vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: () => (key: string, values?: any) => key,
+  useTranslations: () => (key: string) => key,
 }));
 vi.mock('@/hooks/usePublishApp', () => ({
   usePublishApp: () => ({

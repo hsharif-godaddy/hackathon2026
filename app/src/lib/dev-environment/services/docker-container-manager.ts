@@ -145,9 +145,6 @@ export class DockerContainerManager {
 		}
 	}
 
-
-
-
 	/**
 	 * Initialize the container manager
 	 * Runs recovery only once on first initialization
@@ -176,8 +173,6 @@ export class DockerContainerManager {
 	 * Internal initialization method
 	 */
 	private async doInitialize(): Promise<void> {
-		const startTime = Date.now();
-
 		try {
 			// Check if Docker is available
 			await execa('docker', ['--version']);

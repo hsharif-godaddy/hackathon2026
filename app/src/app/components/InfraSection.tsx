@@ -4,8 +4,10 @@ import { motion, useInView } from 'framer-motion'
 import { useRef } from 'react'
 import PageSection from '@/components/layout/PageSection'
 import TextBlock from '@/components/layout/TextBlock'
+import { useTranslations } from '@/hooks/useTranslations'
 
 export default function InfraSection() {
+  const t = useTranslations();
   const ref = useRef(null)
   const isInView = useInView(ref, { once: true, amount: 0.5 })
 
@@ -36,10 +38,10 @@ export default function InfraSection() {
 
         <div className="flex flex-col justify-center">
           <TextBlock
-            preTitle="Backed by GoDaddy"
-            title="AI that ships on real internet infrastructure"
+            preTitle={t('builder_homepage_infra_pretitle')}
+            title={t('builder_homepage_infra_title')}
           >
-            Airo doesn’t stop at a pretty draft. It rides on GoDaddy’s proven stack—domains, hosting, and security—so you can find the perfect name, launch with confidence, and grow without rewiring a thing.
+            {t('builder_homepage_infra_text')}
           </TextBlock>
         </div>
       </div>

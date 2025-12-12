@@ -15,7 +15,7 @@ vi.mock('@/utils/moduleFederation', () => ({
 }));
 
 vi.mock('react-dynamic-remote-component', () => ({
-  RemoteComponent: ({ url, scope, module, ...props }: any) => (
+  RemoteComponent: ({ url, scope, module }: any) => (
     <div data-testid="remote-component">
       Remote Component: {url} - {scope} - {module}
     </div>
@@ -23,7 +23,7 @@ vi.mock('react-dynamic-remote-component', () => ({
 }));
 
 vi.mock('@/components/ErrorBoundary', () => ({
-  default: ({ children, fallback }: any) => <div>{children}</div>,
+  default: ({ children }: any) => <div>{children}</div>,
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -99,7 +99,7 @@ describe('RemoteModulePage', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_something_went_wrong')).toBeInTheDocument();
     });
   });
 
@@ -114,13 +114,8 @@ describe('RemoteModulePage', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Reload Page')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_reload_page')).toBeInTheDocument();
     });
-  });
-
-  it.skip('should reload page when reload button clicked', async () => {
-    // Skipped because window.location.reload cannot be mocked in jsdom
-    // The button functionality is tested in other ways
   });
 
   it('should call loadRemoteComponentConfig with correct params', async () => {

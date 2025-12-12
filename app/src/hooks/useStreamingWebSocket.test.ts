@@ -274,7 +274,6 @@ describe('useStreamingWebSocket', () => {
     it('should handle fetch errors for JWT token gracefully', async () => {
       const { useStreamingWebSocket } = await import('./useStreamingWebSocket');
       const { useCurrentAppId } = await import('@/stores/useStreamingConversationStore');
-      const { logger } = await import('@/lib/request-context');
 
       // Make fetch fail
       global.fetch = vi.fn(() => Promise.reject(new Error('Network error'))) as any;

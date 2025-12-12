@@ -167,7 +167,7 @@ describe('V2ControlPlaneAdapter with Cache', function adapterCacheTests() {
     })
 
     // Mock getAppsForSystem to not include deleted app
-    mockClient.getAppsForSystem.mockImplementation(async (subId: string, sysId: string) => {
+    mockClient.getAppsForSystem.mockImplementation(async () => {
       // Don't return deleted app in the list
       return []
     })
@@ -254,7 +254,6 @@ describe('V2ControlPlaneAdapter with Cache', function adapterCacheTests() {
     // Get metrics after first call
     let store = useSubscriptionCacheStore.getState()
     const cacheHitsAfterFirst = store.cacheHits
-    const cacheMissesAfterFirst = store.cacheMisses
 
     // Reset mocks for second call (but not the store state)
     vi.clearAllMocks()

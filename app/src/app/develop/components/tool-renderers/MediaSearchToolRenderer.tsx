@@ -38,7 +38,6 @@ export default function MediaSearchToolRenderer({
   const [mounted, setMounted] = useState(false)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [isModalPlaying, setIsModalPlaying] = useState(false)
   const inlineVideoRef = useRef<HTMLVideoElement>(null)
   const modalVideoRef = useRef<HTMLVideoElement>(null)
 
@@ -146,18 +145,6 @@ export default function MediaSearchToolRenderer({
     }
   }
 
-  const handleModalPlayPause = () => {
-    if (modalVideoRef.current) {
-      if (isModalPlaying) {
-        modalVideoRef.current.pause()
-        setIsModalPlaying(false)
-      } else {
-        modalVideoRef.current.play()
-        setIsModalPlaying(true)
-      }
-    }
-  }
-
   const handleModalOpen = () => {
     if (hasVideo && inlineVideoRef.current) {
       // Pause inline video when opening modal
@@ -171,7 +158,6 @@ export default function MediaSearchToolRenderer({
     if (hasVideo && modalVideoRef.current) {
       // Pause modal video when closing
       modalVideoRef.current.pause()
-      setIsModalPlaying(false)
     }
     setIsModalOpen(false)
   }
@@ -236,8 +222,6 @@ export default function MediaSearchToolRenderer({
                       src={video.url}
                       className="max-w-full max-h-[70vh] rounded-lg shadow-lg"
                       controls
-                      onPlay={() => setIsModalPlaying(true)}
-                      onPause={() => setIsModalPlaying(false)}
                     />
                   </div>
                 </div>
@@ -290,7 +274,7 @@ export default function MediaSearchToolRenderer({
   )
 
   let displayName = 'Media'
-  let icon = <Image className="w-2 h-2" />
+  let icon = <Image className="w-2 h-2" /> /* eslint-disable-line jsx-a11y/alt-text */
 
   if (toolStatus === 'completed') {
     if (mediaType === 'video' && hasVideo) {
@@ -301,7 +285,7 @@ export default function MediaSearchToolRenderer({
       icon = <Sparkles className="w-2 h-2" />
     } else if (mediaType === 'image' && hasImages && !isMarkdownFormat) {
       displayName = `Found ${imageCount} ${imageCount === 1 ? 'image' : 'images'}`
-      icon = <Image className="w-2 h-2" />
+      icon = <Image className="w-2 h-2" /> /* eslint-disable-line jsx-a11y/alt-text */
     }
   }
 

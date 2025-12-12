@@ -3,7 +3,6 @@ import { appFetch } from '@/lib/gasket-config';
 import { appService } from '@/services/AppService';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import type { AiroDeployment } from '@/lib/mgmt-airo';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 
 /**

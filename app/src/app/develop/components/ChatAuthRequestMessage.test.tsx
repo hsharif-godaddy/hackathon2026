@@ -107,9 +107,7 @@ describe('ChatAuthRequestMessage', () => {
 
     await waitFor(() => {
       expect(openOAuthPopupAndAwait).toHaveBeenCalledWith(
-        defaultPayload.redirectUrl,
-        defaultPayload.state,
-        'app-123'
+        defaultPayload.redirectUrl
       );
     });
   });

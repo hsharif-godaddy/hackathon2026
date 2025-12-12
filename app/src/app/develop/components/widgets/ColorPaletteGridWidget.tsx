@@ -134,7 +134,6 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
           <ColorPaletteWidget
             key={index}
             name={paletteData.name}
-            theme={paletteData.theme}
             palette={paletteData.palette}
             isSelected={previewedPalette?.name === paletteData.name}
           />

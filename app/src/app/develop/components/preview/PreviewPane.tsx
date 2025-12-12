@@ -2,9 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import clsx from 'clsx'
-import Box from '@ux/box'
 import Button from '@ux/button'
-import text from '@ux/text'
 import { Loader } from '@airo-ux/loader'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
@@ -28,14 +26,12 @@ interface PreviewPaneProps {
   onPreviewRefresh: () => void
   isMobile?: boolean
   showBuildingOverlay?: boolean
-  buildingMessage?: string
 }
 
 export default function PreviewPane({
   onPreviewRefresh,
   isMobile = false,
-  showBuildingOverlay = false,
-  buildingMessage = "The AI agent is building your app..."
+  showBuildingOverlay = false
 }: PreviewPaneProps) {
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const startPollingForServer = useServerPollingStore((state) => state.startPollingForServer)

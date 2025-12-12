@@ -3,12 +3,10 @@ import { useRef, useEffect } from 'react';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { useGitStore } from '@/stores/useGitStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { hasBeenPublished } from '@/utils/site';
 import { logImpressionEvent, logAiroHQEvent } from '@/utils/instrumentation';
 import type { AiroDeployment } from '@/lib/mgmt-airo';
-import type { GitCommit } from '@/hooks/useGitHistory';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 
 const INITIAL_POLL_DELAY_MS = 5000;  // Wait 5 seconds before first poll
@@ -39,7 +37,7 @@ export interface UseDeploymentsQueryOptions {
  * - Then every 2 seconds for the first 3 minutes
  * - Then every 10 seconds until deployment completes or 5 minute timeout
  * - Stops polling after 5 minutes max (prevents infinite polling on stuck deployments)
- * 
+ *
  * When a deployment completes successfully (reaches 'deployed' status), this hook
  * automatically triggers a success alert via the useDevelopPageStore.
  *
@@ -79,7 +77,7 @@ export function useDeploymentsQuery({
   // Track when polling started for progressive intervals
   const pollingStartTimeRef = useRef<number | null>(null);
   const queryClient = useQueryClient();
-  
+
   // Get store methods to check and clear deployment in progress
   const getPublishState = useDevelopPageStore((state) => state.getPublishState);
   const setDeploymentInProgressId = useDevelopPageStore((state) => state.setDeploymentInProgressId);
@@ -128,26 +126,26 @@ export function useDeploymentsQuery({
     enabled: enabled && !!appId,
     refetchInterval: (query) => {
           const data = query.state.data;
-          
+
           // Check if we have a deployment in progress from publish
           const publishState = getPublishState(appId);
           const deploymentInProgressId = publishState.deploymentInProgressId;
-          
+
           // If no deployment being tracked, don't poll
           if (!deploymentInProgressId) {
             pollingStartTimeRef.current = null;
             return false;
           }
-          
+
           // Find the deployment in progress if it exists in current data
           const deploymentInProgress = data?.find(d => d.id === deploymentInProgressId);
-          
+
           // If deployment is in final state, stop polling
           if (deploymentInProgress && ['deployed', 'failed'].includes(deploymentInProgress.status)) {
             pollingStartTimeRef.current = null;
             return false;
           }
-          
+
           // Start polling immediately if we have a deploymentInProgressId
           if (!pollingStartTimeRef.current) {
             pollingStartTimeRef.current = Date.now();
@@ -156,12 +154,12 @@ export function useDeploymentsQuery({
               deploymentId: deploymentInProgressId,
             });
           }
-          
+
           // Calculate progressive interval
           if (!pollingStartTimeRef.current) return false;
-          
+
           const elapsed = Date.now() - pollingStartTimeRef.current;
-          
+
           // Stop polling after 5 minutes max (timeout)
           if (elapsed >= MAX_POLLING_DURATION_MS) {
             logger.warn('deployments-query.polling.timeout', {
@@ -173,17 +171,17 @@ export function useDeploymentsQuery({
             pollingStartTimeRef.current = null;
             return false;
           }
-          
+
           // First poll: wait 5 seconds
           if (elapsed < INITIAL_POLL_DELAY_MS) {
             return INITIAL_POLL_DELAY_MS - elapsed;
           }
-          
+
           // After initial delay, poll every 2 seconds for first 3 minutes
           if (elapsed < FAST_POLLING_DURATION_MS) {
             return FAST_POLLING_INTERVAL_MS;
           }
-          
+
           // After 3 minutes, poll every 10 seconds (until 5 minute timeout)
           return SLOW_POLLING_INTERVAL_MS;
         },

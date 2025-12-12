@@ -18,8 +18,10 @@ import { useSafariClass } from '@/hooks/useSafariClass'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import HeroSection from './components/HeroSection'
 import { HeroSectionRef } from './components/types'
+import { useTranslations } from '@/hooks/useTranslations'
 
 function HomeContent() {
+  const t = useTranslations();
   const [promptText, setPromptText] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
@@ -31,7 +33,7 @@ function HomeContent() {
   const promptTextRef = useRef(promptText)
 
   const { isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth, isLoading: authIsLoading } = useAuthContext()
-  
+
   useSafariClass()
 
   useEffect(() => {
@@ -147,15 +149,15 @@ function HomeContent() {
 
       if (error instanceof Error) {
         if (error.message.includes('Failed to create site')) {
-          errorMessage = 'Failed to create your development environment. Please try again or contact support.'
+          errorMessage = t('builder_homepage_error_create')
         } else if (error.message.includes('Failed to validate account')) {
-          errorMessage = 'Authentication failed. Please try logging in again.'
+          errorMessage = t('builder_homepage_error_validate')
         } else if (error.message.includes('fetch')) {
-          errorMessage = 'Unable to connect to the server. Please try again.'
+          errorMessage = t('builder_homepage_error_fetch')
         } else if (error.message.includes('Failed to fetch')) {
-          errorMessage = 'Network error. Please check your connection and try again.'
+          errorMessage = t('builder_homepage_error_network')
         } else if (error.message.includes('TypeError')) {
-          errorMessage = 'Connection error. Please ensure the backend service is running.'
+          errorMessage = t('builder_homepage_error_connection')
         } else {
           errorMessage = error.message
         }
@@ -167,7 +169,7 @@ function HomeContent() {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth])
+  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, gasketConfig, isMockAuth, t])
 
   // Restore prompt from localStorage after login and clear it
   useEffect(() => {
@@ -217,23 +219,21 @@ function HomeContent() {
           onExampleClick={handleExampleClick}
         />
 
-        { /* <BuiltWithSection /> */ }
-
         <InfraSection />
 
         <FeaturesSection
           features={[
             {
-              title: "Pro-grade hosting",
-              description: "Global edge, fast caching, and sensible defaults for speed and reliability. Hit publish and serve worldwide without extra setup.",
+              title: t('builder_homepage_feature_prograde_title'),
+              description: t('builder_homepage_feature_prograde_description'),
             },
             {
-              title: "Security by default",
-              description: "Automatic SSL, DDoS protection, backups, and best-practice hardening—quietly working so you can focus on the build.",
+              title: t('builder_homepage_feature_security_title'),
+              description: t('builder_homepage_feature_security_description'),
             },
             {
-              title: "Future-proof",
-              description: "Keep control of your code and content, plug in the tools you love, and scale from “hello world” to high-traffic without switching stacks.",
+              title: t('builder_homepage_feature_future_title'),
+              description: t('builder_homepage_feature_future_description'),
             }
           ]}
         />
@@ -243,27 +243,19 @@ function HomeContent() {
         <FeaturesSection
           features={[
             {
-              title: "Idea to first draft",
-              description: "Describe it and skip the blank canvas—Airo lays out pages, sections, and starter copy in seconds.",
+              title: t('builder_homepage_feature_idea_title'),
+              description: t('builder_homepage_feature_idea_description'),
             },
             {
-              title: "Guided editing",
-              description: "Tune layout, tone, and visuals with friendly controls. Code when you want, not when you have to.",
+              title: t('builder_homepage_feature_editing_title'),
+              description: t('builder_homepage_feature_editing_description'),
             },
             {
-              title: "Publish and done",
-              description: "One-click deploy on GoDaddy with SSL, forms, and analytics baked in. Export your code anytime.",
+              title: t('builder_homepage_feature_publish_title'),
+              description: t('builder_homepage_feature_publish_description'),
             }
           ]}
         />
-
-        { /*
-        <ExpressSection />
-
-        <DiscoverSection />
-
-        <TestimonialsSection />
-        */ }
 
         <HelpSection />
 

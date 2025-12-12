@@ -2,8 +2,10 @@ import Box from '@ux/box'
 import Button from '@ux/button'
 import text from '@ux/text'
 import PageSection from '@/components/layout/PageSection'
+import { useTranslations } from '@/hooks/useTranslations'
 
 export default function HelpSection() {
+  const t = useTranslations();
   return(
     <PageSection>
       <Box
@@ -12,12 +14,12 @@ export default function HelpSection() {
         inlineAlignChildren="start"
         gap="lg"
       >
-        <text.h2 as="heading" size={3}>We love to help. Seriously.</text.h2>
+        <text.h2 as="heading" size={3}>{t('builder_homepage_help_title')}</text.h2>
         <text.p
           className="max-w-screen-sm !font-thin"
           size={1}
         >
-          Still not sure what you need? Give us a call. We&apos;re happy to help, even if you&apos;re not a customer. Call us at 1-480-366-3546 and we&apos;ll chat — or get back to you as soon as we can.
+         {t('builder_homepage_help_text')}
         </text.p>
         <Button
           external

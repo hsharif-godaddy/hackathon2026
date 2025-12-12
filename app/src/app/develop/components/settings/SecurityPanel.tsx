@@ -8,7 +8,6 @@ import { useAppIdFromParams } from '../utils';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import SecurityResults from './components/security/SecurityResults';
 import { type TestPilotRunResult } from "@/lib/testpilot";
-import { logger } from '@/lib/request-context';
 
 /**
  * Security Panel component for running security analysis

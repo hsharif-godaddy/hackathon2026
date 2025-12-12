@@ -1,5 +1,4 @@
 import { logger } from '@/lib/request-context';
-import { extractCustomerId as extractCustomerIdFromJWT } from '@/lib/utils/jwt-utils';
 
 /**
  * Authorization scheme used by Domains API

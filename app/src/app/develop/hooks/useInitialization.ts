@@ -11,7 +11,7 @@ import type { Site } from '@/stores/useSitesStore'
 
 /**
  * Helper to get initialJobId from sessionStorage
- * 
+ *
  * @param appId - The app ID to look up
  * @returns The initial job ID or null if not found
  */
@@ -22,19 +22,19 @@ function getInitialJobIdFromStorage(appId: string | null): string | null {
 
 /**
  * Helper to check if initial prompt is pending
- * 
+ *
  * @param initialJobId - The initial job ID to check
  * @returns True if initial prompt is pending
  */
 function checkHasInitialPrompt(initialJobId: string | null): boolean {
   if (typeof window === 'undefined' || !initialJobId) return false
-  
+
   // Check if initial prompt is pending
   const hasPromptPending = sessionStorage.getItem(`initial-prompt-pending-${initialJobId}`) === 'true'
-  
+
   // Check if we're in an active creation flow (set when jobId is first seen)
   const inCreationFlow = sessionStorage.getItem(`in-creation-flow-${initialJobId}`) === 'true'
-  
+
   return hasPromptPending && inCreationFlow
 }
 
@@ -71,18 +71,18 @@ export interface InitializationContext {
   appId: string | null
   initialJobId: string | null
   isJobId: boolean
-  
+
   // Data state (from stores)
   site: Site | null
   hasConversationHistory: boolean
-  
+
   // Connection state (from WebSocket store)
   isWebSocketConnected: boolean
-  
+
   // Interaction state (from streaming store)
   isStreamingMessage: boolean
   hasSeenFirstFileEdit: boolean
-  
+
   // Initial creation flow
   hasInitialPrompt: boolean
   initialPromptSent: boolean
@@ -97,15 +97,15 @@ export interface InitializationUIState {
   chatLoaderPhase: 'initializing' | 'deploying' | 'verifying-agent'
   chatLoaderError: string | null
   canInteractWithChat: boolean
-  
+
   // Preview pane
   showPreviewLoader: boolean
   previewLoaderMessage: string
-  
+
   // Auto-send
   shouldAutoSendPrompt: boolean
   autoSendPromptText: string | null
-  
+
   // Error handling
   hasError: boolean
   errorMessage: string | null
@@ -120,17 +120,17 @@ export interface InitializationActions {
    * Retry initialization after an error
    */
   retry: () => void
-  
+
   /**
    * Cancel initialization and return to home
    */
   cancel: () => void
-  
+
   /**
    * Mark that the initial prompt has been sent
    */
   markInitialPromptSent: () => void
-  
+
   /**
    * Mark that the first file edit has been seen
    */
@@ -153,16 +153,16 @@ export interface UseInitializationReturn {
   phase: InitializationPhase
   subPhase: InitializationSubPhase | null
   isReady: boolean
-  
+
   // Context (raw state)
   context: InitializationContext
-  
+
   // Computed UI state (derived)
   ui: InitializationUIState
-  
+
   // Actions
   actions: InitializationActions
-  
+
   // Legacy compatibility (deprecated - will be removed in future)
   /** @deprecated Use ui.showChatLoader instead */
   showCreationLoader: boolean
@@ -184,7 +184,7 @@ export interface UseInitializationReturn {
 /**
  * Compute all UI state from the current phase, subPhase, and context
  * This is a pure function with no side effects
- * 
+ *
  * @param phase - Current initialization phase
  * @param subPhase - Current sub-phase (if in ready state)
  * @param context - Current context state
@@ -199,21 +199,21 @@ function computeUIState(
   creationError: string | null,
   isActiveCreationSession: boolean
 ): InitializationUIState {
-  
+
   // Chat loader logic - show during initial creation flow, when waiting for websocket, or on error with jobId
-  const showChatLoader = 
+  const showChatLoader =
     phase === 'checking-creation' ||
     phase === 'creating' ||
     (phase === 'initializing-page' && context.hasInitialPrompt) || // Only show during page init if it's a new app
     (phase === 'loading-history' && context.hasInitialPrompt) || // Only show during history load if it's a new app
     (phase === 'ready' && subPhase === 'waiting-for-websocket' && context.hasInitialPrompt && !context.initialPromptSent) ||
     (phase === 'error' && context.hasInitialPrompt) // Show error/retry screen for failed new app creation
-  
-  const chatLoaderPhase: 'initializing' | 'deploying' | 'verifying-agent' = 
+
+  const chatLoaderPhase: 'initializing' | 'deploying' | 'verifying-agent' =
     phase === 'creating' ? 'deploying' :
     (subPhase === 'waiting-for-websocket' || phase === 'error') ? 'verifying-agent' :
     'initializing'
-  
+
   // Preview loader logic - show from when we're ready to send initial prompt until first file edit
   // This overlay sits on top of PreviewPane's internal "Starting Server" loader
   // Uses isActiveCreationSession (not hasInitialPrompt) because sessionStorage is cleared after prompt is sent
@@ -222,7 +222,7 @@ function computeUIState(
     isActiveCreationSession &&
     !context.hasSeenFirstFileEdit &&
     (subPhase === 'websocket-connected' || subPhase === 'waiting-for-first-edit')
-  
+
   // Auto-send logic - trigger when websocket connects and we have a prompt
   const shouldAutoSendPrompt =
     phase === 'ready' &&
@@ -230,28 +230,28 @@ function computeUIState(
     context.hasInitialPrompt &&
     !context.initialPromptSent &&
     context.isWebSocketConnected
-  
+
   // Interaction logic - can interact when ready and websocket connected
   const canInteractWithChat =
     phase === 'ready' &&
     subPhase !== 'waiting-for-websocket' &&
     context.isWebSocketConnected
-  
+
   // Error logic
   const hasError = phase === 'error' || !!creationError
-  
+
   return {
     showChatLoader,
     chatLoaderPhase,
     chatLoaderError: creationError,
     canInteractWithChat,
-    
+
     showPreviewLoader,
     previewLoaderMessage: 'The AI agent is building your app...',
-    
+
     shouldAutoSendPrompt,
     autoSendPromptText: context.site?.initial_prompt || null,
-    
+
     hasError,
     errorMessage: creationError || 'Initialization failed',
     canRetry: phase === 'error',
@@ -264,7 +264,7 @@ function computeUIState(
 
 /**
  * Enhanced initialization hook that orchestrates the entire develop page lifecycle
- * 
+ *
  * This hook manages:
  * - Site creation flow (job → app conversion)
  * - Page data loading
@@ -272,19 +272,19 @@ function computeUIState(
  * - WebSocket connection tracking
  * - Initial prompt auto-send
  * - All UI state derivation
- * 
+ *
  * @param params - Hook parameters
  * @returns Initialization state, context, UI state, and actions
- * 
+ *
  * @example
  * ```typescript
  * const init = useInitialization({ appId, isJobId })
- * 
+ *
  * // Check if should show loader
  * if (init.ui.showChatLoader) {
  *   return <ChatPaneLoader phase={init.ui.chatLoaderPhase} />
  * }
- * 
+ *
  * // Auto-send prompt when ready
  * if (init.ui.shouldAutoSendPrompt) {
  *   sendMessage(init.ui.autoSendPromptText)
@@ -294,32 +294,32 @@ function computeUIState(
  */
 export function useInitialization({ appId, isJobId }: UseInitializationParams): UseInitializationReturn {
   const router = useRouter()
-  
+
   // -------------------------------------------------------------------------
   // LOCAL STATE (State Machine)
   // -------------------------------------------------------------------------
   const [phase, setPhase] = useState<InitializationPhase>('idle')
   const [subPhase, setSubPhase] = useState<InitializationSubPhase | null>(null)
   const hasInitialized = useRef(false)
-  
+
   // Initialize initialJobId from sessionStorage on mount
   const [initialJobId, setInitialJobId] = useState<string | null>(() => {
     return getInitialJobIdFromStorage(appId)
   })
-  
+
   // Track initial creation flow state
   const [initialPromptSent, setInitialPromptSent] = useState(false)
   const [hasSeenFirstFileEdit, setHasSeenFirstFileEdit] = useState(false)
-  
+
   // Track if we're in an active creation flow for THIS page session
   // This is set to true when we detect hasInitialPrompt on mount, and persists in memory
   // even after sessionStorage is cleared (for showing preview loader until first edit)
   const isActiveCreationSession = useRef(false)
-  
+
   // -------------------------------------------------------------------------
   // STORE SUBSCRIPTIONS (Read-only)
   // -------------------------------------------------------------------------
-  
+
   // Site creation (internal)
   const creationPhase = useSiteCreationStore((state) => state.phase)
   const creationError = useSiteCreationStore((state) => state.error)
@@ -328,23 +328,23 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   const realAppId = useSiteCreationStore((state) => state.realAppId)
   const initializeSite = useSiteCreationStore((state) => state.initializeSite)
   const retryCreation = useSiteCreationStore((state) => state.retry)
-  
+
   // Page data
   const site = useDevelopPageStore((state) => state.site)
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
   const initializePage = useDevelopPageStore((state) => state.initializePage)
-  
+
   // Streaming/WebSocket
   const isWebSocketConnected = useStreamingConversationStore((state) => state.websocket.connected)
   const isStreamingMessage = useStreamingConversationStore((state) => state.isLoading)
   const messages = useStreamingConversationStore((state) => state.messages)
   const activeStream = useStreamingConversationStore((state) => state.activeStream)
   const loadConversationHistory = useLoadConversationHistory()
-  
+
   // -------------------------------------------------------------------------
   // DERIVED STATE (Context)
   // -------------------------------------------------------------------------
-  
+
   const context: InitializationContext = {
     appId,
     initialJobId,
@@ -357,14 +357,14 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     hasInitialPrompt: checkHasInitialPrompt(initialJobId),
     initialPromptSent,
   }
-  
+
   // -------------------------------------------------------------------------
   // COMPUTED UI STATE (Memoized to prevent render loops)
   // -------------------------------------------------------------------------
-  
+
   const ui = useMemo(
     () => computeUIState(phase, subPhase, context, creationError, isActiveCreationSession.current),
-    [
+    [ /* eslint-disable-line react-hooks/exhaustive-deps */
       phase,
       subPhase,
       creationError,
@@ -380,7 +380,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       initialPromptSent,
     ]
   )
-  
+
   // -------------------------------------------------------------------------
   // STATE MACHINE EFFECTS (Existing + New)
   // -------------------------------------------------------------------------
@@ -392,7 +392,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       isActiveCreationSession.current = true
     }
   }, [context.hasInitialPrompt, appId, initialJobId])
-  
+
   // Store initialJobId when first appId is received or when route changes
   // This captures the original job ID for sessionStorage key lookups, persisting across route changes
   useEffect(() => {
@@ -557,7 +557,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // -------------------------------------------------------------------------
   // ACTIONS
   // -------------------------------------------------------------------------
-  
+
   const actions: InitializationActions = {
     retry: () => {
       setPhase('checking-creation')
@@ -592,7 +592,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // -------------------------------------------------------------------------
   // LOGGING (State transitions)
   // -------------------------------------------------------------------------
-  
+
   useEffect(() => {
     logger.debug('initialization.state', {
       phase,
@@ -629,7 +629,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // Debug logging specifically for preview loader state (only when hasInitialPrompt is true)
   useEffect(() => {
     if (!context.hasInitialPrompt) return
-    
+
     logger.debug('initialization.preview-loader.state', {
       showPreviewLoader: ui.showPreviewLoader,
       phase,
@@ -652,7 +652,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   // -------------------------------------------------------------------------
   // RETURN API
   // -------------------------------------------------------------------------
-  
+
   return {
     phase,
     subPhase,
@@ -660,7 +660,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
     context,
     ui,
     actions,
-    
+
     // Legacy compatibility (deprecated)
     showCreationLoader: phase === 'checking-creation' || phase === 'creating',
     creationError,

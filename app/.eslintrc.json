@@ -10,7 +10,7 @@
     "@typescript-eslint/no-var-requires": "warn",
     "@typescript-eslint/ban-types": "warn",
     "@typescript-eslint/no-unnecessary-type-constraint": "warn",
-    "react/display-name": "warn"
+    "react/display-name": "off"
   },
   "ignorePatterns": [
     "node_modules/**",

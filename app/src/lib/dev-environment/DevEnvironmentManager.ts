@@ -154,7 +154,7 @@ export class DevEnvironmentManager {
 
       // 5. Set up template (only runs for new/error apps now)
       // Set up the app using the template copy service
-      await this.setupAppFromTemplate(siteId, appPath, name, templateVersion);
+      await this.setupAppFromTemplate(siteId, appPath, name);
 
       // Generate SSL certificates for HTTPS development
       await this.generateSSLCertificates(siteId, appPath);
@@ -326,7 +326,7 @@ export class DevEnvironmentManager {
   /**
    * Set up app from template using TemplateCopyService
    */
-  private async setupAppFromTemplate(appId: string, appPath: string, appName: string, templateVersion: string): Promise<void> {
+  private async setupAppFromTemplate(appId: string, appPath: string, appName: string): Promise<void> {
     try {
       const result = await this.templateService.copyTemplate({
         appId,

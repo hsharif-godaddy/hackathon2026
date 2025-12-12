@@ -68,7 +68,7 @@ describe('AppItem', () => {
   it('should not highlight non-current site', () => {
     mockUseParams.mockReturnValue({ id: 'other-site' });
 
-    const { container } = renderWithProviders(<AppItem site={mockSite} />);
+    renderWithProviders(<AppItem site={mockSite} />);
 
     const button = screen.getByRole('button');
     expect(button).not.toHaveClass('bg-intents-ux-boxLowContrast-backgroundColor');

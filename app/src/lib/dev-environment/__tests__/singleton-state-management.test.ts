@@ -27,7 +27,7 @@ vi.mock('../adapters/index.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../adapters/index')>();
   return {
     ...actual,
-    createAppAdapter: vi.fn(async (devDb: any) => ({
+    createAppAdapter: vi.fn(async () => ({
       initialized: false,
       async initialize() {
         this.initialized = true;

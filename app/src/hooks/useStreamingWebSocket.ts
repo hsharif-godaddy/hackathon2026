@@ -340,10 +340,9 @@ export function useStreamingWebSocket() {
        *   properly resolved even after token refresh
        *
        * @param token - JWT token to use for authentication
-       * @param isRetry - Whether this is a retry after token refresh
        * @returns The created Socket instance
        */
-      const createSocketWithHandlers = (token: string | null, isRetry = false): Socket => {
+      const createSocketWithHandlers = (token: string | null): Socket => {
         const socketOptions: any = {
           transports: ['websocket', 'polling'],
           timeout: 10000,
@@ -454,7 +453,7 @@ export function useStreamingWebSocket() {
               // so it has access to them via closure. When the new socket connects, its 'connect' handler
               // will call safeResolve(socket), which resolves the ORIGINAL promise from createConnection.
               // This ensures the caller of createConnection() gets the resolved socket even after token refresh.
-              const newSocket = createSocketWithHandlers(newToken, true)
+              const newSocket = createSocketWithHandlers(newToken)
 
               // Store the new socket immediately so it's available even before connection completes
               // This ensures socketRef.current is always pointing to the active socket
@@ -557,9 +556,9 @@ export function useStreamingWebSocket() {
       }
 
       // Create the initial socket
-      createSocketWithHandlers(authToken, false)
+      createSocketWithHandlers(authToken)
     })
-  }, [setWebSocketState])
+  }, [setWebSocketState]) /* eslint-disable-line react-hooks/exhaustive-deps */
 
   /**
    * Handle commit selection and preview refresh after message completion
@@ -610,8 +609,6 @@ export function useStreamingWebSocket() {
   // Set up Socket.IO event handlers for streaming (defined before useEffect to satisfy dependency ordering)
   const setupEventHandlers = useCallback((socket: Socket) => {
     // Track if we've initialized stream for replayed events
-    let hasInitializedReplayStream = false
-
     socket.on('status', (data) => {
       if (data.data?.status === 'thinking') {
         setWebSocketState({ status: 'streaming' })
@@ -688,7 +685,6 @@ export function useStreamingWebSocket() {
             }
 
             setStreamingState('streaming')
-            hasInitializedReplayStream = true
           }
 
           // Reset recovery flag

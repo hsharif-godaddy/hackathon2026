@@ -21,7 +21,7 @@ export default function AppThumbnail({ siteId, siteName, size = 'md' }: AppThumb
     const loadThumbnail = async () => {
       try {
         const apiUrl = await buildDynamicApiUrl('screenshot', siteId)
-        
+
         const response = await agentFetch(apiUrl, {
           method: 'GET',
           siteId
@@ -59,13 +59,13 @@ export default function AppThumbnail({ siteId, siteName, size = 'md' }: AppThumb
     }
   }, [siteId])
 
-  const sizeClasses = 
-    size === 'xs' ? 'w-6 h-6' : 
-    size === 'sm' ? 'w-12 h-12' : 
+  const sizeClasses =
+    size === 'xs' ? 'w-6 h-6' :
+    size === 'sm' ? 'w-12 h-12' :
     size === 'lg' ? 'w-16 h-16' :
     'w-10 h-10'
-  const iconSize = 
-    size === 'xs' ? 'w-3 h-3' : 
+  const iconSize =
+    size === 'xs' ? 'w-3 h-3' :
     size === 'lg' ? 'w-5 h-5' :
     'w-4 h-4'
 
@@ -98,7 +98,7 @@ export default function AppThumbnail({ siteId, siteName, size = 'md' }: AppThumb
       data-testid="app-thumbnail"
       className={`${sizeClasses} shrink-0 rounded-md overflow-hidden bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300`}
     >
-      <img
+      <img /* eslint-disable-line @next/next/no-img-element */
         src={thumbnailUrl}
         alt={`Screenshot of ${siteName}`}
         className="w-full h-full object-cover"

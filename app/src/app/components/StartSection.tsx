@@ -4,8 +4,10 @@ import { motion, useInView } from 'framer-motion'
 import { useRef } from 'react'
 import PageSection from '@/components/layout/PageSection'
 import TextBlock from '@/components/layout/TextBlock'
+import { useTranslations } from '@/hooks/useTranslations'
 
 export default function StartSection() {
+  const t = useTranslations();
   const ref = useRef(null)
   const isInView = useInView(ref, { once: true, amount: 0.5 })
 
@@ -14,10 +16,10 @@ export default function StartSection() {
       <div ref={ref} className="max-w-screen-lg mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4 items-center relative overflow-visible start-section">
         <div className="flex flex-col justify-center">
           <TextBlock
-            preTitle="Get started with a prompt"
-            title="From prompt to publish—end to end"
+            preTitle={t('builder_homepage_start_pretitle')}
+            title={t('builder_homepage_start_title')}
           >
-            Every project has its own goals, constraints, and preferences. Use the Custom Knowledge tab to capture those. Everything you add here is remembered and applied across your project, making edits smarter and more aligned.
+            {t('builder_homepage_start_text')}
           </TextBlock>
         </div>
 

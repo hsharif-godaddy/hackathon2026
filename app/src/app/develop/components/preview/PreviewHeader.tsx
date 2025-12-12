@@ -1,13 +1,10 @@
 import clsx from 'clsx'
-import { useRouter } from 'next/navigation'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation'
 import IconButton from '@/app/develop/components/IconButton'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import CodeIcon from '@ux/icon/code'
-import DatabaseIcon from '@ux/icon/database'
 import DesktopIcon from '@ux/icon/desktop'
 import EditIcon from '@ux/icon/edit'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
@@ -16,12 +13,10 @@ import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
 import SidebarExpandIcon from '@ux/icon/sidebar-expand'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WindowNewIcon from '@ux/icon/window-new'
-import { ViewMode, PreviewViewMode, ChatTab, SettingsSection } from '../types'
+import { ViewMode, PreviewViewMode } from '../types'
 
 export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
-  const router = useRouter()
   const appId = useAppIdFromParams()
-  const { data: showDatabaseSettings } = useSwitchboard('appbuilder-settings-database');
 
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const isCheckingApp = useDevelopPageStore((state) => state.isCheckingApp)
@@ -37,8 +32,6 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
   const toggleSelectMode = useDevelopPageStore((state) => state.toggleSelectMode)
   const toggleChatPaneCollapse = useDevelopPageStore((state) => state.toggleChatPaneCollapse)
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal)
-  const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab)
-  const setActiveSettingsSection = useDevelopPageStore((state) => state.setActiveSettingsSection)
 
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const serverState = getServerState(appId)

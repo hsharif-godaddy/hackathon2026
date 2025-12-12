@@ -243,7 +243,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
      *
      * @param appId - The app ID to check
      */
-    checkAndTriggerIntroTour: (appId: string) => {
+    checkAndTriggerIntroTour: () => {
       // Check global localStorage to see if user has EVER seen the tour (safety check)
       const globalTourKey = 'airo-intro-tour-shown'
       const hasEverSeenTour = typeof window !== 'undefined' && localStorage.getItem(globalTourKey) === 'true'

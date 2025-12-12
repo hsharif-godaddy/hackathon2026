@@ -1,40 +1,42 @@
-import { ArrowRightIcon } from '@heroicons/react/24/outline'
-import { logClickEvent } from '@/utils/instrumentation'
-import { HeroExamplesProps, Example } from './types'
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
+import { ArrowRightIcon } from '@heroicons/react/24/outline'
+import { HeroExamplesProps, Example } from '@/app/components/types'
+import { useTranslations } from '@/hooks/useTranslations'
+import { logClickEvent } from '@/utils/instrumentation'
 
 export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
+  const t = useTranslations();
   const [visibleItems, setVisibleItems] = useState<boolean[]>([])
   const examples: Example[] = [
     {
-      title: "Fitness Studio Website",
-      prompt: "I need a modern website for my local fitness studio. We offer personal training, group classes, and nutrition coaching. I want members to be able to book classes online, view schedules, and access workout plans.",
+      title: t('builder_homepage_examples_fitness_title'),
+      prompt: t('builder_homepage_examples_fitness_prompt'),
       slug: "fitness_studio"
     },
     {
-      title: "Local Food Truck Landing Page",
-      prompt: "I need a landing page for my local food truck. It should have a menu, a location map, and a contact form. Vibrant colors.",
+      title: t('builder_homepage_examples_foodtruck_title'),
+      prompt: t('builder_homepage_examples_foodtruck_prompt'),
       slug: "food_truck"
     },
     {
-      title: "Freelancer Portfolio Site",
-      prompt: "Build a professional portfolio website for my graphic design services. I need a homepage, portfolio gallery, about page, services overview, and contact form. Make it clean and modern to showcase my work.",
+      title: t('builder_homepage_examples_freelancer_title'),
+      prompt: t('builder_homepage_examples_freelancer_prompt'),
       slug: "freelancer_portfolio"
     },
     {
-      title: "Small Business Directory",
-      prompt: "Create a simple directory website for local businesses in my town. Users should be able to browse by category, search businesses, view business profiles with contact info, and submit new business listings.",
+      title: t('builder_homepage_examples_business_title'),
+      prompt: t('builder_homepage_examples_business_prompt'),
       slug: "business_directory"
     },
     {
-      title: "Web Agency Website",
-      prompt: "Website about a web agency specialized in creating beautiful handcrafted websites. Dark theme with vibrant color accent. Keep it low on images, rely on one impactful image and then use icons. Never use emojis.",
+      title: t('builder_homepage_examples_agency_title'),
+      prompt: t('builder_homepage_examples_agency_prompt'),
       slug: "web_agency"
     },
     {
-      title: "Creative Canvas Portfolio",
-      prompt: "Stunning portfolio site for a graphic designer with image galleries, client testimonials, and project case studies.",
+      title: t('builder_homepage_examples_creative_title'),
+      prompt: t('builder_homepage_examples_creative_prompt'),
       slug: "creative_portfolio"
     },
   ]

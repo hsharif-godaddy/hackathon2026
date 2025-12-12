@@ -15,14 +15,12 @@ export const dynamic = 'force-dynamic';
  *
  * @param request - Next.js request object
  * @param authContext - Customer authentication context
- * @param context - Route context with params:
  *   - customerId: Customer ID (from URL path) - must match JWT's 'cid' field
  * @returns Domains response
  */
 export const GET = withCustomerAuth(async (
   request: NextRequest,
-  authContext: CustomerAuthContext,
-  context: { params: { customerId: string } }
+  authContext: CustomerAuthContext
 ): Promise<NextResponse> => {
   try {
     if (!authContext.jwt) {
@@ -45,7 +43,6 @@ export const GET = withCustomerAuth(async (
     const getDomainsBaseUrl = () => {
       // Use host header first (the actual domain), fallback to request.url
       const host = request.headers.get('host') || '';
-      const currentUrl = request.url || '';
 
       // Check for test environment first (most specific)
       if (host.includes('test-godaddy.com')) {

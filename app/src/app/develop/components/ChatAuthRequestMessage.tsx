@@ -28,7 +28,7 @@ interface ChatAuthRequestMessageProps {
 
 /**
  * Inline chat message for OAuth authentication requests
- * 
+ *
  * Displays when an agent action requires OAuth authentication.
  * Shows requested scopes and provides "Authenticate" button that
  * opens OAuth popup flow.
@@ -42,7 +42,7 @@ export default function ChatAuthRequestMessage({
     const currentAppId = useCurrentAppId()
     const { sendMessage } = useStreamingWebSocket()
 
-    const { title, description, scopes, redirectUrl, state, provider } = payload
+    const { title, description, redirectUrl, state, provider } = payload
 
     /**
      * Listen for OAuth completion events via WebSocket
@@ -101,7 +101,7 @@ export default function ChatAuthRequestMessage({
         setError(null)
 
         try {
-            openOAuthPopupAndAwait(redirectUrl, state, currentAppId)
+            openOAuthPopupAndAwait(redirectUrl)
             setStatus('authenticating')
         } catch (err) {
             setStatus('failed')

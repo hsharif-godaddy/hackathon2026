@@ -1,11 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import {
-  CodeBracketIcon,
-  PlusIcon,
-} from '@heroicons/react/24/outline'
 import { ProtectedRoute } from '@/components/auth'
 import Header from '@/components/layout/Header'
 import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
@@ -20,7 +15,6 @@ import AppCard, { AppCardEmptyState } from '@/app/apps/AppCard'
 
 function SitesPageContent() {
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
-  const router = useRouter()
 
   // Use the sites store (automatically loads sites on first use)
   const sites = useSitesStore((state) => state.allSites)
@@ -38,10 +32,6 @@ function SitesPageContent() {
     // Always refresh apps when the page loads to show newly created apps
     refreshSites();
   }, [refreshSites])
-
-  const handleCreateNew = () => {
-    router.push('/')
-  }
 
   const handleAdminStopAll = async () => {
     if (runningCount === 0) return

@@ -6,7 +6,6 @@ import PreviewHeader from './PreviewHeader';
 import { ViewMode, PreviewViewMode } from '../types';
 
 const mockRouter = { push: vi.fn() };
-const mockParams = { id: 'app-123' };
 const mockDevelopStore = {
   viewMode: ViewMode.PREVIEW,
   isCheckingApp: false,
