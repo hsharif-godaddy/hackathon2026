@@ -59,6 +59,7 @@
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.0-beta.87",
     "@ai-sdk/openai": "^3.0.0-beta.88",
+    "@ai-sdk/provider": "^3.0.0-beta.26",
     "@anthropic-ai/tokenizer": "^0.0.4",
     "@aws-sdk/client-bedrock-runtime": "^3.890.0",
     "@aws-sdk/client-sts": "3.679.0",

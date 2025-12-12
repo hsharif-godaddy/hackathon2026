@@ -1,11 +1,12 @@
 import type { ModelMessage } from 'ai'
+import { APICallError } from '@ai-sdk/provider'
 import { Server as SocketIOServer } from 'socket.io'
 import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper } from '../core/agent-factory.js'
 import { createAgentFactory } from '../core/agent-factory.js'
 import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '../utils/model-pricing.js'
 import { classifyError } from '../utils/retry-with-backoff.js'
-import { analyzeError } from '../utils/errors.js'
+import { BudgetExceededError, containsBudgetExceededPattern } from '../utils/errors.js'
 import type { AgentsCollection } from '../core/types.js'
 import type { HandoffStateManager } from '../tools/handoff-helpers.js'
 import { createLogger } from '../utils/logger.js'
@@ -146,6 +147,18 @@ export interface WebSocketMessage {
   type: 'step_start' | 'chunk' | 'tool_start' | 'tool_input_delta' | 'tool_call' | 'tool_result' | 'step_complete' | 'complete' | 'error' | 'agents_available' | 'recovery_status'
   content: string
   data: Record<string, unknown>
+}
+
+/**
+ * Type guard to check if an error is a budget exceeded API error
+ * Encapsulates the budget error detection logic to avoid duplication
+ * Narrows the type to APICallError with statusCode guaranteed to be 400
+ */
+function isBudgetExceededAPIError(error: unknown): error is APICallError & { statusCode: 400; responseBody: string } {
+  return APICallError.isInstance(error) &&
+    error.statusCode === 400 &&
+    !!error.responseBody &&
+    containsBudgetExceededPattern(error.responseBody)
 }
 
 /**
@@ -782,20 +795,31 @@ export class WebSocketServer {
 
           switch (part.type) {
             case 'error': {
-              // AI SDK surfaced an error part - analyze in single traversal
+              // AI SDK surfaced an error part - check if it's a budget error
               const error = part.error
-              const analysis = analyzeError(error);
 
+              // Check if it's AI SDK's native APICallError with budget pattern
+              if (isBudgetExceededAPIError(error)) {
+                this.logger.error('Budget exceeded error detected', {
+                  message: error.message,
+                  statusCode: error.statusCode
+                })
+
+                // Convert to BudgetExceededError for UI
+                throw new BudgetExceededError(
+                  'Your AI usage budget has been reached.',
+                  error.statusCode,
+                  error.responseBody
+                )
+              }
+
+              // Log and re-throw other errors unchanged
               this.logger.error('Stream error part received', {
-                originalMessage: error?.message || String(error),
-                extractedMessage: analysis.message,
-                statusCode: analysis.statusCode,
-                isBudgetError: !!analysis.budgetError,
-                errorType: analysis.errorType
+                message: error instanceof Error ? error.message : String(error),
+                statusCode: APICallError.isInstance(error) ? error.statusCode : undefined
               })
 
-              // Throw budget error directly if found, otherwise re-throw original
-              throw analysis.budgetError || (error instanceof Error ? error : new Error(String(error)))
+              throw error instanceof Error ? error : new Error(String(error))
             }
 
             case 'text-delta': {
@@ -973,12 +997,26 @@ export class WebSocketServer {
       // Non-retryable errors (budget exceeded, auth, etc.) should propagate immediately
       const classification = classifyError(error);
       if (!classification.retryable) {
-        const analysis = analyzeError(error);
+        // Check if it's a budget error from APICallError
+        if (isBudgetExceededAPIError(error)) {
+          this.logger.error('Non-retryable budget error - propagating', {
+            category: classification.category,
+            message: error.message,
+            statusCode: error.statusCode
+          });
+
+          throw new BudgetExceededError(
+            'Your AI usage budget has been reached.',
+            error.statusCode,
+            error.responseBody
+          );
+        }
+
         this.logger.error('Non-retryable error in stream processing - propagating', {
           category: classification.category,
-          message: analysis.message
+          message: error instanceof Error ? error.message : String(error)
         });
-        throw analysis.budgetError || error;
+        throw error;
       }
 
       // Enhanced error logging with structured information
@@ -1277,26 +1315,42 @@ export class WebSocketServer {
       // 8. Complete the conversation (after all handoffs complete)
       await this.completeConversation(socketId, socket, agentName, startTime, processedContext)
 
-    } catch (error) {
-      // Analyze error in single traversal
-      const analysis = analyzeError(error);
+    } catch (error: unknown) {
+      // Extract error details for UI
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      let errorType: string | undefined;
+      let statusCode: number | undefined;
+
+      // Check if it's a BudgetExceededError (already converted in stream handler)
+      const isBudgetError = BudgetExceededError.isInstance(error);
+      if (isBudgetError) {
+        errorMessage = error.message;
+        errorType = error.errorType;
+        statusCode = error.statusCode;
+      }
+      // Check if it's AI SDK's APICallError (but not a budget error)
+      const isNonBudgetApiCallError = !isBudgetError && APICallError.isInstance(error);
+      if (isNonBudgetApiCallError) {
+        errorMessage = error.message;
+        statusCode = error.statusCode;
+      }
 
       this.logger.warn(`agent error detected`, {
-        message: analysis.message,
-        errorType: analysis.errorType,
-        statusCode: analysis.statusCode,
+        message: errorMessage,
+        errorType,
+        statusCode,
         socketId,
         agentName
       });
 
       this.emitToSocket(socket, 'message', {
         type: 'error',
-        content: analysis.message,
+        content: errorMessage,
         data: {
           timestamp: new Date().toISOString(),
           agentId: agentName || this.config.defaultAgent,
-          ...(analysis.errorType && { errorType: analysis.errorType }),
-          ...(analysis.statusCode && { statusCode: analysis.statusCode })
+          ...(errorType && { errorType }),
+          ...(statusCode && { statusCode })
         }
       } as WebSocketMessage)
 
@@ -1777,18 +1831,19 @@ export class WebSocketServer {
       })
     } catch (error: any) {
       // Handle API call errors (like tool input validation failures)
+      const isAPIError = APICallError.isInstance(error)
+
       this.logger.debug('Caught error in streamGenerate', {
         name: error?.name,
         message: error?.message,
-        statusCode: error?.statusCode,
-        responseBody: error?.responseBody?.slice?.(0, 200),
-        isAPIError: error?.name === 'AI_APICallError',
+        statusCode: isAPIError ? error.statusCode : error?.statusCode,
+        responseBody: isAPIError ? error.responseBody?.slice(0, 200) : error?.responseBody?.slice?.(0, 200),
+        isAPIError,
         hasToolUseInvalid: error?.message?.includes('toolUse.input is invalid'),
         hasJSONParsingFailed: error?.message?.includes('JSON parsing failed')
       })
 
       const isToolValidationError =
-        error?.name === 'AI_APICallError' ||
         error?.message?.includes('toolUse.input is invalid') ||
         error?.message?.includes('JSON parsing failed')
 

@@ -6,6 +6,7 @@
  */
 
 import { BudgetExceededError } from './errors.js'
+import { APICallError } from '@ai-sdk/provider'
 
 /**
  * Configuration for retry behavior
@@ -65,7 +66,37 @@ function classify(error: unknown): RetryDecision {
     }
   }
 
-  // Use type guards to safely extract properties from error
+  // Check for AI SDK's APICallError for direct access to structured error data
+  if (APICallError.isInstance(error)) {
+    const message = error.message
+    const statusCode = error.statusCode
+    const messageLower = message.toLowerCase()
+
+    // Rate limiting
+    if (statusCode === 429 || messageLower.includes('rate limit') || messageLower.includes('too many requests')) {
+      return { retryable: true, category: 'rate_limit', statusCode, message }
+    }
+
+    // Transient server errors and 408 Request Timeout
+    if (statusCode === 408 || (statusCode && statusCode >= 500)) {
+      return { retryable: true, category: 'transient', statusCode, message }
+    }
+
+    // Client errors (non-retryable) - except 408 which is handled above
+    if (statusCode && statusCode >= 400 && statusCode < 500) {
+      return { retryable: false, statusCode, message }
+    }
+
+    // If no statusCode, honor the SDK's isRetryable flag (e.g., network errors)
+    // Otherwise treat as non-retryable
+    return {
+      retryable: statusCode === undefined ? error.isRetryable : false,
+      statusCode,
+      message
+    }
+  }
+
+  // Fall back to manual extraction for non-SDK errors
   const message: string =
     isObject(error) && typeof error.message === 'string'
       ? error.message
@@ -267,7 +298,7 @@ export function isBudgetExceededError(error: unknown): error is BudgetExceededEr
  * @returns The BudgetExceededError if found, undefined otherwise
  */
 export function findBudgetExceededError(error: unknown): BudgetExceededError | undefined {
-  return BudgetExceededError.findInChain(error)
+  return BudgetExceededError.isInstance(error) ? error : undefined
 }
 
 /**

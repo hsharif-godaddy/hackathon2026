@@ -5,7 +5,6 @@
  * automatic environment variable validation, and proxy support.
  */
 
-import { BudgetExceededError, APIResponseError, containsBudgetExceededPattern } from '../utils/errors.js'
 import { createLogger } from '../utils/logger.js'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
@@ -339,13 +338,6 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { stripB
     // Make request with Headers instance and modified body
     const response = await fetch(url, modifiedInit)
 
-    // Check for budget exceeded (400 with "ExceededBudget" in body)
-    // Intercept here because AI SDK wraps errors and loses original details
-    if (response.status === 400) {
-      const err = await createResponseError(response.clone())
-      if (err instanceof BudgetExceededError) throw err
-    }
-
     // Attempt token refresh on authentication failure
     if (response.status === 401 || response.status === 403) {
       // Consume the failed response to prevent issues
@@ -358,38 +350,13 @@ function createS2SFetchWrapper(s2sAuthConfig?: S2SAuthConfig, options?: { stripB
       // Refresh token and retry
       const newToken = await refreshS2SToken(s2sAuthConfig)
       headers.set('Authorization', `Bearer ${newToken}`)
-      const retryResponse = await fetch(url, modifiedInit)
-
-      if (!retryResponse.ok) {
-        throw await createResponseError(retryResponse)
-      }
-
-      return retryResponse
+      return await fetch(url, modifiedInit)
     }
 
     return response
   }
 }
 
-/**
- * Create appropriate error from a failed response
- * Reads body once, checks for budget error first, falls back to APIResponseError
- * Note: Consumes the response body - pass a cloned response if original is still needed
- */
-async function createResponseError(response: Response): Promise<BudgetExceededError | APIResponseError> {
-  let bodyText = ''
-  try {
-    bodyText = await response.text()
-  } catch (e) {
-    logger.warn('Failed to read response body', { error: e instanceof Error ? e.message : String(e), status: response.status })
-  }
-
-  if (response.status === 400 && containsBudgetExceededPattern(bodyText)) {
-    return new BudgetExceededError('Your AI usage budget has been reached.', 400, bodyText)
-  }
-
-  return APIResponseError.fromBodyText(response.status, bodyText)
-}
 
 /**
  * Create a fetch wrapper that strips beta headers for GoCode proxy compatibility

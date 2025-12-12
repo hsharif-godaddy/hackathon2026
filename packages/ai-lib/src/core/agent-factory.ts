@@ -5,6 +5,7 @@
  */
 
 import { ToolLoopAgent, stepCountIs, hasToolCall, tool, convertToModelMessages } from 'ai'
+import { APICallError } from '@ai-sdk/provider'
 import type {
   PrepareStepFunction,
   ToolLoopAgentOnFinishCallback,
@@ -743,8 +744,15 @@ export class AgentWrapper {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
       // Handle API call errors (like tool input validation failures)
-      if (error?.name === 'AI_APICallError' || error?.message?.includes('toolUse.input is invalid')) {
-        logger.error('Tool input validation error in AgentWrapper.streamGenerate', { message: error.message })
+      const isToolValidationError =
+        (APICallError.isInstance(error) && error.message?.includes('toolUse.input is invalid')) ||
+        error?.message?.includes('toolUse.input is invalid')
+
+      if (isToolValidationError) {
+        logger.error('Tool input validation error in AgentWrapper.streamGenerate', {
+          message: error.message,
+          statusCode: APICallError.isInstance(error) ? error.statusCode : undefined
+        })
 
         // Create an error message for the LLM
         const errorMessage = `Tool call failed due to invalid input format: ${error.message}. Please ensure all tool arguments are properly formatted as valid JSON objects. Check that:
