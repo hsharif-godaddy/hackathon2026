@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   claude-review:
-    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@v1.0.0
+    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@v1.0.1
     with:
       cicd_role_arn: ${{ vars.CICD_ROLE_ARN }}
       runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
