@@ -93,6 +93,34 @@ describe('useTableMutations', () => {
       expect(result.current.error?.message).toBe('Invalid data');
     });
 
+    it('should handle HTML error responses gracefully', async () => {
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        headers: {
+          get: (name: string) => name === 'content-type' ? 'text/html' : null,
+        },
+        json: async () => {
+          throw new SyntaxError("Unexpected token '<'");
+        },
+      } as Response);
+
+      const { result } = renderHook(
+        () => useAddRow({ appId: 'test-app', tableName: 'users' }),
+        { wrapper: createWrapper() }
+      );
+
+      result.current.mutate({ name: 'Test' });
+
+      await waitFor(() => {
+        expect(result.current.isError).toBe(true);
+      });
+
+      expect(result.current.error?.message).toContain('500 Internal Server Error');
+      expect(result.current.error?.message).toContain('text/html');
+    });
+
   });
 
   describe('useUpdateRow', () => {
@@ -184,6 +212,39 @@ describe('useTableMutations', () => {
       expect(result.current.error?.message).toBe('Row not found');
     });
 
+    it('should handle HTML error responses gracefully', async () => {
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+        headers: {
+          get: (name: string) => name === 'content-type' ? 'text/html; charset=utf-8' : null,
+        },
+        json: async () => {
+          throw new SyntaxError("Unexpected token '<'");
+        },
+      } as Response);
+
+      const { result } = renderHook(
+        () =>
+          useUpdateRow({
+            appId: 'test-app',
+            tableName: 'users',
+            primaryKey: { id: 1 },
+          }),
+        { wrapper: createWrapper() }
+      );
+
+      result.current.mutate({ name: 'Test' });
+
+      await waitFor(() => {
+        expect(result.current.isError).toBe(true);
+      });
+
+      expect(result.current.error?.message).toContain('502 Bad Gateway');
+      expect(result.current.error?.message).toContain('text/html');
+    });
+
   });
 
   describe('useDeleteRow', () => {
@@ -259,6 +320,34 @@ describe('useTableMutations', () => {
           body: JSON.stringify({ primaryKey: { userId: 1, roleId: 2 } }),
         })
       );
+    });
+
+    it('should handle HTML error responses gracefully', async () => {
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: {
+          get: (name: string) => name === 'content-type' ? 'text/html' : null,
+        },
+        json: async () => {
+          throw new SyntaxError("Unexpected token '<'");
+        },
+      } as Response);
+
+      const { result } = renderHook(
+        () => useDeleteRow({ appId: 'test-app', tableName: 'users' }),
+        { wrapper: createWrapper() }
+      );
+
+      result.current.mutate({ id: 1 });
+
+      await waitFor(() => {
+        expect(result.current.isError).toBe(true);
+      });
+
+      expect(result.current.error?.message).toContain('503 Service Unavailable');
+      expect(result.current.error?.message).toContain('text/html');
     });
   });
 });

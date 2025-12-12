@@ -43,6 +43,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [deleteRow, setDeleteRow] = useState<Record<string, any> | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<Error | string | null>(null);
 
   const { data: tableData, isLoading, error, refetch, isRefetching } = useTableData({
     appId,
@@ -68,6 +69,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
 
   const handleDeleteRow = useCallback((row: Record<string, any>) => {
     setDeleteRow(row);
+    setDeleteError(null);
     setIsDeleteDialogOpen(true);
   }, []);
 
@@ -75,6 +77,8 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
     if (!deleteRow) return;
 
     try {
+      setDeleteError(null);
+
       // Extract primary key columns
       const primaryKey: Record<string, any> = {};
       schema.forEach(col => {
@@ -98,7 +102,7 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
         setCurrentPage(pagination.page - 1);
       }
     } catch (err) {
-      alert(`Error deleting row: ${err instanceof Error ? err.message : String(err)}`);
+      setDeleteError(err instanceof Error ? err : String(err));
     }
   }, [deleteRow, schema, deleteRowMutation, data.length, pagination.page]);
 
@@ -347,9 +351,11 @@ export function TableDataBrowser({ appId, tableName, onBack }: TableDataBrowserP
         onClose={() => {
           setIsDeleteDialogOpen(false);
           setDeleteRow(null);
+          setDeleteError(null);
         }}
         onConfirm={confirmDeleteRow}
         isDeleting={deleteRowMutation.isPending}
+        error={deleteError}
       />
     </Box>
   );

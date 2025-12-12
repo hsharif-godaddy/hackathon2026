@@ -42,7 +42,19 @@ export function useAddRow({ appId, tableName, onSuccess }: AddRowOptions) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch((parseError) => {
+          logger.error('Add row response parse error:', {
+            status: response.status,
+            statusText: response.statusText,
+            contentType: response.headers.get('content-type'),
+            parseError: parseError.message,
+            appId,
+            tableName,
+          });
+          return {
+            error: `Server returned ${response.status} ${response.statusText} (expected JSON, got ${response.headers.get('content-type') || 'unknown'})`
+          };
+        });
         const errorMessage = errorData.error || 'Failed to insert row';
 
         logger.error('Add row error:', {
@@ -91,7 +103,20 @@ export function useUpdateRow({ appId, tableName, primaryKey, onSuccess }: Update
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch((parseError) => {
+          logger.error('Update row response parse error:', {
+            status: response.status,
+            statusText: response.statusText,
+            contentType: response.headers.get('content-type'),
+            parseError: parseError.message,
+            appId,
+            tableName,
+            primaryKey,
+          });
+          return {
+            error: `Server returned ${response.status} ${response.statusText} (expected JSON, got ${response.headers.get('content-type') || 'unknown'})`
+          };
+        });
         const errorMessage = errorData.error || 'Failed to update row';
 
         logger.error('Update row error:', {
@@ -148,7 +173,20 @@ export function useDeleteRow({ appId, tableName }: DeleteRowOptions) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch((parseError) => {
+          logger.error('Delete row response parse error:', {
+            status: response.status,
+            statusText: response.statusText,
+            contentType: response.headers.get('content-type'),
+            parseError: parseError.message,
+            appId,
+            tableName,
+            primaryKey,
+          });
+          return {
+            error: `Server returned ${response.status} ${response.statusText} (expected JSON, got ${response.headers.get('content-type') || 'unknown'})`
+          };
+        });
         const errorMessage = errorData.error || 'Failed to delete row';
 
         logger.error('Delete row error:', {

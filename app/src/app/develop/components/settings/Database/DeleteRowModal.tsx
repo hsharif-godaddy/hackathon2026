@@ -10,6 +10,7 @@ interface DeleteRowModalProps {
   onClose: () => void;
   onConfirm: () => void;
   isDeleting: boolean;
+  error?: Error | string | null;
 }
 
 /**
@@ -18,7 +19,7 @@ interface DeleteRowModalProps {
  * Displays a confirmation dialog when user attempts to delete a database row,
  * with options to cancel or proceed with the deletion.
  */
-export function DeleteRowModal({ isOpen, onClose, onConfirm, isDeleting }: DeleteRowModalProps) {
+export function DeleteRowModal({ isOpen, onClose, onConfirm, isDeleting, error }: DeleteRowModalProps) {
   if (!isOpen) return null;
 
   return (
@@ -44,6 +45,12 @@ export function DeleteRowModal({ isOpen, onClose, onConfirm, isDeleting }: Delet
       }
     >
       <text.p>Are you sure you want to delete this row? This action cannot be undone.</text.p>
+
+      {error && (
+        <div className="bg-destructive/10 text-destructive rounded-lg p-1.5 mt-2 text-sm">
+          {error instanceof Error ? error.message : String(error)}
+        </div>
+      )}
     </Modal>
   );
 }

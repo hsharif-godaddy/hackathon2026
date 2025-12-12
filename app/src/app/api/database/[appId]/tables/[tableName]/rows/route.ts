@@ -68,8 +68,25 @@ export const POST = withCustomerAuth(async (
 		});
 
 		if (!response.ok) {
-			logger.error(`Agent database/tables/rows POST failed: ${response.status} ${response.statusText}`);
-			const errorData = await response.json().catch(() => ({}));
+			const errorData = await response.json().catch((parseError) => {
+				logger.error('Agent database/tables/rows POST response parse error', {
+					status: response.status,
+					statusText: response.statusText,
+					contentType: response.headers.get('content-type'),
+					parseError: parseError instanceof Error ? parseError.message : String(parseError),
+					appId,
+					tableName,
+					agentUrl: `${site.agent_url}/apps/${appId}/database/tables/${encodeURIComponent(tableName)}/rows`,
+				});
+				return { error: `Agent returned ${response.status} with non-JSON response` };
+			});
+
+			logger.error(`Agent database/tables/rows POST failed: ${response.status} ${response.statusText}`, {
+				appId,
+				tableName,
+				error: errorData.message || errorData.error,
+			});
+
 			return NextResponse.json(
 				{
 					error: errorData.message || errorData.error || 'Failed to insert row',
@@ -79,7 +96,26 @@ export const POST = withCustomerAuth(async (
 			);
 		}
 
-		const responseData = await response.json();
+		const responseData = await response.json().catch((parseError) => {
+			logger.error('Agent database/tables/rows POST success response parse error', {
+				status: response.status,
+				parseError: parseError instanceof Error ? parseError.message : String(parseError),
+				appId,
+				tableName,
+			});
+			return null;
+		});
+
+		if (responseData === null) {
+			return NextResponse.json(
+				{
+					error: 'Agent service returned a malformed response that could not be parsed as JSON',
+					status: 502
+				},
+				{ status: 502 }
+			);
+		}
+
 		return NextResponse.json(responseData);
 
 	} catch (error) {
@@ -156,8 +192,25 @@ export const PUT = withCustomerAuth(async (
 		});
 
 		if (!response.ok) {
-			logger.error(`Agent database/tables/rows PUT failed: ${response.status} ${response.statusText}`);
-			const errorData = await response.json().catch(() => ({}));
+			const errorData = await response.json().catch((parseError) => {
+				logger.error('Agent database/tables/rows PUT response parse error', {
+					status: response.status,
+					statusText: response.statusText,
+					contentType: response.headers.get('content-type'),
+					parseError: parseError instanceof Error ? parseError.message : String(parseError),
+					appId,
+					tableName,
+					agentUrl: `${site.agent_url}/apps/${appId}/database/tables/${encodeURIComponent(tableName)}/rows`,
+				});
+				return { error: `Agent returned ${response.status} with non-JSON response` };
+			});
+
+			logger.error(`Agent database/tables/rows PUT failed: ${response.status} ${response.statusText}`, {
+				appId,
+				tableName,
+				error: errorData.message || errorData.error,
+			});
+
 			return NextResponse.json(
 				{
 					error: errorData.message || errorData.error || 'Failed to update row',
@@ -167,7 +220,26 @@ export const PUT = withCustomerAuth(async (
 			);
 		}
 
-		const responseData = await response.json();
+		const responseData = await response.json().catch((parseError) => {
+			logger.error('Agent database/tables/rows PUT success response parse error', {
+				status: response.status,
+				parseError: parseError instanceof Error ? parseError.message : String(parseError),
+				appId,
+				tableName,
+			});
+			return null;
+		});
+
+		if (responseData === null) {
+			return NextResponse.json(
+				{
+					error: 'Agent service returned a malformed response that could not be parsed as JSON',
+					status: 502
+				},
+				{ status: 502 }
+			);
+		}
+
 		return NextResponse.json(responseData);
 
 	} catch (error) {
@@ -240,8 +312,25 @@ export const DELETE = withCustomerAuth(async (
 		});
 
 		if (!response.ok) {
-			logger.error(`Agent database/tables/rows DELETE failed: ${response.status} ${response.statusText}`);
-			const errorData = await response.json().catch(() => ({}));
+			const errorData = await response.json().catch((parseError) => {
+				logger.error('Agent database/tables/rows DELETE response parse error', {
+					status: response.status,
+					statusText: response.statusText,
+					contentType: response.headers.get('content-type'),
+					parseError: parseError instanceof Error ? parseError.message : String(parseError),
+					appId,
+					tableName,
+					agentUrl: `${site.agent_url}/apps/${appId}/database/tables/${encodeURIComponent(tableName)}/rows`,
+				});
+				return { error: `Agent returned ${response.status} with non-JSON response` };
+			});
+
+			logger.error(`Agent database/tables/rows DELETE failed: ${response.status} ${response.statusText}`, {
+				appId,
+				tableName,
+				error: errorData.message || errorData.error,
+			});
+
 			return NextResponse.json(
 				{
 					error: errorData.message || errorData.error || 'Failed to delete row',
@@ -251,7 +340,26 @@ export const DELETE = withCustomerAuth(async (
 			);
 		}
 
-		const responseData = await response.json();
+		const responseData = await response.json().catch((parseError) => {
+			logger.error('Agent database/tables/rows DELETE success response parse error', {
+				status: response.status,
+				parseError: parseError instanceof Error ? parseError.message : String(parseError),
+				appId,
+				tableName,
+			});
+			return null;
+		});
+
+		if (responseData === null) {
+			return NextResponse.json(
+				{
+					error: 'Agent service returned a malformed response that could not be parsed as JSON',
+					status: 502
+				},
+				{ status: 502 }
+			);
+		}
+
 		return NextResponse.json(responseData);
 
 	} catch (error) {
