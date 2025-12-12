@@ -250,16 +250,24 @@ export function getRetryMetadata(error: unknown): RetryFailureMeta | null {
  * Check if an error is a budget exceeded error
  * Budget errors are non-retryable and should be surfaced to the user
  *
- * @param error - The error to check
+ * Traverses the .cause chain since AI SDK 6.x wraps fetch errors.
+ *
+ * @param error - The error to check (including its .cause chain)
  * @returns true if this is a BudgetExceededError
  */
 export function isBudgetExceededError(error: unknown): error is BudgetExceededError {
-  // Fast path: direct instance check
-  if (BudgetExceededError.isInstance(error)) {
-    return true
-  }
-  // Fallback: use classify for wrapped errors
-  return classify(error).category === 'budget_exceeded'
+  return BudgetExceededError.isInstance(error)
+}
+
+/**
+ * Find the BudgetExceededError in an error or its .cause chain
+ * Returns the actual BudgetExceededError instance for accessing its properties
+ *
+ * @param error - The error to search (including its .cause chain)
+ * @returns The BudgetExceededError if found, undefined otherwise
+ */
+export function findBudgetExceededError(error: unknown): BudgetExceededError | undefined {
+  return BudgetExceededError.findInChain(error)
 }
 
 /**

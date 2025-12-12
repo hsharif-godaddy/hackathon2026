@@ -5,6 +5,7 @@ import type { AgentFactory, AgentWrapper } from '../core/agent-factory.js'
 import { createAgentFactory } from '../core/agent-factory.js'
 import { calculateCostEstimate, formatCostEstimate, getCacheHitRate, type TokenUsage } from '../utils/model-pricing.js'
 import { classifyError } from '../utils/retry-with-backoff.js'
+import { analyzeError } from '../utils/errors.js'
 import type { AgentsCollection } from '../core/types.js'
 import type { HandoffStateManager } from '../tools/handoff-helpers.js'
 import { createLogger } from '../utils/logger.js'
@@ -781,19 +782,20 @@ export class WebSocketServer {
 
           switch (part.type) {
             case 'error': {
-              // AI SDK surfaced an error part - re-throw to trigger our error handling
-              // For budget errors, the error should already have isBudgetExceeded flag if set in unified-provider.ts
+              // AI SDK surfaced an error part - analyze in single traversal
               const error = part.error
+              const analysis = analyzeError(error);
 
               this.logger.error('Stream error part received', {
-                error: error?.message || String(error),
-                statusCode: error?.statusCode,
-                isBudgetExceeded: error?.isBudgetExceeded,
-                responseBody: typeof error?.responseBody === 'string' ? error.responseBody.slice(0, 200) : undefined
+                originalMessage: error?.message || String(error),
+                extractedMessage: analysis.message,
+                statusCode: analysis.statusCode,
+                isBudgetError: !!analysis.budgetError,
+                errorType: analysis.errorType
               })
 
-              // Re-throw the error as-is - isBudgetExceededError() will detect budget errors
-              throw error instanceof Error ? error : new Error(String(error))
+              // Throw budget error directly if found, otherwise re-throw original
+              throw analysis.budgetError || (error instanceof Error ? error : new Error(String(error)))
             }
 
             case 'text-delta': {
@@ -968,6 +970,17 @@ export class WebSocketServer {
         }
       }
     } catch (error: unknown) {
+      // Non-retryable errors (budget exceeded, auth, etc.) should propagate immediately
+      const classification = classifyError(error);
+      if (!classification.retryable) {
+        const analysis = analyzeError(error);
+        this.logger.error('Non-retryable error in stream processing - propagating', {
+          category: classification.category,
+          message: analysis.message
+        });
+        throw analysis.budgetError || error;
+      }
+
       // Enhanced error logging with structured information
       const errorInfo = this.analyzeStreamError(error);
 
@@ -1265,22 +1278,25 @@ export class WebSocketServer {
       await this.completeConversation(socketId, socket, agentName, startTime, processedContext)
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const errorType = (error as any)?.errorType
+      // Analyze error in single traversal
+      const analysis = analyzeError(error);
+
       this.logger.warn(`agent error detected`, {
-        originalMessage: errorMessage,
-        errorType,
+        message: analysis.message,
+        errorType: analysis.errorType,
+        statusCode: analysis.statusCode,
         socketId,
         agentName
       });
 
       this.emitToSocket(socket, 'message', {
         type: 'error',
-        content: errorMessage,
+        content: analysis.message,
         data: {
           timestamp: new Date().toISOString(),
           agentId: agentName || this.config.defaultAgent,
-          ...(errorType && { errorType })
+          ...(analysis.errorType && { errorType: analysis.errorType }),
+          ...(analysis.statusCode && { statusCode: analysis.statusCode })
         }
       } as WebSocketMessage)
 
