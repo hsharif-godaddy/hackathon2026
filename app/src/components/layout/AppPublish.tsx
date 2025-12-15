@@ -389,9 +389,11 @@ export default function AppPublish({ location }: { location?: string }) {
             }
           </Button>
 
-          <text.p emphasis='passive' size={0}>
-            {t('builder_publish_beta_message')}
-          </text.p>
+          {!isAiroPlusPaywallEnabled && (
+            <text.p emphasis='passive' size={0}>
+              {t('builder_publish_beta_message')}
+            </text.p>
+          )}
         </div>
       </PopoverContent>
     </Popover>
