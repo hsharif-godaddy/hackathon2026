@@ -187,7 +187,8 @@ export function initializeSchema(db: Database): void {
   createTokenUsageTable(db);
   createFileContextTable(db);
   createMemoryTable(db);
-  
+  createImportJobsTable(db);
+
   // Apply migrations BEFORE creating indexes (migrations may alter schema)
   // Note: oauth_tokens table creation moved to migrations (added in PR #646)
   applyMigrations(db);
@@ -362,6 +363,45 @@ function createMemoryTable(db: Database): void {
 }
 
 /**
+ * Create the import_jobs table for tracking zip import progress
+ *
+ * This table tracks the status of zip file imports, including validation errors,
+ * build output, and progress through the import pipeline.
+ *
+ * FUTURE OPTIMIZATION: Create dedicated createEmptyAppContainer() method to skip
+ * template installation, eliminating double npm install. Track in technical debt.
+ */
+function createImportJobsTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS import_jobs (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
+        'pending', 'creating_container', 'extracting', 'validating',
+        'copying', 'installing', 'building', 'committing', 'restarting',
+        'completed', 'failed'
+      )),
+      zip_file_name TEXT NOT NULL,
+      zip_file_size INTEGER NOT NULL,
+      extracted_path TEXT,
+      detected_package_manager TEXT CHECK(detected_package_manager IN ('npm', 'yarn', 'pnpm')),
+      has_build_script BOOLEAN,
+      has_dev_script BOOLEAN,
+      validation_errors TEXT,
+      install_output TEXT,
+      build_output TEXT,
+      error_message TEXT,
+      error_stage TEXT,
+      started_at DATETIME,
+      completed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
  * Create all database indexes for efficient queries
  */
 function createIndexes(db: Database): void {
@@ -440,6 +480,18 @@ function createIndexes(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_oauth_tokens_expiry ON oauth_tokens(expires_at)
   `);
 
+  // Import jobs table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_import_jobs_app_id ON import_jobs(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_import_jobs_status ON import_jobs(status)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_import_jobs_created_at ON import_jobs(created_at)
+  `);
 }
 
 /**
@@ -510,6 +562,16 @@ function createTriggers(db: Database): void {
     FOR EACH ROW
     BEGIN
       UPDATE memory SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END
+  `);
+
+  // Trigger to automatically update updated_at on import_jobs
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS update_import_jobs_updated_at 
+    AFTER UPDATE ON import_jobs
+    FOR EACH ROW
+    BEGIN
+      UPDATE import_jobs SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END
   `);
 }

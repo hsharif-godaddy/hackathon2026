@@ -1,0 +1,889 @@
+/**
+ * ProjectImportService
+ *
+ * Orchestrates the complete zip import flow with container-side processing.
+ *
+ * @see docs/zip-import-plan.md for architecture and design decisions
+ */
+
+import { rm, cp } from 'node:fs/promises';
+import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { Logger } from '../logging/index.js';
+import { ImportJobRepository, UpdateImportJobParams } from '../database/repositories/ImportJobRepository.js';
+import { AppRepository } from '../database/repositories/AppRepository.js';
+import { zipSecurityService } from './ZipSecurityService.js';
+import { TerminalTool } from '../tools/terminal.js';
+import { GitTool } from '../tools/git-tool.js';
+import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { DevSupervisorClient } from './DevSupervisorClient.js';
+import { ImportJobStatus, ValidationErrorKey, type ImportJob, type ValidationError } from '../types/import.js';
+
+const IMPORT_TIMEOUTS = {
+  INSTALL: 5 * 60 * 1000, // 5 minutes
+  BUILD: 10 * 60 * 1000, // 10 minutes
+  TOTAL: 30 * 60 * 1000, // 30 minutes
+} as const;
+
+/**
+ * Parameters for starting an import
+ */
+export interface StartImportParams {
+  appId: string;
+  appName: string;
+  zipPath: string;
+  zipFileName: string;
+  zipFileSize: number;
+}
+
+/**
+ * Result of project validation
+ */
+interface PackageJsonInfo {
+  name?: string;
+  version?: string;
+  scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
+export class ProjectImportService {
+  private logger = Logger.create({ service: 'project-import' });
+  private importJobRepo = new ImportJobRepository();
+  private appRepo = new AppRepository();
+
+  /**
+   * Start the import process for a zip file
+   * This creates the import job and begins background processing
+   *
+   * @param params - Import parameters
+   * @returns Created import job
+   */
+  async startImport(params: StartImportParams): Promise<ImportJob> {
+    const { appId, zipPath, zipFileName, zipFileSize } = params;
+
+    this.logger.info('project-import.start', {
+      appId,
+      zipFileName,
+      zipFileSize,
+    });
+
+    // Create import job
+    const job = await this.importJobRepo.create({
+      appId,
+      zipFileName,
+      zipFileSize,
+    });
+
+    // Start background processing (don't await)
+    this.processImport(job.id, appId, zipPath).catch(error => {
+      this.logger.error('project-import.background.failed', {
+        jobId: job.id,
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+
+    return job;
+  }
+
+  /**
+   * Process the import in the background
+   *
+   * This method implements container-side processing:
+   * 1. Validate zip on agent (security)
+   * 2. Copy zip to container via shared filesystem
+   * 3. Extract and process inside container
+   *
+   * @param jobId - Import job ID
+   * @param appId - App ID
+   * @param zipPath - Path to uploaded zip file on agent
+   */
+  private async processImport(jobId: string, appId: string, zipPath: string): Promise<void> {
+    // Paths for container-side operations
+    let containerZipPath: string | null = null;
+    let containerExtractPath: string | null = null;
+
+    try {
+      // Mark as started
+      await this.importJobRepo.update(jobId, {
+        startedAt: new Date(),
+      });
+
+      // Get app info
+      const app = this.appRepo.findById(appId);
+      if (!app) {
+        throw new Error(`App not found: ${appId}`);
+      }
+
+      // Validate app path exists (shared mount point)
+      if (!app.path || !existsSync(app.path)) {
+        throw new Error(`App path not found or not accessible: ${app.path}`);
+      }
+
+      // Get dev-supervisor client for container operations
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      if (!devSupervisor) {
+        throw new Error('Dev supervisor not available for container operations');
+      }
+
+      // Phase 1: Validate zip on agent (security checks)
+      await this.updateStatus(jobId, ImportJobStatus.VALIDATING);
+      const securityValidation = await zipSecurityService.validate(zipPath);
+
+      if (!securityValidation.valid) {
+        await this.importJobRepo.markFailed(
+          jobId,
+          'Zip security validation failed',
+          ImportJobStatus.VALIDATING,
+          securityValidation.errors
+        );
+        await this.cleanupZipFile(zipPath);
+        return;
+      }
+
+      // Phase 2: Copy zip to container via shared filesystem
+      await this.updateStatus(jobId, ImportJobStatus.EXTRACTING);
+
+      // Paths: agent-side uses app.path for file copy, container uses /app for commands
+      // The shared filesystem mount makes them point to the same files
+      const agentZipPath = join(app.path, `.import-${jobId}.zip`);
+      containerZipPath = `/app/.import-${jobId}.zip`;
+      containerExtractPath = `/app/.import-${jobId}-extract`;
+
+      this.logger.info('project-import.copy-zip-to-container', {
+        jobId,
+        appId,
+        sourceZipPath: zipPath,
+        agentZipPath,
+        containerZipPath,
+      });
+
+      // Copy zip file to container via shared filesystem mount (agent-side path)
+      await cp(zipPath, agentZipPath);
+
+      // Phase 3: Extract zip inside container (container-side paths for dev-supervisor)
+      const extractResult = await this.extractZipInContainer(
+        devSupervisor,
+        containerZipPath,
+        containerExtractPath
+      );
+
+      if (!extractResult.success) {
+        await this.importJobRepo.markFailed(
+          jobId,
+          'Zip extraction failed in container',
+          ImportJobStatus.EXTRACTING,
+          extractResult.errors
+        );
+        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
+        await this.cleanupZipFile(zipPath);
+        return;
+      }
+
+      // Phase 4: Validate project structure in container
+      await this.updateStatus(jobId, ImportJobStatus.VALIDATING);
+      const validation = await this.validateProjectInContainer(
+        devSupervisor,
+        containerExtractPath
+      );
+
+      if (!validation.valid) {
+        await this.importJobRepo.markFailed(
+          jobId,
+          'Project validation failed',
+          ImportJobStatus.VALIDATING,
+          validation.errors
+        );
+        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
+        await this.cleanupZipFile(zipPath);
+        return;
+      }
+
+      // Update job with project info
+      const updateParams: UpdateImportJobParams = { extractedPath: containerExtractPath };
+      if (validation.packageManager) updateParams.detectedPackageManager = validation.packageManager;
+      if (validation.hasBuildScript !== undefined) updateParams.hasBuildScript = validation.hasBuildScript;
+      if (validation.hasDevScript !== undefined) updateParams.hasDevScript = validation.hasDevScript;
+      if (validation.warnings && validation.warnings.length > 0) {
+        updateParams.validationErrors = validation.warnings;
+      }
+      await this.importJobRepo.update(jobId, updateParams);
+
+      // Phase 5: Copy files to app directory (inside container)
+      await this.updateStatus(jobId, ImportJobStatus.COPYING);
+      const copyResult = await this.copyFilesInContainer(
+        devSupervisor,
+        validation.projectRoot || containerExtractPath,
+        app.path
+      );
+
+      if (!copyResult.success) {
+        await this.importJobRepo.markFailed(
+          jobId,
+          copyResult.error || 'Failed to copy files',
+          ImportJobStatus.COPYING
+        );
+        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
+        await this.cleanupZipFile(zipPath);
+        return;
+      }
+
+      // Phase 6: Install dependencies (already runs in container via dev-supervisor)
+      await this.updateStatus(jobId, ImportJobStatus.INSTALLING);
+      const installResult = await this.runNpmInstall(appId, app.path);
+
+      if (installResult.output) {
+        await this.importJobRepo.update(jobId, { installOutput: installResult.output });
+      }
+
+      if (!installResult.success) {
+        await this.gitRollback(appId, app.path);
+        await this.importJobRepo.markFailed(
+          jobId,
+          installResult.error || 'npm install failed',
+          ImportJobStatus.INSTALLING,
+          [{
+            key: ValidationErrorKey.INSTALL_FAILED,
+            message: installResult.error || 'npm install failed',
+            details: { exitCode: installResult.exitCode },
+          }]
+        );
+        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
+        await this.cleanupZipFile(zipPath);
+        return;
+      }
+
+      // Phase 7: Build (if script exists)
+      if (validation.hasBuildScript) {
+        await this.updateStatus(jobId, ImportJobStatus.BUILDING);
+        const buildResult = await this.runNpmBuild(appId, app.path);
+
+        if (buildResult.output) {
+          await this.importJobRepo.update(jobId, { buildOutput: buildResult.output });
+        }
+
+        if (!buildResult.success) {
+          await this.gitRollback(appId, app.path);
+          await this.importJobRepo.markFailed(
+            jobId,
+            buildResult.error || 'npm run build failed',
+            ImportJobStatus.BUILDING,
+            [{
+              key: ValidationErrorKey.BUILD_FAILED,
+              message: buildResult.error || 'npm run build failed',
+              details: { exitCode: buildResult.exitCode },
+            }]
+          );
+          await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
+          await this.cleanupZipFile(zipPath);
+          return;
+        }
+      }
+
+      // Phase 8: Git commit
+      await this.updateStatus(jobId, ImportJobStatus.COMMITTING);
+      const commitResult = await this.gitCommit(appId, app.path);
+
+      if (!commitResult.success) {
+        await this.importJobRepo.markFailed(
+          jobId,
+          commitResult.error || 'Git commit failed',
+          ImportJobStatus.COMMITTING,
+          [{
+            key: ValidationErrorKey.GIT_COMMIT_FAILED,
+            message: commitResult.error || 'Git commit failed',
+          }]
+        );
+        await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
+        await this.cleanupZipFile(zipPath);
+        return;
+      }
+
+      // Phase 9: Restart dev server
+      await this.updateStatus(jobId, ImportJobStatus.RESTARTING);
+      const restartResult = await this.restartDevServer(appId);
+
+      if (!restartResult.success) {
+        this.logger.warn('project-import.restart.failed', {
+          jobId,
+          appId,
+          error: restartResult.error,
+        });
+      }
+
+      // Mark as completed
+      await this.importJobRepo.markCompleted(jobId);
+      this.appRepo.updateStatus(appId, 'created');
+
+      this.logger.info('project-import.complete', { jobId, appId });
+
+      // Cleanup all temp files
+      await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
+      await this.cleanupZipFile(zipPath);
+
+    } catch (error) {
+      this.logger.error('project-import.failed', {
+        jobId,
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      await this.importJobRepo.markFailed(
+        jobId,
+        error instanceof Error ? error.message : 'Unknown error',
+        'unknown'
+      );
+
+      // Best-effort cleanup
+      try {
+        const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+        if (devSupervisor) {
+          await this.cleanupContainerFiles(devSupervisor, containerZipPath, containerExtractPath);
+        }
+      } catch {
+        // Ignore cleanup errors
+      }
+      await this.cleanupZipFile(zipPath);
+    }
+  }
+
+  /**
+   * Update job status
+   */
+  private async updateStatus(jobId: string, status: ImportJobStatus): Promise<void> {
+    await this.importJobRepo.updateStatus(jobId, status);
+    this.logger.info('project-import.status', { jobId, status });
+  }
+
+  /**
+   * Extract zip file inside the container using dev-supervisor exec
+   *
+   * @param devSupervisor - Client to execute commands in container
+   * @param zipPath - Path to zip file inside container filesystem
+   * @param extractPath - Destination path for extraction
+   * @returns Extraction result
+   */
+  private async extractZipInContainer(
+    devSupervisor: DevSupervisorClient,
+    zipPath: string,
+    extractPath: string
+  ): Promise<{ success: boolean; errors?: ValidationError[] }> {
+    try {
+      // Create extraction directory
+      const mkdirResult = await devSupervisor.exec({
+        command: `mkdir -p "${extractPath}"`,
+        timeout: 10, // seconds
+      });
+
+      if (!mkdirResult.success) {
+        return {
+          success: false,
+          errors: [{
+            key: ValidationErrorKey.ZIP_CORRUPTED,
+            message: 'Failed to create extraction directory',
+            details: { stderr: mkdirResult.stderr },
+          }],
+        };
+      }
+
+      // Extract zip using unzip command in container
+      const unzipResult = await devSupervisor.exec({
+        command: `unzip -o "${zipPath}" -d "${extractPath}"`,
+        timeout: 60, // 1 minute timeout for extraction (seconds)
+      });
+
+      if (!unzipResult.success) {
+        return {
+          success: false,
+          errors: [{
+            key: ValidationErrorKey.ZIP_CORRUPTED,
+            message: 'Zip extraction failed in container',
+            details: { stderr: unzipResult.stderr, exitCode: unzipResult.exit_code },
+          }],
+        };
+      }
+
+      this.logger.info('project-import.extract-in-container.success', {
+        zipPath,
+        extractPath,
+      });
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        errors: [{
+          key: ValidationErrorKey.ZIP_CORRUPTED,
+          message: error instanceof Error ? error.message : 'Extraction failed unexpectedly',
+        }],
+      };
+    }
+  }
+
+  /**
+   * Validate the extracted project inside the container
+   *
+   * Checks for package.json, scripts, and detects package manager
+   */
+  private async validateProjectInContainer(
+    devSupervisor: DevSupervisorClient,
+    extractPath: string
+  ): Promise<{
+    valid: boolean;
+    projectRoot?: string;
+    packageManager?: 'npm' | 'yarn' | 'pnpm';
+    hasBuildScript?: boolean;
+    hasDevScript?: boolean;
+    errors?: ValidationError[];
+    warnings?: ValidationError[];
+  }> {
+    const errors: ValidationError[] = [];
+    const warnings: ValidationError[] = [];
+
+    // Find project root - check if package.json exists at extract path or in single subdirectory
+    let projectRoot = extractPath;
+
+    // Check for package.json at root
+    const checkRootResult = await devSupervisor.exec({
+      command: `test -f "${extractPath}/package.json" && echo "found" || echo "notfound"`,
+      timeout: 5, // seconds
+    });
+
+    if (checkRootResult.stdout?.trim() !== 'found') {
+      // Check if there's a single subdirectory with package.json (common zip structure)
+      const lsResult = await devSupervisor.exec({
+        command: `ls -1 "${extractPath}"`,
+        timeout: 5, // seconds
+      });
+
+      const entries = (lsResult.stdout || '').trim().split('\n').filter(Boolean);
+
+      if (entries.length === 1 && entries[0]) {
+        const subdir = join(extractPath, entries[0]);
+        const checkSubdirResult = await devSupervisor.exec({
+          command: `test -f "${subdir}/package.json" && echo "found" || echo "notfound"`,
+          timeout: 5, // seconds
+        });
+
+        if (checkSubdirResult.stdout?.trim() === 'found') {
+          projectRoot = subdir;
+        }
+      }
+    }
+
+    // Verify package.json exists at project root
+    const finalCheckResult = await devSupervisor.exec({
+      command: `test -f "${projectRoot}/package.json" && echo "found" || echo "notfound"`,
+      timeout: 5, // seconds
+    });
+
+    if (finalCheckResult.stdout?.trim() !== 'found') {
+      errors.push({
+        key: ValidationErrorKey.PACKAGE_JSON_NOT_FOUND,
+        message: 'No package.json found in zip root or subdirectory',
+        details: { searchedPath: extractPath },
+      });
+      return { valid: false, errors };
+    }
+
+    // Read package.json content
+    const catResult = await devSupervisor.exec({
+      command: `cat "${projectRoot}/package.json"`,
+      timeout: 5, // seconds
+    });
+
+    if (!catResult.success || !catResult.stdout) {
+      errors.push({
+        key: ValidationErrorKey.PACKAGE_JSON_NOT_FOUND,
+        message: 'Could not read package.json',
+      });
+      return { valid: false, errors };
+    }
+
+    let packageJson: PackageJsonInfo;
+    try {
+      packageJson = JSON.parse(catResult.stdout);
+    } catch {
+      errors.push({
+        key: ValidationErrorKey.PACKAGE_JSON_INVALID,
+        message: 'package.json is not valid JSON',
+      });
+      return { valid: false, errors };
+    }
+
+    // Check for name field
+    if (!packageJson.name) {
+      warnings.push({
+        key: ValidationErrorKey.PACKAGE_JSON_MISSING_NAME,
+        message: 'package.json missing name field',
+      });
+    }
+
+    // Detect package manager by checking lock files
+    let packageManager: 'npm' | 'yarn' | 'pnpm' = 'npm';
+
+    const pnpmCheck = await devSupervisor.exec({
+      command: `test -f "${projectRoot}/pnpm-lock.yaml" && echo "found"`,
+      timeout: 5, // seconds
+    });
+    if (pnpmCheck.stdout?.trim() === 'found') {
+      packageManager = 'pnpm';
+    } else {
+      const yarnCheck = await devSupervisor.exec({
+        command: `test -f "${projectRoot}/yarn.lock" && echo "found"`,
+        timeout: 5, // seconds
+      });
+      if (yarnCheck.stdout?.trim() === 'found') {
+        packageManager = 'yarn';
+      }
+    }
+
+    // Check for scripts
+    const scripts = packageJson.scripts || {};
+    const hasBuildScript = 'build' in scripts;
+    const hasDevScript = 'dev' in scripts || 'start' in scripts;
+
+    if (!hasDevScript) {
+      warnings.push({
+        key: ValidationErrorKey.NO_DEV_SCRIPT,
+        message: 'No dev or start script found in package.json',
+      });
+    }
+
+    if (!hasBuildScript) {
+      warnings.push({
+        key: ValidationErrorKey.NO_BUILD_SCRIPT,
+        message: 'No build script found in package.json, skipping build step',
+      });
+    }
+
+    const result: {
+      valid: boolean;
+      projectRoot?: string;
+      packageManager?: 'npm' | 'yarn' | 'pnpm';
+      hasBuildScript?: boolean;
+      hasDevScript?: boolean;
+      errors?: ValidationError[];
+      warnings?: ValidationError[];
+    } = {
+      valid: true,
+      projectRoot,
+      packageManager,
+      hasBuildScript,
+      hasDevScript,
+    };
+
+    if (warnings.length > 0) {
+      result.warnings = warnings;
+    }
+
+    return result;
+  }
+
+  /**
+   * Copy files from extracted location to app directory inside container
+   *
+   * Uses shell commands via dev-supervisor to perform file operations
+   */
+  private async copyFilesInContainer(
+    devSupervisor: DevSupervisorClient,
+    projectRoot: string,
+    appPath: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      this.logger.info('project-import.copy-in-container.start', { projectRoot, appPath });
+
+      // Convert agent path to container path (/app is the standard container mount)
+      const containerAppPath = '/app';
+
+      // Delete all files except .git, node_modules, .is_ready, and dev_setup_and_serve.sh
+      // Using find to delete everything except preserved items
+      const deleteResult = await devSupervisor.exec({
+        command: `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" ! -name "node_modules" ! -name ".is_ready" ! -name ".import-*" ! -name "dev_setup_and_serve.sh" -exec rm -rf {} +`,
+        timeout: 30, // seconds
+      });
+
+      if (!deleteResult.success) {
+        return {
+          success: false,
+          error: `Failed to clean app directory: ${deleteResult.stderr}`,
+        };
+      }
+
+      // Copy new content from extracted project (excluding node_modules and .git)
+      const copyResult = await devSupervisor.exec({
+        command: `find "${projectRoot}" -mindepth 1 -maxdepth 1 ! -name "node_modules" ! -name ".git" -exec cp -r {} "${containerAppPath}/" \\;`,
+        timeout: 60, // seconds
+      });
+
+      if (!copyResult.success) {
+        return {
+          success: false,
+          error: `Failed to copy files: ${copyResult.stderr}`,
+        };
+      }
+
+      this.logger.info('project-import.copy-in-container.success', { projectRoot, appPath });
+
+      return { success: true };
+    } catch (error) {
+      this.logger.error('project-import.copy-in-container.failed', {
+        projectRoot,
+        appPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to copy files',
+      };
+    }
+  }
+
+  /**
+   * Clean up temporary files in the container
+   *
+   * @param devSupervisor - Client to execute commands in container
+   * @param zipPath - Path to the copied zip file (or null)
+   * @param extractPath - Path to the extraction directory (or null)
+   */
+  private async cleanupContainerFiles(
+    devSupervisor: DevSupervisorClient,
+    zipPath: string | null,
+    extractPath: string | null
+  ): Promise<void> {
+    try {
+      const paths: string[] = [];
+      if (zipPath) paths.push(zipPath);
+      if (extractPath) paths.push(extractPath);
+
+      if (paths.length > 0) {
+        await devSupervisor.exec({
+          command: `rm -rf ${paths.map(p => `"${p}"`).join(' ')}`,
+          timeout: 30, // seconds
+        });
+        this.logger.info('project-import.container-cleanup.success', { paths });
+      }
+    } catch (error) {
+      this.logger.warn('project-import.container-cleanup.failed', {
+        zipPath,
+        extractPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Run npm install via dev-supervisor
+   */
+  private async runNpmInstall(
+    appId: string,
+    appPath: string
+  ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+
+      if (!devSupervisor) {
+        return {
+          success: false,
+          error: 'Dev supervisor not available',
+        };
+      }
+
+      const terminalTool = new TerminalTool(devSupervisor);
+
+      const result = await terminalTool.executeCommand(appPath, {
+        command: 'npm install',
+        timeout: IMPORT_TIMEOUTS.INSTALL,
+      });
+
+      const response: { success: boolean; output?: string; error?: string; exitCode?: number } = {
+        success: result.success,
+        exitCode: result.exitCode,
+      };
+      const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
+      if (combinedOutput) response.output = combinedOutput;
+      if (!result.success) {
+        response.error = result.stderr || 'npm install failed';
+      }
+      return response;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'npm install failed',
+      };
+    }
+  }
+
+  /**
+   * Run npm build via dev-supervisor
+   */
+  private async runNpmBuild(
+    appId: string,
+    appPath: string
+  ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+
+      if (!devSupervisor) {
+        return {
+          success: false,
+          error: 'Dev supervisor not available',
+        };
+      }
+
+      const terminalTool = new TerminalTool(devSupervisor);
+
+      const result = await terminalTool.executeCommand(appPath, {
+        command: 'npm run build',
+        timeout: IMPORT_TIMEOUTS.BUILD,
+      });
+
+      const response: { success: boolean; output?: string; error?: string; exitCode?: number } = {
+        success: result.success,
+        exitCode: result.exitCode,
+      };
+      const combinedOutput = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
+      if (combinedOutput) response.output = combinedOutput;
+      if (!result.success) {
+        response.error = result.stderr || 'npm run build failed';
+      }
+      return response;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'npm run build failed',
+      };
+    }
+  }
+
+  /**
+   * Commit imported code to git
+   */
+  private async gitCommit(
+    appId: string,
+    appPath: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const gitTool = new GitTool(devSupervisor || undefined);
+
+      // Add all files
+      const addResult = await gitTool.executeGitOperation(appPath, {
+        operation: 'add',
+        files: ['.'],
+      });
+
+      if (!addResult.success) {
+        const result: { success: boolean; error?: string } = { success: false };
+        if (addResult.error) result.error = addResult.error;
+        return result;
+      }
+
+      // Commit with message
+      const commitResult = await gitTool.executeGitOperation(appPath, {
+        operation: 'commit',
+        message: 'Import: Project imported from zip file',
+      });
+
+      const result: { success: boolean; error?: string } = { success: commitResult.success };
+      if (commitResult.error) result.error = commitResult.error;
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Git commit failed',
+      };
+    }
+  }
+
+  /**
+   * Rollback git changes on failure (git checkout .)
+   * This restores the app to its previous state before the import
+   */
+  private async gitRollback(appId: string, appPath: string): Promise<void> {
+    try {
+      this.logger.info('project-import.rollback.start', { appId });
+
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const gitTool = new GitTool(devSupervisor || undefined);
+
+      // Discard all changes (git checkout .)
+      const result = await gitTool.executeGitOperation(appPath, {
+        operation: 'checkout',
+        files: ['.'],
+      });
+
+      if (result.success) {
+        this.logger.info('project-import.rollback.success', { appId });
+      } else {
+        this.logger.warn('project-import.rollback.failed', {
+          appId,
+          error: result.error,
+        });
+      }
+    } catch (error) {
+      this.logger.warn('project-import.rollback.error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Restart the dev server
+   */
+  private async restartDevServer(appId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+
+      if (!devSupervisor) {
+        return { success: false, error: 'Dev supervisor not available' };
+      }
+
+      // Send restart command
+      const success = await devSupervisor.restartProcess({ graceful: true });
+
+      const result: { success: boolean; error?: string } = { success };
+      if (!success) result.error = 'Failed to restart dev server';
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to restart dev server',
+      };
+    }
+  }
+
+  /**
+   * Clean up uploaded zip file on the agent
+   */
+  private async cleanupZipFile(zipPath: string): Promise<void> {
+    try {
+      if (existsSync(zipPath)) {
+        await rm(zipPath, { force: true });
+        this.logger.info('project-import.zip-cleanup.success', { zipPath });
+      }
+    } catch (error) {
+      this.logger.warn('project-import.zip-cleanup.failed', {
+        zipPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Get import job status
+   *
+   * @param appId - App ID
+   * @returns Import job or null
+   */
+  async getImportStatus(appId: string): Promise<ImportJob | null> {
+    return this.importJobRepo.findByAppId(appId);
+  }
+}
+
+// Export singleton instance
+export const projectImportService = new ProjectImportService();
+
