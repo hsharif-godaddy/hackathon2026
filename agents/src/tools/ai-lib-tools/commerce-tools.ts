@@ -7,6 +7,7 @@ import {
   type UpdateSkuGroupInput,
   type UpdateSkuInput,
 } from '../../lib/godaddy-commerce.js';
+import type { MutationUpdateSkuPriceInput } from '../../lib/godaddy-commerce-types.js';
 import { getCustomerIdFromAccessToken } from '../../utils/oauth-claims.js';
 import { logger } from '../../logging/index.js';
 import { ok, needAuth, fail, ErrorCodes } from '../tool-response.js';
@@ -589,12 +590,40 @@ export const commerceSkuGroup = createTool(
 );
 
 export const commerceSku = createTool(
-  'Manage a single SKU in GoDaddy Commerce store. Supports Update operation via "action" parameter. Use this to update inventory settings like backorder limit or tracking.',
+  'Manage a single SKU in GoDaddy Commerce store. Supports update (modify SKU properties) and updatePrice (modify SKU price) operations. Use update for inventory settings like backorder limit or tracking. Use updatePrice to change the price of a SKU.',
   z.object({
-    action: z.enum(['update']).describe('Action to perform'),
+    action: z.enum(['update', 'updatePrice']).describe('Action to perform: update modifies SKU properties, updatePrice modifies the SKU price'),
     storeId: z.string().describe('The store ID'),
     channelId: z.string().optional().describe('The channel ID'),
-    skuId: z.string().describe('The ID of the SKU'),
+    skuId: z.string().optional().describe('The ID of the SKU (required for update action)'),
+    priceId: z.string().optional().describe('The price ID to update (required for updatePrice action, get from sku.prices.edges[0].node.id)'),
+    price: z
+      .object({
+        value: z
+          .object({
+            currencyCode: z
+              .string()
+              .length(3)
+              .transform((v) => v.toUpperCase())
+              .describe('3-letter currency code (e.g., "USD")'),
+            value: z.number().describe('Price amount in cents'),
+          })
+          .optional()
+          .describe('The new price value'),
+        compareAtValue: z
+          .object({
+            currencyCode: z
+              .string()
+              .length(3)
+              .transform((v) => v.toUpperCase())
+              .describe('3-letter currency code (e.g., "USD")'),
+            value: z.number().describe('Compare-at price amount in cents'),
+          })
+          .optional()
+          .describe('The compare-at (original/strikethrough) price'),
+      })
+      .optional()
+      .describe('Price details for updatePrice action'),
     sku: z
       .object({
         label: z.string().optional().describe('The display name of the SKU'),
@@ -641,7 +670,13 @@ export const commerceSku = createTool(
           .describe('Cost of the SKU per unit'),
       })
       .describe('SKU details to update'),
-  }),
+  }).refine(
+    (data) => data.action !== 'update' || !!data.skuId,
+    { message: 'skuId is required when action is "update"', path: ['skuId'] }
+  ).refine(
+    (data) => data.action !== 'updatePrice' || !!data.priceId,
+    { message: 'priceId is required when action is "updatePrice"', path: ['priceId'] }
+  ),
   async (input, context) => {
     const startTime = Date.now();
     const appId = context?.metadata?.appId as string;
@@ -658,6 +693,13 @@ export const commerceSku = createTool(
       const { accessToken } = await AuthService.getAccessToken({ appId });
 
       if (input.action === 'update') {
+        if (!input.skuId) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'SKU ID is required for update action',
+          });
+        }
+
         if (!input.sku) {
           return fail({
             code: ErrorCodes.INVALID_INPUT,
@@ -710,6 +752,56 @@ export const commerceSku = createTool(
             storeId: input.storeId,
             channelId: input.channelId,
             sku: result.data?.updateSku,
+            manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
+          },
+          {
+            tookMs: Date.now() - startTime,
+          }
+        );
+      }
+
+      if (input.action === 'updatePrice') {
+        if (!input.priceId) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'Price ID is required for updatePrice action. Get it from sku.prices.edges[0].node.id',
+          });
+        }
+
+        if (!input.price || (!input.price.value && !input.price.compareAtValue)) {
+          return fail({
+            code: ErrorCodes.INVALID_INPUT,
+            message: 'At least one of price.value or price.compareAtValue is required for updatePrice action',
+          });
+        }
+
+        const priceInput: MutationUpdateSkuPriceInput = {
+          ...(input.price.value && { value: input.price.value }),
+          ...(input.price.compareAtValue && { compareAtValue: input.price.compareAtValue }),
+        };
+
+        const result = await godaddy.updateSkuPrice(
+          {
+            storeId: input.storeId,
+            priceId: input.priceId,
+            input: priceInput,
+          },
+          accessToken
+        );
+
+        if (!result.success) {
+          return fail({
+            code: ErrorCodes.OPERATION_FAILED,
+            message: result.error || 'Failed to update SKU price',
+            retryable: true,
+          });
+        }
+
+        return ok(
+          {
+            storeId: input.storeId,
+            channelId: input.channelId,
+            price: result.data?.updateSkuPrice,
             manageUrl: godaddy.getCatalogManagementUrl(input.storeId),
           },
           {

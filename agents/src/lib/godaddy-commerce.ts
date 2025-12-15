@@ -5,6 +5,7 @@ import type {
   MutationCreateSkuGroupInput,
   MutationUpdateSkuGroupInput,
   MutationUpdateSkuInput,
+  MutationUpdateSkuPriceInput,
   MutationAdjustInventoryInput,
   MutationStockInventoryInput,
   MutationCreateLocationInput,
@@ -12,6 +13,7 @@ import type {
   CreateSkuGroupResponse as GraphQLCreateSkuGroupResponse,
   UpdateSkuGroupResponse as GraphQLUpdateSkuGroupResponse,
   UpdateSkuResponse as GraphQLUpdateSkuResponse,
+  UpdateSkuPriceResponse as GraphQLUpdateSkuPriceResponse,
   DeleteSkuGroupResponse as GraphQLDeleteSkuGroupResponse,
   GetInventoryCountsResponse as GraphQLGetInventoryCountsResponse,
   AdjustInventoryResponse as GraphQLAdjustInventoryResponse,
@@ -90,6 +92,13 @@ export type UpdateSkuGroupResponse =
  */
 export type UpdateSkuResponse =
   | { success: true; data: GraphQLUpdateSkuResponse; error?: never }
+  | { success: false; data?: never; error: string };
+
+/**
+ * GraphQL update SKU price mutation response wrapper
+ */
+export type UpdateSkuPriceResponse =
+  | { success: true; data: GraphQLUpdateSkuPriceResponse; error?: never }
   | { success: false; data?: never; error: string };
 
 /**
@@ -844,6 +853,79 @@ export class GoDaddyCommerce {
       logger.error('commerce.update-sku.graphql-errors', {
         storeId: args.storeId,
         skuId: args.skuId,
+        errors: data.errors.map((e: any) => e.message),
+      });
+      return {
+        success: false,
+        error: data.errors.map((e: any) => e.message).join(', '),
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+    };
+  }
+
+  public async updateSkuPrice(
+    args: { storeId: string; priceId: string; input: MutationUpdateSkuPriceInput },
+    accessToken: string
+  ): Promise<UpdateSkuPriceResponse> {
+    const graphqlUrl = `${this.baseUrl}/v2/commerce/stores/${args.storeId}/catalog-subgraph`;
+
+    const mutation = `
+      mutation UpdateSkuPrice($id: String!, $input: MutationUpdateSkuPriceInput!) {
+        updateSkuPrice(id: $id, input: $input) {
+          id
+          value {
+            value
+            currencyCode
+          }
+          compareAtValue {
+            value
+            currencyCode
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: {
+        ...this.baseHeaders,
+        Authorization: `Bearer ${accessToken}`,
+        'x-store-id': args.storeId,
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables: {
+          id: args.priceId,
+          input: args.input,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('commerce.update-sku-price.request-failed', {
+        storeId: args.storeId,
+        priceId: args.priceId,
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      return {
+        success: false,
+        error: `GraphQL request failed: ${response.status} ${response.statusText} - ${errorText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    if (data.errors) {
+      logger.error('commerce.update-sku-price.graphql-errors', {
+        storeId: args.storeId,
+        priceId: args.priceId,
         errors: data.errors.map((e: any) => e.message),
       });
       return {

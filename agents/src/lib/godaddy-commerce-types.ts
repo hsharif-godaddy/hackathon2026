@@ -346,6 +346,11 @@ export interface MutationUpdateSkuInput {
   weight?: number;
 }
 
+export interface MutationUpdateSkuPriceInput {
+  compareAtValue?: SimpleMoneyInput;
+  value?: SimpleMoneyInput;
+}
+
 // Response Types
 
 export interface SKUPriceResponse {
@@ -406,6 +411,10 @@ export interface UpdateSkuGroupResponse {
 
 export interface UpdateSkuResponse {
   updateSku: SKUResponse;
+}
+
+export interface UpdateSkuPriceResponse {
+  updateSkuPrice: SKUPriceResponse;
 }
 
 export interface DeleteSkuGroupResponse {
