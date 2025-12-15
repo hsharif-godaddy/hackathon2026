@@ -8,16 +8,20 @@ git config --global --add safe.directory "${CUSTOMER_APP_DIR}"
 git config --global user.name "Airo AI Builder"
 git config --global user.email "ai@airo.dev"
 
-if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
-    echo "Existing application detected, checking if restoration is needed"
+if [ -f "$CUSTOMER_APP_DIR/.git/config" ] && [ ! -f "$CUSTOMER_APP_DIR/package.json" ]; then
+    echo "Existing application detected, package.json missing, restoring tracked files"
 
-    # Only restore tracked files if package.json doesn't exist
     cd "$CUSTOMER_APP_DIR"
-    if [ ! -f "package.json" ]; then
-        echo "package.json not found, restoring all tracked files"
-        git checkout .
-    else
-        echo "package.json exists, skipping checkout to preserve uncommitted changes"
+
+    # Restore all tracked files from current HEAD
+    git checkout .
+
+    # Ensure we're on the main branch before making any commits
+    # This handles cases where the repo might be in detached HEAD state
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    if [ "$CURRENT_BRANCH" != "main" ]; then
+        echo "Not on main branch (current: $CURRENT_BRANCH), switching to main..."
+        git checkout main || true
     fi
 
     # sync package.json from base app template
@@ -71,6 +75,10 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     # sync .npmrc from base app template to ensure registry configuration is up to date
     cp "$BASE_APP_DIR/.npmrc" "$CUSTOMER_APP_DIR/.npmrc"
     git add .npmrc && git commit -m "Sync upstream .npmrc $(date +%s)" || true
+
+    # sync template files that are safe to update (only replaces unmodified files)
+    /management-scripts/sync-template-files.js "$BASE_APP_DIR" "$CUSTOMER_APP_DIR"
+    git add . && git commit -m "Sync upstream template files $(date +%s)" || true
 
     echo "Completed: Existing application detected, restored all tracked files and dependencies"
 fi

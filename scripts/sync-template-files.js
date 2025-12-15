@@ -1,0 +1,141 @@
+#!/usr/bin/env node
+
+/**
+ * Sync template files from base app template to customer app
+ *
+ * Usage: node sync-template-files.js <base-app-dir> <customer-app-dir>
+ *
+ * This script will:
+ * - Check each file in the manifest against the customer app
+ * - If file doesn't exist in customer app, copy it from base template
+ * - If file exists and its MD5 matches a known hash, replace it with base template version
+ * - If file exists but hash doesn't match, skip it (customer has modified the file)
+ * - If force flag is set, always replace the file
+ */
+
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { dirname, join } from 'node:path';
+
+/**
+ * Manifest of files to sync from base template to customer apps.
+ *
+ * Each entry contains:
+ * - file: Path relative to app root
+ * - description: Why this file needs syncing
+ * - known_hashes: MD5 hashes of unmodified versions that are safe to replace
+ * - force: If true, always replace (use sparingly, for files that should never be modified)
+ *
+ * To add a new hash:
+ * 1. Find the commit with the old version: git log --oneline -- <file>
+ * 2. Get the hash: git show <commit>:<file> | md5
+ * 3. Add it to the known_hashes array
+ */
+const SYNC_MANIFEST = [
+  {
+    file: 'src/server/configure.js',
+    description: 'Server configuration with SPA fallback middleware for client-side routing',
+    known_hashes: [
+      '42ba9f4178f0125d150e0453b18aace0', // 0d42af30 - fix: various improvements to local development
+      '2accfb4db2acca217a56610abbeff409'  // 8c779b55 - feat: changes to support app publish
+    ],
+    force: false
+  }
+];
+
+function md5(content) {
+  return createHash('md5').update(content).digest('hex');
+}
+
+function sync(baseDir, customerDir) {
+  console.log('=== Template File Sync ===');
+  console.log(`Base template: ${baseDir}`);
+  console.log(`Customer app:  ${customerDir}`);
+  console.log('');
+
+  let synced = 0;
+  let skipped = 0;
+  let created = 0;
+
+  for (const entry of SYNC_MANIFEST) {
+    const { file, description, known_hashes, force } = entry;
+    const basePath = join(baseDir, file);
+    const customerPath = join(customerDir, file);
+
+    console.log(`Checking: ${file}`);
+
+    // Check if base template has the file
+    if (!existsSync(basePath)) {
+      console.log(`  ⚠️  Base template missing file, skipping`);
+      skipped++;
+      continue;
+    }
+
+    const baseContent = readFileSync(basePath, 'utf8');
+
+    // Check if customer app has the file
+    if (!existsSync(customerPath)) {
+      console.log(`  📄 File doesn't exist in customer app, creating...`);
+      mkdirSync(dirname(customerPath), { recursive: true });
+      writeFileSync(customerPath, baseContent, 'utf8');
+      console.log(`  ✅ Created: ${file}`);
+      created++;
+      continue;
+    }
+
+    // File exists, check if we should replace it
+    const customerContent = readFileSync(customerPath, 'utf8');
+    const customerHash = md5(customerContent);
+
+    console.log(`  Current hash: ${customerHash}`);
+
+    // Force sync if flag is set
+    if (force) {
+      console.log(`  🔄 Force sync enabled, replacing...`);
+      writeFileSync(customerPath, baseContent, 'utf8');
+      console.log(`  ✅ Synced: ${file}`);
+      synced++;
+      continue;
+    }
+
+    // Check if hash matches any known hash
+    if (known_hashes.includes(customerHash)) {
+      console.log(`  🔄 Hash matches known version, replacing...`);
+      writeFileSync(customerPath, baseContent, 'utf8');
+      console.log(`  ✅ Synced: ${file}`);
+      synced++;
+      continue;
+    }
+
+    // Hash doesn't match - file was modified by customer
+    console.log(`  ⏭️  Hash doesn't match known versions, skipping (customer modified)`);
+    skipped++;
+  }
+
+  console.log('');
+  console.log('=== Summary ===');
+  console.log(`Created: ${created}`);
+  console.log(`Synced:  ${synced}`);
+  console.log(`Skipped: ${skipped}`);
+}
+
+// Main
+const args = process.argv.slice(2);
+
+if (args.length !== 2) {
+  console.error('Usage: node sync-template-files.js <base-app-dir> <customer-app-dir>');
+  console.error('');
+  console.error('Example:');
+  console.error('  node sync-template-files.js /base-app /customer-app');
+  process.exit(1);
+}
+
+const [baseDir, customerDir] = args;
+
+try {
+  sync(baseDir, customerDir);
+} catch (error) {
+  console.error('❌ Error:', error.message);
+  process.exit(1);
+}
+

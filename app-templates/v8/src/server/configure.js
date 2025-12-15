@@ -1,5 +1,6 @@
 import express from "express";
 import { closeConnection } from "./db/client.ts";
+import path from "node:path";
 
 export const viteServerBefore = (server, viteServer) => {
   console.log("VITEJS SERVER");
@@ -44,6 +45,29 @@ export const serverBefore = (server) => {
 };
 
 export const serverAfter = (server) => {
+  // Add SPA fallback for client-side routing
+  // This middleware serves index.html for any GET request that doesn't match
+  // an API endpoint or static file, enabling React Router to handle the route
+  server.use((req, res, next) => {
+    // Only handle GET requests
+    if (req.method !== 'GET') {
+      return next();
+    }
+
+    // Skip if this is an API request
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+
+    // Skip if this is a static asset request (has file extension)
+    if (path.extname(req.path)) {
+      return next();
+    }
+
+    // For all other GET requests, serve index.html to support client-side routing
+    res.sendFile(path.join(process.cwd(), 'client', 'index.html'));
+  });
+
   const errorHandler = (err, req, res, next) => {
     if (err instanceof Error) {
       res.status(500).json({ error: err.message });
