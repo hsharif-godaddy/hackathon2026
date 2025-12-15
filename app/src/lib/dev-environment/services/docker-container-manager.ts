@@ -299,10 +299,12 @@ export class DockerContainerManager {
 			// Docker will automatically use cached layers when source files haven't changed
 			// Use array-based arguments to prevent shell injection
 			// Build dev-supervisor and template in one go using build contexts
+			// --load flag imports the built image into Docker daemon (required for Docker Compose)
 			const startTime = Date.now();
 			await execa('docker', [
 				'buildx', 'build',
 				'-t', imageName,
+				'--load',
 				'--build-arg', `HOST_UID=${uid}`,
 				'--build-arg', `HOST_GID=${gid}`,
 				'--build-context', `dev-ca=${path.join(projectRoot, '.dev-ca')}`,
@@ -611,12 +613,23 @@ export class DockerContainerManager {
 				// Continue with cleanup even if database drop fails
 			}
 
-			// Remove image
-			try {
-				await execa('docker', ['rmi', containerInfo.imageName]);
-				logger.info('docker.image.remove.success', { imageName: containerInfo.imageName });
-			} catch (imageError) {
-				logger.info('docker.image.remove.skipped', { imageName: containerInfo.imageName, message: 'Docker image may be in use, skipping removal' });
+			// Remove image only if it's NOT the shared template image
+			// Shared template images (aab-template-*:latest) are reused across all apps
+			const isSharedTemplate = containerInfo.imageName.startsWith('aab-template-') &&
+			                         containerInfo.imageName.endsWith(':latest');
+
+			if (!isSharedTemplate) {
+				try {
+					await execa('docker', ['rmi', containerInfo.imageName]);
+					logger.info('docker.image.remove.success', { imageName: containerInfo.imageName });
+				} catch (imageError) {
+					logger.info('docker.image.remove.skipped', { imageName: containerInfo.imageName, message: 'Docker image may be in use, skipping removal' });
+				}
+			} else {
+				logger.info('docker.image.remove.skipped_shared', {
+					imageName: containerInfo.imageName,
+					message: 'Skipping removal of shared template image (used by all apps)'
+				});
 			}
 
 			// Remove from memory and database

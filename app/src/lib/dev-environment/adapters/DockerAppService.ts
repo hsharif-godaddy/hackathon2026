@@ -62,8 +62,28 @@ export class DockerAppService implements IAppAdapter {
       // Check if container already exists
       const existingContainer = await this.containerManager.getContainerStatus(appId);
       if (existingContainer && existingContainer.status === 'running') {
+        logger.info('docker_app_service.start.already_running', {
+          appId
+        });
         return true;
       }
+
+      // Create and start the container
+      logger.info('docker_app_service.start.creating_container', {
+        appId,
+        appPath: devApp.appPath,
+        port: devApp.port
+      });
+
+      await this.containerManager.createAndStartContainer(
+        appId,
+        devApp.appPath,
+        devApp.port
+      );
+
+      logger.info('docker_app_service.start.success', {
+        appId
+      });
 
       return true;
     } catch (error) {
