@@ -165,6 +165,24 @@ export interface OAuthToken {
   updatedAt: Date;
 }
 
+/**
+ * Conversation summary for incremental summarization
+ * Stores summaries that replace ranges of messages
+ */
+export interface ConversationSummary {
+  id: string;
+  appId: string;
+  conversationId?: string; // nullable for multi-conversation summaries
+  summaryText: string;
+  messageRangeStart: string; // message ID
+  messageRangeEnd: string; // message ID
+  messageCount: number;
+  originalTokenCount: number;
+  summaryTokenCount: number;
+  modelUsed: string;
+  createdAt: Date;
+}
+
 // ==================================================================================
 // Database Schema Management Functions
 // ==================================================================================
@@ -188,6 +206,7 @@ export function initializeSchema(db: Database): void {
   createFileContextTable(db);
   createMemoryTable(db);
   createImportJobsTable(db);
+  createConversationSummariesTable(db);
 
   // Apply migrations BEFORE creating indexes (migrations may alter schema)
   // Note: oauth_tokens table creation moved to migrations (added in PR #646)
@@ -402,6 +421,28 @@ function createImportJobsTable(db: Database): void {
 }
 
 /**
+ * Create the conversation_summaries table for incremental summarization
+ */
+function createConversationSummariesTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_summaries (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      conversation_id TEXT,
+      summary_text TEXT NOT NULL,
+      message_range_start TEXT NOT NULL,
+      message_range_end TEXT NOT NULL,
+      message_count INTEGER NOT NULL,
+      original_token_count INTEGER NOT NULL,
+      summary_token_count INTEGER NOT NULL,
+      model_used TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
  * Create all database indexes for efficient queries
  */
 function createIndexes(db: Database): void {
@@ -491,6 +532,19 @@ function createIndexes(db: Database): void {
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_import_jobs_created_at ON import_jobs(created_at)
+  `);
+
+  // Conversation summaries table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversation_summaries_app_id ON conversation_summaries(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversation_summaries_conversation_id ON conversation_summaries(conversation_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversation_summaries_message_range ON conversation_summaries(message_range_start, message_range_end)
   `);
 }
 

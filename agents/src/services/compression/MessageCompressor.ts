@@ -119,26 +119,40 @@ export class MessageCompressor {
       let compressedMessage: LLMMessage | null = message;
       let usedStrategy: string | undefined;
 
-      for (const strategy of this.strategies) {
-        if (strategy.canCompress(context)) {
-          const result = strategy.compress(context);
-          if (result !== undefined) {
-            // result can be a modified message or null (to remove the message)
-            compressedMessage = result;
-            compressed = true;
-            usedStrategy = strategy.name;
-            strategiesUsed[strategy.name] = (strategiesUsed[strategy.name] || 0) + 1;
-            
-            logger.debug('compression.message.compressed', {
-              messageIndex: i,
-              messageRole: message.role,
-              strategy: strategy.name,
-              originalLength: this.getMessageLength(message),
-              compressedLength: result ? this.getMessageLength(result) : 0,
-              removed: result === null,
-            });
-            
-            break;
+      // CRITICAL: Never compress summary messages
+      // Summaries are identified by the [CONVERSATION SUMMARY] prefix
+      const isSummary = message.role === 'user' && 
+                        typeof message.content === 'string' && 
+                        message.content.startsWith('[CONVERSATION SUMMARY]');
+
+      if (isSummary) {
+        logger.debug('compression.message.skipped', {
+          messageIndex: i,
+          messageRole: message.role,
+          reason: 'summary_message',
+        });
+      } else {
+        for (const strategy of this.strategies) {
+          if (strategy.canCompress(context)) {
+            const result = strategy.compress(context);
+            if (result !== undefined) {
+              // result can be a modified message or null (to remove the message)
+              compressedMessage = result;
+              compressed = true;
+              usedStrategy = strategy.name;
+              strategiesUsed[strategy.name] = (strategiesUsed[strategy.name] || 0) + 1;
+              
+              logger.debug('compression.message.compressed', {
+                messageIndex: i,
+                messageRole: message.role,
+                strategy: strategy.name,
+                originalLength: this.getMessageLength(message),
+                compressedLength: result ? this.getMessageLength(result) : 0,
+                removed: result === null,
+              });
+              
+              break;
+            }
           }
         }
       }

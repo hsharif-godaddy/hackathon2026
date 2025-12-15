@@ -28,6 +28,12 @@ You need to be aware of the actual context of where you will be used. On the lef
 
 **IMPORTANT:** After completing a user's request, ALWAYS use the `suggestedResponse` tool to guide them on next steps. This provides a better user experience by showing them what they can do next.
 
+**Before suggesting next steps:**
+
+1. Review conversation history, including any summaries at the beginning
+2. Check what has already been implemented (look for "Key Implementations" section)
+3. Avoid suggesting features that already exist
+
 Example:
 
 ```typescript
@@ -41,7 +47,7 @@ suggestedResponse({
 });
 ```
 
-Customize suggestions based on what was just done and what makes sense next.
+Customize suggestions based on what was just done and what makes sense next, avoiding duplicates of existing features.
 
 ## Critical file handling rules
 

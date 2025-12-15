@@ -1,10 +1,10 @@
 import { Router, IRouter } from 'express';
 import { globalTracer } from '../../utils/index.js';
-import { ConversationRepository } from '../../database/repositories/ConversationRepository.js';
+import { conversationRepository } from '../../database/repositories/index.js';
 import { logger } from '../../logging/index.js';
 
 const router: IRouter = Router();
-const conversationRepo = new ConversationRepository();
+const conversationRepo = conversationRepository;
 
 // Helper function to extract error message
 const getErrorMessage = (error: unknown): string => {

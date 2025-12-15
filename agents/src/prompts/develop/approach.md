@@ -161,6 +161,27 @@ suggestedResponse({
 - Just added feature → Suggest: "Add another feature", "Test the feature", "Improve styling"
 - Just fixed bug → Suggest: "Test the fix", "Add more features", "Review other issues"
 
+**CRITICAL: Check conversation history before suggesting:**
+
+- ✅ Review the conversation history (including summaries at the top) to understand what has already been implemented
+- ✅ Look at "Key Implementations" section in conversation summaries to see completed features
+- ✅ Check "User Goals" section to see what's still in progress vs completed
+- ❌ **DO NOT** suggest features that are already mentioned in "Key Implementations" or "Current State"
+- ❌ **DO NOT** suggest work that's already been completed in previous conversations
+- ✅ Suggest logical next steps that build on what exists, not duplicate existing features
+
+**Examples of good vs bad suggestions:**
+
+If conversation summary shows "Key Implementations: Authentication system with login/signup pages":
+
+- ❌ BAD: "Add user login" (already done)
+- ✅ GOOD: "Add password reset functionality", "Add user profile page"
+
+If conversation summary shows "Database Schema: users, posts, comments tables":
+
+- ❌ BAD: "Set up database for blog posts" (already done)
+- ✅ GOOD: "Add post categories", "Add comment moderation"
+
 **When NOT to use:**
 
 - ❌ In the middle of a multi-step workflow (wait until done)

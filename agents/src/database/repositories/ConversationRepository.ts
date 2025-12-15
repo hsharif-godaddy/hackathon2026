@@ -2,9 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { getDatabase } from '../connection.js';
 import type { Conversation, ConversationMessage, ToolCall, MessageSegment } from '../schema.js';
+import { logger } from '../../logging/index.js';
+
+/**
+ * Callback type for message addition hooks
+ */
+export type MessageAddedHook = (message: ConversationMessage, conversationId: string) => void | Promise<void>;
 
 export class ConversationRepository {
   private db = getDatabase();
+  private messageAddedHooks: MessageAddedHook[] = [];
 
   /**
    * Create a new conversation
@@ -213,7 +220,43 @@ export class ConversationRepository {
       message.contextAttachments = options.contextAttachments;
     }
 
+    // Trigger hooks asynchronously (don't await to avoid blocking)
+    for (const hook of this.messageAddedHooks) {
+      const result = hook(message, conversationId);
+      if (result instanceof Promise) {
+        result.catch((error: unknown) => {
+          logger.error('conversation.repository.hook.failure', {
+            messageId: message.id,
+            conversationId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      }
+    }
+
     return message;
+  }
+
+  /**
+   * Register a hook to be called after messages are added
+   * Useful for triggering background summarization
+   * 
+   * @param hook - Callback function to call after message is added
+   */
+  registerMessageAddedHook(hook: MessageAddedHook): void {
+    this.messageAddedHooks.push(hook);
+  }
+
+  /**
+   * Remove a message added hook
+   * 
+   * @param hook - Hook to remove
+   */
+  unregisterMessageAddedHook(hook: MessageAddedHook): void {
+    const index = this.messageAddedHooks.indexOf(hook);
+    if (index !== -1) {
+      this.messageAddedHooks.splice(index, 1);
+    }
   }
 
   /**

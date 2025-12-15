@@ -1,10 +1,13 @@
 import type { ModelMessage, ToolModelMessage, UserModelMessage, AssistantModelMessage, SystemModelMessage } from 'ai';
 import type { ToolCall } from '../database/schema.js';
 import { ConversationRepository } from '../database/repositories/ConversationRepository.js';
+import { SummaryRepository } from '../database/repositories/SummaryRepository.js';
 import { logger } from '../logging/index.js';
 import { countTokens, estimateTokens } from '../utils/token-counter.js';
 import { MessageCompressor } from './compression/MessageCompressor.js';
 import type { CompressionStrategy } from './compression/MessageCompressor.js';
+import type { SummarizationStrategy } from './summarization/SummarizationStrategy.js';
+import { LLMSummarizationStrategy } from './summarization/LLMSummarizationStrategy.js';
 
 /**
  * LLM message format for OpenAI-style APIs
@@ -56,8 +59,16 @@ export interface DatabaseMessage {
  */
 export class ConversationHistoryLoader {
   private compressor = new MessageCompressor();
+  private summaryRepo: SummaryRepository;
+  private summarizationStrategy?: SummarizationStrategy;
 
-  constructor(private conversationRepo: ConversationRepository) {}
+  constructor(
+    private conversationRepo: ConversationRepository,
+    summarizationStrategy?: SummarizationStrategy
+  ) {
+    this.summaryRepo = new SummaryRepository();
+    this.summarizationStrategy = summarizationStrategy || new LLMSummarizationStrategy();
+  }
 
   /**
    * Register a compression strategy
@@ -78,6 +89,24 @@ export class ConversationHistoryLoader {
    */
   getStrategy<T extends CompressionStrategy>(name: string): T | undefined {
     return this.compressor.getStrategies().find((s) => s.name === name) as T | undefined;
+  }
+
+  /**
+   * Set the summarization strategy
+   * 
+   * @param strategy - Summarization strategy to use
+   */
+  setSummarizationStrategy(strategy: SummarizationStrategy): void {
+    this.summarizationStrategy = strategy;
+  }
+
+  /**
+   * Get the summarization strategy
+   * 
+   * @returns Current summarization strategy or undefined
+   */
+  getSummarizationStrategy(): SummarizationStrategy | undefined {
+    return this.summarizationStrategy;
   }
 
   /**
@@ -327,11 +356,51 @@ export class ConversationHistoryLoader {
       modelName: modelName || 'estimation',
     });
 
+    // Separate summary messages from regular messages
+    // Summaries are user messages that start with [CONVERSATION SUMMARY]
+    const summaryMessages: LLMMessage[] = [];
+    const regularMessages: LLMMessage[] = [];
+    
+    for (const message of llmMessages) {
+      if (message.role === 'user' && 
+          typeof message.content === 'string' && 
+          message.content.startsWith('[CONVERSATION SUMMARY]')) {
+        summaryMessages.push(message);
+      } else {
+        regularMessages.push(message);
+      }
+    }
+
     const limitedMessages: LLMMessage[] = [];
     let currentTokenCount = 0;
 
-    for (let i = llmMessages.length - 1; i >= 0; i--) {
-      const message = llmMessages[i];
+    // First, always include all summary messages (they're highly compressed)
+    for (const message of summaryMessages) {
+      const messageContent = this.serializeMessageForTokenCount(message);
+      let messageTokens: number;
+      if (modelName && messageContent.trim()) {
+        try {
+          const result = countTokens(messageContent, modelName);
+          messageTokens = result.tokenCount;
+        } catch (error) {
+          messageTokens = estimateTokens(messageContent);
+        }
+      } else {
+        messageTokens = estimateTokens(messageContent);
+      }
+      
+      limitedMessages.push(message);
+      currentTokenCount += messageTokens;
+    }
+
+    logger.debug('conversation.history.loader.token_limit_summaries_included', {
+      summaryCount: summaryMessages.length,
+      summaryTokens: currentTokenCount,
+    });
+
+    // Then, add recent messages from the end until we hit the token limit
+    for (let i = regularMessages.length - 1; i >= 0; i--) {
+      const message = regularMessages[i];
       if (!message) continue;
       const messageContent = this.serializeMessageForTokenCount(message);
 
@@ -352,9 +421,11 @@ export class ConversationHistoryLoader {
         messageTokens = estimateTokens(messageContent);
       }
 
-      if (currentTokenCount + messageTokens > maxTokens && limitedMessages.length > 0) {
+      if (currentTokenCount + messageTokens > maxTokens && limitedMessages.length > summaryMessages.length) {
         logger.info('conversation.history.loader.token_limit_reached', {
           processedMessages: limitedMessages.length,
+          summaryMessages: summaryMessages.length,
+          regularMessages: limitedMessages.length - summaryMessages.length,
           currentTokens: currentTokenCount,
           maxTokens,
           droppedMessages: i + 1,
@@ -362,18 +433,27 @@ export class ConversationHistoryLoader {
         break;
       }
 
-      limitedMessages.unshift(message);
+      limitedMessages.push(message);
       currentTokenCount += messageTokens;
     }
 
+    // Sort to maintain chronological order (summaries first, then recent messages)
+    // Summary messages stay at the beginning, regular messages are added at the end
+    const finalMessages = [
+      ...summaryMessages,
+      ...limitedMessages.slice(summaryMessages.length).reverse()
+    ];
+
     logger.debug('conversation.history.loader.token_limit_complete', {
       inputMessages: llmMessages.length,
-      outputMessages: limitedMessages.length,
+      outputMessages: finalMessages.length,
+      summaryMessages: summaryMessages.length,
+      regularMessages: finalMessages.length - summaryMessages.length,
       estimatedTokens: currentTokenCount,
       maxTokens,
     });
 
-    return limitedMessages;
+    return finalMessages;
   }
 
   /**
@@ -606,6 +686,194 @@ export class ConversationHistoryLoader {
       });
     }
     
+    return this.applyTokenLimit(llmMessages, maxTokens, modelName);
+  }
+
+  /**
+   * Load messages with summarization, compression, and token limit applied
+   * Checks for existing summaries and replaces message ranges with summary messages
+   * 
+   * @param appId - ID of the app
+   * @param maxTokens - Maximum tokens to include (default: 40000)
+   * @param modelName - Model name for accurate token counting
+   * @param enableCompression - Whether to apply compression (default: true)
+   * @param appPath - Path to the app for hot file loading
+   * @param enableSummarization - Whether to use summaries (default: true)
+   * @returns Token-limited array of LLM messages with summaries injected
+   */
+  async loadMessagesWithSummarization(
+    appId: string,
+    maxTokens: number = 40000,
+    modelName?: string,
+    enableCompression: boolean = true,
+    appPath?: string,
+    enableSummarization: boolean = true
+  ): Promise<LLMMessage[]> {
+    const conversations = await this.conversationRepo.getByAppId(appId);
+
+    logger.debug('conversation.history.loader.load_with_summarization.begin', {
+      appId,
+      conversationsCount: conversations.length,
+      enableSummarization,
+    });
+
+    const allMessages: DatabaseMessage[] = [];
+
+    for (const conversation of conversations) {
+      const messages = await this.conversationRepo.getMessagesForHistory(conversation.id);
+      allMessages.push(
+        ...messages.map((msg) => ({
+          ...msg,
+          conversationId: conversation.id,
+        }))
+      );
+    }
+
+    allMessages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+    // Load latest summary if enabled (summaries are cumulative, only use the most recent)
+    let latestSummary: any = null;
+    let summaryEndIndex = -1;
+    
+    if (enableSummarization && this.summarizationStrategy) {
+      latestSummary = await this.summaryRepo.findLatestForApp(appId);
+      
+      if (latestSummary) {
+        // Find where the summary ends in the message array
+        summaryEndIndex = allMessages.findIndex((msg) => msg.id === latestSummary.messageRangeEnd);
+        
+        if (summaryEndIndex === -1) {
+          logger.warn('conversation.history.loader.summary_end_not_found', {
+            appId,
+            summaryId: latestSummary.id,
+            messageRangeEnd: latestSummary.messageRangeEnd,
+          });
+          latestSummary = null;
+        }
+      }
+    }
+
+    // Build LLM messages with summary replacing old messages
+    const llmMessages: LLMMessage[] = [];
+    let messageIndex = 0;
+
+    if (latestSummary && summaryEndIndex !== -1) {
+      // Add summary as user message (Anthropic doesn't support multiple system messages)
+      // The latest summary contains the full cumulative summary text. Incremental summarization
+      // updates this summary by including only new messages since the last summary, so the latest
+      // summary alone provides complete historical context without duplication.
+      llmMessages.push({
+        role: 'user',
+        content: `[CONVERSATION SUMMARY]\n${latestSummary.summaryText}`,
+      });
+
+      // Skip all messages covered by the summary
+      messageIndex = summaryEndIndex + 1;
+      
+      logger.debug('conversation.history.loader.summary_applied', {
+        appId,
+        summaryId: latestSummary.id,
+        summaryTokens: latestSummary.summaryTokenCount,
+        originalTokens: latestSummary.originalTokenCount,
+        messagesCovered: messageIndex,
+        messagesRemaining: allMessages.length - messageIndex,
+      });
+    }
+
+    // Add remaining messages after summary
+    while (messageIndex < allMessages.length) {
+      const dbMsg = allMessages[messageIndex];
+      if (dbMsg) {
+        const converted = this.convertToLLMMessages([dbMsg]);
+        llmMessages.push(...converted);
+      }
+      messageIndex++;
+    }
+
+    logger.debug('conversation.history.loader.load_with_summarization.complete', {
+      appId,
+      hasSummary: !!latestSummary,
+      totalMessages: allMessages.length,
+      llmMessagesCount: llmMessages.length,
+      messagesCovered: latestSummary ? summaryEndIndex + 1 : 0,
+    });
+
+    // Disable compression when using summarization to avoid conflicts
+    if (latestSummary) {
+      logger.info('conversation.history.compression.disabled', {
+        appId,
+        reason: 'summarization_active',
+        message: 'Compression disabled when summarization is active to prevent conflicts',
+      });
+    } else if (enableCompression) {
+      const hotFileStrategy = this.getStrategy('hot-file-inclusion');
+
+      logger.debug('conversation.history.hot_files.strategy_check', {
+        appId,
+        hasStrategy: !!hotFileStrategy,
+        hasAppPath: !!appPath,
+        appPath,
+      });
+
+      if (hotFileStrategy && appPath) {
+        (hotFileStrategy as any).setAppPath(appPath);
+      }
+
+      const compressionResult = this.compressor.compressMessages(llmMessages);
+      const compressedMessages = compressionResult.messages;
+
+      if (hotFileStrategy && appPath) {
+        await (hotFileStrategy as any).loadHotFilesContent();
+        const hotFilesList = (hotFileStrategy as any).getHotFilesList();
+        const hotFilesMessage = (hotFileStrategy as any).getHotFilesMessage();
+
+        logger.debug('conversation.history.hot_files.load_result', {
+          appId,
+          totalHotFiles: hotFilesList.length,
+          hasMessage: !!hotFilesMessage,
+          messageLength: hotFilesMessage?.length || 0,
+        });
+
+        if (hotFilesMessage) {
+          compressedMessages.unshift({
+            role: 'user',
+            content: hotFilesMessage,
+          });
+
+          logger.info('conversation.history.hot_files.injected', {
+            appId,
+            hotFiles: hotFilesList.length,
+            messageLength: hotFilesMessage.length,
+          });
+        } else if (hotFilesList.length > 0) {
+          logger.warn('conversation.history.hot_files.no_message', {
+            appId,
+            hotFilesCount: hotFilesList.length,
+            reason: 'Hot files identified but no message generated',
+          });
+        }
+      } else {
+        logger.warn('conversation.history.hot_files.skipped', {
+          appId,
+          hasStrategy: !!hotFileStrategy,
+          hasAppPath: !!appPath,
+        });
+      }
+
+      logger.info('conversation.history.compression.applied', {
+        appId,
+        originalMessages: compressionResult.stats.totalMessages,
+        compressedMessages: compressionResult.stats.compressedMessages,
+        originalLength: compressionResult.stats.originalTotalLength,
+        compressedLength: compressionResult.stats.compressedTotalLength,
+        compressionRatio: compressionResult.stats.compressionRatio,
+        savedBytes: compressionResult.stats.originalTotalLength - compressionResult.stats.compressedTotalLength,
+        strategiesUsed: compressionResult.stats.strategiesUsed,
+      });
+
+      return this.applyTokenLimit(compressedMessages, maxTokens, modelName);
+    }
+
     return this.applyTokenLimit(llmMessages, maxTokens, modelName);
   }
 

@@ -3,6 +3,7 @@ import { ConversationRepository } from '../database/repositories/ConversationRep
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { AppContextManager } from './AppContextManager.js';
 import { TodoContextManager } from './TodoContextManager.js';
+import { LLMSummarizationStrategy } from './summarization/index.js';
 import type { AgentExecutionContext } from '../base/agent.interface.js';
 import { ToolCallRenderer } from './ToolCallRenderer.js';
 import { logger } from '../logging/index.js';
@@ -55,7 +56,12 @@ export class ConversationContextManager {
     this.appContextManager = new AppContextManager();
     this.todoContextManager = new TodoContextManager();
 
-    this.historyLoader = new ConversationHistoryLoader(conversationRepo);
+    // Initialize history loader with LLM summarization strategy
+    const summarizationStrategy = new LLMSummarizationStrategy();
+    this.historyLoader = new ConversationHistoryLoader(conversationRepo, summarizationStrategy);
+
+    // Note: Background summarization is initialized centrally via initializeBackgroundSummarization()
+    // in the server startup code to ensure it uses the singleton conversationRepository
 
     const hotFileStrategy = new HotFileInclusionStrategy();
     const fileEditStrategy = new FileEditCompressionStrategy(hotFileStrategy);
@@ -229,12 +235,14 @@ export class ConversationContextManager {
     const maxTokens = 40000;
 
     try {
-      const llmMessages = await this.historyLoader.loadMessagesWithTokenLimitByAppId(
+      // Use summarization-aware loading
+      const llmMessages = await this.historyLoader.loadMessagesWithSummarization(
         appId,
         maxTokens,
         undefined,
         true,
-        appPath
+        appPath,
+        true // enableSummarization
       );
 
       logger.debug('conversation.history.compressed.loaded', {

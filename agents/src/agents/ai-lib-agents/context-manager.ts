@@ -6,7 +6,7 @@
 import type { ModelMessage, ToolModelMessage, UserModelMessage, AssistantModelMessage } from 'ai'
 import { ConversationContextManager } from '../../services/ConversationContextManager.js'
 import { AppContextManager } from '../../services/AppContextManager.js'
-import { ConversationRepository } from '../../database/repositories/ConversationRepository.js'
+import { conversationRepository } from '../../database/repositories/index.js'
 import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig, AgentContextPreferences } from './types.js'
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
 import { logger, log } from '../../logging/index.js'
@@ -41,8 +41,9 @@ export class AILibContextManager {
     private config: ContextGenerationConfig
 
     constructor(config: Partial<ContextGenerationConfig> = {}) {
+        // Use singleton conversation repository to ensure hooks work correctly
         this.conversationContextManager = new ConversationContextManager(
-            new ConversationRepository(),
+            conversationRepository,
             config.maxHistoryMessages || DEFAULT_CONTEXT_CONFIG.maxHistoryMessages
         )
         this.appContextManager = new AppContextManager()

@@ -170,9 +170,22 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     // Create message persistence implementation
     const messagePersistence = new AgentsMessagePersistence()
 
-    // Create token-based conversation history provider
-    const conversationRepo = new ConversationRepository()
-    const conversationContextManager = new ConversationContextManager(conversationRepo, 10) // Max 10 messages
+    // Use singleton conversation repository and initialize background summarization
+    const { conversationRepository } = await import('../database/repositories/index.js')
+    const { initializeBackgroundSummarization } = await import('../services/summarization/index.js')
+    
+    // Initialize background summarization once at startup
+    // Lower threshold (10k tokens) + keep recent 3 turns = more aggressive summarization
+    // Uses 'fast' model for summarization automatically
+    await initializeBackgroundSummarization({
+      tokenThreshold: 10000,
+      debounceMs: 10000,
+      keepRecentTurns: 3, // Keep last 3 user prompts + responses unsummarized
+      strategy: 'detailed-llm', // Options: 'llm' (baseline), 'detailed-llm' (structured with API/DB/Pages)
+    })
+
+    // Create token-based conversation history provider using singleton repository
+    const conversationContextManager = new ConversationContextManager(conversationRepository, 10) // Max 10 messages
 
     // Set up litellm metadata once (constant for this agent instance)
     // In production, each agent serves a single site with constant subscription/customer IDs
@@ -437,23 +450,16 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           const modelName = metadata.modelName || 'sonnet';
           const historyLoader = conversationContextManager.getHistoryLoader();
           
-          const llmMessages = await historyLoader.loadMessagesWithTokenLimitByAppId(
+          const llmMessages = await historyLoader.loadMessagesWithSummarization(
             appId,
             40000,
             modelName,
             true,
-            appPath
+            appPath,
+            true
           );
           
           const formattedMessages = historyLoader.formatMessagesForAISDK(llmMessages, appId, agentName);
-          
-          if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
-            logger.debug('websocket.message.provider.success', {
-              message: 'Loaded and formatted messages',
-              appId,
-              messageCount: formattedMessages.length
-            })
-          }
           
           return formattedMessages;
         } catch (error) {
@@ -509,7 +515,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           return 'develop'
         }
 
-        const conversations = conversationRepo.getByAppIdSync(appId)
+        const conversations = conversationRepository.getByAppIdSync(appId)
         const isNewApp = conversations.length === 0
         
         if (isNewApp) {

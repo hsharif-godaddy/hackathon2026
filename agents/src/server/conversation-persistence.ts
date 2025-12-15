@@ -11,9 +11,10 @@ import type {
   ConversationContext
 } from '@airo/ai-lib'
 import { calculateCostEstimate } from '@airo/ai-lib'
-import { ConversationRepository } from '../database/repositories/ConversationRepository.js'
-import { AppRepository } from '../database/repositories/AppRepository.js'
-import { TokenUsageRepository } from '../database/repositories/TokenUsageRepository.js'
+import { conversationRepository, appRepository, tokenUsageRepository } from '../database/repositories/index.js'
+import type { ConversationRepository } from '../database/repositories/index.js'
+import type { AppRepository } from '../database/repositories/index.js'
+import type { TokenUsageRepository } from '../database/repositories/index.js'
 import { MAX_PROMPT_LENGTH } from '../services/features.js'
 import { GitTool } from '../tools/git-tool.js'
 import { GitUtils } from '../utils/git.js'
@@ -43,9 +44,10 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   private appUserMessages = new Map<string, string>()
 
   constructor() {
-    this.conversationRepo = new ConversationRepository()
-    this.appRepository = new AppRepository()
-    this.tokenUsageRepo = new TokenUsageRepository()
+    // Use singleton repositories to ensure hooks work correctly
+    this.conversationRepo = conversationRepository
+    this.appRepository = appRepository
+    this.tokenUsageRepo = tokenUsageRepository
   }
 
   /**
