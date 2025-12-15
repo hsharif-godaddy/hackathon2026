@@ -4,57 +4,18 @@ on:
   pull_request:
     types: [opened, reopened, synchronize]
 
-concurrency: 
+concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   claude-review:
-    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@v1.0.1
+    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@v2.0.0
     with:
-      cicd_role_arn: ${{ vars.CICD_ROLE_ARN }}
       runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
       runner_labels_json: '["self-hosted", "linux"]'
-      aws_region: us-west-2
       gocode_environment: prod
       track_progress: "true"
-      prompt: |
-        REPO: ${{ github.repository }}
-        PR NUMBER: ${{ github.event.pull_request.number }}
-
-        ## Core Review Responsibilities
-
-        You are a reviewer that is only interested in reporting issues if found and only issues. Do not summarise the changes or say anything if no issues are found. Focus purely on reporting issues if identified.
-
-        **Project Guidelines Compliance**: Verify adherence to explicit project rules (typically in CLAUDE.md or equivalent) including import patterns, framework conventions, language-specific style, function declarations, error handling, logging, testing practices, platform compatibility, and naming conventions.
-        
-        **Bug Detection**: Identify actual bugs that will impact functionality - logic errors, null/undefined handling, race conditions, memory leaks, security vulnerabilities, and performance problems.
-        
-        **Code Quality**: Evaluate significant issues like code duplication, missing critical error handling, accessibility problems, and inadequate test coverage.
-
-        ## Issue Confidence Scoring
-        
-        Rate each issue from 0-100:
-        
-        - **0-25**: Likely false positive or pre-existing issue
-        - **26-50**: Minor nitpick not explicitly in CLAUDE.md
-        - **51-75**: Valid but low-impact issue
-        - **76-90**: Important issue requiring attention
-        - **91-100**: Critical bug or explicit CLAUDE.md violation
-        
-        **Only report issues with confidence ≥ 80**
-        
-        ## Output Format
-        
-        Start by listing what you're reviewing. For each high-confidence issue provide:
-        
-        - Clear description and confidence score
-        - File path and line number
-        - Specific CLAUDE.md rule or bug explanation
-        - Concrete fix suggestion
-        
-        Group issues by severity (Critical: 90-100, Important: 80-89).
-        
-        Be terse. If no high-confidence issues exist, confirm the code meets standards with an "LGTM" and no further details. If high-confidence issues exist, provide a short issue summary.
-        
-        Be thorough but filter aggressively - quality over quantity. Focus on issues that truly matter.
+      prompt: "/review-pr REPO: ${{ github.repository }} PR_NUMBER: ${{ github.event.pull_request.number }}"
+      # claude_args: |
+      #   --allowedTools "mcp__github_inline_comment__create_inline_comment"

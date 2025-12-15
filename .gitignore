@@ -40,3 +40,5 @@ keys/jwt-public.pem
 .idea/
 
 proxy-logs/
+
+.claude/settings.local.json
