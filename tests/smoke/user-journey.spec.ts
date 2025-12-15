@@ -4,6 +4,20 @@ import { test, expect } from '@playwright/test';
  * Delete all sites on the current page
  * @returns number of sites deleted
  */
+async function fillCredentials(locatorOrPage, username, password) {
+  await locatorOrPage.getByRole('textbox', { name: 'Username or Customer #' }).fill(username);
+  await locatorOrPage.getByRole('textbox', { name: 'Password' }).fill(password);
+  await locatorOrPage.getByRole('button', { name: 'Sign In', exact: true }).click();
+}
+
+async function getIframeFrame(iframeLocator) {
+  const frame = await iframeLocator.contentFrame();
+  if (!frame) {
+    throw new Error('Sign-in iframe content frame not accessible');
+  }
+  return frame;
+}
+
 async function deleteAllSites(page) {
   console.log('🧹 Deleting all sites...');
   
@@ -69,11 +83,7 @@ test.describe('Complete User Journey', () => {
     await page.getByRole('button', { name: 'Start building' }).click({ timeout: 30000 });
     console.log('✅ Start building clicked, should redirect to sign in...');
     
-    // Wait for SSO login page to load (redirected because not signed in)
-    await page.waitForURL('**/login**', { timeout: 30000 });
-    console.log('✅ Redirected to sign-in page');
-    
-    // Fill in credentials on SSO page
+    // Wait for sign-in - could be a modal (prod) or redirect (test env)
     const username = process.env.TEST_USERNAME;
     const password = process.env.TEST_PASSWORD;
     
@@ -81,9 +91,26 @@ test.describe('Complete User Journey', () => {
       throw new Error('TEST_USERNAME and TEST_PASSWORD environment variables must be set');
     }
     
-    await page.getByRole('textbox', { name: 'Username or Customer #' }).fill(username);
-    await page.getByRole('textbox', { name: 'Password' }).fill(password);
-    await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+    // Check for sign-in: could be iframe modal (prod) or URL redirect (test env)
+    console.log('⏳ Waiting for sign-in (iframe modal or redirect)...');
+    
+    // Production: Sign-in is inside an iframe
+    const signInIframe = page.locator('iframe[title="Container for sign in"]');
+    
+    const signInType = await Promise.race([
+      signInIframe.waitFor({ state: 'visible', timeout: 30000 }).then(() => 'iframe' as const),
+      page.waitForURL('**/login**', { timeout: 30000 }).then(() => 'redirect' as const)
+    ]).catch(() => null);
+    
+    if (signInType === 'iframe') {
+      console.log('✅ Sign-in iframe modal detected (production mode)');
+      await fillCredentials(await getIframeFrame(signInIframe), username, password);
+    } else if (signInType === 'redirect') {
+      console.log('✅ Redirected to sign-in page (test environment)');
+      await fillCredentials(page, username, password);
+    } else {
+      throw new Error('❌ Sign-in failed: Timed out waiting for either iframe modal or login redirect (30s)');
+    }
     console.log('✅ Signed in, should continue with building...');
     
     // Wait for direct redirect to develop page (create route removed)
