@@ -539,7 +539,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
   // Handle WebSocket errors - set siteNotFound for inline error display
   useEffect(() => {
-    if (webSocketError === AppErrorCode.SITE_NOT_FOUND) {
+    if (webSocketError?.type === 'APP_NOT_FOUND') {
       setSiteNotFound(true)
     }
   }, [webSocketError, appId])

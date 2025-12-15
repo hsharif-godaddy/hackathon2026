@@ -217,7 +217,7 @@ describe('useStreamingWebSocket', () => {
       expect(result2.current.isStreaming).toBe(false);
 
       // Test error status
-      vi.mocked(useWebSocketState).mockReturnValue({ connected: false, status: 'error', error: 'Test error' });
+      vi.mocked(useWebSocketState).mockReturnValue({ connected: false, status: 'error', error: { message: 'Test error' } });
       const { result: result3 } = renderHook(() => useStreamingWebSocket());
       expect(result3.current.isStreaming).toBe(false);
     });

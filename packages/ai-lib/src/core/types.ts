@@ -1,7 +1,5 @@
 import type { LanguageModel, Tool, ModelMessage } from 'ai'
 import type { z } from 'zod'
-// Retry types (optional import to avoid hard dependency cycles)
-import type { RetryConfig } from '../utils/retry-with-backoff.js'
 
 /**
  * Agents collection returned from AgentFactory.defineAgents()
@@ -75,8 +73,15 @@ export interface AgentConfig {
     description?: string
     includeContext?: boolean
   }>
-  /** Override default retry options */
-  retryConfig?: Partial<RetryConfig>
+  /**
+   * Override default retry options.
+   * Note: Only maxAttempts is used. Retry delay timing is controlled by the
+   * AI SDK provider implementation (typically ~2s initial with exponential backoff).
+   */
+  retryConfig?: {
+    /** Maximum number of attempts (including initial attempt). Default: 5 */
+    maxAttempts?: number
+  }
   /** Unified structured logger (preferred over callbacks) */
   logger?: {
     info: (event: string, data: unknown) => void

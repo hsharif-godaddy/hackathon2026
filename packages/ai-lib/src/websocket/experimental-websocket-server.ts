@@ -1,5 +1,5 @@
 import type { ModelMessage } from 'ai'
-import { APICallError } from '@ai-sdk/provider'
+import { APICallError, RetryError } from 'ai'
 import { Server as SocketIOServer } from 'socket.io'
 import { Server as HTTPServer } from 'http'
 import type { AgentFactory, AgentWrapper } from '../core/agent-factory.js'
@@ -1320,17 +1320,32 @@ export class WebSocketServer {
       let errorMessage = error instanceof Error ? error.message : String(error);
       let errorType: string | undefined;
       let statusCode: number | undefined;
+      let retryAttempts: number | undefined;
+      let retryReason: string | undefined;
 
-      // Check if it's a BudgetExceededError (already converted in stream handler)
-      const isBudgetError = BudgetExceededError.isInstance(error);
-      if (isBudgetError) {
+      // Check if it's an AppNotFoundError (duck-typed from agents service)
+      if (error instanceof Error && 'errorType' in error && (error as any).errorType === 'APP_NOT_FOUND') {
         errorMessage = error.message;
-        errorType = error.errorType;
+        errorType = 'APP_NOT_FOUND';
+        statusCode = 404;
+      }
+      // Check if it's a BudgetExceededError (already converted in stream handler)
+      else if (BudgetExceededError.isInstance(error)) {
+        errorMessage = error.message;
+        errorType = 'BUDGET_EXCEEDED';
         statusCode = error.statusCode;
       }
+      // Check if it's AI SDK's RetryError
+      else if (RetryError.isInstance(error)) {
+        errorMessage = error.message;
+        errorType = 'RETRY_ERROR';
+        statusCode = 500;
+        // Extract retry metadata
+        retryAttempts = error.errors.length;
+        retryReason = error.reason;
+      }
       // Check if it's AI SDK's APICallError (but not a budget error)
-      const isNonBudgetApiCallError = !isBudgetError && APICallError.isInstance(error);
-      if (isNonBudgetApiCallError) {
+      else if (APICallError.isInstance(error)) {
         errorMessage = error.message;
         statusCode = error.statusCode;
       }
@@ -1343,15 +1358,26 @@ export class WebSocketServer {
         agentName
       });
 
+      // Construct error metadata object explicitly
+      const errorMetadata: Record<string, unknown> = {
+        errorType,
+        statusCode,
+        timestamp: new Date().toISOString(),
+        agentId: agentName || this.config.defaultAgent
+      };
+
+      // Add optional retry metadata only if present
+      if (retryAttempts !== undefined) {
+        errorMetadata.retryAttempts = retryAttempts;
+      }
+      if (retryReason !== undefined) {
+        errorMetadata.retryReason = retryReason;
+      }
+
       this.emitToSocket(socket, 'message', {
         type: 'error',
         content: errorMessage,
-        data: {
-          timestamp: new Date().toISOString(),
-          agentId: agentName || this.config.defaultAgent,
-          ...(errorType && { errorType }),
-          ...(statusCode && { statusCode })
-        }
+        data: errorMetadata
       } as WebSocketMessage)
 
       this.config.onError?.(socketId, error instanceof Error ? error : new Error(String(error)), data.message, processedContext)
@@ -1829,8 +1855,39 @@ export class WebSocketServer {
         // Pass screenshots as files for vision processing
         ...(processedFiles && processedFiles.length > 0 && { files: processedFiles })
       })
+
+      // Check if this is a tool validation error with mock stream
+      if (streamResult && (streamResult as any).isToolValidationError) {
+        // Dual-track approach: Emit error event to UI FIRST
+        this.emitToSocket(socket, 'message', {
+          type: 'error',
+          content: 'Tool call failed due to invalid input format. The agent is retrying with corrections.',
+          data: {
+            errorType: 'TOOL_VALIDATION_ERROR',
+            statusCode: 400,
+            timestamp: new Date().toISOString(),
+            details: (streamResult as any).validationErrorMessage
+          }
+        })
+
+        // Then continue to process the mock stream normally so LLM can retry
+        // (the stream contains corrective feedback for the agent)
+      }
     } catch (error: any) {
       // Handle API call errors (like tool input validation failures)
+      if (isBudgetExceededAPIError(error)) {
+        this.logger.error('Budget exceeded error before streaming started', {
+          statusCode: error.statusCode,
+          message: error.message
+        })
+
+        throw new BudgetExceededError(
+          'Your AI usage budget has been reached.',
+          error.statusCode,
+          error.responseBody
+        )
+      }
+
       const isAPIError = APICallError.isInstance(error)
 
       this.logger.debug('Caught error in streamGenerate', {

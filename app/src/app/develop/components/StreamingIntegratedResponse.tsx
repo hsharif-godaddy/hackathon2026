@@ -259,11 +259,30 @@ export default function StreamingIntegratedResponse({ message, isActiveStream = 
 
         {/* Upstream service error notification */}
         {message.upstreamError && !message.budgetExceeded && (
-          <StreamingAlertMessage
-            type="Critical"
-            title="Error"
-            message="Sorry, an error occurred while processing your request. Please try again."
-          />
+          <>
+            {/* Retry error - show attempt count and reason */}
+            {message.errorType === 'RETRY_ERROR' && message.retryAttempts ? (
+              <StreamingAlertMessage
+                type="Critical"
+                title="Connection Failed After Multiple Attempts"
+                message={`Failed after ${message.retryAttempts} attempts${message.retryReason ? ` (${message.retryReason})` : ''}. ${message.error || 'Please try again.'}`}
+              />
+            ) : message.errorType === 'NETWORK_ERROR' ? (
+              /* Network error - prompt to check connection */
+              <StreamingAlertMessage
+                type="Critical"
+                title="Network Error"
+                message="Unable to reach the service. Please check your internet connection and try again."
+              />
+            ) : (
+              /* Generic upstream error for all other types */
+              <StreamingAlertMessage
+                type="Critical"
+                title="Error"
+                message={message.error || "Sorry, an error occurred while processing your request. Please try again."}
+              />
+            )}
+          </>
         )}
 
         {/* Connection retrying notification (yellow warning) */}

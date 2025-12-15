@@ -120,7 +120,7 @@ export function useStreamingWebSocket() {
 
   // Track retry state for APP_NOT_FOUND errors (race condition during app registration)
   const retryStateRef = useRef<{
-    pendingMessage?: { content: string; aiEditContext?: any; startTime: number }
+    pendingMessage?: { chatMessage: AgentsAppChatMessage; startTime: number }
     retryCount: number
     retryTimer?: NodeJS.Timeout
   }>({ retryCount: 0 })
@@ -134,6 +134,18 @@ export function useStreamingWebSocket() {
   const disconnectTimeRef = useRef<number | null>(null)
   // Timer to switch from warning to error after 5 minutes
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  /**
+   * Helper function to clear retry timer and reset retry state
+   * Extracted to avoid duplication across multiple cleanup locations
+   */
+  const clearRetryState = useCallback(() => {
+    if (retryStateRef.current.retryTimer) {
+      clearTimeout(retryStateRef.current.retryTimer)
+    }
+      retryStateRef.current = { retryCount: 0 }
+  }, [])
+
   const webSocketState = useWebSocketState()
   const currentAppId = useCurrentAppId()
   const queryClient = useQueryClient()
@@ -335,7 +347,7 @@ export function useStreamingWebSocket() {
 
       // Track token refresh attempts to prevent infinite loops
       let tokenRefreshCount = 0
-      const MAX_TOKEN_REFRESH_ATTEMPTS = 3
+      const MAX_TOKEN_REFRESH_ATTEMPTS = 7
 
       /**
        * Helper function to create a socket with given token and set up event handlers
@@ -357,7 +369,7 @@ export function useStreamingWebSocket() {
           timeout: 10000,
           autoConnect: true,
           reconnection: true,
-          reconnectionAttempts: 20,  // 20 attempts over ~90 seconds
+          reconnectionAttempts: 60,  // 60 attempts over ~5 minutes with exponential backoff
           reconnectionDelay: 2000,   // Start with 2 second delay
           reconnectionDelayMax: 5000, // Max 5 second delay between attempts
           randomizationFactor: 0.5,
@@ -420,7 +432,11 @@ export function useStreamingWebSocket() {
                 appId,
                 attempts: tokenRefreshCount
               })
-              setWebSocketState({ connected: false, status: 'error', error: 'Failed to establish connection after multiple token refresh attempts' })
+              setWebSocketState({
+                connected: false,
+                status: 'error',
+                error: { message: 'Failed to establish connection after multiple token refresh attempts' }
+              })
               safeReject(new Error('Token refresh limit exceeded'))
               return
             }
@@ -442,7 +458,11 @@ export function useStreamingWebSocket() {
                   message: 'Failed to refetch agent token after expiration',
                   appId
                 })
-                setWebSocketState({ connected: false, status: 'error', error: 'Failed to refresh authentication token' })
+                setWebSocketState({
+                  connected: false,
+                  status: 'error',
+                  error: { message: 'Failed to refresh authentication token' }
+                })
                 safeReject(error instanceof Error ? error : new Error(String(error)))
                 return
               }
@@ -477,14 +497,22 @@ export function useStreamingWebSocket() {
                 appId,
                 error: refreshError instanceof Error ? refreshError.message : String(refreshError)
               })
-              setWebSocketState({ connected: false, status: 'error', error: 'Failed to refresh authentication token' })
+              setWebSocketState({
+                connected: false,
+                status: 'error',
+                error: { message: 'Failed to refresh authentication token' }
+              })
               safeReject(refreshError instanceof Error ? refreshError : new Error(String(refreshError)))
               return
             }
           }
 
           // For non-token-expiration errors, proceed with normal error handling
-          setWebSocketState({ connected: false, status: 'error', error: errorMessage })
+          setWebSocketState({
+            connected: false,
+            status: 'error',
+            error: { message: errorMessage }
+          })
           safeReject(error instanceof Error ? error : new Error(errorMessage))
         })
         socket.on('disconnect', () => {
@@ -497,14 +525,14 @@ export function useStreamingWebSocket() {
             disconnectTimeRef.current = Date.now()
 
             // Show warning (yellow) initially - we'll retry for 5 minutes
-            setWebSocketState({ connected: false, status: 'connecting', error: 'Connection lost, retrying...' })
+            setWebSocketState({ connected: false, status: 'connecting', error: { message: 'Connection lost, retrying...' } })
             setStreamingState('retrying')
 
             // Set timeout to switch to error after 5 minutes (300000ms)
             reconnectTimeoutRef.current = setTimeout(() => {
               const state = useStreamingConversationStore.getState()
               if (state.streamingState === 'retrying') {
-                setWebSocketState({ connected: false, status: 'error', error: 'Connection lost - retry timeout exceeded' })
+                setWebSocketState({ connected: false, status: 'error', error: { message: 'Connection lost - retry timeout exceeded' } })
                 setStreamingState('error')
                 setIsLoading(false)
               }
@@ -541,7 +569,7 @@ export function useStreamingWebSocket() {
             wasStreamingOnDisconnectRef.current = false // Reset after handling
           }
         })
-        socket.on('reconnect_error', (error) => setWebSocketState({ connected: false, status: 'connecting', error: error.message }))
+        socket.on('reconnect_error', (error) => setWebSocketState({ connected: false, status: 'connecting', error: { message: error.message } }))
         socket.on('reconnect_failed', () => {
           const state = useStreamingConversationStore.getState()
           const isStreaming = state.streamingState === 'streaming' || state.streamingState === 'retrying' || state.activeStream !== null
@@ -553,7 +581,7 @@ export function useStreamingWebSocket() {
           }
           disconnectTimeRef.current = null
 
-          setWebSocketState({ connected: false, status: 'error', error: 'Failed to reconnect' })
+          setWebSocketState({ connected: false, status: 'error', error: { message: 'Failed to reconnect' } })
           if (isStreaming || wasStreamingOnDisconnectRef.current) {
             // This is a connection error, not an upstream service error
             setStreamingState('error')
@@ -816,10 +844,7 @@ export function useStreamingWebSocket() {
           flushToolDeltaBufferImmediate()
 
           // Clear retry state on successful completion
-          if (retryStateRef.current.retryTimer) {
-            clearTimeout(retryStateRef.current.retryTimer)
-          }
-          retryStateRef.current = { retryCount: 0 }
+          clearRetryState()
 
           finalizeStream({
             agentId: data.data?.agentId,
@@ -838,12 +863,28 @@ export function useStreamingWebSocket() {
           flushToolDeltaBufferImmediate()
           // Check error type for specific handling
           const errorType = data.data?.errorType
+          const errorCode = data.data?.statusCode
+          const errorTimestamp = data.data?.timestamp
+          const retryAttempts = data.data?.retryAttempts
+          const retryReason = data.data?.retryReason
           const isBudgetError = errorType === 'BUDGET_EXCEEDED';
           const isAppNotFound = errorType === 'APP_NOT_FOUND'
+          const isToolValidationError = errorType === 'TOOL_VALIDATION_ERROR'
           const retryState = retryStateRef.current
           const elapsedTime = retryState.pendingMessage
             ? Date.now() - retryState.pendingMessage.startTime
             : 0
+
+          // Handle tool validation errors - non-terminal, backend auto-retries
+          if (isToolValidationError) {
+            logger.info('websocket.error.tool_validation', {
+              message: 'Tool validation error - agent will retry',
+              content: data.content,
+              details: data.data?.details
+            })
+            // Continue streaming - don't mark as error since backend retries
+            break;
+          }
 
           // Handle budget exceeded errors - show immediately, no retry
           if (isBudgetError) {
@@ -852,14 +893,23 @@ export function useStreamingWebSocket() {
               content: data.content
             })
 
-            if (retryState.retryTimer) {
-              clearTimeout(retryState.retryTimer);
-            }
-            retryStateRef.current = { retryCount: 0 };
+            clearRetryState();
 
             markBudgetExceeded();
+            finalizeStream({
+              agentId: data.data?.agentId,
+              totalSteps: data.data?.step
+            })
             sendToolImpression('error');
-            setWebSocketState({ status: 'error', error: data.content });
+            setWebSocketState({
+              status: 'error',
+              error: {
+                message: data.content,
+                type: errorType,
+                statusCode: errorCode,
+                timestamp: errorTimestamp
+              }
+            });
             setStreamingState('error');
             setIsLoading(false);
             break;
@@ -886,54 +936,31 @@ export function useStreamingWebSocket() {
 
             // Schedule retry
             retryState.retryTimer = setTimeout(() => {
-
-              // Re-send the message using the stored pending message
-              const { content, aiEditContext } = retryState.pendingMessage!
               const socket = socketRef.current
+              const pendingMessage = retryState.pendingMessage
 
-              if (socket && socket.connected) {
-                // Build the same rich context as in sendMessage
-                const state = useStreamingConversationStore.getState()
-                const { conversations } = state
-                const currentConversation = conversations.find((conv: any) => conv.appId === currentAppId)
-                let conversationId = currentConversation?.id
-
-                // If conversationId is null, check cookie and delete it
-                if (!conversationId) {
-                  conversationId = getConversationIdFromCookie()
-                  if (conversationId) {
-                    deleteConversationIdCookie()
+              if (socket && socket.connected && pendingMessage) {
+                const messageToSend: AgentsAppChatMessage = {
+                  ...pendingMessage.chatMessage,
+                  // Refresh timestamp for retry visibility
+                  timestamp: new Date().toISOString(),
+                  context: {
+                    ...(pendingMessage.chatMessage.context || {}),
+                    metadata: {
+                      ...((pendingMessage.chatMessage.context?.metadata as AgentsAppContext['metadata']) || {}),
+                      appId: currentAppId,
+                      sessionId: socket.id,
+                      userId: 'current-user'
+                    }
                   }
                 }
 
-                const richContext: AgentsAppContext = {
-                  metadata: {
-                    appId: currentAppId,
-                    userId: 'current-user',
-                    sessionId: socket.id
-                  },
-                  conversation: {
-                    conversationId,
-                    maxMessages: 10,
-                    includeHistory: true
-                  },
-                  appContext: {
-                    includeDirectoryListing: true,
-                    includePackageInfo: true,
-                    includeDependencyStatus: true,
-                    maxDirectoryDepth: 3
-                  },
-                  ...(aiEditContext && { aiEditContext })
+                socket.emit('chat_message', messageToSend)
+                // Update stored message timestamp for potential subsequent retries
+                retryState.pendingMessage = {
+                  chatMessage: messageToSend,
+                  startTime: pendingMessage.startTime
                 }
-
-                const chatMessage: AgentsAppChatMessage = {
-                  message: content,
-                  timestamp: new Date().toISOString(),
-                  // Don't set agentId - let backend routing logic decide based on app state
-                  context: richContext
-                }
-
-                socket.emit('chat_message', chatMessage)
               }
             }, retryDelay)
           } else {
@@ -949,14 +976,32 @@ export function useStreamingWebSocket() {
             }
 
             // Clear retry state
-            if (retryState.retryTimer) {
-              clearTimeout(retryState.retryTimer)
-            }
-            retryStateRef.current = { retryCount: 0 }
+            clearRetryState()
 
-            markUpstreamError();
+            markUpstreamError({
+              message: data.content,
+              type: errorType,
+              statusCode: errorCode,
+              timestamp: errorTimestamp,
+              retryAttempts,
+              retryReason
+            });
+            finalizeStream({
+              agentId: data.data?.agentId,
+              totalSteps: data.data?.step
+            })
             sendToolImpression('error')
-            setWebSocketState({ status: 'error', error: data.content })
+            setWebSocketState({
+              status: 'error',
+              error: {
+                message: data.content,
+                type: errorType,
+                statusCode: errorCode,
+                timestamp: errorTimestamp,
+                retryAttempts,
+                retryReason
+              }
+            })
             setStreamingState('error')
             setIsLoading(false)
           }
@@ -977,6 +1022,7 @@ export function useStreamingWebSocket() {
     setWebSocketState,
     setStreamingState,
     setIsLoading,
+    clearRetryState,
     currentAppId,
     handleCommitComplete,
     scheduleToolDeltaFlush,
@@ -1022,7 +1068,7 @@ export function useStreamingWebSocket() {
         setWebSocketState({
           connected: false,
           status: 'error',
-          error: errorMessage
+          error: { message: errorMessage }
         })
       } finally {
         initializingRef.current = false
@@ -1055,6 +1101,9 @@ export function useStreamingWebSocket() {
         initializingRef.current = false
       }
 
+      // Clear retry timer if pending
+      clearRetryState()
+
       if (socketRef.current) {
         // Only disconnect and clear shared socket if this instance created it
         if (createdHereRef.current && getSharedSocket() === socketRef.current) {
@@ -1072,7 +1121,7 @@ export function useStreamingWebSocket() {
       initializingRef.current = false
     }
     // Including createConnection & setupEventHandlers satisfies exhaustive-deps; guard prevents duplicate initialization.
-  }, [currentAppId, createConnection, setupEventHandlers])
+  }, [currentAppId, createConnection, setupEventHandlers, clearRetryState, setWebSocketState])
 
   /**
    * Send message - the main streaming function
@@ -1090,12 +1139,6 @@ export function useStreamingWebSocket() {
     try {
       setIsLoading(true)
       setStreamingState('streaming')
-
-      // Store message for potential retry on APP_NOT_FOUND error
-      retryStateRef.current = {
-        pendingMessage: { content, aiEditContext, startTime: Date.now() },
-        retryCount: 0
-      }
 
       // Start new stream (adds user message + creates activeStream)
       startNewStream(content)
@@ -1291,6 +1334,12 @@ export function useStreamingWebSocket() {
         context: richContext
       }
 
+      // Store message for potential retry on APP_NOT_FOUND error
+      retryStateRef.current = {
+        pendingMessage: { chatMessage, startTime: Date.now() },
+        retryCount: 0
+      }
+
       // Use Socket.IO acknowledgement for delivery confirmation
       socket.emit('chat_message', chatMessage, (response: any) => {
         if (response?.error) {
@@ -1304,7 +1353,7 @@ export function useStreamingWebSocket() {
 
       setWebSocketState({
         status: 'error',
-        error: errorMessage
+        error: { message: errorMessage }
       })
       setStreamingState('error')
       setIsLoading(false)

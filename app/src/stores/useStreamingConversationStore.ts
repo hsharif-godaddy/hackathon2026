@@ -8,6 +8,7 @@
 import { create } from 'zustand'
 import type { AiEditContext } from '../app/develop/components/types'
 import { logger } from '@/lib/request-context'
+import type { StructuredError } from '@/types/errors'
 
 // Development plan item
 export interface PlanItem {
@@ -63,6 +64,11 @@ export interface StreamingMessage {
   maxStepsReached?: boolean        // True when agent hit max steps limit
   upstreamError?: boolean           // True if an error from upstream service, if any
   budgetExceeded?: boolean         // True if user exceeded their usage budget
+  error?: string                   // Error message
+  errorType?: string               // Structured error type (e.g., 'RETRY_ERROR', 'NETWORK_ERROR')
+  errorCode?: number               // HTTP status code
+  retryAttempts?: number           // Number of retry attempts for retry errors
+  retryReason?: string             // Reason for retry failure (e.g., 'maxRetriesExceeded', 'errorNotRetryable')
   metadata?: {
     usage?: {
       inputTokens: number
@@ -85,6 +91,11 @@ export interface ChatMessage {
   maxStepsReached?: boolean        // True when agent hit max steps limit
   upstreamError?: boolean           // True if an error from upstream service, if any
   budgetExceeded?: boolean         // True if user exceeded their usage budget
+  error?: string                   // Error message
+  errorType?: string               // Structured error type (e.g., 'RETRY_ERROR', 'NETWORK_ERROR')
+  errorCode?: number               // HTTP status code
+  retryAttempts?: number           // Number of retry attempts for retry errors
+  retryReason?: string             // Reason for retry failure (e.g., 'maxRetriesExceeded', 'errorNotRetryable')
   metadata?: {
     usage?: {
       inputTokens: number
@@ -100,7 +111,7 @@ export interface ChatMessage {
 export interface WebSocketState {
   connected: boolean
   status: 'idle' | 'connecting' | 'streaming' | 'completing' | 'error'
-  error?: string
+  error?: StructuredError
 }
 
 // Main store state
@@ -156,7 +167,7 @@ export interface StreamingConversationState {
   addToolCallSegment: (toolCall: ToolCall) => void
   addToolResultSegment: (toolCall: ToolCall) => void
   markMaxStepsReached: () => void
-  markUpstreamError: () => void
+  markUpstreamError: (error: StructuredError) => void
   markBudgetExceeded: () => void
 
   // === APP CONTEXT ACTIONS ===
@@ -414,13 +425,23 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     set({ activeStream: updatedStream })
   },
 
-  markUpstreamError: () => {
+  markUpstreamError: (error: StructuredError) => {
     const { activeStream } = get()
-    if (!activeStream) return
+    if (!activeStream) {
+      logger.error('streaming-store.mark-upstream-error.no-active-stream', {
+        message: 'No active stream to mark as error'
+      })
+      return
+    }
 
     const updatedStream = {
       ...activeStream,
-      upstreamError: true
+      upstreamError: true,
+      error: error.message,
+      errorType: error.type,
+      errorCode: error.statusCode,
+      ...(error.retryAttempts !== undefined && { retryAttempts: error.retryAttempts }),
+      ...(error.retryReason && { retryReason: error.retryReason })
     }
 
     set({ activeStream: updatedStream })
@@ -558,6 +579,11 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       maxStepsReached: activeStream.maxStepsReached,
       upstreamError: activeStream.upstreamError,
       budgetExceeded: activeStream.budgetExceeded,
+      ...(activeStream.error && { error: activeStream.error }),
+      ...(activeStream.errorType && { errorType: activeStream.errorType }),
+      ...(activeStream.errorCode !== undefined && { errorCode: activeStream.errorCode }),
+      ...(activeStream.retryAttempts !== undefined && { retryAttempts: activeStream.retryAttempts }),
+      ...(activeStream.retryReason && { retryReason: activeStream.retryReason }),
       metadata: {
         ...activeStream.metadata,
         ...metadata

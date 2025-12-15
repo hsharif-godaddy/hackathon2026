@@ -17,11 +17,32 @@ import type {
 import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from './types.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
 import type { ContentBlock, TextContentBlock, ImageContentBlock } from '../utils/image-content-builder.js'
-import { DEFAULT_RETRY_CONFIG } from '../utils/retry-with-backoff.js'
 import { createLogger } from '../utils/logger.js'
 import { serializeError } from '../utils/errors.js'
 
 const logger = createLogger('agent-factory')
+
+/**
+ * Default maximum retry attempts for AI SDK calls.
+ *
+ * Note: Only maxAttempts is configurable via AgentConfig.retryConfig.
+ * Retry delay timing (initial delay, backoff factor, jitter) is controlled
+ * by the AI SDK provider implementation and cannot be customized here.
+ * Most providers use ~2s initial delay with exponential backoff.
+ */
+const DEFAULT_MAX_RETRY_ATTEMPTS = 5
+
+/**
+ * Extended stream result type for tool validation errors
+ * Allows marking mock streams with validation error flags
+ */
+export interface StreamResultWithValidation {
+  textStream: AsyncIterable<string>
+  baseStream?: unknown
+  getFinalResult: () => Promise<any>
+  isToolValidationError?: boolean
+  validationErrorMessage?: string
+}
 
 /**
  * Tool execution hook function types
@@ -164,7 +185,7 @@ export class AgentWrapper {
     // Wrap tools with execution hooks if provided
     const wrappedTools = this.wrapToolsWithHooks(config.tools || {})
 
-    const configuredMaxAttempts = config.retryConfig?.maxAttempts ?? DEFAULT_RETRY_CONFIG.maxAttempts
+    const configuredMaxAttempts = config.retryConfig?.maxAttempts ?? DEFAULT_MAX_RETRY_ATTEMPTS
     const maxRetries = configuredMaxAttempts > 0 ? Math.max(0, configuredMaxAttempts - 1) : 0
 
     const telemetryHooks = this.createTelemetryHooks(config.logger)
@@ -763,8 +784,8 @@ export class AgentWrapper {
 
 Please retry your tool call with corrected input formatting.`
 
-        // Return a mock stream result with the error message
-        return {
+        // Return a mock stream result with the error message and validation flags
+        const mockResult: StreamResultWithValidation = {
           textStream: (async function* () {
             yield errorMessage
           })(),
@@ -773,8 +794,12 @@ Please retry your tool call with corrected input formatting.`
             usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
             finishReason: 'error',
             toolCalls: []
-          })
+          }),
+          isToolValidationError: true,
+          validationErrorMessage: error.message
         }
+
+        return mockResult
       }
 
       // Re-throw other errors
