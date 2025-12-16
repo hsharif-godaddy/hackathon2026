@@ -33,7 +33,7 @@ export default function PlanTracker({
   return (
     <>
       {/* Plan Status Bar */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="border-b border-gray-200">
         <button
           onClick={onToggleExpandedPlan}
           className="w-full flex items-center justify-between px-2 py-1 hover:bg-gray-50 transition-colors"
@@ -64,7 +64,7 @@ export default function PlanTracker({
         <div className="bg-gray-50 border-b border-gray-200">
           <div className="p-2 space-y-2">
             {/* Active Plan Details */}
-            <div className="bg-white rounded-lg p-2 shadow-sm">
+            <div className="rounded-lg p-2 shadow-sm">
               <div className="flex items-start justify-between mb-1.5">
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900">{activeItem.title}</h3>
@@ -88,7 +88,7 @@ export default function PlanTracker({
             </div>
 
             {/* Progress Overview */}
-            <div className="bg-white rounded-lg p-2 shadow-sm">
+            <div className="rounded-lg p-2 shadow-sm">
               <h4 className="text-sm font-medium text-gray-900 mb-1.5">Development Progress</h4>
               <div className="grid grid-cols-3 gap-2">
                 <div className="text-center">
@@ -96,7 +96,7 @@ export default function PlanTracker({
                   <div className="text-xs">Complete</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-lg font-semibold text-blue-600">1</div>
+                  <div className="text-lg font-semibold text-intents-ux-feedbackInfo-feedbackColor">1</div>
                   <div className="text-xs">In Progress</div>
                 </div>
                 <div className="text-center">

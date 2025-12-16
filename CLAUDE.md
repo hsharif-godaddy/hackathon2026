@@ -431,9 +431,32 @@ This project uses a structured logging system with TypeScript interfaces and con
 - **ALWAYS** use structured event names with `this.logger.info/warn/error`
 - **ALWAYS** pass structured data objects, not embedded strings
 - **Structured Data Only** - Use typed interfaces, no string interpolation
+- **Raw Values Preferred** - Log numbers, timestamps, and booleans as raw values, not pre-formatted strings
 - **Hierarchical Required Fields** - Domain-specific context enforcement
 - **Consistent Lifecycle Naming** - Standardized `begin/success/failure` patterns
 - **Type Safety** - All logging uses TypeScript helpers
+
+**Why Raw Values?**
+
+Structured logging should use raw values (numbers, timestamps, booleans) rather than pre-formatted strings:
+- **Flexibility**: Log aggregation tools can format values appropriately for different contexts
+- **Filtering**: Raw numbers and timestamps enable proper filtering and range queries
+- **Precision**: Formatted strings lose precision and make aggregation difficult
+- **Consistency**: Standardizes data types across all log consumers
+
+```typescript
+// ❌ BAD - Pre-formatted strings
+logger.debug('cache.performance', {
+  hitRate: `${(rate * 100).toFixed(0)}%`,  // String, can't filter/aggregate
+  lastRefresh: new Date(ts).toLocaleTimeString()  // String, loses date info
+})
+
+// ✅ GOOD - Raw values
+logger.debug('cache.performance', {
+  hitRate: 0.75,  // Number, can filter/aggregate
+  lastRefresh: 1234567890  // Timestamp, can format/filter as needed
+})
+```
 
 ### Examples
 
@@ -717,6 +740,15 @@ pnpm --filter website add <package-name>
 # Add as dev dependency
 pnpm --filter @airo/agents add -D <package-name>
 ```
+
+### Package Manager Exceptions
+
+**app-templates/v8/** uses `npm` intentionally:
+- This directory contains application templates that are copied to user-generated apps
+- Template files use `npm` as it's the most common package manager for end users
+- Generated apps (`/tmp/apps/`) should use whatever package manager the template specifies
+- Do NOT convert template package.json scripts from `npm` to `pnpm`
+- Only workspace-level operations should use `pnpm`
 
 ## Pull Request Guidelines
 

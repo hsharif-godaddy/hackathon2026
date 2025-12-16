@@ -82,7 +82,7 @@ const AreaChart = ({
   }, [] as Array<{ x: number, y: number, section: ContextSection, percentage: number }>)
 
   return (
-    <div className="bg-white rounded-lg border p-3">
+    <div className="rounded-lg border p-3">
       <h3 className="text-lg font-semibold mb-2">Context Token Distribution</h3>
 
       {/* Chart SVG */}
@@ -304,7 +304,7 @@ function ContextDebugPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b">
+      <div className="border-b">
         <div className="max-w-7xl mx-auto px-3 py-2">
           <div className="flex items-center justify-between">
             <div>
@@ -357,7 +357,7 @@ function ContextDebugPage() {
               />
 
               {/* System Prompt */}
-              <div className="bg-white rounded-lg border p-3">
+              <div className="rounded-lg border p-3">
                 <h3 className="text-lg font-semibold mb-2">System Prompt</h3>
                 <div className="border rounded-lg overflow-hidden">
                   <div className="bg-gray-50 px-2 py-1 border-b">
@@ -375,7 +375,7 @@ function ContextDebugPage() {
 
               {/* Conversation History */}
               {contextData.conversationHistory && contextData.conversationHistory.length > 0 && (
-                <div className="bg-white rounded-lg border p-3">
+                <div className="rounded-lg border p-3">
                   <h3 className="text-lg font-semibold mb-2">
                     Conversation History ({contextData.conversationHistory.length} messages)
                   </h3>
@@ -413,14 +413,14 @@ function ContextDebugPage() {
 
               {/* Selected Section Detail */}
               {selectedSection && (
-                <div className="bg-white rounded-lg border p-3">
+                <div className="rounded-lg border p-3">
                   <h3 className="text-lg font-semibold mb-2">Section Details</h3>
                   <MessageRenderer content={selectedSection.content} type={selectedSection.type} />
                 </div>
               )}
 
               {/* All Sections */}
-              <div className="bg-white rounded-lg border p-3">
+              <div className="rounded-lg border p-3">
                 <h3 className="text-lg font-semibold mb-2">All Context Sections</h3>
                 <div className="space-y-3">
                   {contextData.contextSections.map((section, index) => (
@@ -434,7 +434,7 @@ function ContextDebugPage() {
           )}
 
           {loading && !contextData && (
-            <div className="bg-white rounded-lg border p-6">
+            <div className="rounded-lg border p-6">
               <div className="text-center">
                 <div className="w-4 h-4 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
                 <p className="text-gray-600">Loading context data...</p>

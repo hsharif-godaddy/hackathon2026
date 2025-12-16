@@ -133,7 +133,7 @@ export function SocialPostList({
   return (
     <>
       <div className="flex flex-col w-full gap-1.5 max-w-4xl mx-auto py-1">
-        <div className="bg-white rounded-sm shadow-xs border">
+        <div className="rounded-sm shadow-xs border">
           <div className="px-1 pb-2 mt-1">
             <div className="max-h-[500px] overflow-y-auto">
               <div className="space-y-1.5">

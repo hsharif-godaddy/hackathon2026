@@ -191,6 +191,9 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
   // Log cache performance metrics periodically
   useEffect(() => {
     if (cacheStatus.hitRate > 0) {
+      // Use raw values for structured logging (hitRate as number, lastRefresh as timestamp)
+      // This allows log aggregation tools to filter/format values appropriately
+      // rather than pre-formatting as strings which loses precision and flexibility
       logger.debug('subscription.cache.performance', {
         hitRate: cacheStatus.hitRate,
         hits: cacheStatus.cacheHits,
