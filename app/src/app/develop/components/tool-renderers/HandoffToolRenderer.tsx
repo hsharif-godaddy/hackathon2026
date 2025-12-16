@@ -1,23 +1,25 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Bot } from 'lucide-react'
+import { useEffect,useState } from 'react'
+
+import { useTranslations } from '@/hooks/useTranslations'
+import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import KeyValueTable from './KeyValueTable'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import { Bot } from 'lucide-react'
 
 /**
  * Get agent display name from agent ID
  */
-function getAgentDisplayName(agentId: string): string {
+function getAgentDisplayName(agentId: string, t: (key: string) => string): string {
   const nameMap: Record<string, string> = {
-    'api': 'Backend Designer',
-    'develop': 'Developer',
-    'database': 'Database Designer',
-    'color-scheme': 'Color Scheme Designer',
-    'colorScheme': 'Color Scheme Designer',
-    'marketing': 'Marketing Agent'
+    'api': t('builder_tools_handoff_display_api'),
+    'develop': t('builder_tools_handoff_display_develop'),
+    'database':  t('builder_tools_handoff_display_database'),
+    'color-scheme': t('builder_tools_handoff_display_color'),
+    'colorScheme': t('builder_tools_handoff_display_color'),
+    'marketing':  t('builder_tools_handoff_display_marketing')
   }
   return nameMap[agentId] || agentId
 }
@@ -34,6 +36,7 @@ export default function HandoffToolRenderer({
   input,
   result
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -42,15 +45,15 @@ export default function HandoffToolRenderer({
   }, [])
 
   // Extract target agent from input or result
-  let targetAgent = 'Unknown Agent'
+  let targetAgent = t('builder_tools_handoff_display_unknown')
   if (input && typeof input === 'object') {
     const inputObj = input as any
-    targetAgent = getAgentDisplayName(inputObj.targetAgent || inputObj.target_agent || '')
+    targetAgent = getAgentDisplayName(inputObj.targetAgent || inputObj.target_agent || '', t)
   }
   if (result && typeof result === 'object') {
     const resultObj = result as any
     if (resultObj.targetAgent) {
-      targetAgent = getAgentDisplayName(resultObj.targetAgent)
+      targetAgent = getAgentDisplayName(resultObj.targetAgent, t)
     }
   }
 
@@ -60,24 +63,24 @@ export default function HandoffToolRenderer({
     <ToolModal
       isOpen={isModalOpen}
       onClose={() => setIsModalOpen(false)}
-      title={`Handoff to ${targetAgent}`}
+      title={t('builder_tools_handoff_to', {targetAgent})}
       mounted={mounted}
     >
       <div className="flex-1 overflow-y-auto space-y-2">
         {/* Arguments */}
         {input && typeof input === 'object' && (
-          <KeyValueTable data={input as Record<string, any>} title="Arguments" />
+          <KeyValueTable data={input as Record<string, any>} title={t('builder_tools_default_arguments')} />
         )}
 
         {/* Results */}
         {result && typeof result === 'object' && (
-          <KeyValueTable data={result as Record<string, any>} title="Result" />
+          <KeyValueTable data={result as Record<string, any>} title={t('builder_tools_default_result')} />
         )}
       </div>
     </ToolModal>
   )
 
-  const displayName = `Now talking with ${targetAgent}`
+  const displayName = t('builder_tools_handoff_talking_with', {targetAgent})
 
   return (
     <div>

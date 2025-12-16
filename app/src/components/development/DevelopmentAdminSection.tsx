@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import {
+  ExclamationTriangleIcon,
   StopIcon,
-  TrashIcon,
-  ExclamationTriangleIcon
-} from '@heroicons/react/24/outline'
-import { isFeatureEnabled } from '@/lib/features'
+  TrashIcon} from '@heroicons/react/24/outline'
 import Button from '@ux/button'
+
+import { isFeatureEnabled } from '@/lib/features'
 
 interface DevelopmentAdminSectionProps {
   // Counts for display

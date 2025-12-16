@@ -1,6 +1,7 @@
+import { existsSync, mkdirSync, readFileSync,writeFileSync } from 'fs';
 import forge from 'node-forge';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
+
 import { logger } from '../../request-context';
 
 export interface CAResult {

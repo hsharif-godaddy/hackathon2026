@@ -1,26 +1,27 @@
 'use client';
 
-import { useState, useEffect, useRef } from "react";
-import { useTranslations } from '@/hooks/useTranslations';
+import { useEffect, useRef,useState } from "react";
 import { useQuery } from '@tanstack/react-query';
-import TextInput from "@ux/text-input";
-import Button from "@ux/button";
-import text from "@ux/text";
 import Box from "@ux/box";
+import Button from "@ux/button";
+import WindowNewIcon from '@ux/icon/window-new';
 import SiblingSet from "@ux/sibling-set";
 import Skeleton from "@ux/skeleton";
-import WindowNewIcon from '@ux/icon/window-new';
-import { DomainType, DomainStatus } from "@/lib/control-plane/types";
-import { DomainMode } from "@/lib/mgmt-airo/types";
-import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
-import { getDomainErrorMessage } from '@/utils/domain-validation';
-import { useAppNameUpdate } from '@/hooks/useAppName';
-import { generateClickEID } from '@/utils/instrumentation';
-import { useSiteStore } from "@/stores/useSiteStore";
-import { useAppIdFromParams } from "@/app/develop/components/utils";
-import { logger } from "@/lib/request-context";
-import BigCard from "@/components/layout/BigCard";
+import text from "@ux/text";
+import TextInput from "@ux/text-input";
+
 import { Status } from "@/app/develop/components/types";
+import { useAppIdFromParams } from "@/app/develop/components/utils";
+import BigCard from "@/components/layout/BigCard";
+import { useAppNameUpdate } from '@/hooks/useAppName';
+import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
+import { useTranslations } from '@/hooks/useTranslations';
+import { DomainStatus,DomainType } from "@/lib/control-plane/types";
+import { DomainMode } from "@/lib/mgmt-airo/types";
+import { logger } from "@/lib/request-context";
+import { useSiteStore } from "@/stores/useSiteStore";
+import { getDomainErrorMessage } from '@/utils/domain-validation';
+import { generateClickEID } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 
 export default function ProjectDomain() {

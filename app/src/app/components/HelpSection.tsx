@@ -1,6 +1,7 @@
 import Box from '@ux/box'
 import Button from '@ux/button'
 import text from '@ux/text'
+
 import PageSection from '@/components/layout/PageSection'
 import { useTranslations } from '@/hooks/useTranslations'
 

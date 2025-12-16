@@ -1,8 +1,8 @@
-import { logger } from '../request-context';
 import { DevSiteAdapter } from './DevSiteAdapter';
+import type { ISiteAdapter } from './interfaces/ISiteAdapter';
 import { ProdSiteAdapter } from './ProdSiteAdapter';
 import { isV2ControlPlaneEnabled } from '../control-plane/adapter-factory';
-import type { ISiteAdapter } from './interfaces/ISiteAdapter';
+import { logger } from '../request-context';
 
 /**
  * Site Adapter Factory

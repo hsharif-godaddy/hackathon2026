@@ -1,18 +1,19 @@
-import { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react'
-import { FormattedMessage } from 'react-intl'
 import clsx from 'clsx'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo,useRef, useState } from 'react'
+import { FormattedMessage } from 'react-intl'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import SendIcon from '@ux/icon/send'
 import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
-import { HeroSectionProps, HeroSectionRef } from './types'
-import { generateClickEID } from '@/utils/instrumentation'
-import { MAX_PROMPT_LENGTH } from '@/lib/features'
+
 import ExamplesSection from '@/app/components/HeroExamples'
 import { useResponsive } from '@/hooks/useResponsive'
 import { useTranslations } from '@/hooks/useTranslations'
+import { MAX_PROMPT_LENGTH } from '@/lib/features'
+import { generateClickEID } from '@/utils/instrumentation'
+import { HeroSectionProps, HeroSectionRef } from './types'
 
 const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   promptText,

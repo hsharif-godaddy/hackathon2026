@@ -5,7 +5,7 @@
  * It's used internally to cleanly end conversations and reset agent state.
  */
 
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
 
 /**
  * End Conversation Tool Renderer Component

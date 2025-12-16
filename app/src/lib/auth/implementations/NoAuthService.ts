@@ -3,7 +3,7 @@
  * Used in local development where no auth is required
  */
 
-import { IAuthService, AuthConfig, AuthResult } from '../types';
+import { AuthConfig, AuthResult,IAuthService } from '../types';
 
 export class NoAuthService implements IAuthService {
   async authenticate(config?: AuthConfig): Promise<AuthResult> {

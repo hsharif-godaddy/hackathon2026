@@ -1,47 +1,49 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { logger } from '@/lib/request-context'
-import MarkdownRenderer from '../MarkdownRenderer'
-import ToolHeader from './ToolHeader'
-import ToolModal from './ToolModal'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import { ListTodo } from 'lucide-react'
+import React, { useEffect,useState } from 'react'
+
+import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import ToolModal from '@/app/develop/components/tool-renderers/ToolModal'
+import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
 
 /**
  * Get operation display message
  */
-function getOperationMessage(operation: string, result: any): string {
+function getOperationMessage(operation: string, result: any, t: (key: string, values?: Record<string, any>) => string): string {
   switch (operation) {
     case 'create_list':
-      return `Created list: ${result?.list?.name || 'Unknown'}`
+      return `${t('builder_common_todo_create_list')}: ${result?.list?.name || 'Unknown'}`
     case 'get_list':
-      return `Retrieved list: ${result?.list?.name || 'Unknown'}`
+      return `${t('builder_common_todo_get_list')}: ${result?.list?.name || 'Unknown'}`
     case 'show_list':
-      return `Todo list: ${result?.list?.name || 'Todo List'}`
+      return `${t('builder_common_todo_show_list')}: ${result?.list?.name || t('builder_common_todo_show_list')}`
     case 'select_list':
-      return `Working on ${result?.list?.name || 'Unknown'}`
+      return `${t('builder_common_todo_select_list')} ${result?.list?.name || 'Unknown'}`
     case 'list_all':
       const count = result?.lists?.length || 0
-      return `Found ${count} ${count === 1 ? 'list' : 'lists'}`
+      return t('builder_common_todo_list_all', { count })
     case 'delete_list':
-      return `Deleted list`
+      return t('builder_common_todo_delete_list')
     case 'add_items':
       const addedCount = result?.items?.length || 0
-      return `Added ${addedCount} ${addedCount === 1 ? 'item' : 'items'}`
+      return t('builder_common_todo_add_items', { addedCount })
     case 'update_items':
       const updatedCount = result?.items?.length || 0
-      return `Updated ${updatedCount} ${updatedCount === 1 ? 'item' : 'items'}`
+      return t('builder_common_todo_update_items', { updatedCount })
     case 'delete_items':
-      return `Deleted items`
+      return t('builder_common_todo_delete_items')
     case 'mark_done':
       const doneCount = result?.items?.length || result?.item ? 1 : 0
-      return `Completed ${doneCount} ${doneCount === 1 ? 'item' : 'items'}`
+      return t('builder_common_todo_mark_done', { doneCount })
     case 'mark_undone':
       const undoneCount = result?.items?.length || result?.item ? 1 : 0
-      return `Reopened ${undoneCount} ${undoneCount === 1 ? 'item' : 'items'}`
+      return t('builder_common_todo_mark_undone', { undoneCount })
     default:
-      return `Todo: ${operation}`
+      return `${t('builder_common_todo_default')}: ${operation}`
   }
 }
 
@@ -79,8 +81,8 @@ function CircularCheckbox({ checked }: { checked: boolean }) {
 /**
  * Render todo list as HTML
  */
-function renderTodoListHTML(list: any): React.JSX.Element {
-  if (!list) return <div>No list data</div>
+function renderTodoListHTML(list: any, t: (key: string) => string): React.JSX.Element {
+  if (!list) return <div>{t('builder_common_todo_no_list')}</div>
 
   const items = list.items || []
   const total = items.length
@@ -129,7 +131,7 @@ function renderTodoListHTML(list: any): React.JSX.Element {
         </div>
       ) : (
         <div className="text-center text-muted-foreground py-4">
-          No items yet
+          {t('builder_common_todo_no_items')}
         </div>
       )}
     </div>
@@ -139,14 +141,14 @@ function renderTodoListHTML(list: any): React.JSX.Element {
 /**
  * Render multiple lists as HTML
  */
-function renderMultipleListsHTML(lists: any[]): React.JSX.Element {
+function renderMultipleListsHTML(lists: any[], t: (key: string) => string): React.JSX.Element {
   if (!lists || lists.length === 0) {
-    return <div className="text-sm text-muted-foreground">No todo lists found.</div>
+    return <div className="text-sm text-muted-foreground">{t('builder_common_todo_no_todo')}</div>
   }
 
   return (
     <div className="space-y-2">
-      <h1 className="text-lg font-semibold text-foreground">All Todo Lists ({lists.length})</h1>
+      <h1 className="text-lg font-semibold text-foreground">{t('builder_common_todo_all_todo')} ({lists.length})</h1>
 
       <div className="space-y-1.5">
         {lists.map((list) => {
@@ -229,6 +231,7 @@ export default function TodoListToolRenderer({
   input,
   result
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [isVisible, setIsVisible] = useState(true)
@@ -309,9 +312,9 @@ export default function TodoListToolRenderer({
 
   // Generate display message
   if (toolStatus === 'completed' && parsedResult) {
-    displayMessage = getOperationMessage(operation, parsedResult)
+    displayMessage = getOperationMessage(operation, parsedResult, t)
   } else if (operation) {
-    displayMessage = `Todo: ${operation.replace(/_/g, ' ')}`
+    displayMessage = `${t('builder_common_todo_default')}: ${operation.replace(/_/g, ' ')}`
   }
 
   // Try to get list name from input for operations that don't return the full list
@@ -333,13 +336,13 @@ export default function TodoListToolRenderer({
     hasDetails = true
     if (parsedResult.list) {
       listName = parsedResult.list.name || listName // Update listName from result
-      modalContentElement = renderTodoListHTML(parsedResult.list)
+      modalContentElement = renderTodoListHTML(parsedResult.list, t)
     } else if (parsedResult.lists) {
-      modalContentElement = renderMultipleListsHTML(parsedResult.lists)
+      modalContentElement = renderMultipleListsHTML(parsedResult.lists, t)
     } else if (parsedResult.items) {
-      modalContentElement = renderItemsHTML(parsedResult.items, 'Affected Items', listName)
+      modalContentElement = renderItemsHTML(parsedResult.items, t('builder_common_todo_affected'), listName)
     } else if (parsedResult.item) {
-      modalContentElement = renderItemsHTML([parsedResult.item], 'Item Details', listName)
+      modalContentElement = renderItemsHTML([parsedResult.item], t('builder_common_todo_details'), listName)
     } else if (parsedResult.message) {
       modalContentElement = <div className="text-sm text-foreground/80">{parsedResult.message}</div>
     }
@@ -349,7 +352,7 @@ export default function TodoListToolRenderer({
     <ToolModal
       isOpen={isModalOpen}
       onClose={() => setIsModalOpen(false)}
-      title={listName ? `${listName} - ${operation.replace(/_/g, ' ')}` : `Todo List: ${operation.replace(/_/g, ' ')}`}
+      title={listName ? `${listName} - ${operation.replace(/_/g, ' ')}` : `${t('builder_common_todo_show_list')}: ${operation.replace(/_/g, ' ')}`}
       mounted={mounted}
     >
       <div className="flex-1 overflow-y-auto">

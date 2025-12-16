@@ -1,6 +1,7 @@
-import type { DatabaseConfig } from '../services/docker-compose-generator';
-import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { existsSync,readFileSync, writeFileSync } from 'fs';
+
 import { logger } from '../../request-context';
+import type { DatabaseConfig } from '../services/docker-compose-generator';
 
 /**
  * Database secret value structure matching production config format

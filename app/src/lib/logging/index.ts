@@ -19,6 +19,6 @@
  * ```
  */
 
-export { ClientLogBuffer } from './client-log-buffer';
 export type { ClientLogBufferConfig } from './client-log-buffer';
+export { ClientLogBuffer } from './client-log-buffer';
 

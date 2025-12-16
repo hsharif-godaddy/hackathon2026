@@ -1,8 +1,8 @@
 import React, { ReactElement } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, RenderOptions } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'react-intl';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, renderHook, RenderHookOptions,RenderOptions } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 /**
  * Creates a new QueryClient instance for testing with default options
@@ -59,6 +59,37 @@ export function renderWithProviders(
       renderOptions
     ),
   };
+}
+
+/**
+ * Custom renderHook function that wraps hooks with necessary providers
+ * Includes IntlProvider and QueryClient provider for testing hooks that use react-intl or react-query
+ *
+ * @param {Function} hook - The hook to render
+ * @param {RenderHookOptions} options - Optional render configuration
+ * @returns Render result from renderHook
+ *
+ * @example
+ * const { result } = renderHookWithProviders(() => useMyHook());
+ * expect(result.current.value).toBe(expectedValue);
+ */
+export function renderHookWithProviders<Result, Props>(
+  hook: (props: Props) => Result,
+  options?: RenderHookOptions<Props> & { queryClient?: QueryClient }
+) {
+  const { queryClient, ...renderOptions } = options || {};
+  const testQueryClient = queryClient ?? createTestQueryClient();
+
+  return renderHook(hook, {
+    wrapper: ({ children }) => (
+      <IntlProvider locale="en" messages={{}}>
+        <QueryClientProvider client={testQueryClient}>
+          {children}
+        </QueryClientProvider>
+      </IntlProvider>
+    ),
+    ...renderOptions,
+  });
 }
 
 /**

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import {
-  withCustomerAuth,
-  customerHasAccount,
   createCustomerAuthError,
-  type CustomerAuthContext
-} from '@/lib/customer-auth';
+  type CustomerAuthContext,
+  customerHasAccount,
+  withCustomerAuth} from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 
 // POST /api/sites/quick-create - Fast site creation

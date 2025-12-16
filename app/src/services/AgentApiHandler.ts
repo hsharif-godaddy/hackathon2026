@@ -1,6 +1,6 @@
-import { agentFetch } from '@/lib/agent-fetch'
 import { buildApiUrl } from '@/config/api'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 
 /**

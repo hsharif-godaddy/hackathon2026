@@ -5,17 +5,18 @@
  * Focuses on HTTP concerns, retry logic, and error handling.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { AiroMgmtClient } from '../client';
 import type { 
-  AiroMgmtClientConfig,
-  AiroSubscription,
-  AiroSystem,
   AiroApp,
   AiroAppDetails,
-  AiroJobStatus,
-  AiroSignupPayload,
   AiroCreateAppPayload,
+  AiroJobStatus,
+  AiroMgmtClientConfig,
+  AiroSignupPayload,
+  AiroSubscription,
+  AiroSystem,
   AiroUpdateAppPayload
 } from '../types';
 

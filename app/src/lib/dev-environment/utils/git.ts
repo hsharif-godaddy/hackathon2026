@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
-import { resolve } from 'path';
 import { existsSync } from 'fs';
+import { resolve } from 'path';
 
 export interface GitCommandOptions {
   /** Working directory for the git command */

@@ -5,9 +5,10 @@
  * authorization, and site ownership validation.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { POST } from '../route';
 import { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { POST } from '../route';
 
 /**
  * Mock dependencies using vi.hoisted to avoid hoisting issues

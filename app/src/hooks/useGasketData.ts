@@ -1,4 +1,4 @@
-import { gasketData, type GasketData } from '@gasket/data';
+import { type GasketData,gasketData } from '@gasket/data';
 
 declare module '@gasket/data' {
   interface GasketData {

@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
-import { setLocalOverride, clearLocalOverride } from '@/utils/moduleFederation';
+import Box from '@ux/box';
+
 import RemoteModulePage from '@/app/components/RemoteModulePage';
 import { useAppIdFromParams } from '@/app/develop/components/utils';
-import Box from '@ux/box';
+import { clearLocalOverride,setLocalOverride } from '@/utils/moduleFederation';
 
 /**
  * Backups panel for settings

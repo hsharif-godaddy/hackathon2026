@@ -5,8 +5,8 @@
  * escape from intended boundaries, preventing directory traversal vulnerabilities.
  */
 
-import path from 'path';
 import { existsSync } from 'fs';
+import path from 'path';
 
 export interface SafePathOptions {
   /** Base directory that all resolved paths must be within */

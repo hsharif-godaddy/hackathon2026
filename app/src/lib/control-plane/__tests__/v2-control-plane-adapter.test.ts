@@ -10,7 +10,8 @@
  * See: app/TESTING-SETUP.md for complete setup instructions
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { V2ControlPlaneAdapter } from '../v2-control-plane-adapter';
 
 /**

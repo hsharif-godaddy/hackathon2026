@@ -14,9 +14,10 @@
  * The client-side redirect (steps 2-4) is handled by @godaddy/gasket-auth's authFetch.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleControlPlaneError } from '../error-handler';
+import { beforeEach,describe, expect, it, vi } from 'vitest';
+
 import { AiroHttpError } from '@/lib/mgmt-airo';
+import { handleControlPlaneError } from '../error-handler';
 
 /**
  * Mock logger

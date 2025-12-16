@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+import { describe, expect, it, vi } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+
 import { renderWithProviders } from '@/tests/test-utils';
 import ChatInput from './ChatInput';
 
@@ -25,14 +27,14 @@ describe('ChatInput', () => {
   it('should display textarea with placeholder', () => {
     renderWithProviders(<ChatInput {...defaultProps} />);
 
-    const textarea = screen.getByPlaceholderText(/Ask Airo to modify code/i);
+    const textarea = screen.getByPlaceholderText('builder_chatinput_ask_airo');
     expect(textarea).toBeInTheDocument();
   });
 
   it('should display processing placeholder when disabled', () => {
     renderWithProviders(<ChatInput {...defaultProps} isDisabled={true} />);
 
-    expect(screen.getByPlaceholderText('Processing... please wait')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('builder_chatinput_processing')).toBeInTheDocument();
   });
 
   it('should display input value', () => {
@@ -57,34 +59,34 @@ describe('ChatInput', () => {
   it('should render send button', () => {
     renderWithProviders(<ChatInput {...defaultProps} />);
 
-    expect(screen.getByRole('button', { name: /Send message/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_chatinput_send' })).toBeInTheDocument();
   });
 
   it('should disable send button when no input value', () => {
     renderWithProviders(<ChatInput {...defaultProps} inputValue="" />);
 
-    const sendButton = screen.getByRole('button', { name: /Send message/i });
+    const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
     expect(sendButton).toBeDisabled();
   });
 
   it('should disable send button when input is only whitespace', () => {
     renderWithProviders(<ChatInput {...defaultProps} inputValue="   " />);
 
-    const sendButton = screen.getByRole('button', { name: /Send message/i });
+    const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
     expect(sendButton).toBeDisabled();
   });
 
   it('should enable send button when input has value', () => {
     renderWithProviders(<ChatInput {...defaultProps} inputValue="Test" />);
 
-    const sendButton = screen.getByRole('button', { name: /Send message/i });
+    const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
     expect(sendButton).not.toBeDisabled();
   });
 
   it('should disable send button when isDisabled is true', () => {
     renderWithProviders(<ChatInput {...defaultProps} inputValue="Test" isDisabled={true} />);
 
-    const sendButton = screen.getByRole('button', { name: /Send message/i });
+    const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
     expect(sendButton).toBeDisabled();
   });
 
@@ -101,7 +103,7 @@ describe('ChatInput', () => {
       <ChatInput {...defaultProps} inputValue="Test" onSendMessage={onSendMessage} />
     );
 
-    const sendButton = screen.getByRole('button', { name: /Send message/i });
+    const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
     await user.click(sendButton);
 
     await waitFor(() => {
@@ -148,7 +150,7 @@ describe('ChatInput', () => {
   it('should have correct send button attributes', () => {
     renderWithProviders(<ChatInput {...defaultProps} inputValue="Test" />);
 
-    const sendButton = screen.getByRole('button', { name: /Send message/i });
+    const sendButton = screen.getByRole('button', { name: 'builder_chatinput_send' });
     expect(sendButton).toHaveAttribute('id', 'chat-send-button');
     expect(sendButton).toHaveAttribute('data-eid', 'develop.prompt.send');
   });

@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+import { beforeEach,describe, expect, it, vi } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+
+import { ChatTab } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import ChatPane from './ChatPane';
-import { ChatTab } from '@/app/develop/components/types';
 
 // Mock child components
 vi.mock('@/app/develop/components/chat/ChatInput', () => ({

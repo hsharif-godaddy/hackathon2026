@@ -1,8 +1,9 @@
 import React, { Component, ReactNode } from 'react';
-import { logger } from '@/lib/request-context';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import text from '@ux/text';
+
+import { logger } from '@/lib/request-context';
 
 /**
  * Props for the ErrorBoundary component

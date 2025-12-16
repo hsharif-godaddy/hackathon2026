@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
-import { DatabaseAdapter, DatabaseResult, DatabaseRow, DatabaseStatement, DatabaseConfig } from './types';
+
+import { DatabaseAdapter, DatabaseConfig,DatabaseResult, DatabaseRow, DatabaseStatement } from './types';
 import { logger } from '../request-context';
 
 export class MySQLAdapter implements DatabaseAdapter {

@@ -2,6 +2,7 @@
 
 import { motion, useInView } from 'framer-motion'
 import { useRef } from 'react'
+
 import PageSection from '@/components/layout/PageSection'
 import TextBlock from '@/components/layout/TextBlock'
 import { useTranslations } from '@/hooks/useTranslations'

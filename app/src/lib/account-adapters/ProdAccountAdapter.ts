@@ -1,5 +1,5 @@
 import { PrismaAccountService } from '@/lib/database/prisma-account-service';
-import type { IAccountAdapter, AccountInfo, PlanInfo } from './interfaces/IAccountAdapter';
+import type { AccountInfo, IAccountAdapter, PlanInfo } from './interfaces/IAccountAdapter';
 
 /**
  * Production Account Adapter

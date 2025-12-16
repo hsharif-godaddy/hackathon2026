@@ -1,24 +1,26 @@
 'use client'
 
-import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { logger } from '@/lib/request-context'
-import AssetManagerModal, { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
-import SettingsMenu from '@/app/develop/components/settings/SettingsMenu'
-import { useAppIdFromParams } from '@/app/develop/components/utils'
-import { generateClickEID } from '@/utils/instrumentation'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
-import { useGitHistoryQuery } from '@/hooks/useGitHistory'
-import { useGitStore } from '@/stores/useGitStore'
+import { useState } from 'react'
 import Box from '@ux/box'
-import IconButton from '@/app/develop/components/IconButton'
 import CommentsIcon from '@ux/icon/comments'
 import HistoryIcon from '@ux/icon/history'
 import ImageIcon from '@ux/icon/image'
 import SettingsIcon from '@ux/icon/settings'
 import WebsiteIcon from '@ux/icon/website'
+
+import AssetManagerModal, { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
+import IconButton from '@/app/develop/components/IconButton'
+import SettingsMenu from '@/app/develop/components/settings/SettingsMenu'
 import { ChatTab } from '@/app/develop/components/types'
+import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useGitStore } from '@/stores/useGitStore'
+import { generateClickEID } from '@/utils/instrumentation'
 interface ChatToolbarProps {
   isProcessing?: boolean
   onAssetSelect?: (items: AssetManagerItem[]) => void
@@ -26,6 +28,7 @@ interface ChatToolbarProps {
 }
 
 export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventureId }: ChatToolbarProps) {
+  const t = useTranslations();
   const router = useRouter()
   const appId = useAppIdFromParams()
   const activeChatTab = useDevelopPageStore((state) => state.activeChatTab);
@@ -96,7 +99,7 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
           icon={<WebsiteIcon />}
           dataEid={generateClickEID('develop.chat_toolbar.preview')}
           onClick={() => handleTabClick(ChatTab.PREVIEW)}
-          label="Preview"
+          label={t('builder_chat_toolbar_button_preview')}
           active={activeChatTab === ChatTab.PREVIEW}
         />
       )}
@@ -104,16 +107,16 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
         icon={<CommentsIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.chat')}
         onClick={() => handleTabClick(ChatTab.CHAT)}
-        label="Chat"
+        label={t('builder_chat_toolbar_button_chat')}
         active={activeChatTab === ChatTab.CHAT}
       />
       {/* disable until we are sure we'll have this feature here
       <IconButton
         icon={<PaintBucketIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.styles')}
-        label="Styles"
+        label={t('builder_chat_toolbar_button_styles')}
         active={activeChatTab === ChatTab.STYLES}
-        tooltip="Available soon!"
+        tooltip={t('builder_chat_toolbar_available_soon')}
       />
       */}
       {(!isMobile || (isMobile && isAssetManagerEnabled)) && (
@@ -121,24 +124,24 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
           icon={<ImageIcon />}
           dataEid={generateClickEID('develop.chat_toolbar.medias')}
           onClick={() => isAssetManagerEnabled ? setIsAssetManagerOpen(true) : undefined}
-          label="Media"
+          label={t('builder_chat_toolbar_button_media')}
           active={isAssetManagerOpen}
-          tooltipDescription={!isAssetManagerEnabled ? 'Available soon!' : undefined}
+          tooltipDescription={!isAssetManagerEnabled ? t('builder_chat_toolbar_available_soon') : undefined}
           disabled={isProcessing}
         />
       )}
       {/* disabled for now<IconButton
         icon={<CheckboxListIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.todo')}
-        label="To-do"
+        label={t('builder_chat_toolbar_button_todo)}
         active={activeChatTab === ChatTab.TODO}
-        tooltip="Available soon!"
+        tooltip={t('builder_chat_toolbar_available_soon')}
       /> */}
       <IconButton
         icon={<HistoryIcon />}
         dataEid={generateClickEID('develop.chat_toolbar.history')}
         onClick={() => handleTabClick(ChatTab.HISTORY)}
-        label="History"
+        label={t('builder_chat_toolbar_button_history')}
         active={activeChatTab === ChatTab.HISTORY}
         disabled={isProcessing || isFetchingCommits || isSelectingCommit}
       />
@@ -150,9 +153,9 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
           icon={<SettingsIcon />}
           dataEid={generateClickEID('develop.chat_toolbar.settings')}
           onClick={isSettingsEnabled ? () => handleTabClick(ChatTab.SETTINGS) : undefined}
-          tooltipDescription={isSettingsEnabled ? undefined : "Available soon!"}
+          tooltipDescription={isSettingsEnabled ? undefined : t('builder_chat_toolbar_available_soon')}
           className="ml-auto"
-          label="Settings"
+          label={t('builder_chat_toolbar_button_settings')}
           active={activeChatTab === ChatTab.SETTINGS}
         />
       )}

@@ -1,12 +1,11 @@
 "use client"
 
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 import { PanelLeftIcon } from "lucide-react"
+import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
 
 import { useResponsive } from "@/hooks/useResponsive"
-import { cn } from "@/lib/utils"
 import { Button } from "@/lib/shadcn/button"
 import { Input } from "@/lib/shadcn/input"
 import { Separator } from "@/lib/shadcn/separator"
@@ -24,6 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/lib/shadcn/tooltip"
+import { cn } from "@/lib/utils"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7

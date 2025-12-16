@@ -1,11 +1,12 @@
 'use client'
 
 import {
+  CheckCircleIcon,
   ChevronDownIcon,
   ChevronUpIcon,
-  CheckCircleIcon,
   PlayIcon
 } from '@heroicons/react/24/outline'
+
 import { PlanItem } from './types'
 
 interface PlanTrackerProps {

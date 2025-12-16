@@ -1,8 +1,9 @@
 /* eslint-disable react-hooks/rules-of-hooks */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
-import { useResponsive, SM_BREAKPOINT, LG_BREAKPOINT } from './useResponsive';
 import { useMediaQuery } from 'react-responsive';
+import { afterEach,beforeEach, describe, expect, it, vi } from 'vitest';
+import { renderHook } from '@testing-library/react';
+
+import { LG_BREAKPOINT,SM_BREAKPOINT, useResponsive } from './useResponsive';
 
 const XS_BREAKPOINT_MAX = SM_BREAKPOINT - 1;
 const MD_BREAKPOINT_MAX = LG_BREAKPOINT - 1;

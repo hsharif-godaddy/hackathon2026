@@ -1,41 +1,32 @@
 'use client'
 
 import { memo } from 'react'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import SocialStatusWidget from '../widgets/SocialStatusWidget'
 import ShieldCheckIcon from '@ux/icon/shield-check'
-import ToolHeader from './ToolHeader'
+
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import SocialStatusWidget from '@/app/develop/components/widgets/SocialStatusWidget'
+import { useTranslations } from '@/hooks/useTranslations'
 
 function SocialStatusToolRenderer({
   toolStatus,
   result
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const r = result && typeof result === 'object' ? (result as any) : {}
-
-  if (toolStatus === 'completed' && r.action === 'status') {
-    return (
-      <div>
-        <ToolHeader
-          icon={<ShieldCheckIcon className="w-2 h-2" />}
-          displayName="Social Media Status"
-          toolStatus={toolStatus}
-          hasDetails={false}
-          onOpenModal={undefined}
-        />
-        <SocialStatusWidget />
-      </div>
-    )
-  }
 
   return (
     <div>
       <ToolHeader
         icon={<ShieldCheckIcon className="w-2 h-2" />}
-        displayName="Social Media Status"
+        displayName={t('builder_tools_socail_status_title')}
         toolStatus={toolStatus}
         hasDetails={false}
         onOpenModal={undefined}
       />
+      {(toolStatus === 'completed' && r.action === 'status') && (
+        <SocialStatusWidget />
+      )}
     </div>
   )
 }

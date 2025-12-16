@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach,describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { useMockAuth } from './useMockAuth';
+
 import { mockAuthManager } from '@/lib/mock-auth';
+import { useMockAuth } from './useMockAuth';
 
 // Mock the mock-auth library
 vi.mock('@/lib/mock-auth', () => ({

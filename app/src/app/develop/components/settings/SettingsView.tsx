@@ -1,19 +1,19 @@
 'use client'
 
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { SettingsSection } from '@/app/develop/components/types'
-import ProjectPanel from '@/app/develop/components/settings/ProjectPanel'
-import DomainPanel from '@/app/develop/components/settings/DomainPanel'
 import BackupsPanel from '@/app/develop/components/settings/BackupsPanel'
-import SecurityPanel from '@/app/develop/components/settings/SecurityPanel'
-import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
-import LogsPanel from '@/app/develop/components/settings/LogsPanel'
 import ConversationsPanel from '@/app/develop/components/settings/ConversationsPanel'
 import { DatabasePanel } from '@/app/develop/components/settings/Database/DatabasePanel'
+import DomainPanel from '@/app/develop/components/settings/DomainPanel'
+import LogsPanel from '@/app/develop/components/settings/LogsPanel'
+import ProjectPanel from '@/app/develop/components/settings/ProjectPanel'
+import SecurityPanel from '@/app/develop/components/settings/SecurityPanel'
+import SocialPanel from '@/app/develop/components/settings/SocialPanel'
+import VisualScanPanel from '@/app/develop/components/settings/VisualScanPanel'
+import { SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { SecretsPanel } from './SecretsPanel'
-import SocialPanel from '@/app/develop/components/settings/SocialPanel'
 
 export default function SettingsView() {
   const activeSettingsSection = useDevelopPageStore((state) => state.activeSettingsSection)

@@ -1,11 +1,14 @@
 'use client'
 
-import Button from '@ux/button'
+import '@/app/develop/components/tool-renderers/SuggestedResponseToolRenderer.css'
+
 import Box from '@ux/box'
+import Button from '@ux/button'
+
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import './SuggestedResponseToolRenderer.css'
 
 interface Suggestion {
   text: string
@@ -22,6 +25,7 @@ export default function SuggestedResponseToolRenderer({
   toolStatus,
   result
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const sendUserMessage = useSendUserMessage();
   const isStreaming = useIsActivelyStreaming();
   const isLoading = useIsLoading();
@@ -50,9 +54,9 @@ export default function SuggestedResponseToolRenderer({
         {widgetData.question}
       </div>
 
-      <Box 
-        orientation="horizontal" 
-        gap="sm" 
+      <Box
+        orientation="horizontal"
+        gap="sm"
         wrap={true}
         inlineAlignChildren="end"
         className="flex-wrap justify-end"
@@ -75,22 +79,22 @@ export default function SuggestedResponseToolRenderer({
         ))}
       </Box>
 
-      <Box 
-        orientation="horizontal" 
-        gap="sm" 
+      <Box
+        orientation="horizontal"
+        gap="sm"
         inlineAlignChildren="end"
         className="text-xs text-intents-ux-textSubtle-textColor self-end mt-1"
       >
-        <svg 
+        <svg
           className="w-3 h-3"
-          fill="currentColor" 
+          fill="currentColor"
           viewBox="0 0 24 24"
           aria-hidden="true"
         >
           <path d="M12 2C6.48 2 2 6.48 2 12c0 1.54.36 3 .97 4.29L2 22l5.71-.97C9 21.64 10.46 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.38 0-2.68-.3-3.86-.83l-.28-.14-2.86.49.49-2.86-.14-.28A7.95 7.95 0 014 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/>
           <path d="M7 9h10v2H7zm0 4h7v2H7z"/>
         </svg>
-        <span className="text-sm ">Or, write your own response below</span>
+        <span className="text-sm ">{t('builder_tools_suggested_response')}</span>
       </Box>
     </Box>
   )

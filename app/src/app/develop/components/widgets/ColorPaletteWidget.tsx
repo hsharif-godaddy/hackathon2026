@@ -1,9 +1,10 @@
 'use client'
 
-import { postMessageToIframe } from '@/utils/postMessage'
-import text from '@ux/text'
-import MapPinIcon from '@ux/icon/map-pin'
 import clsx from 'clsx'
+import MapPinIcon from '@ux/icon/map-pin'
+import text from '@ux/text'
+
+import { postMessageToIframe } from '@/utils/postMessage'
 
 /**
  * Complete palette data structure

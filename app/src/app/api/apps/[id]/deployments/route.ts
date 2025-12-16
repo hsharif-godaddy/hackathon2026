@@ -1,13 +1,13 @@
-import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
 import { NextRequest, NextResponse } from 'next/server';
-import { AiroMgmtClient } from '@/lib/mgmt-airo';
-import { logger } from '@/lib/request-context';
+
+import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
 import {
   createCustomerAuthError,
+  type CustomerAuthContext,
   customerHasAccount,
-  withCustomerAuth,
-  type CustomerAuthContext
-} from '@/lib/customer-auth';
+  withCustomerAuth} from '@/lib/customer-auth';
+import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { logger } from '@/lib/request-context';
 
 export const dynamic = 'force-dynamic';
 

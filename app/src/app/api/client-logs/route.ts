@@ -20,8 +20,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { logger, LogLevel } from '@/lib/request-context';
+
 import { authenticateCustomer } from '@/lib/customer-auth';
+import { logger, LogLevel } from '@/lib/request-context';
 
 /**
  * Maximum number of logs accepted per request

@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
-import KeyValueTable from './KeyValueTable'
-import ToolHeader from './ToolHeader'
-import ToolModal from './ToolModal'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import { File } from 'lucide-react'
+import { useEffect,useState } from 'react'
+
+import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import KeyValueTable from '@/app/develop/components/tool-renderers/KeyValueTable'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import ToolModal from '@/app/develop/components/tool-renderers/ToolModal'
+import { useTranslations } from '@/hooks/useTranslations'
 
 /**
  * Extract filename from path
@@ -48,6 +50,7 @@ export default function ReadFileToolRenderer({
   input,
   result
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -67,10 +70,10 @@ export default function ReadFileToolRenderer({
     filename = getFilename(filePath)
 
     if (inputObj.startLine) {
-      metadata['Start Line'] = inputObj.startLine
+      metadata[t('builder_tools_read_file_start_line')] = inputObj.startLine
     }
     if (inputObj.numLines) {
-      metadata['Number of Lines'] = inputObj.numLines
+      metadata[t('builder_tools_read_file_number_lines')] = inputObj.numLines
     }
   }
 
@@ -81,18 +84,18 @@ export default function ReadFileToolRenderer({
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
-      if (line.startsWith('File: ')) {
+      if (line.startsWith(`${t('builder_common_file')}: `)) {
         const extractedPath = line.substring(6).trim()
         if (!filePath) {
           filePath = extractedPath
           filename = getFilename(extractedPath)
         }
       } else if (line.startsWith('Lines ')) {
-        metadata['Lines Read'] = line.substring(6).trim()
+        metadata[t('builder_tools_read_file_lines_read')] = line.substring(6).trim()
       } else if (line.startsWith('Total lines: ')) {
-        metadata['Total Lines'] = line.substring(13).trim()
+        metadata[t('builder_tools_file_edit_metadata_lines_total')] = line.substring(13).trim()
       } else if (line.startsWith('File size: ')) {
-        metadata['File Size'] = line.substring(11).trim()
+        metadata[t('builder_tools_read_file_size')] = line.substring(11).trim()
       } else if (line.trim() === '') {
         contentStartIndex = i + 1
         break
@@ -141,7 +144,7 @@ export default function ReadFileToolRenderer({
     </ToolModal>
   )
 
-  const displayName = filename ? `Read File: ${filename}` : 'Read File'
+  const displayName = filename ? `${t('builder_tools_read_file_title')}: ${filename}` : t('builder_tools_read_file_title')
 
   return (
     <div>

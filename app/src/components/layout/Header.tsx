@@ -1,20 +1,21 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
-import Link from 'next/link'
 import clsx from 'clsx'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation';
 import Box from '@ux/box'
 import Tag from '@ux/tag';
+
 import { UserMenu } from '@/components/auth'
-import { useAuthContext } from '@/components/providers/AuthProvider'
-import AppSelector from '@/components/layout/AppSelector'
 import AppPublish from '@/components/layout/AppPublish'
-import { useResponsive } from '@/hooks/useResponsive'
+import AppSelector from '@/components/layout/AppSelector'
 import InviteFriends from '@/components/layout/InviteFriends'
-import { generateClickEID } from '@/utils/instrumentation'
-import { HeaderProps } from './types'
-import { AiroLogo } from './AiroLogo';
+import { useAuthContext } from '@/components/providers/AuthProvider'
+import { useResponsive } from '@/hooks/useResponsive'
 import { useTranslations } from '@/hooks/useTranslations';
+import { generateClickEID } from '@/utils/instrumentation'
+import { AiroLogo } from './AiroLogo';
+import { HeaderProps } from './types'
 
 export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
   const t = useTranslations();

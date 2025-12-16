@@ -1,33 +1,36 @@
-import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useEffect,useState } from 'react'
+import { FormattedMessage } from 'react-intl'
 import {
-  PlayIcon,
-  EyeIcon,
-  TrashIcon,
   ClockIcon,
-  GlobeAltIcon
-} from '@heroicons/react/24/outline'
-import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
-import { hasBeenPublished } from '@/utils/site'
-import { generateClickEID } from '@/utils/instrumentation'
-import { useSitesStore } from '@/stores/useSitesStore'
-import { logger } from '@/lib/request-context'
-import { appFetch } from '@/lib/gasket-config'
+  EyeIcon,
+  GlobeAltIcon,
+  PlayIcon,
+  TrashIcon} from '@heroicons/react/24/outline'
 import Box from '@ux/box'
 import Button from '@ux/button'
-import Tag from '@ux/tag'
-import { formatDate } from '@/utils/common'
 import PlusIcon from '@ux/icon/plus'
+import Tag from '@ux/tag'
 import text from '@ux/text'
-import AppThumbnail from './AppThumbnail'
+
+import AppThumbnail from '@/app/apps/AppThumbnail'
+import { useTranslations } from '@/hooks/useTranslations'
+import { appFetch } from '@/lib/gasket-config'
+import { logger } from '@/lib/request-context'
+import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
+import { useSitesStore } from '@/stores/useSitesStore'
+import { formatDate } from '@/utils/common'
+import { generateClickEID } from '@/utils/instrumentation'
+import { hasBeenPublished } from '@/utils/site'
 
 interface AlertState {
   siteId: string | null
   type: 'delete' | null
-  message: string
+  message: string | React.ReactNode
 }
 
 export default function AppCard({site}) {
+  const t = useTranslations();
   const router = useRouter()
 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -60,17 +63,17 @@ export default function AppCard({site}) {
   const getStatusLabel = (status: SiteInfo['status']) => {
     switch (status) {
       case 'running':
-        return <Tag emphasis="success">Running</Tag>
+        return <Tag emphasis="success">{t('builder_status_running')}</Tag>
       case 'creating':
       case 'created':
-        return <Tag emphasis="warning">Creating</Tag>
+        return <Tag emphasis="warning">{t('builder_status_creating')}</Tag>
       case 'failed':
       case 'error':
-        return <Tag emphasis="critical">Failed</Tag>
+        return <Tag emphasis="critical">{t('builder_status_failed')}</Tag>
       case 'stopped':
-        return <Tag emphasis="info">Stopped</Tag>
+        return <Tag emphasis="info">{t('builder_status_stopped')}</Tag>
       default:
-        return <Tag emphasis="neutral">Unknown</Tag>
+        return <Tag emphasis="neutral">{t('builder_status_unknown')}</Tag>
     }
   }
 
@@ -95,7 +98,7 @@ export default function AppCard({site}) {
     setAlertState({
       siteId,
       type: 'delete',
-      message: `Are you sure you want to delete "${siteName || 'Untitled App'}"? This action cannot be undone.`
+      message: <FormattedMessage id='builder_apps_alert_delete' values={{ siteName: siteName || t('builder_apps_alert_delete_untitled') }} />
     })
   }
 
@@ -106,7 +109,7 @@ export default function AppCard({site}) {
   // Inline alert component
   const InlineAlert = ({ siteId, message, onConfirm, onCancel }: {
     siteId: string
-    message: string
+    message: string | React.ReactNode
     onConfirm: () => void
     onCancel: () => void
   }) => (
@@ -118,14 +121,14 @@ export default function AppCard({site}) {
           disabled={actionLoading === siteId}
           data-eid={generateClickEID('apps.app.delete_confirm')}
           className="text-white px-2 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          text={actionLoading === siteId ? 'Deleting...' : 'Delete'}
+          text={actionLoading === siteId ? t('builder_common_deleting') : t('builder_common_delete')}
           design="critical"
           size="sm"
         />
         <Button
           data-eid={generateClickEID('apps.app.delete_cancel')}
           onClick={onCancel}
-          text="Cancel"
+          text={t('builder_common_cancel')}
           design="secondary"
           size="sm"
         />
@@ -148,7 +151,7 @@ export default function AppCard({site}) {
       )}
       <div className="flex gap-2 flex-1">
         {/* Thumbnail */}
-        <AppThumbnail siteId={site.id} siteName={site.name || 'Untitled App'} size="lg" />
+        <AppThumbnail siteId={site.id} siteName={site.name || t('builder_apps_alert_delete_untitled')} size="lg" />
 
         {/* Content */}
         <div className="flex-1 min-w-0">
@@ -158,7 +161,7 @@ export default function AppCard({site}) {
             </div>
           </div>
           <h3 className="font-semibold mb-0.5">
-            {site.name || 'Untitled App'}
+            {site.name || t('builder_apps_alert_delete_untitled')}
           </h3>
           {site.initial_prompt && (
             <p className="text-sm mb-1 line-clamp-2">
@@ -168,7 +171,12 @@ export default function AppCard({site}) {
           <div className="flex items-center text-xs space-x-2">
             <div className="flex items-center space-x-0.5">
               <ClockIcon className="w-1.5 h-1.5" />
-              <span>Created {formatDate(site.created_at)}</span>
+              <span>
+                <FormattedMessage
+                  id='builder_apps_created'
+                  values={{ date: formatDate(site.created_at) }}
+                />
+              </span>
             </div>
           </div>
         </div>
@@ -183,7 +191,7 @@ export default function AppCard({site}) {
               icon={<GlobeAltIcon />}
               size="sm"
               design="tertiary"
-              text="Visit"
+              text={t('builder_common_visit')}
               external
             />
           )}
@@ -195,7 +203,7 @@ export default function AppCard({site}) {
               icon={<EyeIcon />}
               size="sm"
               design="tertiary"
-              text="Preview"
+              text={t('builder_common_preview')}
               external
             />
           )}
@@ -207,15 +215,15 @@ export default function AppCard({site}) {
               icon={<PlayIcon />}
               size="sm"
               design="tertiary"
-              text="Edit"
+              text={t('builder_common_edit')}
             />
           )}
         </div>
 
         <Button
-          onClick={() => showDeleteAlert(site.id, site.name || 'Untitled App')}
+          onClick={() => showDeleteAlert(site.id, site.name ||  t('builder_apps_alert_delete_untitled'))}
           data-eid={generateClickEID('apps.app.delete')}
-          aria-label={`Delete app ${site.name || 'Untitled App'}`}
+          aria-label={`Delete app ${site.name || t('builder_apps_alert_delete_untitled')}`}
           icon={<TrashIcon />}
           size="sm"
           design="inline"
@@ -226,6 +234,7 @@ export default function AppCard({site}) {
 }
 
 export const AppCardEmptyState = () => {
+  const t = useTranslations();
   const router = useRouter()
 
   return (
@@ -234,7 +243,7 @@ export const AppCardEmptyState = () => {
       onClick={() => router.push(`/`)}
     >
       <PlusIcon className="size-3 text-ai group-hover:scale-110 transition-all" />
-      <text.p>Create a new app</text.p>
+      <text.p>{t('builder_apps_empty_create')}</text.p>
     </div>
   )
 }

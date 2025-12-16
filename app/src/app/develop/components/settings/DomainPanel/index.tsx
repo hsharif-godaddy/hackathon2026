@@ -1,15 +1,16 @@
-import ProjectDomain from "@/app/develop/components/settings/DomainPanel/ProjectDomain";
-import DomainAttach from "@/app/develop/components/settings/DomainPanel/DomainAttach";
-import EmptyStateCard from '@/components/layout/EmptyStateCard';
-import { usePublishForDomain } from './usePublishForDomain';
-import { hasBeenPublished } from '@/utils/site';
-import { useAppIdFromParams } from "@/app/develop/components/utils";
-import { useSiteStore } from "@/stores/useSiteStore";
-import WebsiteIcon from '@ux/icon/website';
 import Box from "@ux/box";
-import { text } from "@ux/text";
+import WebsiteIcon from '@ux/icon/website';
 import Spinner from "@ux/spinner";
+import { text } from "@ux/text";
+
+import DomainAttach from "@/app/develop/components/settings/DomainPanel/DomainAttach";
+import ProjectDomain from "@/app/develop/components/settings/DomainPanel/ProjectDomain";
+import { useAppIdFromParams } from "@/app/develop/components/utils";
+import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useSwitchboard } from "@/hooks/useSwitchboard";
+import { useSiteStore } from "@/stores/useSiteStore";
+import { hasBeenPublished } from '@/utils/site';
+import { usePublishForDomain } from './usePublishForDomain';
 
 export default function DomainPanel() {
   const { data: isDomainAttachEnabled, isLoading: isDomainAttachLoading } = useSwitchboard('appbuilder-domain-attach');

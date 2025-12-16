@@ -2,17 +2,19 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useMemo, memo } from 'react'
 import clsx from 'clsx'
+import { memo,useMemo } from 'react'
+import AlertIcon from '@ux/icon/alert'
+import CommentIcon from '@ux/icon/chat'
 import FacebookIcon from '@ux/icon/facebook'
+import ShareIcon from '@ux/icon/forward'
 import InstagramIcon from '@ux/icon/instagram'
 import LikeIcon from '@ux/icon/thumbs-up'
-import CommentIcon from '@ux/icon/chat'
-import ShareIcon from '@ux/icon/forward'
-import AlertIcon from '@ux/icon/alert'
 import { text } from '@ux/text'
-import { SocialPostData } from '@/types/social-posts'
+
 import { useAppImageUrl } from '@/app/develop/hooks/useAppImageUrl'
+import { useTranslations } from '@/hooks/useTranslations'
+import { SocialPostData } from '@/types/social-posts'
 import { SocialPlatform } from '@/types/social-posts'
 
 /**
@@ -66,6 +68,7 @@ interface PostImageProps {
  * @returns Image element or placeholder
  */
 const PostImage = memo(({ postImage, imageAspectRatio, imagesRequested , platform }: PostImageProps) => {
+  const t = useTranslations();
   const imageUrl = useAppImageUrl(postImage?.url);
 
   if (!imagesRequested) {
@@ -84,7 +87,7 @@ const PostImage = memo(({ postImage, imageAspectRatio, imagesRequested , platfor
       ) : (
         <div className="w-full h-full border-2 border-dashed border-intents-ux-border-borderColor bg-intents-ux-boxLowContrast-backgroundColor flex flex-col items-center justify-center gap-1">
           <AlertIcon className="w-6 h-6 text-intents-ux-critical-textColor" />
-          <span className="text-xs text-intents-ux-textSubtle-textColor">Error generating image</span>
+          <span className="text-xs text-intents-ux-textSubtle-textColor">{t('builder_widgets_postcard_error')}</span>
         </div>
       )}
     </div>
@@ -124,11 +127,21 @@ const PreviewHeader = memo(({ platform , previewDate }: { platform: string, prev
 });
 
 const PreviewFooter = memo(() => {
+  const t = useTranslations();
   return (
   <div className="flex justify-between items-center mt-1 px-2 mx-1 order-4">
-    <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'><LikeIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" /> Like </text.span>
-    <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'><CommentIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" /> Comment </text.span>
-    <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'><ShareIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" /> Share </text.span>
+    <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'>
+      <LikeIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" />
+      {t('builder_social_like')}
+    </text.span>
+    <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'>
+      <CommentIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" />
+      {t('builder_social_comment')}
+    </text.span>
+    <text.span as="paragraph" className="flex items-center gap-1" size={-1} emphasis='passive'>
+      <ShareIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" />
+      {t('builder_social_share')}
+    </text.span>
   </div>
   );
 });

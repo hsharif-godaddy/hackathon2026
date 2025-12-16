@@ -1,10 +1,11 @@
-import { IControlPlaneAdapter, CreateSiteParams, CreateSiteResult, SiteInfo, SecretsResponse, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretUpdate } from './types';
+import { mkdir,readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+
 import { PrismaSiteService } from '@/lib/database/prisma-site-service';
 import { getDeploymentAdapter } from '@/lib/deployment';
 import { getAllocPath } from '@/lib/dev-environment/utils/app-paths';
 import { logger } from '@/lib/request-context';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { CreateSiteParams, CreateSiteResult, IControlPlaneAdapter, SecretOperations, SecretOperationsResult, SecretsDiffResult, SecretsResponse, SecretUpdate,SiteInfo } from './types';
 
 /**
  * Legacy Control Plane Adapter - Uses database + Nomad/SQS
@@ -542,14 +543,12 @@ export class LegacyControlPlaneAdapter implements IControlPlaneAdapter {
    * @param appId - Application identifier
    * @param sourceVariant - Source variant to sync from
    * @param destinationVariant - Destination variant to sync to
-   * @param jwt - Customer JWT token
    * @returns Sync result with operations result
    */
   async syncSecrets(
     appId: string,
     sourceVariant: 'preview' | 'publish',
-    destinationVariant: 'preview' | 'publish',
-    jwt: string
+    destinationVariant: 'preview' | 'publish'
   ): Promise<SecretOperationsResult> {
     try {
       const allocPath = getAllocPath(appId);

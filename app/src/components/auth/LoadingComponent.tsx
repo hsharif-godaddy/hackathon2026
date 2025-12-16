@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
-import { logImpressionEvent } from '@/utils/instrumentation';
 import Spinner from "@ux/spinner"
+
+import { logImpressionEvent } from '@/utils/instrumentation';
 
 export default function LoadingComponent() {
   useEffect(() => {

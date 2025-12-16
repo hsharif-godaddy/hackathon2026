@@ -1,15 +1,17 @@
 'use client'
 
 import { memo } from 'react'
-import { mapPlatformStatuses, type SocialConnection } from '@/lib/social-platforms'
-import { useSocialConnections } from '@/hooks/useSocialConnections'
-import Skeleton from '@ux/skeleton'
-import text from '@ux/text'
 import Box from '@ux/box'
 import Card from '@ux/card'
+import ShareIcon from '@ux/icon/share'
+import Skeleton from '@ux/skeleton'
+import text from '@ux/text'
+
 import BigCard from '@/components/layout/BigCard'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
-import ShareIcon from '@ux/icon/share'
+import { useSocialConnections } from '@/hooks/useSocialConnections'
+import { useTranslations } from '@/hooks/useTranslations';
+import { mapPlatformStatuses, type SocialConnection } from '@/lib/social-platforms'
 
 interface IconWithNameProps {
   Icon: React.ComponentType<{ className?: string }>
@@ -27,18 +29,27 @@ const IconWithName = memo(function IconWithName({ Icon, name }: IconWithNameProp
 
 interface StatusBadgeProps {
   isConnected: boolean
+  t: ReturnType<typeof useTranslations>
 }
 
 const STATUS_CONFIG = {
-  connected: { text: 'Connected', emphasis: 'success' as const },
-  notConnected: { text: 'Not Connected', emphasis: 'warning' as const },
+  connected: { emphasis: 'success' as const },
+  notConnected: { emphasis: 'warning' as const },
 }
 
-const StatusBadge = memo(function StatusBadge({ isConnected }: StatusBadgeProps) {
+const StatusBadge = memo(function StatusBadge({ isConnected, t }: StatusBadgeProps) {
   const statusKey = isConnected ? 'connected' : 'notConnected'
-  const { text: statusText, emphasis } = STATUS_CONFIG[statusKey]
+  const { emphasis } = STATUS_CONFIG[statusKey]
 
-  return <text.span as="label" size={-2} text={statusText} emphasis={emphasis} className="uppercase" />
+  return (
+    <text.span
+      as="label"
+      size={-2}
+      text={t(`builder_settings_socialpanel_status_${statusKey}`)}
+      emphasis={emphasis}
+      className="uppercase"
+    />
+  )
 })
 
 const LoadingState = memo(function LoadingState() {
@@ -58,6 +69,7 @@ interface PlatformItemProps {
 }
 
 function PlatformItem({ name, Icon, connection, isLoading }: PlatformItemProps) {
+  const t = useTranslations();
   const isConnected = !!connection
 
   return (
@@ -74,7 +86,10 @@ function PlatformItem({ name, Icon, connection, isLoading }: PlatformItemProps) 
           {isLoading ? (
             <LoadingState />
           ) : (
-            <StatusBadge isConnected={isConnected} />
+            <StatusBadge
+              isConnected={isConnected}
+              t={t}
+            />
           )}
         </Box>
       </Box>
@@ -83,6 +98,7 @@ function PlatformItem({ name, Icon, connection, isLoading }: PlatformItemProps) 
 }
 
 export default function SocialPanel() {
+  const t = useTranslations();
   const {
     data: connections = [],
     isLoading,
@@ -97,8 +113,8 @@ export default function SocialPanel() {
 
     return (
       <BigCard
-        title="Social Platforms"
-        description="Manage your social media platform connections. Connect or disconnect platforms to control which accounts your app can interact with."
+        title={t('builder_settings_socialpanel_title')}
+        description={t('builder_settings_socialpanel_desc')}
       >
         <Box orientation="vertical" gap="sm">
           {platformStatuses.map(({ platform, name, Icon }) => (
@@ -125,9 +141,9 @@ export default function SocialPanel() {
     return (
       <EmptyStateCard
         icon={<ShareIcon width={48} height={48} />}
-        title="Error Loading Connections"
-        description={error instanceof Error ? error.message : 'Failed to load connections'}
-        ctaLabel="Retry"
+        title={t('builder_settings_socialpanel_empty_title')}
+        description={error instanceof Error ? error.message : t('builder_settings_socialpanel_empty_desc')}
+        ctaLabel={t('builder_common_retry')}
         onCtaClick={() => refetch()}
       />
     )
@@ -135,8 +151,8 @@ export default function SocialPanel() {
 
   return (
     <BigCard
-      title="Social Platforms"
-      description="Manage your social media platform connections. Connect or disconnect platforms to control which accounts your app can interact with."
+      title={t('builder_settings_socialpanel_title')}
+      description={t('builder_settings_socialpanel_desc')}
     >
       <Box orientation="vertical" gap="md">
         {platformStatuses.map(({ platform, name, Icon, connection }) => (

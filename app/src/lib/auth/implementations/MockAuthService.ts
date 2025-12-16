@@ -3,7 +3,7 @@
  * Provides fake tokens and credentials for development/testing
  */
 
-import { IAuthService, AuthConfig, AuthResult } from '../types';
+import { AuthConfig, AuthResult,IAuthService } from '../types';
 
 export class MockAuthService implements IAuthService {
   private mockToken = 'mock-jwt-token-dev-12345';

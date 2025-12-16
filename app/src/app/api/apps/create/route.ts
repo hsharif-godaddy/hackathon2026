@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 import { v4 as uuidv4 } from 'uuid';
+
 import { 
-  withCustomerAuth, 
-  customerHasAccount,
   createCustomerAuthError,
-  type CustomerAuthContext 
-} from '@/lib/customer-auth';
+  type CustomerAuthContext, 
+  customerHasAccount,
+  withCustomerAuth} from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 
 interface CreateAppRequest {
   name: string;

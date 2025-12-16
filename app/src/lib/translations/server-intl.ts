@@ -1,9 +1,10 @@
 import { createIntl, createIntlCache, type IntlShape } from '@formatjs/intl';
-import { loadTranslations } from './load-translations';
-import { logger } from '../request-context';
 import { resolveGasketData } from '@gasket/data';
 import { request } from '@gasket/nextjs/request';
+
+import { loadTranslations } from './load-translations';
 import gasket from '../../../gasket';
+import { logger } from '../request-context';
 
 /**
  * Detect user's locale using Gasket's built-in locale detection

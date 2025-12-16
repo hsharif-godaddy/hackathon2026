@@ -1,20 +1,22 @@
 'use client';
 
+import clsx from 'clsx';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import UserIcon from '@ux/icon/user';
+
+import InviteFriends, { InviteFriendsVariant } from '@/components/layout/InviteFriends';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useSsoSignIn } from '@/hooks/useSsoSignIn';
-import { generateClickEID } from '@/utils/instrumentation';
+import { useTranslations } from '@/hooks/useTranslations';
+import { Button } from "@/lib/shadcn/button"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/lib/shadcn/popover"
-import { Button } from "@/lib/shadcn/button"
 import { Separator } from "@/lib/shadcn/separator";
-import UserIcon from '@ux/icon/user';
-import InviteFriends, { InviteFriendsVariant } from '@/components/layout/InviteFriends';
-import clsx from 'clsx';
+import { generateClickEID } from '@/utils/instrumentation';
 
 interface UserMenuProps {
   onShowMockLogin?: () => void;
@@ -22,6 +24,7 @@ interface UserMenuProps {
 }
 
 export default function UserMenu({ onShowMockLogin, location = 'unknown' }: UserMenuProps = {}) {
+  const t = useTranslations();
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
@@ -52,7 +55,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
               className="justify-start px-1"
               disabled
             >
-              Auth Disabled
+              {t('builder_usermenu_auth_disabled')}
             </Button>
           )}
           {!isAuthenticated && (
@@ -62,7 +65,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
               onClick={handleSignInClick}
               data-eid={generateClickEID(`${location}.user_menu.sign_in`)}
             >
-              Sign In
+              {t('builder_common_signin')}
             </Button>
           ) }
           {isDevelopPage && isAuthenticated && (
@@ -78,7 +81,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
               onClick={() => handleSignOut()}
               data-eid={generateClickEID(`${location}.user_menu.sign_out`)}
             >
-              Sign Out
+              {t('builder_common_signout')}
             </Button>
           )}
         </div>

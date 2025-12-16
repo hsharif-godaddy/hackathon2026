@@ -1,9 +1,11 @@
 'use client'
 
 import React from 'react'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import DefaultToolRenderer from './DefaultToolRenderer'
-import ChatAuthRequestMessage from '../ChatAuthRequestMessage'
+
+import ChatAuthRequestMessage from '@/app/develop/components/ChatAuthRequestMessage'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import DefaultToolRenderer from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming } from '@/stores/useStreamingConversationStore'
 
 /**
@@ -15,6 +17,7 @@ import { useIsActivelyStreaming } from '@/stores/useStreamingConversationStore'
  * to prevent users from clicking it too early and missing the completion event
  */
 export default function OAuthToolRenderer({ toolStatus, result, ...rest }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const isStreaming = useIsActivelyStreaming()
 
   if (toolStatus === 'completed' && result && typeof result === 'object') {
@@ -33,7 +36,7 @@ export default function OAuthToolRenderer({ toolStatus, result, ...rest }: Defau
                   <div className="text-2xl">🔐</div>
                   <div className="flex-1">
                     <p className="text-sm text-typography-mediumEmphasis">
-                      Preparing authentication request...
+                      {t('builder_tools_oauth_prep')}
                     </p>
                   </div>
                 </div>

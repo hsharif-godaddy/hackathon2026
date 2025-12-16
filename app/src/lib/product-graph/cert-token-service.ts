@@ -5,9 +5,10 @@
  * Implements caching and thread-safe token refresh similar to s2s-auth.ts.
  */
 
-import https from 'node:https';
-import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import https from 'node:https';
+
 import { logger } from '@/lib/request-context';
 
 /**

@@ -8,9 +8,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getJWTService } from '@/lib/jwt-service';
-import { withCustomerAuth, customerHasAccount, createCustomerAuthError, type CustomerAuthContext, type CustomerUser } from '@/lib/customer-auth';
+
 import { getControlPlaneAdapter, isV2ControlPlaneEnabled } from '@/lib/control-plane';
+import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser,withCustomerAuth } from '@/lib/customer-auth';
+import { getJWTService } from '@/lib/jwt-service';
 import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 
 export interface CreateAgentTokenRequest {

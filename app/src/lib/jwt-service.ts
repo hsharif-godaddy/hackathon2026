@@ -6,7 +6,9 @@
  */
 
 import { createSign } from 'node:crypto';
-import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+
+import { GetSecretValueCommand,SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
+
 import { getJWTConfig, getJWTConstants, JWTClaims } from './jwt-config';
 import { logger } from './request-context';
 

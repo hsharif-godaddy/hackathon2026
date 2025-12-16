@@ -1,12 +1,11 @@
-import { logger } from '../request-context';
+import { DockerDeploymentAdapter } from './docker-adapter';
+import { ProductionDeploymentAdapter } from './production-adapter';
 /**
  * Deployment adapter factory with environment detection
  * Automatically selects the appropriate deployment strategy based on environment
  */
-
 import { DeploymentAdapter, DeploymentMode } from './types';
-import { ProductionDeploymentAdapter } from './production-adapter';
-import { DockerDeploymentAdapter } from './docker-adapter';
+import { logger } from '../request-context';
 
 export class DeploymentAdapterFactory {
   private static instance: DeploymentAdapter | null = null;

@@ -12,5 +12,5 @@ export { loadTranslations } from './load-translations';
 export { fetchTranslationPackages } from './fetch-translations';
 
 // Server-side translation utility
-export { getServerIntl, getTranslationMessages, clearServerIntlCache, detectLocale, type ServerIntlOptions } from './server-intl';
+export { clearServerIntlCache, detectLocale, getServerIntl, getTranslationMessages, type ServerIntlOptions } from './server-intl';
 

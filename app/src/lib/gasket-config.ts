@@ -1,6 +1,6 @@
-import { logger } from './request-context';
-import { auth } from './features';
 import { SHOPPER_AUTH_FAILURE_MESSAGE } from './customer-auth';
+import { auth } from './features';
+import { logger } from './request-context';
 // Gasket configuration for Airo App Builder authentication
 
 // Extend globalThis interface for auth logging flag and config cache

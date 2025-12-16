@@ -1,15 +1,17 @@
-import { DockerComposeGenerator, type ComposeServiceConfig } from './docker-compose-generator';
-import { getBasePath, getAppPath, getAllocPath } from '../utils/app-paths';
+import { userInfo } from "node:os";
+import * as path from "node:path";
+
+import { execa } from 'execa';
 import { existsSync, mkdirSync, writeFileSync } from "fs";
+
+import { type ComposeServiceConfig,DockerComposeGenerator } from './docker-compose-generator';
 import { DockerComposeManager } from './docker-compose-manager';
 import { SharedMySQLService } from './shared-mysql-service';
-import { ConfigJsonManager } from '../utils/config-json';
-import { DevDatabase } from '../database/DevDatabase';
 import { devSupervisor } from '../../features';
 import { logger } from '../../request-context';
-import { userInfo } from "node:os";
-import { execa } from 'execa';
-import * as path from "node:path";
+import { DevDatabase } from '../database/DevDatabase';
+import { getAllocPath,getAppPath, getBasePath } from '../utils/app-paths';
+import { ConfigJsonManager } from '../utils/config-json';
 
 /**
  * Determine if TCP mode should be used for dev-supervisor

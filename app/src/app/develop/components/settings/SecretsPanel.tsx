@@ -1,17 +1,21 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react';
-import { useSecrets, type Secret } from '@/hooks/useSecrets';
-import { useSecretOperations } from '@/hooks/useSecretOperations';
-import { logger } from '@/lib/request-context';
-import IconButton from '@/app/develop/components/IconButton';
+import React, { useEffect, useRef,useState } from 'react';
+import Box from '@ux/box';
 import Button from '@ux/button';
-import Spinner from '@ux/spinner';
-import LockIcon from '@ux/icon/locked';
 import EditIcon from '@ux/icon/edit';
+import LockIcon from '@ux/icon/locked';
 import DeleteIcon from '@ux/icon/x-thick';
-import EmptyStateCard from '@/components/layout/EmptyStateCard';
+import Spinner from '@ux/spinner';
 import text from '@ux/text';
+
+import IconButton from '@/app/develop/components/IconButton';
+import BigCard from '@/components/layout/BigCard';
+import EmptyStateCard from '@/components/layout/EmptyStateCard';
+import { useSecretOperations } from '@/hooks/useSecretOperations';
+import { type Secret,useSecrets } from '@/hooks/useSecrets';
+import { useTranslations } from '@/hooks/useTranslations';
+import { logger } from '@/lib/request-context';
 
 interface SecretsPanelProps {
   appId: string;
@@ -45,6 +49,8 @@ interface SecretFormData extends Secret {
  * ```
  */
 export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
+  const t = useTranslations();
+
   const [formSecrets, setFormSecrets] = useState<SecretFormData[]>([]);
   const [newSecrets, setNewSecrets] = useState<Array<{ name: string; value: string }>>([
     { name: '', value: '' }
@@ -361,30 +367,27 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
   }
 
   return (
-    <div className="w-full space-y-2">
+    <Box gap="lg" className="@container">
+      <BigCard
+        title={t('builder_settings_secrets_title')}
+        button={hasChanges ? (
+          <Button
+            design="primary"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? t('builder_settings_secrets_saving') : t('builder_settings_secrets_save')}
+          </Button>
+        ) : null}
+      >
       {!error && (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div style={{ fontSize: '1.25rem', fontWeight: 600 }} className="mb-1">
-              Manage secrets
-            </div>
-            {hasChanges && (
-              <Button
-                design="primary"
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Saving...' : `Save secrets`}
-              </Button>
-            )}
-          </div>
-
           {submitError && (
             <div className="border rounded-lg p-2 flex items-start justify-between" style={{ backgroundColor: '#fee8e89c', borderColor: '#db1802' }}>
               <div className="flex items-start gap-1.5">
                 <div className="mt-0.5" style={{ color: '#ef4444'}}>⚠️</div>
                 <div>
-                  <div className="font-semibold mb-0.5" style={{ color: '#ef4444'}}>Failed!</div>
+                  <div className="font-semibold mb-0.5" style={{ color: '#ef4444'}}>{t('builder_status_failed')}</div>
                   <text.p className="text-sm" style={{ color: '#ef4444'}}>{submitError}</text.p>
                 </div>
               </div>
@@ -421,12 +424,12 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
           {/* New secrets section - moved to top */}
           <div className="space-y-1">
-            <div className="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 overflow-hidden">
+            <div className="border-2 border-dashed rounded-lg bg-gray-50 overflow-hidden">
               {newSecrets.map((newSecret, index) => (
                 <div
                   key={index}
                   className={`flex items-start gap-1.5 p-2 ${
-                    index !== newSecrets.length - 1 ? 'border-b border-gray-300' : ''
+                    index !== newSecrets.length - 1 ? 'border-b' : ''
                   }`}
                 >
                   <div className="flex-1 grid grid-cols-2 gap-1.5 items-start">
@@ -438,12 +441,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         onFocus={() => setFocusedSecretIndex(index)}
                         onBlur={() => setFocusedSecretIndex(null)}
                         placeholder="NEW_SECRET_KEY_NAME"
-                        className={`w-full px-1.5 py-1 h-[38px] border rounded-md font-mono text-sm bg-white leading-none ${
-                          (newSecret.name && (!isValidSecretName(newSecret.name) || !isSecretNameUnique(newSecret.name, index))) ||
-                          (!newSecret.name && isValueValid(newSecret.value))
-                            ? 'border-red-300 focus:border-red-500'
-                            : 'border-gray-300'
-                        }`}
+                        className="w-full px-1.5 py-1 h-[38px] border rounded-md font-mono text-sm bg-intents-ux-box-backgroundColor leading-none"
                       />
                       {!newSecret.name && isValueValid(newSecret.value) && (
                         <text.p className="mt-0.5" style={{ fontSize: '0.875rem', color: '#ef4444'}}>
@@ -476,11 +474,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         onChange={(e) => handleNewSecretChange(index, 'value', e.target.value)}
                         placeholder="Enter secret value"
                         rows={calculateRows(newSecret.value)}
-                        className={`w-full px-1.5 py-1 border rounded-md font-mono text-sm bg-white resize-none overflow-y-auto min-h-[38px] ${
-                          newSecret.name && isValidSecretName(newSecret.name) && isSecretNameUnique(newSecret.name, index) && !isValueValid(newSecret.value)
-                            ? 'border-red-300 focus:border-red-500'
-                            : 'border-gray-300'
-                        }`}
+                        className="w-full px-1.5 py-1 border rounded-md font-mono text-sm bg-intents-ux-box-backgroundColor resize-none overflow-y-auto min-h-[38px]"
                         style={{ maxHeight: '144px' }}
                       />
                       {newSecret.name && isValidSecretName(newSecret.name) && isSecretNameUnique(newSecret.name, index) && !isValueValid(newSecret.value) && (
@@ -612,7 +606,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           {formSecrets.length === 0 && (
             <div className="text-center py-4">
               <text.p className="text-sm text-muted-foreground">
-                No secrets configured yet. Add your first secret below.
+                {t('builder_settings_secrets_no_secrets')}
               </text.p>
             </div>
           )}
@@ -637,6 +631,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
           )}
         </div>
       )}
-    </div>
+      </BigCard>
+    </Box>
   );
 }

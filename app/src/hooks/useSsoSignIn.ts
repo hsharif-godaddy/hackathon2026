@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { getRootDomain } from '@/utils/getRootDomain';

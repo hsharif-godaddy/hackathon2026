@@ -1,16 +1,19 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { logger } from '@/lib/request-context'
-import KeyValueTable from './KeyValueTable'
-import MarkdownRenderer from '../MarkdownRenderer'
-import ToolHeader from './ToolHeader'
-import ToolModal from './ToolModal'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import { completePartialJson } from './json-completion-utils'
+import { useEffect, useRef,useState } from 'react'
+import { FormattedMessage } from 'react-intl'
 import EditIcon from '@ux/icon/edit'
-import text from '@ux/text'
 import Tag from '@ux/tag'
+import text from '@ux/text'
+
+import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import { completePartialJson } from '@/app/develop/components/tool-renderers/json-completion-utils'
+import KeyValueTable from '@/app/develop/components/tool-renderers/KeyValueTable'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import ToolModal from '@/app/develop/components/tool-renderers/ToolModal'
+import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
 
 /**
  * Extract filename from path
@@ -22,12 +25,12 @@ function getFilename(path: string): string {
 /**
  * Get mode-specific action verb
  */
-function getModeVerb(mode: string): string {
+function getModeVerb(mode: string, t: (key: string) => string): string {
   const verbMap: Record<string, string> = {
-    'create': 'Created',
-    'edit': 'Edit',
-    'rewrite': 'Rewrite',
-    'delete': 'Delete'
+    'create': t('builder_common_created'),
+    'edit': t('builder_common_edit'),
+    'rewrite': t('builder_common_rewrite'),
+    'delete': t('builder_common_delete')
   }
   return verbMap[mode] || mode
 }
@@ -310,6 +313,7 @@ export default function FileEditToolRenderer({
   partialInput,
   error: toolCallError
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const lastSuccessfulEstimateRef = useRef<{ additions: number; deletions: number } | null>(null)
@@ -469,16 +473,16 @@ export default function FileEditToolRenderer({
     mode = streamingMode
   }
 
-  const verb = getModeVerb(mode)
+  const verb = getModeVerb(mode, t)
 
   // Build compact display message
-  let displayMessage = ''
+  let displayMessage = '' as string | React.ReactNode
 
   if (normalizedToBatch) {
     // Batch operation: show summary
     if (error) {
       // Partial failure: show completed/total
-      displayMessage = `Files: ${completedOperations}/${totalOperations} completed`
+      displayMessage = <FormattedMessage id='builder_tools_file_edit_completed_total' values={{ completedOperations, totalOperations }} />
     } else {
       // Full success: show operation counts by type
       const created = batchOperations.filter(op => op.success && op.mode === 'create').length
@@ -492,7 +496,7 @@ export default function FileEditToolRenderer({
       if (rewritten > 0) parts.push(`${rewritten} rewritten`)
       if (deleted > 0) parts.push(`${deleted} deleted`)
 
-      displayMessage = `Files: ${parts.join(', ')}`
+      displayMessage = `${t('builder_common_files')}: ${parts.join(', ')}`
     }
   } else if (displayAsBatch) {
     // Streaming batch operation: show individual operations with details
@@ -505,22 +509,22 @@ export default function FileEditToolRenderer({
         const opSummaries = operations.map((op: any) => {
           const filename = getFilename(op.path || '')
           const opMode = op.mode || 'edit'
-          const opVerb = getModeVerb(opMode)
+          const opVerb = getModeVerb(opMode, t)
           return `${opVerb}: ${filename}`
         })
 
         if (parsed.operations.length > MAX_DISPLAY_OPS) {
-          opSummaries.push(`+${parsed.operations.length - MAX_DISPLAY_OPS} more`)
+          opSummaries.push(t('builder_tools_file_edit_more', { operations: parsed.operations.length - MAX_DISPLAY_OPS }))
         }
 
         displayMessage = opSummaries.join(', ')
       } else {
         // Fallback to count if parsing fails
-        displayMessage = `Files: processing ${streamingBatchCount} file${streamingBatchCount !== 1 ? 's' : ''}...`
+        displayMessage = `${t('builder_common_files')}: ${t('builder_tools_file_edit_processing', {count: streamingBatchCount})}...`
       }
     } catch {
       // Fallback to count if any error occurs
-      displayMessage = `Files: processing ${streamingBatchCount} file${streamingBatchCount !== 1 ? 's' : ''}...`
+      displayMessage = `${t('builder_common_files')}: ${t('builder_tools_file_edit_processing', {count: streamingBatchCount})}...`
     }
   } else {
     // Single operation: format: "Edit: filename +5 -5"
@@ -551,27 +555,27 @@ export default function FileEditToolRenderer({
 
   if (normalizedToBatch) {
     // Multi-file operation metadata
-    metadata['Total Files'] = totalOperations
-    metadata['Completed Files'] = completedOperations
+    metadata[t('builder_tools_file_edit_metadata_total')] = totalOperations
+    metadata[t('builder_tools_file_edit_metadata_completed')] = completedOperations
     if (commitHash) {
-      metadata['Commit Hash'] = commitHash
+      metadata[t('builder_tools_file_edit_metadata_hash')] = commitHash
     }
   } else {
     // Single operation metadata
     if (filePath) {
-      metadata['Full Path'] = filePath
+      metadata[t('builder_tools_file_edit_metadata_path')] = filePath
     }
     if (mode) {
-      metadata['Mode'] = mode
+      metadata[t('builder_tools_file_edit_metadata_mode')] = mode
     }
     if (changes) {
-      metadata['Lines Added'] = changes.additions
-      metadata['Lines Deleted'] = changes.deletions
-      metadata['Total Lines'] = changes.totalLines
+      metadata[t('builder_tools_file_edit_metadata_lines_added')] = changes.additions
+      metadata[t('builder_tools_file_edit_metadata_lines_deleted')] = changes.deletions
+      metadata[t('builder_tools_file_edit_metadata_lines_total')] = changes.totalLines
     }
   }
 
-  const modalTitle = normalizedToBatch ? 'File Operations' : `${verb} ${filename}`
+  const modalTitle = normalizedToBatch ? t('builder_tools_file_edit_operations') : `${verb} ${filename}`
 
   const modalContent = (
     <ToolModal
@@ -633,7 +637,7 @@ export default function FileEditToolRenderer({
                             size="sm"
                             className="flex-shrink-0"
                           >
-                            {op.success ? 'Success' : 'Failed'}
+                            {op.success ? t('builder_status_success') : t('builder_status_failed')}
                           </Tag>
                           <text.span className="truncate" size={0}>{op.path}</text.span>
                         </div>
@@ -650,7 +654,7 @@ export default function FileEditToolRenderer({
                         {op.error && (
                           <div className="mt-1">
                             <Tag emphasis="critical" size="sm" className="mb-0.5">
-                              Error
+                              {t('builder_status_error')}
                             </Tag>
                             <text.span size={-1}>{op.error}</text.span>
                           </div>
@@ -658,7 +662,7 @@ export default function FileEditToolRenderer({
                         {op.warning && (
                           <div className="mt-1">
                             <Tag emphasis="warning" size="sm" className="mb-0.5">
-                              Warning
+                              {t('builder_status_warning')}
                             </Tag>
                             <text.span size={-1}>{op.warning}</text.span>
                           </div>
@@ -667,7 +671,7 @@ export default function FileEditToolRenderer({
                           <details className="mt-1">
                             <summary className="cursor-pointer">
                               <text.span size={-1} emphasis="passive" className="hover:text-foreground">
-                                View diff
+                                {t('builder_common_view_diff')}
                               </text.span>
                             </summary>
                             <div className="mt-1 border border-border rounded-md p-1 bg-muted">
@@ -699,7 +703,7 @@ export default function FileEditToolRenderer({
           {error && (
             <div className="mb-2 p-1.5 bg-intents-ux-feedbackCritical-feedbackColor/10 border border-intents-ux-feedbackCritical-feedbackColor/30 rounded-md">
               <Tag emphasis="critical" size="sm" className="mb-1">
-                Error
+                {t('builder_status_error')}
               </Tag>
               <text.p size={0} className="whitespace-pre-wrap">{error}</text.p>
             </div>
@@ -709,7 +713,7 @@ export default function FileEditToolRenderer({
           {warning && (
             <div className="mb-2 p-1.5 border rounded-md">
               <Tag emphasis="warning" size="sm" className="mb-1">
-                Warning
+                {t('builder_status_warning')}
               </Tag>
               <text.p size={0} className="whitespace-pre-wrap">{warning}</text.p>
             </div>
@@ -719,7 +723,7 @@ export default function FileEditToolRenderer({
           {diff && (
             <div className="mb-2">
               <text.p size={0} className="mb-1">
-                Diff
+                {t('builder_common_diff')}
               </text.p>
               <div className="border border-border rounded-md p-2 bg-muted max-h-48 overflow-y-auto">
                 <pre className="text-xs font-mono whitespace-pre-wrap break-words">

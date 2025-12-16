@@ -1,10 +1,11 @@
 'use client'
 
 import { UserIcon } from '@heroicons/react/24/outline'
+import Button from '@ux/button'
+import Modal from '@ux/modal'
+
 import { useMockAuth } from '@/hooks/useMockAuth'
 import { MOCK_USER } from '@/lib/mock-auth'
-import Modal from '@ux/modal'
-import Button from '@ux/button'
 
 interface MockLoginDialogProps {
   isOpen: boolean

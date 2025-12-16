@@ -1,9 +1,10 @@
-import { createConnection, type Connection } from 'mysql2/promise';
+import { createHash } from 'crypto';
+import { type Connection,createConnection } from 'mysql2/promise';
+
 import type { DatabaseConfig } from './docker-compose-generator';
+import { logger } from '../../request-context';
 import { generateSecurePassword } from '../utils/password-generator';
 import { sanitizeForMySQL } from '../utils/sanitizers';
-import { createHash } from 'crypto';
-import { logger } from '../../request-context';
 
 /**
  * Credentials for connecting to the shared MySQL instance as root

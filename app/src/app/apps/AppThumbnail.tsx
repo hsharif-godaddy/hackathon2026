@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useEffect,useState } from 'react'
 import { CodeBracketIcon } from '@heroicons/react/24/outline'
+
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
 
@@ -76,7 +77,7 @@ export default function AppThumbnail({ siteId, siteName, size = 'md' }: AppThumb
         className={`${sizeClasses} shrink-0 rounded-md bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300 flex items-center justify-center`}
       >
         <div className="animate-pulse">
-          <CodeBracketIcon className={`${iconSize} text-gray-400`} />
+          <CodeBracketIcon className={`${iconSize}`} />
         </div>
       </div>
     )
@@ -88,7 +89,7 @@ export default function AppThumbnail({ siteId, siteName, size = 'md' }: AppThumb
         data-testid="app-thumbnail-fallback"
         className={`${sizeClasses} shrink-0 rounded-md bg-intents-ux-boxHighContrast-backgroundColor transition-all duration-300 flex items-center justify-center`}
       >
-        <CodeBracketIcon className={`${iconSize} text-gray-400`} />
+        <CodeBracketIcon className={`${iconSize}`} />
       </div>
     )
   }

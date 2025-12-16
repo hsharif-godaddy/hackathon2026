@@ -1,22 +1,23 @@
 import { useState } from "react";
-import { useTranslations } from '@/hooks/useTranslations';
+import Box from "@ux/box";
+import Button from "@ux/button";
 import CircleIcon from '@ux/icon/circle';
 import CircleHalfIcon from '@ux/icon/circle-half';
-import MenuIcon from '@ux/icon/menu';
 import EditIcon from '@ux/icon/edit';
+import MenuIcon from '@ux/icon/menu';
+import OkIcon from '@ux/icon/ok';
 import WindowNewIcon from '@ux/icon/window-new';
 import Spinner from '@ux/spinner';
-import OkIcon from '@ux/icon/ok';
-import Button from "@ux/button";
-import text from "@ux/text";
 import Tag from "@ux/tag";
-import Box from "@ux/box";
-import { DomainStatus } from '@/lib/control-plane/types';
-import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
-import DomainConnectConfirmation from './DomainConnectConfirmation';
-import { generateClickEID } from '@/utils/instrumentation';
+import text from "@ux/text";
+
 import type { AppDomain } from '@/hooks/useAppDetails';
 import type { Domain } from '@/hooks/useDomainsQuery';
+import { useTranslations } from '@/hooks/useTranslations';
+import { DomainStatus } from '@/lib/control-plane/types';
+import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
+import { generateClickEID } from '@/utils/instrumentation';
+import DomainConnectConfirmation from './DomainConnectConfirmation';
 
 function getDomainUrl(domain: string): string {
   if (!domain) return '';

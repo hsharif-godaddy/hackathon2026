@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+
 import type { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter';
 
 /**

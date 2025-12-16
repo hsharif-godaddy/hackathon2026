@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import '@testing-library/jest-dom';
+
+import { describe, expect,it } from 'vitest';
+
 import { renderWithProviders } from '@/tests/test-utils';
 import StatusIndicator from './StatusIndicator';
 

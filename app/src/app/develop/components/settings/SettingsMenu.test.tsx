@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+import { beforeEach,describe, expect, it, vi } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+
+import { SettingsSection } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import SettingsMenu from './SettingsMenu';
-import { SettingsSection } from '@/app/develop/components/types';
 
 const mockRouter = { push: vi.fn() };
 const mockDevelopStore = {
@@ -52,40 +54,40 @@ describe('SettingsMenu', () => {
   it('should render without crashing', () => {
     renderWithProviders(<SettingsMenu />);
 
-    expect(screen.getByLabelText('Settings')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_settings_title')).toBeInTheDocument();
   });
 
   it('should render settings trigger button', () => {
     renderWithProviders(<SettingsMenu />);
 
-    const button = screen.getByLabelText('Settings');
+    const button = screen.getByLabelText('builder_settings_title');
     expect(button).toBeInTheDocument();
   });
 
   it('should open popover when trigger button clicked', async () => {
     const { user } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('Settings');
+    const trigger = screen.getByLabelText('builder_settings_title');
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('Project Settings')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_project')).toBeInTheDocument();
     });
   });
 
   it('should display all settings options when open', async () => {
     const { user } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('Settings');
+    const trigger = screen.getByLabelText('builder_settings_title');
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('Project Settings')).toBeInTheDocument();
-      expect(screen.getByText('Domain')).toBeInTheDocument();
-      expect(screen.getByText('Backups')).toBeInTheDocument();
-      expect(screen.getByText('Security')).toBeInTheDocument();
-      expect(screen.getByText('Database')).toBeInTheDocument();
-      expect(screen.getByText('Secrets')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_project')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_domain')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_backups')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_security')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_database')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_secrets')).toBeInTheDocument();
     });
   });
 
@@ -93,11 +95,11 @@ describe('SettingsMenu', () => {
     mockDevelopStore.isMobile = false;
     const { user } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('Settings');
+    const trigger = screen.getByLabelText('builder_settings_title');
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('Give Feedback')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
     });
   });
 
@@ -107,14 +109,14 @@ describe('SettingsMenu', () => {
 
     const { user } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('Settings');
+    const trigger = screen.getByLabelText('builder_settings_title');
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('Domain')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_domain')).toBeInTheDocument();
     });
 
-    const domainButton = screen.getByText('Domain');
+    const domainButton = screen.getByText('builder_settings_nav_domain');
     await user.click(domainButton);
 
     await waitFor(() => {
@@ -128,14 +130,14 @@ describe('SettingsMenu', () => {
 
     const { user } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('Settings');
+    const trigger = screen.getByLabelText('builder_settings_title');
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('Domain')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_domain')).toBeInTheDocument();
     });
 
-    const domainButton = screen.getByText('Domain');
+    const domainButton = screen.getByText('builder_settings_nav_domain');
     await user.click(domainButton);
 
     await waitFor(() => {
@@ -146,18 +148,18 @@ describe('SettingsMenu', () => {
   it('should close popover after option clicked', async () => {
     const { user } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('Settings');
+    const trigger = screen.getByLabelText('builder_settings_title');
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('Domain')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_domain')).toBeInTheDocument();
     });
 
-    const domainButton = screen.getByText('Domain');
+    const domainButton = screen.getByText('builder_settings_nav_domain');
     await user.click(domainButton);
 
     await waitFor(() => {
-      expect(screen.queryByText('Domain')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_settings_nav_domain')).not.toBeInTheDocument();
     });
   });
 
@@ -166,18 +168,18 @@ describe('SettingsMenu', () => {
 
     const { user } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('Settings');
+    const trigger = screen.getByLabelText('builder_settings_title');
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('Database')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_database')).toBeInTheDocument();
     });
   });
 
   it('should have correct data-eid on trigger button', () => {
     renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('Settings');
+    const trigger = screen.getByLabelText('builder_settings_title');
     expect(trigger).toHaveAttribute('data-eid', 'develop.chat_toolbar.settings');
   });
 
@@ -188,14 +190,14 @@ describe('SettingsMenu', () => {
 
     const { user } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('Settings');
+    const trigger = screen.getByLabelText('builder_settings_title');
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('Give Feedback')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
     });
 
-    const feedbackButton = screen.getByText('Give Feedback');
+    const feedbackButton = screen.getByText('builder_settings_nav_feedback');
     await user.click(feedbackButton);
 
     await waitFor(() => {
@@ -208,18 +210,18 @@ describe('SettingsMenu', () => {
 
     const { user } = renderWithProviders(<SettingsMenu />);
 
-    const trigger = screen.getByLabelText('Settings');
+    const trigger = screen.getByLabelText('builder_settings_title');
     await user.click(trigger);
 
     await waitFor(() => {
-      expect(screen.getByText('Give Feedback')).toBeInTheDocument();
+      expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
     });
 
-    const feedbackButton = screen.getByText('Give Feedback');
+    const feedbackButton = screen.getByText('builder_settings_nav_feedback');
     await user.click(feedbackButton);
 
     await waitFor(() => {
-      expect(screen.queryByText('Give Feedback')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_settings_nav_feedback')).not.toBeInTheDocument();
     });
   });
 });

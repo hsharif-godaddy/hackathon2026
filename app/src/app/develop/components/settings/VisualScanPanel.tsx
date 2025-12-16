@@ -1,44 +1,28 @@
-/**
- * TODO: Implement Visual Scans page functionality
- *
- * The Visual Scans page can be implemented using the Visual and Accessibility TestPilot tests.
- * The UI should follow the pattern established by the Security Scans page (SecurityPanel.tsx and SecurityResults.tsx).
- *
- * Implementation steps:
- * 1. Add state management similar to SecurityPanel (loading, results, error states)
- * 2. Call TestPilot API with 'visual' and 'accessibility' test types
- * 3. Create VisualResults component similar to SecurityResults to display findings
- * 4. Follow the same pattern for vulnerability cards and TODO list integration
- *
- * Reference files:
- * - app/src/app/develop/components/settings/SecurityPanel.tsx
- * - app/src/app/develop/components/settings/components/security/SecurityResults.tsx
- * - app/src/app/api/testpilot/route.ts (lines 44-52 for visual/accessibility tests)
- */
-
-import BigCard from "@/components/layout/BigCard.tsx";
 import Box from '@ux/box';
 import Button from '@ux/button';
-import WandIcon from '@ux/icon/wand';
 import Card from '@ux/card';
+import WandIcon from '@ux/icon/wand';
+
+import BigCard from "@/components/layout/BigCard.tsx";
+import { useTranslations } from '@/hooks/useTranslations';
 
 export default function VisualScanPanel() {
+  const t = useTranslations();
   return (
     <Box gap="lg" className="@container">
       <BigCard
-        title="Visual Scan"
-        description="Scan your application for design inconsistencies and accessibility issues."
-        button={<Button
-          design="primary"
-          icon={<WandIcon />}
-          disabled
-        >
-          Run Scan
-        </Button>}>
+        title={t('builder_settings_visualscan_title')}
+        description={t('builder_settings_visualscan_desc')}
+        button={(
+          <Button
+            design="primary"
+            icon={<WandIcon />}
+            disabled
+            text={t('builder_settings_visualscan_button')}
+          />
+        )}>
         <Card>
-          <p>
-            No scan results
-          </p>
+          <p>{t('builder_settings_visualscan_no_result')}</p>
         </Card>
       </BigCard>
     </Box>

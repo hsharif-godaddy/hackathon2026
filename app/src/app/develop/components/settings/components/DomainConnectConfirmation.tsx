@@ -1,8 +1,9 @@
-import { useTranslations } from '@/hooks/useTranslations';
-import { generateClickEID } from '@/utils/instrumentation';
 import Button from "@ux/button";
 import SiblingSet from '@ux/sibling-set';
 import text from "@ux/text";
+
+import { useTranslations } from '@/hooks/useTranslations';
+import { generateClickEID } from '@/utils/instrumentation';
 
 /**
  * Props for DomainConnectConfirmation component

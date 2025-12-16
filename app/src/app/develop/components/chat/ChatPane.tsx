@@ -1,38 +1,40 @@
 'use client'
 
-import { useRef, useMemo, useEffect, useCallback, useState } from 'react'
 import { motion } from 'framer-motion'
-import PlanTracker from '@/app/develop/components/PlanTracker'
-import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
+import { ChatContext } from '@/app/develop/components/chat/ChatContext'
 import ChatInput from '@/app/develop/components/chat/ChatInput'
 import ChatToolbar from '@/app/develop/components/chat/ChatToolbar'
-import { ChatContext } from '@/app/develop/components/chat/ChatContext'
-import { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
-import StreamingMessageList from '@/app/develop/components/StreamingMessageList'
-import VersionHistory from '@/app/develop/components/VersionHistory'
+import PersistentTodoList from '@/app/develop/components/PersistentTodoList'
+import PlanTracker from '@/app/develop/components/PlanTracker'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import SettingsPane from '@/app/develop/components/settings/SettingsPane'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
+import StreamingMessageList from '@/app/develop/components/StreamingMessageList'
+import { ChatTab } from '@/app/develop/components/types'
+import { useAppIdFromParams } from '@/app/develop/components/utils'
+import VersionHistory from '@/app/develop/components/VersionHistory'
+import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import {
-  useInputValue,
-  useIsLoading,
-  useCurrentAppId,
-  useMessages,
   useActiveStream,
-  useIsActivelyStreaming,
-  useDevelopmentPlan,
   useAiEditContext,
   useBuildErrorContext,
-  useSetInputValue,
+  useCurrentAppId,
+  useDevelopmentPlan,
+  useInputValue,
+  useIsActivelyStreaming,
+  useIsLoading,
+  useMessages,
   useSetAiEditContext,
   useSetBuildErrorContext,
   useSetCurrentAppId,
+  useSetInputValue,
 } from '@/stores/useStreamingConversationStore'
-import { logger } from '@/lib/request-context'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { logAiroHQEvent } from '@/utils/instrumentation'
-import { ChatTab } from '@/app/develop/components/types'
-import { useAppIdFromParams } from '@/app/develop/components/utils'
 import { postMessageToIframe } from '@/utils/postMessage'
 
 interface ChatPaneProps {
@@ -44,7 +46,7 @@ export default function ChatPane({
   onPreviewRefresh,
   sendMessage
 }: ChatPaneProps) {
-  // Get state from streaming store
+  const t = useTranslations();
   const messages = useMessages()
   const activeStream = useActiveStream()
   const inputValue = useInputValue()
@@ -58,7 +60,6 @@ export default function ChatPane({
   const setAiEditContext = useSetAiEditContext()
   const setBuildErrorContext = useSetBuildErrorContext()
   const setCurrentAppId = useSetCurrentAppId()
-
 
   const expandedPlan = useDevelopPageStore((state) => state.expandedPlan)
   const activeChatTab = useDevelopPageStore((state) => state.activeChatTab)
@@ -286,13 +287,13 @@ export default function ChatPane({
   const getAssetLabel = (asset: AssetManagerItem): string => {
     switch (asset.mediaType) {
       case 'IMAGE':
-        return asset.filename || 'Selected image'
+        return asset.filename || t('builder_chatpane_asset_image')
       case 'VIDEO':
-        return 'Selected video'
+        return t('builder_chatpane_asset_video')
       case 'PDF':
-        return asset.filename || 'Selected PDF'
+        return asset.filename || t('builder_chatpane_asset_pdf')
       default:
-        return 'Selected asset'
+        return t('builder_chatpane_asset_default')
     }
   }
 
@@ -349,14 +350,14 @@ export default function ChatPane({
                       <div className="relative inline-block">
                         <img // eslint-disable-line @next/next/no-img-element
                           src={safeAiEditContext.screenshot}
-                          alt="Selected element"
+                          alt={t('builder_chatpane_edit_selected')}
                           className="max-h-[120px] object-contain rounded border"
                         />
                         <button
                           onClick={handleClearAiEditContext}
                           className="absolute -top-1 -right-1 w-3 h-3 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
                           style={{ backgroundColor: '#ffffff' }}
-                          title="Clear selection"
+                          title={t('builder_chatpane_edit_clear')}
                         >
                           ×
                         </button>
@@ -448,14 +449,14 @@ export default function ChatPane({
                   <div className="relative inline-block">
                     <img // eslint-disable-line @next/next/no-img-element
                       src={safeAiEditContext.screenshot}
-                      alt="Selected element"
+                      alt={t('builder_chatpane_edit_selected')}
                       className="max-h-[120px] object-contain rounded border"
                     />
                     <button
                       onClick={handleClearAiEditContext}
                       className="absolute -top-1 -right-1 w-3 h-3 flex items-center shadow-lg justify-center bg-white rounded-full font-bold text-lg"
                       style={{ backgroundColor: '#ffffff' }}
-                      title="Clear selection"
+                      title={t('builder_chatpane_edit_clear')}
                     >
                       ×
                     </button>
@@ -488,29 +489,29 @@ export default function ChatPane({
           )}
 
           {safeBuildErrorContext && (
-            <div className="mx-2 rounded-md overflow-hidden bg-red-50 border border-red-200">
+            <div className="mx-2 rounded-md overflow-hidden border">
               <div className="p-1.5">
                 <div className="flex items-start justify-between gap-1">
                   <div className="flex-1">
                     <div className="flex items-center gap-1 mb-0.5">
-                      <svg className="w-2 h-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <span className="font-semibold text-sm text-red-900">Build Error Context</span>
+                      <span className="font-semibold text-sm">{t('builder_chatpane_build_error')}</span>
                     </div>
-                    <div className="text-xs text-red-800 break-words">
+                    <div className="text-xs break-words">
                       {safeBuildErrorContext.error}
                     </div>
                     {safeBuildErrorContext.exitCode && (
-                      <div className="text-xs text-red-700 mt-0.5">
-                        Exit code: {safeBuildErrorContext.exitCode}
+                      <div className="text-xs mt-0.5">
+                        {t('builder_chatpane_exit_code')}: {safeBuildErrorContext.exitCode}
                       </div>
                     )}
                   </div>
                   <button
                     onClick={handleClearBuildErrorContext}
                     className="flex-shrink-0 w-3 h-3 flex items-center justify-center bg-white rounded-full shadow-sm hover:shadow-md font-bold text-lg text-red-600"
-                    title="Clear build error"
+                    title={t('builder_chatpane_build_exit_code')}
                   >
                     ×
                   </button>

@@ -8,9 +8,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+
+import { logger } from '@/lib/request-context';
 import { testPilotClient } from '@/lib/testpilot';
 import { testPilotTokenService } from '@/lib/testpilot/token-service';
-import { logger } from '@/lib/request-context';
 
 /**
  * GET /api/testpilot/[taskId]

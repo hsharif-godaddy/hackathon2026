@@ -1,24 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
 import clsx from 'clsx';
-import { useAuthContext } from '@/components/providers/AuthProvider';
-import { useSites } from '@/stores/useSitesStore';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect,useState } from 'react';
+import Box from '@ux/box';
+import AppsIcon from '@ux/icon/apps';
+import ChevronDownIcon from '@ux/icon/chevron-down';
+import text from '@ux/text';
+
 import AppItem, { AppItemNew, AppItemSeeAll } from '@/components/layout/AppItem';
+import { useAuthContext } from '@/components/providers/AuthProvider';
+import { useTranslations } from '@/hooks/useTranslations';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/lib/shadcn/popover"
-import text from '@ux/text';
-import Box from '@ux/box';
-import AppsIcon from '@ux/icon/apps';
-import ChevronDownIcon from '@ux/icon/chevron-down';
-import { generateClickEID } from '@/utils/instrumentation';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useSites } from '@/stores/useSitesStore';
+import { generateClickEID } from '@/utils/instrumentation';
 
 export default function AppSelector({ location }: { location?: string }) {
+  const t = useTranslations();
   const router = useRouter();
   const params = useParams();
   const {
@@ -52,7 +55,7 @@ export default function AppSelector({ location }: { location?: string }) {
   // Get current site from URL params
   const currentSiteId = params?.id as string;
   const currentSite = currentSiteId ? sites.find(site => site.id === currentSiteId) : null;
-  const displayTitle = currentSite?.name || "My Apps";
+  const displayTitle = currentSite?.name || t('builder_common_my_apps');
 
   // Sort sites: running sites first (by updated_at desc), then other sites (by updated_at desc)
   const sortedSites = [...sites].sort((a, b) => {

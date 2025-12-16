@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { getRootDomain } from '@/utils/getRootDomain';
+
 import { logger } from '@/lib/request-context';
+import { getRootDomain } from '@/utils/getRootDomain';
 
 /**
  * Fetch feature flag value from BFF API

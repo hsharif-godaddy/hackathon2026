@@ -1,7 +1,8 @@
-import { StatusValue } from "@/app/develop/components/types";
 import Box from "@ux/box";
-import text from "@ux/text";
 import CircleFilledIcon from '@ux/icon/circle-filled';
+import text from "@ux/text";
+
+import { StatusValue } from "@/app/develop/components/types";
 import { useTranslations } from "@/hooks/useTranslations";
 
 interface BigCardProps {

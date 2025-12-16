@@ -1,7 +1,8 @@
 'use client'
 
-import { ClipboardCopy, Check } from 'lucide-react'
+import { Check,ClipboardCopy } from 'lucide-react'
 import { useState } from 'react'
+
 import { logger } from '@/lib/request-context'
 
 interface ResponseMetadataProps {

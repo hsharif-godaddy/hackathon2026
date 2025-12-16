@@ -1,14 +1,15 @@
-import { logger } from '../request-context';
-import { DevDatabase, type DevAppInfo } from './database/DevDatabase';
-import { PortManager } from './utils/port-manager';
-import { GitUtils } from './utils/git';
-import { SSLCertificateGenerator } from './utils/ssl-cert-generator';
-import { TemplateCopyService } from './services/TemplateCopyService';
+import { appendFileSync,existsSync, promises as fsPromises, readFileSync, writeFileSync } from 'fs';
+import path from 'path';
+
 import { createAppAdapter, getAdapterType } from './adapters';
 import type { IAppAdapter, ServerStatus } from './adapters/interfaces/IAppAdapter';
-import { existsSync, promises as fsPromises, writeFileSync, readFileSync, appendFileSync } from 'fs';
-import path from 'path';
-import { getBasePath, getAppPath, getAllocPath } from './utils/app-paths';
+import { type DevAppInfo,DevDatabase } from './database/DevDatabase';
+import { TemplateCopyService } from './services/TemplateCopyService';
+import { getAllocPath,getAppPath, getBasePath } from './utils/app-paths';
+import { GitUtils } from './utils/git';
+import { PortManager } from './utils/port-manager';
+import { SSLCertificateGenerator } from './utils/ssl-cert-generator';
+import { logger } from '../request-context';
 
 export interface CreateDevAppRequest {
   siteId: string;

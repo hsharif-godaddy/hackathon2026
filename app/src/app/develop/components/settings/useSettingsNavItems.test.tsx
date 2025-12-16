@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
-import { useSettingsNavItems } from './useSettingsNavItems';
+import { beforeEach,describe, expect, it, vi } from 'vitest';
+
 import { SettingsSection } from '@/app/develop/components/types';
+import { renderHookWithProviders } from '@/tests/test-utils';
+import { useSettingsNavItems } from './useSettingsNavItems';
 
 const mockDevelopStore = {
   openFeedbackModal: vi.fn(),
@@ -33,68 +34,68 @@ describe('useSettingsNavItems', () => {
   });
 
   it('should return array of settings nav items', () => {
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     expect(result.current).toBeInstanceOf(Array);
     expect(result.current.length).toBeGreaterThan(0);
   });
 
   it('should include project settings item', () => {
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const projectItem = result.current.find(item => item.id === SettingsSection.PROJECT);
     expect(projectItem).toBeDefined();
-    expect(projectItem?.label).toBe('Project Settings');
+    expect(projectItem?.label).toBe('builder_settings_nav_project');
     expect(projectItem?.disabled).toBe(false);
   });
 
   it('should include domain item', () => {
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const domainItem = result.current.find(item => item.id === SettingsSection.DOMAIN);
     expect(domainItem).toBeDefined();
-    expect(domainItem?.label).toBe('Domain');
+    expect(domainItem?.label).toBe('builder_settings_nav_domain');
     expect(domainItem?.disabled).toBe(false);
   });
 
   it('should include backups item', () => {
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const backupsItem = result.current.find(item => item.id === SettingsSection.BACKUPS);
     expect(backupsItem).toBeDefined();
-    expect(backupsItem?.label).toBe('Backups');
+    expect(backupsItem?.label).toBe('builder_settings_nav_backups');
     expect(backupsItem?.disabled).toBe(false);
   });
 
   it('should include security item', () => {
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const securityItem = result.current.find(item => item.id === SettingsSection.SECURITY);
     expect(securityItem).toBeDefined();
-    expect(securityItem?.label).toBe('Security');
+    expect(securityItem?.label).toBe('builder_settings_nav_security');
     expect(securityItem?.disabled).toBe(false);
   });
 
   it('should include database item', () => {
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const databaseItem = result.current.find(item => item.id === SettingsSection.DATABASE);
     expect(databaseItem).toBeDefined();
-    expect(databaseItem?.label).toBe('Database');
+    expect(databaseItem?.label).toBe('builder_settings_nav_database');
     expect(databaseItem?.disabled).toBe(false);
   });
 
   it('should include secrets item', () => {
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const secretsItem = result.current.find(item => item.id === SettingsSection.SECRETS);
     expect(secretsItem).toBeDefined();
-    expect(secretsItem?.label).toBe('Secrets');
+    expect(secretsItem?.label).toBe('builder_settings_nav_secrets');
     expect(secretsItem?.disabled).toBe(false);
   });
 
   it('should not include visual scan when disabled', () => {
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const visualScanItem = result.current.find(item => item.id === SettingsSection.VISUAL_SCAN);
     expect(visualScanItem).toBeUndefined();
@@ -103,18 +104,18 @@ describe('useSettingsNavItems', () => {
   it('should include feedback item on desktop', () => {
     mockDevelopStore.isMobile = false;
 
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const feedbackItem = result.current.find(item => item.id === SettingsSection.FEEDBACK);
     expect(feedbackItem).toBeDefined();
-    expect(feedbackItem?.label).toBe('Give Feedback');
+    expect(feedbackItem?.label).toBe('builder_settings_nav_feedback');
     expect(feedbackItem?.disabled).toBe(false);
   });
 
   it('should not include feedback item on mobile', () => {
     mockDevelopStore.isMobile = true;
 
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const feedbackItem = result.current.find(item => item.id === SettingsSection.FEEDBACK);
     expect(feedbackItem).toBeUndefined();
@@ -123,7 +124,7 @@ describe('useSettingsNavItems', () => {
   it('should have onClick handler for feedback item', () => {
     mockDevelopStore.isMobile = false;
 
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const feedbackItem = result.current.find(item => item.id === SettingsSection.FEEDBACK);
     expect(feedbackItem?.onClick).toBeDefined();
@@ -135,7 +136,7 @@ describe('useSettingsNavItems', () => {
     const openFeedbackModal = vi.fn();
     mockDevelopStore.openFeedbackModal = openFeedbackModal;
 
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const feedbackItem = result.current.find(item => item.id === SettingsSection.FEEDBACK);
     feedbackItem?.onClick?.();
@@ -147,7 +148,7 @@ describe('useSettingsNavItems', () => {
     mockDevelopStore.isMobile = false;
     localStorage.setItem('airo-feedback-shown:airo#app-builder', 'true');
 
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const feedbackItem = result.current.find(item => item.id === SettingsSection.FEEDBACK);
     feedbackItem?.onClick?.();
@@ -156,7 +157,7 @@ describe('useSettingsNavItems', () => {
   });
 
   it('should have icons for all items', () => {
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     result.current.forEach(item => {
       expect(item.icon).toBeDefined();
@@ -164,7 +165,7 @@ describe('useSettingsNavItems', () => {
   });
 
   it('should not have onClick for non-feedback items', () => {
-    const { result } = renderHook(() => useSettingsNavItems());
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
 
     const projectItem = result.current.find(item => item.id === SettingsSection.PROJECT);
     expect(projectItem?.onClick).toBeUndefined();

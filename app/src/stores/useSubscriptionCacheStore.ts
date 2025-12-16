@@ -1,9 +1,10 @@
+import { enableMapSet } from 'immer'
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { enableMapSet } from 'immer'
-import { logger } from '@/lib/request-context'
+
 import { AIRO_OWNER_PRODUCTS } from '@/lib/mgmt-airo'
+import { logger } from '@/lib/request-context'
 
 // Enable Immer MapSet plugin for handling Map and Set objects
 enableMapSet()

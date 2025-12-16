@@ -1,9 +1,4 @@
 import clsx from 'clsx'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useServerPollingStore } from '@/stores/useServerPollingStore'
-import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation'
-import IconButton from '@/app/develop/components/IconButton'
-import { useAppIdFromParams } from '@/app/develop/components/utils'
 import CodeIcon from '@ux/icon/code'
 import DesktopIcon from '@ux/icon/desktop'
 import EditIcon from '@ux/icon/edit'
@@ -13,9 +8,17 @@ import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
 import SidebarExpandIcon from '@ux/icon/sidebar-expand'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WindowNewIcon from '@ux/icon/window-new'
-import { ViewMode, PreviewViewMode } from '../types'
+
+import IconButton from '@/app/develop/components/IconButton'
+import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { useTranslations } from '@/hooks/useTranslations'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation'
+import { PreviewViewMode,ViewMode } from '../types'
 
 export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
+  const t = useTranslations();
   const appId = useAppIdFromParams()
 
   const viewMode = useDevelopPageStore((state) => state.viewMode)
@@ -60,7 +63,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
           icon={isChatPaneCollapsed ? <SidebarExpandIcon /> : <SidebarCollapseIcon />}
           onClick={toggleChatPaneCollapse}
           separator
-          label={isChatPaneCollapsed ? 'Expand Chat Pane' : 'Collapse Chat Pane'}
+          label={isChatPaneCollapsed ? t('builder_preview_button_expand') : t('builder_preview_button_collapse')}
           showLabelWhenActive={false}
           data-eid={ generateClickEID(`develop.preview.chat_pane_${isChatPaneCollapsed ? 'expand' : 'collapse'}`) }
         />
@@ -70,7 +73,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         onClick={() => handleViewModeChange(ViewMode.PREVIEW, hasUnsavedChanges)}
         data-eid={ generateClickEID('develop.preview.iframe') }
         active={viewMode === ViewMode.PREVIEW}
-        label="Preview"
+        label={t('builder_preview_button_preview')}
         showLabelWhenActive={false}
       />
       <IconButton
@@ -78,7 +81,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         onClick={() => handleViewModeChange(ViewMode.CODE, hasUnsavedChanges)}
         data-eid={ generateClickEID('develop.preview.code_editor') }
         active={viewMode === ViewMode.CODE}
-        label="Code Editor"
+        label={t('builder_preview_button_code')}
         showLabelWhenActive={false}
       />
       {!isMobile && (
@@ -88,7 +91,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
           onClick={toggleSelectMode}
           data-eid={ generateClickEID('develop.preview.select_mode') }
           active={isSelectMode}
-          label="Select Mode"
+          label={t('builder_preview_button_select')}
           showLabelWhenActive={false}
           id="tour-select-mode-button"
         />
@@ -102,7 +105,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         onClick={onPreviewRefresh}
         dataEid={ generateClickEID('develop.preview.refresh') }
         disabled={viewMode === ViewMode.CODE}
-        label="Refresh Preview"
+        label={t('builder_preview_button_refresh')}
         showLabelWhenActive={false}
       />
 
@@ -114,7 +117,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
             active={previewViewMode === PreviewViewMode.DESKTOP}
             dataEid={ generateClickEID('develop.preview.preview_desktop') }
             disabled={viewMode === ViewMode.CODE}
-            label="Preview Desktop"
+            label={t('builder_preview_button_desktop')}
             showLabelWhenActive={false}
           />
           <IconButton
@@ -123,7 +126,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
             active={previewViewMode === PreviewViewMode.MOBILE}
             dataEid={ generateClickEID('develop.preview.preview_mobile') }
             disabled={viewMode === ViewMode.CODE}
-            label="Preview Mobile"
+            label={t('builder_preview_button_mobile')}
             showLabelWhenActive={false}
             separator
           />
@@ -146,7 +149,7 @@ export default function PreviewHeader({ onPreviewRefresh, isMobile = false }) {
         }}
         dataEid={ generateClickEID('develop.preview.new_tab') }
         disabled={!actualPort || isCheckingApp || isRestarting || isStartingApp}
-        label="Open in new tab"
+        label={t('builder_common_open_new_tab')}
         showLabelWhenActive={false}
       />
     </header>

@@ -1,19 +1,21 @@
 'use client';
 
-import { useSwitchboard } from '@/hooks/useSwitchboard';
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { SettingsSection } from '@/app/develop/components/types';
-import SettingsIcon from '@ux/icon/settings';
-import LockedIcon from '@ux/icon/locked';
-import DatabaseIcon from '@ux/icon/database';
-import ClipboardIcon from '@ux/icon/clipboard';
-import LinkIcon from '@ux/icon/link';
-import RevertIcon from '@ux/icon/revert';
-import ContentIcon from '@ux/icon/content';
-import HistoryIcon from '@ux/icon/history';
-import CommentsIcon from '@ux/icon/comments';
-import SocialIcon from '@ux/icon/social';
 import { ReactNode } from 'react';
+import ClipboardIcon from '@ux/icon/clipboard';
+import CommentsIcon from '@ux/icon/comments';
+import ContentIcon from '@ux/icon/content';
+import DatabaseIcon from '@ux/icon/database';
+import HistoryIcon from '@ux/icon/history';
+import LinkIcon from '@ux/icon/link';
+import LockedIcon from '@ux/icon/locked';
+import RevertIcon from '@ux/icon/revert';
+import SettingsIcon from '@ux/icon/settings';
+import SocialIcon from '@ux/icon/social';
+
+import { SettingsSection } from '@/app/develop/components/types';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useTranslations } from '@/hooks/useTranslations';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 
 /**
  * Settings navigation item configuration
@@ -33,6 +35,7 @@ export interface SettingsNavItem {
  * @returns Array of settings navigation items with current enabled/disabled state
  */
 export function useSettingsNavItems(): SettingsNavItem[] {
+  const t = useTranslations();
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
   const isMobile = useDevelopPageStore((state) => state.isMobile);
 
@@ -55,67 +58,67 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   return [
     {
       id: SettingsSection.PROJECT,
-      label: 'Project Settings',
+      label: t('builder_settings_nav_project'),
       icon: <SettingsIcon />,
       disabled: isProjectEnabled !== true,
     },
     {
       id: SettingsSection.DOMAIN,
-      label: 'Domain',
+      label: t('builder_settings_nav_domain'),
       icon: <LinkIcon />,
       disabled: isDomainEnabled !== true,
     },
     {
       id: SettingsSection.BACKUPS,
-      label: 'Backups',
+      label: t('builder_settings_nav_backups'),
       icon: <RevertIcon />,
       disabled: isBackupsEnabled !== true,
     },
     {
       id: SettingsSection.SECURITY,
-      label: 'Security',
+      label: t('builder_settings_nav_security'),
       icon: <LockedIcon />,
       disabled: isSecurityEnabled !== true,
     },
     {
       id: SettingsSection.DATABASE,
-      label: 'Database',
+      label: t('builder_settings_nav_database'),
       icon: <DatabaseIcon />,
       disabled: isDatabaseEnabled !== true,
     },
     {
       id: SettingsSection.SECRETS,
-      label: 'Secrets',
+      label: t('builder_settings_nav_secrets'),
       icon: <LockedIcon />,
       disabled: isSecretsEnabled !== true,
     },
     ...(isSocialEnabled ? [{
       id: SettingsSection.SOCIAL,
-      label: 'Social',
+      label: t('builder_settings_nav_social'),
       icon: <SocialIcon />,
       disabled: isSocialEnabled !== true,
     }] : []),
     ...(isVisualScanEnabled ? [{
       id: SettingsSection.VISUAL_SCAN,
-      label: 'Visual Scan',
+      label: t('builder_settings_nav_visualscan'),
       icon: <ContentIcon />,
       disabled: isVisualScanEnabled !== true,
     }] : []),
     ...(isLogsEnabled ? [{
       id: SettingsSection.LOGS,
-      label: 'Logs',
+      label: t('builder_settings_nav_logs'),
       icon: <HistoryIcon />,
       disabled: isLogsEnabled !== true,
     }] : []),
     ...(isConversationsEnabled ? [{
       id: SettingsSection.CONVERSATIONS,
-      label: 'Conversations',
+      label: t('builder_settings_nav_conversations'),
       icon: <CommentsIcon />,
       disabled: isConversationsEnabled !== true,
     }] : []),
     ...(!isMobile ? [{
       id: SettingsSection.FEEDBACK,
-      label: 'Give Feedback',
+      label: t('builder_settings_nav_feedback'),
       icon: <ClipboardIcon />,
       disabled: false,
       onClick: handleFeedbackClick,

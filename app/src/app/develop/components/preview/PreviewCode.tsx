@@ -1,20 +1,22 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { appService } from '@/services/AppService'
-import dynamic from 'next/dynamic'
 import clsx from 'clsx'
-import FileTree, { FileItem } from '@/app/develop/components/FileTree'
-import { logger } from '@/lib/request-context'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useResponsive } from '@/hooks/useResponsive'
+import dynamic from 'next/dynamic'
+import { useCallback,useEffect, useState } from 'react'
 import Button from '@ux/button'
 import DownloadIcon from '@ux/icon/download'
-import Spinner from '@ux/spinner'
+import HamburgerIcon from '@ux/icon/hamburger'
 import PageIcon from '@ux/icon/page'
 import XIcon from '@ux/icon/x'
-import HamburgerIcon from '@ux/icon/hamburger'
+import Spinner from '@ux/spinner'
 import Text from '@ux/text'
+
+import FileTree, { FileItem } from '@/app/develop/components/FileTree'
+import { useResponsive } from '@/hooks/useResponsive'
+import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
+import { appService } from '@/services/AppService'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
 // Dynamically import Monaco Editor to avoid SSR issues
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -90,6 +92,7 @@ interface PreviewCodeProps {
 }
 
 export default function PreviewCode({ appId }: PreviewCodeProps) {
+  const t = useTranslations();
   const [files, setFiles] = useState<FileItem[]>([])
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([])
   const [activeFile, setActiveFile] = useState<string | null>(null)
@@ -123,14 +126,14 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         const fileTree = buildFileTree(result.entries)
         setFiles(fileTree)
       } else {
-        setError('Project is initializing... Please wait a moment and refresh.')
+        setError(t('builder_code_init'))
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       if (errorMessage.includes('500') || errorMessage.includes('Failed to start app')) {
-        setError('Application is starting up. Please wait a moment and try again.')
+        setError(t('builder_code_error_wait'))
       } else {
-        setError(`Failed to load project files: ${errorMessage}`)
+        setError(`${t('builder_code_error_failed')}: ${errorMessage}`)
       }
 
       // Retry after a delay
@@ -140,7 +143,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [appId])
+  }, [appId, t])
 
   // Convert flat file list to hierarchical tree structure
   const buildFileTree = (entries: Array<{name: string; isDirectory: boolean; path: string; depth: number}>): FileItem[] => {
@@ -182,9 +185,9 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       return result.content
     } catch (error) {
       logger.error('code-editor.file.load-error', { message: 'Error loading file content', error: error instanceof Error ? error.message : String(error) })
-      return `// Error loading file: ${error instanceof Error ? error.message : 'Unknown error'}`
+      return `// ${t('builder_code_error_loading')}: ${error instanceof Error ? error.message : t('builder_code_error_unknown')}`
     }
-  }, [appId])
+  }, [appId, t])
 
   // Save file content to backend
   const saveFileContent = useCallback(async (filePath: string, content: string): Promise<boolean> => {
@@ -322,11 +325,11 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       logger.info('code-editor.file.saved', { message: 'File saved', path: pathToSave })
     } catch (error) {
       logger.error('code-editor.file.save-failed', { message: 'Failed to save file', error: error instanceof Error ? error.message : String(error) })
-      alert('Failed to save file')
+      alert(t('builder_code_alert_failed_save'))
     } finally {
       setSaving(null)
     }
-  }, [activeFile, openFiles, saveFileContent])
+  }, [activeFile, openFiles, saveFileContent, t])
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -347,7 +350,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-1">
         <Spinner data-partial="gradientAiro" />
-        <div className="text-sm">Loading project files...</div>
+        <div className="text-sm">{t('builder_code_loading_files')}</div>
       </div>
     )
   }
@@ -356,14 +359,14 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
-          <div className="text-lg font-semibold mb-1">Project Loading</div>
+          <div className="text-lg font-semibold mb-1">{t('builder_code_loading_project')}</div>
           <div className="text-sm mb-2">{error}</div>
           <button
             onClick={loadFiles}
             disabled={isLoading}
             className="px-2 py-1 rounded-md disabled:opacity-50"
           >
-            {isLoading ? 'Loading...' : 'Retry Loading Files'}
+            {isLoading ? t('builder_common_loading') : t('builder_code_retry_loading')}
           </button>
         </div>
       </div>
@@ -387,12 +390,12 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
             showFileTree ? "translate-x-0" : "-translate-x-full"
           )}>
             <div className="flex items-center justify-between px-1.5 py-0.5 border-b">
-              <Text.p className="ml-2 !font-semibold">Files</Text.p>
+              <Text.p className="ml-2 !font-semibold">{t('builder_common_files')}</Text.p>
               <Button
                 onClick={() => setShowFileTree(false)}
                 className="!p-0.5"
                 design="control"
-                title="Close"
+                title={t('builder_common_close')}
                 icon={<XIcon />}
               />
             </div>
@@ -424,9 +427,9 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
               onClick={() => setShowFileTree(true)}
               className="!px-2 !py-0.5 flex-shrink-0"
               design="control"
-              title="Show files"
+              title={t('builder_common_show_files')}
               icon={<HamburgerIcon className="!size-2.5" />}
-              text="Files"
+              text={t('builder_common_files')}
             />
           )}
 
@@ -462,7 +465,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                       handleCloseFile(file.path)
                     }}
                     className="!p-0.5"
-                    title="Close file"
+                    title={t('builder_code_close_file')}
                     design="control"
                     icon={<XIcon className="!size-1.5" />}
                   />
@@ -478,7 +481,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                     })
                   }}
                   icon={<DownloadIcon />}
-                  text="Save All"
+                  text={t('builder_code_save_all')}
                   design="control"
                 />
               )}
@@ -511,8 +514,8 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
           ) : (
             <div className="h-full flex flex-col items-center justify-center">
               <PageIcon className="mx-auto mb-2" />
-              <h3 className="text-lg font-medium">No file selected</h3>
-              <p className="text-sm">Select a file to start editing</p>
+              <h3 className="text-lg font-medium">{t('builder_code_no_file_selected')}</h3>
+              <p className="text-sm">{t('builder_code_select_file')}</p>
             </div>
           )}
         </div>

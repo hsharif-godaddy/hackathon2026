@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+import { describe, expect,it } from 'vitest';
+import { screen } from '@testing-library/react';
+
 import { renderWithProviders } from '@/tests/test-utils';
 import AppInactivityAlert from './AppInactivityAlert';
 
@@ -8,13 +10,13 @@ describe('AppInactivityAlert', () => {
   it('should render without crashing', () => {
     renderWithProviders(<AppInactivityAlert />);
 
-    expect(screen.getByText('Heads up!')).toBeInTheDocument();
+    expect(screen.getByText('builder_layout_inactivity_alert_title')).toBeInTheDocument();
   });
 
   it('should display warning message', () => {
     renderWithProviders(<AppInactivityAlert />);
 
-    expect(screen.getByText(/Apps that haven't been changed or published in 7 days/i)).toBeInTheDocument();
+    expect(screen.getByText('builder_layout_inactivity_alert')).toBeInTheDocument();
   });
 
   it('should render as highlight alert', () => {

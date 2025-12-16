@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { AuthRequired, AuthRealmType, AuthRiskType, AuthIdpType } from '@godaddy/gasket-auth';
-import { useGasketConfig } from '@/hooks/useGasketConfig';
+import { useEffect,useState } from 'react';
+import { AuthIdpType,AuthRealmType, AuthRequired, AuthRiskType } from '@godaddy/gasket-auth';
+
 import { useAuthContext } from '@/components/providers/AuthProvider';
-import UnauthorizedComponent from './UnauthorizedComponent';
+import { useGasketConfig } from '@/hooks/useGasketConfig';
+import { useTranslations } from '@/hooks/useTranslations';
 import LoadingComponent from './LoadingComponent';
+import UnauthorizedComponent from './UnauthorizedComponent';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -22,11 +24,13 @@ export default function ProtectedRoute({
   groups = [],
   risk,
   type,
-  unauthorizedMessage = 'You need to be signed in to access this area of Airo App Builder.'
+  unauthorizedMessage = null
 }: ProtectedRouteProps) {
-
+  const t = useTranslations();
   // State to track if component has hydrated and mock login dialog
   const [isClient, setIsClient] = useState(false);
+
+  unauthorizedMessage = unauthorizedMessage || t('builder_auth_protected_message');
 
   // Get gasket configuration and auth state
   const { isLoading: configLoading } = useGasketConfig();

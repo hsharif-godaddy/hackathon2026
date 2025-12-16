@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 
 /**
  * Client component that tracks referral link clicks

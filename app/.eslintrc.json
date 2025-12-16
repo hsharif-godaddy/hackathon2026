@@ -1,5 +1,6 @@
 {
   "extends": ["next/core-web-vitals", "next/typescript"],
+  "plugins": ["simple-import-sort"],
   "rules": {
     "@typescript-eslint/no-unused-vars": [
       "warn",
@@ -10,7 +11,30 @@
     "@typescript-eslint/no-var-requires": "warn",
     "@typescript-eslint/ban-types": "warn",
     "@typescript-eslint/no-unnecessary-type-constraint": "warn",
-    "react/display-name": "off"
+    "react/display-name": "off",
+    "simple-import-sort/imports": [
+      "warn",
+      {
+        "groups": [
+          ["^\\u0000"],
+          ["^node:"],
+          ["^[a-z]", "^@(?!/)[a-z]"],
+          ["^@/", "^", "^\\.\\."]
+        ]
+      }
+    ],
+    "simple-import-sort/exports": "warn",
+    "no-restricted-imports": [
+      "off",
+      {
+        "patterns": [
+          {
+            "group": ["../*", "./*"],
+            "message": "Use '@/' path alias instead of relative imports."
+          }
+        ]
+      }
+    ]
   },
   "ignorePatterns": [
     "node_modules/**",

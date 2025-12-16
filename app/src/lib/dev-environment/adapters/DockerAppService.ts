@@ -1,13 +1,12 @@
-import { DockerContainerManager } from '../services/docker-container-manager';
-import { DevDatabase } from '../database/DevDatabase';
-import { logger } from '../../request-context';
+import { ContainerError } from './interfaces/common';
 import type {
+  AppAdapterCapabilities,
   IAppAdapter,
   ServerInfo,
-  ServerStatus,
-  AppAdapterCapabilities
-} from './interfaces/IAppAdapter';
-import { ContainerError } from './interfaces/common';
+  ServerStatus} from './interfaces/IAppAdapter';
+import { logger } from '../../request-context';
+import { DevDatabase } from '../database/DevDatabase';
+import { DockerContainerManager } from '../services/docker-container-manager';
 
 /**
  * Docker Container-based App Deployment Service

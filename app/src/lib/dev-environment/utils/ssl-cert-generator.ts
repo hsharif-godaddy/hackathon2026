@@ -1,8 +1,9 @@
-import forge from 'node-forge';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import forge from 'node-forge';
 import { join } from 'path';
-import { logger } from '../../request-context';
+
 import { CAManager } from './ca-manager';
+import { logger } from '../../request-context';
 
 export interface SSLCertificateResult {
   success: boolean;

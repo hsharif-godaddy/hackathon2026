@@ -1,9 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { renderWithProviders } from '@/tests/test-utils';
-import AppItem, { AppItemSkeleton, AppItemNew, AppItemSeeAll } from './AppItem';
+
+import { describe, expect, it, vi } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+
 import { Site } from '@/stores/useSitesStore';
+import { renderWithProviders } from '@/tests/test-utils';
+import AppItem, { AppItemNew, AppItemSeeAll,AppItemSkeleton } from './AppItem';
 
 const mockPush = vi.fn();
 const mockUseRouter = vi.fn(() => ({ push: mockPush }));
@@ -111,7 +113,7 @@ describe('AppItemNew', () => {
   it('should render without crashing', () => {
     renderWithProviders(<AppItemNew />);
 
-    expect(screen.getByText('Create a new app')).toBeInTheDocument();
+    expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
   });
 
   it('should navigate to homepage when clicked', async () => {
@@ -146,7 +148,7 @@ describe('AppItemSeeAll', () => {
   it('should render without crashing', () => {
     renderWithProviders(<AppItemSeeAll />);
 
-    expect(screen.getByText('See all')).toBeInTheDocument();
+    expect(screen.getByText('builder_common_see_all')).toBeInTheDocument();
   });
 
   it('should navigate to apps page when clicked', async () => {

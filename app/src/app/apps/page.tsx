@@ -1,20 +1,23 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { ProtectedRoute } from '@/components/auth'
-import Header from '@/components/layout/Header'
-import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
-import { DevelopmentAdminSection } from '@/components/development'
-import { logImpressionEvent } from '@/utils/instrumentation'
-import { useSitesStore } from '@/stores/useSitesStore'
-import { logger } from '@/lib/request-context'
+import { useEffect,useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
 import Tag from '@ux/tag'
+
 import AppCard, { AppCardEmptyState } from '@/app/apps/AppCard'
+import { ProtectedRoute } from '@/components/auth'
+import { DevelopmentAdminSection } from '@/components/development'
+import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
+import Header from '@/components/layout/Header'
+import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
+import { useSitesStore } from '@/stores/useSitesStore'
+import { logImpressionEvent } from '@/utils/instrumentation'
 
 function SitesPageContent() {
+  const t = useTranslations();
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
 
   // Use the sites store (automatically loads sites on first use)
@@ -101,12 +104,12 @@ function SitesPageContent() {
 
         {error && (
           <div className="mb-3 border rounded-lg p-2">
-            <p className="text-red-700 mb-1">{error}</p>
+            <p className="mb-1">{error}</p>
             <Button
               onClick={() => window.location.reload()}
               design="secondary"
             >
-              Try Again
+              {t('builder_common_try_again')}
             </Button>
           </div>
         )}
@@ -126,9 +129,10 @@ function SitesPageContent() {
 }
 
 export default function Sites() {
+  const t = useTranslations();
   return (
     <ProtectedRoute
-      unauthorizedMessage="You need to be signed in to view your sites."
+      unauthorizedMessage={t('builder_apps_signed_in')}
     >
       <SitesPageContent />
     </ProtectedRoute>

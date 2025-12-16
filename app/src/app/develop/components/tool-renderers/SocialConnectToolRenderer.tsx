@@ -2,16 +2,19 @@
 
 import { memo } from 'react'
 import LinkIcon from '@ux/icon/link'
-import ToolHeader from './ToolHeader'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import DefaultToolRenderer from './DefaultToolRenderer'
-import SocialConnectFlow from '../SocialConnectFlow'
+
+import SocialConnectFlow from '@/app/develop/components/SocialConnectFlow'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import DefaultToolRenderer from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import { useTranslations } from '@/hooks/useTranslations'
 
 function SocialConnectToolRenderer({
   toolStatus,
   result,
   ...rest
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   if (toolStatus === 'completed' && result && typeof result === 'object') {
     const r = result as any
 
@@ -20,7 +23,7 @@ function SocialConnectToolRenderer({
         <div>
           <ToolHeader
             icon={<LinkIcon className="w-2 h-2" />}
-            displayName="Social Connect"
+            displayName={t('builder_tools_social_connect_title')}
             hasDetails={false}
             toolStatus={toolStatus}
             onOpenModal={undefined}

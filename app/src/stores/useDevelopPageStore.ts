@@ -1,12 +1,13 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { postMessageToIframe } from '@/utils/postMessage'
-import { appService, type App } from '@/services/AppService'
-import { type Site, useSitesStore } from '@/stores/useSitesStore'
-import { ViewMode, PreviewViewMode, ChatTab, SettingsSection } from '@/app/develop/components/types'
+
+import { ChatTab, PreviewViewMode, SettingsSection,ViewMode } from '@/app/develop/components/types'
 import { logger } from '@/lib/request-context'
+import { type App,appService } from '@/services/AppService'
+import { type Site, useSitesStore } from '@/stores/useSitesStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
+import { postMessageToIframe } from '@/utils/postMessage'
 
 // Loading phases for proper sequencing
 type LoadingPhase = 'idle' | 'loading-app' | 'loading-site' | 'loading-conversations' | 'ready'

@@ -1,5 +1,5 @@
-import { getAllocPath } from '../utils/app-paths';
 import { logger } from '../../request-context';
+import { getAllocPath } from '../utils/app-paths';
 
 /**
  * Constant container port for dev-supervisor TCP communication

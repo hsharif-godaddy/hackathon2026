@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { useDomainAttach } from './useDomainAttach';
-import { AppDomain } from './useAppDetails';
-import { DomainStatus, CdnStatus } from '@/lib/mgmt-airo/types';
-import { isCustomerDomain } from '@/utils/domain';
-import { logger } from '@/lib/request-context';
+
 import { Domain } from '@/hooks/useDomainsQuery';
+import { CdnStatus,DomainStatus } from '@/lib/mgmt-airo/types';
+import { logger } from '@/lib/request-context';
+import { isCustomerDomain } from '@/utils/domain';
+import { AppDomain } from './useAppDetails';
+import { useDomainAttach } from './useDomainAttach';
 
 /**
  * Custom hook to manage customer domain attachment flow

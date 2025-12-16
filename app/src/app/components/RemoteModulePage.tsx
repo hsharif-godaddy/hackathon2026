@@ -1,17 +1,18 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useEffect,useState } from "react";
 import { RemoteComponent } from "react-dynamic-remote-component";
+import Button from "@ux/button";
+import RefreshIcon from "@ux/icon/refresh";
+import Spinner from "@ux/spinner";
+
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from "@/lib/request-context";
 import {
   loadRemoteComponentConfig,
   ModuleConfig,
 } from "@/utils/moduleFederation";
-import { logger } from "@/lib/request-context";
-import ErrorBoundary from "@/components/ErrorBoundary";
-import RefreshIcon from "@ux/icon/refresh";
-import Spinner from "@ux/spinner";
-import Button from "@ux/button";
-import { useTranslations } from '@/hooks/useTranslations'
 
 /**
  * Props for the RemoteModulePage component

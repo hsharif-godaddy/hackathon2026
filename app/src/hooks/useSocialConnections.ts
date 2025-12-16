@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+
 import type { SocialConnection } from '@/types/social';
 
 interface SocialConnectionsResponse {

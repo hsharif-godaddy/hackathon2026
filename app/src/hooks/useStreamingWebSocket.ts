@@ -9,32 +9,33 @@ import { useCallback, useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { validate as validateUUID } from 'uuid'
 import { useQueryClient } from '@tanstack/react-query'
+
+import { logger } from '@/lib/request-context'
+import { getSharedSocket,setSharedSocket } from '@/lib/socketRegistry'
+import { AgentService } from '@/services/AgentService'
+import { useGitStore } from '@/stores/useGitStore'
+import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import {
-  useWebSocketState,
-  useCurrentAppId,
-  useStartNewStream,
-  useAppendTextSegment,
-  useAddToolStartSegment,
   useAddToolCallSegment,
   useAddToolResultSegment,
+  useAddToolStartSegment,
+  useAppendTextSegment,
+  useCurrentAppId,
+  useFinalizeStream,
+  useMarkBudgetExceeded,
   useMarkMaxStepsReached,
   useMarkUpstreamError,
-  useMarkBudgetExceeded,
-  useFinalizeStream,
-  useSetWebSocketState,
-  useSetStreamingState,
   useSetIsLoading,
+  useSetStreamingState,
+  useSetWebSocketState,
+  useStartNewStream,
   useStreamingConversationStore,
+  useWebSocketState,
 } from '@/stores/useStreamingConversationStore'
-import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
-import { useGitStore } from '@/stores/useGitStore'
-import type { AgentsAppContext, AgentsAppChatMessage } from '../types/websocket-context'
-import { captureVisualContext } from '../app/develop/components/visualContextCapture'
 import { logImpressionEvent } from '@/utils/instrumentation'
-import { logger } from '@/lib/request-context'
-import { setSharedSocket, getSharedSocket } from '@/lib/socketRegistry'
-import { AgentService } from '@/services/AgentService'
+import { captureVisualContext } from '../app/develop/components/visualContextCapture'
+import type { AgentsAppChatMessage,AgentsAppContext } from '../types/websocket-context'
 
 // Constants
 const RAF_FALLBACK_DELAY_MS = 16 // ~60fps frame duration for setTimeout fallback
@@ -1121,7 +1122,7 @@ export function useStreamingWebSocket() {
       initializingRef.current = false
     }
     // Including createConnection & setupEventHandlers satisfies exhaustive-deps; guard prevents duplicate initialization.
-  }, [currentAppId, createConnection, setupEventHandlers, clearRetryState, setWebSocketState])
+  }, [currentAppId, createConnection, setupEventHandlers, clearRetryState, setWebSocketState]) /* eslint-disable-line react-hooks/exhaustive-deps */
 
   /**
    * Send message - the main streaming function

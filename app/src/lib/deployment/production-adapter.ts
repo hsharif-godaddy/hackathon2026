@@ -3,11 +3,11 @@
  * Handles enterprise-grade deployment to production infrastructure
  */
 
+import { sqsNomadService } from '@/lib/aws/sqs-nomad';
+import { PrismaSiteService } from '@/lib/database/prisma-site-service';
+import { generateJobName,generateNomadJobSpec } from '@/lib/nomad/job-template';
 import { BaseDeploymentAdapter } from './base-adapter';
 import { DeploymentConfig, DeploymentResult } from './types';
-import { PrismaSiteService } from '@/lib/database/prisma-site-service';
-import { generateNomadJobSpec, generateJobName } from '@/lib/nomad/job-template';
-import { sqsNomadService } from '@/lib/aws/sqs-nomad';
 
 export class ProductionDeploymentAdapter extends BaseDeploymentAdapter {
   private siteService: PrismaSiteService;

@@ -1,14 +1,16 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation';
 import clsx from 'clsx';
+import { useParams, useRouter } from 'next/navigation';
 import Box from '@ux/box';
-import { generateClickEID } from '@/utils/instrumentation';
-import { Site } from '@/stores/useSitesStore';
 import AppsIcon from '@ux/icon/apps';
 import PlusIcon from '@ux/icon/plus';
 import text from '@ux/text';
+
 import AppThumbnail from '@/app/apps/AppThumbnail';
+import { useTranslations } from '@/hooks/useTranslations';
+import { Site } from '@/stores/useSitesStore';
+import { generateClickEID } from '@/utils/instrumentation';
 
 export default function AppItem({site, dataEid}: {site: Site, dataEid?: string}) {
   const router = useRouter();
@@ -55,6 +57,7 @@ export function AppItemSkeleton() {
 }
 
 export function AppItemNew({ location }: { location?: string }) {
+  const t = useTranslations();
   const router = useRouter();
   return (
     <button
@@ -72,7 +75,7 @@ export function AppItemNew({ location }: { location?: string }) {
           <PlusIcon className="size-3.5 text-ai transition-all" />
         </div>
         <div>
-          <text.p>Create a new app</text.p>
+          <text.p>{t('builder_apps_empty_create')}</text.p>
         </div>
       </Box>
     </button>
@@ -80,6 +83,7 @@ export function AppItemNew({ location }: { location?: string }) {
 }
 
 export function AppItemSeeAll({ location }: { location?: string }) {
+  const t = useTranslations();
   const router = useRouter();
   return (
     <button
@@ -97,7 +101,7 @@ export function AppItemSeeAll({ location }: { location?: string }) {
           <text.p className="text-ai"><AppsIcon className="size-3.5 text-ai" /></text.p>
         </div>
         <div>
-          <text.p>See all</text.p>
+          <text.p>{t('builder_common_see_all')}</text.p>
         </div>
       </Box>
     </button>

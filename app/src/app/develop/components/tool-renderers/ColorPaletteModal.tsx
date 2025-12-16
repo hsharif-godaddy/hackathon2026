@@ -1,12 +1,14 @@
 'use client'
 
-import type { CompletePalette } from '../widgets/ColorPaletteGridWidget'
 import { AnimatePresence, motion } from 'framer-motion'
-import { getDisplayColors } from '../utils/colorPaletteUtils'
-import { useState, useEffect } from 'react'
+import { useEffect,useState } from 'react'
 import { createPortal } from 'react-dom'
-import XThickIcon from '@ux/icon/x-thick'
 import Button from '@ux/button'
+import XThickIcon from '@ux/icon/x-thick'
+
+import { getDisplayColors } from '@/app/develop/components/utils/colorPaletteUtils'
+import type { CompletePalette } from '@/app/develop/components/widgets/ColorPaletteGridWidget'
+import { useTranslations } from '@/hooks/useTranslations'
 
 /**
  * Color palette modal props
@@ -39,6 +41,7 @@ export default function ColorPaletteModal({
   showDetailsTab = false,
   detailsContent = ''
 }: ColorPaletteModalProps) {
+  const t = useTranslations();
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<number | 'details'>(0)
 
@@ -73,7 +76,7 @@ export default function ColorPaletteModal({
     : palette
 
   const hasPalette = displayPalette !== undefined && displayPalette !== null
-  const displayColors = hasPalette ? getDisplayColors(displayPalette) : []
+  const displayColors = hasPalette ? getDisplayColors(displayPalette, t) : []
 
   const modalContent = (
     <AnimatePresence>
@@ -108,7 +111,7 @@ export default function ColorPaletteModal({
                   onClick={onClose}
                   icon={<XThickIcon className="h-3 w-3" />}
                   design="control"
-                  aria-label="Close"
+                  aria-label={t('builder_common_close')}
                   size="sm"
                 />
               </div>
@@ -141,11 +144,11 @@ export default function ColorPaletteModal({
                         onClick={() => setActiveTab(0)}
                         className={`pb-1 px-0.5 text-sm font-medium transition-colors ${
                           activeTab === 0
-                            ? 'border-b-2 border-blue-500 text-blue-600'
+                            ? 'border-b-2'
                             : 'text-muted-foreground hover:text-foreground/70'
                         }`}
                       >
-                        Colors
+                        {t('builder_tools_color_palette_colors')}
                       </button>
                       <button
                         onClick={() => setActiveTab('details')}
@@ -155,7 +158,7 @@ export default function ColorPaletteModal({
                             : 'text-muted-foreground hover:text-foreground/70'
                         }`}
                       >
-                        Details
+                        {t('builder_tools_color_palette_details')}
                       </button>
                     </>
                   ) : null}
@@ -167,7 +170,7 @@ export default function ColorPaletteModal({
                 {activeTab === 'details' ? (
                   /* Details tab */
                   <div className="prose prose-sm max-w-none">
-                    <pre className="text-xs whitespace-pre-wrap bg-gray-50 p-2 rounded border">
+                    <pre className="text-xs whitespace-pre-wrap p-2 rounded border">
                       {detailsContent}
                     </pre>
                   </div>
@@ -190,7 +193,7 @@ export default function ColorPaletteModal({
                                 color: color.foreground
                               }}
                             >
-                              Aa Text
+                              {t('builder_tools_color_palette_aa')}
                             </div>
                           </div>
 
@@ -198,10 +201,10 @@ export default function ColorPaletteModal({
                           <div className="flex-1">
                             <div className="font-semibold text-base">{color.name}</div>
                             <div className="text-sm text-muted-foreground font-mono mt-0.5">
-                              Background: {color.background}
+                              {t('builder_tools_color_palette_background')}: {color.background}
                             </div>
                             <div className="text-sm text-muted-foreground font-mono">
-                              Foreground: {color.foreground}
+                              {t('builder_tools_color_palette_foreground')}: {color.foreground}
                             </div>
                             {color.role && (
                               <div className="text-xs text-muted-foreground/70 mt-1">{color.role}</div>

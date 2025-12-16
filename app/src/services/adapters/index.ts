@@ -3,7 +3,7 @@
  * 
  * Export all adapters and factories
  */
-export type { IAppIdAdapter } from './IAppIdAdapter'
 export { ApiAppIdAdapter } from './ApiAppIdAdapter'
-export { PassthroughAppIdAdapter } from './PassthroughAppIdAdapter'
 export { AppIdAdapterFactory } from './AppIdAdapterFactory'
+export type { IAppIdAdapter } from './IAppIdAdapter'
+export { PassthroughAppIdAdapter } from './PassthroughAppIdAdapter'

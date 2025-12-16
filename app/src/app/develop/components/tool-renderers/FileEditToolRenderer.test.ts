@@ -1,5 +1,6 @@
-import { estimateLineCountsFromPartial, parseStreamingInput } from './FileEditToolRenderer'
 import { describe, expect, it } from 'vitest'
+
+import { estimateLineCountsFromPartial, parseStreamingInput } from './FileEditToolRenderer'
 
 describe('FileEditToolRenderer', function packageTests() {
   describe('#estimateLineCountsFromPartial', function estimateTests() {

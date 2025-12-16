@@ -1,13 +1,13 @@
 'use client'
 
 import {
-  FolderIcon,
-  DocumentTextIcon,
   CodeBracketIcon,
   CommandLineIcon,
-  WrenchScrewdriverIcon,
-  PhotoIcon
-} from '@heroicons/react/24/outline'
+  DocumentTextIcon,
+  FolderIcon,
+  PhotoIcon,
+  WrenchScrewdriverIcon} from '@heroicons/react/24/outline'
+
 import { getToolDisplayName } from '../../../utils/toolNameMapping'
 
 interface ToolResultMessageProps {

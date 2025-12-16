@@ -1,6 +1,15 @@
 'use client'
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback,useState } from 'react';
+import Box from '@ux/box';
+import Button from '@ux/button';
+import ArrowLeftIcon from '@ux/icon/arrow-left';
+import DatabaseIcon from '@ux/icon/database';
+import EditIcon from '@ux/icon/edit';
+import PlusIcon from '@ux/icon/plus';
+import RefreshIcon from '@ux/icon/refresh';
+import TrashIcon from '@ux/icon/trash';
+import Pagination from '@ux/pagination';
 import Table, {
   Tbody,
   Td,
@@ -8,27 +17,19 @@ import Table, {
   Thead,
   Tr,
 } from '@ux/table';
-import Pagination from '@ux/pagination';
-import Button from '@ux/button';
-import EmptyStateCard from '@/components/layout/EmptyStateCard';
-import DatabaseIcon from '@ux/icon/database';
-import ArrowLeftIcon from '@ux/icon/arrow-left';
-import PlusIcon from '@ux/icon/plus';
-import RefreshIcon from '@ux/icon/refresh';
-import EditIcon from '@ux/icon/edit';
-import TrashIcon from '@ux/icon/trash';
-import BigCard from '@/components/layout/BigCard';
-import Box from '@ux/box';
 import text from '@ux/text';
+
+import BigCard from '@/components/layout/BigCard';
+import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { useTableData } from '@/hooks/useTableData';
-import { useTableSchema } from '@/hooks/useTableSchema';
 import { useDeleteRow } from '@/hooks/useTableMutations';
+import { useTableSchema } from '@/hooks/useTableSchema';
 import { formatDate } from '@/utils/common';
-import { formatColumnName } from './utils';
 import { AddRowDialog } from './AddRowDialog';
 import { DeleteRowModal } from './DeleteRowModal';
 import { EditRowDialog } from './EditRowDialog';
 import { TableDataBrowserSkeleton } from './TableDataBrowserSkeleton';
+import { formatColumnName } from './utils';
 
 interface TableDataBrowserProps {
   appId: string;

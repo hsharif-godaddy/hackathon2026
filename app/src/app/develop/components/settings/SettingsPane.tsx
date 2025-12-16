@@ -1,12 +1,13 @@
 'use client'
 
 import { useRouter } from 'next/navigation';
-import { generateClickEID } from '@/utils/instrumentation';
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { useAppIdFromParams } from '@/app/develop/components/utils';
-import { SettingsSection } from '@/app/develop/components/types';
-import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
 import Button from '@ux/button';
+
+import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
+import { SettingsSection } from '@/app/develop/components/types';
+import { useAppIdFromParams } from '@/app/develop/components/utils';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { generateClickEID } from '@/utils/instrumentation';
 
 export default function SettingsPane() {
   const router = useRouter()

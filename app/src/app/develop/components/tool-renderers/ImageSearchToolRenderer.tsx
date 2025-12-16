@@ -1,15 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { logger } from '@/lib/request-context'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Image } from 'lucide-react'
+import { useEffect,useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import XThickIcon from '@ux/icon/x-thick'
-import MarkdownRenderer from '../MarkdownRenderer'
-import ToolHeader from './ToolHeader'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import { Image } from 'lucide-react'
+
+import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
 
 interface ImageResult {
   prompt: string
@@ -29,6 +31,7 @@ export default function ImageSearchToolRenderer({
   input: _input,
   result
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
@@ -57,7 +60,7 @@ export default function ImageSearchToolRenderer({
           const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
           let match
           while ((match = imgRegex.exec(result)) !== null) {
-            images.push({ prompt: match[1] || 'Image', url: match[2] })
+            images.push({ prompt: match[1] || t('builder_common_image'), url: match[2] })
           }
         }
       } else if (typeof result === 'object') {
@@ -67,12 +70,12 @@ export default function ImageSearchToolRenderer({
       if (parsedResult) {
         // Handle single image result
         if (parsedResult.url) {
-          const prompt = typeof parsedResult.prompt === 'string' ? parsedResult.prompt : 'Image'
+          const prompt = typeof parsedResult.prompt === 'string' ? parsedResult.prompt : t('builder_common_image')
           images.push({ prompt, url: parsedResult.url })
         }
         // Handle multiple URLs for single prompt
         else if (parsedResult.urls && Array.isArray(parsedResult.urls)) {
-          const prompt = typeof parsedResult.prompt === 'string' ? parsedResult.prompt : 'Image'
+          const prompt = typeof parsedResult.prompt === 'string' ? parsedResult.prompt : t('builder_common_image')
           parsedResult.urls.forEach((url: string) => {
             images.push({ prompt, url })
           })
@@ -148,13 +151,13 @@ export default function ImageSearchToolRenderer({
                   onClick={() => setIsModalOpen(false)}
                   icon={<XThickIcon className="h-3 w-3" />}
                   design="control"
-                  aria-label="Close"
+                  aria-label={t('builder_common_close')}
                   size="sm"
                 />
               </div>
 
               {/* Title */}
-              <h2 className="text-xl font-bold mb-2">Image Search Results</h2>
+              <h2 className="text-xl font-bold mb-2">{t('builder_tools_imagesearch_title')}</h2>
 
               {/* Markdown format (backwards compatibility) */}
               {isMarkdownFormat && (
@@ -210,8 +213,8 @@ export default function ImageSearchToolRenderer({
   )
 
   const displayName = (toolStatus === 'completed' && hasImages && !isMarkdownFormat)
-    ? `Found ${imageCount} ${imageCount === 1 ? 'image' : 'images'}`
-    : 'Image Search'
+    ? t('builder_tools_imagesearch_found', { imageCount })
+    : t('builder_tools_imagesearch_title_only')
 
   return (
     <div>
@@ -248,7 +251,7 @@ export default function ImageSearchToolRenderer({
                 className="aspect-square cursor-pointer border border-dashed border-border overflow-hidden rounded-md bg-intents-ux-boxLowContrast-backgroundColor transition-all flex flex-col items-center justify-center"
               >
                 <span className="text-md font-semibold">+{imageCount - 3}</span>
-                <span className="text-sm">See all</span>
+                <span className="text-sm">{t('builder_common_see_all')}</span>
               </button>
             )}
           </div>

@@ -1,9 +1,10 @@
+import Box from "@ux/box";
+import Spinner from '@ux/spinner';
+import text from "@ux/text";
+
 import type { AppDomain } from '@/hooks/useAppDetails';
 import { useTranslations } from '@/hooks/useTranslations';
 import { getDnsRecords } from '@/utils/domain';
-import Spinner from '@ux/spinner';
-import text from "@ux/text";
-import Box from "@ux/box";
 
 /**
  * DNS Configuration Instructions Component

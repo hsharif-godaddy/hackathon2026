@@ -1,23 +1,23 @@
+import "@/styles/globals.scss";
+
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { withGasketData } from '@gasket/nextjs/layout';
 import { makeLayout } from '@godaddy/gasket-next/layout';
-import { QueryClientProvider } from "@/components/providers/QueryClientProvider";
+
+import GlobalSsoLogin from "@/components/auth/GlobalSsoLogin";
 import AuthProvider from "@/components/providers/AuthProvider";
 import FullStoryProvider from "@/components/providers/FullStoryProvider";
+import { QueryClientProvider } from "@/components/providers/QueryClientProvider";
 import RumProvider from "@/components/providers/RumProvider";
 import SubscriptionCacheProvider from "@/components/providers/SubscriptionCacheProvider";
-import FrameBuster from "@/components/security/FrameBuster";
-import ConversationIdCookie from "@/components/security/ConversationIdCookie";
-import GlobalSsoLogin from "@/components/auth/GlobalSsoLogin";
-import ReferralTracker from "@/components/tracking/ReferralTracker";
 import { TranslationsProvider } from "@/components/providers/TranslationProvider";
+import ConversationIdCookie from "@/components/security/ConversationIdCookie";
+import FrameBuster from "@/components/security/FrameBuster";
+import ReferralTracker from "@/components/tracking/ReferralTracker";
 import { logger } from "@/lib/request-context";
 import { detectLocale, getServerIntl } from "@/lib/translations";
 import { loadTranslations } from "@/lib/translations/load-translations";
-
-import "@/styles/globals.scss";
-
 import gasket from '../../gasket';
 
 /**

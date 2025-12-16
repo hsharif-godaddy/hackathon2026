@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
-import { getDomainErrorMessage } from './domain-validation';
+import { describe, expect, it, vi } from 'vitest';
+
 import { DomainValidationError, type DomainValidationErrorObject } from '@/lib/mgmt-airo/types';
+import { getDomainErrorMessage } from './domain-validation';
 
 describe('getDomainErrorMessage', () => {
   // Mock translation function

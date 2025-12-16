@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { logger } from '@/lib/request-context'
-import ColorPaletteWidget from './ColorPaletteWidget'
-import { postMessageToIframe } from '@/utils/postMessage'
+import { useEffect,useState } from 'react'
 import Button from '@ux/button'
+
 import { useSendUserMessage } from '@/app/develop/components/chat/ChatContext'
+import { logger } from '@/lib/request-context'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
+import { postMessageToIframe } from '@/utils/postMessage'
+import ColorPaletteWidget from './ColorPaletteWidget'
 
 /**
  * Complete palette data structure (matches GeneratedPalette from backend)

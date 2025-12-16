@@ -1,20 +1,21 @@
 'use client'
 
-import { useRef, useMemo, useEffect } from 'react'
+import { useEffect,useMemo, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useGitHistoryQuery } from '@/hooks/useGitHistory'
-import { useGitStore } from '@/stores/useGitStore'
+import Alert from '@ux/alert'
+import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
+import Spinner from '@ux/spinner'
+import Tag from '@ux/tag'
+
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery'
-import { useSiteStore } from '@/stores/useSiteStore'
+import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { DeploymentStatus } from '@/lib/mgmt-airo/types'
-import Tag from '@ux/tag'
-import Spinner from '@ux/spinner'
-import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
-import Alert from '@ux/alert'
 import { logger } from '@/lib/request-context'
-import { useAppIdFromParams } from './utils'
+import { useGitStore } from '@/stores/useGitStore'
+import { useSiteStore } from '@/stores/useSiteStore'
 import { formatDate } from '@/utils/common'
+import { useAppIdFromParams } from './utils'
 
 interface Commit {
   hash: string

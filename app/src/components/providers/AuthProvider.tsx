@@ -1,13 +1,14 @@
 'use client';
 
-import { ReactNode, useState, useEffect, createContext, useContext } from 'react';
 import { usePathname } from 'next/navigation';
-import { logger } from '@/lib/request-context';
-import { auth } from '@/lib/features';
-import { useSwitchboard } from '@/hooks/useSwitchboard';
-import { useAuth } from '@/hooks/useAuth'
+import { createContext, ReactNode, useContext,useEffect, useState } from 'react';
+
 import AccessDisabledComponent from '@/components/auth/AccessDisabledComponent'
 import LoadingComponent from '@/components/auth/LoadingComponent';
+import { useAuth } from '@/hooks/useAuth'
+import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { auth } from '@/lib/features';
+import { logger } from '@/lib/request-context';
 
 // Create auth context
 const AuthContext = createContext<ReturnType<typeof useAuth> | null>(null);

@@ -1,9 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+import { describe, expect, it, vi } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+
+import { SiteCreationPhase } from '@/stores/useSiteCreationStore';
 import { renderWithProviders } from '@/tests/test-utils';
 import ChatPaneLoader from './ChatPaneLoader';
-import { SiteCreationPhase } from '@/stores/useSiteCreationStore';
 
 describe('ChatPaneLoader', () => {
   const defaultProps = {
@@ -61,8 +63,8 @@ describe('ChatPaneLoader', () => {
   it('should display timing information', () => {
     renderWithProviders(<ChatPaneLoader {...defaultProps} />);
 
-    expect(screen.getByText('This usually takes 30-60 seconds')).toBeInTheDocument();
-    expect(screen.getByText("Please don't close this page")).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_loading_1')).toBeInTheDocument();
+    expect(screen.getByText("builder_chatpane_loading_2")).toBeInTheDocument();
   });
 
   it('should render error state when error is provided', () => {
@@ -70,7 +72,7 @@ describe('ChatPaneLoader', () => {
       <ChatPaneLoader {...defaultProps} error="Something went wrong" />
     );
 
-    expect(screen.getByText('Setup Failed')).toBeInTheDocument();
+    expect(screen.getByText('builder_chatpane_setup_failed')).toBeInTheDocument();
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
   });
 
@@ -79,7 +81,7 @@ describe('ChatPaneLoader', () => {
       <ChatPaneLoader {...defaultProps} error="Something went wrong" />
     );
 
-    expect(screen.getByRole('button', { name: /Go Back/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_common_go_back' })).toBeInTheDocument();
   });
 
   it('should render retry button in error state when retries available', () => {
@@ -87,7 +89,7 @@ describe('ChatPaneLoader', () => {
       <ChatPaneLoader {...defaultProps} error="Something went wrong" retryCount={1} maxRetries={3} />
     );
 
-    expect(screen.getByRole('button', { name: /Retry \(1\/3\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /builder_common_retry \(1\/3\)/i })).toBeInTheDocument();
   });
 
   it('should not render retry button when max retries reached', () => {
@@ -95,7 +97,7 @@ describe('ChatPaneLoader', () => {
       <ChatPaneLoader {...defaultProps} error="Something went wrong" retryCount={3} maxRetries={3} />
     );
 
-    expect(screen.queryByRole('button', { name: /Retry/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'builder_common_retry' })).not.toBeInTheDocument();
   });
 
   it('should call onCancel when cancel button clicked', async () => {
@@ -104,7 +106,7 @@ describe('ChatPaneLoader', () => {
       <ChatPaneLoader {...defaultProps} error="Something went wrong" onCancel={onCancel} />
     );
 
-    const cancelButton = screen.getByRole('button', { name: /Go Back/i });
+    const cancelButton = screen.getByRole('button', { name: 'builder_common_go_back' });
     await user.click(cancelButton);
 
     await waitFor(() => {

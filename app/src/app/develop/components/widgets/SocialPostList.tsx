@@ -2,20 +2,24 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import clsx from 'clsx'
+import { memo,useCallback, useEffect, useMemo, useState } from 'react'
+import AlertIcon from '@ux/icon/alert'
 import EditIcon from '@ux/icon/edit'
 import ImageIcon from '@ux/icon/image'
-import AlertIcon from '@ux/icon/alert'
-import { SocialPostModal } from './SocialPostModal'
-import { SocialPostData } from '@/types/social-posts'
 import text from '@ux/text'
+
+import { useTranslations } from '@/hooks/useTranslations'
+import { SocialPostData } from '@/types/social-posts'
+import { SocialPostModal } from './SocialPostModal'
 
 interface PostImageThumbnailProps {
   post: SocialPostData
 }
 
 const PostImageThumbnail = memo(({ post }: PostImageThumbnailProps) => {
+  const t = useTranslations();
+
   const imagesRequested = !!(post as any).imagePrompt || (post.images && post.images.length > 0)
   const hasValidImage = post.images && post.images.length > 0
 
@@ -38,7 +42,7 @@ const PostImageThumbnail = memo(({ post }: PostImageThumbnailProps) => {
       <div className={containerClasses}>
         <div className="flex flex-col items-center justify-center gap-1">
           <AlertIcon className="w-3 h-3 text-intents-ux-critical-textColor" />
-          <span className="text-[10px] text-intents-ux-textSubtle-textColor">Error</span>
+          <span className="text-[10px] text-intents-ux-textSubtle-textColor">{t('builder_common_error')}</span>
         </div>
       </div>
     )
@@ -48,7 +52,7 @@ const PostImageThumbnail = memo(({ post }: PostImageThumbnailProps) => {
     <div className={containerClasses}>
       <div className="flex flex-col items-center justify-center gap-1">
         <ImageIcon className="w-3 h-3 text-intents-ux-textSubtle-textColor" />
-        <span className="text-[10px] text-intents-ux-textSubtle-textColor">No image</span>
+        <span className="text-[10px] text-intents-ux-textSubtle-textColor">{t('builder_common_no_image')}</span>
       </div>
     </div>
   )

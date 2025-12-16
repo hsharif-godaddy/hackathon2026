@@ -4,9 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { withCustomerAuth, CustomerAuthContext } from '@/lib/customer-auth';
-import { VentureService } from '@/lib/venture-service';
+
+import { CustomerAuthContext,withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { VentureService } from '@/lib/venture-service';
 
 export const dynamic = 'force-dynamic';
 

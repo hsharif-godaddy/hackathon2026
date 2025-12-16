@@ -3,13 +3,14 @@
  * Uses Docker containers for app deployment while maintaining local development workflow
  */
 
-import { DevEnvironmentManager } from '../dev-environment/DevEnvironmentManager';
-import { getAppPath } from '../dev-environment/utils/app-paths';
-import { DeploymentConfig, DeploymentResult } from './types';
+import path from 'path';
+
+import { agentFetch } from '@/lib/agent-fetch';
 import { formatSubscriptionId } from '@/lib/subscription-id';
 import { BaseDeploymentAdapter } from './base-adapter';
-import { agentFetch } from '@/lib/agent-fetch';
-import path from 'path';
+import { DeploymentConfig, DeploymentResult } from './types';
+import { DevEnvironmentManager } from '../dev-environment/DevEnvironmentManager';
+import { getAppPath } from '../dev-environment/utils/app-paths';
 
 export class DockerDeploymentAdapter extends BaseDeploymentAdapter {
   private devEnvironmentManager: DevEnvironmentManager;

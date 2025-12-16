@@ -3,14 +3,15 @@
 import { useMemo } from 'react'
 import { useIntl } from 'react-intl'
 import text from '@ux/text'
-import ResponseMetadata from '@/app/develop/components/ResponseMetadata'
-import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
+
 import MessageContentRenderer, { type ContentBlock } from '@/app/develop/components/MessageContentRenderer'
 import MessageToolCallsRenderer from '@/app/develop/components/MessageToolCallsRenderer'
-import { isStreamingMessage, hasValidSegments } from '@/app/develop/components/utils'
+import ResponseMetadata from '@/app/develop/components/ResponseMetadata'
+import StreamingAlertMessage from '@/app/develop/components/StreamingAlertMessage'
+import { hasValidSegments,isStreamingMessage } from '@/app/develop/components/utils'
+import { useTranslations } from '@/hooks/useTranslations'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
-import { useTranslations } from '@/hooks/useTranslations'
 
 interface StreamingIntegratedResponseProps {
   message: ChatMessage | StreamingMessageType

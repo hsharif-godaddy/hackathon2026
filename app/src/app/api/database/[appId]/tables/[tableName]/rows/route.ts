@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { logger } from '@/lib/request-context';
-import { withCustomerAuth, customerHasAccount, createCustomerAuthError, type CustomerAuthContext } from '@/lib/customer-auth';
+
 import { agentFetch } from '@/lib/agent-fetch';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
+import { createCustomerAuthError, type CustomerAuthContext,customerHasAccount, withCustomerAuth } from '@/lib/customer-auth';
+import { logger } from '@/lib/request-context';
 
 // Force dynamic rendering to ensure all HTTP methods work correctly
 export const dynamic = 'force-dynamic';

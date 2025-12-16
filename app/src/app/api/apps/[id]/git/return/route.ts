@@ -1,13 +1,13 @@
-import { logger } from '@/lib/request-context';
 import { NextRequest, NextResponse } from 'next/server';
-import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
+
 import { agentFetch } from '@/lib/agent-fetch';
 import {
-  withCustomerAuth,
-  customerHasAccount,
   createCustomerAuthError,
-  type CustomerAuthContext
-} from '@/lib/customer-auth';
+  type CustomerAuthContext,
+  customerHasAccount,
+  withCustomerAuth} from '@/lib/customer-auth';
+import { logger } from '@/lib/request-context';
+import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory';
 
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }) => {
   try {

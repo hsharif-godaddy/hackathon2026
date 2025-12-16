@@ -1,7 +1,7 @@
 'use client'
 
-import { useSites } from '@/stores/useSitesStore';
 import AppItem, { AppItemSkeleton } from '@/components/layout/AppItem';
+import { useSites } from '@/stores/useSitesStore';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export default function Apps() {

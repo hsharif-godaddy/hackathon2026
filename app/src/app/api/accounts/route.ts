@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
 import { 
-  withCustomerAuth, 
-  customerHasAccount,
   canAccessOwnAccount,
   createCustomerAuthError,
-  type CustomerAuthContext 
-} from '@/lib/customer-auth';
+  type CustomerAuthContext, 
+  customerHasAccount,
+  withCustomerAuth} from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 
 // Force dynamic rendering to prevent database calls during build

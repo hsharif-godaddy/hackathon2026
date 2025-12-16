@@ -2,11 +2,9 @@
 
 import Box from '@ux/box';
 import Button from '@ux/button';
-import Skeleton from '@ux/skeleton';
-import BigCard from '@/components/layout/BigCard';
 import ArrowLeftIcon from '@ux/icon/arrow-left';
 import PlusIcon from '@ux/icon/plus';
-import { formatColumnName } from './utils';
+import Skeleton from '@ux/skeleton';
 import Table, {
   Tbody,
   Td,
@@ -14,6 +12,9 @@ import Table, {
   Thead,
   Tr,
 } from '@ux/table';
+
+import BigCard from '@/components/layout/BigCard';
+import { formatColumnName } from './utils';
 
 interface TableDataBrowserSkeletonProps {
   tableName: string;

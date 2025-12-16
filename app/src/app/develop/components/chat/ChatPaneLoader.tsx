@@ -1,6 +1,8 @@
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence,motion } from 'framer-motion'
 import Box from '@ux/box'
 import Button from '@ux/button'
+
+import { useTranslations } from '@/hooks/useTranslations'
 import { SiteCreationPhase } from '@/stores/useSiteCreationStore'
 
 interface ChatPaneLoaderProps {
@@ -28,23 +30,25 @@ export default function ChatPaneLoader({
   onRetry,
   onCancel
 }: ChatPaneLoaderProps) {
+  const t = useTranslations();
+
   if (error) {
     return (
       <div className="absolute inset-0 z-50 flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor">
         <div className="text-center p-3 max-w-md">
-          <h2 className="text-xl font-bold mb-1">Setup Failed</h2>
+          <h2 className="text-xl font-bold mb-1">{t('builder_chatpane_setup_failed')}</h2>
           <p className="mb-3 text-sm">{error}</p>
           <Box orientation="horizontal" gap="md" blockAlignChildren="center">
             <Button
               design="secondary"
               onClick={onCancel}
-              text="Go Back"
+              text={t('builder_common_go_back')}
             />
             {retryCount < maxRetries && (
               <Button
                 design="primary"
                 onClick={onRetry}
-                text={`Retry (${retryCount}/${maxRetries})`}
+                text={`${t('builder_common_retry')} (${retryCount}/${maxRetries})`}
               />
             )}
           </Box>
@@ -86,8 +90,8 @@ export default function ChatPaneLoader({
           </Box>
 
           <Box className="text-sm" gap="sm">
-            <p>This usually takes 30-60 seconds</p>
-            <p>Please don&apos;t close this page</p>
+            <p>{t('builder_chatpane_loading_1')}</p>
+            <p>{t('builder_chatpane_loading_2')}</p>
           </Box>
         </Box>
       </div>

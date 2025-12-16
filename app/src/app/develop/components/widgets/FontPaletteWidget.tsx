@@ -24,7 +24,7 @@ export interface FontPaletteWidgetProps {
 
 /**
  * Font Palette Widget
- * 
+ *
  * Displays Google Fonts with preview examples:
  * - Loads fonts dynamically from Google Fonts
  * - Shows font name, category, and preview text
@@ -87,7 +87,7 @@ export default function FontPaletteWidget({ name, fonts, className = '' }: FontP
           return (
             <div
               key={index}
-              className="rounded border bg-gray-50 p-1.5 space-y-1"
+              className="rounded borderp-1.5 space-y-1"
             >
               {/* Font preview samples */}
               <div className="space-y-1 pt-0.5">
@@ -104,7 +104,7 @@ export default function FontPaletteWidget({ name, fonts, className = '' }: FontP
 
                 {/* Character set sample - single line with wrapping */}
                 <div
-                  className="text-xs text-gray-600 break-all"
+                  className="text-xs break-all"
                   style={{
                     fontFamily: `"${fontFamily}", ${fontFallback}`,
                     fontWeight: fontWeight

@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+import { beforeEach,describe, expect, it, vi } from 'vitest';
+import { screen } from '@testing-library/react';
+
+import { ChatTab } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import ChatToolbar from './ChatToolbar';
-import { ChatTab } from '@/app/develop/components/types';
 
 const mockRouter = { push: vi.fn() };
 const mockParams = { id: 'app-123' };
@@ -67,25 +69,25 @@ describe('ChatToolbar', () => {
   it('should render without crashing', () => {
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('Chat')).toBeInTheDocument();
+    expect(screen.getByText('builder_chat_toolbar_button_chat')).toBeInTheDocument();
   });
 
   it('should render chat button', () => {
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('Chat')).toBeInTheDocument();
+    expect(screen.getByText('builder_chat_toolbar_button_chat')).toBeInTheDocument();
   });
 
   it('should render media button', () => {
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('Media')).toBeInTheDocument();
+    expect(screen.getByText('builder_chat_toolbar_button_media')).toBeInTheDocument();
   });
 
   it('should render history button', () => {
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('History')).toBeInTheDocument();
+    expect(screen.getByText('builder_chat_toolbar_button_history')).toBeInTheDocument();
   });
 
   it('should render settings button on desktop', () => {
@@ -93,7 +95,7 @@ describe('ChatToolbar', () => {
 
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('Settings')).toBeInTheDocument();
+    expect(screen.getByText('builder_chat_toolbar_button_settings')).toBeInTheDocument();
   });
 
   it('should render preview button on mobile', () => {
@@ -101,7 +103,7 @@ describe('ChatToolbar', () => {
 
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByText('Preview')).toBeInTheDocument();
+    expect(screen.getByText('builder_chat_toolbar_button_preview')).toBeInTheDocument();
   });
 
   it('should not render preview button on desktop', () => {
@@ -109,7 +111,7 @@ describe('ChatToolbar', () => {
 
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.queryByText('Preview')).not.toBeInTheDocument();
+    expect(screen.queryByText('builder_chat_toolbar_button_preview')).not.toBeInTheDocument();
   });
 
   it('should mark chat button as active when chat tab selected', () => {
@@ -118,7 +120,7 @@ describe('ChatToolbar', () => {
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
     const chatButtons = container.querySelectorAll('button');
-    const chatButton = Array.from(chatButtons).find(btn => btn.textContent?.includes('Chat'));
+    const chatButton = Array.from(chatButtons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_chat'));
     // Active state is shown via background color classes
     expect(chatButton).toHaveClass('bg-intents-ux-boxHighContrast-backgroundColor');
   });
@@ -129,7 +131,7 @@ describe('ChatToolbar', () => {
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
     const buttons = container.querySelectorAll('button');
-    const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('History'));
+    const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_history'));
     // Active state is shown via background color classes
     expect(historyButton).toHaveClass('bg-intents-ux-boxHighContrast-backgroundColor');
   });
@@ -138,7 +140,7 @@ describe('ChatToolbar', () => {
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} isProcessing={true} />);
 
     const buttons = container.querySelectorAll('button');
-    const mediaButton = Array.from(buttons).find(btn => btn.textContent?.includes('Media'));
+    const mediaButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_media'));
     expect(mediaButton).toBeDisabled();
   });
 
@@ -146,7 +148,7 @@ describe('ChatToolbar', () => {
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} isProcessing={true} />);
 
     const buttons = container.querySelectorAll('button');
-    const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('History'));
+    const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_history'));
     expect(historyButton).toBeDisabled();
   });
 
@@ -166,7 +168,7 @@ describe('ChatToolbar', () => {
     const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
 
     const buttons = container.querySelectorAll('button');
-    const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('History'));
+    const historyButton = Array.from(buttons).find(btn => btn.textContent?.includes('builder_chat_toolbar_button_history'));
     expect(historyButton).toBeDisabled();
   });
 
@@ -177,7 +179,7 @@ describe('ChatToolbar', () => {
 
     // Media button should still render on desktop
     // This test would need more complex mocking to properly test the disabled state
-    expect(screen.getByText('Media')).toBeInTheDocument();
+    expect(screen.getByText('builder_chat_toolbar_button_media')).toBeInTheDocument();
   });
 
   it('should render settings menu on mobile when settings enabled', () => {
@@ -193,7 +195,7 @@ describe('ChatToolbar', () => {
 
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.queryByText('Settings')).not.toBeInTheDocument();
+    expect(screen.queryByText('builder_chat_toolbar_button_settings')).not.toBeInTheDocument();
   });
 
   it('should have correct data-eid attributes', () => {

@@ -1,49 +1,51 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
-import Header from '@/components/layout/Header'
-import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
+import { useRouter,useSearchParams } from 'next/navigation'
+import { Suspense,useCallback, useEffect, useRef, useState } from 'react'
+
+import AppNotFound from '@/app/develop/components/AppNotFound'
 import ChatPane from '@/app/develop/components/chat/ChatPane'
+import ChatPaneLoader from '@/app/develop/components/chat/ChatPaneLoader'
 import PreviewPane from '@/app/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/develop/components/ResizableDivider'
 import SettingsView from '@/app/develop/components/settings/SettingsView'
+import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
 import { ChatTab, SettingsSection } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { handlePreviewRefresh } from '@/app/develop/components/utils'
+import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
+import { useInitialization } from '@/app/develop/hooks/useInitialization'
 import { ProtectedRoute } from '@/components/auth'
-import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
-import { usePageTiming } from '@/hooks/usePageTiming'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { Feedback } from '@/components/feedback/Feedback'
+import Header from '@/components/layout/Header'
+import PublishStatusAlert from '@/components/layout/PublishStatusAlert'
+import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { usePageTiming } from '@/hooks/usePageTiming'
+import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { useTranslations } from '@/hooks/useTranslations'
+import { agentFetch } from '@/lib/agent-fetch'
+import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
-import {
-  useConversations,
-  useSetInputValue,
-  useSetAiEditContext,
-  useSetBuildErrorContext,
-  useAutoSendInitialMessage,
-  useMessages,
-  useActiveStream
-} from '@/stores/useStreamingConversationStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import {
+  useActiveStream,
+  useAutoSendInitialMessage,
+  useConversations,
+  useMessages,
+  useSetAiEditContext,
+  useSetBuildErrorContext,
+  useSetInputValue} from '@/stores/useStreamingConversationStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
-import { handlePreviewRefresh } from '@/app/develop/components/utils'
-import { logger } from '@/lib/request-context'
-import { Feedback } from '@/components/feedback/Feedback'
-import { agentFetch } from '@/lib/agent-fetch'
-import { buildDynamicApiUrl } from '@/config/dynamic-api'
-import ChatPaneLoader from '@/app/develop/components/chat/ChatPaneLoader'
-import { useInitialization } from '@/app/develop/hooks/useInitialization'
-import { clearExpiredWidgetStates } from '@/app/develop/components/widgets'
-import { AppIntroTour } from '@/app/develop/components/tour/AppIntroTour'
-import AppNotFound from '@/app/develop/components/AppNotFound'
 
 // Delay to allow conversation history messages to load before checking if preview should be visible
 // This ensures we have accurate message count when determining initial preview visibility
 const MESSAGE_LOAD_DELAY_MS = 100
 
 function DevelopPageContent() {
+  const t = useTranslations();
   const searchParams = useSearchParams()
   const router = useRouter()
   const appId = useAppIdFromParams()
@@ -129,9 +131,9 @@ function DevelopPageContent() {
   // Update document title with site name
   useEffect(() => {
     if (site?.name) {
-      document.title = `${site.name} - Develop - Airo App Builder`
+      document.title = `${site.name} - ${t('builder_develop_title')}`
     }
-  }, [site?.name])
+  }, [site?.name, t])
 
   // State logging moved to useInitialization hook to prevent render loop
 
@@ -141,9 +143,9 @@ function DevelopPageContent() {
     if (todoListId) {
       const handleTodoListContext = async () => {
         try {
-            // Send message with todo list context
-            const message = 'Fix my selected Security Vulnerabilities.'
-            await sendMessage(message, undefined, undefined, { id: todoListId })
+          // Send message with todo list context
+          const message = 'Fix my selected Security Vulnerabilities.'
+          await sendMessage(message, undefined, undefined, { id: todoListId })
         } catch (error) {
           logger.error('develop.todo_context.send.failed', {
             todoListId,
@@ -470,14 +472,14 @@ function DevelopPageContent() {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
         event.preventDefault()
-        event.returnValue = 'You have unsaved changes. Are you sure you want to leave?'
-        return 'You have unsaved changes. Are you sure you want to leave?'
+        event.returnValue = t('builder_create_unload_warning')
+        return t('builder_create_unload_warning')
       }
     }
 
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [hasUnsavedChanges])
+  }, [hasUnsavedChanges, t])
 
   // Handle URL parameters for deep linking - runs immediately on mount
   useEffect(() => {
@@ -676,11 +678,12 @@ function DevelopPageContent() {
 }
 
 export default function Develop() {
+  const t = useTranslations();
   return (
     <ProtectedRoute
-      unauthorizedMessage="You need to be signed in to access the development environment."
+      unauthorizedMessage={t('builder_develop_protected_route')}
     >
-      <Suspense fallback={<div>Loading development environment...</div>}>
+      <Suspense fallback={<div>{t('builder_develop_loading')}</div>}>
         <DevelopPageContent />
       </Suspense>
     </ProtectedRoute>

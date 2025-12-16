@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { logger } from '@/lib/request-context'
-import KeyValueTable from './KeyValueTable'
-import MarkdownRenderer from '../MarkdownRenderer'
-import ToolHeader from './ToolHeader'
-import ToolModal from './ToolModal'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import { SquareTerminal } from 'lucide-react'
+import { useEffect,useState } from 'react'
+
+import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import KeyValueTable from '@/app/develop/components/tool-renderers/KeyValueTable'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import ToolModal from '@/app/develop/components/tool-renderers/ToolModal'
+import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
 
 /**
  * Custom renderer for terminalCommand tool
@@ -21,6 +23,8 @@ export default function TerminalCommandToolRenderer({
   input,
   result
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
+
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -95,7 +99,7 @@ export default function TerminalCommandToolRenderer({
     <ToolModal
       isOpen={isModalOpen}
       onClose={() => setIsModalOpen(false)}
-      title="Terminal Command"
+      title={t('builder_tools_terminal_title')}
       mounted={mounted}
     >
       {/* Markdown format (backwards compatibility) */}
@@ -111,18 +115,18 @@ export default function TerminalCommandToolRenderer({
           {/* Command */}
           {originalCommand ? (
             <div>
-              <div className="text-sm font-bold mb-1">Original Command</div>
+              <div className="text-sm font-bold mb-1">{t('builder_tools_terminal_original')}</div>
               <div className="border border-border rounded-md p-1.5 bg-muted overflow-x-auto">
                 <pre className="text-xs font-mono text-foreground/80 whitespace-pre">{originalCommand}</pre>
               </div>
-              <div className="text-sm font-bold mb-1 mt-1.5">Transformed Command</div>
+              <div className="text-sm font-bold mb-1 mt-1.5">{t('builder_tools_terminal_transformed')}</div>
               <div className="border border-border rounded-md p-1.5 bg-muted overflow-x-auto">
                 <pre className="text-xs font-mono text-foreground/80 whitespace-pre">{command}</pre>
               </div>
             </div>
           ) : (
             <div>
-              <div className="text-sm font-bold mb-1">Command</div>
+              <div className="text-sm font-bold mb-1">{t('builder_tools_terminal_command')}</div>
               <div className="border border-border rounded-md p-1.5 bg-muted overflow-x-auto">
                 <pre className="text-xs font-mono text-foreground/80 whitespace-pre">{command}</pre>
               </div>
@@ -132,17 +136,17 @@ export default function TerminalCommandToolRenderer({
           {/* Metadata */}
           <KeyValueTable
             data={{
-              'Working Directory': workingDir || '.',
-              'Exit Code': `${exitCode} ${success ? '✅' : '❌'}`,
-              'Execution Time': `${executionTime}ms`,
-              ...(timedOut ? { 'Status': '⏰ Timed Out' } : {})
+              [t('builder_tools_terminal_meta_directory')]: workingDir || '.',
+              [t('builder_tools_terminal_meta_exit')]: `${exitCode} ${success ? '✅' : '❌'}`,
+              [t('builder_tools_terminal_meta_execution')]: `${executionTime}ms`,
+              ...(timedOut ? { [t('builder_common_status')]: `⏰ ${t('builder_tools_terminal_meta_timed_out')}` } : {})
             }}
           />
 
           {/* Error */}
           {error && (
             <div className="p-1.5 bg-destructive/10 border border-destructive/30 rounded-md">
-              <div className="text-sm font-bold text-destructive mb-0.5">Error</div>
+              <div className="text-sm font-bold text-destructive mb-0.5">{t('builder_status_error')}</div>
               <div className="text-sm text-destructive-foreground whitespace-pre-wrap">{error}</div>
             </div>
           )}
@@ -150,7 +154,7 @@ export default function TerminalCommandToolRenderer({
           {/* Standard Output */}
           {stdout && (
             <div>
-              <div className="text-sm font-bold mb-1">Standard Output</div>
+              <div className="text-sm font-bold mb-1">{t('builder_tools_terminal_standard_output')}</div>
               <div className="border border-border rounded-md p-2 bg-muted">
                 <pre className="text-xs font-mono whitespace-pre-wrap break-words text-foreground/80">
                   {stdout}
@@ -162,9 +166,9 @@ export default function TerminalCommandToolRenderer({
           {/* Standard Error */}
           {stderr && (
             <div>
-              <div className="text-sm font-bold mb-1 text-orange-700">Standard Error</div>
-              <div className="border border-orange-200 rounded-md p-2 bg-orange-50">
-                <pre className="text-xs font-mono whitespace-pre-wrap break-words text-orange-900">
+              <div className="text-sm font-bold mb-1">{t('builder_tools_terminal_standard_error')}</div>
+              <div className="border rounded-md p-2 bg-orange-50">
+                <pre className="text-xs font-mono whitespace-pre-wrap break-words">
                   {stderr}
                 </pre>
               </div>
@@ -175,7 +179,7 @@ export default function TerminalCommandToolRenderer({
     </ToolModal>
   )
 
-  const displayName = `Terminal: ${command}`
+  const displayName = `${t('builder_tools_terminal_simple_title')}: ${command}`
 
   return (
     <div>

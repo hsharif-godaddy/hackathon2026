@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import Box from '@ux/box'
-import Alert from '@ux/alert'
+import { AnimatePresence,motion } from 'framer-motion'
+import { useEffect, useMemo,useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
-import { tips, shuffleArray } from './tips-content'
+import Alert from '@ux/alert'
+import Box from '@ux/box'
+
+import { shuffleArray,tips } from './tips-content'
 
 /**
  * Props for the Tips component.

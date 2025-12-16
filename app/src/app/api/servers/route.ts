@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory'
+
 import { 
-  withCustomerAuth, 
-  customerHasAccount,
   createCustomerAuthError,
-  type CustomerAuthContext 
-} from '@/lib/customer-auth'
+  type CustomerAuthContext, 
+  customerHasAccount,
+  withCustomerAuth} from '@/lib/customer-auth'
 import { logger } from '@/lib/request-context'
+import { SiteAdapterFactory } from '@/lib/site-adapters/SiteAdapterFactory'
 
 // Force dynamic rendering to prevent database calls during build
 export const dynamic = 'force-dynamic'

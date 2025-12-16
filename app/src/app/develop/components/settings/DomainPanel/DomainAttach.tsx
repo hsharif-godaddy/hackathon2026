@@ -1,32 +1,32 @@
-import { useState, useEffect, useRef, useMemo } from "react";
-import { useTranslations } from '@/hooks/useTranslations';
-import TextInput from "@ux/text-input";
-import Skeleton from "@ux/skeleton";
+import { useEffect, useMemo,useRef, useState } from "react";
+import Box from "@ux/box";
 import Button from "@ux/button";
 import Modal from "@ux/modal";
-import text from "@ux/text";
-import Box from "@ux/box";
 import SiblingSet from "@ux/sibling-set";
+import Skeleton from "@ux/skeleton";
+import text from "@ux/text";
+import TextInput from "@ux/text-input";
 
-import { Status } from "@/app/develop/components/types";
-import DomainItem from "@/app/develop/components/settings/components/DomainItem";
 import DomainDNS from "@/app/develop/components/settings/components/DomainDNS";
+import DomainItem from "@/app/develop/components/settings/components/DomainItem";
+import { Status } from "@/app/develop/components/types";
 import { useAppIdFromParams } from "@/app/develop/components/utils";
 import BigCard from "@/components/layout/BigCard";
-import { useModifyDomains } from '@/hooks/useModifyDomains';
 import { useAppDetails } from '@/hooks/useAppDetails';
-import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
-import { useDomainsQuery } from '@/hooks/useDomainsQuery';
-import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
 import { useAuth } from '@/hooks/useAuth';
-import { DomainMode, DomainStatus, CdnStatus } from '@/lib/mgmt-airo/types';
+import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
+import { useDomainsQuery } from '@/hooks/useDomainsQuery';
+import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
+import { useModifyDomains } from '@/hooks/useModifyDomains';
+import { useTranslations } from '@/hooks/useTranslations';
+import { CdnStatus,DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useSiteStore } from "@/stores/useSiteStore";
+import { isCustomerDomain,sanitizeDomainInput, validateDomain } from '@/utils/domain';
 import { getDomainErrorMessage } from '@/utils/domain-validation';
-import { hasBeenPublished } from '@/utils/site';
-import { generateClickEID } from '@/utils/instrumentation';
 import { getRootDomain } from '@/utils/getRootDomain';
-import { validateDomain, sanitizeDomainInput, isCustomerDomain } from '@/utils/domain';
+import { generateClickEID } from '@/utils/instrumentation';
+import { hasBeenPublished } from '@/utils/site';
 
 /**
  * Get error message from unknown error type

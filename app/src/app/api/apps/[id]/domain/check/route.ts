@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { getControlPlaneAdapter } from '@/lib/control-plane';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { AiroMgmtClient, DomainMode, DomainValidationError, type AiroDomainCheckResponse } from '@/lib/mgmt-airo';
-import { logger } from '@/lib/request-context';
 import {
-  withCustomerAuth,
-  customerHasAccount,
   createCustomerAuthError,
-  type CustomerAuthContext
-} from '@/lib/customer-auth';
+  type CustomerAuthContext,
+  customerHasAccount,
+  withCustomerAuth} from '@/lib/customer-auth';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { type AiroDomainCheckResponse,AiroMgmtClient, DomainMode, DomainValidationError } from '@/lib/mgmt-airo';
+import { logger } from '@/lib/request-context';
 
 export const dynamic = 'force-dynamic';
 

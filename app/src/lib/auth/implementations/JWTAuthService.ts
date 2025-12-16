@@ -3,9 +3,10 @@
  * Used in production environments with full JWT validation
  */
 
-import { logger } from '@/lib/request-context';
-import { IAuthService, AuthConfig, AuthResult } from '../types';
 import { NextRequest } from 'next/server';
+
+import { logger } from '@/lib/request-context';
+import { AuthConfig, AuthResult,IAuthService } from '../types';
 
 export class JWTAuthService implements IAuthService {
   /**

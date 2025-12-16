@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 import { getControlPlaneAdapter } from '@/lib/control-plane';
+import {
+  createCustomerAuthError,
+  type CustomerAuthContext,
+  customerHasAccount,
+  withCustomerAuth} from '@/lib/customer-auth';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
-import {
-  withCustomerAuth,
-  customerHasAccount,
-  createCustomerAuthError,
-  type CustomerAuthContext
-} from '@/lib/customer-auth';
 
 export const dynamic = 'force-dynamic';
 

@@ -1,10 +1,11 @@
 'use client'
 
-import { memo, useState, useEffect, useRef, useCallback } from 'react'
+import { memo, useCallback,useEffect, useRef, useState } from 'react'
 import Button from '@ux/button'
 import text from '@ux/text'
-import { PLATFORM_CONFIG } from '@/lib/social-platforms'
+
 import { useSocialAuthUrl } from '@/hooks/useSocialAuthUrl'
+import { PLATFORM_CONFIG } from '@/lib/social-platforms'
 
 interface SocialConnectFlowProps {
   platform: string

@@ -1,11 +1,12 @@
 'use client'
 
-import { useRef } from 'react'
 import { motion, useInView } from 'framer-motion'
+import { useRef } from 'react'
 import Box from '@ux/box'
-import text from '@ux/text'
-import PageSection from '@/components/layout/PageSection'
 import SparklesIcon from '@ux/icon/sparkles'
+import text from '@ux/text'
+
+import PageSection from '@/components/layout/PageSection'
 
 interface FeaturesProps {
   features: {

@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import BigCard from "@/components/layout/BigCard";
-import Button from "@ux/button";
 import Box from "@ux/box";
+import Button from "@ux/button";
 import WandIcon from "@ux/icon/wand";
 import Spinner from "@ux/spinner";
-import { useAppIdFromParams } from '../utils';
+
+import { useAppIdFromParams } from '@/app/develop/components/utils';
+import BigCard from "@/components/layout/BigCard";
+import { useTranslations } from '@/hooks/useTranslations';
+import { type TestPilotRunResult } from "@/lib/testpilot";
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import SecurityResults from './components/security/SecurityResults';
-import { type TestPilotRunResult } from "@/lib/testpilot";
 
 /**
  * Security Panel component for running security analysis
@@ -16,6 +18,7 @@ import { type TestPilotRunResult } from "@/lib/testpilot";
  * and display the results to the user.
  */
 export default function SecurityPanel() {
+  const t = useTranslations();
   const appId = useAppIdFromParams();
   const getServerState = useServerPollingStore((state) => state.getServerState);
   const serverState = getServerState(appId);
@@ -123,24 +126,21 @@ export default function SecurityPanel() {
   return (
     <Box gap="lg" className="@container">
       <BigCard
-        title="Security Analysis"
-        description="Comprehensive security analysis of site vulnerabilities and code quality"
+        title={t('builder_settings_security_title')}
+        description={t('builder_settings_security_desc')}
         button={
           <Button
             design="primary"
             icon={<WandIcon />}
             disabled={!isReady || isLoading}
             onClick={handleRunAnalysis}
-          >
-            {isLoading
-              ? 'Running Analysis...'
-              : 'Run Analysis'}
-          </Button>
+            text={isLoading ? t('builder_settings_security_analysis_running') : t('builder_settings_security_analysis_run')}
+          />
         }>
         <Box>
           {error && (
-            <div className="text-red-600 mb-2">
-              <p className="font-medium">Error:</p>
+            <div className="mb-2">
+              <p className="font-medium">{t('builder_status_error')}:</p>
               <p>{error}</p>
             </div>
           )}
@@ -148,27 +148,23 @@ export default function SecurityPanel() {
           {(isLoading) && (
             <div className="flex flex-col items-center justify-center py-4">
               <Spinner size="lg" />
-              <p className="mt-2 text-gray-600">
-                Running security analysis...
+              <p className="mt-2">
+                {t('builder_settings_security_loading_running')}
               </p>
               <p className="mt-1 text-sm text-gray-500">
-                This may take a few moments
+                {t('builder_settings_security_loading_few_moments')}
               </p>
             </div>
           )}
 
           {!isReady && !error && !isLoading && (
-            <p className="text-gray-500">
-              Waiting for application to be ready...
-            </p>
+            <p>{t('builder_settings_security_waiting')}</p>
           )}
 
           {results && !isLoading ? (
             <SecurityResults results={results} />
           ) : !error && !isLoading && isReady && (
-            <p>
-              No results yet. Click &ldquo;Run Analysis&rdquo; to start security scan.
-            </p>
+            <p>{t('builder_settings_security_no_results')}</p>
           )}
         </Box>
       </BigCard>

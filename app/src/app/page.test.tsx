@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { renderWithProviders } from '@/tests/test-utils';
-import { mockRouter, mockInstrumentation, mockFeatures, mockAuthContext, mockSearchParams, mockParams } from '@/tests/mocks';
-import Home from './page';
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { waitFor } from '@testing-library/react';
+
 import { appFetch } from '@/lib/gasket-config';
+import { mockAuthContext, mockParams, mockRouter, mockSearchParams } from '@/tests/mocks';
+import { renderWithProviders } from '@/tests/test-utils';
+import Home from './page';
 
 vi.mock('@/lib/gasket-config');
 vi.mock('next/navigation', () => ({
@@ -13,8 +15,24 @@ vi.mock('next/navigation', () => ({
   useParams: () => mockParams(),
   usePathname: () => '/',
 }));
-vi.mock('@/utils/instrumentation', () => mockInstrumentation());
-vi.mock('@/lib/features', () => mockFeatures());
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: vi.fn(() => vi.fn()),
+  logActionEvent: vi.fn(() => vi.fn()),
+  logErrorEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn((eid: string) => eid),
+  logAiroHQEvent: vi.fn(() => vi.fn()),
+}));
+vi.mock('@/lib/features', () => ({
+  isFeatureEnabled: {
+    codeEditor: vi.fn().mockReturnValue(false),
+    mockLogin: vi.fn().mockReturnValue(true),
+    developmentMode: vi.fn().mockReturnValue(false),
+    galleryPage: vi.fn().mockReturnValue(false),
+    devSupervisorTcp: vi.fn().mockReturnValue(false),
+  },
+  MAX_PROMPT_LENGTH: 40000,
+  auth: { enabled: false },
+}));
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => mockAuthContext(),
 }));

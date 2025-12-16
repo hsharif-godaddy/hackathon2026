@@ -6,9 +6,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { testPilotClient } from '@/lib/testpilot';
-import { logger } from '@/lib/request-context';
+
 import { agentFetch } from '@/lib/agent-fetch';
+import { logger } from '@/lib/request-context';
+import { testPilotClient } from '@/lib/testpilot';
 
 /**
  * POST /api/testpilot

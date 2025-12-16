@@ -20,9 +20,9 @@
  * Thread: https://godaddy.slack.com/archives/C09AR7XDLDT/p1763670524558059
  */
 
-import { testPilotTokenService } from './token-service';
-import { getTestPilotConfig } from './config';
 import { logger } from '@/lib/request-context';
+import { getTestPilotConfig } from './config';
+import { testPilotTokenService } from './token-service';
 
 /**
  * TestPilot test types

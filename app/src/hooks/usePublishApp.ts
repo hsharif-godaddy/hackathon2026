@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { appFetch } from '@/lib/gasket-config';
-import { appService } from '@/services/AppService';
-import { logger } from '@/lib/request-context';
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+
 import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { appFetch } from '@/lib/gasket-config';
+import { logger } from '@/lib/request-context';
+import { appService } from '@/services/AppService';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 
 /**
  * Response from the publish API endpoint

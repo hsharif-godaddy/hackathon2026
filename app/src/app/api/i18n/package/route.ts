@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 import { logger } from '@/lib/request-context';
 import { loadTranslations } from '@/lib/translations/load-translations';
 

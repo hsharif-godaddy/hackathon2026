@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import Modal from '@ux/modal';
+import { useCallback, useEffect,useState } from 'react';
 import Alert from '@ux/alert';
+import Modal from '@ux/modal';
 import Spinner from '@ux/spinner';
-import { getRootDomain } from '@/utils/getRootDomain';
-import { useAuthUIStore } from '@/stores/useAuthUIStore';
+
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { logger } from '@/lib/request-context';
+import { useAuthUIStore } from '@/stores/useAuthUIStore';
+import { getRootDomain } from '@/utils/getRootDomain';
 
 /**
  * Props interface for SsoDeck component

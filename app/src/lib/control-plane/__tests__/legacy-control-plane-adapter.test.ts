@@ -5,7 +5,8 @@
  * Focuses on backward compatibility and existing system integration.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { LegacyControlPlaneAdapter } from '../legacy-control-plane-adapter';
 import type { SiteInfo } from '../types';
 

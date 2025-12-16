@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import Chat from '@ux/icon/chat'
+
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import { SocialPostList } from '@/app/develop/components/widgets/SocialPostList'
+import { useTranslations } from '@/hooks/useTranslations'
 import type { SocialPostData } from '@/types/social-posts'
-import { SocialPostList } from '../widgets/SocialPostList'
-import ToolHeader from './ToolHeader'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 
 /**
  * Custom renderer for socialPostCreate tool
@@ -17,6 +19,7 @@ export default function SocialPostCreateToolRenderer({
   toolStatus,
   result
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
 
   const [isVisible] = useState(true)
 
@@ -42,8 +45,8 @@ export default function SocialPostCreateToolRenderer({
   const hasPosts = posts.length > 0
 
   const displayName = (toolStatus === 'completed' && hasPosts)
-    ? `Social Post Creation (${posts.length} options)`
-    : 'Social Post Creation'
+    ? `${t('builder_tools_social_create_title')} (${posts.length} ${t('builder_common_options')})`
+    : t('builder_tools_social_create_title')
 
   return (
     <div>
@@ -67,7 +70,7 @@ export default function SocialPostCreateToolRenderer({
               <path d="M12 2C6.48 2 2 6.48 2 12c0 1.54.36 3 .97 4.29L2 22l5.71-.97C9 21.64 10.46 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.38 0-2.68-.3-3.86-.83l-.28-.14-2.86.49.49-2.86-.14-.28A7.95 7.95 0 014 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/>
               <path d="M7 9h10v2H7zm0 4h7v2H7z"/>
             </svg>
-            <span className="text-sm"> Select a post below to preview and make changes, or ask below for different options</span>
+            <span className="text-sm"> {t('builder_tools_social_create_svg_text')}</span>
           </div>
           <SocialPostList posts={posts} />
         </div>

@@ -1,4 +1,5 @@
 import AlertIcon from '@ux/icon/alert'
+
 import SpinnerIcon from './SpinnerIcon'
 
 /**

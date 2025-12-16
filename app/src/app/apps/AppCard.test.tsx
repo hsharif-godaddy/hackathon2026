@@ -1,12 +1,14 @@
-import React from 'react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { renderWithProviders } from '@/tests/test-utils';
-import { createMockSite, mockRouter, mockInstrumentation } from '@/tests/mocks';
-import AppCard, { AppCardEmptyState } from './AppCard';
+
+import React from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+
 import { appFetch } from '@/lib/gasket-config';
 import { useSitesStore } from '@/stores/useSitesStore';
+import { createMockSite, mockInstrumentation,mockRouter } from '@/tests/mocks';
+import { renderWithProviders } from '@/tests/test-utils';
+import AppCard, { AppCardEmptyState } from './AppCard';
 
 vi.mock('@/lib/gasket-config');
 vi.mock('next/navigation', () => ({
@@ -45,14 +47,14 @@ describe('AppCard', () => {
     it('should display created date', () => {
       renderWithProviders(<AppCard site={mockSite} />);
 
-      expect(screen.getByText(/Created/)).toBeInTheDocument();
+      expect(screen.getByText('builder_apps_created')).toBeInTheDocument();
     });
 
     it('should display default name when name is empty', () => {
       const siteWithoutName = createMockSite({ name: '' });
       renderWithProviders(<AppCard site={siteWithoutName} />);
 
-      expect(screen.getByText('Untitled App')).toBeInTheDocument();
+      expect(screen.getByText('builder_apps_alert_delete_untitled')).toBeInTheDocument();
     });
   });
 
@@ -60,42 +62,42 @@ describe('AppCard', () => {
     it('should display running status', () => {
       renderWithProviders(<AppCard site={mockSite} />);
 
-      expect(screen.getByText('Running')).toBeInTheDocument();
+      expect(screen.getByText('builder_status_running')).toBeInTheDocument();
     });
 
     it('should display creating status', () => {
       const creatingSite = createMockSite({ status: 'creating' });
       renderWithProviders(<AppCard site={creatingSite} />);
 
-      expect(screen.getByText('Creating')).toBeInTheDocument();
+      expect(screen.getByText('builder_status_creating')).toBeInTheDocument();
     });
 
     it('should display created status', () => {
       const createdSite = createMockSite({ status: 'created' });
       renderWithProviders(<AppCard site={createdSite} />);
 
-      expect(screen.getByText('Creating')).toBeInTheDocument();
+      expect(screen.getByText('builder_status_creating')).toBeInTheDocument();
     });
 
     it('should display failed status', () => {
       const failedSite = createMockSite({ status: 'failed' });
       renderWithProviders(<AppCard site={failedSite} />);
 
-      expect(screen.getByText('Failed')).toBeInTheDocument();
+      expect(screen.getByText('builder_status_failed')).toBeInTheDocument();
     });
 
     it('should display error status', () => {
       const errorSite = createMockSite({ status: 'error' });
       renderWithProviders(<AppCard site={errorSite} />);
 
-      expect(screen.getByText('Failed')).toBeInTheDocument();
+      expect(screen.getByText('builder_status_failed')).toBeInTheDocument();
     });
 
     it('should display stopped status', () => {
       const stoppedSite = createMockSite({ status: 'stopped' });
       renderWithProviders(<AppCard site={stoppedSite} />);
 
-      expect(screen.getByText('Stopped')).toBeInTheDocument();
+      expect(screen.getByText('builder_status_stopped')).toBeInTheDocument();
     });
   });
 
@@ -103,7 +105,7 @@ describe('AppCard', () => {
     it('should show preview button when site is running', () => {
       renderWithProviders(<AppCard site={mockSite} />);
 
-      const previewButton = screen.getByRole('link', { name: /Preview/i });
+      const previewButton = screen.getByRole('link', { name: 'builder_common_preview' });
       expect(previewButton).toBeInTheDocument();
       expect(previewButton).toHaveAttribute('href', mockSite.preview_url);
     });
@@ -111,21 +113,21 @@ describe('AppCard', () => {
     it('should show edit button when site is running', () => {
       renderWithProviders(<AppCard site={mockSite} />);
 
-      expect(screen.getByRole('button', { name: /Edit/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'builder_common_edit' })).toBeInTheDocument();
     });
 
     it('should not show preview button when site is not running', () => {
       const stoppedSite = createMockSite({ status: 'stopped' });
       renderWithProviders(<AppCard site={stoppedSite} />);
 
-      expect(screen.queryByRole('link', { name: /Preview/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'builder_common_preview' })).not.toBeInTheDocument();
     });
 
     it('should not show edit button when site is not running', () => {
       const stoppedSite = createMockSite({ status: 'stopped' });
       renderWithProviders(<AppCard site={stoppedSite} />);
 
-      expect(screen.queryByRole('button', { name: /Edit/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'builder_common_edit' })).not.toBeInTheDocument();
     });
 
     it('should show visit button when site has published URL', async () => {
@@ -140,7 +142,7 @@ describe('AppCard', () => {
       renderWithProviders(<AppCard site={mockSite} />);
 
       await waitFor(() => {
-        const visitButton = screen.getByRole('link', { name: /Visit/i });
+        const visitButton = screen.getByRole('link', { name: 'builder_common_visit' });
         expect(visitButton).toBeInTheDocument();
         expect(visitButton).toHaveAttribute('href', 'https://published.test/app');
       });
@@ -160,7 +162,7 @@ describe('AppCard', () => {
       const deleteButton = screen.getByRole('button', { name: /Delete app Test Application/i });
       await user.click(deleteButton);
 
-      expect(screen.getByText(/Are you sure you want to delete "Test Application"/)).toBeInTheDocument();
+      expect(screen.getByText('builder_apps_alert_delete')).toBeInTheDocument();
     });
 
     it('should hide confirmation alert when cancel is clicked', async () => {
@@ -172,7 +174,7 @@ describe('AppCard', () => {
       const cancelButton = screen.getByRole('button', { name: /Cancel/i });
       await user.click(cancelButton);
 
-      expect(screen.queryByText(/Are you sure you want to delete/)).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_apps_alert_delete')).not.toBeInTheDocument();
     });
 
     it('should call deleteSite when confirm is clicked', async () => {
@@ -184,7 +186,7 @@ describe('AppCard', () => {
       const deleteButton = screen.getByRole('button', { name: /Delete app Test Application/i });
       await user.click(deleteButton);
 
-      const confirmButton = screen.getByRole('button', { name: /^Delete$/i });
+      const confirmButton = screen.getByRole('button', { name: 'builder_common_delete' });
       await user.click(confirmButton);
 
       await waitFor(() => {
@@ -201,11 +203,11 @@ describe('AppCard', () => {
       const deleteButton = screen.getByRole('button', { name: /Delete app Test Application/i });
       await user.click(deleteButton);
 
-      const confirmButton = screen.getByRole('button', { name: /^Delete$/i });
+      const confirmButton = screen.getByRole('button', { name: 'builder_common_delete' });
       await user.click(confirmButton);
 
       await waitFor(() => {
-        expect(screen.getByText('Deleting...')).toBeInTheDocument();
+        expect(screen.getByText('builder_common_deleting')).toBeInTheDocument();
       });
     });
   });
@@ -252,6 +254,6 @@ describe('AppCardEmptyState', () => {
   it('should render create new app text', () => {
     renderWithProviders(<AppCardEmptyState />);
 
-    expect(screen.getByText('Create a new app')).toBeInTheDocument();
+    expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
   });
 });

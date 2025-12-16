@@ -1,19 +1,20 @@
 'use client'
 
-import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
-import StreamingMessage from './StreamingMessage'
+import { useCallback,useEffect, useMemo, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
+
 import {
-  useMessages,
   useActiveStream,
-  useIsActivelyStreaming,
-  useLoadMoreConversations,
   useConversationPagination,
   useCurrentAppId,
+  useIsActivelyStreaming,
   useIsLoading,
+  useLoadMoreConversations,
+  useMessages,
 } from '@/stores/useStreamingConversationStore'
+import StreamingMessage from './StreamingMessage'
 
 export default function StreamingMessageList() {
   const messagesEndRef = useRef<HTMLDivElement>(null)

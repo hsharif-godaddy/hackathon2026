@@ -1,22 +1,26 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { useAppIdFromParams } from '@/app/develop/components/utils';
-import { SettingsSection } from '@/app/develop/components/types';
-import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
-import { generateClickEID } from '@/utils/instrumentation';
 import clsx from 'clsx';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import Button from '@ux/button';
+import SettingsIcon from '@ux/icon/settings';
+
+import { useSettingsNavItems } from '@/app/develop/components/settings/useSettingsNavItems';
+import { SettingsSection } from '@/app/develop/components/types';
+import { useAppIdFromParams } from '@/app/develop/components/utils';
+import { useTranslations } from '@/hooks/useTranslations';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/lib/shadcn/popover";
-import Button from '@ux/button';
-import SettingsIcon from '@ux/icon/settings';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { generateClickEID } from '@/utils/instrumentation';
 
 export default function SettingsMenu() {
+  const t = useTranslations();
+
   const router = useRouter();
   const appId = useAppIdFromParams();
   const [open, setOpen] = useState(false);
@@ -44,7 +48,7 @@ export default function SettingsMenu() {
             }
           )}
           data-eid={generateClickEID('develop.chat_toolbar.settings')}
-          aria-label="Settings"
+          aria-label={t('builder_settings_title')}
         >
           <SettingsIcon />
         </button>

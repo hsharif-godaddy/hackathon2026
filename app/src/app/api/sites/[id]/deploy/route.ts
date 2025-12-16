@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
-import { logger } from '@/lib/request-context';
 import {
-  withCustomerAuth,
-  customerHasAccount,
   createCustomerAuthError,
-  type CustomerAuthContext
-} from '@/lib/customer-auth';
+  type CustomerAuthContext,
+  customerHasAccount,
+  withCustomerAuth} from '@/lib/customer-auth';
+import { logger } from '@/lib/request-context';
 
 // In-memory deployment lock to prevent concurrent deployments
 const deploymentLocks = new Set<string>();

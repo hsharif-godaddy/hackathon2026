@@ -1,10 +1,9 @@
-import { logger } from '../request-context';
 /**
  * Database seeding utility for test user
  * Creates a test account that works with the existing auth system
  */
-
 import { getAccountService } from './account-service';
+import { logger } from '../request-context';
 
 // Test user for development environment
 const TEST_USER = {

@@ -4,11 +4,13 @@
  * Displays grep/text search results with a summary and expandable details.
  */
 
-import { useState, useEffect } from 'react'
-import ToolHeader from './ToolHeader'
-import ToolModal from './ToolModal'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import { TextSearch } from 'lucide-react'
+import { useEffect,useState } from 'react'
+
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import ToolModal from '@/app/develop/components/tool-renderers/ToolModal'
+import { useTranslations } from '@/hooks/useTranslations'
 
 /**
  * Grep Search Tool Renderer Component
@@ -21,6 +23,7 @@ export default function GrepSearchToolRenderer({
   result,
   toolStatus
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -53,14 +56,13 @@ export default function GrepSearchToolRenderer({
   }
 
   // Build display message
-  let displayMessage = 'Search'
+  let displayMessage = t('builder_tools_grep_title')
   if (query) {
-    displayMessage = `Search: "${query}"`
+    displayMessage = `${t('builder_tools_grep_title')}: "${query}"`
   }
   if (hasResults && matchCount > 0) {
-    displayMessage += ` - ${matchCount} ${matchCount === 1 ? 'match' : 'matches'} in ${fileCount} ${fileCount === 1 ? 'file' : 'files'}`
-  } else if (typeof result === 'string' && result.includes('No matches found')) {
-    displayMessage += ' - No matches found'
+    displayMessage += `${t('builder_tools_grep_matches', { matchCount, fileCount })} BOB`
+    displayMessage += ` - ${t('builder_tools_grep_no_matches')}`
   }
 
   const hasDetails = result && typeof result === 'string' && result.length > 0
@@ -69,7 +71,7 @@ export default function GrepSearchToolRenderer({
     <ToolModal
       isOpen={isModalOpen}
       onClose={() => setIsModalOpen(false)}
-      title={`Search Results: ${query || 'grep'}`}
+      title={`${t('builder_tools_grep_results_title')}: ${query || 'grep'}`}
       mounted={mounted}
     >
       <div className="flex-1 overflow-y-auto">

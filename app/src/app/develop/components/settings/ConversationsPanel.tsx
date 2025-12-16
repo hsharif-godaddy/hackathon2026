@@ -1,18 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
+import Button from '@ux/button';
+import AlertIcon from '@ux/icon/alert';
+import RefreshIcon from '@ux/icon/refresh';
+import Spinner from '@ux/spinner';
+import text from '@ux/text';
+
 import { useAppIdFromParams } from '@/app/develop/components/utils';
 import {
-  useConversations,
-  useConversationMessages,
+  type ConversationMessage,
   type ToolCall,
-  type ConversationMessage
-} from '@/hooks/useConversations';
-import RefreshIcon from '@ux/icon/refresh';
-import AlertIcon from '@ux/icon/alert';
-import Spinner from '@ux/spinner';
-import Button from '@ux/button';
-import text from '@ux/text';
+  useConversationMessages,
+  useConversations} from '@/hooks/useConversations';
 
 /**
  * Formats a timestamp for relative time display
@@ -130,12 +130,12 @@ function MessageDisplay({ message }: { message: ConversationMessage }) {
             {message.sender === 'user' ? 'User' : 'Agent'}
           </span>
           {message.messageType && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded">
+            <span className="text-[10px] px-1.5 py-0.5 rounded">
               {message.messageType}
             </span>
           )}
           {hasToolCalls && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">
+            <span className="text-[10px] px-1.5 py-0.5 rounded">
               {message.toolCalls.length} tool{message.toolCalls.length !== 1 ? 's' : ''}
             </span>
           )}
@@ -143,18 +143,18 @@ function MessageDisplay({ message }: { message: ConversationMessage }) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowRaw(!showRaw)}
-            className="text-[10px] text-gray-400 hover:text-gray-600"
+            className="text-[10px]"
           >
             {showRaw ? 'Hide Raw' : 'Show Raw'}
           </button>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs">
             {formatRelativeTime(message.createdAt)}
           </span>
         </div>
       </div>
 
       {/* Content */}
-      <div className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+      <div className="text-sm whitespace-pre-wrap break-words">
         {message.content.length > 1000 && !showRaw
           ? `${message.content.slice(0, 1000)}...`
           : message.content}
@@ -163,7 +163,7 @@ function MessageDisplay({ message }: { message: ConversationMessage }) {
       {/* Tool Calls */}
       {hasToolCalls && (
         <div className="mt-3">
-          <div className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Tool Calls</div>
+          <div className="text-[10px] font-semibold uppercase mb-1">Tool Calls</div>
           {message.toolCalls.map((tc, idx) => (
             <ToolCallDisplay key={tc.id || idx} toolCall={tc} />
           ))}
@@ -173,8 +173,8 @@ function MessageDisplay({ message }: { message: ConversationMessage }) {
       {/* Metadata */}
       {hasMetadata && showRaw && (
         <div className="mt-3">
-          <div className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Metadata</div>
-          <pre className="bg-gray-900 text-yellow-400 p-2 rounded text-[10px] overflow-x-auto max-h-32 overflow-y-auto">
+          <div className="text-[10px] font-semibold uppercase mb-1">Metadata</div>
+          <pre className="p-2 rounded text-[10px] overflow-x-auto max-h-32 overflow-y-auto">
             {JSON.stringify(message.metadata, null, 2)}
           </pre>
         </div>
@@ -183,11 +183,11 @@ function MessageDisplay({ message }: { message: ConversationMessage }) {
       {/* Context Attachments */}
       {hasAttachments && showRaw && (
         <div className="mt-3">
-          <div className="text-[10px] font-semibold text-gray-500 uppercase mb-1">
+          <div className="text-[10px] font-semibold uppercase mb-1">
             Context Attachments ({message.contextAttachments.length})
           </div>
           {message.contextAttachments.map((att, idx) => (
-            <div key={idx} className="text-[10px] bg-gray-100 p-2 rounded mt-1">
+            <div key={idx} className="text-[10px] p-2 rounded mt-1">
               <span className="font-medium">Type:</span> {att.type}
             </div>
           ))}
@@ -197,15 +197,15 @@ function MessageDisplay({ message }: { message: ConversationMessage }) {
       {/* Raw JSON */}
       {showRaw && (
         <div className="mt-3">
-          <div className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Full Message JSON</div>
-          <pre className="bg-gray-900 text-green-400 p-2 rounded text-[10px] overflow-x-auto max-h-48 overflow-y-auto">
+          <div className="text-[10px] font-semibold uppercase mb-1">Full Message JSON</div>
+          <pre className="p-2 rounded text-[10px] overflow-x-auto max-h-48 overflow-y-auto">
             {JSON.stringify(message, null, 2)}
           </pre>
         </div>
       )}
 
       {/* Message ID */}
-      <div className="mt-2 text-[10px] text-gray-400 font-mono">
+      <div className="mt-2 text-[10px] font-mono">
         ID: {message.id}
       </div>
     </div>
@@ -251,7 +251,7 @@ export default function ConversationsPanel() {
       <div className="flex items-center justify-between">
         <div>
           <text.h2 className="text-xl font-semibold">Conversations</text.h2>
-          <text.p className="text-sm text-gray-500 mt-1">
+          <text.p className="text-sm mt-1">
             All conversations with full message details, tool calls, and metadata
           </text.p>
         </div>
@@ -265,7 +265,7 @@ export default function ConversationsPanel() {
       </div>
 
       {/* Stats bar */}
-      <div className="text-sm text-gray-600">
+      <div className="text-sm">
         {total} conversation{total !== 1 ? 's' : ''} found
       </div>
 
@@ -291,15 +291,15 @@ export default function ConversationsPanel() {
       {loading && conversations.length === 0 && (
         <div className="flex flex-col justify-center items-center h-64 gap-4">
           <Spinner size="md" />
-          <text.p className="text-gray-500">Loading conversations...</text.p>
+          <text.p>Loading conversations...</text.p>
         </div>
       )}
 
       {/* Empty state */}
       {!loading && !error && conversations.length === 0 && (
-        <div className="text-center py-16 bg-gray-50 rounded-lg border border-gray-200">
-          <text.p className="text-gray-500 text-lg mb-2">No conversations found</text.p>
-          <text.p className="text-gray-400 text-sm">
+        <div className="text-center py-16 rounded-lg border">
+          <text.p className="text-lg mb-2">No conversations found</text.p>
+          <text.p className="text-sm">
             Start a conversation in the chat to see it here
           </text.p>
         </div>
@@ -311,34 +311,34 @@ export default function ConversationsPanel() {
           {conversations.map((conversation) => (
             <div
               key={conversation.id}
-              className="border border-gray-200 rounded-lg overflow-hidden bg-white"
+              className="border rounded-lg overflow-hidden"
             >
               {/* Conversation header */}
               <div
-                className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                className="p-4 cursor-pointer transition-colors"
                 onClick={() => toggleExpand(conversation.id)}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900 truncate">
+                      <span className="font-medium truncate">
                         {conversation.title || 'Untitled Conversation'}
                       </span>
-                      <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                      <span className="text-xs px-2 py-0.5 rounded-full">
                         {conversation.messageCount} message{conversation.messageCount !== 1 ? 's' : ''}
                       </span>
                     </div>
                     {conversation.lastMessage && (
-                      <p className="text-sm text-gray-500 mt-1 truncate">
+                      <p className="text-sm mt-1 truncate">
                         {conversation.lastMessage}
                       </p>
                     )}
                   </div>
                   <div className="flex flex-col items-end ml-4 flex-shrink-0">
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs">
                       {formatRelativeTime(conversation.updatedAt)}
                     </span>
-                    <span className="text-xs font-mono text-gray-400 mt-1">
+                    <span className="text-xs font-mono mt-1">
                       {conversation.id.slice(0, 8)}...
                     </span>
                   </div>
@@ -347,16 +347,16 @@ export default function ConversationsPanel() {
 
               {/* Expanded messages */}
               {expandedConversation === conversation.id && (
-                <div className="border-t border-gray-200 bg-gray-50 p-4">
+                <div className="border-t p-4">
                   {loadingMessages ? (
                     <div className="flex items-center justify-center py-8">
                       <Spinner size="sm" />
-                      <span className="ml-2 text-gray-500">Loading messages...</span>
+                      <span className="ml-2">Loading messages...</span>
                     </div>
                   ) : messages ? (
                     <div className="space-y-3 max-h-[600px] overflow-y-auto">
                       {messages.length === 0 ? (
-                        <p className="text-sm text-gray-500 text-center py-4">
+                        <p className="text-sm text-center py-4">
                           No messages in this conversation
                         </p>
                       ) : (
@@ -366,30 +366,30 @@ export default function ConversationsPanel() {
                       )}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500 text-center py-4">
+                    <p className="text-sm text-center py-4">
                       Failed to load messages
                     </p>
                   )}
 
                   {/* Conversation Metadata */}
-                  <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                  <div className="mt-4 pt-4 border-t grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                     <div>
-                      <span className="text-gray-500">Conversation ID:</span>
-                      <span className="font-mono text-gray-700 ml-1 break-all">{conversation.id}</span>
+                      <span>Conversation ID:</span>
+                      <span className="font-mono ml-1 break-all">{conversation.id}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Agent ID:</span>
-                      <span className="font-mono text-gray-700 ml-1">{conversation.agentId}</span>
+                      <span>Agent ID:</span>
+                      <span className="font-mono ml-1">{conversation.agentId}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Created:</span>
-                      <span className="text-gray-700 ml-1">
+                      <span>Created:</span>
+                      <span className="ml-1">
                         {new Date(conversation.createdAt).toLocaleString()}
                       </span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Updated:</span>
-                      <span className="text-gray-700 ml-1">
+                      <span>Updated:</span>
+                      <span className="ml-1">
                         {new Date(conversation.updatedAt).toLocaleString()}
                       </span>
                     </div>

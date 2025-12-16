@@ -1,5 +1,6 @@
-import DatabaseManager from './connection';
 import { v4 as uuidv4 } from 'uuid';
+
+import DatabaseManager from './connection';
 import { logger } from '../request-context';
 
 export interface Site {

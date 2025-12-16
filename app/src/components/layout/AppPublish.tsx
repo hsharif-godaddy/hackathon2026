@@ -3,29 +3,29 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { useIntl } from 'react-intl';
-import { useTranslations } from '@/hooks/useTranslations';
 import Button from '@ux/button';
-import text from '@ux/text';
 import Collapsible from '@ux/collapsible';
-import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
-import { Separator } from '@/lib/shadcn/separator';
+import Tag from '@ux/tag';
+import text from '@ux/text';
 
+import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer';
+import { ChatTab } from '@/app/develop/components/types';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
+import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
 import { usePublishApp } from '@/hooks/usePublishApp';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useTranslations } from '@/hooks/useTranslations';
+import { DeploymentStatus } from '@/lib/mgmt-airo/types';
+import { logger } from '@/lib/request-context';
+import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
+import { Separator } from '@/lib/shadcn/separator';
+import { entitlementPollingService } from '@/services/EntitlementPollingService';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation';
-import { useSwitchboard } from '@/hooks/useSwitchboard';
-import { logger } from '@/lib/request-context';
 import { hasBeenPublished } from '@/utils/site';
-import { ChatTab } from '@/app/develop/components/types';
-import { DeploymentStatus } from '@/lib/mgmt-airo/types';
-import Tag from '@ux/tag';
-import SinglePlanUpgradeContainer from '@/app/develop/components/SinglePlanUpgradeContainer';
-import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
-import { entitlementPollingService } from '@/services/EntitlementPollingService';
 
 export default function AppPublish({ location }: { location?: string }) {
   const intl = useIntl();

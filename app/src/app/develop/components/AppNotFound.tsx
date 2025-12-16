@@ -3,8 +3,9 @@
 import { useRouter } from 'next/navigation'
 import Box from '@ux/box'
 import Button from '@ux/button'
-import text from '@ux/text'
 import AlertIcon from '@ux/icon/alert'
+import text from '@ux/text'
+
 import { useTranslations } from '@/hooks/useTranslations'
 import { generateClickEID } from '@/utils/instrumentation'
 

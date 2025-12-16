@@ -5,7 +5,7 @@ import StatusIndicator from './StatusIndicator'
  */
 interface ToolHeaderProps {
   icon: React.ReactNode
-  displayName: string
+  displayName: string | React.ReactNode
   toolStatus: 'running' | 'completed' | 'error'
   hasDetails: boolean
   onOpenModal?: () => void

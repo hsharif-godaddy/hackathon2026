@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { appService } from '@/services/AppService'
+
 import { logger } from '@/lib/request-context'
+import { appService } from '@/services/AppService'
 
 /**
  * Git Store - Manages commit selection state

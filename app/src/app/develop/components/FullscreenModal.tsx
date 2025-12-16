@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { clsx } from 'clsx'
+import { AnimatePresence,motion } from 'framer-motion'
+import { useEffect,useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import WindowNewIcon from '@ux/icon/window-new'
-import MarkdownRenderer from './MarkdownRenderer'
 import XThickIcon from '@ux/icon/x-thick'
-import { clsx } from 'clsx'
+
+import MarkdownRenderer from './MarkdownRenderer'
 
 interface FullscreenModalProps {
   content?: string

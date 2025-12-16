@@ -2,11 +2,11 @@
  * Auth service factory - creates the appropriate auth service based on configuration
  */
 
-import { IAuthService } from './types';
-import { NoAuthService } from './implementations/NoAuthService';
-import { MockAuthService } from './implementations/MockAuthService';
 import { JWTAuthService } from './implementations/JWTAuthService';
-import { AuthType, auth } from '../features';
+import { MockAuthService } from './implementations/MockAuthService';
+import { NoAuthService } from './implementations/NoAuthService';
+import { IAuthService } from './types';
+import { auth,AuthType } from '../features';
 
 /**
  * Factory class to create auth services

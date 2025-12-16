@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { afterEach,beforeEach, describe, expect, it } from 'vitest';
 import { renderHook } from '@testing-library/react';
+
 import { useSafariClass } from './useSafariClass';
 
 describe('useSafariClass', () => {

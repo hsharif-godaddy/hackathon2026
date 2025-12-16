@@ -1,16 +1,18 @@
 /* eslint-disable react/display-name */
 'use client'
 
-import { useState, useCallback, useMemo, memo } from 'react'
 import clsx from 'clsx'
+import { memo,useCallback, useMemo, useState } from 'react'
 import Button from '@ux/button'
-import SiblingSet from '@ux/sibling-set'
 import Modal from '@ux/modal'
+import SiblingSet from '@ux/sibling-set'
+import text from '@ux/text'
 import TextInput from '@ux/text-input'
-import { PostCardPreview } from './PostCardPreview'
+
+import { PostCardPreview } from '@/app/develop/components/widgets/PostCardPreview'
+import { useTranslations } from '@/hooks/useTranslations'
 import { SocialPostData } from '@/types/social-posts'
 import { getCharacterCount, getPlatformLimits, isPostOverLimit } from '@/utils/social-post-validation'
-import text from '@ux/text'
 
 
 interface HashtagEditorProps {
@@ -19,6 +21,7 @@ interface HashtagEditorProps {
   onHashtagInputChange: (value: string) => void
   onAddHashtag: (tag: string) => void
   onRemoveHashtag: (index: number) => void
+  t: (key: string) => string
 }
 
 /**
@@ -31,10 +34,13 @@ const HashtagEditor = memo(({
   hashtagInput,
   onHashtagInputChange,
   onAddHashtag,
-  onRemoveHashtag
+  onRemoveHashtag,
+  t
 }: HashtagEditorProps) => (
   <div className="mt-2">
-    <text.span as="label" size={-1} className="block mb-1">Hashtags</text.span>
+    <text.span as="label" size={-1} className="block mb-1">
+      {t('builder_widgets_socialpost_hashtags')}
+    </text.span>
     <div className="flex flex-wrap gap-0.5 items-center">
       {hashtags?.map((tag, i) => (
         <div
@@ -45,8 +51,8 @@ const HashtagEditor = memo(({
           #{tag}
           <button
             onClick={() => onRemoveHashtag(i)}
-            className="text-gray-400 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100"
-            aria-label={`Remove ${tag}`}
+            className="text-xs opacity-0 group-hover:opacity-100"
+            aria-label={`${t('builder_common_remove')} ${tag}`}
           >
             ×
           </button>
@@ -62,8 +68,8 @@ const HashtagEditor = memo(({
             e.preventDefault()
           }
         }}
-        placeholder="+ Add hashtag"
-        className="text-sm border-0 outline-none w-24 placeholder:text-gray-400"
+        placeholder={`+ ${t('builder_widgets_socialpost_hashtag_add')}`}
+        className="text-sm border-0 outline-none w-24"
         style={{ color: '#145FA9' }}
       />
     </div>
@@ -98,6 +104,7 @@ interface PostEditorFormProps {
   onHashtagInputChange: (value: string) => void
   onAddHashtag: (tag: string) => void
   onRemoveHashtag: (index: number) => void
+  t: (key: string) => string
 }
 
 const PostEditorForm = memo(({
@@ -107,27 +114,28 @@ const PostEditorForm = memo(({
   onChange,
   onHashtagInputChange,
   onAddHashtag,
-  onRemoveHashtag
+  onRemoveHashtag,
+  t
 }: PostEditorFormProps) => (
   <div className="w-full max-w-[450px] mx-auto border border-gray-200 shadow-sm pb-2">
     <div className="px-2 mx-1 mb-1 pt-2">
       <TextInput
         id="post-content"
-        label="Post Content"
+        label={t('builder_widgets_socialpost_label_write')}
         multiline
         value={post.content}
         onChange={(targetValue: string) => onChange('content', targetValue)}
-        placeholder="Write your post content..."
+        placeholder={t('builder_widgets_socialpost_placeholder_write')}
         size={6}
       />
 
       <div className="mt-2">
         <TextInput
           id='call-to-action'
-          label="Call to Action"
+          label={t('builder_widgets_socialpost_label_add_cta')}
           value={post.callToAction || ''}
           onChange={(targetValue: string) => onChange('callToAction', targetValue)}
-          placeholder="Add call to action..."
+          placeholder={t('builder_widgets_socialpost_placeholder_add_cta')}
           multiline
           size={2}
         />
@@ -139,6 +147,7 @@ const PostEditorForm = memo(({
         onHashtagInputChange={onHashtagInputChange}
         onAddHashtag={onAddHashtag}
         onRemoveHashtag={onRemoveHashtag}
+        t={t}
       />
 
       <CharacterCounter
@@ -162,6 +171,8 @@ interface SocialPostModalProps {
  * Combines preview, edit, and form functionality in a single component
  */
 export const SocialPostModal = memo(({ post, onClose, onSave }: SocialPostModalProps) => {
+  const t = useTranslations();
+
   const [isEditMode, setIsEditMode] = useState(false)
   const [editedPost, setEditedPost] = useState<SocialPostData>(post)
   const [hashtagInput, setHashtagInput] = useState('')
@@ -226,13 +237,13 @@ export const SocialPostModal = memo(({ post, onClose, onSave }: SocialPostModalP
           <SiblingSet gap="md">
             <Button
               design="secondary"
-              text="Cancel"
+              text={t('builder_common_cancel')}
               size="sm"
               onClick={handleCancel}
             />
             <Button
               design="primary"
-              text="Save Changes"
+              text={t('builder_common_save_changes')}
               onClick={handleSave}
               size="sm"
               disabled={validation.isOverLimit}
@@ -242,7 +253,7 @@ export const SocialPostModal = memo(({ post, onClose, onSave }: SocialPostModalP
           <SiblingSet gap="md">
             <Button
               design="secondary"
-              text="Edit"
+              text={t('builder_common_edit')}
               size='sm'
               onClick={handleEditClick}
             />
@@ -261,9 +272,10 @@ export const SocialPostModal = memo(({ post, onClose, onSave }: SocialPostModalP
               onHashtagInputChange={setHashtagInput}
               onAddHashtag={handleAddHashtag}
               onRemoveHashtag={handleRemoveHashtag}
+              t={t}
             />
           ) : (
-              <PostCardPreview post={editedPost} />
+            <PostCardPreview post={editedPost} />
           )}
         </div>
       </div>

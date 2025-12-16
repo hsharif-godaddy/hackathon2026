@@ -1,11 +1,13 @@
 'use client'
 
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import ColorPaletteWidget from '../widgets/ColorPaletteWidget'
-import ColorPaletteModal from './ColorPaletteModal'
-import { useState, useEffect } from 'react'
 import { Palette } from 'lucide-react'
-import ToolHeader from './ToolHeader'
+import { useEffect,useState } from 'react'
+
+import ColorPaletteModal from '@/app/develop/components/tool-renderers/ColorPaletteModal'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import ColorPaletteWidget from '@/app/develop/components/widgets/ColorPaletteWidget'
+import { useTranslations } from '@/hooks/useTranslations'
 
 /**
  * Custom renderer for cssColor tool
@@ -23,6 +25,7 @@ export default function CssColorToolRenderer({
   input,
   result
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const [isVisible, setIsVisible] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
 
@@ -30,7 +33,7 @@ export default function CssColorToolRenderer({
   const isGenerateOnly = input?.generateOnly === true
 
   // Get palette name from result (now always included) or fallback to input
-  let paletteName = 'Color Scheme'
+  let paletteName = t('builder_tools_css_color_scheme')
   if (result && typeof result === 'object') {
     const resultObj = result as any
     // Check for paletteName in result (applied mode)
@@ -68,17 +71,14 @@ export default function CssColorToolRenderer({
 
   // Extract palette from result
   let palette: any = null
-  let theme: 'light' | 'dark' | undefined = undefined
 
   if (toolStatus === 'completed' && result && typeof result === 'object') {
     const resultObj = result as any
 
     if (resultObj.palette) {
       palette = resultObj.palette
-      theme = resultObj.theme
     } else if (resultObj.widget?.palette) {
       palette = resultObj.widget.palette
-      theme = resultObj.widget.theme
     }
   }
 
@@ -97,8 +97,8 @@ export default function CssColorToolRenderer({
     : ''
 
   const displayName = toolStatus === 'completed'
-    ? `Color Scheme: ${paletteName} ${mode}`
-    : 'Color Scheme'
+    ? `${t('builder_tools_css_color_scheme')}: ${paletteName} ${mode}`
+    : t('builder_tools_css_color_scheme')
 
   return (
     <div>

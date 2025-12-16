@@ -1,11 +1,12 @@
-import FacebookIcon from '@ux/icon/facebook'
-import InstagramIcon from '@ux/icon/instagram'
-import GoogleIcon from '@ux/icon/google'
-import TiktokIcon from '@ux/icon/tiktok'
-import YelpIcon from '@ux/icon/yelp'
-import WhatsappIcon from '@ux/icon/whatsapp'
-import { SocialConnection, SocialPlatform } from '@/types/social'
 import type { ComponentType } from 'react'
+import FacebookIcon from '@ux/icon/facebook'
+import GoogleIcon from '@ux/icon/google'
+import InstagramIcon from '@ux/icon/instagram'
+import TiktokIcon from '@ux/icon/tiktok'
+import WhatsappIcon from '@ux/icon/whatsapp'
+import YelpIcon from '@ux/icon/yelp'
+
+import { SocialConnection, SocialPlatform } from '@/types/social'
 
 interface PlatformConfig {
   name: string

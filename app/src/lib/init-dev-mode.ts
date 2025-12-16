@@ -1,10 +1,9 @@
-import { logger } from './request-context';
 /**
  * Development mode initialization
  * Sets up test data and configurations needed for local development
  */
-
 import { initializeTestUser } from './database/seed-test-user';
+import { logger } from './request-context';
 
 let initialized = false;
 

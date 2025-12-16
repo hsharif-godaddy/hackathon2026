@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import text from '@ux/text'
 import Alert from '@ux/alert'
+import text from '@ux/text'
 
 interface StreamingAlertMessageProps {
   title: string

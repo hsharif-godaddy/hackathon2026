@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+
+import { ensureTestUserExists } from '@/lib/database/seed-test-user';
+import { isFeatureEnabled } from '@/lib/features';
 // Lazy import to avoid initializing gd-auth during module loading
 import { isAuthDisabled } from '@/lib/gasket-config';
-import { isFeatureEnabled } from '@/lib/features';
 import { MOCK_USER } from '@/lib/mock-auth';
 import { logger } from '@/lib/request-context';
-import { ensureTestUserExists } from '@/lib/database/seed-test-user';
 
 export async function GET(request: NextRequest) {
   try {

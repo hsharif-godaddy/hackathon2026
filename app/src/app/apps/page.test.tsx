@@ -1,11 +1,13 @@
-import React from 'react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { renderWithProviders } from '@/tests/test-utils';
-import { createMockSite, mockRouter, mockInstrumentation, mockFeatures } from '@/tests/mocks';
-import Sites from './page';
+
+import React from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+
 import { useSitesStore } from '@/stores/useSitesStore';
+import { createMockSite, mockRouter } from '@/tests/mocks';
+import { renderWithProviders } from '@/tests/test-utils';
+import Sites from './page';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => mockRouter(),
@@ -23,9 +25,24 @@ vi.mock('@/components/layout/AppInactivityAlert', () => ({
   default: () => <div>AppInactivityAlert</div>,
 }));
 
-vi.mock('@/lib/features', () => mockFeatures({ developmentMode: true }));
+vi.mock('@/lib/features', () => ({
+  isFeatureEnabled: {
+    codeEditor: vi.fn().mockReturnValue(false),
+    mockLogin: vi.fn().mockReturnValue(true),
+    developmentMode: vi.fn().mockReturnValue(true),
+    galleryPage: vi.fn().mockReturnValue(false),
+    devSupervisorTcp: vi.fn().mockReturnValue(false),
+  },
+  MAX_PROMPT_LENGTH: 40000,
+  auth: { enabled: false },
+}));
 
-vi.mock('@/utils/instrumentation', () => mockInstrumentation());
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: vi.fn(() => vi.fn()),
+  logActionEvent: vi.fn(() => vi.fn()),
+  logErrorEvent: vi.fn(() => vi.fn()),
+  generateClickEID: vi.fn((eid: string) => eid),
+}));
 
 describe('Sites Page', () => {
   beforeEach(() => {
@@ -57,7 +74,7 @@ describe('Sites Page', () => {
     it('should show empty state card when no sites', () => {
       renderWithProviders(<Sites />);
 
-      expect(screen.getByText('Create a new app')).toBeInTheDocument();
+      expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
     });
 
     it('should show 0 apps total tag', () => {
@@ -122,7 +139,7 @@ describe('Sites Page', () => {
 
       renderWithProviders(<Sites />);
 
-      expect(screen.getByRole('button', { name: /Try Again/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'builder_common_try_again' })).toBeInTheDocument();
     });
   });
 

@@ -5,11 +5,11 @@
  * Maps widget types to their React components.
  */
 
-import ColorPaletteWidget, { type ColorPaletteWidgetProps } from './ColorPaletteWidget'
+import type { SocialPostData } from '@/types/social-posts'
 import ColorPaletteGridWidget, { type ColorPaletteGridWidgetProps } from './ColorPaletteGridWidget'
+import ColorPaletteWidget, { type ColorPaletteWidgetProps } from './ColorPaletteWidget'
 import FontPaletteWidget, { type FontPaletteWidgetProps } from './FontPaletteWidget'
 import { SocialPostList } from './SocialPostList'
-import type { SocialPostData } from '@/types/social-posts'
 
 export interface SocialPostListProps {
   posts?: SocialPostData[];
@@ -56,22 +56,21 @@ export function getWidgetComponent(type: string) {
  * Export widget components
  */
 export {
-  ColorPaletteWidget,
   ColorPaletteGridWidget,
+  ColorPaletteWidget,
   FontPaletteWidget,
   SocialPostList
 }
 
 export type {
-  ColorPaletteWidgetProps,
   ColorPaletteGridWidgetProps,
+  ColorPaletteWidgetProps,
   FontPaletteWidgetProps
 }
 
 export {
-  saveWidgetState,
-  loadWidgetState,
+  clearExpiredWidgetStates,
   clearWidgetState,
-  clearExpiredWidgetStates
-} from './widget-state-persistence'
+  loadWidgetState,
+  saveWidgetState} from './widget-state-persistence'
 

@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+import type { GitCommit } from '@/hooks/useGitHistory';
+import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
 import { useGitStore } from '@/stores/useGitStore';
-import { logger } from '@/lib/request-context';
-import type { GitCommit } from '@/hooks/useGitHistory';
 
 interface RestoreCommitVariables {
   appId: string;

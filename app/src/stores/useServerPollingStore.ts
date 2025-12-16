@@ -1,7 +1,8 @@
+import { enableMapSet } from 'immer'
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
-import { enableMapSet } from 'immer'
+
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
 

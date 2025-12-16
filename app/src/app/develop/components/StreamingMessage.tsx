@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
-import { logger } from '@/lib/request-context'
 import clsx from 'clsx'
-import StreamingIntegratedResponse from './StreamingIntegratedResponse'
-import ThinkingIndicator from './ThinkingIndicator'
+import { Check, ClipboardCopy } from 'lucide-react'
+import { useState } from 'react'
+
+import { logger } from '@/lib/request-context'
 import type { ChatMessage, StreamingMessage as StreamingMessageType } from '@/stores/useStreamingConversationStore'
 import { useStreamingState } from '@/stores/useStreamingConversationStore'
-import { Check, ClipboardCopy } from 'lucide-react'
+import StreamingIntegratedResponse from './StreamingIntegratedResponse'
+import ThinkingIndicator from './ThinkingIndicator'
 
 interface StreamingMessageProps {
   message: ChatMessage | StreamingMessageType

@@ -1,5 +1,5 @@
-import RefreshIcon from '@ux/icon/refresh'
 import Button from '@ux/button'
+import RefreshIcon from '@ux/icon/refresh'
 
 export default function PreviewError({
   title,

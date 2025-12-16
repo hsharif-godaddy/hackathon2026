@@ -2,6 +2,8 @@
 
 import { Coachmark, ProductTour, useStep } from '@ux/coachmark';
 
+import { useTranslations } from '@/hooks/useTranslations'
+
 /**
  * Tour step configuration interface
  */
@@ -58,26 +60,28 @@ function TourStep({ anchorId, title, description }: TourStep) {
  * @returns The guided tour component
  */
 export function AppIntroTour({ show, onClose }: AppIntroTourProps) {
+  const t = useTranslations();
+
   const steps: TourStep[] = [
     {
       anchorId: 'tour-chat-input',
-      title: 'Chat with Airo',
-      description: 'Tell Airo what you want to build or modify in your app. The AI will understand your request and make the changes for you.',
+      title: t('builder_tour_intro_tour-chat-input_title'),
+      description: t('builder_tour_intro_tour-chat-input_description'),
     },
     {
       anchorId: 'tour-settings-button',
-      title: 'App Settings',
-      description: 'Access your app configuration, manage domains, databases, secrets, and other project settings.',
+      title: t('builder_tour_intro_tour-settings-button_title'),
+      description: t('builder_tour_intro_tour-settings-button_description'),
     },
     {
       anchorId: 'tour-select-mode-button',
-      title: 'Select Mode',
-      description: 'Highlight a specific part of the app to make changes or let Airo make it for you.',
+      title: t('builder_tour_intro_tour-select-mode-button_title'),
+      description: t('builder_tour_intro_tour-select-mode-button_description'),
     },
     {
       anchorId: 'tour-publish-button',
-      title: 'Publish Your App',
-      description: 'When you\'re ready, publish your app to make it live. You can deploy changes anytime with a single click.',
+      title: t('builder_tour_intro_tour-publish-button_title'),
+      description: t('builder_tour_intro_tour-publish-button_description'),
     },
   ];
 
@@ -85,9 +89,9 @@ export function AppIntroTour({ show, onClose }: AppIntroTourProps) {
     <ProductTour
       show={show}
       onClose={onClose}
-      nextMessage="Next"
-      prevMessage="Back"
-      exitMessage="Got it!"
+      nextMessage={t('builder_tour_next')}
+      prevMessage={t('builder_tour_back')}
+      exitMessage={t('builder_tour_exit')}
     >
       {steps.map((step, index) => (
         <TourStep

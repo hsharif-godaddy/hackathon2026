@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
-import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore'
+
 import { logger } from '@/lib/request-context'
+import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore'
 
 /**
  * Hook for managing subscription cache lifecycle

@@ -1,15 +1,15 @@
+import { NextRequest, NextResponse } from 'next/server';
+
+import { agentFetch } from '@/lib/agent-fetch';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
-import { NextRequest, NextResponse } from 'next/server';
-import { agentFetch } from '@/lib/agent-fetch';
-import { AiroMgmtClient } from '@/lib/mgmt-airo';
-import { logger } from '@/lib/request-context';
 import {
   createCustomerAuthError,
+  type CustomerAuthContext,
   customerHasAccount,
-  withCustomerAuth,
-  type CustomerAuthContext
-} from '@/lib/customer-auth';
+  withCustomerAuth} from '@/lib/customer-auth';
+import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { logger } from '@/lib/request-context';
 
 /**
  * POST /api/apps/[id]/publish

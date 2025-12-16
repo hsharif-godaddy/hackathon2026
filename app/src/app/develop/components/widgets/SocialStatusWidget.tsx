@@ -1,11 +1,13 @@
 'use client'
 
-import { useMemo, memo } from 'react'
-import type { ComponentType } from 'react'
-import text from '@ux/text'
 import clsx from 'clsx'
-import { PLATFORM_CONFIG } from '@/lib/social-platforms'
+import type { ComponentType } from 'react'
+import { memo,useMemo } from 'react'
+import text from '@ux/text'
+
 import { useSocialConnections } from '@/hooks/useSocialConnections'
+import { useTranslations } from '@/hooks/useTranslations'
+import { PLATFORM_CONFIG } from '@/lib/social-platforms'
 
 interface PlatformStatusItemProps {
   name: string
@@ -24,9 +26,7 @@ const PlatformStatusItem = memo(function PlatformStatusItem({ name, connected, I
       )}
     >
       {Icon ? (
-        <Icon
-          className={clsx('w-3 h-3 flex-shrink-0', !connected && 'opacity-40')}
-        />
+        <Icon className={clsx('w-3 h-3 flex-shrink-0', !connected && 'opacity-40')} />
       ) : (
         <div className="w-3 h-3 flex-shrink-0 rounded-full bg-muted-foreground/20" />
       )}
@@ -42,6 +42,8 @@ interface SocialStatusWidgetProps {
 function SocialStatusWidget({
   className = ''
 }: SocialStatusWidgetProps) {
+  const t = useTranslations();
+
   const { data: connectionsData, isLoading, error } = useSocialConnections()
 
   const connections = useMemo(() => connectionsData ?? [], [connectionsData]);
@@ -61,7 +63,7 @@ function SocialStatusWidget({
   if (isLoading) {
     return (
       <div className={clsx('flex flex-col gap-1 p-1 border border-border rounded-sm my-1', className)}>
-        <text.p size={-2} text="Loading social connections..." />
+        <text.p size={-2} text={t('builder_widgets_socialstatus_loading')} />
       </div>
     )
   }
@@ -69,7 +71,7 @@ function SocialStatusWidget({
   if (error) {
     return (
       <div className={clsx('flex flex-col gap-1 p-1 border border-border rounded-sm my-1', className)}>
-        <text.p size={-2} className="text-intents-ux-error-textColor" text={`Error: ${error.message}`} />
+        <text.p size={-2} className="text-intents-ux-error-textColor" text={`${t('builder_status_error')}: ${error.message}`} />
       </div>
     )
   }

@@ -1,7 +1,7 @@
-import { formatSubscriptionId } from '@/lib/subscription-id';
-import { appFetch } from '@/lib/gasket-config';
 import { agentFetch } from '@/lib/agent-fetch';
+import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
+import { formatSubscriptionId } from '@/lib/subscription-id';
 
 export interface SiteStatus {
   siteId: string;

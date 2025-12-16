@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import MarkdownRenderer from '../MarkdownRenderer'
-import ToolHeader from './ToolHeader'
-import ToolModal from './ToolModal'
-import { getToolDisplayName } from '../../../../utils/toolNameMapping'
 import { Wrench } from 'lucide-react'
+import { useEffect,useState } from 'react'
+
+import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import ToolModal from '@/app/develop/components/tool-renderers/ToolModal'
+import { useTranslations } from '@/hooks/useTranslations'
+import { getToolDisplayName } from '@/utils/toolNameMapping'
 
 /**
  * Props for the default tool renderer
@@ -42,6 +44,7 @@ export default function DefaultToolRenderer({
   startTime: _startTime,
   endTime: _endTime
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -77,7 +80,7 @@ export default function DefaultToolRenderer({
           {/* Duration */}
           {duration && (
             <div>
-              <div className="text-sm font-bold mb-1">Duration</div>
+              <div className="text-sm font-bold mb-1">{t('builder_tools_default_duration')}</div>
               <div className="text-sm">{formatDuration(duration)}</div>
             </div>
           )}
@@ -85,7 +88,7 @@ export default function DefaultToolRenderer({
           {/* Input */}
           {input && Object.keys(input).length > 0 && (
             <div>
-              <div className="text-sm font-bold mb-1">Arguments</div>
+              <div className="text-sm font-bold mb-1">{t('builder_tools_default_arguments')}</div>
               <pre className="text-xs whitespace-pre-wrap font-mono bg-muted p-1.5 rounded border border-border max-h-32 overflow-y-auto">
                 {JSON.stringify(input, null, 2)}
               </pre>
@@ -95,7 +98,7 @@ export default function DefaultToolRenderer({
           {/* Result */}
           {result && !error && (
             <div>
-              <div className="text-sm font-bold mb-1">Output</div>
+              <div className="text-sm font-bold mb-1">{t('builder_tools_default_output')}</div>
               <div className="bg-muted p-1.5 rounded border border-border max-h-48 overflow-y-auto">
                 <MarkdownRenderer
                   content={typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
@@ -108,7 +111,7 @@ export default function DefaultToolRenderer({
           {/* Error */}
           {error && (
             <div>
-              <div className="text-sm font-bold mb-1 text-destructive">Error</div>
+              <div className="text-sm font-bold mb-1 text-destructive">{t('builder_status_error')}</div>
               <div className="bg-destructive/10 border border-destructive/30 p-1.5 rounded">
                 <pre className="text-xs whitespace-pre-wrap font-mono text-destructive-foreground">
                   {error}

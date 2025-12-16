@@ -1,5 +1,5 @@
-import { getWidgetComponent } from './widgets'
 import { logger } from '@/lib/request-context'
+import { getWidgetComponent } from './widgets'
 
 interface WidgetRendererProps {
   widgetData: {

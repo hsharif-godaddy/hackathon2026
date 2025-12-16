@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+import { beforeEach,describe, expect, it, vi } from 'vitest';
+import { screen } from '@testing-library/react';
+
 import { renderWithProviders } from '@/tests/test-utils';
 import PreviewHeader from './PreviewHeader';
-import { ViewMode, PreviewViewMode } from '../types';
+import { PreviewViewMode,ViewMode } from '../types';
 
 const mockRouter = { push: vi.fn() };
 const mockDevelopStore = {
@@ -71,46 +73,46 @@ describe('PreviewHeader', () => {
   it('should render without crashing', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    expect(screen.getByLabelText('Preview')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_preview_button_preview')).toBeInTheDocument();
   });
 
   it('should render preview button', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    expect(screen.getByLabelText('Preview')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_preview_button_preview')).toBeInTheDocument();
   });
 
   it('should render code editor button', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    expect(screen.getByLabelText('Code Editor')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_preview_button_code')).toBeInTheDocument();
   });
 
   it('should render refresh button', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    expect(screen.getByLabelText('Refresh Preview')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_preview_button_refresh')).toBeInTheDocument();
   });
 
   it('should render collapse/expand chat pane button on desktop', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} isMobile={false} />);
 
-    expect(screen.getByLabelText('Collapse Chat Pane')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_preview_button_collapse')).toBeInTheDocument();
   });
 
   it('should not render collapse/expand button on mobile', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} isMobile={true} />);
 
-    expect(screen.queryByLabelText('Collapse Chat Pane')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('builder_preview_button_collapse')).not.toBeInTheDocument();
   });
 
   it('should render select mode button on desktop', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} isMobile={false} />);
 
-    expect(screen.getByLabelText('Select Mode')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_preview_button_select')).toBeInTheDocument();
   });
 
-  it('should not render select mode button on mobile', () => {
+  it('should not render builder_preview_button_select button on mobile', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} isMobile={true} />);
 
     expect(screen.queryByLabelText('Select Mode')).not.toBeInTheDocument();
@@ -119,26 +121,26 @@ describe('PreviewHeader', () => {
   it('should render desktop preview button on desktop', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} isMobile={false} />);
 
-    expect(screen.getByLabelText('Preview Desktop')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_preview_button_desktop')).toBeInTheDocument();
   });
 
   it('should render mobile preview button on desktop', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} isMobile={false} />);
 
-    expect(screen.getByLabelText('Preview Mobile')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_preview_button_mobile')).toBeInTheDocument();
   });
 
   it('should not render preview size buttons on mobile', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} isMobile={true} />);
 
-    expect(screen.queryByLabelText('Preview Desktop')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Preview Mobile')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('builder_preview_button_desktop')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('builder_preview_button_mobile')).not.toBeInTheDocument();
   });
 
   it('should render open in new tab button', () => {
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    expect(screen.getByLabelText('Open in new tab')).toBeInTheDocument();
+    expect(screen.getByLabelText('builder_common_open_new_tab')).toBeInTheDocument();
   });
 
   it('should display site name in domain button', () => {
@@ -152,7 +154,7 @@ describe('PreviewHeader', () => {
 
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    const refreshButton = screen.getByLabelText('Refresh Preview');
+    const refreshButton = screen.getByLabelText('builder_preview_button_refresh');
     expect(refreshButton).toBeDisabled();
   });
 
@@ -161,7 +163,7 @@ describe('PreviewHeader', () => {
 
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    const selectButton = screen.getByLabelText('Select Mode');
+    const selectButton = screen.getByLabelText('builder_preview_button_select');
     expect(selectButton).toBeDisabled();
   });
 
@@ -170,8 +172,8 @@ describe('PreviewHeader', () => {
 
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    const desktopButton = screen.getByLabelText('Preview Desktop');
-    const mobileButton = screen.getByLabelText('Preview Mobile');
+    const desktopButton = screen.getByLabelText('builder_preview_button_desktop');
+    const mobileButton = screen.getByLabelText('builder_preview_button_mobile');
 
     expect(desktopButton).toBeDisabled();
     expect(mobileButton).toBeDisabled();
@@ -182,7 +184,7 @@ describe('PreviewHeader', () => {
 
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    const newTabButton = screen.getByLabelText('Open in new tab');
+    const newTabButton = screen.getByLabelText('builder_common_open_new_tab');
     expect(newTabButton).toBeDisabled();
   });
 
@@ -191,7 +193,7 @@ describe('PreviewHeader', () => {
 
     renderWithProviders(<PreviewHeader {...defaultProps} />);
 
-    const newTabButton = screen.getByLabelText('Open in new tab');
+    const newTabButton = screen.getByLabelText('builder_common_open_new_tab');
     expect(newTabButton).toBeDisabled();
   });
 

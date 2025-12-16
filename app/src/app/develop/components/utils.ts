@@ -1,8 +1,9 @@
-import { RefObject } from "react"
 import { useParams } from "next/navigation"
+import { RefObject } from "react"
+
 import { logger } from '@/lib/request-context'
-import { postMessageToIframe } from '@/utils/postMessage'
 import type { ChatMessage, StreamingMessage, ToolCall } from '@/stores/useStreamingConversationStore'
+import { postMessageToIframe } from '@/utils/postMessage'
 
 /**
  * Serializes tool arguments to a string format for consistent display in components.

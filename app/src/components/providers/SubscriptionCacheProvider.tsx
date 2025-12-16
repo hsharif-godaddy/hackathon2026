@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useSubscriptionCache } from '@/hooks/useSubscriptionCache'
 import { logger } from '@/lib/request-context'

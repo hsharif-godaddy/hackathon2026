@@ -4,13 +4,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+
 // Lazy import to avoid initializing gd-auth during module loading
 import { AccountAdapterFactory } from '@/lib/account-adapters/AccountAdapterFactory';
-import { isAuthDisabled } from '@/lib/gasket-config';
+import { getTokenAgeMinutes,isTokenTooOld } from '@/lib/auth/token-refresh';
 import { isFeatureEnabled } from '@/lib/features';
+import { isAuthDisabled } from '@/lib/gasket-config';
 import { MOCK_USER } from '@/lib/mock-auth';
-import { RequestContextService, type RequestContext, logger } from '@/lib/request-context';
-import { isTokenTooOld, getTokenAgeMinutes } from '@/lib/auth/token-refresh';
+import { logger,type RequestContext, RequestContextService } from '@/lib/request-context';
 
 /**
  * Error message for shopper ID authorization failure

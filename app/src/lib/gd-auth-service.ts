@@ -3,8 +3,8 @@
  * Handles JWT validation and automatic heartbeat for IDP tokens
  */
 
-import { logger } from '@/lib/request-context';
 import { authUtils } from '@/lib/features';
+import { logger } from '@/lib/request-context';
 
 export class GdAuthService {
   private gdAuth: any;

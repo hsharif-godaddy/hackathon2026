@@ -1,5 +1,5 @@
-import { DomainValidationError, type DomainValidationErrorObject } from '@/lib/mgmt-airo/types';
 import type { useTranslations } from '@/hooks/useTranslations';
+import { DomainValidationError, type DomainValidationErrorObject } from '@/lib/mgmt-airo/types';
 
 /**
  * Get user-friendly error message for domain validation errors

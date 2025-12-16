@@ -5,9 +5,10 @@
  * detailed metrics, and version information handling.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { GET } from '../route';
 import { NextRequest } from 'next/server';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { GET } from '../route';
 
 /**
  * Helper to create mock NextRequest

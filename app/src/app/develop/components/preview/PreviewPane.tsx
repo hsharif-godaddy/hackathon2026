@@ -1,22 +1,24 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import clsx from 'clsx'
-import Button from '@ux/button'
+import { useCallback, useEffect, useMemo,useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
-import { useAppIdFromParams } from '@/app/develop/components/utils'
-import { useServerPollingStore } from '@/stores/useServerPollingStore'
-import { useGitStore } from '@/stores/useGitStore'
-import { useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
-import { useGitHistoryQuery } from '@/hooks/useGitHistory'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { postMessageToIframe } from '@/utils/postMessage'
-import { logger } from '@/lib/request-context'
-import { ViewMode, PreviewViewMode } from '../types'
-import PreviewError from './PreviewError'
-import PreviewHeader from './PreviewHeader'
-import PreviewCode from './PreviewCode'
+import Button from '@ux/button'
+
+import PreviewCode from '@/app/develop/components/preview/PreviewCode'
+import PreviewError from '@/app/develop/components/preview/PreviewError'
+import PreviewHeader from '@/app/develop/components/preview/PreviewHeader'
 import Tips from '@/app/develop/components/tips/Tips'
+import { PreviewViewMode,ViewMode } from '@/app/develop/components/types'
+import { useAppIdFromParams } from '@/app/develop/components/utils'
+import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
+import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useGitStore } from '@/stores/useGitStore'
+import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { postMessageToIframe } from '@/utils/postMessage'
 
 // Timing constants for iframe lifecycle management
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
@@ -33,6 +35,8 @@ export default function PreviewPane({
   isMobile = false,
   showBuildingOverlay = false
 }: PreviewPaneProps) {
+  const t = useTranslations();
+
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const startPollingForServer = useServerPollingStore((state) => state.startPollingForServer)
   const stopPollingForServer = useServerPollingStore((state) => state.stopPollingForServer)
@@ -276,24 +280,24 @@ export default function PreviewPane({
   }
   if (isPollingEntitlements) {
     // We don't want to show tips when polling entitlements
-    return <Tips buildingMessage="Updating Subscription..." showTips={false} />
+    return <Tips buildingMessage={t('builder_preview_updating_suscription')} showTips={false} />
   }
 
   if (showBuildingOverlay) {
-    return <Tips buildingMessage="Building your App" />
+    return <Tips buildingMessage={t('builder_preview_building_app')} />
   }
 
   if (!serverState || (isPollingServer(appId) && !serverState.isReady)) {
-    return <Tips buildingMessage="Loading your App" />
+    return <Tips buildingMessage={t('builder_preview_loading_app')} />
   }
 
   // Error state when server failed
   if (serverState?.status === 'failed' || serverState?.status === 'error') {
     return (
       <PreviewError
-        title="Server Error"
-        error={serverState.error || 'The server encountered an error and could not start.'}
-        buttonText="Try Again"
+        title={t('builder_preview_server_error')}
+        error={serverState.error || t('builder_preview_server_error_text')}
+        buttonText={t('builder_common_try_again')}
         buttonOnClick={handleManualRetry}
       />
     )
@@ -303,9 +307,9 @@ export default function PreviewPane({
   if (iframeError && previewUrl) {
     return (
       <PreviewError
-        title="Preview Error"
-        error="The preview could not load. This might be a temporary issue."
-        buttonText="Reload Preview"
+        title={t('builder_preview_error_title')}
+        error={t('builder_preview_error_text')}
+        buttonText={t('builder_preview_error_button')}
         buttonOnClick={handleManualRetry}
       />
     )
@@ -319,16 +323,19 @@ export default function PreviewPane({
           <div className="bg-intents-ux-feedbackInfo-feedbackColor rounded pl-1 pr-2 py-1 mx-1 my-1 md:mx-2 md:my-0">
             <div className="flex items-center items-space-between w-full">
               <span className="font-mono px-1 text-sm py-0.5 rounded mr-1 grow">
-                This is a preview of a previous version of the app.
+                {t('builder_preview_git_text')}
               </span>
               <Button
                 design="secondary"
                 size="sm"
                 onClick={handleRestoreConfirm}
                 disabled={restoreMutation.isPending}
-                title="Restore files from this commit"
+                title={t('builder_preview_git_title')}
               >
-                {restoreMutation.isPending ? 'Restoring...' : `Restore to ${selectedCommit ? selectedCommit.hash.substring(0, 7) : 'this commit'}`}
+                {restoreMutation.isPending
+                  ? t('builder_preview_error_restoring')
+                  : `${t('builder_preview_error_restore_to')} ${selectedCommit ? selectedCommit.hash.substring(0, 7) : t('builder_preview_error_this_commit')}`
+                }
               </Button>
             </div>
           </div>
@@ -364,7 +371,7 @@ export default function PreviewPane({
                   onError={handleIframeError}
                   onLoad={handleIframeLoad}
                   sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"
-                  title={`Preview for ${appId}`}
+                  title={t('builder_preview_preview_for', { appId })}
                 />
               )}
               {viewMode === ViewMode.CODE && (
@@ -381,8 +388,8 @@ export default function PreviewPane({
   return (
     <div className="h-full flex flex-col items-center justify-center">
       <Loader
-        title="Loading Preview"
-        description="Preparing your application preview..."
+        title={t('builder_preview_loading_title')}
+        description={t('builder_preview_loading_text')}
       />
     </div>
   )

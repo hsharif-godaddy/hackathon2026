@@ -1,20 +1,21 @@
 'use client'
 
-import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useDatabaseTables } from '@/hooks/useDatabaseTables';
+import React, { useState } from 'react';
 import Box from '@ux/box';
 import Button from '@ux/button';
-import Skeleton from '@ux/skeleton';
 import DatabaseIcon from '@ux/icon/database';
 import EditIcon from '@ux/icon/edit';
+import Skeleton from '@ux/skeleton';
+import text from '@ux/text';
+
+import { ChatTab } from '@/app/develop/components/types';
 import BigCard from '@/components/layout/BigCard';
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
+import { useDatabaseTables } from '@/hooks/useDatabaseTables';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { ChatTab } from '@/app/develop/components/types';
 import { TableDataBrowser } from './TableDataBrowser';
 import { formatColumnName } from './utils';
-import text from '@ux/text';
 
 interface DatabasePanelProps {
   appId: string;

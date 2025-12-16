@@ -1,12 +1,14 @@
-import React from 'react';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { renderWithProviders } from '@/tests/test-utils';
-import { mockURLMethods } from '@/tests/mocks';
-import AppThumbnail from './AppThumbnail';
+
+import React from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+
 import { buildDynamicApiUrl } from '@/config/dynamic-api';
 import { agentFetch } from '@/lib/agent-fetch';
+import { mockURLMethods } from '@/tests/mocks';
+import { renderWithProviders } from '@/tests/test-utils';
+import AppThumbnail from './AppThumbnail';
 
 vi.mock('@/config/dynamic-api');
 vi.mock('@/lib/agent-fetch');

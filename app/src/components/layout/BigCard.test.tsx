@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+import { describe, expect,it } from 'vitest';
+import { screen } from '@testing-library/react';
+
+import { StatusValue } from '@/app/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
 import BigCard from './BigCard';
-import { StatusValue } from '@/app/develop/components/types';
 
 describe('BigCard', () => {
   it('should render without crashing', () => {

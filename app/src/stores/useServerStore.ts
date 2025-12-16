@@ -1,8 +1,9 @@
+import { enableMapSet } from 'immer'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import { enableMapSet } from 'immer'
-import { appService } from '@/services/AppService'
+
 import { logger } from '@/lib/request-context'
+import { appService } from '@/services/AppService'
 
 // Enable Immer MapSet plugin for Map/Set support
 enableMapSet()

@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect,useState } from 'react'
 import Button from '@ux/button'
+
+import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
 import { openOAuthPopupAndAwait } from '@/lib/oauth-popup'
 import { logger } from '@/lib/request-context'
-import { useCurrentAppId } from '@/stores/useStreamingConversationStore'
 import { getSharedSocket } from '@/lib/socketRegistry'
-import { useStreamingWebSocket } from '@/hooks/useStreamingWebSocket'
+import { useCurrentAppId } from '@/stores/useStreamingConversationStore'
 
 /**
  * Auth request message payload from agents service

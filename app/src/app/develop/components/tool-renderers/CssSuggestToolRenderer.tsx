@@ -1,11 +1,13 @@
 'use client'
 
-import ColorPaletteGridWidget, { type PaletteData } from '../widgets/ColorPaletteGridWidget'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import ColorPaletteModal from './ColorPaletteModal'
-import { useState } from 'react'
 import { Palette } from 'lucide-react'
-import ToolHeader from './ToolHeader'
+import { useState } from 'react'
+
+import ColorPaletteModal from '@/app/develop/components/tool-renderers/ColorPaletteModal'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import ColorPaletteGridWidget, { type PaletteData } from '@/app/develop/components/widgets/ColorPaletteGridWidget'
+import { useTranslations } from '@/hooks/useTranslations'
 
 /**
  * Custom renderer for cssSuggest tool
@@ -19,13 +21,13 @@ export default function CssSuggestToolRenderer({
   toolStatus,
   result
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const [isVisible] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
 
   if (!isVisible) {
     return null
   }
-
 
   // Extract palettes from result
   let palettes: PaletteData[] = []
@@ -45,8 +47,8 @@ export default function CssSuggestToolRenderer({
   const hasPalettes = palettes.length > 0
 
   const displayName = (toolStatus === 'completed' && hasPalettes)
-    ? `Color Scheme Suggestions (${palettes.length} options)`
-    : 'Color Scheme Suggestions'
+    ? `${t('builder_tools_css_suggest_scheme_suggest')} (${palettes.length} options)`
+    : t('builder_tools_css_suggest_scheme_suggest')
 
   return (
     <div>
@@ -74,7 +76,7 @@ export default function CssSuggestToolRenderer({
               <path d="M12 2C6.48 2 2 6.48 2 12c0 1.54.36 3 .97 4.29L2 22l5.71-.97C9 21.64 10.46 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18c-1.38 0-2.68-.3-3.86-.83l-.28-.14-2.86.49.49-2.86-.14-.28A7.95 7.95 0 014 12c0-4.41 3.59-8 8-8s8 3.59 8 8-3.59 8-8 8z"/>
               <path d="M7 9h10v2H7zm0 4h7v2H7z"/>
             </svg>
-            <span className="text-sm">Select a color above to preview, or ask below for different options</span>
+            <span className="text-sm">{t('builder_tools_css_suggest_select_or_ask')}</span>
           </div>
         </div>
       )}
@@ -82,7 +84,7 @@ export default function CssSuggestToolRenderer({
       <ColorPaletteModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Color Scheme Suggestions"
+        title={t('builder_tools_css_suggest_title')}
         palettes={palettes}
       />
     </div>

@@ -1,9 +1,10 @@
 import React from 'react';
-import { useSubscriptionByAppId } from './useSubscriptionByAppId';
+
+import { logger } from '@/lib/request-context';
 import { useEntitlementsBySubscriptionId } from './useEntitlementsBySubscriptionId';
 import { useMatchingProject } from './useMatchingProject';
+import { useSubscriptionByAppId } from './useSubscriptionByAppId';
 import { useUpdateEntitlement } from './useUpdateEntitlement';
-import { logger } from '@/lib/request-context';
 
 interface PaywallEligibilityResult {
   showPaywall: boolean;

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { logger } from '@/lib/request-context';
+
 import { auth, authUtils } from '@/lib/features';
+import { logger } from '@/lib/request-context';
 
 // Server-side configuration that can access actual environment variables
 const getServerConfig = () => {

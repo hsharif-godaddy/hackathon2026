@@ -15,14 +15,13 @@
 
 // Re-export streaming store types as the canonical source
 export type {
-  ToolCall,
-  StreamSegment,
   ChatMessage,
-  StreamingMessage,
   Conversation,
-  WebSocketState,
-  PlanItem
-} from '@/stores/useStreamingConversationStore'
+  PlanItem,
+  StreamingMessage,
+  StreamSegment,
+  ToolCall,
+  WebSocketState} from '@/stores/useStreamingConversationStore'
 
 // All streaming-related types are now exported from the store above
 

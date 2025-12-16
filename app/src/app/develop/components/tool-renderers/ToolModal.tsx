@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, type ReactNode, type ReactPortal } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { type ReactNode, type ReactPortal,useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import XThickIcon from '@ux/icon/x-thick'

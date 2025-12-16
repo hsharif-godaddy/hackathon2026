@@ -1,5 +1,6 @@
-import { logger } from '../../request-context';
 import { createServer } from 'net';
+
+import { logger } from '../../request-context';
 import { DevDatabase } from '../database/DevDatabase';
 
 /**

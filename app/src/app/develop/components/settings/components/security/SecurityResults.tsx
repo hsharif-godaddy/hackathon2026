@@ -16,18 +16,19 @@
  * - agents/src/server/routes/security-scan.ts (current code scan implementation)
  */
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { logger } from '@/lib/request-context';
-import Button from "@ux/button";
-import text from '@ux/text';
-import Tag from '@ux/tag';
+import { useState } from 'react';
 import Box from "@ux/box";
+import Button from "@ux/button";
 import Card from "@ux/card";
 import ShieldIcon from '@ux/icon/shield-check-filled';
+import Tag from '@ux/tag';
+import text from '@ux/text';
+
+import { logger } from '@/lib/request-context';
+import { type TestPilotRunResult } from '@/lib/testpilot';
 import { TodoListService } from '@/services/TodoListService';
 import { useAppIdFromParams } from '../../../utils';
-import { type TestPilotRunResult } from '@/lib/testpilot';
 
 /**
  * Security vulnerability interface based on TestPilot response

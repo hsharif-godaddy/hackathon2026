@@ -6,9 +6,10 @@
  */
 
 import { create } from 'zustand'
-import type { AiEditContext } from '../app/develop/components/types'
+
 import { logger } from '@/lib/request-context'
 import type { StructuredError } from '@/types/errors'
+import type { AiEditContext } from '../app/develop/components/types'
 
 // Development plan item
 export interface PlanItem {

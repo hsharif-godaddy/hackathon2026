@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { features } from '@/lib/features'
+import { useEffect, useRef,useState } from 'react'
+
 import { ProtectedRoute } from '@/components/auth'
+import { features } from '@/lib/features'
 
 interface ContextSection {
   type: 'template' | 'app' | 'visual' | 'element' | 'conversation' | 'hot_files' | 'system_prompt' | 'unused'

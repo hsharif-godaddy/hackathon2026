@@ -1,15 +1,17 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { logger } from '@/lib/request-context'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Image, Sparkles,SquarePlay } from 'lucide-react'
+import { useEffect, useRef,useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
 import XThickIcon from '@ux/icon/x-thick'
-import MarkdownRenderer from '../MarkdownRenderer'
-import ToolHeader from './ToolHeader'
-import type { DefaultToolRendererProps } from './DefaultToolRenderer'
-import { Image, SquarePlay, Sparkles } from 'lucide-react'
+
+import MarkdownRenderer from '@/app/develop/components/MarkdownRenderer'
+import type { DefaultToolRendererProps } from '@/app/develop/components/tool-renderers/DefaultToolRenderer'
+import ToolHeader from '@/app/develop/components/tool-renderers/ToolHeader'
+import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
 
 interface ImageResult {
   prompt: string
@@ -35,6 +37,7 @@ export default function MediaSearchToolRenderer({
   input: _input,
   result
 }: DefaultToolRendererProps) {
+  const t = useTranslations();
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
@@ -206,7 +209,7 @@ export default function MediaSearchToolRenderer({
 
               {/* Title */}
               <h2 className="text-xl font-bold mb-2">
-                {mediaType === 'video' ? 'Video Search Result' : isGeneratedImage ? 'AI Generated Image' : 'Image Search Results'}
+                {mediaType === 'video' ? t('builder_tools_media_video_result') : isGeneratedImage ? t('builder_tools_media_ai_result') : t('builder_tools_media_image_result')}
               </h2>
 
               {/* Markdown format (backwards compatibility - images only) */}
@@ -282,13 +285,13 @@ export default function MediaSearchToolRenderer({
 
   if (toolStatus === 'completed') {
     if (mediaType === 'video' && hasVideo) {
-      displayName = 'Found video'
+      displayName = t('builder_tools_media_found_video')
       icon = <SquarePlay className="w-2 h-2" />
     } else if (isGeneratedImage && hasImages) {
-      displayName = 'AI Generated Image'
+      displayName = t('builder_tools_media_ai_result')
       icon = <Sparkles className="w-2 h-2" />
     } else if (mediaType === 'image' && hasImages && !isMarkdownFormat) {
-      displayName = `Found ${imageCount} ${imageCount === 1 ? 'image' : 'images'}`
+      displayName = t('builder_tools_imagesearch_found', { imageCount })
       icon = <Image className="w-2 h-2" /> /* eslint-disable-line jsx-a11y/alt-text */
     }
   }
@@ -332,7 +335,7 @@ export default function MediaSearchToolRenderer({
                 className="aspect-square cursor-pointer border border-dashed border-border overflow-hidden rounded-md bg-intents-ux-boxLowContrast-backgroundColor transition-all flex flex-col items-center justify-center"
               >
                 <span className="text-md font-semibold">+{imageCount - 3}</span>
-                <span className="text-sm">See all</span>
+                <span className="text-sm">{t('builder_common_see_all')}</span>
               </button>
             )}
           </div>

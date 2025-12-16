@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 import { agentFetch } from '@/lib/agent-fetch';
-import { logger } from '@/lib/request-context';
 import { authenticateCustomer } from '@/lib/customer-auth';
+import { logger } from '@/lib/request-context';
 
 /**
  * Force dynamic rendering - prevent static generation

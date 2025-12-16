@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useDomainAttach } from './useDomainAttach';
-import { appFetch } from '@/lib/gasket-config';
 import React, { type ReactNode } from 'react';
+import { beforeEach,describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { renderHook, waitFor } from '@testing-library/react';
+
+import { appFetch } from '@/lib/gasket-config';
+import { useDomainAttach } from './useDomainAttach';
 
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: vi.fn(),

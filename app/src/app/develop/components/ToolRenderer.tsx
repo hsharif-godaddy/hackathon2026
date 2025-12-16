@@ -1,7 +1,7 @@
 'use client'
 
-import { getToolRenderer } from './tool-renderers'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
+import { getToolRenderer } from './tool-renderers'
 
 /**
  * Props for the ToolRenderer component

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { logger } from '@/lib/request-context';
 import { getRootDomain } from '@/utils/getRootDomain';

@@ -1,25 +1,26 @@
 'use client'
 
-import { useState, useCallback, useEffect, Suspense, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useRef,useState } from 'react'
 import Box from '@ux/box'
 import Spinner from '@ux/spinner'
+
+import HelpSection from '@/app/components/HelpSection'
+import InfraSection from '@/app/components/InfraSection'
+import StartSection from '@/app/components/StartSection'
+import { MockLoginDialog } from '@/components/auth/MockLogin'
+import FeaturesSection from '@/components/layout/Features'
+import Header from '@/components/layout/Header'
+import { useAuthContext } from '@/components/providers/AuthProvider'
+import { useSafariClass } from '@/hooks/useSafariClass'
+import { useSsoSignIn } from '@/hooks/useSsoSignIn'
+import { useTranslations } from '@/hooks/useTranslations'
 import { isFeatureEnabled } from '@/lib/features'
 import { appFetch } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
-import { useAuthContext } from '@/components/providers/AuthProvider'
-import { useSsoSignIn } from '@/hooks/useSsoSignIn'
-import StartSection from '@/app/components/StartSection'
-import InfraSection from '@/app/components/InfraSection'
-import HelpSection from '@/app/components/HelpSection'
-import FeaturesSection from '@/components/layout/Features'
-import { MockLoginDialog } from '@/components/auth/MockLogin'
-import Header from '@/components/layout/Header'
-import { useSafariClass } from '@/hooks/useSafariClass'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import HeroSection from './components/HeroSection'
 import { HeroSectionRef } from './components/types'
-import { useTranslations } from '@/hooks/useTranslations'
 
 function HomeContent() {
   const t = useTranslations();
@@ -164,7 +165,7 @@ function HomeContent() {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, signIn])
+  }, [router, isRedirecting, isLoading, isAuthenticated, isAuthDisabled, signIn, t])
 
   // Restore prompt from localStorage after login and clear it
   useEffect(() => {

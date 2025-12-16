@@ -1,4 +1,4 @@
-import type { CompletePalette } from '../widgets/ColorPaletteGridWidget'
+import type { CompletePalette } from '@/app/develop/components/widgets/ColorPaletteGridWidget'
 
 /**
  * Display color information for rendering color details
@@ -19,12 +19,12 @@ export interface DisplayColor {
  * @param palette - Complete palette with all color definitions
  * @returns Array of 5 display colors with name, background, foreground, and role
  */
-export function getDisplayColors(palette: CompletePalette): DisplayColor[] {
+export function getDisplayColors(palette: CompletePalette, t: (key: string) => string): DisplayColor[] {
   return [
-    { name: 'Base', background: palette.background, foreground: palette.foreground, role: 'Base text and background color' },
-    { name: 'Primary', background: palette.primary, foreground: palette.primaryForeground, role: 'Main brand color' },
-    { name: 'Secondary', background: palette.secondary, foreground: palette.secondaryForeground, role: 'Secondary brand color' },
-    { name: 'Accent', background: palette.accent, foreground: palette.accentForeground, role: 'Accent and highlights' },
-    { name: 'Muted', background: palette.muted, foreground: palette.mutedForeground, role: 'Subtle backgrounds' },
+    { name: t('builder_colors_base_name'), background: palette.background, foreground: palette.foreground, role: t('builder_colors_base_role') },
+    { name: t('builder_colors_primary_name'), background: palette.primary, foreground: palette.primaryForeground, role: t('builder_colors_primary_role') },
+    { name: t('builder_colors_secondary_name'), background: palette.secondary, foreground: palette.secondaryForeground, role: t('builder_colors_secondary_role') },
+    { name: t('builder_colors_accent_name'), background: palette.accent, foreground: palette.accentForeground, role: t('builder_colors_accent_role') },
+    { name: t('builder_colors_muted_name'), background: palette.muted, foreground: palette.mutedForeground, role: t('builder_colors_muted_role') },
   ]
 }

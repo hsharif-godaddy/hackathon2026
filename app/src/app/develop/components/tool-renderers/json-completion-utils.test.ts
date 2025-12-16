@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect,it } from 'vitest'
+
 import { completePartialJson } from './json-completion-utils'
 
 describe('json-completion-utils', function packageTests() {

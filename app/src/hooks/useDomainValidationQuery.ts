@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+
 import { appFetch } from '@/lib/gasket-config';
 import { DomainMode, DomainValidationError, type DomainValidationErrorObject } from '@/lib/mgmt-airo/types';
 

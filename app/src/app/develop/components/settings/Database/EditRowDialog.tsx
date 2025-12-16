@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react';
-import Modal from '@ux/modal';
+import React, { useEffect, useMemo,useState } from 'react';
 import Button from '@ux/button';
-import TextInput from '@ux/text-input';
+import Modal from '@ux/modal';
 import SelectInput from '@ux/select-input';
+import TextInput from '@ux/text-input';
+
 import { useUpdateRow } from '@/hooks/useTableMutations';
 import { formatColumnName, formatColumnType, getGridClasses } from './utils';
 

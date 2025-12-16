@@ -1,19 +1,21 @@
 'use client';
 
 import { useState } from 'react';
+import Box from '@ux/box';
+import Button from '@ux/button';
+import CheckmarkIcon from '@ux/icon/checkmark';
+import ClipboardIcon from '@ux/icon/clipboard';
+import LinkIcon from '@ux/icon/link';
+import text from '@ux/text';
+import TextInput from '@ux/text-input';
+
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useReferralLink } from '@/hooks/useReferralLink';
-import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { useResponsive } from '@/hooks/useResponsive';
-import { generateClickEID } from '@/utils/instrumentation';
+import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
-import Button from '@ux/button';
-import TextInput from '@ux/text-input';
-import text from '@ux/text';
-import Box from '@ux/box';
-import LinkIcon from '@ux/icon/link';
-import ClipboardIcon from '@ux/icon/clipboard';
-import CheckmarkIcon from '@ux/icon/checkmark';
+import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
+import { generateClickEID } from '@/utils/instrumentation';
 
 export enum InviteFriendsVariant {
   Button = 'button',
@@ -40,6 +42,7 @@ interface InviteFriendsProps {
  * ```
  */
 export default function InviteFriends({ location = 'unknown', variant = InviteFriendsVariant.Button }: InviteFriendsProps) {
+  const t = useTranslations();
   const { isAuthenticated } = useAuthContext();
   const { isMobile } = useResponsive();
   const isMenuItem = variant === InviteFriendsVariant.MenuItem;
@@ -76,8 +79,8 @@ export default function InviteFriends({ location = 'unknown', variant = InviteFr
           className='flex-1 [&_input]:[direction:rtl] [&_input]:text-left'
           id='referral-link-input'
           label={null}
-          value={isLoading ? 'Generating...' : (referralLink || '')}
-          errorMessage={error ? 'Failed to generate link, please try again.' : undefined}
+          value={isLoading ? t('builder_common_generating') : (referralLink || '')}
+          errorMessage={error ? t('builder_invite_friend_error') : undefined}
           disabled
           readOnly
         />
@@ -106,7 +109,7 @@ export default function InviteFriends({ location = 'unknown', variant = InviteFr
   if (isMenuItem) {
     return (
       <Box orientation='vertical' gap='sm' className='p-1'>
-        <text.h3 as='title' size={-1}>Invite Friends</text.h3>
+        <text.h3 as='title' size={-1}>{t('builder_invite_friend_title')}</text.h3>
         {referralContent}
       </Box>
     );
@@ -120,7 +123,7 @@ export default function InviteFriends({ location = 'unknown', variant = InviteFr
           design='primary'
           icon={<LinkIcon className='size-2' />}
           size='sm'
-          text={isMobile ? undefined : 'Invite Friends'}
+          text={isMobile ? undefined : t('builder_invite_friend_title')}
           data-partial='componentAiro'
           data-eid={generateClickEID(`${location}.header.invite_friends`)}
         />

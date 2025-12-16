@@ -1,6 +1,6 @@
+import { LegacyControlPlaneAdapter } from './legacy-control-plane-adapter';
 import { IControlPlaneAdapter } from './types';
 import { V2ControlPlaneAdapter } from './v2-control-plane-adapter';
-import { LegacyControlPlaneAdapter } from './legacy-control-plane-adapter';
 
 /**
  * Control Plane Adapter Factory

@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
-import { logger } from '@/lib/request-context';
+import { useEffect,useState } from "react";
 import Modal from "@ux/modal"
 import Spinner from "@ux/spinner"
+
+import { logger } from '@/lib/request-context';
 import { FeedbackForm } from './FeedbackForm';
-import { getBaseUrl, isLocalhost, getMockFeedbackConfig } from './utils';
 import { FeedbackProps } from './types';
+import { getBaseUrl, getMockFeedbackConfig,isLocalhost } from './utils';
 
 export function Feedback(props: FeedbackProps) {
   const [isLoading, setIsLoading] = useState(true);

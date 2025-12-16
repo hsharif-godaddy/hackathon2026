@@ -2,13 +2,13 @@
  * GraphQL module exports
  */
 
+export { certTokenService } from './cert-token-service';
+export type { GraphQLRequest,GraphQLResponse } from './client';
 export {
-    GraphQLClient,
     createGraphQLClient,
     createGraphQLClientWithS2SAuth,
-    getGraphQLEndpoint,
     getGraphQLAppKey,
+    getGraphQLEndpoint,
+    GraphQLClient,
 } from './client';
-export type { GraphQLResponse, GraphQLRequest } from './client';
 export type { ProjectGroup } from './types';
-export { certTokenService } from './cert-token-service';

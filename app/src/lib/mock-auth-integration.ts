@@ -3,9 +3,10 @@
  * This makes the existing auth checks work with mock authentication
  */
 
-import { useState, useEffect } from 'react'
+import { useEffect,useState } from 'react'
+
 import { isFeatureEnabled } from '@/lib/features'
-import { mockAuthManager, MOCK_USER } from '@/lib/mock-auth'
+import { MOCK_USER,mockAuthManager } from '@/lib/mock-auth'
 
 /**
  * Mock auth state that mimics GoDaddy's useAuthState return type

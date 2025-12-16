@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+import { beforeEach,describe, expect, it, vi } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+
 import { renderWithProviders } from '@/tests/test-utils';
 import PreviewPane from './PreviewPane';
-import { ViewMode, PreviewViewMode } from '../types';
+import { PreviewViewMode,ViewMode } from '../types';
 
 // Mock child components
 vi.mock('./PreviewHeader', () => ({

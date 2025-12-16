@@ -38,6 +38,6 @@ export function getAdapterConfig() {
 }
 
 // Re-export types and interfaces
-export type { IAppAdapter, ServerInfo, ServerStatus, AppAdapterCapabilities } from './interfaces/IAppAdapter';
-export type { AdapterType, AdapterConfig } from './interfaces/common';
+export type { AdapterConfig,AdapterType } from './interfaces/common';
 export { AdapterConfigResolver, AdapterError, ContainerError, ProcessError } from './interfaces/common';
+export type { AppAdapterCapabilities,IAppAdapter, ServerInfo, ServerStatus } from './interfaces/IAppAdapter';

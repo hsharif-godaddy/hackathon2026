@@ -16,8 +16,8 @@
  * Steps 4-6 (client-side redirect) are handled by @godaddy/gasket-auth's authFetch.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import { beforeEach,describe, expect, it, vi } from 'vitest';
 
 /**
  * Mock modules before importing the route

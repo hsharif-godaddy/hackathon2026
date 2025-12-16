@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
-import { appService, type App, type AppStatusData, type CreateAppData } from '@/services/AppService'
+
 import { logger } from '@/lib/request-context'
+import { type App, appService, type AppStatusData, type CreateAppData } from '@/services/AppService'
 
 export enum AppStatus {
   CREATING = 'creating',

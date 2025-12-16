@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useAuthContext } from '@/components/providers/AuthProvider'
 import Box from '@ux/box';
 import Button from '@ux/button';
-import { MockLoginDialog } from './MockLogin';
+
+import { useAuthContext } from '@/components/providers/AuthProvider'
+import { useTranslations } from '@/hooks/useTranslations';
 import { logImpressionEvent } from '@/utils/instrumentation';
+import { MockLoginDialog } from './MockLogin';
 
 export default function AccessDisabledComponent() {
+  const t = useTranslations();
   const [showMockLogin, setShowMockLogin] = useState(false);
 
   const {
@@ -22,10 +25,10 @@ export default function AccessDisabledComponent() {
       <div className="flex flex-col items-center justify-center relative w-full min-h-screen overflow-hidden header-bg bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor">
         <Box className="p-4 max-w-md text-center" gap="lg">
           <div className="text-2xl font-semibold">
-            Access Restricted
+            {t('builder_auth_access_disabled_title')}
           </div>
           <p className="opacity-50">
-            App Builder access is currently not available for your account. Please contact your administrator for assistance.
+            {t('builder_auth_access_disabled_text')}
           </p>
           <Button
             onClick={() => {
@@ -36,7 +39,7 @@ export default function AccessDisabledComponent() {
               }
             }}
             design='secondary'
-            text='Sign In'
+            text={t('builder_common_signin')}
             className="w-full text-white"
           />
         </Box>

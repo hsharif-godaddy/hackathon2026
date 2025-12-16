@@ -1,10 +1,12 @@
 'use client'
 
-import { generateClickEID } from '@/utils/instrumentation'
-import type { SendMessageOptions } from './ChatContext'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import SendIcon from '@ux/icon/send'
+
+import type { SendMessageOptions } from '@/app/develop/components/chat/ChatContext'
+import { useTranslations } from '@/hooks/useTranslations'
+import { generateClickEID } from '@/utils/instrumentation'
 
 interface ChatInputProps {
   inputValue?: string
@@ -20,6 +22,8 @@ export default function ChatInput({
   onInputChange,
   onSendMessage,
 }: ChatInputProps) {
+  const t = useTranslations();
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -37,7 +41,7 @@ export default function ChatInput({
               value={inputValue}
               onChange={(e) => onInputChange(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder={isDisabled ? "Processing... please wait" : "Ask Airo to modify code, add features, or explain implementation..."}
+              placeholder={isDisabled ? t('builder_chatinput_processing') : t('builder_chatinput_ask_airo')}
               rows={3}
               disabled={isDisabled}
               className={`w-full h-full resize-none border-0 focus:ring-0 focus:outline-none text-sm chat-input-text`}
@@ -51,7 +55,7 @@ export default function ChatInput({
               onClick={() => onSendMessage()}
               data-eid={generateClickEID('develop.prompt.send')}
               disabled={!inputValue?.trim() || isDisabled}
-              aria-label="Send message"
+              aria-label={t('builder_chatinput_send')}
               design="primary"
               icon={<SendIcon />}
               size="sm"

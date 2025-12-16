@@ -3,8 +3,9 @@
  * Replaces the old SQL-based SiteService with type-safe Prisma operations
  */
 
-import { PrismaClient, SiteStatus } from '@/generated/prisma';
 import { v4 as uuidv4 } from 'uuid';
+
+import { PrismaClient, SiteStatus } from '@/generated/prisma';
 import { getPrismaClient } from '@/lib/prisma';
 
 export interface CreateSiteRequest {

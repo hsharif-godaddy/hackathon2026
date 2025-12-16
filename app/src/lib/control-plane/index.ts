@@ -6,12 +6,12 @@
  */
 
 export { getControlPlaneAdapter, isV2ControlPlaneEnabled } from './adapter-factory';
-export { V2ControlPlaneAdapter } from './v2-control-plane-adapter';
 export { LegacyControlPlaneAdapter } from './legacy-control-plane-adapter';
 export type {
+  CreateSiteResult,
   IControlPlaneAdapter,
   SiteInfo,
-  CreateSiteResult,
   SiteStatus
 } from './types';
+export { V2ControlPlaneAdapter } from './v2-control-plane-adapter';
 

@@ -3,10 +3,11 @@
  * Replaces the old SQL-based AccountService with type-safe Prisma operations
  */
 
-import { PrismaClient, AccountStatus } from '@/generated/prisma';
 import { v4 as uuidv4 } from 'uuid';
-import { logger } from '../request-context';
+
+import { AccountStatus,PrismaClient } from '@/generated/prisma';
 import { getPrismaClient } from '@/lib/prisma';
+import { logger } from '../request-context';
 
 export interface Account {
   id: string;
