@@ -61,6 +61,9 @@ export interface SiteInfo {
   subscription_id?: string; // V2 only: subscriptionId from mgmt-hosting (needed for hierarchical URLs)
   domains?: SiteDomain[]; // V2 only: Custom domains from mgmt-hosting
   variants?: string[]; // V2 only: Available variants (e.g., ["preview", "publish"])
+  productId?: string; // V2 only: Product ID (e.g., "aab-v1", "paas-nodejs-v1")
+  ownerProduct?: string; // V2 only: Owner product family (e.g., "AiroAppBuilder", "PaaSNodeJS")
+  compositionId?: string; // V2 only: Composition type (e.g., "ai-builder", "node-app")
 }
 
 /**

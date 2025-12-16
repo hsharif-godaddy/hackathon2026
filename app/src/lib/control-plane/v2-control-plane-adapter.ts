@@ -2,7 +2,7 @@ import { IControlPlaneAdapter, CreateSiteParams, CreateSiteResult, SiteInfo, Sit
 import { extractCustomerId } from '@/lib/utils/jwt-utils';
 import { hasBeenPublished } from '@/utils/site';
 import { logger } from '@/lib/request-context';
-import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { AiroMgmtClient, AIRO_PRODUCT_IDS, AIRO_OWNER_PRODUCTS } from '@/lib/mgmt-airo';
 import { useSubscriptionCacheStore } from '@/stores/useSubscriptionCacheStore';
 
 /**
@@ -53,7 +53,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         try {
           if (targetSubscriptionId) {
             // Find specific subscription by ID
-            const allSubscriptions = await client.getSubscriptions();
+            const allSubscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
             selectedSubscription = allSubscriptions.find(sub => sub.id === targetSubscriptionId);
 
             if (!selectedSubscription) {
@@ -117,7 +117,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       const response = await client.signup({
         datacenter: process.env.MGMT_AIRO_DATACENTER || 'sxb1',
         isTrial: true,
-        productId: process.env.MGMT_AIRO_PRODUCT_ID || 'aab-v1',
+        productId: process.env.MGMT_AIRO_PRODUCT_ID || AIRO_PRODUCT_IDS.AAB_V1,
         initialPrompt: params.prompt,
         appConfigs: [{
           templateName: 'default',
@@ -393,7 +393,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         return null;
       }
 
-      const subscriptions = await client.getSubscriptions();
+      // Use ownerProduct for forward compatibility
+      const subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
 
       for (const sub of subscriptions) {
         const systems = await client.getSystems(sub.id);
@@ -453,7 +454,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       const client = this.createClient(jwt);
-      const apps = await client.getAllAppsForCustomer();
+      const apps = await client.getAllAppsForCustomer(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
       return apps.map(app => this.mapAppToSiteInfo(app, customerId));
     } catch (error: any) {
       // Re-throw 401 for auth redirect
@@ -540,7 +541,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         return null;
       }
 
-      const subscriptions = await client.getSubscriptions();
+      // Use ownerProduct for forward compatibility
+      const subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
 
       for (const sub of subscriptions) {
         const systems = await client.getSystems(sub.id);
@@ -903,7 +905,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       system_id: app.systemId, // Store systemId for delete/update/deploy operations
       subscription_id: app.subscriptionId, // Store subscriptionId for hierarchical URLs
       domains: app.domains, // Custom domains from mgmt-hosting
-      variants: app.variants // Available variants (e.g., ["preview", "publish"])
+      variants: app.variants, // Available variants (e.g., ["preview", "publish"])
+      // ownerProduct is nested in system object, compositionId indicates the product type
+      ownerProduct: app.system?.ownerProduct,
+      compositionId: app.compositionId, // e.g., 'ai-builder', 'node-app'
+      productId: app.system?.productId,
     };
   }
 

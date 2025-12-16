@@ -5,7 +5,14 @@
  */
 
 export { AiroMgmtClient } from './client';
-export { AiroHttpError, DomainValidationError, DomainMode } from './types';
+export {
+  AiroHttpError,
+  DomainValidationError,
+  DomainMode,
+  AIRO_OWNER_PRODUCTS,
+  AIRO_PRODUCT_IDS,
+  DEFAULT_OWNER_PRODUCT
+} from './types';
 export type {
   AiroDeploymentsResponse,
   AiroDeploymentMetadata,
@@ -34,5 +41,8 @@ export type {
   AiroUpdateAttributePayload,
   AiroApiError,
   AiroSystem,
-  AiroApp
+  AiroApp,
+  AiroOwnerProduct,
+  AiroProductId,
+  CustomerTree
 } from './types';

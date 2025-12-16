@@ -32,7 +32,8 @@ import {
   type AiroApp,
   type AiroRawSecretsResponse,
   type AiroUpdateSecretsPayload,
-  type AiroUpdateSecretsResponse
+  type AiroUpdateSecretsResponse,
+  DEFAULT_OWNER_PRODUCT
 } from './types';
 
 /**
@@ -235,11 +236,17 @@ export class AiroMgmtClient {
 
   /**
    * Get all subscriptions for the customer
+   *
+   * Filters by ownerProduct=AiroAppBuilder by default to only return aab-v1 subscriptions.
+   * This ensures we don't show PaaS or other product subscriptions in the AI App Builder UI.
+   *
+   * @param ownerProduct - Filter by product family (defaults to AiroAppBuilder)
    */
-  async getSubscriptions(): Promise<AiroSubscription[]> {
+  async getSubscriptions(ownerProduct: string = DEFAULT_OWNER_PRODUCT): Promise<AiroSubscription[]> {
+    const params = new URLSearchParams({ ownerProduct });
     const response = await this.request<AiroSubscription[] | { subscriptions: AiroSubscription[] }>(
       'GET',
-      '/api/airo/v1/subscriptions',
+      `/api/airo/v1/subscriptions?${params.toString()}`,
       undefined,
       { logEvent: 'mgmt-airo.get-subscriptions' }
     );
@@ -561,11 +568,17 @@ export class AiroMgmtClient {
    * This is a performance optimization that replaces the N+1 query pattern:
    * - Old: GET /subscriptions → N * GET /systems → N*M * GET /apps
    * - New: GET /customers/me/apps (single request)
+   *
+   * Filters by ownerProduct=AiroAppBuilder by default to only return aab-v1 apps.
+   * This ensures we don't show PaaS or other product apps in the AI App Builder UI.
+   *
+   * @param ownerProduct - Filter by product family (defaults to AiroAppBuilder)
    */
-  async getAllAppsForCustomer(): Promise<AiroApp[]> {
+  async getAllAppsForCustomer(ownerProduct: string = DEFAULT_OWNER_PRODUCT): Promise<AiroApp[]> {
+    const params = new URLSearchParams({ ownerProduct });
     const response = await this.request<AiroBulkAppsResponse>(
       'GET',
-      '/api/airo/v1/customers/me/apps',
+      `/api/airo/v1/customers/me/apps?${params.toString()}`,
       undefined,
       { logEvent: 'mgmt-airo.get-all-apps-for-customer' }
     );
@@ -585,12 +598,17 @@ export class AiroMgmtClient {
    * - Load time: many seconds → ~800ms (97% faster)
    * - Backend hops: many → 1 (98% reduction)
    *
+   * Filters by ownerProduct=AiroAppBuilder by default to only return aab-v1 data.
+   * This ensures we don't show PaaS or other product data in the AI App Builder UI.
+   *
+   * @param ownerProduct - Filter by product family (defaults to AiroAppBuilder)
    * @returns Promise resolving to complete customer tree with all subscriptions, systems, and apps
    */
-  async getCustomerTree(): Promise<CustomerTree> {
+  async getCustomerTree(ownerProduct: string = DEFAULT_OWNER_PRODUCT): Promise<CustomerTree> {
+    const params = new URLSearchParams({ ownerProduct });
     return this.request<CustomerTree>(
       'GET',
-      '/api/airo/v1/customers/me/tree',
+      `/api/airo/v1/customers/me/tree?${params.toString()}`,
       undefined,
       { logEvent: 'mgmt-airo.get-customer-tree' }
     );

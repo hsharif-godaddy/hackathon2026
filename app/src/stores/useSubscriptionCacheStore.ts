@@ -3,6 +3,7 @@ import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { enableMapSet } from 'immer'
 import { logger } from '@/lib/request-context'
+import { AIRO_OWNER_PRODUCTS } from '@/lib/mgmt-airo'
 
 // Enable Immer MapSet plugin for handling Map and Set objects
 enableMapSet()
@@ -109,7 +110,7 @@ export const useSubscriptionCacheStore = create<SubscriptionCacheStore>()(
         logger.info('subscription-cache.refresh.fetching-tree', {
           message: '🔍 [CACHE] Fetching customer tree (replaces 119 API calls)...'
         })
-        const tree = await client.getCustomerTree()
+        const tree = await client.getCustomerTree(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER)
         const treeDuration = Date.now() - treeStart
         logger.info('subscription-cache.refresh.tree-fetched', {
           message: `✅ [CACHE] Customer tree fetched in ${treeDuration}ms (was 28+ seconds!)`,

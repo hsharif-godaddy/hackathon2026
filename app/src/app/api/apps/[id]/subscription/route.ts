@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withCustomerAuth, type CustomerAuthContext } from '@/lib/customer-auth';
-import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { AiroMgmtClient, AIRO_OWNER_PRODUCTS } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 
 // Force dynamic rendering
@@ -41,7 +41,8 @@ export const GET = withCustomerAuth(async (
     });
 
     // Get all subscriptions to find the one containing our app
-    const subscriptions = await client.getSubscriptions();
+    // Use ownerProduct for forward compatibility
+    const subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
 
     // Search through subscriptions and systems to find the app
     for (const subscription of subscriptions) {

@@ -190,7 +190,7 @@ describe('AiroMgmtClient', () => {
 
       expect(result).toEqual([MOCK_SUBSCRIPTION]);
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://mgmt.test.com/api/airo/v1/subscriptions',
+        'https://mgmt.test.com/api/airo/v1/subscriptions?ownerProduct=AiroAppBuilder',
         expect.objectContaining({
           method: 'GET'
         })
@@ -217,6 +217,22 @@ describe('AiroMgmtClient', () => {
       const result = await client.getSubscriptions();
 
       expect(result).toEqual([]);
+    });
+
+    it('should allow custom ownerProduct filter', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [MOCK_SUBSCRIPTION]
+      });
+
+      await client.getSubscriptions('PaaSNodeJS');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions?ownerProduct=PaaSNodeJS',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
     });
   });
 
@@ -316,7 +332,7 @@ describe('AiroMgmtClient', () => {
   });
 
   describe('getAllAppsForCustomer', () => {
-    it('should return all apps from bulk endpoint', async () => {
+    it('should return all apps from bulk endpoint with default ownerProduct filter', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ apps: [MOCK_APP] })
@@ -326,7 +342,7 @@ describe('AiroMgmtClient', () => {
 
       expect(result).toEqual([MOCK_APP]);
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://mgmt.test.com/api/airo/v1/customers/me/apps',
+        'https://mgmt.test.com/api/airo/v1/customers/me/apps?ownerProduct=AiroAppBuilder',
         expect.objectContaining({
           method: 'GET'
         })
@@ -342,6 +358,22 @@ describe('AiroMgmtClient', () => {
       const result = await client.getAllAppsForCustomer();
 
       expect(result).toEqual([]);
+    });
+
+    it('should allow custom ownerProduct filter', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ apps: [MOCK_APP] })
+      });
+
+      await client.getAllAppsForCustomer('PaaSNodeJS');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/customers/me/apps?ownerProduct=PaaSNodeJS',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
     });
   });
 
