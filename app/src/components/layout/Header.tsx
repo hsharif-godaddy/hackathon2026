@@ -9,8 +9,8 @@ import { UserMenu } from '@/components/auth'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import AppSelector from '@/components/layout/AppSelector'
 import AppPublish from '@/components/layout/AppPublish'
+import { useResponsive } from '@/hooks/useResponsive'
 import InviteFriends from '@/components/layout/InviteFriends'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { generateClickEID } from '@/utils/instrumentation'
 import { HeaderProps } from './types'
 import { AiroLogo } from './AiroLogo';
@@ -19,7 +19,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 export default function Header({ actions, onShowMockLogin, location = 'unknown' }: HeaderProps) {
   const t = useTranslations();
   const { isAuthenticated, isAuthDisabled, isLoading } = useAuthContext();
-  const isMobile = useIsMobile();
+  const { isMobile } = useResponsive()
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
 

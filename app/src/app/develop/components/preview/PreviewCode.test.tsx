@@ -30,8 +30,8 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
     }),
 }));
 
-vi.mock('@/hooks/use-mobile', () => ({
-  useIsMobile: () => false,
+vi.mock('@/hooks/useResponsive', () => ({
+  useResponsive: () => ({ isMobile: false }),
 }));
 
 // Mock logger

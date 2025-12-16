@@ -11,6 +11,7 @@ import { HeroSectionProps, HeroSectionRef } from './types'
 import { generateClickEID } from '@/utils/instrumentation'
 import { MAX_PROMPT_LENGTH } from '@/lib/features'
 import ExamplesSection from '@/app/components/HeroExamples'
+import { useResponsive } from '@/hooks/useResponsive'
 import { useTranslations } from '@/hooks/useTranslations'
 
 const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
@@ -38,6 +39,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     if (typeof window === 'undefined') return false
     return /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
   }, [])
+
+  const { isMobile, isTablet } = useResponsive()
 
   useEffect(() => {
     setDisplayText(promptText)
@@ -134,10 +137,10 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   }, [])
 
   return (
-    <Box className="flex flex-col gap-3 px-2 sm:px-3 lg:px-4 pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
+    <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-6 md:pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
       <text.h1
         as='heading'
-        size={4}
+        size={isMobile ? 2 : isTablet ? 3 : 4}
         className="text-center max-w-screen-md"
       >
         {t('builder_homepage_hero_title')}
@@ -163,8 +166,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         </div>
       )}
 
-      <div className="w-full max-w-2xl mx-auto my-4">
-        <Box gap="lg">
+      <div className="w-full max-w-2xl mx-auto my-2 md:my-4">
+        <Box gap={isTablet ? 'md' : 'lg'}>
           <div className={clsx('relative transition-all duration-300 ease-out glowing-input', {
             'glowing-input--disabled': isLoading
           })}>
@@ -193,9 +196,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 rows={5}
                 disabled={isLoading}
                 maxLength={MAX_PROMPT_LENGTH + 1}
-                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-4 pr-12 py-3 w-full text-2xl leading-[1.4] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
-                  'h-32 rounded-2xl': isExpanded,
-                  'h-10 rounded-[3rem]': !isExpanded
+                className={clsx('!bg-intents-ux-box-backgroundColor relative pl-2 md:pl-4 pr-10 md:pr-12 md:py-3 w-full text-md sm:text-xl md:text-2xl leading-[1.4] font-light resize-none disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300', {
+                  'h-32 rounded-2xl py-2': isExpanded,
+                  'h-10 rounded-[3rem] py-3.5': !isExpanded
                 })}
                 placeholder={isTyping ? "" : t('builder_homepage_hero_placeholder')}
               />
@@ -223,7 +226,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
             </div>
           )}
 
-          <text.p size={-1} className='max-w-lg mx-auto opacity-40 mb-4 text-center'>
+          <text.p size={-1} className='max-w-lg mx-auto opacity-40 mb-2 md:mb-4 text-center'>
             <FormattedMessage
               id='builder_homepage_hero_disclaimer'
               values={{

@@ -7,7 +7,7 @@ import clsx from 'clsx'
 import FileTree, { FileItem } from '@/app/develop/components/FileTree'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { useResponsive } from '@/hooks/useResponsive'
 import Button from '@ux/button'
 import DownloadIcon from '@ux/icon/download'
 import Spinner from '@ux/spinner'
@@ -98,7 +98,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const [saving, setSaving] = useState<string | null>(null)
   const [recentlySaved, setRecentlySaved] = useState<string | null>(null)
 
-  const isMobile = useIsMobile()
+  const { isMobile } = useResponsive()
   // On mobile, start with file tree open so users know it exists
   const [showFileTree, setShowFileTree] = useState(isMobile)
   const setHasUnsavedChanges = useDevelopPageStore((state) => state.setHasUnsavedChanges)

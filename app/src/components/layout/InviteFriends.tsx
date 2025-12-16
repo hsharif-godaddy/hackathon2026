@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useReferralLink } from '@/hooks/useReferralLink';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useResponsive } from '@/hooks/useResponsive';
 import { generateClickEID } from '@/utils/instrumentation';
 import { logger } from '@/lib/request-context';
 import Button from '@ux/button';
@@ -41,7 +41,7 @@ interface InviteFriendsProps {
  */
 export default function InviteFriends({ location = 'unknown', variant = InviteFriendsVariant.Button }: InviteFriendsProps) {
   const { isAuthenticated } = useAuthContext();
-  const isMobile = useIsMobile();
+  const { isMobile } = useResponsive();
   const isMenuItem = variant === InviteFriendsVariant.MenuItem;
 
   const [open, setOpen] = useState(false);
