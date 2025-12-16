@@ -6,5 +6,6 @@ export const formatDate = (date: string | Date, detailed = false) => {
     year: 'numeric',
     hour: detailed ? '2-digit' : undefined,
     minute: detailed ? '2-digit' : undefined,
+    timeZone: 'UTC',
   }).format(dateObj)
 }

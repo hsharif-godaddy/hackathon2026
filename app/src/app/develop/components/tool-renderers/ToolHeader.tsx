@@ -36,7 +36,7 @@ export default function ToolHeader({
       <span className="flex-shrink-0">{icon}</span>
       <span className="min-w-0 flex items-center gap-1">
         <span className="min-w-0 flex-1 truncate">
-          {toolStatus === 'completed' && hasDetails && onOpenModal ? (
+          {(toolStatus === 'completed' || toolStatus === 'error') && hasDetails && onOpenModal ? (
             <button
               onClick={onOpenModal}
               className="hover:text-foreground hover:underline cursor-pointer truncate block w-full text-left"

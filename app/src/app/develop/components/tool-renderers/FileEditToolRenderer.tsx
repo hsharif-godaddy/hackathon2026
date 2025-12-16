@@ -307,7 +307,8 @@ export default function FileEditToolRenderer({
   toolStatus,
   input,
   result,
-  partialInput
+  partialInput,
+  error: toolCallError
 }: DefaultToolRendererProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -538,10 +539,11 @@ export default function FileEditToolRenderer({
     }
   }
 
-  // Has details if we have parsed result data (diff, metadata, etc.) OR markdown content OR batch operations
+  // Has details if we have parsed result data (diff, metadata, etc.) OR markdown content OR batch operations OR tool call error
   const hasDetails = Boolean(
     (parsedResult && (diff || changes || error || warning || filePath || normalizedToBatch)) ||
-    isMarkdownFormat
+    isMarkdownFormat ||
+    toolCallError
   )
 
   // Build metadata for modal
@@ -592,6 +594,18 @@ export default function FileEditToolRenderer({
           {Object.keys(metadata).length > 0 && (
             <div className="mb-2">
               <KeyValueTable data={metadata} />
+            </div>
+          )}
+
+          {/* Input parameters (shown when there's a tool call error for debugging) */}
+          {toolCallError && input && (
+            <div className="mb-2">
+              <text.p className="mb-1" size={0}>
+                Input Parameters
+              </text.p>
+              <pre className="text-xs whitespace-pre-wrap font-mono bg-muted p-1.5 rounded border border-border max-h-32 overflow-y-auto">
+                {JSON.stringify(input, null, 2)}
+              </pre>
             </div>
           )}
 
@@ -671,7 +685,17 @@ export default function FileEditToolRenderer({
             </div>
           )}
 
-          {/* Error */}
+          {/* Tool Call Error (invalid parameters, validation errors, etc.) */}
+          {toolCallError && (
+            <div className="mb-2 p-1.5 bg-intents-ux-feedbackCritical-feedbackColor/10 border border-intents-ux-feedbackCritical-feedbackColor/30 rounded-md">
+              <Tag emphasis="critical" size="sm" className="mb-1">
+                Tool Call Error
+              </Tag>
+              <text.p size={0} className="whitespace-pre-wrap">{toolCallError}</text.p>
+            </div>
+          )}
+
+          {/* Error (from tool execution result) */}
           {error && (
             <div className="mb-2 p-1.5 bg-intents-ux-feedbackCritical-feedbackColor/10 border border-intents-ux-feedbackCritical-feedbackColor/30 rounded-md">
               <Tag emphasis="critical" size="sm" className="mb-1">
