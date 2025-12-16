@@ -18,6 +18,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { logger } from '@/lib/request-context';
 import Button from "@ux/button";
 import text from '@ux/text';
 import Tag from '@ux/tag';
@@ -337,7 +338,10 @@ export default function SecurityResults({
       // Route to develop page with todoListId query parameter
       router.push(`/develop/${appId}?todoListId=${newTodoList.id}`);
     } catch (error) {
-      console.error("Failed to create TODO list:", error);
+      logger.error('security.todo_list.create.failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       // TODO: Show error message to user
     } finally {
       setIsCreatingTodoList(false);

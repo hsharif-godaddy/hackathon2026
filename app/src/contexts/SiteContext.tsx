@@ -11,6 +11,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { dynamicApiConfigService, type DynamicApiConfig } from '@/config/dynamic-api'
 import { sitePollingService } from '@/services/SitePollingService'
 import { useSubscriptionCache } from '@/hooks/useSubscriptionCache'
+import { logger } from '@/lib/request-context'
 
 /**
  * Get JWT token from browser cookies for API authentication
@@ -75,20 +76,25 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
         setApiConfig(config)
         setIsSiteReady(!config.isStatic && dynamicApiConfigService.isSiteReady(newSiteId))
 
-        console.log('📱 Site context updated:', {
+        logger.info('site.context.updated', {
           siteId: newSiteId,
           isStatic: config.isStatic,
           isReady: !config.isStatic && dynamicApiConfigService.isSiteReady(newSiteId)
         })
       } catch (error) {
-        console.error('❌ Failed to update site config:', error)
+        logger.error('site.context.update.failed', {
+          error: error instanceof Error ? error.message : String(error),
+          siteId: newSiteId
+        })
         // No fallback - API config is null when site config cannot be loaded
         setApiConfig(null)
         setIsSiteReady(false)
       }
     } else {
       // No site ID, no API config available
-      console.log('📱 No siteId provided, clearing API config')
+      logger.info('site.context.cleared', {
+        message: 'No siteId provided, clearing API config'
+      })
       setApiConfig(null)
       setIsSiteReady(false)
     }
@@ -118,12 +124,19 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
 
       while (attempts < maxAttempts) {
         attempts++
-        console.log(`🔄 Checking site readiness (${attempts}/${maxAttempts}):`, siteId)
+        logger.debug('site.readiness.checking', {
+          siteId,
+          attempt: attempts,
+          maxAttempts
+        })
 
         const siteStatus = await sitePollingService.checkSiteStatus(siteId)
 
         if (siteStatus.ready) {
-          console.log(`✅ Site is ready:`, siteId, siteStatus.agent_url)
+          logger.info('site.readiness.ready', {
+            siteId,
+            agentUrl: siteStatus.agent_url
+          })
           // Update config when site becomes ready
           const config = await dynamicApiConfigService.getConfigForSite(siteId)
           setApiConfig(config)
@@ -132,7 +145,7 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
         }
 
         if (siteStatus.status === 'failed') {
-          console.log(`❌ Site failed:`, siteId)
+          logger.error('site.readiness.failed', { siteId })
           return false
         }
 
@@ -140,10 +153,13 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
         await new Promise(resolve => setTimeout(resolve, 10000))
       }
 
-      console.log(`⏰ Site readiness check timed out:`, siteId)
+      logger.warn('site.readiness.timeout', { siteId, timeoutMs })
       return false
     } catch (error) {
-      console.error('❌ Error waiting for site:', error)
+      logger.error('site.readiness.error', {
+        error: error instanceof Error ? error.message : String(error),
+        siteId
+      })
       return false
     }
   }, [siteId])
@@ -166,18 +182,20 @@ export function SiteProvider({ children, initialSiteId }: SiteProviderProps) {
   useEffect(() => {
     return () => {
       // Note: The new polling service doesn't need manual cancellation as it's promise-based
-      console.log('🧹 SiteContext cleanup (no polling cancellation needed)')
+      logger.debug('site.context.cleanup', {
+        message: 'SiteContext cleanup, no polling cancellation needed'
+      })
     }
   }, [])
 
   // Log cache performance metrics periodically
   useEffect(() => {
     if (cacheStatus.hitRate > 0) {
-      console.log('📊 Subscription Cache Performance:', {
-        hitRate: `${cacheStatus.hitRate}%`,
+      logger.debug('subscription.cache.performance', {
+        hitRate: cacheStatus.hitRate,
         hits: cacheStatus.cacheHits,
         misses: cacheStatus.cacheMisses,
-        lastRefresh: cacheStatus.lastRefresh ? new Date(cacheStatus.lastRefresh).toLocaleTimeString() : 'Never',
+        lastRefresh: cacheStatus.lastRefresh,
         isRefreshing: cacheStatus.isRefreshing
       })
     }
@@ -217,7 +235,9 @@ export function useSiteContext(): SiteContextValue {
 export function useApiConfig(): DynamicApiConfig | null {
   const { apiConfig } = useSiteContext()
   if (!apiConfig) {
-    console.warn('⚠️ No API config available - ensure siteId is set and site is ready')
+    logger.warn('api.config.unavailable', {
+      message: 'No API config available - ensure siteId is set and site is ready'
+    })
   }
   return apiConfig
 }

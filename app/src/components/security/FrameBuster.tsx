@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { logger } from '@/lib/request-context';
 
 /**
  * Client-side iframe detection and redirect component
@@ -19,7 +20,10 @@ export default function FrameBuster() {
         }
       }
     } catch (e) {
-      console.warn('Frame detection blocked by same-origin policy - this is expected');
+      logger.debug('frame_buster.same_origin.blocked', {
+        message: 'Frame detection blocked by same-origin policy - this is expected',
+        error: e instanceof Error ? e.message : String(e)
+      });
     }
   }, []);
 

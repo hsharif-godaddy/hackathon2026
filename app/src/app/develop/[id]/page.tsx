@@ -145,7 +145,10 @@ function DevelopPageContent() {
             const message = 'Fix my selected Security Vulnerabilities.'
             await sendMessage(message, undefined, undefined, { id: todoListId })
         } catch (error) {
-          console.error('Failed to send context:', error)
+          logger.error('develop.todo_context.send.failed', {
+            todoListId,
+            error: error instanceof Error ? error.message : String(error)
+          })
         }
       }
 

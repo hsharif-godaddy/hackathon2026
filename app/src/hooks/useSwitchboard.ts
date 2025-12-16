@@ -11,7 +11,10 @@ import { logger } from '@/lib/request-context';
 async function fetchFeatureFlag(featureName: string): Promise<boolean> {
   const rootDomain = getRootDomain();
   if (!rootDomain) {
-    console.warn(`Cannot fetch feature flag ${featureName}: no root domain`);
+    logger.warn('switchboard.no_root_domain', {
+      featureName,
+      message: 'Cannot fetch feature flag: no root domain'
+    });
     return false;
   }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { logger } from '@/lib/request-context'
 import { AnimatePresence, motion } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
@@ -90,7 +91,10 @@ export default function ImageSearchToolRenderer({
         }
       }
     } catch (e) {
-      console.error('Failed to parse imageSearch result:', e)
+      logger.error('tool.image_search.parse.failed', {
+        error: e instanceof Error ? e.message : String(e),
+        resultLength: result?.length
+      })
     }
   }
 

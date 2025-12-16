@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { logger } from '@/lib/request-context';
 import gasket from '../../../../gasket.ts';
 
 /**
@@ -35,9 +36,12 @@ export async function POST(request: NextRequest) {
     // TODO: Add a check to see if the log has been processed by CDS. If not, log an error, but still return a 200
     return NextResponse.json({ status: 'ok' }, { status: 200 });
   } catch (error) {
-    console.error('[CDS-LOG] Error:', error);
-    return NextResponse.json({ 
-      status: 'error', 
+    logger.error('cds.log.forward.failed', {
+      error: error instanceof Error ? error.message : String(error),
+      cdsApiLogPath
+    });
+    return NextResponse.json({
+      status: 'error',
       error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { logger } from '@/lib/request-context'
 import KeyValueTable from './KeyValueTable'
 import MarkdownRenderer from '../MarkdownRenderer'
 import ToolHeader from './ToolHeader'
@@ -443,7 +444,10 @@ export default function FileEditToolRenderer({
         }
       }
     } catch (e) {
-      console.error('Failed to parse fileEdit result:', e)
+      logger.error('tool.file_edit.parse.failed', {
+        error: e instanceof Error ? e.message : String(e),
+        resultLength: result?.length
+      })
     }
   }
 

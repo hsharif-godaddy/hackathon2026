@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { logger } from '@/lib/request-context'
 import KeyValueTable from './KeyValueTable'
 import MarkdownRenderer from '../MarkdownRenderer'
 import ToolHeader from './ToolHeader'
@@ -71,7 +72,10 @@ export default function TerminalCommandToolRenderer({
         error = parsedResult.error || ''
       }
     } catch (e) {
-      console.error('Failed to parse terminalCommand result:', e)
+      logger.error('tool.terminal_command.parse.failed', {
+        error: e instanceof Error ? e.message : String(e),
+        resultLength: result?.length
+      })
     }
   }
 

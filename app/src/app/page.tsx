@@ -135,7 +135,9 @@ function HomeContent() {
 
       router.push(redirectUrl)
     } catch (error) {
-      console.error('❌ Error in start building flow:', error)
+      logger.error('homepage.start_building.failed', {
+        error: error instanceof Error ? error.message : String(error)
+      })
 
       // Set user-friendly error message
       let errorMessage = 'Something went wrong. Please try again.'

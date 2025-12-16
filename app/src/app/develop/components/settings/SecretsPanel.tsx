@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSecrets, type Secret } from '@/hooks/useSecrets';
 import { useSecretOperations } from '@/hooks/useSecretOperations';
+import { logger } from '@/lib/request-context';
 import IconButton from '@/app/develop/components/IconButton';
 import Button from '@ux/button';
 import Spinner from '@ux/spinner';
@@ -248,7 +249,11 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
       setSubmitError(null);
     } catch (err) {
-      console.error('Failed to submit changes:', err);
+      logger.error('secrets.submit.failed', {
+        appId,
+        variant,
+        error: err instanceof Error ? err.message : String(err)
+      });
 
       // Extract error message from the error object
       let errorMessage = 'Failed to save secrets. Please try again.';

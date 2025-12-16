@@ -7,6 +7,7 @@ import AppInactivityAlert from '@/components/layout/AppInactivityAlert'
 import { DevelopmentAdminSection } from '@/components/development'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { useSitesStore } from '@/stores/useSitesStore'
+import { logger } from '@/lib/request-context'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
@@ -40,7 +41,9 @@ function SitesPageContent() {
     try {
       await stopAllSites()
     } catch (error) {
-      console.error('Error stopping all apps:', error)
+      logger.error('sites.stop_all.failed', {
+        error: error instanceof Error ? error.message : String(error)
+      })
     } finally {
       setAdminActionLoading(null)
     }
@@ -53,7 +56,9 @@ function SitesPageContent() {
     try {
       await deleteAllSites()
     } catch (error) {
-      console.error('Error deleting all apps:', error)
+      logger.error('sites.delete_all.failed', {
+        error: error instanceof Error ? error.message : String(error)
+      })
     } finally {
       setAdminActionLoading(null)
     }

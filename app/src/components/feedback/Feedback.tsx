@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { logger } from '@/lib/request-context';
 import Modal from "@ux/modal"
 import Spinner from "@ux/spinner"
 import { FeedbackForm } from './FeedbackForm';
@@ -40,7 +41,10 @@ export function Feedback(props: FeedbackProps) {
       setIsLoading(false);
     })
     .catch((err) => {
-      console.error(err);
+      logger.error('feedback.config.fetch.failed', {
+        feedbackId,
+        error: err instanceof Error ? err.message : String(err)
+      });
       setIsLoading(false);
       onClose();
     });

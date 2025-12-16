@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { logger } from '@/lib/request-context'
 import { AnimatePresence, motion } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import Button from '@ux/button'
@@ -110,7 +111,10 @@ export default function MediaSearchToolRenderer({
         video = { prompt, url: parsedResult.url }
       }
     } catch (e) {
-      console.error('Failed to parse mediaSearch result:', e)
+      logger.error('tool.media_search.parse.failed', {
+        error: e instanceof Error ? e.message : String(e),
+        resultLength: result?.length
+      })
     }
   }
 

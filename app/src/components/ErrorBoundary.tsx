@@ -1,4 +1,5 @@
 import React, { Component, ReactNode } from 'react';
+import { logger } from '@/lib/request-context';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import text from '@ux/text';
@@ -76,7 +77,11 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
    * @param errorInfo - Additional error information including component stack
    */
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    console.error('Error caught by ErrorBoundary:', error, errorInfo);
+    logger.error('error_boundary.caught', {
+      error: error.message,
+      componentStack: errorInfo.componentStack,
+      stack: error.stack
+    });
   }
 
   /**

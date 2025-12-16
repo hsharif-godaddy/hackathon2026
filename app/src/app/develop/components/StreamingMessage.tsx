@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { logger } from '@/lib/request-context'
 import clsx from 'clsx'
 import StreamingIntegratedResponse from './StreamingIntegratedResponse'
 import ThinkingIndicator from './ThinkingIndicator'
@@ -64,7 +65,9 @@ function UserMessage({ content }: { content: string }) {
       setCopiedToClipboard(true)
       setTimeout(() => setCopiedToClipboard(false), 2000)
     } catch (err) {
-      console.error('Failed to copy message:', err)
+      logger.error('streaming_message.copy.failed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
     }
   }
 

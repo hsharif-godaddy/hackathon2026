@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { logger } from '@/lib/request-context'
 import MarkdownRenderer from '../MarkdownRenderer'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
@@ -260,7 +261,10 @@ export default function TodoListToolRenderer({
         operation = parsedResult.operation || ''
       }
     } catch (e) {
-      console.error('Failed to parse todoList result:', e)
+      logger.error('tool.todo_list.parse.failed', {
+        error: e instanceof Error ? e.message : String(e),
+        resultLength: result?.length
+      })
     }
   }
 

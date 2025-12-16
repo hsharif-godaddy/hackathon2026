@@ -1,5 +1,6 @@
 import { RefObject } from "react"
 import { useParams } from "next/navigation"
+import { logger } from '@/lib/request-context'
 import { postMessageToIframe } from '@/utils/postMessage'
 import type { ChatMessage, StreamingMessage, ToolCall } from '@/stores/useStreamingConversationStore'
 
@@ -62,7 +63,9 @@ export function handlePreviewRefresh({ lastIframeState }: { lastIframeState: Ref
       // Also request screenshot for thumbnail update
       postMessageToIframe(iframe, { type: 'REQUEST_SCREENSHOT' })
     } catch (error) {
-      console.error('Cannot request visual context:', error)
+      logger.error('develop.screenshot.request.failed', {
+        error: error instanceof Error ? error.message : String(error)
+      })
     }
 
     // Wait a bit for the response, then refresh with whatever state we have

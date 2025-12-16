@@ -11,6 +11,7 @@ import { SiteInfo } from '@/lib/site-adapters/interfaces/ISiteAdapter'
 import { hasBeenPublished } from '@/utils/site'
 import { generateClickEID } from '@/utils/instrumentation'
 import { useSitesStore } from '@/stores/useSitesStore'
+import { logger } from '@/lib/request-context'
 import { appFetch } from '@/lib/gasket-config'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -46,7 +47,10 @@ export default function AppCard({site}) {
           }
         }
       } catch (error) {
-        console.error('Error fetching site details:', error)
+        logger.error('site.details.fetch.failed', {
+          siteId: site.id,
+          error: error instanceof Error ? error.message : String(error)
+        })
       }
     }
 
@@ -78,7 +82,10 @@ export default function AppCard({site}) {
         setAlertState({ siteId: null, type: null, message: '' })
       }
     } catch (error) {
-      console.error('Error deleting app:', error)
+      logger.error('site.delete.failed', {
+        siteId,
+        error: error instanceof Error ? error.message : String(error)
+      })
     } finally {
       setActionLoading(null)
     }

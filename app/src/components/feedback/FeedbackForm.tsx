@@ -1,3 +1,4 @@
+import { logger } from '@/lib/request-context';
 import Button from "@ux/button";
 import Checkbox from "@ux/checkbox";
 import Radio from "@ux/radio";
@@ -62,14 +63,19 @@ export function FeedbackForm({
         if (onSubmitError) {
           onSubmitError(err);
         } else {
-          console.error(err);
+          logger.error('feedback.submit.failed', {
+            feedbackId: config.pk,
+            error: err instanceof Error ? err.message : String(err)
+          });
         }
       });
   }
 
   return (
     <form
-      onSubmit={handleSubmit(onSubmit, (err) => console.info(err))}
+      onSubmit={handleSubmit(onSubmit, (err) => {
+        logger.debug('feedback.form.validation.failed', { error: String(err) });
+      })}
     >
       <Box gap="xl">
         {config.fields.map((field) => {

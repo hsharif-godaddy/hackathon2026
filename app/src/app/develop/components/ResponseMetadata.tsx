@@ -2,6 +2,7 @@
 
 import { ClipboardCopy, Check } from 'lucide-react'
 import { useState } from 'react'
+import { logger } from '@/lib/request-context'
 
 interface ResponseMetadataProps {
   duration: number
@@ -52,7 +53,9 @@ export default function ResponseMetadata({ duration, content }: ResponseMetadata
       setCopiedToClipboard(true)
       setTimeout(() => setCopiedToClipboard(false), 2000)
     } catch (err) {
-      console.error('Failed to copy response:', err)
+      logger.error('response_metadata.copy.failed', {
+        error: err instanceof Error ? err.message : String(err)
+      })
     }
   }
 

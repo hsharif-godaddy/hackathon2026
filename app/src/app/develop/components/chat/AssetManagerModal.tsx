@@ -1,6 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { logger } from '@/lib/request-context'
 
 /**
  * Base properties common to all asset types
@@ -143,7 +144,10 @@ export default function AssetManagerModal({ isOpen, onClose, onItemsSelected, ve
         businessCategory="tech"
         ventureId={ventureId}
         onItemsSelectedCallback={(items: any[]) => {
-          console.log('ITEMS SELECTED', items);
+          logger.debug('asset_manager.items.selected', {
+            itemCount: items.length,
+            items: items.map((i: any) => ({ mediaType: i.mediaType, sourceType: i.sourceType }))
+          });
           onItemsSelected(items);
           onClose();
         }}

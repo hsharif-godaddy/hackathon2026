@@ -9,6 +9,7 @@
  */
 
 import { create } from 'zustand'
+import { logger } from '@/lib/request-context'
 
 /**
  * Todo item interface matching backend structure
@@ -215,7 +216,9 @@ export const useTodoListStore = create<TodoListState>()((set, get) => ({
         }
       }
     } catch (error) {
-      console.error('Failed to update from tool call:', error)
+      logger.error('todo_list_store.update_from_tool.failed', {
+        error: error instanceof Error ? error.message : String(error)
+      })
     }
   },
 

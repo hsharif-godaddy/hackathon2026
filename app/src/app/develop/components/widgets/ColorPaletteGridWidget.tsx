@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { logger } from '@/lib/request-context'
 import ColorPaletteWidget from './ColorPaletteWidget'
 import { postMessageToIframe } from '@/utils/postMessage'
 import Button from '@ux/button'
@@ -89,7 +90,9 @@ export default function ColorPaletteGridWidget({ palettes, className = '' }: Col
       })
     }
     setPreviewedPalette(null)
-    console.log('🔄 Theme preview reverted')
+    logger.debug('color_palette.preview.reverted', {
+      message: 'Theme preview reverted'
+    })
   }
 
   /**

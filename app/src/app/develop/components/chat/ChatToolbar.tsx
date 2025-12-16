@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { logger } from '@/lib/request-context'
 import AssetManagerModal, { AssetManagerItem } from '@/app/develop/components/chat/AssetManagerModal'
 import SettingsMenu from '@/app/develop/components/settings/SettingsMenu'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
@@ -44,7 +45,10 @@ export default function ChatToolbar({ isProcessing = false, onAssetSelect, ventu
   const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false)
 
   function handleAssetSelect(items: AssetManagerItem[]) {
-    console.log('Assets selected in ChatToolbar:', items)
+    logger.debug('chat_toolbar.assets.selected', {
+      itemCount: items.length,
+      items: items.map(i => ({ mediaType: i.mediaType, sourceType: i.sourceType }))
+    })
     if (onAssetSelect) {
       onAssetSelect(items)
     }

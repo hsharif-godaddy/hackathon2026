@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react'
+import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import {
   ChartBarIcon,
@@ -49,7 +50,10 @@ const TokenUsage = forwardRef<TokenUsageRef, TokenUsageProps>(
         const data = await appService.getTokenUsage(siteId || appId)
         setUsage(data.usage)
       } catch (error) {
-        console.error('Error fetching token usage:', error)
+        logger.error('token_usage.fetch.failed', {
+          siteId: siteId || appId,
+          error: error instanceof Error ? error.message : String(error)
+        })
         setError(error instanceof Error ? error.message : 'Unknown error')
       } finally {
         setIsLoading(false)

@@ -507,6 +507,14 @@ logger.info("app.creation.success", { appId, name: "my-app" });
 
 **ALL console.log statements will be rejected in code reviews. Use structured logging exclusively.**
 
+### Exclusions from Logging Standards
+
+The following directories are **excluded** from logging standards enforcement:
+
+- **app-templates/v8/** - Template code for the application generator. This is copied to new applications and not part of the core codebase.
+- **Test files** - `**/*.test.ts`, `**/*.test.tsx`, `**/__tests__/**` files may use console statements for debugging.
+- **Generated files** - Files in `src/generated/` directories are auto-generated and exempt.
+
 ## Logging Patterns by Service
 
 ### App Service Logging
