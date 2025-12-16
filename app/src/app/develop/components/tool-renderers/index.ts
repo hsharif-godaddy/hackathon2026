@@ -23,6 +23,7 @@ import OAuthToolRenderer from './OAuthToolRenderer'
 import SocialStatusToolRenderer from './SocialStatusToolRenderer'
 import SocialConnectToolRenderer from './SocialConnectToolRenderer'
 import SocialPostCreateToolRenderer from './SocialPostCreateToolRenderer'
+import SkillToolRenderer from './SkillToolRenderer'
 import DefaultToolRenderer, { type DefaultToolRendererProps } from './DefaultToolRenderer'
 
 /**
@@ -55,6 +56,7 @@ export const toolRendererRegistry = {
   oauthConnect: OAuthToolRenderer,
   socialStatus: SocialStatusToolRenderer,
   socialConnect: SocialConnectToolRenderer,
+  skill: SkillToolRenderer,
 } as const
 
 /**
@@ -88,5 +90,22 @@ export function getToolRenderer(toolName: string) {
 /**
  * Export tool renderer components
  */
-export { CssColorToolRenderer, CssSuggestToolRenderer, EndConversationToolRenderer, GrepSearchToolRenderer, HandoffToolRenderer, ReadFileToolRenderer, FileEditToolRenderer, TerminalCommandToolRenderer, MediaSearchToolRenderer, ImageSearchToolRenderer, TodoListToolRenderer, SuggestedResponseToolRenderer, OAuthToolRenderer, DefaultToolRenderer, SocialPostCreateToolRenderer }
+export {
+  CssColorToolRenderer,
+  CssSuggestToolRenderer,
+  DefaultToolRenderer,
+  EndConversationToolRenderer,
+  FileEditToolRenderer,
+  GrepSearchToolRenderer,
+  HandoffToolRenderer,
+  ImageSearchToolRenderer,
+  MediaSearchToolRenderer,
+  OAuthToolRenderer,
+  ReadFileToolRenderer,
+  SkillToolRenderer,
+  SocialPostCreateToolRenderer,
+  SuggestedResponseToolRenderer,
+  TerminalCommandToolRenderer,
+  TodoListToolRenderer,
+}
 export type { DefaultToolRendererProps }

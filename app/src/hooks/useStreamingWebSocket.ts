@@ -379,7 +379,7 @@ export function useStreamingWebSocket() {
           // Pass previous socket ID for manual recovery after page reload (feature flagged)
           auth: {
             ...(token && { token }),
-            ...(enableManualRecovery && previousSocketId && { previousSocketId })
+            ...(enableManualRecovery && previousSocketId && { previousSocketId }),
           }
         }
         if (token) {
@@ -1304,7 +1304,8 @@ export function useStreamingWebSocket() {
         metadata: {
           appId: currentAppId,
           userId: 'current-user', // TODO: Get from auth context
-          sessionId: socket.id
+          sessionId: socket.id,
+          userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone
         },
 
         // Conversation context

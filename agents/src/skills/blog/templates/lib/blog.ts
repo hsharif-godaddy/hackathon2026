@@ -62,46 +62,54 @@ export function setBlogPosts(posts: BlogPost[]): void {
 
 /**
  * Get all published blog posts, sorted by date (newest first)
+ * Only returns posts with publishedAt date in the past or present (excludes scheduled posts)
  *
  * @returns Array of published blog posts
  */
 export function getBlogPosts(): BlogPost[] {
+  const now = new Date();
   return blogPosts
-    .filter(post => post.published)
+    .filter(post => post.published && new Date(post.publishedAt) <= now)
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 }
 
 /**
  * Get a blog post by its slug
+ * Only returns posts that are published and have publishedAt date in the past or present
  *
  * @param slug - URL-friendly post identifier
  * @returns Blog post or null if not found
  */
 export function getPostBySlug(slug: string): BlogPost | null {
-  return blogPosts.find(post => post.slug === slug && post.published) || null;
+  const now = new Date();
+  return blogPosts.find(post => post.slug === slug && post.published && new Date(post.publishedAt) <= now) || null;
 }
 
 /**
  * Get blog posts filtered by tag
+ * Only returns posts that are published and have publishedAt date in the past or present
  *
  * @param tag - Tag to filter by
  * @returns Array of blog posts with the specified tag
  */
 export function getPostsByTag(tag: string): BlogPost[] {
+  const now = new Date();
   return blogPosts
-    .filter(post => post.published && post.tags?.includes(tag))
+    .filter(post => post.published && post.tags?.includes(tag) && new Date(post.publishedAt) <= now)
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 }
 
 /**
  * Get blog posts filtered by category
+ * Only returns posts that are published and have publishedAt date in the past or present
  *
  * @param category - Category to filter by
  * @returns Array of blog posts in the specified category
  */
 export function getPostsByCategory(category: string): BlogPost[] {
+  const now = new Date();
   return blogPosts
-    .filter(post => post.published && post.category === category)
+    .filter(post => post.published && post.category === category && new Date(post.publishedAt) <= now)
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 }
 
@@ -148,13 +156,15 @@ export function getRelatedPosts(post: BlogPost, limit: number = 3): BlogPost[] {
 
 /**
  * Get all unique tags from published posts
+ * Only includes tags from posts with publishedAt date in the past or present
  *
  * @returns Array of unique tags
  */
 export function getAllTags(): string[] {
+  const now = new Date();
   const tags = new Set<string>();
   blogPosts
-    .filter(post => post.published)
+    .filter(post => post.published && new Date(post.publishedAt) <= now)
     .forEach(post => {
       post.tags?.forEach(tag => tags.add(tag));
     });
@@ -163,13 +173,15 @@ export function getAllTags(): string[] {
 
 /**
  * Get all unique categories from published posts
+ * Only includes categories from posts with publishedAt date in the past or present
  *
  * @returns Array of unique categories
  */
 export function getAllCategories(): string[] {
+  const now = new Date();
   const categories = new Set<string>();
   blogPosts
-    .filter(post => post.published)
+    .filter(post => post.published && new Date(post.publishedAt) <= now)
     .forEach(post => {
       if (post.category) {
         categories.add(post.category);

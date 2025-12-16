@@ -131,6 +131,12 @@ function buildDynamicDataMessage(context: AgentsAppContext): {
   })
   sections.push(`Today's date is ${currentDate}`)
 
+  // Include user's timezone from browser
+  const userTimezone = context.metadata?.userTimezone
+  if (userTimezone) {
+    sections.push(`User's timezone: ${userTimezone}`)
+  }
+
   // Include project title if available (not falling back to initial prompt)
   const appId = context.metadata?.appId
   if (appId) {

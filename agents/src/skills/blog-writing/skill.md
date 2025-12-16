@@ -9,25 +9,25 @@ description: Create blog post content for sites with blog system installed
 
 ---
 
-## 🚨 CRITICAL FIELD NAMES - MUST BE EXACT
+## CRITICAL FIELD NAMES - MUST BE EXACT
 
 **These field names are REQUIRED by the BlogPost TypeScript interface:**
 
-✅ **CORRECT:**
+**CORRECT:**
 
 ```yaml
 publishedAt: '2024-12-08T10:00:00Z' # ISO 8601 with time
 featuredImage: 'https://media.gettyimages.com/id/...'
 ```
 
-❌ **FORBIDDEN (WILL CAUSE ERRORS):**
+**FORBIDDEN (WILL CAUSE ERRORS):**
 
 ```yaml
-date: '2024-12-08' # ❌ Causes "Invalid Date"
-published_at: '2024-12-08' # ❌ Not recognized
-coverImage: 'https://...' # ❌ Image won't show
-image: 'https://...' # ❌ Not recognized
-featured_image: 'https://...' # ❌ Not recognized
+date: '2024-12-08' # Causes "Invalid Date"
+published_at: '2024-12-08' # Not recognized
+coverImage: 'https://...' # Image won't show
+image: 'https://...' # Not recognized
+featured_image: 'https://...' # Not recognized
 ```
 
 ---
@@ -50,7 +50,64 @@ featured_image: 'https://...' # ❌ Not recognized
 
 ## Step-by-Step: Creating Blog Posts
 
-### Step 1: Find Featured Image (🚨 REQUIRED)
+### Prerequisites: Determine Publish Date
+
+**IMPORTANT: Check the system prompt for today's current date before setting publish dates.**
+
+**The blog system supports scheduling posts for future publication.**
+
+**Timezone Handling:**
+
+All publish dates must be in UTC (ISO 8601 format with 'Z' suffix). When handling scheduling:
+
+**IMPORTANT: Check the system prompt for the user's detected timezone FIRST.**
+
+The system prompt may include `User's timezone: [IANA timezone]` (e.g., "America/Phoenix", "America/New_York", "Europe/London"). If the timezone is present, use it automatically for conversions. Only ask for timezone if not present in the system prompt.
+
+1. **If user specifies a specific TIME** (e.g., "8 PM", "3:00 PM tomorrow", "noon on Friday"):
+   - **CHECK system prompt for timezone**: Look for `User's timezone:` in the system prompt
+   - **If timezone IS present**: Use it automatically to convert to UTC
+   - **If timezone NOT present**: Ask contextually: "8 PM in what timezone?" or "3:00 PM in which timezone?"
+   - **Convert to UTC**: Calculate offset and convert
+   - **Example**: "8 PM PST" → 8 PM + 8 hours = 4 AM UTC next day → `2024-12-16T04:00:00Z`
+   - **Common conversions**:
+     - PST/PDT (UTC-8/-7): Add 8/7 hours
+     - EST/EDT (UTC-5/-4): Add 5/4 hours
+     - CST/CDT (UTC-6/-5): Add 6/5 hours
+     - MST/MDT (UTC-7/-6): Add 7/6 hours
+
+2. **If user specifies only a DATE** (e.g., "next Monday", "December 20"):
+   - **Use midnight UTC**: `2024-12-20T00:00:00Z`
+   - **No need to ask timezone**: Date-only scheduling uses start of day UTC
+
+3. **If user says "now" or "immediately"**:
+   - **Use current date/time from system prompt**: Convert to UTC ISO 8601 format
+
+**Immediate publication:**
+
+```yaml
+publishedAt: '2024-12-15T10:00:00Z' # Current or past date in UTC
+```
+
+**Scheduled for future:**
+
+```yaml
+publishedAt: '2025-01-15T00:00:00Z' # Future date - post won't appear until this date
+```
+
+**How it works:**
+
+- Posts are only visible when `publishedAt` date/time is current or in the past (UTC comparison)
+- To schedule a post, simply set `publishedAt` to a future date/time with `published: true`
+- Scheduled posts remain hidden until their publish date/time automatically
+
+**CRITICAL:** Always reference the system prompt to get today's actual date. Use that as your baseline for calculating publish dates.
+
+---
+
+## Creating the Post
+
+### Step 1: Find Featured Image (REQUIRED)
 
 **You MUST call mediaSearch FIRST:**
 
@@ -122,18 +179,18 @@ Wrap up with key takeaways and call-to-action...
 
 ## Frontmatter Field Requirements
 
-| Field            | Type    | Required       | Format               | Example                                  |
-| ---------------- | ------- | -------------- | -------------------- | ---------------------------------------- | ------- |
-| `title`          | string  | ✅ Yes         | Plain text, 60 chars | `"The Ultimate Guide to..."`             |
-| `excerpt`        | string  | ✅ Yes         | 160 chars max        | `"Discover the secrets to..."`           |
-| `author`         | string  | ✅ Yes         | Name or team         | `"FitFlow Studio Team"`                  |
-| `publishedAt`    | string  | ✅ Yes         | **ISO 8601**         | `'2024-12-08T10:00:00Z'`                 |
-| `category`       | string  | ⚠️ Recommended | Single category      | `"Fitness Tips"`                         |
-| `tags`           | array   | ⚠️ Recommended | 3-5 tags             | `['fitness', 'health']`                  |
-| `featuredImage`  | string  | ✅ Yes         | **Full Getty URL**   | `'https://media.gettyimages.com/id/...'` |
-| `seoTitle`       | string  | ⚠️ Recommended | 60 chars             | `"Ultimate Guide                         | Brand"` |
-| `seoDescription` | string  | ⚠️ Recommended | 160 chars            | `"Learn the top 10..."`                  |
-| `published`      | boolean | ✅ Yes         | `true` or `false`    | `true`                                   |
+| Field            | Type    | Required       | Format               | Example                                  | Notes                              |
+| ---------------- | ------- | -------------- | -------------------- | ---------------------------------------- | ---------------------------------- | --- |
+| `title`          | string  | Yes (Required) | Plain text, 60 chars | `"The Ultimate Guide to..."`             |                                    |
+| `excerpt`        | string  | Yes (Required) | 160 chars max        | `"Discover the secrets to..."`           |                                    |
+| `author`         | string  | Yes (Required) | Name or team         | `"FitFlow Studio Team"`                  |                                    |
+| `publishedAt`    | string  | Yes (Required) | **ISO 8601**         | `'2024-12-08T10:00:00Z'`                 | Use future date to schedule        |
+| `category`       | string  | Recommended    | Single category      | `"Fitness Tips"`                         |                                    |
+| `tags`           | array   | Recommended    | 3-5 tags             | `['fitness', 'health']`                  |                                    |
+| `featuredImage`  | string  | Yes (Required) | **Full Getty URL**   | `'https://media.gettyimages.com/id/...'` |                                    |
+| `seoTitle`       | string  | Recommended    | 60 chars             | `"Ultimate Guide                         | Brand"`                            |     |
+| `seoDescription` | string  | Recommended    | 160 chars            | `"Learn the top 10..."`                  |                                    |
+| `published`      | boolean | Yes (Required) | `true` or `false`    | `true`                                   | Must be `true` for scheduled posts |
 
 ---
 
@@ -201,7 +258,7 @@ Wrap up with key takeaways and call-to-action...
 
 ## Common Mistakes to Avoid
 
-### ❌ Wrong Field Names
+### Wrong Field Names
 
 ```yaml
 # THESE WILL BREAK THE POST:
@@ -211,7 +268,7 @@ published_at: '2024-12-08' # Wrong - use publishedAt (camelCase)
 image: 'url' # Wrong - use featuredImage
 ```
 
-### ❌ Wrong Date Format
+### Wrong Date Format
 
 ```yaml
 # THESE WILL CAUSE "Invalid Date" ERRORS:
@@ -220,11 +277,11 @@ publishedAt: '12/08/2024'           # Not ISO 8601
 publishedAt: 'December 8, 2024'     # Not ISO 8601
 ```
 
-### ❌ Missing Featured Image
+### Missing Featured Image
 
 Every post MUST have a featured image. Always call `mediaSearch` first.
 
-### ❌ No Media Search
+### No Media Search
 
 ```
 # WRONG:
@@ -236,7 +293,7 @@ Using Unsplash URLs or random images
 3. Use in featuredImage field
 ```
 
-### ❌ Poor Title/Excerpt
+### Poor Title/Excerpt
 
 ```
 # WRONG:
@@ -258,6 +315,25 @@ When user asks for multiple posts:
 2. **Create separate .md files** with unique slugs
 3. **Vary the structure** (don't make them all identical)
 4. **Use different categories/tags** appropriately
+
+### Scheduling Multiple Posts
+
+When creating multiple posts for a content calendar:
+
+```
+User: "Create 3 blog posts for the next 3 weeks"
+
+1. Post 1: publishedAt: '2024-12-15T10:00:00Z' (this week - immediate)
+2. Post 2: publishedAt: '2024-12-22T10:00:00Z' (next week - scheduled)
+3. Post 3: publishedAt: '2024-12-29T10:00:00Z' (2 weeks - scheduled)
+```
+
+**Spacing recommendations:**
+
+- Daily posts: Space 1 day apart
+- Weekly posts: Space 7 days apart (same day each week)
+- Bi-weekly: Space 14 days apart
+- Monthly: Space 30 days apart (same day each month)
 
 ---
 
@@ -295,9 +371,13 @@ published: true
 
 Before creating each blog post, verify:
 
+- [ ] Checked system prompt for today's actual date
+- [ ] Checked system prompt for user's timezone (if user specified a time)
 - [ ] Called `mediaSearch` and got Getty Images URL
 - [ ] Using `publishedAt` (NOT `date`)
 - [ ] Date is ISO 8601 format with time: `'2024-12-08T10:00:00Z'`
+- [ ] Set appropriate publish date (current for immediate, future for scheduled)
+- [ ] Converted time to UTC using detected timezone or asked user for timezone
 - [ ] Using `featuredImage` (NOT `coverImage`)
 - [ ] Featured image is full Getty URL
 - [ ] Title is under 60 characters
@@ -308,4 +388,6 @@ Before creating each blog post, verify:
 - [ ] Ends with clear call-to-action
 - [ ] Published field is set to `true`
 
-**Get these field names right and your blog posts will work perfectly!** 🎯
+**Scheduling reminder:** To schedule a post, set `publishedAt` to a future date with `published: true`. The post will automatically appear on that date.
+
+**Get these field names right and your blog posts will work perfectly!**

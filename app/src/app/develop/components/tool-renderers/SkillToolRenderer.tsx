@@ -1,0 +1,383 @@
+'use client'
+
+import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import { BookOpen, Package, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { logger } from '@/lib/request-context'
+import Collapsible from '@ux/collapsible'
+import TextInput from '@ux/text-input'
+import Pagination from '@ux/pagination'
+import ToolHeader from './ToolHeader'
+import ToolModal from './ToolModal'
+
+/**
+ * Skill data structure
+ */
+interface Skill {
+  name: string
+  description?: string
+}
+
+/**
+ * Result from skill list action
+ */
+interface SkillListResult {
+  count: number
+  skills: Skill[]
+}
+
+/**
+ * Result from skill load action
+ */
+interface SkillLoadResult {
+  skill: string
+  instructions: string
+}
+
+/**
+ * Result from skill install action
+ */
+interface SkillInstallResult {
+  skill: string
+  filesInstalled: number
+  installedFiles: string[]
+}
+
+/**
+ * Union type for all skill result types
+ */
+type SkillResult = SkillListResult | SkillLoadResult | SkillInstallResult
+
+/**
+ * Skill action input
+ */
+interface SkillInput {
+  action: 'list' | 'load' | 'install'
+  skill?: string
+}
+
+/**
+ * Constants
+ */
+const SKILLS_PER_PAGE = 5
+
+/**
+ * Format skill name - capitalize each word and split on hyphens
+ * Example: "blog-writing" -> "Blog Writing"
+ */
+function formatSkillName(name: string): string {
+  return name
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+/**
+ * Get display message based on skill action and result
+ */
+function getSkillMessage(action: string, result: SkillResult | null): { message: string; icon: React.ReactNode } {
+  switch (action) {
+    case 'list':
+      const count = (result && 'count' in result) ? result.count : 0
+      return {
+        message: `Found ${count} available ${count === 1 ? 'skill' : 'skills'}`,
+        icon: <BookOpen className="w-2 h-2" />
+      }
+    case 'load':
+      const skillName = (result && 'skill' in result) ? result.skill : 'Unknown'
+      return {
+        message: `Loaded skill: ${formatSkillName(skillName)}`,
+        icon: <BookOpen className="w-2 h-2" />
+      }
+    case 'install':
+      const filesCount = (result && 'filesInstalled' in result) ? result.filesInstalled : 0
+      const installSkillName = (result && 'skill' in result) ? result.skill : 'skill'
+      return {
+        message: `Installed ${formatSkillName(installSkillName)} (${filesCount} ${filesCount === 1 ? 'file' : 'files'})`,
+        icon: <Package className="w-2 h-2" />
+      }
+    default:
+      return {
+        message: 'Skill operation',
+        icon: <BookOpen className="w-2 h-2" />
+      }
+  }
+}
+
+/**
+ * Render skill list with search and pagination
+ */
+function SkillListContent({ skills }: { skills: Skill[] }) {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = SKILLS_PER_PAGE
+
+  const filteredSkills = useMemo(() => {
+    if (!searchQuery.trim()) return skills
+
+    const query = searchQuery.toLowerCase()
+    return skills.filter(skill =>
+      skill.name.toLowerCase().includes(query) ||
+      (skill.description && skill.description.toLowerCase().includes(query))
+    )
+  }, [skills, searchQuery])
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery])
+
+  // Calculate pagination
+  const totalItems = filteredSkills.length
+  const totalPages = Math.ceil(totalItems / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedSkills = filteredSkills.slice(startIndex, endIndex)
+
+  const handlePageChange = (newOffset: number) => {
+    const newPage = Math.floor(newOffset / itemsPerPage) + 1
+    setCurrentPage(newPage)
+  }
+
+  if (!skills || skills.length === 0) {
+    return <div className="text-sm text-muted-foreground">No skills available.</div>
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* Header with count */}
+      <div className="text-sm text-muted-foreground">
+        {filteredSkills.length === skills.length
+          ? `${totalItems} ${totalItems === 1 ? 'skill' : 'skills'}`
+          : `${filteredSkills.length} of ${skills.length} skills`
+        }
+        {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
+      </div>
+
+      {/* Search box */}
+      <TextInput
+        visualSize="sm"
+        className="w-full"
+        id="skill-search-input"
+        label={null}
+        placeholder="Search skills..."
+        aria-label="Search skills by name or description"
+        value={searchQuery}
+        onChange={(value: string) => setSearchQuery(value)}
+      />
+
+      {/* Skills grid - compact layout */}
+      {filteredSkills.length > 0 ? (
+        <>
+          <div className="grid grid-cols-1 gap-1.5">
+            {paginatedSkills.map((skill) => (
+              <div
+                key={skill.name}
+                className="bg-intents-ux-boxLowContrast-backgroundColor hover:bg-intents-ux-boxLowContrast-backgroundColor/80 rounded-md p-1.5 transition-colors"
+              >
+                <div className="flex items-start gap-1.5">
+                  <div className="flex-shrink-0 mt-0.5">
+                    <BookOpen className="w-2.5 h-2.5 text-foreground/60" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xs font-semibold text-foreground">{formatSkillName(skill.name)}</h3>
+                    {skill.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{skill.description}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex justify-center pt-1">
+              <Pagination
+                limit={itemsPerPage}
+                offset={(currentPage - 1) * itemsPerPage}
+                total={totalItems}
+                onChange={handlePageChange}
+                atStart={currentPage === 1}
+                atEnd={currentPage === totalPages}
+              />
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="text-center text-muted-foreground py-4 text-sm">
+          No skills match &apos;{searchQuery}&apos;
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Render skill list as HTML
+ */
+function renderSkillList(skills: Skill[]): React.JSX.Element {
+  return <SkillListContent skills={skills} />
+}
+
+/**
+ * Render skill load result as HTML
+ */
+function renderSkillLoad(skillName: string, instructions: string): React.JSX.Element {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <BookOpen className="w-4 h-4 text-foreground/60" />
+        <h2 className="text-lg font-semibold text-foreground">{formatSkillName(skillName)}</h2>
+      </div>
+      <div className="text-sm text-muted-foreground mb-2">
+        Skill instructions loaded into context
+      </div>
+
+      <Collapsible
+        id="skill-instructions"
+        title="View Instructions"
+      >
+        <div className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-2 border border-border mt-2">
+          <div className="text-xs font-mono text-foreground/80 whitespace-pre-wrap max-h-96 overflow-y-auto">
+            {instructions}
+          </div>
+        </div>
+      </Collapsible>
+    </div>
+  )
+}
+
+/**
+ * Render skill install result as HTML
+ */
+function renderSkillInstall(skillName: string, filesInstalled: number, installedFiles: string[]): React.JSX.Element {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Package className="w-4 h-4 text-foreground/60" />
+        <h2 className="text-lg font-semibold text-foreground">{formatSkillName(skillName)}</h2>
+      </div>
+      <div className="flex items-center gap-1.5 text-sm">
+        <CheckCircle2 className="w-3 h-3 text-intents-success-color" />
+        <span className="text-foreground/80">
+          Installed {filesInstalled} {filesInstalled === 1 ? 'file' : 'files'}
+        </span>
+      </div>
+
+      {installedFiles && installedFiles.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-sm font-semibold text-foreground">Installed Files:</div>
+          <div className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-2 border border-border max-h-48 overflow-y-auto">
+            <ul className="space-y-0.5">
+              {installedFiles.map((file, index) => (
+                <li key={index} className="text-xs font-mono text-foreground/70 flex items-center gap-1">
+                  <span className="text-intents-success-color">✓</span>
+                  {file}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Custom renderer for skill tool
+ *
+ * Handles three skill actions:
+ * - list: Shows available skills with descriptions
+ * - load: Shows skill name that was loaded
+ * - install: Shows installed files with checkmarks
+ */
+export default function SkillToolRenderer({
+  toolName: _toolName,
+  toolStatus,
+  input,
+  result
+}: DefaultToolRendererProps) {
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Parse result
+  let parsedResult: SkillResult | null = null
+  let action = ''
+
+  // Get action from input
+  if (input && typeof input === 'object') {
+    const inputObj = input as Partial<SkillInput>
+    action = inputObj.action || ''
+  }
+
+  if (result) {
+    try {
+      if (typeof result === 'string') {
+        parsedResult = JSON.parse(result) as SkillResult
+      } else if (typeof result === 'object') {
+        parsedResult = result as unknown as SkillResult
+      }
+    } catch (e) {
+      logger.error('skill.render.parse_failure', {
+        error: e instanceof Error ? e.message : String(e),
+        action,
+      })
+    }
+  }
+
+  // Generate display message and icon
+  const { message: displayMessage, icon } = getSkillMessage(action, parsedResult)
+
+  // Generate modal content
+  let modalContentElement: React.JSX.Element | null = null
+  let hasDetails = false
+
+  if (parsedResult) {
+    hasDetails = true
+    if (action === 'list' && 'skills' in parsedResult) {
+      modalContentElement = renderSkillList(parsedResult.skills)
+    } else if (action === 'load' && 'skill' in parsedResult && 'instructions' in parsedResult) {
+      modalContentElement = renderSkillLoad(parsedResult.skill, parsedResult.instructions)
+    } else if (action === 'install' && 'skill' in parsedResult) {
+      modalContentElement = renderSkillInstall(
+        parsedResult.skill,
+        'filesInstalled' in parsedResult ? parsedResult.filesInstalled : 0,
+        'installedFiles' in parsedResult ? parsedResult.installedFiles : []
+      )
+    }
+  }
+
+  const modalTitle = action === 'list'
+    ? 'Available Skills'
+    : action === 'load'
+    ? `Skill Loaded: ${formatSkillName(parsedResult && 'skill' in parsedResult ? parsedResult.skill : '')}`
+    : `Skill Installed: ${formatSkillName(parsedResult && 'skill' in parsedResult ? parsedResult.skill : '')}`
+
+  return (
+    <div>
+      <ToolHeader
+        icon={icon}
+        displayName={displayMessage}
+        toolStatus={toolStatus}
+        hasDetails={hasDetails}
+        onOpenModal={() => setIsModalOpen(true)}
+      />
+
+      <ToolModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={modalTitle}
+        mounted={mounted}
+      >
+        <div className="flex-1 overflow-y-auto">
+          {modalContentElement}
+        </div>
+      </ToolModal>
+    </div>
+  )
+}
