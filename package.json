@@ -28,8 +28,8 @@
       "pnpm --filter @airo/agents lint:fix"
     ],
     "app/**/*.{ts,tsx,js,jsx}": [
-      "pnpm --filter website lint",
-      "pnpm --filter website test"
+      "bash -c 'cd app && pnpm lint'",
+      "bash -c 'cd app && pnpm test'"
     ],
     "proxy/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter proxy lint:fix"

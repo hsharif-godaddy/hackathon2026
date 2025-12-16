@@ -48,6 +48,13 @@ export default defineConfig({
     ...baseConfig,
     supportFile: 'cypress/support/e2e.ts',
     baseUrl: envConfig.baseUrl,
+
+    // Retry failed tests - helps with AI processing timing variations
+    retries: {
+      runMode: 2,    // Retry up to 2 times in CI (cypress run)
+      openMode: 0,   // No retries in interactive mode (cypress open)
+    },
+
     env: {
       environment: env,
       baseUrl: envConfig.baseUrl,

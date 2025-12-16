@@ -93,7 +93,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
 
         const response = await client.createApp(selectedSubscription.id, systemId, {
           appTemplateName: 'default',
-          environments: ['dev'],
+          variants: ['preview'],
           variables: {
             initialPrompt: params.prompt,
             title: generatedTitle,
@@ -121,7 +121,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         initialPrompt: params.prompt,
         appConfigs: [{
           templateName: 'default',
-          environments: ['dev'],
+          variants: ['preview'],
           variables: {
             initialPrompt: params.prompt,
             title: generatedTitle

@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import { ArrowRightIcon } from '@heroicons/react/24/outline'
 import { HeroExamplesProps, Example } from '@/app/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
-import { logClickEvent } from '@/utils/instrumentation'
+import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 
 export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
   const t = useTranslations();
@@ -77,6 +77,7 @@ export default function HeroExamples({ onExampleClick }: HeroExamplesProps) {
         {examples.map((example, index) => (
           <button
             key={example.title}
+            data-eid={generateClickEID(`homepage.examples.example_${example.slug}`)}
             onClick={() => {
               onExampleClick(example.prompt);
               logClickEvent('homepage.examples.example')();

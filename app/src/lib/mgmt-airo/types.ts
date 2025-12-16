@@ -118,7 +118,8 @@ export interface AiroSignupPayload {
   initialPrompt: string;
   appConfigs: Array<{
     templateName: string;
-    environments: string[];
+    environments?: string[];
+    variants?: string[];
     variables: Record<string, any>;
   }>;
 }
@@ -135,7 +136,8 @@ export interface AiroSignupResponse {
  */
 export interface AiroCreateAppPayload {
   appTemplateName: string;
-  environments: string[];
+  environments?: string[];
+  variants?: string[];
   variables: Record<string, any>;
 }
 

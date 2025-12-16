@@ -76,6 +76,7 @@ export default function AppSelector({ location }: { location?: string }) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         className="hover:cursor-pointer"
+        data-eid={generateClickEID(`${location}.apps_menu.trigger`)}
         onClick={() => (sites.length < 1 || isLoading) ? router.push('/apps') : null}
       >
         <Box orientation="horizontal" gap="sm">

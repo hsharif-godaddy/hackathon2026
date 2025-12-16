@@ -1,5 +1,7 @@
 # E2E Testing Guidelines
 
+> Based on [Cypress Best Practices](https://docs.cypress.io/app/core-concepts/best-practices)
+
 ## Framework Selection: Cypress vs Playwright
 
 ### Default: Use Cypress with Testla
@@ -41,6 +43,258 @@ When creating a Playwright test:
 
 3. **Follow same patterns** - Use the same testing patterns (wait for APIs, meaningful selectors, etc.)
 
+---
+
+## Core Cypress Best Practices
+
+### 1. Test Isolation
+
+**Anti-Pattern:** Coupling multiple tests together.
+
+**Best Practice:** Tests should always be able to run independently.
+
+**The test:** Change any test to `it.only` and refresh - if it passes alone, it's well-written.
+
+```typescript
+// ❌ Bad - tests depend on each other
+describe("my form", () => {
+  it("visits the form", () => {
+    cy.visit("/users/new");
+  });
+  it("requires first name", () => {
+    cy.get('[data-testid="first-name"]').type("Johnny"); // Fails if run alone!
+  });
+});
+
+// ✅ Good - each test is independent
+describe("my form", () => {
+  it("can submit a valid form", () => {
+    cy.visit("/users/new");
+    cy.get('[data-testid="first-name"]').type("Johnny");
+    cy.get('[data-testid="last-name"]').type("Appleseed");
+    cy.get("form").submit();
+  });
+});
+
+// ✅ Also good - use beforeEach for shared setup
+describe("my form", () => {
+  beforeEach(() => {
+    cy.visit("/users/new");
+    cy.get('[data-testid="first-name"]').type("Johnny");
+  });
+
+  it("validates first name", () => {
+    cy.get('[data-testid="first-name"]').clear();
+    cy.get("form").submit();
+    cy.get('[data-testid="errors"]').should(
+      "contain",
+      "First name is required",
+    );
+  });
+});
+```
+
+### 2. Programmatic Login
+
+**Anti-Pattern:** Using the UI to log in before each test.
+
+**Best Practice:** Log in programmatically via API or `cy.session()`.
+
+```typescript
+// ❌ Bad - slow, uses UI
+beforeEach(() => {
+  cy.visit("/login");
+  cy.get("#username").type("user@example.com");
+  cy.get("#password").type("password");
+  cy.get('button[type="submit"]').click();
+});
+
+// ✅ Good - programmatic login with session caching
+beforeEach(() => {
+  cy.session(
+    "user",
+    () => {
+      cy.task("auth:getIDPToken", { env, username, password }).then((token) => {
+        cy.setCookie("auth_idp", token);
+      });
+    },
+    { cacheAcrossSpecs: true },
+  );
+});
+```
+
+### 3. Clean State Before Tests (Not After)
+
+**Anti-Pattern:** Using `after` or `afterEach` hooks to clean up state.
+
+**Best Practice:** Clean up state **before** tests run using `before` or `beforeEach`.
+
+Why? If you refresh Cypress mid-test, `after` hooks won't run, leaving state dirty for the next test.
+
+```typescript
+// ❌ Bad - cleanup may not run if test fails or is interrupted
+afterEach(() => {
+  cy.resetDb();
+});
+
+// ✅ Good - cleanup always runs before each test
+beforeEach(() => {
+  cy.resetDb();
+});
+
+// ✅ Also good - in support file for global cleanup
+// cypress/support/e2e.ts
+beforeEach(() => {
+  cy.task("db:seed"); // Reset to known state
+});
+```
+
+### 4. Don't Use after/afterEach for Logout
+
+```typescript
+// ❌ Bad - loses ability to debug app state after test
+afterEach(() => {
+  cy.logout();
+});
+
+// ✅ Good - leave app in final state for debugging
+// Cypress automatically clears cookies/localStorage between tests
+```
+
+### 5. Avoid Tiny Single-Assertion Tests
+
+**Anti-Pattern:** Writing many small tests with single assertions.
+
+**Best Practice:** Combine related assertions into larger tests.
+
+```typescript
+// ❌ Bad - excessive, slow
+describe("my form", () => {
+  beforeEach(() => {
+    cy.visit("/users/new");
+    cy.get('[data-testid="first-name"]').type("johnny");
+  });
+
+  it("has validation attr", () => {
+    cy.get('[data-testid="first-name"]').should(
+      "have.attr",
+      "data-validation",
+      "required",
+    );
+  });
+
+  it("has active class", () => {
+    cy.get('[data-testid="first-name"]').should("have.class", "active");
+  });
+
+  it("has formatted first name", () => {
+    cy.get('[data-testid="first-name"]').should("have.value", "Johnny");
+  });
+});
+
+// ✅ Good - combined, faster
+describe("my form", () => {
+  it("validates and formats first name", () => {
+    cy.visit("/users/new");
+    cy.get('[data-testid="first-name"]')
+      .type("johnny")
+      .should("have.attr", "data-validation", "required")
+      .and("have.class", "active")
+      .and("have.value", "Johnny");
+  });
+});
+```
+
+### 6. Don't Assign Return Values to Variables
+
+**Anti-Pattern:** Trying to assign command results to variables.
+
+**Best Practice:** Use aliases and closures.
+
+```typescript
+// ❌ Bad - doesn't work as expected
+const button = cy.get("button");
+button.click(); // Won't work!
+
+// ✅ Good - use aliases
+cy.get("button").as("submitBtn");
+cy.get("@submitBtn").click();
+
+// ✅ Good - use .then() for values
+cy.get("input")
+  .invoke("val")
+  .then((value) => {
+    // use value here
+  });
+```
+
+### 7. Don't Visit External Sites
+
+**Anti-Pattern:** Visiting or interacting with sites you don't control.
+
+**Best Practice:** Use `cy.request()` for third-party APIs. Only use `cy.visit()` for your own app.
+
+```typescript
+// ❌ Bad - visiting third-party site
+cy.visit("https://github.com/login");
+
+// ✅ Good - use API requests for third-party interactions
+cy.request({
+  method: "POST",
+  url: "https://api.github.com/...",
+  headers: { Authorization: "Bearer ..." },
+});
+```
+
+### 8. Set a Global baseUrl
+
+**Anti-Pattern:** Hardcoding URLs in `cy.visit()`.
+
+**Best Practice:** Set `baseUrl` in Cypress config.
+
+```typescript
+// cypress.config.ts
+export default defineConfig({
+  e2e: {
+    baseUrl: "http://localhost:8080",
+  },
+});
+
+// Then in tests:
+cy.visit("/users/new"); // ✅ Uses baseUrl
+// Instead of:
+cy.visit("http://localhost:8080/users/new"); // ❌ Hardcoded
+```
+
+### 9. Use Test Retries for Flaky Tests
+
+For tests that may fail due to timing (like AI processing), use retries:
+
+```typescript
+// cypress.config.ts
+export default defineConfig({
+  e2e: {
+    retries: {
+      runMode: 2, // Retry up to 2 times in CI
+      openMode: 0, // No retries in interactive mode
+    },
+  },
+});
+```
+
+### 10. Don't Start Web Servers from Cypress
+
+**Anti-Pattern:** Starting your server from `cy.exec()` or `cy.task()`.
+
+**Best Practice:** Start the server before running Cypress.
+
+```bash
+# Start server first, then run Cypress
+npm run start & npx cypress run
+```
+
+---
+
 ## General Principles
 
 ### 1. Test Content, Not Routes
@@ -58,26 +312,54 @@ cy.contains("Manage your AI-powered websites and applications").should(
 cy.url().should("include", "/apps");
 ```
 
-### 2. Use Meaningful Selectors
+### 2. Selecting Elements
 
-Prefer selectors in this order of priority:
+**Anti-Pattern:** Using brittle selectors that break with CSS/JS changes.
 
-1. **Content/text** - Most stable, user-facing
-2. **data-eid attributes** - Instrumentation markers
-3. **aria-labels/roles** - Accessibility attributes
-4. **data-testid** - Test-specific attributes
-5. **CSS selectors** - Last resort
+**Best Practice:** Use `data-*` attributes to isolate selectors from styling.
+
+#### Selector Priority (Best to Worst)
+
+| Selector                         | Recommended  | Notes                            |
+| -------------------------------- | ------------ | -------------------------------- |
+| `cy.get('[data-cy="submit"]')`   | ✅ Always    | Best - isolated from all changes |
+| `cy.get('[data-eid*="submit"]')` | ✅ Always    | Best - instrumentation markers   |
+| `cy.contains('Submit')`          | ⚠️ Depends   | Good if text is critical to test |
+| `cy.get('[name="submission"]')`  | ⚠️ Sparingly | Coupled to HTML semantics        |
+| `cy.get('#main')`                | ⚠️ Sparingly | Coupled to styling/JS            |
+| `cy.get('.btn.btn-large')`       | ❌ Never     | Bad - coupled to CSS             |
+| `cy.get('button')`               | ❌ Never     | Worst - too generic              |
+
+#### When to Use `cy.contains()` vs `data-*`
+
+Ask yourself: **If the text changed, should the test fail?**
+
+- **Yes** → Use `cy.contains()` (text is critical)
+- **No** → Use `data-*` attribute (text can change)
 
 ```typescript
-// ✅ Preferred
-cy.contains("button", "Start building").click();
-cy.get('[data-eid*="user_menu"]').click();
+// Text is critical - use cy.contains()
+cy.contains("button", "Submit Payment").click();
 
-// ⚠️ Acceptable
-cy.get('textarea[placeholder*="Describe your app idea"]');
+// Text can change - use data attribute
+cy.get('[data-eid*="submit_button"]').click();
+```
 
-// ❌ Avoid when possible
-cy.get(".btn-primary-lg").click();
+#### Custom Commands for Selectors
+
+```typescript
+// cypress/support/commands.ts
+Cypress.Commands.add("getBySel", (selector, ...args) => {
+  return cy.get(`[data-eid=${selector}]`, ...args);
+});
+
+Cypress.Commands.add("getBySelLike", (selector, ...args) => {
+  return cy.get(`[data-eid*=${selector}]`, ...args);
+});
+
+// Usage:
+cy.getBySel("submit-button").click();
+cy.getBySelLike("user_menu").click();
 ```
 
 ### 3. Handle Async Operations Properly
@@ -323,24 +605,120 @@ cy.pause(); // Opens Cypress debugger
 
 ## Anti-Patterns to Avoid
 
-1. **Testing implementation details** - Test user-visible behavior
-2. **Hardcoded waits** - Use API intercepts or Cypress retries instead of `cy.wait(5000)`
-3. **Long timeouts without intercepts** - Prefer `cy.intercept()` + `cy.wait('@alias')` over `{ timeout: 120000 }`
-4. **Flaky selectors** - Use stable, content-based selectors
-5. **Testing third-party services** - Mock external dependencies
-6. **Long test files** - Split into logical test files by feature
-7. **Dependent tests** - Each test should be independent
-8. **Interacting before data loads** - Always wait for relevant APIs before clicking
+### ❌ Unnecessary Waiting
 
 ```typescript
-// ❌ Bad - hoping data loaded in time
-cy.visit("/");
-cy.wait(3000); // Arbitrary wait
-cy.contains("My Apps").click();
+// ❌ Bad - cy.request() already waits for response
+cy.request("http://localhost:8080/db/seed");
+cy.wait(5000);
 
-// ✅ Good - wait for data explicitly
-cy.intercept("GET", "**/api/sites").as("getSites");
-cy.visit("/");
-cy.wait("@getSites");
-cy.contains("My Apps").click();
+// ❌ Bad - cy.visit() already waits for page load
+cy.visit("http://localhost/8080");
+cy.wait(5000);
+
+// ❌ Bad - cy.get() already retries until assertion passes
+cy.intercept("GET", "/users", [{ name: "Maggy" }]);
+cy.get("#fetch").click();
+cy.wait(4000);
+cy.get("table tr").should("have.length", 1);
+
+// ✅ Good - wait for aliased route explicitly
+cy.intercept("GET", "/users", [{ name: "Maggy" }]).as("getUsers");
+cy.get('[data-testid="fetch-users"]').click();
+cy.wait("@getUsers");
+cy.get("table tr").should("have.length", 1);
 ```
+
+### ❌ Coupling Tests Together
+
+```typescript
+// ❌ Bad - tests depend on each other
+it("visits page", () => cy.visit("/form"));
+it("fills name", () => cy.get("#name").type("John")); // Fails alone!
+it("submits", () => cy.get("form").submit()); // Fails alone!
+
+// ✅ Good - each test is independent
+it("submits form", () => {
+  cy.visit("/form");
+  cy.get("#name").type("John");
+  cy.get("form").submit();
+});
+```
+
+### ❌ Using afterEach for Cleanup
+
+```typescript
+// ❌ Bad - won't run if test fails or is interrupted
+afterEach(() => {
+  cy.logout();
+  cy.resetDb();
+});
+
+// ✅ Good - cleanup before tests
+beforeEach(() => {
+  cy.resetDb();
+});
+```
+
+### ❌ Assigning Commands to Variables
+
+```typescript
+// ❌ Bad - commands are not synchronous
+const button = cy.get("button");
+button.click();
+
+// ✅ Good - use aliases
+cy.get("button").as("btn");
+cy.get("@btn").click();
+```
+
+### ❌ Brittle Selectors
+
+```typescript
+// ❌ Bad - coupled to CSS
+cy.get(".btn-primary-large").click();
+cy.get("#submit-btn").click();
+
+// ✅ Good - isolated from styling
+cy.get('[data-eid*="submit"]').click();
+cy.contains("button", "Submit").click();
+```
+
+### ❌ Visiting External Sites
+
+```typescript
+// ❌ Bad - don't visit sites you don't control
+cy.visit("https://google.com/oauth");
+
+// ✅ Good - use API for third-party interactions
+cy.request("POST", "https://api.example.com/oauth/token");
+```
+
+### ❌ Many Tiny Tests
+
+```typescript
+// ❌ Bad - excessive test overhead
+it("has attr", () => cy.get("#el").should("have.attr", "x"));
+it("has class", () => cy.get("#el").should("have.class", "y"));
+it("has value", () => cy.get("#el").should("have.value", "z"));
+
+// ✅ Good - combine assertions
+it("element has correct state", () => {
+  cy.get("#el")
+    .should("have.attr", "x")
+    .and("have.class", "y")
+    .and("have.value", "z");
+});
+```
+
+### Summary Checklist
+
+| Anti-Pattern                | Best Practice                     |
+| --------------------------- | --------------------------------- |
+| `cy.wait(5000)`             | `cy.wait('@aliasedRoute')`        |
+| Dependent tests             | Independent tests with beforeEach |
+| `afterEach` cleanup         | `beforeEach` cleanup              |
+| `const x = cy.get()`        | `cy.get().as('x')`                |
+| `.btn-class` selectors      | `[data-eid="x"]` selectors        |
+| `cy.visit('external-site')` | `cy.request('external-api')`      |
+| Many single-assertion tests | Combined assertions               |

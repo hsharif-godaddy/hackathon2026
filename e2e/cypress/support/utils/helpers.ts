@@ -6,6 +6,9 @@ export function dismissPrivacyBanners() {
       if ($body.find('#gtm_privacy').length > 0) {
         cy.get('#gtm_privacy').invoke('css', 'display', 'none');
       }
+      if ($body.find('#pw_banner').length > 0) {
+        cy.get('#pw_banner').invoke('css', 'display', 'none');
+      }
     });
 }
 
@@ -34,4 +37,62 @@ export function getCredentials() {
   }
 
   return { env, username, password };
+}
+
+/**
+ * Get SSO URL for the current environment
+ * @param env - Environment name (dev, test, prod)
+ * @returns SSO URL for the environment
+ */
+export function getSsoUrl(env: string) {
+  const prefix = getPrefix(env);
+  return `https://sso.${prefix}godaddy.com`;
+}
+
+/**
+ * Get App URL for the current environment
+ * @param env - Environment name (dev, test, prod)
+ * @returns App URL for the environment
+ */
+export function getAppUrl(env: string) {
+  const prefix = getPrefix(env);
+  return `https://airo-builder.${prefix}godaddy.com`;
+}
+
+/**
+ * Complete SSO login flow
+ * Use this when SSO modal appears or user is redirected to SSO page.
+ * Navigates directly to SSO page, logs in, and redirects back to app.
+ *
+ * @param returnPath - Path to return to after login (default: '/')
+ */
+export function completeSsoLogin(returnPath: string = '/') {
+  const { env, username, password } = getCredentials();
+  const ssoUrl = getSsoUrl(env);
+  const appUrl = getAppUrl(env);
+
+  // Navigate directly to SSO login page
+  cy.visit(ssoUrl, { failOnStatusCode: false });
+
+  // Wait for SSO page to load and fill in credentials
+  cy.get('input[name="username"], input[placeholder*="Username"], input[placeholder*="Customer"]', { timeout: 30000 })
+    .should('be.visible')
+    .clear()
+    .type(username);
+
+  cy.get('input[name="password"], input[type="password"]', { timeout: 10000 })
+    .should('be.visible')
+    .clear()
+    .type(password);
+
+  // Submit login form
+  cy.get('button[type="submit"], button:contains("Sign In")', { timeout: 10000 })
+    .should('be.visible')
+    .click();
+
+  // After login, navigate back to the app
+  cy.visit(`${appUrl}${returnPath}`, { timeout: 60000 });
+
+  // Verify we're on the app
+  cy.url().should('include', 'airo-builder');
 }
