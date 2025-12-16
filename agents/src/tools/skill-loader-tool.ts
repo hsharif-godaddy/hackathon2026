@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import matter from 'gray-matter';
 import { logger } from '../logging/index.js';
+import { skills, getFeatures } from '../services/features.js';
 
 /**
  * Options for loading a skill
@@ -70,6 +71,7 @@ export interface InstallTemplatesResult {
 export interface SkillListItem {
   name: string;
   description: string;
+  enablementId?: string;
 }
 
 /**
@@ -346,40 +348,76 @@ export class SkillLoaderTool {
       const skillDirs = entries.filter(entry => entry.isDirectory());
 
       // Load metadata from YAML frontmatter in skill.md
-      const skills = await Promise.all(
-        skillDirs.map(async (entry) => {
-          const skillName = entry.name;
-          let name = skillName;
-          let description = '';
+      const skillPromises = skillDirs.map(async (entry): Promise<SkillListItem | null> => {
+        const skillName = entry.name;
+        let name = skillName;
+        let description = '';
+        let enablementId: string | undefined;
 
-          try {
-            const skillFile = this.getSkillPath(skillName, 'skill.md');
-            const skillContent = await fs.readFile(skillFile, 'utf-8');
-            const { data } = matter(skillContent);
+        try {
+          const skillFile = this.getSkillPath(skillName, 'skill.md');
+          const skillContent = await fs.readFile(skillFile, 'utf-8');
+          const { data } = matter(skillContent);
 
-            // Extract name and description from YAML frontmatter
-            name = data.name || skillName;
-            description = data.description || '';
-          } catch (error) {
-            // If skill.md is missing or has no frontmatter, use directory name
-            this.logger.debug('skill.list.frontmatter_missing', {
-              skill: skillName,
-              error: error instanceof Error ? error.message : String(error)
-            });
+          // Extract name, description, and enablementId from YAML frontmatter
+          name = data.name || skillName;
+          description = data.description || '';
+          enablementId = data.enablementId;
+
+          // If enablementId is provided, check if the feature is enabled
+          if (enablementId) {
+            const features = getFeatures();
+
+            // Warn if enablementId doesn't exist in configuration (typo detection)
+            if (!(enablementId in features.enabledSkills)) {
+              this.logger.warn('skill.list.unknown_feature_flag', {
+                skill: skillName,
+                enablementId,
+                message: `Skill references unknown feature flag '${enablementId}'. Check features.ts configuration.`
+              });
+            }
+
+            if (!skills.isEnabled(enablementId)) {
+              this.logger.debug('skill.list.feature_disabled', {
+                skill: skillName,
+                enablementId
+              });
+              return null; // Skip this skill - feature is disabled
+            }
           }
+        } catch (error) {
+          // If skill.md is missing or has no frontmatter, use directory name
+          this.logger.debug('skill.list.frontmatter_missing', {
+            skill: skillName,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
 
-          return { name, description };
-        })
-      );
+        const skillItem: SkillListItem = { name, description };
+        if (enablementId) {
+          skillItem.enablementId = enablementId;
+        }
+        return skillItem;
+      });
+
+      const allSkills = await Promise.all(skillPromises);
+
+      // Filter out null values (disabled skills)
+      const enabledSkills = allSkills.filter((skill): skill is SkillListItem => skill !== null);
+
+      const totalSkillsCount = allSkills.length;
+      const disabledCount = allSkills.filter(s => s === null).length;
 
       this.logger.info('skill.list.success', {
-        count: skills.length,
-        skills: skills.map(s => s.name)
+        count: enabledSkills.length,
+        totalSkills: totalSkillsCount,
+        disabledCount,
+        skills: enabledSkills.map(s => s.name)
       });
 
       return {
         success: true,
-        skills
+        skills: enabledSkills
       };
     } catch (error) {
       this.logger.error('skill.list.error', {

@@ -19,7 +19,7 @@ export enum AuthType {
   NONE = 'none'
 }
 
-interface AgentFeatureConfig {
+interface FeatureConfig {
   // Price and usage limits
   dailyPriceLimit: number
 
@@ -60,6 +60,13 @@ interface AgentFeatureConfig {
     social: boolean
     socialPosts: boolean
   }
+
+  // Skill enablement configuration
+  enabledSkills: {
+    // Add skill enablement flags here as needed, e.g.:
+    // blogWriting: boolean
+    [key: string]: boolean
+  }
 }
 
 /**
@@ -98,9 +105,9 @@ function determineAuthType(): AuthType {
 }
 
 /**
- * Parse environment variables and return agent feature configuration
+ * Parse environment variables and return feature configuration
  */
-function parseEnvironmentFeatures(): AgentFeatureConfig {
+function parseEnvironmentFeatures(): FeatureConfig {
   return {
     // Price and usage limits
     dailyPriceLimit: parseFloat(process.env.DAILY_PRICE_LIMIT || '10'),
@@ -141,31 +148,39 @@ function parseEnvironmentFeatures(): AgentFeatureConfig {
       commerce: process.env.ENABLE_COMMERCE_AGENT === 'true',
       social: process.env.ENABLE_SOCIAL_PLATFORM === 'true',
       socialPosts: process.env.ENABLE_SOCIAL_POSTS === 'true'
+    },
+
+    // Skill enablement configuration. Add skills here as they are created.
+    enabledSkills: {
+      // Example: blogWriting: process.env.ENABLE_SKILL_BLOG_WRITING === 'true'
     }
   }
 }
 
 // Lazy-loaded configuration - only parse when accessed
-let _agentFeatures: AgentFeatureConfig | null = null;
+let _features: FeatureConfig | null = null;
 
 /**
  * Get the current feature configuration (lazy-loaded)
  * This is the main export that services should use
  */
-export function getAgentFeatures(): AgentFeatureConfig {
-  if (_agentFeatures === null) {
-    _agentFeatures = parseEnvironmentFeatures();
+export function getFeatures(): FeatureConfig {
+  if (_features === null) {
+    _features = parseEnvironmentFeatures();
   }
-  return _agentFeatures;
+  return _features;
 }
+
+/** @deprecated Use getFeatures() instead */
+export const getAgentFeatures = getFeatures;
 
 /**
  * Configuration getters for commonly used values (lazy-loaded)
  */
 export const getAgentConfig = {
-  dailyPriceLimit: () => getAgentFeatures().dailyPriceLimit,
+  dailyPriceLimit: () => getFeatures().dailyPriceLimit,
   openaiConfig: () => {
-    const features = getAgentFeatures();
+    const features = getFeatures();
     return {
       apiKey: features.openaiApiKey,
       baseUrl: features.openaiBaseUrl,
@@ -173,7 +188,7 @@ export const getAgentConfig = {
     };
   },
   mysqlConfig: () => {
-    const features = getAgentFeatures();
+    const features = getFeatures();
     return {
       host: features.mysqlRootHost,
       port: features.mysqlRootPort,
@@ -181,8 +196,8 @@ export const getAgentConfig = {
       password: features.mysqlRootPass,
     };
   },
-  uploadDir: () => getAgentFeatures().uploadDir,
-  contextLogging: () => getAgentFeatures().contextLogging,
+  uploadDir: () => getFeatures().uploadDir,
+  contextLogging: () => getFeatures().contextLogging,
 } as const
 
 /**
@@ -190,29 +205,29 @@ export const getAgentConfig = {
  */
 export const auth = {
   /** Get current authentication type */
-  getType: () => getAgentFeatures().authType,
+  getType: () => getFeatures().authType,
   /** Check if authentication is disabled (no auth required) */
-  isDisabled: () => getAgentFeatures().authType === AuthType.NONE,
+  isDisabled: () => getFeatures().authType === AuthType.NONE,
   /** Check if using mock authentication */
-  isMock: () => getAgentFeatures().authType === AuthType.MOCK,
+  isMock: () => getFeatures().authType === AuthType.MOCK,
   /** Check if using full JWT authentication */
-  isJWT: () => getAgentFeatures().authType === AuthType.JWT,
+  isJWT: () => getFeatures().authType === AuthType.JWT,
   /** Check if authentication is required (not NONE) */
-  isRequired: () => getAgentFeatures().authType !== AuthType.NONE,
+  isRequired: () => getFeatures().authType !== AuthType.NONE,
 
   /** Get JWKS URL (undefined if not set or empty) */
   getJWKSUrl: () => {
-    const url = getAgentFeatures().jwksUrl;
+    const url = getFeatures().jwksUrl;
     return url && url.trim() !== '' ? url : undefined;
   },
   /** Check if JWKS URL is available and not empty */
   hasJWKSUrl: () => {
-    const url = getAgentFeatures().jwksUrl;
+    const url = getFeatures().jwksUrl;
     return url !== undefined && url.trim() !== '';
   },
   /** Get site ID for authentication context */
   getSiteId: (authType?: AuthType) => {
-    const features = getAgentFeatures();
+    const features = getFeatures();
     const currentAuthType = authType || features.authType;
 
     switch (currentAuthType) {
@@ -234,8 +249,19 @@ export const auth = {
 export const agents = {
   /** Check if a specific agent is enabled */
   isEnabled: (agentId: 'commerce' | 'social' | 'socialPosts'): boolean => {
-    const features = getAgentFeatures();
+    const features = getFeatures();
     return features.enabledAgents[agentId] ?? false;
+  }
+} as const
+
+/**
+ * Skill enablement helper functions
+ */
+export const skills = {
+  /** Check if a specific skill is enabled */
+  isEnabled: (skillId: string): boolean => {
+    const features = getFeatures();
+    return features.enabledSkills[skillId as keyof typeof features.enabledSkills] ?? false;
   }
 } as const
 
@@ -244,7 +270,7 @@ export const agents = {
  * Useful for development and troubleshooting
  */
 export function logFeatureState(): void {
-  const features = getAgentFeatures();
+  const features = getFeatures();
   if (features.nodeEnv === 'development') {
     logger.info('features.state.debug', {
       environment: features.nodeEnv,
@@ -260,7 +286,7 @@ export function logFeatureState(): void {
  * Throws errors for missing required configuration
  */
 export function validateConfiguration(): void {
-  const features = getAgentFeatures();
+  const features = getFeatures();
   const errors: string[] = []
 
   // Validate critical paths and values
