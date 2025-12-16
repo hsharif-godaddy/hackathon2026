@@ -1,366 +1,172 @@
 # Agents Rules and Guidance
 
-This file provides guidance to Claude Code and other agents when working with code in this repository.
-
 **Read this before writing, editing, or executing anything in this repo.**
 
 ## Project Overview
 
-Airo App Builder is an AI-powered application development platform that combines artificial intelligence with enterprise-grade hosting and development tools. It uses a multi-service architecture with AI agents, real-time collaboration, and flexible deployment options.
+Airo App Builder: AI-powered app development platform with multi-service architecture, AI agents, real-time collaboration, and flexible deployment.
 
-## General rules
+## General Rules
 
-- You don't have to agree with everything, stop using empty phrases like "You are right!", be concise and go to the point.
-- You can challenge me if you think you have a better solution.
-- Never make assumptions about props, imports or path. Validate that thing exist before using them.
-- If you are unsure about something, at the start or anywhere in your execution process, stop and ask questions.
-- NEVER EDIT FILES UNDER `/tmp/apps/{appId}/app/**`, these are **OUTPUT** of our system, not source code. **Always fix the generation logic instead**
-- We want QUALITY code. Take the time you need to think, explore multiple solutions if you need to.
-- When working under `/app` folder, and **ONLY** when under this folder, use components within our design system, UXCore @ux/, as much as possible, and use `/app/uxcore-llm.txt` for context on component documentation and refer to `/app/design-guidance.md` for design guidance.
-- Under `/app` we don't have access to default Tailwind colors, you can't use `bg-white` or `text-blue-600`.
-- Prioritize design system usage, accessibility, and usability.
+<critical_file_safety>
+Files under `/tmp/apps/{appId}/app/**` are generated OUTPUT. Fix generation logic in source, not output files.
+</critical_file_safety>
+
+<code_quality_standards>
+
+- Be direct and concise, challenge solutions when you have better alternatives
+- Validate props/imports/paths exist before use - read files, don't assume
+- Ask clarifying questions when ambiguous
+- Read and understand code before proposing changes - never speculate
+  </code_quality_standards>
+
+<design_system_requirements>
+In `/app` folder ONLY:
+
+- Use UXCore design system (@ux/\*) - see `/app/uxcore-llm.txt` and `/app/design-guidance.md`
+- NO default Tailwind colors (`bg-white`, `text-blue-600`)
+- Prioritize accessibility and usability
+  </design_system_requirements>
 
 ## Key Commands
 
-### Development Setup
-
-**Quick Setup (Recommended):**
+**Setup:**
 
 ```bash
-# Run the automated setup utility
-./setup.sh
-
-# Or for selective configuration (from project root)
-pnpm --filter airo-setup start
+./setup.sh                          # Automated setup
+pnpm --filter airo-setup start      # Selective config
+pnpm install && pnpm run dev        # Manual: agents:4000, app:3000
 ```
 
-**Manual Setup:**
+**Development:**
 
 ```bash
-# Install dependencies for all workspace packages
-pnpm install
-
-# Start services (requires OpenAI API key in agents/.env)
-pnpm run dev                 # Start both services concurrently
-# Or start individually:
-pnpm run dev:agents         # Backend agents API (port 4000)
-pnpm run dev:app            # Main Next.js app (port 3000)
+pnpm typecheck / lint / test / test:e2e / build / build:all
+pnpm --filter @airo/agents test:unit / test:integration
+pnpm --filter <package> build
 ```
 
-**IMPORTANT** Agent needs to run on port 4000 and App on port 3000, if something else is already running on one of this port, kill it
+**Ports:** Agents=4000, App=3000. Kill conflicting processes.
 
-**For complete setup instructions, see [GETTING_STARTED.md](./GETTING_STARTED.md)**
+## Architecture
 
-### Common Development Commands
-
-```bash
-# Code Quality
-pnpm typecheck              # Type check all packages
-pnpm lint                   # Lint all packages
-pnpm test                   # Run all tests
-pnpm test:e2e              # Run end-to-end tests with Playwright
-
-# Per-service commands (run from workspace root)
-pnpm --filter @airo/agents test        # Test agents service
-pnpm --filter @airo/agents test:unit   # Unit tests only
-pnpm --filter @airo/agents test:integration # Integration tests only
-pnpm --filter website test             # Test Next.js app
-
-# Building
-pnpm build                  # Build all packages
-pnpm build:all             # Build all packages recursively
-pnpm --filter @airo/agents build      # Build agents service only
-pnpm --filter website build           # Build Next.js app only
-```
-
-## Architecture Overview
-
-This is a **pnpm workspace monorepo** with multiple interconnected services. All commands should use `pnpm` instead of `npm`.
+**pnpm workspace monorepo** - Always use `pnpm`, never `npm`
 
 ### Core Services
 
-- **agents/** - Backend API service (Express.js, port 4000)
-  - Package name: `@airo/agents`
-  - AI agent registry and execution
-  - App lifecycle management with adapter pattern
-  - SQLite database for persistence
-  - WebSocket support for real-time communication
-  - Uses Vitest for testing
+| Service                        | Package                  | Port | Description                                                         |
+| ------------------------------ | ------------------------ | ---- | ------------------------------------------------------------------- |
+| **agents/**                    | `@airo/agents`           | 4000 | Express API, agent registry, app lifecycle, SQLite, WebSocket       |
+| **app/**                       | `website`                | 3000 | Next.js builder UI, Monaco, chat, MySQL/Prisma, GoDaddy SSO, UXCore |
+| **website/**                   | N/A                      | N/A  | Marketing site                                                      |
+| **app-templates/**             | N/A                      | N/A  | v8 (Vite+React+Node), copied for new apps                           |
+| **packages/ai-lib/**           | `@airo/ai-lib`           | N/A  | Shared AI utilities (build before agents)                           |
+| **packages/design-extractor/** | `@airo/design-extractor` | N/A  | PDF design extraction for RAG                                       |
+| **setup/**                     | `airo-setup`             | N/A  | Interactive config utility                                          |
+| **e2e/**                       | `airo-app-builder-e2e`   | N/A  | E2E tests (Cypress/Testla)                                          |
 
-- **app/** - Primary Next.js application (port 3000)
-  - **This is the main application users interact with for building apps with AI agents**
-  - Package name: `website` (directory is `app/`, package name is `website`)
-  - Development environment with Monaco editor
-  - Real-time collaboration features with agents via WebSocket
-  - Chat interface for agent interactions
-  - File explorer and code editing
-  - MySQL database via Prisma ORM
-  - GoDaddy authentication integration via Gasket plugins
-  - UXCore design system (@ux/\* components)
-  - Uses Tailwind CSS with design system (NO default colors like `bg-white` or `text-blue-600`)
-  - Uses Vitest for testing
+### Key Patterns
 
-- **website/** - Marketing/demo website
-  - Separate mockup website demonstrating the Airo AI Builder experience
-  - Simpler Next.js app with homepage, pricing, team pages
-  - Used for showcasing the platform, not the actual builder interface
+**Deployment:** Docker Compose (dev/local), enterprise adapter (prod) via adapter pattern for environment abstraction. Key: `app/src/lib/dev-environment/adapters/DockerAppService.ts`
 
-- **app-templates/** - Template system for new applications
-  - v8 is current: Vite + React frontend + Node.js backend
-  - Templates are copied and customized for new apps
-  - Template dependencies must be installed via workspace `pnpm install`
+**Container Orchestration:**
 
-- **packages/ai-lib/** - Shared AI utilities library
-  - Package name: `@airo/ai-lib`
-  - Shared between agents and app services
-  - Must be built before building agents service
+- `docker-compose-generator.ts` - Creates compose files per app
+- `docker-compose-manager.ts` - Lifecycle, logs, health
+- `docker-container-manager.ts` - Operations, recovery, cleanup
+- Generated: `/tmp/apps/{appId}/docker-compose.yml`
 
-- **setup/** - Interactive configuration utility
-  - Package name: `airo-setup`
-  - Automated environment setup and validation
-  - AWS credentials and secrets management
+**HTTP Proxy (dev-supervisor):**
 
-### Key Architectural Patterns
+- Ports: 5000+ (HTTPS), 8877+ (API)
+- TLS termination, reverse proxy :8080, WebSocket, retry backoff
+- Config: `DEV_SUPERVISOR_ENABLE_PROXY`, `*_PROXY_PORT`, `*_TARGET_HOST/PORT`, `*_CERT/KEY_PATH`, `*_LOG_LEVEL`, `*_MAX_RETRIES=10`, `*_INITIAL_BACKOFF_MS=200`, `*_MAX_BACKOFF_MS=5000`
+- Errors: 503 (backend starting, retries with backoff: ~31s dev/~4s prod), 502 (proxy error)
+- Files: `dev-supervisor/{http_proxy,main,api}.go`
 
-**Deployment Adapter Pattern:**
-
-- Docker Compose for development and local deployments
-- Production uses different adapter for enterprise infrastructure
-- Key files: `app/src/lib/dev-environment/adapters/` containing `DockerAppService.ts`
-
-**Container Orchestration (Docker Compose):**
-
-- **Generator Service:** `app/src/lib/dev-environment/services/docker-compose-generator.ts`
-  - Generates docker-compose.yml files for each app
-  - Configures app + database services
-  - Handles environment variables and networking
-  - Supports TCP and Unix socket modes for dev-supervisor
-
-- **Manager Service:** `app/src/lib/dev-environment/services/docker-compose-manager.ts`
-  - Lifecycle operations: up, down, start, stop, restart
-  - Log streaming and status monitoring
-  - Health checks and service discovery
-
-- **Container Manager:** `app/src/lib/dev-environment/services/docker-container-manager.ts`
-  - Uses Docker Compose for all container operations
-  - Manages app + database stacks as single units
-  - Automatic recovery and orphan cleanup
-  - Generated compose files in `/tmp/apps/{appId}/docker-compose.yml`
-
-**HTTP Proxy Architecture:**
-
-Dev-supervisor includes an integrated HTTP proxy with TLS termination for local development.
-
-- **Port Allocation:**
-  - Port 5000+ (dynamically allocated): HTTPS proxy to application
-  - Port 8877+ (dynamically allocated): Management API
-
-- **Features:**
-  - TLS termination using self-signed certificates from `/app/.ssl/`
-  - Reverse proxy to application on port 8080
-  - WebSocket upgrade support for Vite HMR
-  - Automatic header forwarding (X-Real-IP, X-Forwarded-For, X-Forwarded-Proto, X-Forwarded-Host)
-  - Host header preservation for host-based routing and absolute URL generation
-  - Configurable connection retry with exponential backoff (default: 10 retries, 200ms-5s backoff in dev)
-  - Smart error handling: 503 for backend not ready, 502 for proxy errors
-  - Graceful shutdown with connection draining
-  - Mutex-protected lifecycle management
-
-- **Configuration:**
-  Set via environment variables in docker-compose.yml:
-  - `DEV_SUPERVISOR_ENABLE_PROXY=true`
-  - `DEV_SUPERVISOR_PROXY_PORT=<port>` - External HTTPS port
-  - `DEV_SUPERVISOR_PROXY_TARGET_HOST=localhost` - Backend host to proxy to
-  - `DEV_SUPERVISOR_PROXY_TARGET_PORT=8080` - Backend port to proxy to
-  - `DEV_SUPERVISOR_PROXY_CERT_PATH=/app/.ssl/cert.pem`
-  - `DEV_SUPERVISOR_PROXY_KEY_PATH=/app/.ssl/key.pem`
-  - `DEV_SUPERVISOR_LOG_LEVEL=debug` (optional: debug, info, warn, error; default: info, set to debug in local dev)
-  - `DEV_SUPERVISOR_PROXY_MAX_RETRIES=10` (optional: default: 5, set to 10 in dev for slow startup)
-  - `DEV_SUPERVISOR_PROXY_INITIAL_BACKOFF_MS=200` (optional: default: 100ms, set to 200ms in dev)
-  - `DEV_SUPERVISOR_PROXY_MAX_BACKOFF_MS=5000` (optional: default: 2000ms, set to 5000ms in dev)
-
-- **API Endpoints:**
-  - `GET /proxy/status` - Get current proxy status and health
-  - `GET /proxy/config` - Get proxy configuration
-  - Available via DevSupervisorClient: `getProxyStatus()`, `getProxyConfig()`
-
-- **Implementation:**
-  - Core proxy: `dev-supervisor/http_proxy.go`
-  - Server integration: `dev-supervisor/main.go`
-  - API handlers: `dev-supervisor/api.go`
-  - Compose generation: `app/src/lib/dev-environment/services/docker-compose-generator.ts`
-
-- **Troubleshooting:**
-  - Check proxy status: `GET /proxy/status` on management API
-  - Review logs for TLS certificate errors
-  - Verify app is running on internal port 8080
-  - Ensure certificate files exist at `/app/.ssl/cert.pem` and `key.pem`
-  - Validate port allocation (5000+ for proxy, 8877+ for management)
-  - **503 Service Unavailable**: Backend is starting up or temporarily unavailable (connection refused). Proxy will retry with exponential backoff (dev: 10 retries over ~31s, prod: 5 retries over ~4s). Check debug logs for retry attempts and adjust `DEV_SUPERVISOR_PROXY_MAX_RETRIES` if needed.
-  - **502 Bad Gateway**: Actual proxy error after all retries exhausted, or non-retryable error from backend
-
-**App Directory Structure:**
-
-Apps are created with the following directory structure:
+**App Structure:**
 
 ```
 /tmp/apps/{appId}/
-  ├── app/                    # Application code (template files, source code)
-  │   ├── package.json
-  │   ├── src/
-  │   ├── Dockerfile.dev
-  │   └── ...
-  ├── alloc/                  # Configuration and secrets directory
-  │   └── config.json         # Database credentials and configuration
-  └── docker-compose.yml      # Docker Compose configuration (at root level)
+  ├── app/              # Code
+  ├── alloc/            # Config (config.json)
+  └── docker-compose.yml
 ```
 
-Key points:
+Docker bind mounts: `{basePath}/app:/app`, `{basePath}/alloc:/alloc`
 
-- Application code lives in the `/app` subdirectory
-- Configuration and secrets live in the `/alloc` subdirectory
-- Docker Compose configuration stays at the root level for easy compose operations
-- Docker bind mounts: `{basePath}/app:/app` and `{basePath}/alloc:/alloc`
-
-**Workspace Dependencies:**
-
-- `packages/ai-lib` must be built before `agents` service
-- Template in `app-templates/v8` must have dependencies installed
-- Use `pnpm --filter <package-name>` to run commands for specific packages
+**Dependencies:** Build `packages/ai-lib` before `agents`, install `app-templates/v8` deps, use `pnpm --filter <pkg>`
 
 ### AI Agent System
 
-- Base class: `agents/src/base/base-agent.ts`
-- Agent registry: `agents/src/registry/agent-registry.ts`
-- Agent factory: `agents/src/agents/ai-lib-agents/index.ts`
-- Available agents: DevelopAgent, ColorSchemeAgent, CommerceAgent (conditional), ExampleAgent
-- Prompts stored in: `agents/src/prompts/`
+- Base: `agents/src/base/base-agent.ts`
+- Registry: `agents/src/registry/agent-registry.ts`
+- Factory: `agents/src/agents/ai-lib-agents/index.ts`
+- Agents: InitialAgent, DevelopAgent, ColorSchemeAgent, MarketingAgent, CommerceAgent (opt-in), ExampleAgent
+- Prompts: `agents/src/prompts/`
 
-**Conditional Agent Enablement:**
+**Feature Flags (`agents/src/services/features.ts`):**
 
-The system supports environment-based agent enablement through feature flags in `agents/src/services/features.ts`:
+- `ENABLE_COMMERCE_AGENT=true` - GoDaddy Commerce (dev/test only)
+- `ENABLE_SOCIAL_PLATFORM=true` - Social tools in MarketingAgent (dev/test only)
+- Check: `agents.isEnabled("commerce")` / `agents.isEnabled("social")`
 
-- **CommerceAgent**: Disabled by default, requires explicit opt-in
-  - Enable with `ENABLE_COMMERCE_AGENT=true` in `agents/.env`
-  - Use in development/testing environments only
-  - Specializes in GoDaddy Commerce product catalog operations and checkout flows
-  - When disabled, the agent will not be registered or available through the WebSocket server
+### Database
 
-- **Social Platform Tools**: Disabled by default, requires explicit opt-in
-  - Enable with `ENABLE_SOCIAL_PLATFORM=true` in `agents/.env`
-  - Use in development/testing environments only
-  - Adds social platform integration tools to MarketingAgent: socialConnect, socialStatus
-  - Allows connecting to Facebook, Instagram, Google Business Profile, TikTok, Yelp, and WhatsApp
-  - When disabled, social platform tools will not be available in the MarketingAgent
+**App (MySQL/Prisma):** Docker Compose container, `app/.env`: `DATABASE_URL`, schema: `app/prisma/`, package: `website`
 
-**Checking Agent Availability:**
-
-```typescript
-import { agents } from "./services/features.js";
-
-if (agents.isEnabled("commerce")) {
-  // Commerce agent is available
-}
-
-if (agents.isEnabled("social")) {
-  // Social platform tools are available
-}
+```bash
+pnpm --filter website exec prisma migrate dev / generate / studio
 ```
 
-### Database Architecture
+### Tools
 
-**App Service (MySQL via Prisma):**
+In `agents/src/tools/`:
 
-- MySQL container managed via Docker Compose
-- Connection string in `app/.env`: `DATABASE_URL`
-- Schema managed via Prisma migrations in `app/prisma/`
-- Package name is `website` (directory is `app/`)
-- Commands:
-  ```bash
-  pnpm --filter website exec prisma migrate dev    # Run migrations
-  pnpm --filter website exec prisma generate       # Generate Prisma client
-  pnpm --filter website exec prisma studio         # Open Prisma Studio
-  ```
+- File: `file-edit`, `read-file`, `directory-listing`
+- Dev: `git-tool`, `terminal`, `grep-tool`
+- Code: `ast-style-editor`, `ast-text-editor`, `ast-editor-base`
+- Media: `media-search-tool` (image/video search, AI generation via Getty/DALL-E)
+- Infra: `server-management-tool`, `mysql-tool`, `secrets-management-tool`, `view-logs-tool`
+- AI: `memory-tool`, `rag-tool`, `skill-loader-tool`
+- Specialized: `commerce-product-tool`, `website-scraper-tool`, `app-plan-tool`, `css-color-tool`, `todo-list-tool`, `icons-validator`
 
-### File Operations & Tools
+### Screenshot Capture
 
-Comprehensive file system tools in `agents/src/tools/`:
+Flow: Conversation end → preview → screenshot → postMessage → upload → `{appId}-screenshot.png`
 
-- `file-edit.ts` - File creation and modification
-- `read-file.ts` - File content reading with security
-- `directory-listing.ts` - Directory structure exploration
-- `git-tool.ts` - Git operations integration
-- `terminal.ts` - Command execution capabilities
-- `grep-tool.ts` - File content searching
-- `ast-style-editor.ts` - AST-based code transformations
-- `image-generation-tool.ts` - AI image generation
-- `image-search-tool.ts` - Web image search
-- `getty-image-tool.ts` - Professional stock photos
+- API: `GET/POST /api/apps/:id/screenshot`
+- Config: `SCREENSHOT_DIR` (default: `/tmp/apps/{appId}/`), 512px PNG
 
-### Automatic Screenshot Capture
-
-The system automatically captures and stores screenshots of apps after each conversation completion:
-
-**Flow:**
-
-1. Conversation completes → triggers preview refresh
-2. Before reload, requests screenshot from iframe (dev-tools)
-3. Dev-tools captures full page, resizes to 512px wide using `html-to-image`
-4. Screenshot sent via postMessage to app frontend
-5. App uploads screenshot to agents API
-6. Screenshot saved as `{appId}-screenshot.png` in SCREENSHOT_DIR (or app.path)
-
-**Endpoints:**
-
-- `GET /api/apps/:id/screenshot` - Serves screenshot or 404
-- `POST /api/apps/:id/screenshot` - Uploads screenshot (multipart/form-data)
-
-**Configuration:**
-
-- Set `SCREENSHOT_DIR` in `agents/.env` to customize storage location
-- Defaults to individual app directories (`/tmp/apps/{appId}/`)
-- Screenshots are 512px wide PNG files
-
-## Environment Configuration
-
-### Required Environment Files
+## Environment Config
 
 **agents/.env:**
 
 ```bash
-# AI Provider (choose one: openai, bedrock, gocode)
-OPENAI_API_KEY=your_key_here
+OPENAI_API_KEY=key
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4
-
-# App Configuration
 APP_TEMPLATE_DIR=app-templates/v8
 SHOW_USAGE_COST=true
 
-# MySQL for created apps
 MYSQL_ROOT_HOST=localhost
 MYSQL_ROOT_PORT=3306
 MYSQL_ROOT_USER=root
 MYSQL_ROOT_PASS=
 
-# Getty Images (optional)
-GETTY_API_URL=<proxy-url>
+GETTY_API_URL=<url>
 GETTY_TOKEN=<token>
 IMAGE_SEARCH_DRIVER=getty
 
-# Logging Configuration (optional)
-LOG_LEVEL=debug                          # debug, info, warn, error, fatal
-LOG_FORMAT=dev                           # dev, json, pretty
-LOG_DOMAINS=app,agent,websocket          # Allowlist mode (only these domains)
-LOG_DISABLED_DOMAINS=compression,memory  # Blocklist mode (disable specific domains)
-LOG_OPT_IN_DOMAINS=compression.hot_files # Override defaults for opt-in domains
+LOG_LEVEL=debug
+LOG_FORMAT=dev
+LOG_DOMAINS=app,agent,websocket
+LOG_DISABLED_DOMAINS=compression,memory
+LOG_OPT_IN_DOMAINS=compression.hot_files
 
-# Screenshot Storage (optional)
-SCREENSHOT_DIR=/tmp/screenshots          # Directory to store app screenshots (defaults to app.path)
-
-# Feature Flags (optional)
-ENABLE_COMMERCE_AGENT=true               # Enable Commerce agent (default: false)
-ENABLE_SOCIAL_PLATFORM=false             # Enable social platform tools in Marketing agent (default: false)
+SCREENSHOT_DIR=/tmp/screenshots
+ENABLE_COMMERCE_AGENT=true
+ENABLE_SOCIAL_PLATFORM=false
 ```
 
 **app/.env:**
@@ -369,447 +175,118 @@ ENABLE_SOCIAL_PLATFORM=false             # Enable social platform tools in Marke
 NODE_ENV=development
 PORT=3000
 DATABASE_URL=mysql://airo:airopassword@localhost:3306/airo_app?sslaccept=accept_invalid_certs
-
-# Authentication
 NEXT_PUBLIC_USE_MOCK_LOGIN=true
 ```
 
-### Setup Utility
-
-Instead of manually creating `.env` files, use the automated setup:
-
-```bash
-./setup.sh                          # Full interactive setup
-pnpm --filter airo-setup start      # Selective configuration
-```
+Use `./setup.sh` or `pnpm --filter airo-setup start` instead of manual creation.
 
 ## Important Patterns
 
-### Development Server Lifecycle
+**App Lifecycle:** `creating` → `created` → `running`/`stopped`/`error`. Async setup, auto recovery, cleanup. DO NOT edit `/tmp/apps/{appId}/app/`.
 
-Apps go through states: `creating` → `created` → `running`/`stopped`/`error`
+**WebSocket:** Socket.IO V2, conversation history, bidirectional streaming, hot file tracking
 
-- Asynchronous setup after database insertion
-- Automatic process recovery on restart
-- Graceful cleanup and orphan detection
-- Generated apps stored in `/tmp/apps/{appId}/app/` (DO NOT edit directly)
+**Integrations:** OpenAI/Bedrock/GoCode, Git, Docker Compose, Socket.IO, SQLite (agents), MySQL/Prisma (app), Getty, GoDaddy SSO
 
-### WebSocket Communication
+## Working with Claude 4.5
 
-- Real-time agent communication via Socket.IO
-- V2 protocol active with conversation history support
-- Bidirectional streaming for agent responses
-- File context management with hot file tracking
+<default_to_action>
+Implement changes by default, not suggestions. When asked for improvements, make them directly. If unclear, infer best action and proceed. Only suggest when explicitly asked.
+</default_to_action>
 
-## Key Integrations
+<use_parallel_tool_calls>
+Call independent tools in parallel for efficiency (read files, run commands, search). Execute sequentially only when dependent. Never use placeholders.
+</use_parallel_tool_calls>
 
-- **OpenAI API / AWS Bedrock / GoCode** - AI model providers
-- **Git** - Automatic repository initialization for new apps
-- **Docker** - Containerized deployment via Docker Compose
-- **WebSocket** - Real-time communication (Socket.IO v2 protocol)
-- **SQLite** - Agents service embedded database
-- **MySQL** - Website service database via Prisma
-- **Getty Images** - Professional stock photos via proxy
-- **GoDaddy SSO** - Enterprise authentication in production
+<avoid_overengineering>
+Minimum complexity for current task only:
 
-## Development Notes
+- No features, refactors, or "improvements" beyond what's asked
+- No error handling for impossible scenarios - trust framework guarantees
+- Validate only at system boundaries (user input, external APIs)
+- No helpers/abstractions for one-time operations
+- No hypothetical future requirements
+- Reuse existing abstractions, follow DRY
+  </avoid_overengineering>
 
-- The system maintains backward compatibility between deployment modes
-- Template copying is critical for proper app creation
-- All file operations include security filtering and validation
-- Process management includes automatic cleanup and orphan recovery
-- Token usage tracking is always enabled regardless of UI settings
-- Apps automatically start on ports 5001+ (incremental)
+<context_awareness>
+Context auto-compacts at limits. Complete tasks fully regardless of budget. Save progress to memory before refresh. Never stop early.
+</context_awareness>
 
 ## Logging Standards
 
-This project uses a structured logging system with TypeScript interfaces and consistent event naming. **Console.log statements are strictly prohibited.**
+<structured_logging_requirements>
+Use `logger.info/warn/error("event.name", { data })` with typed interfaces and hierarchical names (`domain.operation.lifecycle`). No emojis. Enables production monitoring, filtering, aggregation.
+</structured_logging_requirements>
 
-### Core Principles
-
-- **NEVER** use `console.log`, `console.error`, `console.warn`, or `console.info`
-- **ALWAYS** use structured event names with `this.logger.info/warn/error`
-- **ALWAYS** pass structured data objects, not embedded strings
-- **Structured Data Only** - Use typed interfaces, no string interpolation
-- **Raw Values Preferred** - Log numbers, timestamps, and booleans as raw values, not pre-formatted strings
-- **Hierarchical Required Fields** - Domain-specific context enforcement
-- **Consistent Lifecycle Naming** - Standardized `begin/success/failure` patterns
-- **Type Safety** - All logging uses TypeScript helpers
-
-**Why Raw Values?**
-
-Structured logging should use raw values (numbers, timestamps, booleans) rather than pre-formatted strings:
-- **Flexibility**: Log aggregation tools can format values appropriately for different contexts
-- **Filtering**: Raw numbers and timestamps enable proper filtering and range queries
-- **Precision**: Formatted strings lose precision and make aggregation difficult
-- **Consistency**: Standardizes data types across all log consumers
+**Examples:**
 
 ```typescript
-// ❌ BAD - Pre-formatted strings
-logger.debug('cache.performance', {
-  hitRate: `${(rate * 100).toFixed(0)}%`,  // String, can't filter/aggregate
-  lastRefresh: new Date(ts).toLocaleTimeString()  // String, loses date info
-})
-
-// ✅ GOOD - Raw values
-logger.debug('cache.performance', {
-  hitRate: 0.75,  // Number, can filter/aggregate
-  lastRefresh: 1234567890  // Timestamp, can format/filter as needed
-})
-```
-
-### Examples
-
-```typescript
-// ❌ NEVER DO THIS - Console logging is prohibited
-console.log("Starting app creation for:", appId);
-console.error("Failed to load conversation:", error);
-
-// ✅ ALWAYS DO THIS - Use structured logging with event names
-this.logger.info("app.create.begin", {
-  appId: "abc123",
-  name: "my-app",
-  templateVersion: "v8",
-  baseDir: "/tmp/apps",
-  port: 3000,
+logger.info("app.create.begin", {
+  appId,
+  name,
+  templateVersion,
+  baseDir,
+  port,
 });
-
-this.logger.error("conversation.load.failure", {
-  appId: "app123",
-  conversationId: "conv456",
+logger.error("conversation.load.failure", {
+  appId,
+  conversationId,
   error: getErrorMessage(error),
 });
 ```
 
-### Available Event Categories
+**Categories:** `src/logging/events/index.js` - appCreationEvents, appServerEvents, appDockerEvents, conversationHistoryEvents, webSocketConnectionEvents, toolGitEvents, toolFileEditEvents, llmEvents
 
-Check `src/logging/events/index.js` for all available helpers:
-
-- `appCreationEvents` - App lifecycle events
-- `appServerEvents` - Server operations
-- `appDockerEvents` - Docker container operations
-- `conversationHistoryEvents` - Conversation management
-- `webSocketConnectionEvents` - WebSocket operations
-- `toolGitEvents` - Git operations
-- `toolFileEditEvents` - File operations
-- `llmEvents` - AI model interactions
-
-## ⚠️ CRITICAL LOGGING RULES
-
-**NEVER use console.log, console.error, console.warn, or console.info in this codebase.**
-
-**NEVER use emojis, symbols, or visual decorations in log messages - this is professional production-grade logging.**
-
-### ❌ FORBIDDEN - Console logging
-
-```typescript
-// These are PROHIBITED and will be rejected in code reviews
-console.log("Starting site creation for:", siteId);
-console.error("Failed to load conversation:", error);
-console.warn("Agent endpoint not ready yet");
-console.info("App created successfully");
-```
-
-### ✅ REQUIRED - Use logger instead
-
-```typescript
-// Always use the logger from request context
-import { logger } from "@/lib/request-context";
-
-logger.info("site.creation.start", {
-  siteId,
-  message: "Starting site creation",
-});
-logger.error("conversation.load.failed", {
-  error: error.message,
-  conversationId,
-});
-logger.warn("agent.endpoint.not_ready", { agentUrl, waitTime: 5000 });
-logger.info("app.creation.success", { appId, name: "my-app" });
-```
-
-**ALL console.log statements will be rejected in code reviews. Use structured logging exclusively.**
-
-### Exclusions from Logging Standards
-
-The following directories are **excluded** from logging standards enforcement:
-
-- **app-templates/v8/** - Template code for the application generator. This is copied to new applications and not part of the core codebase.
-- **Test files** - `**/*.test.ts`, `**/*.test.tsx`, `**/__tests__/**` files may use console statements for debugging.
-- **Generated files** - Files in `src/generated/` directories are auto-generated and exempt.
-
-## Logging Patterns by Service
-
-### App Service Logging
-
-The app service uses a **mixed approach** with simple event names and context objects:
-
-```typescript
-// Current app service pattern
-logger.info("develop-store.init.start", {
-  message: "Starting page initialization",
-  appId,
-});
-logger.info("services.polling.health", {
-  siteId,
-  message: "Polling services health",
-});
-logger.error("app.creation.failed", { error: createError.message, siteId });
-```
-
-**Characteristics:**
-
-- Simple, descriptive event names
-- Mixed context (sometimes rich objects, sometimes simple values)
-- **NO EMOJIS** - Professional production-grade logging only
-- Pattern: `logger.level('event-name', context)`
-
-### Agents Service Logging
-
-The agents service uses a **more structured approach** with hierarchical event names:
-
-```typescript
-// Current agents service pattern
-logger.warn("conversation.history.tool_call.skipped", {
-  conversationId,
-  toolCallId: segment.tool_call.id,
-  reason: "no_result",
-});
-
-logger.info("Initial build marked as complete after first commit", {
-  appId,
-  commitMessage: message,
-  commitCount,
-});
-```
-
-**Characteristics:**
-
-- Structured, hierarchical event names (`domain.operation.lifecycle`)
-- Always rich, structured context objects
-- **NO EMOJIS** - Professional production-grade logging only
-- More consistent with enterprise logging standards
-
-### Logging Control System
-
-The logging system supports fine-grained control over log output via environment variables:
-
-**Log Levels:**
-
-- `LOG_LEVEL=debug|info|warn|error|fatal` - Controls minimum log level (default: `debug` in dev, `info` in prod)
-
-**Domain Filtering:**
-
-Three filtering modes are supported:
-
-1. **Allowlist Mode** (most restrictive):
-
-   ```bash
-   LOG_DOMAINS=app,agent,websocket
-   # Only logs from these domains will be shown
-   ```
-
-2. **Blocklist Mode** (disable specific domains):
-
-   ```bash
-   LOG_DISABLED_DOMAINS=compression,memory
-   # All domains except these will be shown
-   ```
-
-3. **Opt-In Mode** (default for noisy domains):
-   ```bash
-   LOG_OPT_IN_DOMAINS=compression.hot_files.load,compression.message
-   # These domains are hidden by default, must be explicitly enabled
-   ```
-
-**Default Opt-In Domains** (hidden unless explicitly enabled):
-
-- `compression.hot_files.load` - Hot file loading details
-- `compression.file_edit` - File edit compression
-- `compression.file_edit_input` - File edit input compression
-- `compression.message` - Message compression details
-- `file-cleanup.run` - File cleanup operations
-- `memory.hook` - Memory schema hooks
-
-**Subdomain Filtering:**
-
-The system supports hierarchical filtering with subdomain specificity:
+**Control:**
 
 ```bash
-# Enable all compression logs
-LOG_DOMAINS=compression
+LOG_LEVEL=debug|info|warn|error|fatal
+LOG_DOMAINS=app,websocket               # Allowlist
+LOG_DISABLED_DOMAINS=compression,memory # Blocklist
+LOG_OPT_IN_DOMAINS=compression.hot_files # Override hidden defaults
 
-# Enable only hot file loading within compression
-LOG_DOMAINS=compression.hot_files
-
-# Disable only hot file loading within compression
-LOG_DISABLED_DOMAINS=compression.hot_files.load
+# Hidden defaults: compression.{hot_files.load,file_edit,file_edit_input,message}, file-cleanup.run, memory.hook
 ```
 
-**Common Use Cases:**
+**Patterns:**
 
-```bash
-# Show only app and websocket logs
-LOG_DOMAINS=app,websocket
+- App: Simple names, mixed context - `logger.info("develop-store.init.start", { message, appId })`
+- Agents: Hierarchical, rich context - `logger.warn("conversation.history.tool_call.skipped", { conversationId, toolCallId, reason })`
 
-# Show all logs except noisy compression details
-LOG_DISABLED_DOMAINS=compression.message,compression.hot_files.load
-
-# Enable specific opt-in domain for debugging
-LOG_DOMAINS=compression.hot_files.load
-
-# Override opt-in list to hide different domains
-LOG_OPT_IN_DOMAINS=custom.domain,another.domain
-```
-
-**Event Naming Convention:**
-
-All log events follow the pattern: `domain.subdomain.action`
-
-- `compression.hot_files.load.complete` - Compression domain, hot files subdomain
-- `file-cleanup.run.success` - File cleanup domain, run subdomain
-- `memory.schema.registered` - Memory domain, schema subdomain
-
-### ⚠️ Console Usage Issues (MUST BE FIXED)
-
-The agents service has some console.log usage that **MUST be migrated immediately**:
-
-```typescript
-// Found in agents service (MUST BE MIGRATED - FORBIDDEN)
-console.warn('Unknown model "%s", defaulting to OpenAI gpt-4o for token counting', modelName)
-console.error('Error counting tokens for OpenAI model "%s":', modelName, error)
-console.log('Agent feature flags and configuration:', { ... })
-```
-
-**These console statements are PROHIBITED and must be replaced with logger calls.**
-
-### Migration Priority
-
-1. **High Priority**: Migrate console.log statements in agents service
-2. **Medium Priority**: Standardize app service logging to match agents pattern
-3. **Low Priority**: Add structured event helpers for both services
+**Exclusions:** `app-templates/v8/`, `**/*.test.{ts,tsx}`, `**/__tests__/**`, `src/generated/`
 
 ## Coding Standards
 
-### Mandatory Requirements
+<code_comments>
+Prefer self-documenting code. Comment only for: WHY, WTF moments, complex regex, external constraints. Comments rot, code doesn't. See `.cursor/rules/comments.mdc`.
+</code_comments>
 
-**Import Sorting:**
+<dependency_validation>
+Declare in `package.json` BEFORE import. `dependencies` (runtime), `devDependencies` (dev/test). Node.js core (`node:`) exempt. Ensures reproducible builds, prevents production errors.
+</dependency_validation>
 
-- Sort all imports by exact character length (longest first)
-- Count every character including spaces, quotes, semicolons
-- Apply to both ES6 imports and CommonJS requires
-- See `.cursor/rules/import-sorting.mdc` for details
-
-**Code Comments:**
-
-- Prefer self-documenting code over comments (clear naming, proper encapsulation)
-- Only comment for: important context (WHY), WTF moments, complex regex, external constraints
-- When modifying code: remove unnecessary comments, update valuable ones
-- See `.cursor/rules/comments.mdc` for details
-
-**Dependency Validation:**
-
-- Every external package import MUST be declared in `package.json`
-- Add dependency BEFORE importing and using it
-- Use correct category: `dependencies` (runtime) vs `devDependencies` (dev/test only)
-- Node.js core modules with `node:` prefix do NOT need package.json entries
-
-**React Component Architecture (website/ only):**
-
-- Build pages using reusable components in separate files
-- Never inline complex UI directly in pages (>5-10 lines of JSX)
-- Extract to `components/` directory with clear naming
-- One component per file with TypeScript prop interfaces
+<react_component_architecture>
+**website/ only:** Extract complex UI (>5-10 JSX lines) to `components/` with clear names and TypeScript props. Improves reusability, testability, maintainability.
+</react_component_architecture>
 
 ## Package Management
 
-This project uses **pnpm** as the package manager. All commands should use `pnpm` instead of `npm`:
-
-- `pnpm install` - Install dependencies
-- `pnpm run dev` - Start development server
-- `pnpm test` - Run tests
-- `pnpm run lint` - Run linting
-
-### Adding New Dependencies
+<pnpm_requirement>
+Use **pnpm** only (never `npm`). Better performance (content-addressable), stricter resolution (no phantom deps), efficient workspaces. Lockfile is pnpm-specific.
 
 ```bash
-# Add to a specific workspace package
-pnpm --filter @airo/agents add <package-name>
-pnpm --filter website add <package-name>
-
-# Add as dev dependency
-pnpm --filter @airo/agents add -D <package-name>
+pnpm install / run dev / test / run lint
+pnpm --filter @airo/agents add <pkg>       # Workspace dependency
+pnpm --filter website add -D <pkg>         # Dev dependency
 ```
 
-### Package Manager Exceptions
-
-**app-templates/v8/** uses `npm` intentionally:
-- This directory contains application templates that are copied to user-generated apps
-- Template files use `npm` as it's the most common package manager for end users
-- Generated apps (`/tmp/apps/`) should use whatever package manager the template specifies
-- Do NOT convert template package.json scripts from `npm` to `pnpm`
-- Only workspace-level operations should use `pnpm`
+</pnpm_requirement>
 
 ## Pull Request Guidelines
 
-### Changelog Requirements
-
-**All significant changes MUST be documented in `changelog.md` before creating a pull request.**
-
-#### When to Add Changelog Entries
-
-Add entries for:
-
-- ✅ **New Features**: Any new functionality, tools, or capabilities
-- ✅ **Breaking Changes**: Changes that affect existing functionality or APIs
-- ✅ **Performance Improvements**: Optimizations, token savings, reduced API calls
-- ✅ **Bug Fixes**: Significant bug fixes or stability improvements
-- ✅ **Architecture Changes**: New classes, services, or system redesigns
-- ✅ **Internal Changes**: Developer experience improvements, tooling, infrastructure
-
-#### Changelog Format
-
-Add entries under the appropriate section in `changelog.md`:
-
-- **Public Facing Changes**: User-visible features and improvements
-- **Internal Changes**: Developer and system-level improvements
-
-Use descriptive, actionable language:
-
-```markdown
-### Internal Changes
-
-- **Feature Name**: Brief description of impact/benefit
-  - Added `ComponentName`: Specific functionality details
-  - Updated `ServiceName` with enhancement details
-  - Enhanced system with specific improvements
-  - Backward compatible implementation with no breaking changes
-```
-
-#### Examples
-
-**Good changelog entries:**
-
-```markdown
-- **Conversation History Management System**: Intelligent file context tracking and tool summarization for massive token savings and improved agent performance
-  - Added `FileContextManager`: Tracks file access patterns and auto-includes "hot files" in conversation context (30k token limit)
-  - Added tool summarization system with concise summaries replacing verbose outputs
-```
-
-**Poor changelog entries:**
-
-```markdown
-- Fixed stuff
-- Updated files
-- Made improvements
-```
-
-### PR Checklist
-
-Before creating a pull request:
-
-- [ ] Added changelog entry in `changelog.md`
-- [ ] Ran `pnpm typecheck` (no TypeScript errors)
-- [ ] Ran `pnpm lint` (no linting errors)
-- [ ] Tested changes work as expected
-- [ ] Verified backward compatibility (if applicable)
+- [ ] `pnpm typecheck` passes
+- [ ] `pnpm lint` passes
+- [ ] `pnpm build` passes
+- [ ] Changes tested
+- [ ] Backward compatibility verified
