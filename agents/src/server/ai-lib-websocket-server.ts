@@ -3,7 +3,8 @@
  * Uses AgentFactory system for modern agent management
  */
 
-import { Server as HTTPServer } from 'http'
+import { Server as HTTPServer } from 'node:http'
+import crypto from 'node:crypto'
 import {
   calculateCostEstimate,
   createWebSocketServer,
@@ -14,6 +15,7 @@ import {
 } from '@airo/ai-lib'
 import { auth, AuthType } from '../services/features.js'
 import apm from 'elastic-apm-node'
+import { getObservabilityService, generateTraceId, generateSpanId } from '../observability/index.js'
 // Define ContextMessage interface locally (extends ConversationMessage with required insertionOrder)
 interface ContextMessage {
   role: 'user' | 'assistant' | 'system'
@@ -49,10 +51,59 @@ import { initializeContextRegistry } from '../services/initializeContextRegistry
 const appRepo = new AppRepository()
 
 /**
+ * Map AI SDK finish reasons to Event Bus SDK finish reasons
+ *
+ * AI SDK uses 'tool-calls' (hyphen), Event Bus SDK expects 'tool_calls' (underscore)
+ *
+ * @param reason - The finish reason from the AI SDK
+ * @returns The mapped finish reason for the Event Bus SDK, or undefined if invalid
+ */
+function mapFinishReason(reason: string | undefined): 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'function_call' | undefined {
+  if (!reason) return undefined
+
+  // Map AI SDK hyphenated values to Event Bus underscored values
+  if (reason === 'tool-calls') return 'tool_calls'
+  if (reason === 'function-call') return 'function_call'
+  if (reason === 'content-filter') return 'content_filter'
+
+  // Pass through valid values
+  if (['stop', 'length', 'content_filter', 'tool_calls', 'function_call'].includes(reason)) {
+    return reason as 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'function_call'
+  }
+
+  return undefined
+}
+
+/**
  * Map to track active WebSocket transactions for APM
  * Key: socketId, Value: APM transaction object
  */
 const activeWebSocketTransactions = new Map<string, any>()
+
+/**
+ * Map to track active observability sessions for conversations
+ * Key: socketId:sessionType, Value: { traceId, spanId, startTime, conversationId }
+ */
+const activeObservabilitySessions = new Map<string, {
+  traceId: string
+  spanId: string
+  startTime: number
+  conversationId?: string
+  parentSpanId?: string
+}>()
+
+/**
+ * Map to track active conversation sessions for observability
+ * Key: socketId, Value: { conversationId, sessionState }
+ */
+const activeConversationSessions = new Map<string, {
+  conversationId: string
+  privateLabelId?: number
+  userType?: string
+  visitorId?: string
+  sessionId?: string
+  customerId?: string
+}>()
 
 /**
  * Socket.IO server instance for emitting events
@@ -474,7 +525,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     }
 
     // Create the WebSocket server with the agent factory and built-in persistence
-    const wsServer = createWebSocketServer(httpServer, {
+    // Type assertion needed because new observability hooks (onLlmStart, onLlmEnd, onToolStart, onToolEnd)
+    // are defined in ai-lib source but may not be visible until ai-lib is rebuilt (pnpm build in packages/ai-lib)
+    const wsServerConfig = {
       agents: agentFactory.agents,
 
       // State manager for agent handoffs
@@ -547,7 +600,19 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       },
 
       // Token usage tracking (independent of persistence)
-      onTokenUsage: async (usage, metadata) => {
+      onTokenUsage: async (usage: {
+        inputTokens: number
+        outputTokens: number
+        totalTokens: number
+        cachedInputTokens?: number
+        cacheWriteInputTokens?: number
+      }, metadata: {
+        agentName: string
+        modelName: string
+        conversationId?: string
+        appId?: string
+        context?: Record<string, unknown>
+      }) => {
         // Only track if we have appId
         if (!metadata.appId) {
           logger.warn('websocket.token_usage.no_app_id', {
@@ -624,6 +689,387 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
       },
 
+      // LLM call observability hooks
+      onLlmStart: async (data: {
+        socketId: string
+        model: string
+        provider: string
+        conversationId?: string
+        appId?: string
+        context?: Record<string, unknown>
+        // Full LLM tracking fields
+        input?: Array<{ role: string; content: string }>
+        tools?: string[]
+        toolChoice?: 'auto' | 'required' | 'none'
+      }): Promise<{ spanId: string; startTime: number } | void> => {
+        const observability = getObservabilityService()
+        if (!observability.isEnabled()) return
+
+        // Get invocation session for trace context
+        // onMessageStart is now properly awaited in ai-lib, so invocation should always exist
+        const invocationKey = `${data.socketId}:invocation`
+        const invocationSession = activeObservabilitySessions.get(invocationKey)
+
+        if (!invocationSession) {
+          // This should not happen now that onMessageStart is awaited
+          logger.warn('observability.llm.start.no_invocation_session', {
+            socketId: data.socketId,
+            conversationId: data.conversationId,
+            reason: 'Invocation session not found - onMessageStart may not have been awaited'
+          })
+          return
+        }
+
+        // Sanitize content for Event Bus - remove ALL problematic characters
+        const sanitize = (text: string): string => {
+          return text
+            // Remove backticks completely (don't replace, just remove)
+            .replace(/`/g, '')
+            // Remove asterisks (markdown bold/italic)
+            .replace(/\*/g, '')
+            // Replace newlines with spaces
+            .replace(/\n+/g, ' ')
+            // Remove control characters (ASCII 0-31 and 127)
+            // eslint-disable-next-line no-control-regex
+            .replace(/[\u0000-\u001F\u007F]/g, '')
+            // Collapse multiple spaces
+            .replace(/\s+/g, ' ')
+            .trim()
+        }
+
+        try {
+          // Build input array for LLM tracking
+          // Keep minimal - 200 chars worked, 1000 failed
+          const MAX_CONTENT = 200
+          const MAX_MSGS = 5
+
+          const inputMessages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string }> = []
+
+          for (const msg of (data.input || []).slice(0, MAX_MSGS)) {
+            if (!msg?.role || !msg?.content) continue
+            const role = msg.role as 'system' | 'user' | 'assistant' | 'tool'
+            if (!['system', 'user', 'assistant', 'tool'].includes(role)) continue
+
+            let content = typeof msg.content === 'string' ? msg.content : String(msg.content)
+            content = sanitize(content)
+            if (content.length > MAX_CONTENT) {
+              content = content.substring(0, MAX_CONTENT) + '...'
+            }
+            if (content) {
+              inputMessages.push({ role, content })
+            }
+          }
+
+          const llmSession = await observability.startLlmCall(
+            data.conversationId || invocationSession.conversationId || data.socketId,
+            invocationSession.traceId,
+            invocationSession.spanId,
+            {
+              model: data.model,
+              provider: data.provider,
+              input: inputMessages,
+              ...(data.tools && { tools: data.tools }),
+              ...(data.toolChoice && { toolChoice: data.toolChoice })
+            }
+          )
+
+          // Store LLM session for later completion
+          const llmKey = `${data.socketId}:llm`
+          activeObservabilitySessions.set(llmKey, {
+            traceId: invocationSession.traceId,
+            spanId: llmSession.spanId,
+            startTime: llmSession.startTime
+          })
+
+          logger.debug('observability.llm.started', {
+            socketId: data.socketId,
+            model: data.model,
+            provider: data.provider,
+            spanId: llmSession.spanId,
+            inputMessageCount: inputMessages.length,
+            toolCount: data.tools?.length || 0,
+            toolChoice: data.toolChoice
+          })
+
+          return { spanId: llmSession.spanId, startTime: llmSession.startTime }
+        } catch (error) {
+          logger.error('observability.llm.start_failed', {
+            socketId: data.socketId,
+            error: error instanceof Error ? error.message : String(error)
+          })
+          return
+        }
+      },
+
+      onLlmEnd: async (data: {
+        socketId: string
+        spanId?: string
+        startTime?: number
+        model: string
+        provider: string
+        conversationId?: string
+        appId?: string
+        usage?: {
+          inputTokens?: number
+          outputTokens?: number
+          totalTokens?: number
+          cachedTokens?: number
+          reasoningTokens?: number
+          totalCost?: number
+        }
+        finishReason?: string
+        success: boolean
+        context?: Record<string, unknown>
+        // Full LLM tracking fields
+        output?: Array<{ role: string; content?: string }>
+        toolCalls?: Array<{ id: string; name: string; arguments?: Record<string, unknown> }>
+        responseId?: string
+        reasoningSummary?: string
+      }): Promise<void> => {
+        const observability = getObservabilityService()
+        if (!observability.isEnabled()) return
+
+        const invocationKey = `${data.socketId}:invocation`
+        const invocationSession = activeObservabilitySessions.get(invocationKey)
+
+        const llmKey = `${data.socketId}:llm`
+        const llmSession = activeObservabilitySessions.get(llmKey)
+
+        // Use stored session if available, otherwise use data passed from ai-lib
+        // This handles cases where onLlmStart may have failed to store the session
+        const effectiveSpanId = llmSession?.spanId || data.spanId
+        const effectiveStartTime = llmSession?.startTime || data.startTime || Date.now()
+
+        if (!invocationSession) {
+          logger.debug('observability.llm.end.no_invocation_session', {
+            socketId: data.socketId,
+            hasLlm: !!llmSession,
+            hasDataSpanId: !!data.spanId
+          })
+          return
+        }
+
+        if (!effectiveSpanId) {
+          logger.debug('observability.llm.end.no_span_id', {
+            socketId: data.socketId,
+            hasLlmSession: !!llmSession,
+            hasDataSpanId: !!data.spanId
+          })
+          return
+        }
+
+        try {
+          // Build usage object with all supported fields
+          let usageData: {
+            totalTokens?: number
+            inputTokens?: number
+            outputTokens?: number
+            cachedTokens?: number
+            reasoningTokens?: number
+            totalCost?: number
+          } | undefined
+          if (data.usage) {
+            usageData = {}
+            if (data.usage.totalTokens !== undefined) usageData.totalTokens = data.usage.totalTokens
+            if (data.usage.inputTokens !== undefined) usageData.inputTokens = data.usage.inputTokens
+            if (data.usage.outputTokens !== undefined) usageData.outputTokens = data.usage.outputTokens
+            if (data.usage.cachedTokens !== undefined) usageData.cachedTokens = data.usage.cachedTokens
+            if (data.usage.reasoningTokens !== undefined) usageData.reasoningTokens = data.usage.reasoningTokens
+            if (data.usage.totalCost !== undefined) usageData.totalCost = data.usage.totalCost
+          }
+
+          // Build output array for LLM tracking
+          const outputMessages = (data.output || []).map(msg => ({
+            role: msg.role as 'system' | 'user' | 'assistant' | 'tool',
+            content: msg.content || '' // Default to empty string if content is undefined
+          }))
+
+          // Map AI SDK finishReason to Event Bus format (e.g., 'tool-calls' -> 'tool_calls')
+          const mappedFinishReason = mapFinishReason(data.finishReason)
+
+          await observability.endLlmCall(
+            data.conversationId || invocationSession.conversationId || data.socketId,
+            invocationSession.traceId,
+            effectiveSpanId,
+            invocationSession.spanId,
+            {
+              model: data.model,
+              provider: data.provider,
+              startTime: effectiveStartTime,
+              output: outputMessages,
+              ...(data.toolCalls && data.toolCalls.length > 0 && { toolCalls: data.toolCalls }),
+              ...(usageData && Object.keys(usageData).length > 0 && { usage: usageData }),
+              ...(mappedFinishReason && { finishReason: mappedFinishReason }),
+              executionOutcome: data.success ? 'SUCCESS' : 'ERROR',
+              ...(data.responseId && { responseId: data.responseId }),
+              ...(data.reasoningSummary && { reasoningSummary: data.reasoningSummary })
+            }
+          )
+
+          logger.debug('observability.llm.ended', {
+            socketId: data.socketId,
+            model: data.model,
+            durationMs: Date.now() - effectiveStartTime,
+            success: data.success,
+            outputMessageCount: outputMessages.length,
+            toolCallCount: data.toolCalls?.length || 0,
+            finishReason: data.finishReason,
+            mappedFinishReason,
+            hasUsage: !!usageData
+          })
+        } catch (error) {
+          logger.error('observability.llm.end_failed', {
+            socketId: data.socketId,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        } finally {
+          activeObservabilitySessions.delete(llmKey)
+        }
+      },
+
+      // Tool execution observability hooks
+      onToolStart: async (data: {
+        socketId: string
+        toolName: string
+        toolCallId: string
+        toolInput?: Record<string, unknown>
+        conversationId?: string
+        appId?: string
+        context?: Record<string, unknown>
+      }): Promise<{ spanId: string; startTime: number } | void> => {
+        const observability = getObservabilityService()
+        if (!observability.isEnabled()) return
+
+        // Get invocation session for trace context
+        // onMessageStart is now properly awaited in ai-lib, so invocation should always exist
+        const invocationKey = `${data.socketId}:invocation`
+        const invocationSession = activeObservabilitySessions.get(invocationKey)
+
+        if (!invocationSession) {
+          // This should not happen now that onMessageStart is awaited
+          logger.warn('observability.tool.start.no_invocation_session', {
+            socketId: data.socketId,
+            toolName: data.toolName,
+            conversationId: data.conversationId,
+            reason: 'Invocation session not found - onMessageStart may not have been awaited'
+          })
+          return
+        }
+
+        try {
+          // Build tool data, only including defined values
+          const toolData: { toolName: string; toolCallId: string; toolInput?: Record<string, unknown> } = {
+            toolName: data.toolName,
+            toolCallId: data.toolCallId
+          }
+          if (data.toolInput !== undefined) toolData.toolInput = data.toolInput
+
+          // Get the LLM session to use as parent (tools should be children of LLM, not invocation)
+          const llmKey = `${data.socketId}:llm`
+          const llmSession = activeObservabilitySessions.get(llmKey)
+          // Use LLM span as parent if available, otherwise fall back to invocation span
+          const parentSpanId = llmSession?.spanId || invocationSession.spanId
+
+          const toolSession = await observability.startToolExecution(
+            data.conversationId || invocationSession.conversationId || data.socketId,
+            invocationSession.traceId,
+            parentSpanId,
+            toolData
+          )
+
+          // Store tool session for later completion (include parent span for endToolExecution)
+          const toolKey = `${data.socketId}:tool:${data.toolCallId}`
+          activeObservabilitySessions.set(toolKey, {
+            traceId: invocationSession.traceId,
+            spanId: toolSession.spanId,
+            startTime: toolSession.startTime,
+            parentSpanId // Store parent for use in endToolExecution
+          })
+
+          logger.debug('observability.tool.started', {
+            socketId: data.socketId,
+            toolName: data.toolName,
+            toolCallId: data.toolCallId,
+            spanId: toolSession.spanId
+          })
+
+          return { spanId: toolSession.spanId, startTime: toolSession.startTime }
+        } catch (error) {
+          logger.error('observability.tool.start_failed', {
+            socketId: data.socketId,
+            toolName: data.toolName,
+            error: error instanceof Error ? error.message : String(error)
+          })
+          return
+        }
+      },
+
+      onToolEnd: async (data: {
+        socketId: string
+        toolName: string
+        toolCallId: string
+        spanId?: string
+        startTime?: number
+        success: boolean
+        toolResponse?: unknown
+        conversationId?: string
+        appId?: string
+        context?: Record<string, unknown>
+      }): Promise<void> => {
+        const observability = getObservabilityService()
+        if (!observability.isEnabled()) return
+
+        const invocationKey = `${data.socketId}:invocation`
+        const invocationSession = activeObservabilitySessions.get(invocationKey)
+
+        const toolKey = `${data.socketId}:tool:${data.toolCallId}`
+        const toolSession = activeObservabilitySessions.get(toolKey)
+
+        if (!invocationSession || !toolSession) {
+          logger.debug('observability.tool.end.no_session', {
+            socketId: data.socketId,
+            toolName: data.toolName,
+            hasInvocation: !!invocationSession,
+            hasTool: !!toolSession
+          })
+          return
+        }
+
+        try {
+          // Use the stored parent span (LLM span if available, otherwise invocation span)
+          const parentSpanId = toolSession.parentSpanId || invocationSession.spanId
+
+          await observability.endToolExecution(
+            data.conversationId || invocationSession.conversationId || data.socketId,
+            invocationSession.traceId,
+            toolSession.spanId,
+            parentSpanId,
+            {
+              toolName: data.toolName,
+              toolCallId: data.toolCallId,
+              startTime: toolSession.startTime,
+              executionOutcome: data.success ? 'SUCCESS' : 'ERROR',
+              toolResponse: data.toolResponse
+            }
+          )
+
+          logger.debug('observability.tool.ended', {
+            socketId: data.socketId,
+            toolName: data.toolName,
+            durationMs: Date.now() - toolSession.startTime,
+            success: data.success
+          })
+        } catch (error) {
+          logger.error('observability.tool.end_failed', {
+            socketId: data.socketId,
+            toolName: data.toolName,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        } finally {
+          activeObservabilitySessions.delete(toolKey)
+        }
+      },
+
       // Context extractor to validate appId
       contextExtractor: (rawContext: Record<string, unknown>, _socketContext?: any) => {
         // Extract appId from context metadata
@@ -659,7 +1105,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       },
 
       // Connection handler
-      onConnection: (socketId: string) => {
+      onConnection: async (socketId: string) => {
         logger.info('websocket.connection.connected', {
           message: 'WebSocket client connected',
           socketId
@@ -677,6 +1123,26 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             transactionName: transaction.name
           })
         }
+
+        // Start observability conversation tracking
+        // startConversation is synchronous - IDs generated locally, event sent in background
+        const observability = getObservabilityService()
+        logger.info('observability.service.check', {
+          socketId,
+          enabled: observability.isEnabled()
+        })
+        if (observability.isEnabled()) {
+          const session = observability.startConversation({})
+          activeConversationSessions.set(socketId, {
+            conversationId: session.conversationId
+          })
+
+          logger.info('observability.conversation.started', {
+            socketId,
+            conversationId: session.conversationId,
+            traceId: session.traceId
+          })
+        }
       },
 
       // Optional event handlers (persistence is now handled automatically)
@@ -690,6 +1156,32 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
 
         const contextLogger = log.forApp(siteId);
+
+        // Start observability tracking for this invocation
+        const observability = getObservabilityService()
+        // Use the observability conversation ID (must be UUID format per Event Bus schema)
+        // Fall back to conversation context ID, or generate a new UUID if not available
+        const conversationSession = activeConversationSessions.get(socketId)
+        const conversationId = conversationSession?.conversationId
+          || typedContext?.conversation?.conversationId
+          || crypto.randomUUID()
+
+        // startInvocation is synchronous - IDs generated locally, event sent in background
+        // This is guaranteed to happen before onLlmStart because ai-lib awaits onMessageStart
+        if (observability.isEnabled()) {
+          const invocation = observability.startInvocation(conversationId, message)
+          activeObservabilitySessions.set(`${socketId}:invocation`, {
+            ...invocation,
+            conversationId
+          })
+
+          logger.debug('observability.invocation.tracking_started', {
+            socketId,
+            conversationId,
+            traceId: invocation.traceId,
+            spanId: invocation.spanId
+          })
+        }
 
         // Debug: Log what context we received
         logger.debug('websocket.message.context_debug', {
@@ -808,6 +1300,75 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           message: 'WebSocket request completed for site'
         });
 
+        // Complete observability tracking for this invocation
+        const observability = getObservabilityService()
+        const invocationKey = `${socketId}:invocation`
+        const invocationSession = activeObservabilitySessions.get(invocationKey)
+        // Use the stored conversationId from invocation start to ensure correlation
+        // Falls back to context or siteId only if session doesn't have one
+        const conversationId = invocationSession?.conversationId
+          || typedContext?.conversation?.conversationId
+          || siteId
+
+        if (observability.isEnabled() && invocationSession) {
+          try {
+            // Determine response type based on result
+            const responseType = result.handoff ? 'handoff' : 'llm_reply'
+
+            await observability.endInvocation(
+              conversationId,
+              invocationSession.traceId,
+              invocationSession.spanId,
+              {
+                responseType,
+                startTime: invocationSession.startTime,
+                outputText: result.text || undefined,
+                totalTokens: result.usage?.totalTokens,
+                totalCost: result.usage?.totalCost,
+                executionOutcome: result.error ? 'ERROR' : 'SUCCESS'
+              }
+            )
+
+            // Track handoff if applicable
+            if (result.handoff) {
+              await observability.trackHandoff(
+                conversationId,
+                invocationSession.traceId,
+                invocationSession.spanId,
+                {
+                  fromAgentName: result.handoff.fromAgentName || 'unknown',
+                  fromAgentId: result.handoff.fromAgentId || 'unknown',
+                  toAgentName: result.handoff.toAgentName || 'unknown',
+                  toAgentId: result.handoff.toAgentId || 'unknown',
+                  reason: result.handoff.reason || 'unknown',
+                  routingMethod: result.handoff.routingMethod || 'llm'
+                }
+              )
+            }
+
+            logger.debug('observability.invocation.tracking_completed', {
+              socketId,
+              conversationId,
+              responseType,
+              durationMs: Date.now() - invocationSession.startTime
+            })
+          } catch (error) {
+            logger.error('observability.invocation.tracking_completion_failed', {
+              socketId,
+              conversationId,
+              error: error instanceof Error ? error.message : String(error)
+            })
+          }
+        }
+
+        // Always clean up invocation session to prevent memory leaks
+        // This must be outside the observability check to ensure cleanup even when:
+        // - Observability is disabled
+        // - Observability operations fail
+        if (invocationSession) {
+          activeObservabilitySessions.delete(invocationKey)
+        }
+
         // End APM transaction for message processing
         const messageTransactionKey = `${socketId}:message`
         const messageTransaction = activeWebSocketTransactions.get(messageTransactionKey)
@@ -838,11 +1399,64 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
       },
 
-      onDisconnection: (socketId: string) => {
+      onDisconnection: async (socketId: string) => {
         logger.info('websocket.connection.disconnected', {
           message: 'WebSocket client disconnected',
           socketId
         })
+
+        // End observability conversation tracking
+        const observability = getObservabilityService()
+        const conversationSession = activeConversationSessions.get(socketId)
+
+        if (observability.isEnabled() && conversationSession) {
+          try {
+            await observability.endConversation(
+              conversationSession.conversationId,
+              'manual' // Disconnection is treated as manual close
+            )
+
+            logger.debug('observability.conversation.ended', {
+              socketId,
+              conversationId: conversationSession.conversationId
+            })
+          } catch (error) {
+            logger.error('observability.conversation.end_failed', {
+              socketId,
+              conversationId: conversationSession.conversationId,
+              error: error instanceof Error ? error.message : String(error)
+            })
+          }
+        }
+
+        // Always clean up the conversation session to prevent memory leaks
+        // This must be outside the observability check to ensure cleanup even when:
+        // - Observability is disabled
+        // - Conversation session exists but observability operations fail
+        if (conversationSession) {
+          activeConversationSessions.delete(socketId)
+        }
+
+        // Clean up any orphaned observability sessions to prevent memory leaks
+        // These can occur if a socket disconnects before onMessageComplete finishes
+        // Use prefix pattern to clean up all sessions for this socket (invocation, llm, tool:*)
+        const socketPrefix = `${socketId}:`
+        const keysToDelete: string[] = []
+        for (const key of activeObservabilitySessions.keys()) {
+          if (key.startsWith(socketPrefix)) {
+            keysToDelete.push(key)
+          }
+        }
+        if (keysToDelete.length > 0) {
+          for (const key of keysToDelete) {
+            activeObservabilitySessions.delete(key)
+          }
+          logger.debug('observability.cleanup.orphaned_sessions', {
+            socketId,
+            cleanedKeys: keysToDelete.length,
+            keyTypes: keysToDelete.map(k => k.split(':')[1])
+          })
+        }
 
         // End APM transaction for connection lifecycle
         const connectionTransaction = activeWebSocketTransactions.get(socketId)
@@ -876,23 +1490,71 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
       },
 
-      onError: (socketId: string, error: Error, message?: string) => {
+      onError: async (socketId: string, error: Error, message?: string) => {
         // Check if this is a customer context error (auth-related)
         if (error.message.includes('customer context') ||
           error.message.includes('authentication may have failed')) {
-          logger.error('WebSocket context error:', {
+          logger.error('websocket.error.context', {
             socketId,
             error: error.message,
-            message: message ? message.substring(0, 100) : undefined,
-            type: 'context_error'
+            message: message ? message.substring(0, 100) : undefined
           });
         } else {
-          logger.error('WebSocket error:', {
+          logger.error('websocket.error.general', {
             socketId,
             error: error.message,
-            message: message ? message.substring(0, 100) : undefined,
-            type: 'general_error'
+            message: message ? message.substring(0, 100) : undefined
           });
+        }
+
+        // Track error in observability
+        const observability = getObservabilityService()
+        const invocationKey = `${socketId}:invocation`
+        const invocationSession = activeObservabilitySessions.get(invocationKey)
+
+        if (observability.isEnabled() && invocationSession) {
+          // Determine error phase based on error type
+          const isAuthError = error.message.includes('customer context') ||
+            error.message.includes('authentication')
+          const errorPhase = isAuthError ? 'init' : 'execution'
+          const isRetryable = !isAuthError
+
+          // Use stored conversationId from invocation session, fallback to socketId
+          const errorConversationId = invocationSession.conversationId || socketId
+
+          try {
+            // Await error tracking to complete before cleanup to prevent race conditions
+            await observability.trackError(
+              errorConversationId,
+              invocationSession.traceId,
+              invocationSession.spanId,
+              {
+                errorType: error.name || 'Error',
+                errorMessage: error.message,
+                errorPhase,
+                isRetryable,
+                ...(error.stack && { errorStack: error.stack })
+              }
+            )
+          } catch (trackError) {
+            logger.error('observability.error.tracking_failed', {
+              socketId,
+              conversationId: errorConversationId,
+              trackError: trackError instanceof Error ? trackError.message : String(trackError)
+            })
+          }
+        }
+
+        // Always clean up all observability sessions for this socket to prevent memory leaks
+        // This must be outside the observability check to ensure cleanup even when:
+        // - Observability is disabled
+        // - Error occurred before invocation completed
+        // Use prefix pattern to clean up all sessions (invocation, llm, tool:*)
+        const socketPrefix = `${socketId}:`
+        for (const key of activeObservabilitySessions.keys()) {
+          if (key.startsWith(socketPrefix)) {
+            activeObservabilitySessions.delete(key)
+          }
         }
 
         // Mark APM transactions as failed
@@ -904,7 +1566,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           messageTransaction.setLabel('event', 'error')
           messageTransaction.result = 'error'
           messageTransaction.setOutcome('failure')
-          
+
           // Capture the error in APM
           apm.captureError(error, {
             custom: {
@@ -931,7 +1593,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           connectionTransaction.setLabel('has_error', 'true')
         }
       }
-    })
+    }
+    // Use type assertion because new observability hooks may not be visible until ai-lib is rebuilt
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wsServer = createWebSocketServer(httpServer, wsServerConfig as any)
 
     logger.info('websocket.server.ready', {
       message: 'AgentFactory WebSocket server ready for connections',

@@ -40,6 +40,8 @@ interface AgentExecutionResult {
     cachedInputTokens?: number
     cacheWriteInputTokens?: number
   }
+  /** Summary of reasoning (for models that support extended thinking) */
+  reasoningSummary?: string
 }
 
 /**
@@ -101,8 +103,8 @@ export interface WebSocketConfig {
   agentRouter?: (socketId: string, data: ChatMessage) => string | undefined
 
   /** Event handlers */
-  onConnection?: (socketId: string) => void
-  onDisconnection?: (socketId: string) => void
+  onConnection?: (socketId: string) => void | Promise<void>
+  onDisconnection?: (socketId: string) => void | Promise<void>
   onMessageStart?: (socketId: string, message: string, agentName?: string, context?: Record<string, unknown>) => void | Promise<void>
   onMessageComplete?: (socketId: string, result: {
     agentName: string
@@ -110,7 +112,7 @@ export interface WebSocketConfig {
     usage?: any
     toolCalls?: any[]
   }, context?: Record<string, unknown>) => void
-  onError?: (socketId: string, error: Error, message?: string, context?: Record<string, unknown>) => void
+  onError?: (socketId: string, error: Error, message?: string, context?: Record<string, unknown>) => void | Promise<void>
   onTokenUsage?: (usage: {
     inputTokens: number
     outputTokens: number
@@ -120,6 +122,75 @@ export interface WebSocketConfig {
   }, metadata: {
     agentName: string
     modelName: string
+    conversationId?: string
+    appId?: string
+    context?: Record<string, unknown>
+  }) => void | Promise<void>
+
+  /** LLM call observability hooks */
+  onLlmStart?: (data: {
+    socketId: string
+    model: string
+    provider: string
+    conversationId?: string
+    appId?: string
+    context?: Record<string, unknown>
+    /** Input messages sent to the LLM */
+    input?: Array<{ role: string; content: string }>
+    /** Available tools for this LLM call */
+    tools?: string[]
+    /** Tool choice mode */
+    toolChoice?: 'auto' | 'required' | 'none'
+  }) => Promise<{ spanId: string; startTime: number } | void> | { spanId: string; startTime: number } | void
+
+  onLlmEnd?: (data: {
+    socketId: string
+    spanId?: string
+    startTime?: number
+    model: string
+    provider: string
+    conversationId?: string
+    appId?: string
+    usage?: {
+      inputTokens?: number
+      outputTokens?: number
+      totalTokens?: number
+      cachedTokens?: number
+      reasoningTokens?: number
+      totalCost?: number
+    }
+    finishReason?: string
+    success: boolean
+    context?: Record<string, unknown>
+    /** Output messages from the LLM */
+    output?: Array<{ role: string; content?: string }>
+    /** Tool calls made by the LLM */
+    toolCalls?: Array<{ id: string; name: string; arguments?: Record<string, unknown> }>
+    /** Response ID from the provider */
+    responseId?: string
+    /** Summary of reasoning (for models that support extended thinking) */
+    reasoningSummary?: string
+  }) => void | Promise<void>
+
+  /** Tool execution observability hooks */
+  onToolStart?: (data: {
+    socketId: string
+    toolName: string
+    toolCallId: string
+    toolInput?: Record<string, unknown>
+    conversationId?: string
+    appId?: string
+    context?: Record<string, unknown>
+  }) => Promise<{ spanId: string; startTime: number } | void> | { spanId: string; startTime: number } | void
+
+  onToolEnd?: (data: {
+    socketId: string
+    toolName: string
+    toolCallId: string
+    spanId?: string
+    startTime?: number
+    success: boolean
+    toolResponse?: unknown
     conversationId?: string
     appId?: string
     context?: Record<string, unknown>
@@ -238,7 +309,7 @@ export class WebSocketServer {
    * Setup Socket.IO event handlers
    */
   private setupEventHandlers(): void {
-    this.io.on('connection', (socket) => {
+    this.io.on('connection', async (socket) => {
       const socketId = socket.id
       const auth = socket.handshake.auth || {}
       const previousSocketId = auth.previousSocketId
@@ -329,7 +400,18 @@ export class WebSocketServer {
         // Clean up old socket ID
         this.disconnectedStreams.delete(previousSocketId)
 
-        this.logger.info('Transferred buffered events to new socket after page reload', {
+        // Notify agents service to clean up observability sessions for the old socket
+        // This prevents memory leaks in activeObservabilitySessions and activeConversationSessions
+        try {
+          await this.config.onDisconnection?.(previousSocketId)
+        } catch (disconnectError) {
+          this.logger.warn('websocket.reconnect.cleanup_failed', {
+            previousSocketId,
+            error: disconnectError instanceof Error ? disconnectError.message : String(disconnectError)
+          })
+        }
+
+        this.logger.info('websocket.reconnect.transfer_complete', {
           newSocketId: socketId,
           previousSocketId,
           eventCount: streamData.bufferedEvents.length,
@@ -355,8 +437,8 @@ export class WebSocketServer {
         } as WebSocketMessage)
       }
 
-      // Call connection handler
-      this.config.onConnection?.(socketId)
+      // Call connection handler (await to ensure async initialization completes before subsequent handlers)
+      await this.config.onConnection?.(socketId)
 
       // Send available agents on connection
       this.sendAvailableAgents(socket)
@@ -427,7 +509,8 @@ export class WebSocketServer {
         // Clean up APM spans (these can't be recovered)
         this.cleanupToolSpans(socketId)
 
-        this.config.onDisconnection?.(socketId)
+        // Await disconnection handler to ensure async cleanup completes
+        await this.config.onDisconnection?.(socketId)
       })
 
       // Handle explicit stream cancellation (user clicked cancel button)
@@ -584,6 +667,15 @@ export class WebSocketServer {
       this.initializeConversationBuffers(conversation)
 
       const agentMessageId = conversation.context.agentMessageId
+      const timestamp = event.timestamp || new Date()
+
+      // Always accumulate content for observability - regardless of persistence settings
+      // This ensures llm_end events capture the full streamed text
+      if (type === 'chunk' || type === 'text_chunk') {
+        if (content) {
+          conversation.accumulatedContent += content
+        }
+      }
 
       if (process.env.DEBUG_CONVERSATION_HISTORY === 'true') {
         this.logger.debug('Event captured for persistence', {
@@ -591,16 +683,14 @@ export class WebSocketServer {
           hasAgentMessageId: !!agentMessageId,
           hasUpdateMethod: !!this.config.messagePersistence.updateAgentTurn,
           willTriggerUpdate: !!(agentMessageId && this.config.messagePersistence.updateAgentTurn && type === 'tool_result'),
-          contentLength: content?.length || 0
+          contentLength: content?.length || 0,
+          accumulatedContentLength: conversation.accumulatedContent.length
         })
       }
 
       if (agentMessageId && this.config.messagePersistence.updateAgentTurn) {
-        const timestamp = event.timestamp || new Date()
-
         if (type === 'chunk' || type === 'text_chunk') {
           if (content) {
-            conversation.accumulatedContent += content
             conversation.pendingSegments.push({
               id: `seg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
               type: 'content',
@@ -680,52 +770,86 @@ export class WebSocketServer {
   }
 
   /**
+   * Map to track active observability tool spans
+   * Key: socketId:toolId, Value: { spanId, startTime }
+   */
+  private activeObservabilityToolSpans = new Map<string, { spanId: string; startTime: number }>()
+
+  /**
    * Start APM span for tool execution
    *
    * Creates a span as a child of the active WebSocket transaction if available,
    * otherwise creates a standalone span. Tool input is added later via the tool-call event.
    */
-  private startToolSpan(socketId: string, toolId: string, toolName: string): void {
-    if (!this.config.apmAgent && !this.config.getActiveTransaction) {
-      return
+  private async startToolSpan(socketId: string, toolId: string, toolName: string, toolInput?: Record<string, unknown>): Promise<void> {
+    // Start APM span
+    if (this.config.apmAgent || this.config.getActiveTransaction) {
+      try {
+        const apmAgent = this.config.apmAgent
+        const transaction = this.config.getActiveTransaction?.(socketId)
+
+        if (apmAgent) {
+          // Create span as child of transaction if available, otherwise standalone
+          // In Elastic APM, transaction.startSpan() creates a child span
+          const span = transaction
+            ? transaction.startSpan(`Tool: ${toolName}`, 'tool_execution', 'agent')
+            : apmAgent.startSpan(`Tool: ${toolName}`, 'tool_execution', 'agent')
+
+          if (span) {
+            span.addLabels({
+              tool_id: toolId,
+              tool_name: toolName,
+              socket_id: socketId
+            })
+
+            const spanKey = `${socketId}:${toolId}`
+            this.activeToolSpans.set(spanKey, span)
+          }
+        }
+      } catch {
+        // Silently fail - APM tracking should not break the application
+      }
     }
 
-    try {
-      const apmAgent = this.config.apmAgent
-      const transaction = this.config.getActiveTransaction?.(socketId)
+    // Start observability tool tracking
+    if (this.config.onToolStart) {
+      try {
+        const activeConversation = this.activeConversations.get(socketId)
+        const context = activeConversation?.context
+        const appId = context?.appId
+        const conversationId = activeConversation?.conversationId
 
-      if (!apmAgent) {
-        return
+        // Build params object, only including defined values to avoid exactOptionalPropertyTypes issues
+        const params: Parameters<NonNullable<typeof this.config.onToolStart>>[0] = {
+          socketId,
+          toolName,
+          toolCallId: toolId
+        }
+        if (toolInput !== undefined) params.toolInput = toolInput
+        if (conversationId !== undefined) params.conversationId = conversationId
+        if (appId !== undefined) params.appId = appId
+        if (context !== undefined) params.context = context
+
+        const result = await this.config.onToolStart(params)
+
+        if (result && typeof result === 'object' && 'spanId' in result) {
+          const spanKey = `${socketId}:${toolId}`
+          this.activeObservabilityToolSpans.set(spanKey, result)
+        }
+      } catch (hookError) {
+        this.logger.warn('Tool start hook failed', hookError)
       }
-
-      // Create span as child of transaction if available, otherwise standalone
-      // In Elastic APM, transaction.startSpan() creates a child span
-      const span = transaction
-        ? transaction.startSpan(`Tool: ${toolName}`, 'tool_execution', 'agent')
-        : apmAgent.startSpan(`Tool: ${toolName}`, 'tool_execution', 'agent')
-
-      if (span) {
-        span.addLabels({
-          tool_id: toolId,
-          tool_name: toolName,
-          socket_id: socketId
-        })
-
-        const spanKey = `${socketId}:${toolId}`
-        this.activeToolSpans.set(spanKey, span)
-      }
-    } catch {
-      // Silently fail - APM tracking should not break the application
     }
   }
 
   /**
    * End APM span for tool execution
    */
-  private endToolSpan(socketId: string, toolId: string, success: boolean, errorMessage?: string): void {
+  private async endToolSpan(socketId: string, toolId: string, toolName: string, success: boolean, toolResponse?: unknown, errorMessage?: string): Promise<void> {
     const spanKey = `${socketId}:${toolId}`
-    const span = this.activeToolSpans.get(spanKey)
 
+    // End APM span
+    const span = this.activeToolSpans.get(spanKey)
     if (span) {
       try {
         span.setOutcome(success ? 'success' : 'failure')
@@ -741,6 +865,41 @@ export class WebSocketServer {
       } catch {
         // Silently fail - APM tracking should not break the application
       }
+    }
+
+    // End observability tool tracking
+    const observabilitySpan = this.activeObservabilityToolSpans.get(spanKey)
+
+    if (this.config.onToolEnd) {
+      try {
+        const activeConversation = this.activeConversations.get(socketId)
+        const context = activeConversation?.context
+        const appId = context?.appId
+        const conversationId = activeConversation?.conversationId
+
+        // Build params object, only including defined values to avoid exactOptionalPropertyTypes issues
+        const params: Parameters<NonNullable<typeof this.config.onToolEnd>>[0] = {
+          socketId,
+          toolName,
+          toolCallId: toolId,
+          success
+        }
+        if (observabilitySpan?.spanId !== undefined) params.spanId = observabilitySpan.spanId
+        if (observabilitySpan?.startTime !== undefined) params.startTime = observabilitySpan.startTime
+        if (toolResponse !== undefined) params.toolResponse = toolResponse
+        if (conversationId !== undefined) params.conversationId = conversationId
+        if (appId !== undefined) params.appId = appId
+        if (context !== undefined) params.context = context
+
+        await this.config.onToolEnd(params)
+      } catch (hookError) {
+        this.logger.warn('Tool end hook failed', hookError)
+      }
+    }
+
+    // Always clean up observability span to prevent memory leaks
+    if (observabilitySpan) {
+      this.activeObservabilityToolSpans.delete(spanKey)
     }
   }
 
@@ -854,8 +1013,11 @@ export class WebSocketServer {
                 agentId: agentName
               }
 
-              // Start APM span for tool execution
-              this.startToolSpan(socket.id, part.id, part.toolName)
+              // Start APM span and observability tracking for tool execution
+              // Fire-and-forget to avoid blocking the main execution flow
+              this.startToolSpan(socket.id, part.id, part.toolName).catch(err =>
+                this.logger.warn('tool.span.start_failed', { toolId: part.id, error: err instanceof Error ? err.message : String(err) })
+              )
 
               this.emitToSocket(socket, 'message', {
                 type: 'tool_start',
@@ -942,8 +1104,11 @@ export class WebSocketServer {
                 agentId: agentName
               }
 
-              // End APM span for successful tool execution
-              this.endToolSpan(socket.id, toolId, true)
+              // End APM span and observability tracking for successful tool execution
+              // Fire-and-forget to avoid blocking the main execution flow
+              this.endToolSpan(socket.id, toolId, part.toolName, true, part.output).catch(err =>
+                this.logger.warn('tool.span.end_failed', { toolId, error: err instanceof Error ? err.message : String(err) })
+              )
 
               this.emitToSocket(socket, 'message', {
                 type: 'tool_result',
@@ -974,8 +1139,11 @@ export class WebSocketServer {
                 agentId: agentName
               }
 
-              // End APM span for failed tool execution
-              this.endToolSpan(socket.id, toolId, false, errorMessage)
+              // End APM span and observability tracking for failed tool execution
+              // Fire-and-forget to avoid blocking the main execution flow
+              this.endToolSpan(socket.id, toolId, part.toolName, false, undefined, errorMessage).catch(err =>
+                this.logger.warn('tool.span.end_failed', { toolId, error: err instanceof Error ? err.message : String(err) })
+              )
 
               this.emitToSocket(socket, 'message', {
                 type: 'tool_result',
@@ -1234,8 +1402,8 @@ export class WebSocketServer {
       // 4. Load conversation history
       await this.loadConversationHistory(socketId, data, processedContext)
 
-      // 5. Call message start handler
-      this.config.onMessageStart?.(socketId, data.message, agentName, processedContext)
+      // 5. Call message start handler (await to ensure invocation tracking is set up before LLM calls)
+      await this.config.onMessageStart?.(socketId, data.message, agentName, processedContext)
 
       // 6. Create abort controller
       const controller = new AbortController()
@@ -1380,7 +1548,7 @@ export class WebSocketServer {
         data: errorMetadata
       } as WebSocketMessage)
 
-      this.config.onError?.(socketId, error instanceof Error ? error : new Error(String(error)), data.message, processedContext)
+      await this.config.onError?.(socketId, error instanceof Error ? error : new Error(String(error)), data.message, processedContext)
 
       // Handle persistence error
       const conversation = this.activeConversations.get(socketId)
@@ -1844,6 +2012,92 @@ export class WebSocketServer {
     }
 
     let streamResult
+
+    // Get model information for observability
+    let modelName = 'unknown'
+    let providerName = 'anthropic' // Default provider
+    try {
+      const agentConfig = agent.getConfig()
+      modelName = agentConfig.modelName || agentName || 'unknown'
+      // Extract provider from model name convention (e.g., 'claude-3-5-sonnet' -> anthropic)
+      if (modelName.includes('claude') || modelName.includes('anthropic')) {
+        providerName = 'anthropic'
+      } else if (modelName.includes('gpt') || modelName.includes('openai')) {
+        providerName = 'openai'
+      } else if (modelName.includes('bedrock')) {
+        providerName = 'bedrock'
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to get model info from agent config: ${error}`)
+    }
+
+    // Extract identifiers from context for observability
+    const appId = context?.metadata && typeof (context.metadata as any).appId === 'string'
+      ? (context.metadata as any).appId
+      : undefined
+    const conversationId = activeConversation?.conversationId
+
+    // Call LLM start hook for observability
+    let llmSpanInfo: { spanId: string; startTime: number } | undefined
+    if (this.config.onLlmStart) {
+      try {
+        // Build params object, only including defined values
+        const params: Parameters<NonNullable<typeof this.config.onLlmStart>>[0] = {
+          socketId: socket.id,
+          model: modelName,
+          provider: providerName
+        }
+        if (conversationId !== undefined) params.conversationId = conversationId
+        if (appId !== undefined) params.appId = appId
+        if (context !== undefined) params.context = context
+
+        // Build input messages array for observability tracking
+        const inputMessages: Array<{ role: string; content: string }> = []
+
+        // Add context messages (system prompts, etc.)
+        for (const msg of contextMessages) {
+          if (msg.content && typeof msg.content === 'string') {
+            inputMessages.push({ role: msg.role, content: msg.content })
+          }
+        }
+
+        // Add conversation history messages
+        for (const msg of messages) {
+          if (msg.content && typeof msg.content === 'string') {
+            inputMessages.push({ role: msg.role, content: msg.content })
+          }
+        }
+
+        // Add the current user prompt
+        inputMessages.push({ role: 'user', content: originalPrompt })
+
+        if (inputMessages.length > 0) {
+          params.input = inputMessages
+        }
+
+        // Extract available tools from agent config
+        try {
+          const agentConfig = agent.getConfig()
+          if (agentConfig.tools && Array.isArray(agentConfig.tools)) {
+            params.tools = agentConfig.tools.map((t: any) => t.name || t.description || 'unknown')
+          }
+          // Default tool choice is 'auto' for most agents
+          params.toolChoice = 'auto'
+        } catch (toolError) {
+          // Ignore tool extraction errors
+        }
+
+        const result = await this.config.onLlmStart(params)
+        if (result && typeof result === 'object' && 'spanId' in result) {
+          llmSpanInfo = result
+        }
+      } catch (hookError) {
+        this.logger.warn('LLM start hook failed', hookError)
+      }
+    }
+
+    const llmStartTime = Date.now()
+
     try {
       streamResult = await agent.streamGenerate(originalPrompt, {
         // Add context messages with cache points intact
@@ -2009,8 +2263,6 @@ Please try again with corrected formatting.`
       }
     }
 
-    const fullContent = ''
-
     // Emit step start (currentStep was already incremented in error handler if needed)
     const stepStartData = {
       step: currentStep,
@@ -2026,8 +2278,32 @@ Please try again with corrected formatting.`
     // Capture for persistence
     await this.captureStreamingEvent(socket.id, 'step_start', '', stepStartData)
 
+    // Reset accumulated content and tool calls for this new LLM call
+    // This ensures each LLM call captures only its own streamed output and tool calls, not from previous calls
+    if (activeConversation) {
+      activeConversation.accumulatedContent = ''
+      activeConversation.pendingToolCalls?.clear()
+    }
+
     // Process both text chunks and tool events from baseStream
     await this.processStreamWithToolEvents(socket, streamResult, currentStep, agentName)
+
+    // Get accumulated content from the active conversation (streamed text before/between tool calls)
+    // Refresh reference after streaming - the conversation object may have been updated during streaming
+    const conversationAfterStream = this.activeConversations.get(socket.id)
+    const fullContent = conversationAfterStream?.accumulatedContent || ''
+
+    // Debug log for accumulated content and tool calls
+    const toolCallCount = conversationAfterStream?.pendingToolCalls?.size || 0
+    if (fullContent.length > 0 || toolCallCount > 0) {
+      this.logger.debug('LLM response accumulated', {
+        fullContentLength: fullContent.length,
+        toolCallCount,
+        toolNames: toolCallCount > 0 ? Array.from(conversationAfterStream!.pendingToolCalls!.values()).map((tc: any) => tc.name) : [],
+        hasActiveConversation: !!conversationAfterStream,
+        preview: fullContent.substring(0, 100) + (fullContent.length > 100 ? '...' : '')
+      })
+    }
 
     // Get final result with usage and tool calls
     const finalResult = await streamResult.getFinalResult() as AgentExecutionResult
@@ -2092,7 +2368,6 @@ Please try again with corrected formatting.`
       // Call onTokenUsage callback with accurate multi-step usage
       if (this.config.onTokenUsage) {
         try {
-          const activeConversation = this.activeConversations.get(socket.id)
           const processedContext = context as ProcessedContext
           await this.config.onTokenUsage(
             {
@@ -2105,13 +2380,74 @@ Please try again with corrected formatting.`
             {
               agentName,
               modelName,
-              ...(activeConversation?.conversationId && { conversationId: activeConversation.conversationId }),
+              ...(conversationAfterStream?.conversationId && { conversationId: conversationAfterStream.conversationId }),
               ...(processedContext?.appId && { appId: processedContext.appId })
             }
           )
         } catch (error) {
           this.logger.error('Error in onTokenUsage callback', { error })
         }
+      }
+    }
+
+    // Call LLM end hook for observability
+    if (this.config.onLlmEnd) {
+      try {
+        // Build params object, only including defined values
+        const llmEndParams: Parameters<NonNullable<typeof this.config.onLlmEnd>>[0] = {
+          socketId: socket.id,
+          startTime: llmSpanInfo?.startTime || llmStartTime,
+          model: modelName,
+          provider: providerName,
+          success: true
+        }
+        if (llmSpanInfo?.spanId !== undefined) llmEndParams.spanId = llmSpanInfo.spanId
+        if (conversationId !== undefined) llmEndParams.conversationId = conversationId
+        if (appId !== undefined) llmEndParams.appId = appId
+        if (context !== undefined) llmEndParams.context = context
+        if (finalResult.finishReason !== undefined) llmEndParams.finishReason = finalResult.finishReason
+        if (usageToTrack) {
+          const usageObj: NonNullable<typeof llmEndParams.usage> = {}
+          if (usageToTrack.inputTokens !== undefined) usageObj.inputTokens = usageToTrack.inputTokens
+          if (usageToTrack.outputTokens !== undefined) usageObj.outputTokens = usageToTrack.outputTokens
+          if (usageToTrack.totalTokens !== undefined) usageObj.totalTokens = usageToTrack.totalTokens
+          if (usageToTrack.cachedInputTokensRead !== undefined) usageObj.cachedTokens = usageToTrack.cachedInputTokensRead
+          llmEndParams.usage = usageObj
+        }
+
+        // Add output message (assistant's response)
+        // Always provide at least an empty assistant message - required for llm_end events
+        // When finishReason is 'tool-calls', fullContent may be empty but we still need output
+        llmEndParams.output = [{ role: 'assistant', content: fullContent || '' }]
+
+        // Add tool calls if any - use accumulated tool calls from conversation for complete list
+        // pendingToolCalls captures ALL tool calls made during streaming, not just the final batch
+        const allToolCalls = conversationAfterStream?.pendingToolCalls
+        if (allToolCalls && allToolCalls.size > 0) {
+          llmEndParams.toolCalls = Array.from(allToolCalls.values()).map((tc: any) => ({
+            id: tc.id || 'unknown',
+            name: tc.name || 'unknown',
+            ...(tc.input && { arguments: tc.input })
+          }))
+        } else if (finalResult.toolCalls && Array.isArray(finalResult.toolCalls) && finalResult.toolCalls.length > 0) {
+          // Fallback to finalResult.toolCalls if pendingToolCalls is not available
+          llmEndParams.toolCalls = finalResult.toolCalls.map((tc: any) => ({
+            id: tc.toolCallId || tc.id || 'unknown',
+            name: tc.toolName || tc.name || 'unknown',
+            ...(tc.args && { arguments: tc.args }),
+            ...(tc.arguments && { arguments: tc.arguments }),
+            ...(tc.input && { arguments: tc.input })
+          }))
+        }
+
+        // Add reasoning summary if available (for models that support extended thinking)
+        if (finalResult.reasoningSummary) {
+          llmEndParams.reasoningSummary = finalResult.reasoningSummary
+        }
+
+        await this.config.onLlmEnd(llmEndParams)
+      } catch (hookError) {
+        this.logger.warn('LLM end hook failed', hookError)
       }
     }
 
