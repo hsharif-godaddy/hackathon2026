@@ -15,6 +15,7 @@ import type {
   ModelMessage
 } from 'ai'
 import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from './types.js'
+import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
 import { buildHybridContent } from '../utils/image-content-builder.js'
 import type { ContentBlock, TextContentBlock, ImageContentBlock } from '../utils/image-content-builder.js'
 import { createLogger } from '../utils/logger.js'
@@ -166,6 +167,12 @@ export class AgentWrapper {
 
     // Build stopWhen conditions
     const stopWhen = []
+
+    // Add duplicate response detection to prevent infinite loops.
+    // This must be the first stopWhen condition so that the core safety check
+    // is always evaluated before any custom OR-ed stop conditions that might
+    // also trigger or short-circuit evaluation.
+    stopWhen.push(createDuplicateResponseStopCondition())
 
     // Add max steps condition
     if (config.maxSteps) {
