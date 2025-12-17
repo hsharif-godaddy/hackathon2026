@@ -9,6 +9,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { logAiroHQEvent,logImpressionEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
+import { shipAnalyticsLog } from '@/lib/logging';
 
 const INITIAL_POLL_DELAY_MS = 5000;  // Wait 5 seconds before first poll
 const FAST_POLLING_INTERVAL_MS = 2000;  // Poll every 2 seconds initially
@@ -211,6 +212,14 @@ export function useDeploymentsQuery({
 
         // Check if site was already published before this deployment
         const currentSiteData = getSite(appId);
+
+        // Ship analytics log for Elastic dashboards
+        shipAnalyticsLog('publish.success', {
+          appId,
+          domain: currentSiteData?.name,
+          deploymentId: deploymentInProgressId,
+          isFirstPublish: !hasBeenPublished(currentSiteData)
+        });
         const wasAlreadyPublished = hasBeenPublished(currentSiteData);
 
         // Determine event IDs based on whether this is first publish or re-publish
@@ -261,6 +270,13 @@ export function useDeploymentsQuery({
             // Still show success alert even if refetch fails
             setPublishSuccess(appId, true);
           });
+      } else if (deploymentInProgress.status === DeploymentStatus.FAILED) {
+        const currentSiteData = getSite(appId);
+        shipAnalyticsLog('publish.failed', {
+          appId,
+          domain: currentSiteData?.name,
+          deploymentId: deploymentInProgressId
+        });
       }
 
       // Clear deployment tracking

@@ -5,6 +5,7 @@ import { logger } from '@/lib/request-context';
 interface UpdateEntitlementParams {
   subscriptionId: string;
   entitlementId: string;
+  appId?: string;
 }
 
 interface UpdateEntitlementResult {
@@ -23,14 +24,15 @@ export const useUpdateEntitlement = () => {
   const queryClient = useQueryClient();
 
   return useMutation<UpdateEntitlementResult, Error, UpdateEntitlementParams>({
-    mutationFn: async ({ subscriptionId, entitlementId }: UpdateEntitlementParams): Promise<UpdateEntitlementResult> => {
+    mutationFn: async ({ subscriptionId, entitlementId, appId }: UpdateEntitlementParams): Promise<UpdateEntitlementResult> => {
       if (!subscriptionId || !entitlementId) {
         throw new Error('subscriptionId and entitlementId are required');
       }
 
       logger.info('update-entitlement.mutation.start', {
         subscriptionId,
-        entitlementId
+        entitlementId,
+        ...(appId && { appId })
       });
 
       const url = `/api/entitlements/${encodeURIComponent(subscriptionId)}/update`;
@@ -40,7 +42,7 @@ export const useUpdateEntitlement = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ entitlementId }),
+        body: JSON.stringify({ entitlementId, ...(appId && { appId }) }),
         credentials: 'include',
       });
 

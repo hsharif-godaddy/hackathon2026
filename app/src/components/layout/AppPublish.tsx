@@ -26,6 +26,7 @@ import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
+import { shipAnalyticsLog } from '@/lib/logging';
 
 export default function AppPublish({ location }: { location?: string }) {
   const intl = useIntl();
@@ -48,16 +49,29 @@ export default function AppPublish({ location }: { location?: string }) {
   const { data: isPaywallEnabledInMarket } = useSwitchboard('appbuilder-airoplus-markets');
 
   const { showPaywall } = usePaywallEligibility(currentAppId);
+  const logInAppPurchase = (subscriptionId: string, entitlementId: string) => {
+    shipAnalyticsLog('airoplus.purchase.in-app', {
+      appId: currentAppId,
+      subscriptionId,
+      entitlementId,
+      source: 'in-app-paywall',
+      appName: site?.name
+    });
+  };
+
   const handlePurchaseSuccess = async () => {
     setShowAiroPlusPaywall(false);
     setIsPollingEntitlements(true);
     const result = await entitlementPollingService.pollForEntitlements(currentAppId);
     setIsPollingEntitlements(false);
     if (result.success) {
+      if (result.data) {
+        logInAppPurchase(result.data.subscriptionId, result.data.entitlementId);
+      }
       setOpen(true);
-      setEntitlementsPollingFailed(false); // Reset failure state on success
+      setEntitlementsPollingFailed(false);
     } else {
-      setEntitlementsPollingFailed(true); // Mark as failed to disable button
+      setEntitlementsPollingFailed(true);
       setOpen(false);
       logger.error('app-publish.entitlements.polling.failed', {
         appId: currentAppId,
@@ -263,6 +277,10 @@ export default function AppPublish({ location }: { location?: string }) {
    
     if (isAiroPlusPaywallEnabled && isPaywallEnabledInMarket && showPaywall && open) { // TODO: check to make sure entitlemnet is not granted already before showing the paywall
       setShowAiroPlusPaywall(true);
+      shipAnalyticsLog('airoplus.paywall.shown', {
+        appId: currentAppId,
+        appName: site?.name
+      });
     } else {
       setOpen(open);
     }
@@ -274,9 +292,17 @@ export default function AppPublish({ location }: { location?: string }) {
       <SinglePlanUpgradeContainer
         onErrorClick={async () => {
           setShowAiroPlusPaywall(false);
+          shipAnalyticsLog('airoplus.paywall.error', {
+            appId: currentAppId,
+            appName: site?.name
+          });
         }}
-       onClose={() => {
+        onClose={() => {
           setShowAiroPlusPaywall(false);
+          shipAnalyticsLog('airoplus.paywall.dismissed', {
+            appId: currentAppId,
+            appName: site?.name
+          });
         }}
         onSuccessClick={handlePurchaseSuccess}
       />

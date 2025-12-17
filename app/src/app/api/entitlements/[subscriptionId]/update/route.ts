@@ -30,7 +30,7 @@ export const PUT = withCustomerAuth(async (request: NextRequest, authContext: Cu
       return NextResponse.json({ error: 'subscriptionId path parameter is required' }, { status: 400 });
     }
 
-    const { entitlementId } = await request.json();
+    const { entitlementId, appId } = await request.json();
     if (!entitlementId) {
       return NextResponse.json({ error: 'entitlementId is required in request body' }, { status: 400 });
     }
@@ -39,9 +39,9 @@ export const PUT = withCustomerAuth(async (request: NextRequest, authContext: Cu
     const client = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
 
     logger.info('entitlements.api.update.start', {
-      message: 'Updating entitlement via API route',
       subscriptionId,
-      entitlementId
+      entitlementId,
+      ...(appId && { appId })
     });
 
     // Call updateEntitlement method

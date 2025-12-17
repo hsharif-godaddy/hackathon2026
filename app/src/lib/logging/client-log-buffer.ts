@@ -334,23 +334,20 @@ export class ClientLogBuffer {
     try {
       const payload = JSON.stringify({ logs: batch });
 
-      // Use sendBeacon when page is hidden (more reliable)
-      if (isBrowser() && document.visibilityState === 'hidden') {
-        const sent = navigator.sendBeacon(this.config.endpoint, payload);
-        if (!sent) {
-          throw new Error('sendBeacon failed');
-        }
-      } else {
-        const response = await fetch(this.config.endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload,
-          keepalive: true,
-        });
+      // Use fetch with keepalive: true for reliable delivery even on page unload
+      const response = await fetch(this.config.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-XSRF-TOKEN': '1',
+        },
+        credentials: 'include',
+        body: payload,
+        keepalive: true,
+      });
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
 
       // Success - reset failure tracking

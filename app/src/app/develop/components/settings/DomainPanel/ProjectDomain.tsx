@@ -23,6 +23,7 @@ import { useSiteStore } from "@/stores/useSiteStore";
 import { getDomainErrorMessage } from '@/utils/domain-validation';
 import { generateClickEID } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
+import { shipAnalyticsLog } from '@/lib/logging';
 
 export default function ProjectDomain() {
   const t = useTranslations();
@@ -125,7 +126,7 @@ export default function ProjectDomain() {
         d => d.domainType === DomainType.PREFIX
       );
 
-      // Stop polling if domain is active
+      // Stop polling if domain is active or failed
       if (polledPrefixDomain?.status === DomainStatus.ACTIVE) {
         setShouldPoll(false);
         logger.info('app-name.poll.complete', {
@@ -135,9 +136,28 @@ export default function ProjectDomain() {
           fqdn: polledPrefixDomain.fqdn,
         });
 
+        shipAnalyticsLog('domain.project.update.success', {
+          appId: currentAppId,
+          newPrefix: polledPrefixDomain.prefix,
+          fqdn: polledPrefixDomain.fqdn
+        });
+
         if (polledPrefixDomain.fqdn) {
           setProjectDomainDisplay(polledPrefixDomain.fqdn);
         }
+      } else if (polledPrefixDomain?.status === DomainStatus.FAILED) {
+        setShouldPoll(false);
+        logger.error('app-name.poll.failed', {
+          appId: currentAppId,
+          prefix: polledPrefixDomain.prefix,
+          status: polledPrefixDomain.status,
+        });
+
+        shipAnalyticsLog('domain.project.update.failed', {
+          appId: currentAppId,
+          newPrefix: polledPrefixDomain.prefix,
+          reason: 'polling-detected-failure'
+        });
       }
     }
   }, [polledSite, currentAppId, shouldPoll]);
@@ -219,6 +239,11 @@ export default function ProjectDomain() {
         appId: currentAppId,
         newName: currentProjectName,
         error: error.message,
+      });
+      shipAnalyticsLog('domain.project.update.failed', {
+        appId: currentAppId,
+        newPrefix: currentProjectName,
+        error: error instanceof Error ? error.message : String(error)
       });
       setShowButtons(true);
     }

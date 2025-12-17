@@ -233,10 +233,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const userAgent = request.headers.get('user-agent') || 'unknown';
 
     let customerId: string | undefined;
+    let shopperId: string | undefined;
+    let isTLA = false;
     try {
       const authContext = await authenticateCustomer(request);
       if (authContext.isAuthenticated) {
         customerId = authContext.user.customerId;
+        shopperId = authContext.user.shopperId;
+        // TLA (Three Letter Account) indicates GoDaddy employee accounts
+        isTLA = shopperId?.length === 3;
       }
     } catch {
       // Auth extraction failed - continue without customer context
@@ -260,6 +265,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ...(sanitized.message ? { message: sanitized.message } : {}),
         ...sanitized.data,
         ...(customerId ? { customerId } : {}),
+        isTLA,
         clientIp,
         userAgent: sanitized.userAgent || userAgent, // Prefer payload, fallback to header
         sessionId: sanitized.sessionId,

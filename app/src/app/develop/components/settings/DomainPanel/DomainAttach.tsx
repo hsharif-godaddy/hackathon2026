@@ -21,6 +21,7 @@ import { useModifyDomains } from '@/hooks/useModifyDomains';
 import { useTranslations } from '@/hooks/useTranslations';
 import { CdnStatus,DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
+import { shipAnalyticsLog } from '@/lib/logging';
 import { useSiteStore } from "@/stores/useSiteStore";
 import { isCustomerDomain,sanitizeDomainInput, validateDomain } from '@/utils/domain';
 import { getDomainErrorMessage } from '@/utils/domain-validation';
@@ -218,11 +219,20 @@ export default function DomainAttach() {
           createCdn: true,
         },
       });
+      shipAnalyticsLog('domain.custom.connect.success', {
+        appId: currentAppId,
+        domainName
+      });
     } catch (error) {
       logger.error('domain-attach.connect.failure', {
         message: 'Failed to connect domain',
         domainName,
         error: error instanceof Error ? error.message : String(error),
+      });
+      shipAnalyticsLog('domain.custom.connect.failed', {
+        appId: currentAppId,
+        domainName,
+        error: error instanceof Error ? error.message : String(error)
       });
     }
   }
@@ -240,11 +250,20 @@ export default function DomainAttach() {
           domainsToDelete: [{ fqdn: domainName }],
         },
       });
+      shipAnalyticsLog('domain.custom.disconnect.success', {
+        appId: currentAppId,
+        domainName
+      });
     } catch (error) {
       logger.error('domain-attach.disconnect.failure', {
         message: 'Failed to disconnect domain',
         domainName,
         error: error instanceof Error ? error.message : String(error),
+      });
+      shipAnalyticsLog('domain.custom.disconnect.failed', {
+        appId: currentAppId,
+        domainName,
+        error: error instanceof Error ? error.message : String(error)
       });
     }
   }

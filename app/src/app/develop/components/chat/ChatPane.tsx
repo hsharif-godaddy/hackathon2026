@@ -17,6 +17,7 @@ import { ChatTab } from '@/app/develop/components/types'
 import { useAppIdFromParams } from '@/app/develop/components/utils'
 import VersionHistory from '@/app/develop/components/VersionHistory'
 import { useTranslations } from '@/hooks/useTranslations'
+import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import {
@@ -186,6 +187,15 @@ export default function ChatPane({
         recommendation_task: 'builder_develop_prompt_submit',
         recommendation_type: 'user_prompt'
       })();
+
+      shipAnalyticsLog('chat.prompt.sent', {
+        appId,
+        promptLength: messageToSend.length,
+        source: content ? 'suggestion' : 'user-input',
+        hasEditContext: !!safeAiEditContext,
+        hasSelectedAsset: !!selectedAsset,
+        hasBuildErrorContext: !!safeBuildErrorContext
+      });
 
       // Ensure we're connected to the right app
       if (currentAppId !== appId) {

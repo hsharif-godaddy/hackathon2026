@@ -1,6 +1,6 @@
 import React from 'react';
-
-import { logger } from '@/lib/request-context';
+import { useEffect } from 'react';
+import { shipAnalyticsLog } from '@/lib/logging';
 import { useEntitlementsBySubscriptionId } from './useEntitlementsBySubscriptionId';
 import { useMatchingProject } from './useMatchingProject';
 import { useSubscriptionByAppId } from './useSubscriptionByAppId';
@@ -18,52 +18,65 @@ export const usePaywallEligibility = (appId: string | undefined): PaywallEligibi
   const subscriptionId = subscriptionData?.subscription?.id;
 
   const { data: entitlementsData, isError: isEntitlementsError, error: entitlementsError } = useEntitlementsBySubscriptionId(subscriptionId);
-  const hasEntitlements = entitlementsData?.entitlementId;
+  const hasEntitlements = !!entitlementsData?.entitlementId;
+  const entitlementId = entitlementsData?.entitlementId;
 
   const { data: matchingProjectData, isError: isMatchingProjectError, error: matchingProjectError } = useMatchingProject();
 
-  const updateEntitlementMutation = useUpdateEntitlement();
+  const {
+    mutate: updateEntitlement,
+    isPending: isUpdating,
+    isSuccess: hasUpdated,
+    isError: updateFailed
+  } = useUpdateEntitlement();
 
   // Determine overall error state
-  const isError = isSubscriptionError || isEntitlementsError || isMatchingProjectError || updateEntitlementMutation.isError;
-  const error = subscriptionError || entitlementsError || matchingProjectError || updateEntitlementMutation.error || null;
+  const isError = isSubscriptionError || isEntitlementsError || isMatchingProjectError || updateFailed;
+  const error = subscriptionError || entitlementsError || matchingProjectError || null;
 
+  // Determine if we should trigger the auto-update
+  // All conditions must be met AND mutation must be idle (not pending, not completed, not failed)
+  const shouldAutoUpdate =
+    !!matchingProjectData?.billingId &&
+    !!subscriptionId &&
+    !hasEntitlements &&
+    !isError &&
+    !isUpdating &&
+    !hasUpdated &&
+    !updateFailed;
 
-  // Auto-trigger entitlement update when we have a matching project and subscription
-  React.useEffect(() => {
-    if (matchingProjectData?.billingId && subscriptionId && !hasEntitlements && !isError) {
-      if (!updateEntitlementMutation.isPending && !updateEntitlementMutation.isError) {
-        logger.info('paywall-eligibility.auto-update-entitlement', {
-          appId,
-          subscriptionId,
-          billingId: matchingProjectData.billingId
-        });
-        updateEntitlementMutation.mutate({
-          subscriptionId,
-          entitlementId: matchingProjectData.billingId
-        });
-      }
+  // Log when user has Airo Plus access (let Elastic handle deduplication via unique count)
+  useEffect(() => {
+    if (hasEntitlements && subscriptionId) {
+      shipAnalyticsLog('airoplus.access.detected', {
+        appId,
+        subscriptionId,
+        entitlementId,
+        source: 'existing-entitlement'
+      });
     }
-  }, [matchingProjectData?.billingId, subscriptionId, hasEntitlements, isError, appId]); /* eslint-disable-line react-hooks/exhaustive-deps */
+  }, [hasEntitlements, subscriptionId, appId, entitlementId]);
 
-  // Determine paywall state based on data
-  let showPaywall = true; // Default to showing paywall for security
-
-  if (!isError) {
-    if (!subscriptionData) {
-      // No subscription found
-      showPaywall = true;
-    } else if (hasEntitlements) {
-      // User has entitlements
-      showPaywall = false;
-    } else if (matchingProjectData?.billingId && subscriptionId) {
-      // Found matching project and entitlement update is in progress or completed
-      showPaywall = false; // Allow access during/after update attempt
-    } else {
-      // No entitlements and no matching project
-      showPaywall = true;
+  // Auto-trigger entitlement update when conditions are met
+  // React Query's mutation state (isPending, isSuccess, isError) prevents duplicate calls
+  useEffect(() => {
+    if (shouldAutoUpdate) {
+      updateEntitlement({
+        subscriptionId: subscriptionId!,
+        entitlementId: matchingProjectData!.billingId!,
+        appId
+      });
     }
-  }
+  }, [shouldAutoUpdate, appId, subscriptionId, matchingProjectData, updateEntitlement]);
+
+  // Determine if paywall should be shown
+  const hasValidSubscription = !!subscriptionData;
+  const hasMatchingProject = !!(matchingProjectData?.billingId && subscriptionId);
+  const entitlementUpdateInProgress = isUpdating || hasUpdated;
+
+  // Show paywall unless user has access
+  const hasAccess = hasValidSubscription && (hasEntitlements || entitlementUpdateInProgress || hasMatchingProject);
+  const showPaywall = isError || !hasAccess;
 
   return {
     showPaywall,
